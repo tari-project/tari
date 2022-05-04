@@ -36,7 +36,11 @@ use crate::docker::{models::ImageType, TariNetwork};
 pub const DEFAULT_MINING_ADDRESS: &str =
     "5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48";
 
-pub const DEFAULT_MONEROD_URL: &str = "http://monero-stagenet.exan.tech:38081";
+pub const DEFAULT_MONEROD_URL: &str = "http://stagenet.xmr-tw.org:38081,\
+http://stagenet.community.xmr.to:38081,\
+http://monero-stagenet.exan.tech:38081,\
+http://xmr-lux.boldsuck.org:38081,\
+http://singapore.node.xmr.pm:38081";
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BaseNodeConfig {
@@ -275,11 +279,11 @@ impl LaunchpadConfig {
     /// Return the command line arguments we want for the given container execution.
     pub fn command(&self, image_type: ImageType) -> Vec<String> {
         match image_type {
-            ImageType::BaseNode => vec!["--non-interactive-mode".to_string()],
-            ImageType::Wallet => vec!["--non-interactive-mode".to_string()],
+            ImageType::BaseNode => self.base_node_cmd(),
+            ImageType::Wallet => self.wallet_cmd(),
             ImageType::XmRig => self.xmrig_cmd(),
-            ImageType::Sha3Miner => vec![],
-            ImageType::MmProxy => vec![],
+            ImageType::Sha3Miner => self.miner_cmd(),
+            ImageType::MmProxy => self.mm_proxy_cmd(),
             ImageType::Tor => self.tor_cmd(),
             ImageType::Monerod => self.monerod_cmd(),
             ImageType::Frontail => self.frontail_cmd(),
@@ -310,6 +314,26 @@ impl LaunchpadConfig {
             "sha3_miner/log/core.log",
             "mm_proxy/log/core.log",
         ];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn base_node_cmd(&self) -> Vec<String> {
+        let args = vec!["--non-interactive-mode", "--log-config=/var/tari/config/log4rs.yml"];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn wallet_cmd(&self) -> Vec<String> {
+        let args = vec!["--non-interactive-mode", "--log-config=/var/tari/config/log4rs.yml"];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn miner_cmd(&self) -> Vec<String> {
+        let args = vec!["--log-config=/var/tari/config/log4rs.yml"];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn mm_proxy_cmd(&self) -> Vec<String> {
+        let args = vec!["--log-config=/var/tari/config/log4rs.yml"];
         args.into_iter().map(String::from).collect()
     }
 
@@ -387,26 +411,10 @@ impl LaunchpadConfig {
     }
 
     fn base_node_tor_config(&self, env: &mut Vec<String>) {
-        env.append(&mut vec![
-            format!("TARI_BASE_NODE__{}__TRANSPORT=tor", self.tari_network.upper_case()),
-            format!(
-                "TARI_BASE_NODE__{}__TOR_CONTROL_AUTH=password={}",
-                self.tari_network.upper_case(),
-                self.tor_control_password
-            ),
-            format!(
-                "TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
-                self.tari_network.upper_case()
-            ),
-            format!(
-                "TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
-                self.tari_network.upper_case()
-            ),
-            format!(
-                "TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
-                self.tari_network.upper_case()
-            ),
-        ]);
+        env.append(&mut vec![format!(
+            "TARI_BASE_NODE__P2P__TRANSPORT__TOR__CONTROL_AUTH=password={}",
+            self.tor_control_password
+        )]);
     }
 
     /// Generate the vector of ENVAR strings for the docker environment
@@ -417,18 +425,8 @@ impl LaunchpadConfig {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", base_node.delay.as_secs()),
                 format!(
-                    "TARI_COMMON__{}__DATA_DIR=/blockchain/{}",
-                    self.tari_network.upper_case(),
+                    "TARI_BASE_NODE__DATA_DIR=/blockchain/{}",
                     self.tari_network.lower_case()
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TCP_LISTENER_ADDRESS=/dns4/base_node/tcp/18189",
-                    self.tari_network.upper_case()
-                ),
-                format!("TARI_BASE_NODE__{}__GRPC_ENABLED=1", self.tari_network.upper_case()),
-                format!(
-                    "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=0.0.0.0:18142",
-                    self.tari_network.upper_case()
                 ),
                 "APP_NAME=base_node".to_string(),
             ]);
@@ -446,27 +444,9 @@ impl LaunchpadConfig {
                 "SHELL=/bin/bash".to_string(),
                 "TERM=linux".to_string(),
                 format!("TARI_WALLET_PASSWORD={}", config.password),
-                format!("TARI_WALLET__{}__TRANSPORT=tor", self.tari_network.upper_case()),
                 format!(
-                    "TARI_WALLET__{}__TOR_CONTROL_AUTH=password={}",
-                    self.tari_network.upper_case(),
+                    "TARI_WALLET__P2P__TRANSPORT__TOR__CONTROL_AUTH=password={}",
                     self.tor_control_password
-                ),
-                format!(
-                    "TARI_WALLET__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_WALLET__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_WALLET__{}__TOR_FORWARD_ADDRESS=/dns4/wallet/tcp/18188",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_WALLET__{}__TCP_LISTENER_ADDRESS=/dns4/wallet/tcp/18188",
-                    self.tari_network.upper_case()
                 ),
             ]);
         }
@@ -495,9 +475,9 @@ impl LaunchpadConfig {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
                 "APP_NAME: sha3_miner".to_string(),
-                "APP_EXEC: tari_mining_node".to_string(),
-                format!("TARI_MINING_NODE__NUM_MINING_THREADS: {}", config.num_mining_threads),
-                "TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1".to_string(),
+                "APP_EXEC: tari_miner".to_string(),
+                format!("TARI_MINER__NUM_MINING_THREADS: {}", config.num_mining_threads),
+                "TARI_MINER__MINE_ON_TIP_ONLY: 1".to_string(),
                 // This setting should be made obsolete soon:
                 format!(
                     "TARI_BASE_NODE__{}__BASE_NODE_GRPC_ADDRESS=/dns4/base_node/tcp/18142",
@@ -521,35 +501,10 @@ impl LaunchpadConfig {
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
                 "APP_NAME=mm_proxy".to_string(),
                 "APP_EXEC=tari_merge_mining_proxy".to_string(),
-                format!(
-                    "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=/dns4/base_node/tcp/18142",
-                    self.tari_network.upper_case()
-                ),
-                "TARI_WALLET__GRPC_ADDRESS=/dns4/wallet/tcp/18143".to_string(),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_URL={}",
-                    self.tari_network.upper_case(),
-                    config.monerod_url
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_USERNAME={}",
-                    self.tari_network.upper_case(),
-                    config.monero_username
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_PASSWORD={}",
-                    self.tari_network.upper_case(),
-                    config.monero_password
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_USE_AUTH={}",
-                    self.tari_network.upper_case(),
-                    config.monero_use_auth()
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__{}__PROXY_HOST_ADDRESS=0.0.0.0:18081",
-                    self.tari_network.upper_case()
-                ),
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_URL={}", config.monerod_url),
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_USERNAME={}", config.monero_username),
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_PASSWORD={}", config.monero_password),
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_USE_AUTH={}", config.monero_use_auth()),
             ]);
         }
         env

@@ -29,7 +29,7 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 macro_rules! or_continue {
     ($expr:expr, $($arg:tt)*) => {

@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 
 use tari_common_types::types::BlindingFactor;
 use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
+use tari_utilities::{ByteArray, Hashable};
 
 use crate::{
     conversions::{datetime_to_timestamp, timestamp_to_datetime},

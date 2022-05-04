@@ -38,8 +38,8 @@ impl Default for CollectiblesConfig {
     Self {
       override_from: None,
       validator_node_grpc_address: "/ip4/127.0.0.1/tcp/18144".parse().unwrap(),
-      base_node_grpc_address: "/ip4/127.0.0.1/18142".parse().unwrap(),
-      wallet_grpc_address: "/ip4/127.0.0.1/tpc/18143".parse().unwrap(),
+      base_node_grpc_address: "/ip4/127.0.0.1/tcp/18142".parse().unwrap(),
+      wallet_grpc_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
     }
   }
 }

@@ -26,6 +26,7 @@ use nom::lib::std::collections::hash_map::Entry;
 
 use crate::{peer_manager::NodeId, PeerConnection};
 
+/// Status type for connections
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionStatus {
     NotConnected,
@@ -42,6 +43,7 @@ impl fmt::Display for ConnectionStatus {
     }
 }
 
+/// Connection state. This struct holds the PeerConnection handle if currently or previously connected.
 #[derive(Debug, Clone)]
 pub struct PeerConnectionState {
     node_id: NodeId,

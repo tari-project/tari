@@ -4,6 +4,8 @@ on:
       - development
   pull_request:
     types: [opened]
+    branches-ignore:
+      - 'launchpad_such_wow' # TODO: Remove this filter once the branch is merged into development
 
 name: Test RFC Docs
 

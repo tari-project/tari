@@ -25,8 +25,8 @@ use diesel::{prelude::*, SqliteConnection};
 
 use crate::{key_manager_service::error::KeyManagerStorageError, schema::key_manager_states_old};
 
-// This is a temporary migration file to convert existing indexes to new ones.
-// Todo remove at next testnet reset (currently on Dibbler) #testnet_reset
+/// This is a temporary migration file to convert existing indexes to new ones.
+/// Todo remove at next testnet reset (currently on Dibbler) #testnet_reset
 #[derive(Clone, Debug, Queryable, Identifiable)]
 #[table_name = "key_manager_states_old"]
 #[primary_key(id)]
@@ -39,10 +39,12 @@ pub struct KeyManagerStateSqlOld {
 }
 
 impl KeyManagerStateSqlOld {
+    /// Retrieve all key manager states stored in the database.
     pub fn index(conn: &SqliteConnection) -> Result<Vec<KeyManagerStateSqlOld>, KeyManagerStorageError> {
         Ok(key_manager_states_old::table.load::<KeyManagerStateSqlOld>(conn)?)
     }
 
+    /// Deletes all the stored key manager states in the database.
     pub fn delete(conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
         diesel::delete(key_manager_states_old::dsl::key_manager_states_old).execute(conn)?;
         Ok(())

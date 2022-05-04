@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Extension types used by the [PeerManager](crate::PeerManager) to keep track of address reliability.
+
 mod multiaddr_with_stats;
 pub use multiaddr_with_stats::MutliaddrWithStats;
 

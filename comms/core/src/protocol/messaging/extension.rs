@@ -51,6 +51,7 @@ pub const MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE: usize = 30;
 /// buffering may be required if the node needs to send many messages out at the same time.
 pub const MESSAGING_REQUEST_BUFFER_SIZE: usize = 50;
 
+/// Installs the messaging protocol
 pub struct MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     event_tx: MessagingEventSender,
     pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>,

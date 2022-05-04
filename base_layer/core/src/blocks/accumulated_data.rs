@@ -38,9 +38,8 @@ use serde::{
     Serializer,
 };
 use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::{error::BlockError, Block, BlockHeader},

@@ -26,8 +26,7 @@ use monero::{
     consensus::{encode, Decodable, Encodable},
     VarInt,
 };
-use tari_crypto::tari_utilities::ByteArray;
-use tari_utilities::ByteArrayError;
+use tari_utilities::{ByteArray, ByteArrayError};
 
 const MAX_ARR_SIZE: usize = 63;
 

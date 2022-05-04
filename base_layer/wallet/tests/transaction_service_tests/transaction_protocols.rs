@@ -714,7 +714,6 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 /// completed
 #[tokio::test]
 #[allow(clippy::identity_op)]
-#[ignore = "broken after validator node merge"]
 async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let (
         resources,
@@ -819,7 +818,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     );
     assert_eq!(
         completed_txs.get(&2.into()).unwrap().status,
-        TransactionStatus::MinedUnconfirmed
+        TransactionStatus::Completed
     );
 
     // Now the tx will be fully mined

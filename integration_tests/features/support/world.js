@@ -50,7 +50,7 @@ class CustomWorld {
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
     this.logFilePathMiningNode =
-      parameters.logFilePathMiningNode || "./log4rs/mining_node.yml";
+      parameters.logFilePathMiningNode || "./log4rs/miner.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
     this.lastResult = {};
@@ -426,7 +426,7 @@ class CustomWorld {
 
   async startNode(name, args) {
     const node = this.seeds[name] || this.nodes[name];
-    await node.start(args);
+    await node.start({ args });
     console.log("\n", name, "started\n");
   }
 
@@ -657,7 +657,7 @@ BeforeAll({ timeout: 2400000 }, async function () {
     // this.logFilePathMiningNode
   );
 
-  console.log("Compiling mining node...");
+  console.log("Compiling miner...");
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 

@@ -51,7 +51,7 @@ impl<'a> CovenantContext<'a> {
 
     pub fn next_arg(&mut self) -> Result<CovenantArg, CovenantError> {
         match self.tokens.next().ok_or(CovenantError::UnexpectedEndOfTokens)? {
-            CovenantToken::Arg(arg) => Ok(arg),
+            CovenantToken::Arg(arg) => Ok(*arg),
             CovenantToken::Filter(_) => Err(CovenantError::ExpectedArgButGotFilter),
         }
     }

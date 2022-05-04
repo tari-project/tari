@@ -26,7 +26,7 @@ use std::convert::TryFrom;
 use log::*;
 use tari_common_types::types::Signature;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 
 use crate::{

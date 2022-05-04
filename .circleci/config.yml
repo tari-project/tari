@@ -29,8 +29,8 @@ commands:
           name: Build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
-          name: Build mining_node
-          command: cargo build --release --bin tari_mining_node
+          name: Build miner
+          command: cargo build --release --bin tari_miner
       - run:
           name: Build validator node
           command: cargo build --release --bin tari_validator_node
@@ -77,8 +77,8 @@ commands:
           name: Build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
-          name: Build mining_node
-          command: cargo build --release --bin tari_mining_node
+          name: Build miner
+          command: cargo build --release --bin tari_miner
       - run:
           name: Build validator node
           command: cargo build --release --bin tari_validator_node
@@ -129,8 +129,13 @@ workflows:
       - run-integration-tests:
           filters:
             branches:
-              ignore: gh-pages
+              ignore:
+                gh-pages
+                launchpad_such_wow # TODO: Remove this filter once the branch is merged into development
       - run-ffi-integration-tests:
           filters:
             branches:
-              ignore: gh-pages
+              ignore:
+                gh-pages
+                launchpad_such_wow # TODO: Remove this filter once the branch is merged into development
+

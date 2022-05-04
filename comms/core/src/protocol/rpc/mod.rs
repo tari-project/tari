@@ -20,8 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove once in use
-#![allow(dead_code)]
+//! # RPC protocol
+//!
+//! Provides a request/response protocol that supports streaming.
+//! Available with the `rpc` crate feature.
 
 #[cfg(test)]
 mod test;

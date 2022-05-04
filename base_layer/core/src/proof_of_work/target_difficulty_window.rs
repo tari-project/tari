@@ -22,7 +22,7 @@
 
 use std::cmp;
 
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
 
