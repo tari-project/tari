@@ -32,8 +32,7 @@ use tari_comms::{
     protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
     utils,
 };
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{
     sync::{mpsc, RwLock},
     task,

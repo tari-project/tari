@@ -25,8 +25,8 @@ use std::{env, net::Ipv4Addr, path::Path, process, sync::Arc, time::Duration};
 
 use futures::{future, future::Either};
 use stress::{error::Error, prompt::user_prompt};
-use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_shutdown::Shutdown;
+use tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
 use tokio::{sync::oneshot, time};
 

@@ -35,7 +35,7 @@ use blake2::{
     VarBlake2b,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
-use tari_crypto::tari_utilities::{
+use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
     ByteArrayError,

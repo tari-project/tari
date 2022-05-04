@@ -23,9 +23,9 @@
 use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, RwLock},
     task,

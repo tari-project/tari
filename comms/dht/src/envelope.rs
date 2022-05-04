@@ -40,7 +40,7 @@ use thiserror::Error;
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType};
 use crate::version::DhtProtocolVersion;
 
-/// Utility function that converts a `chrono::DateTime<Utc>` to a `prost::Timestamp`
+/// Utility function that converts a `chrono::DateTime<Utc>` to a `prost_type::Timestamp`
 pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
     Timestamp {
         seconds: datetime.timestamp(),
@@ -58,12 +58,13 @@ pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc
 
 /// Utility function that converts a `chrono::DateTime` to a `EpochTime`
 pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
-    EpochTime::from(datetime)
+    EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
 }
 
 /// Utility function that converts a `EpochTime` to a `chrono::DateTime`
 pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
-    DateTime::from(datetime)
+    let dt = NaiveDateTime::from_timestamp(i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0);
+    DateTime::from_utc(dt, Utc)
 }
 
 #[derive(Debug, Error)]

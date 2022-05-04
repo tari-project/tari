@@ -22,7 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
-use tari_crypto::tari_utilities::Hashable;
+use tari_utilities::Hashable;
 
 use crate::transactions::transaction_components::TransactionOutput;
 

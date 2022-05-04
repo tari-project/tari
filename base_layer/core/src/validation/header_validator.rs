@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use log::*;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::{hash::Hashable, hex::Hex};
 
 use crate::{
     blocks::BlockHeader,

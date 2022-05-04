@@ -30,8 +30,7 @@ use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{HashDigest, HashOutput, PrivateKey, PublicKey, Signature};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 use crate::{
     blocks::Block,

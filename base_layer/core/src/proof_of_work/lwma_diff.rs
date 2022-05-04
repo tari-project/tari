@@ -9,7 +9,7 @@
 use std::{cmp, collections::VecDeque};
 
 use log::*;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::proof_of_work::{
     difficulty::{Difficulty, DifficultyAdjustment},
