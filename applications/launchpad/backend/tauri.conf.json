@@ -4,10 +4,10 @@
     "version": "1.1.0"
   },
   "build": {
-    "distDir": "../gui-vue/dist",
-    "devPath": "http://localhost:8080",
-    "beforeDevCommand": " cd ../gui-vue && npm run serve",
-    "beforeBuildCommand": "cd ../gui-vue && npm run build"
+    "distDir": "../gui-react/build",
+    "devPath": "http://localhost:3000",
+    "beforeDevCommand": " cd ../gui-react && npm run start",
+    "beforeBuildCommand": "cd ../gui-react && npm run build"
   },
   "tauri": {
     "cli": {
@@ -67,14 +67,19 @@
     "windows": [
       {
         "title": "Tari Launchpad",
-        "width": 1600,
+        "width": 1200,
+        "minWidth": 700,
         "height": 800,
+        "minHeight": 400,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
       "csp": "default-src blob: data: filesystem: ws: wss: http: https: tauri: 'unsafe-eval' 'unsafe-inline' 'self' img-src: 'self'"
-    }
+    },
+    "macOSPrivateApi": true
   }
 }
