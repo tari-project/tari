@@ -18,10 +18,10 @@ import { TextProps } from './types'
 
 const Text = ({
   type = 'defaultMedium',
-  style,
   as = 'p',
   color,
   children,
+  style,
   testId,
   className,
 }: TextProps) => {

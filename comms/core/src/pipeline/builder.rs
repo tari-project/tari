@@ -34,6 +34,7 @@ const DEFAULT_OUTBOUND_BUFFER_SIZE: usize = 50;
 
 type OutboundMessageSinkService = SinkService<mpsc::Sender<OutboundMessage>>;
 
+/// Message pipeline builder
 #[derive(Default)]
 pub struct Builder<TInSvc, TOutSvc, TOutReq> {
     max_concurrent_inbound_tasks: usize,
@@ -129,6 +130,7 @@ where
         })
     }
 
+    /// Try build the Pipeline
     pub fn try_finish(mut self) -> Result<Config<TInSvc, TOutSvc, TOutReq>, PipelineBuilderError> {
         let inbound = self.inbound.take().ok_or(PipelineBuilderError::InboundNotProvided)?;
         let outbound = self.build_outbound()?;
@@ -141,11 +143,16 @@ where
         })
     }
 
+    /// Builds the pipeline.
+    ///
+    /// ## Panics
+    /// This panics if the pipeline has not been configured coorrectly.
     pub fn build(self) -> Config<TInSvc, TOutSvc, TOutReq> {
         self.try_finish().unwrap()
     }
 }
 
+/// Configuration for the outbound pipeline.
 pub struct OutboundPipelineConfig<TInItem, TPipeline> {
     /// Messages read from this stream are passed to the pipeline
     pub in_receiver: mpsc::Receiver<TInItem>,
@@ -155,6 +162,7 @@ pub struct OutboundPipelineConfig<TInItem, TPipeline> {
     pub pipeline: TPipeline,
 }
 
+/// Configuration for the pipeline.
 pub struct Config<TInSvc, TOutSvc, TOutReq> {
     pub max_concurrent_inbound_tasks: usize,
     pub max_concurrent_outbound_tasks: Option<usize>,
@@ -162,6 +170,7 @@ pub struct Config<TInSvc, TOutSvc, TOutReq> {
     pub outbound: OutboundPipelineConfig<TOutReq, TOutSvc>,
 }
 
+/// Error type for the pipeline.
 #[derive(Debug, Error)]
 pub enum PipelineBuilderError {
     #[error("Inbound pipeline was not provided")]

@@ -39,13 +39,14 @@
 
 use std::{
     cmp::Ordering,
+    convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
     io,
     io::{Read, Write},
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use digest::Digest;
 use serde::{
     de::{self, Visitor},
@@ -55,10 +56,10 @@ use serde::{
     Serializer,
 };
 use tari_common_types::{
-    array::copy_into_fixed_array,
+    array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
     types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
@@ -88,7 +89,7 @@ pub enum BlockHeaderValidationError {
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,
@@ -241,10 +242,10 @@ impl BlockHeader {
                 .chain(&self.timestamp)
                 .chain(&self.input_mr)
                 // TODO: Cleanup if/when we migrate to fixed 32-byte array type for hashes
-                .chain(&copy_into_fixed_array::<_, 32>(&self.output_mr).unwrap())
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.output_mr))
                 .chain(&self.output_mmr_size)
-                .chain(& copy_into_fixed_array::<_, 32>(&self.witness_mr).unwrap())
-                .chain(&copy_into_fixed_array::<_, 32>(&self.kernel_mr).unwrap())
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr))
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr))
                 .chain(&self.kernel_mmr_size)
                 .chain(&self.total_kernel_offset)
                 .chain(&self.total_script_offset)
@@ -255,6 +256,11 @@ impl BlockHeader {
     #[inline]
     pub fn timestamp(&self) -> EpochTime {
         self.timestamp
+    }
+
+    pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
+        let dt = NaiveDateTime::from_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0);
+        DateTime::from_utc(dt, Utc)
     }
 
     #[inline]
@@ -301,7 +307,7 @@ impl Hashable for BlockHeader {
                 //       up if we decide to migrate to a fixed 32-byte type
                 .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())
                 .chain(&self.pow)
-                .chain(& self.nonce)
+                .chain(&self.nonce)
                 .finalize().to_vec()
         }
     }
@@ -317,14 +323,13 @@ impl Eq for BlockHeader {}
 
 impl Display for BlockHeader {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        let datetime: DateTime<Utc> = self.timestamp.into();
         writeln!(
             fmt,
             "Version: {}\nBlock height: {}\nPrevious block hash: {}\nTimestamp: {}",
             self.version,
             self.height,
             self.prev_hash.to_hex(),
-            datetime.to_rfc2822()
+            self.to_chrono_datetime().to_rfc2822()
         )?;
         writeln!(
             fmt,
@@ -348,7 +353,7 @@ impl Display for BlockHeader {
 }
 
 pub(crate) mod hash_serializer {
-    use tari_crypto::tari_utilities::hex::Hex;
+    use tari_utilities::hex::Hex;
 
     use super::*;
 
@@ -392,49 +397,14 @@ impl ConsensusEncoding for BlockHeader {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut written = self.version.consensus_encode(writer)?;
         written += self.height.consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.prev_hash)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
         written += self.timestamp.as_u64().consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.output_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.witness_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
         written += self.output_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.kernel_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
         written += self.kernel_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.input_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
         written += self.total_kernel_offset.consensus_encode(writer)?;
         written += self.total_script_offset.consensus_encode(writer)?;
         written += self.nonce.consensus_encode(writer)?;
@@ -466,9 +436,8 @@ impl ConsensusDecoding for BlockHeader {
 
 #[cfg(test)]
 mod test {
-    use std::cmp::Ordering;
 
-    use tari_crypto::tari_utilities::Hashable;
+    use tari_utilities::Hashable;
 
     use crate::blocks::BlockHeader;
     #[test]
@@ -489,7 +458,7 @@ mod test {
             .into_iter()
             .map(|t| BlockHeader {
                 timestamp: t.into(),
-                ..BlockHeader::default()
+                ..BlockHeader::new(0)
             })
             .collect::<Vec<BlockHeader>>();
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
@@ -505,7 +474,7 @@ mod test {
             .into_iter()
             .map(|t| BlockHeader {
                 timestamp: t.into(),
-                ..BlockHeader::default()
+                ..BlockHeader::new(0)
             })
             .collect::<Vec<BlockHeader>>();
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
@@ -528,7 +497,7 @@ mod test {
     fn timing_one_block() {
         let header = BlockHeader {
             timestamp: 0.into(),
-            ..BlockHeader::default()
+            ..BlockHeader::new(0)
         };
 
         let (max, min, avg) = BlockHeader::timing_stats(&[header]);
@@ -542,9 +511,9 @@ mod test {
             .into_iter()
             .map(|t| BlockHeader {
                 timestamp: t.into(),
-                ..BlockHeader::default()
+                ..BlockHeader::new(0)
             })
-            .collect::<Vec<BlockHeader>>();
+            .collect::<Vec<_>>();
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
         assert_eq!(max, 60);
         assert_eq!(min, 60);
@@ -558,33 +527,13 @@ mod test {
             .into_iter()
             .map(|t| BlockHeader {
                 timestamp: t.into(),
-                ..BlockHeader::default()
+                ..BlockHeader::new(0)
             })
-            .collect::<Vec<BlockHeader>>();
+            .collect::<Vec<_>>();
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
         assert_eq!(max, 60);
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
-    }
-
-    #[test]
-    fn compare_timestamps() {
-        let headers = vec![90, 90, 150]
-            .into_iter()
-            .map(|t| BlockHeader {
-                timestamp: t.into(),
-                ..BlockHeader::default()
-            })
-            .collect::<Vec<BlockHeader>>();
-
-        let ordering = headers[0].timestamp.cmp(&headers[1].timestamp);
-        assert_eq!(ordering, Ordering::Equal);
-
-        let ordering = headers[1].timestamp.cmp(&headers[2].timestamp);
-        assert_eq!(ordering, Ordering::Less);
-
-        let ordering = headers[2].timestamp.cmp(&headers[0].timestamp);
-        assert_eq!(ordering, Ordering::Greater);
     }
 }

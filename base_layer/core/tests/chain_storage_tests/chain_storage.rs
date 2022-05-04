@@ -54,10 +54,11 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::Hashable};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::StackItem;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
+use tari_utilities::Hashable;
 
 // use crate::helpers::database::create_test_db;
 // use crate::helpers::database::create_store;
@@ -1160,7 +1161,6 @@ fn asset_unique_id() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
 #[allow(clippy::identity_op)]
 fn store_and_retrieve_blocks_from_contents() {
     let network = Network::LocalNet;
@@ -1179,7 +1179,7 @@ fn store_and_retrieve_blocks_from_contents() {
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     let kernel_sig = blocks[1].block().body.kernels()[0].clone().excess_sig;
-    let utxo_commit = blocks[1].block().body.outputs()[0].clone().commitment;
+    let utxo_commit = blocks.last().unwrap().block().body.outputs()[0].clone().commitment;
     assert_eq!(
         db.fetch_block_with_kernel(kernel_sig)
             .unwrap()
@@ -1195,7 +1195,7 @@ fn store_and_retrieve_blocks_from_contents() {
             .unwrap()
             .try_into_chain_block()
             .unwrap(),
-        blocks[1]
+        blocks[2]
     );
 }
 

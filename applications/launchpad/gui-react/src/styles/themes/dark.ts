@@ -12,6 +12,8 @@ const darkTheme = {
   disabledText: styles.colors.dark.placeholder,
   tariGradient: styles.gradients.tari,
   borderColor: styles.colors.light.backgroundImage,
+
+  titleBar: styles.colors.dark.primary,
   borderColorLight: styles.colors.secondary.borderLight,
   controlBackground: 'rgba(255,255,255,.2)',
   info: styles.colors.secondary.info,

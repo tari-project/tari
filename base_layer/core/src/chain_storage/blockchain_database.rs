@@ -38,9 +38,8 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
-use tari_utilities::epoch_time::EpochTime;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 use crate::{
     blocks::{

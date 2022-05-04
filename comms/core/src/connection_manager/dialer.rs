@@ -40,7 +40,7 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{self, span, Instrument, Level};
 
-use super::{error::ConnectionManagerError, peer_connection::PeerConnection, types::ConnectionDirection};
+use super::{direction::ConnectionDirection, error::ConnectionManagerError, peer_connection::PeerConnection};
 use crate::{
     backoff::Backoff,
     connection_manager::{
@@ -76,6 +76,7 @@ pub(crate) enum DialerRequest {
     NotifyNewInboundConnection(PeerConnection),
 }
 
+/// Responsible for dialing peers on the given transport.
 pub struct Dialer<TTransport, TBackoff> {
     config: ConnectionManagerConfig,
     peer_manager: Arc<PeerManager>,

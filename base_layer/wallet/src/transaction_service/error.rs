@@ -30,9 +30,9 @@ use tari_core::transactions::{
     transaction_components::TransactionError,
     transaction_protocol::TransactionProtocolError,
 };
-use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::sync::broadcast::error::RecvError;
 
@@ -152,7 +152,7 @@ pub enum TransactionServiceError {
     #[error("Maximum Attempts Exceeded")]
     MaximumAttemptsExceeded,
     #[error("Byte array error")]
-    ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
+    ByteArrayError(#[from] tari_utilities::ByteArrayError),
     #[error("Transaction Service Error: `{0}`")]
     ServiceError(String),
     #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]

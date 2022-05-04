@@ -26,28 +26,37 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 bitflags! {
+    /// Peer feature flags. These advertised the capabilities of peer nodes.
     #[derive(Serialize, Deserialize)]
     pub struct PeerFeatures: u64 {
+        /// No capabilities
         const NONE = 0b0000_0000;
+        /// Node is able to propagate messages
         const MESSAGE_PROPAGATION = 0b0000_0001;
+        /// Node offers store and forward functionality
         const DHT_STORE_FORWARD = 0b0000_0010;
 
+        /// Node is a communication node (typically a base layer node)
         const COMMUNICATION_NODE = Self::MESSAGE_PROPAGATION.bits | Self::DHT_STORE_FORWARD.bits;
+        /// Node is a network client
         const COMMUNICATION_CLIENT = Self::NONE.bits;
     }
 }
 
 impl PeerFeatures {
+    /// Returns true if these flags represent a COMMUNICATION_CLIENT.
     #[inline]
     pub fn is_client(self) -> bool {
         self == PeerFeatures::COMMUNICATION_CLIENT
     }
 
+    /// Returns true if these flags represent a COMMUNICATION_NODE.
     #[inline]
     pub fn is_node(self) -> bool {
         self == PeerFeatures::COMMUNICATION_NODE
     }
 
+    /// Returns a human-readable string that represents these flags.
     pub fn as_role_str(self) -> &'static str {
         match self {
             PeerFeatures::COMMUNICATION_NODE => "node",

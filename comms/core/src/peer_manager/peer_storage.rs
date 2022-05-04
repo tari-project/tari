@@ -26,8 +26,8 @@ use chrono::Utc;
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, seq::SliceRandom};
-use tari_crypto::tari_utilities::ByteArray;
 use tari_storage::{IterationResult, KeyValueStore};
+use tari_utilities::ByteArray;
 
 use crate::{
     peer_manager::{
@@ -61,11 +61,13 @@ where DS: KeyValueStore<PeerId, Peer>
 {
     /// Constructs a new PeerStorage, with indexes populated from the given datastore
     pub fn new_indexed(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
-        // Restore peers and hashmap links from database
+        // mutable_key_type: CommsPublicKey uses interior mutability to lazily compress the key, but is otherwise
+        // immutable so the Hashmap order can never change.
         #[allow(clippy::mutable_key_type)]
         let mut public_key_index = HashMap::new();
         let mut node_id_index = HashMap::new();
         let mut total_entries = 0;
+        // Restore peers and hashmap links from database
         database
             .for_each_ok(|(peer_key, peer)| {
                 total_entries += 1;

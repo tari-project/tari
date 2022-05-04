@@ -27,6 +27,13 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use super::connection_pool::ConnectionPool;
 use crate::{connectivity::connection_pool::ConnectionStatus, peer_manager::NodeId, PeerConnection};
 
+/// Selection query for PeerConnections.
+///
+/// ```ignore
+/// // This query selects the 10 closest connections to the given node id.
+/// let query = ConnectivitySelection::closest_to(my_node_id, 10, vec![]);
+/// let conns = connectivity.select_connections(query).await?;
+/// ```
 #[derive(Debug, Clone)]
 pub struct ConnectivitySelection {
     selection_mode: SelectionMode,
@@ -41,6 +48,10 @@ enum SelectionMode {
 }
 
 impl ConnectivitySelection {
+    /// Returns a query that will return all connections for peers with `PeerFeatures::COMMUNICATION_NODES` excluding
+    /// the given [NodeId]s.
+    ///
+    /// [NodeId](crate::peer_manager::NodeId)
     pub fn all_nodes(exclude: Vec<NodeId>) -> Self {
         Self {
             selection_mode: SelectionMode::AllNodes,
@@ -48,6 +59,10 @@ impl ConnectivitySelection {
         }
     }
 
+    /// Returns a query that will return `n` connections for peers with `PeerFeatures::COMMUNICATION_NODES` excluding
+    /// the given [NodeId]s.
+    ///
+    /// [NodeId](crate::peer_manager::NodeId)
     pub fn random_nodes(n: usize, exclude: Vec<NodeId>) -> Self {
         Self {
             selection_mode: SelectionMode::RandomNodes(n),
@@ -55,7 +70,9 @@ impl ConnectivitySelection {
         }
     }
 
-    /// Select `n` peer connections ordered by closeness to `node_id`
+    /// Select `n` peer connections ordered by closeness to `node_id`, exclusing the given `exclude` [NodeId]s.
+    ///
+    /// [NodeId](crate::peer_manager::NodeId)
     pub fn closest_to(node_id: NodeId, n: usize, exclude: Vec<NodeId>) -> Self {
         Self {
             selection_mode: SelectionMode::ClosestTo(Box::new(node_id), n),
@@ -78,7 +95,7 @@ impl ConnectivitySelection {
     }
 }
 
-pub fn select_connected_nodes<'a>(pool: &'a ConnectionPool, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
+fn select_connected_nodes<'a>(pool: &'a ConnectionPool, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
     pool.filter_connection_states(|state| {
         if state.status() != ConnectionStatus::Connected {
             return false;
@@ -90,7 +107,7 @@ pub fn select_connected_nodes<'a>(pool: &'a ConnectionPool, exclude: &[NodeId]) 
     })
 }
 
-pub fn select_closest<'a>(pool: &'a ConnectionPool, node_id: &NodeId, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
+fn select_closest<'a>(pool: &'a ConnectionPool, node_id: &NodeId, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
     let mut nodes = select_connected_nodes(pool, exclude);
 
     nodes.sort_by(|a, b| {
@@ -102,7 +119,7 @@ pub fn select_closest<'a>(pool: &'a ConnectionPool, node_id: &NodeId, exclude: &
     nodes
 }
 
-pub fn select_random_nodes<'a>(pool: &'a ConnectionPool, n: usize, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
+fn select_random_nodes<'a>(pool: &'a ConnectionPool, n: usize, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
     let nodes = select_connected_nodes(pool, exclude);
     nodes.choose_multiple(&mut OsRng, n).copied().collect()
 }

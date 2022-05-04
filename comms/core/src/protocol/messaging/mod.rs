@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Messaging Protocol
+//!
+//! A comms protocol extension that provides fire-and-forget messaging between peers.
+//!
+//! This protocol sends BLOBs to the given peer and imposes no opinions on the actual message.
+//! This protocol will attempt to dial the peer if an active peer connection is not already present,
+//! if this does not succeed, the message is discarded.
+
 mod extension;
 pub use extension::MessagingProtocolExtension;
 

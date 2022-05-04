@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use log::*;
 use tari_comms::peer_manager::Peer;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,

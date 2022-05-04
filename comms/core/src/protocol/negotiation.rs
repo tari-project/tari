@@ -20,6 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Protocol negotiation protocol.
+//!
+//! ## Frame format
+//!
+//! | len (1 byte) | flags (1 byte) | protocol id (variable, max=255) |
+//!
+//! The initiator sends the desired protocol frame. Any party MAY close the negotiation at any time
+//! at which point both parties consider the negotiation as failed and terminate.
+//!
+//! If the OPTIMISTIC flag is set:
+//! - the responder MUST NOT send a response,
+//! - the responder MAY reject an unsupported protocol by closing the stream,
+//! - if the protocol is supported, the responder SHOULD immediately begin the requested protocol,
+//! - the initiator SHOULD immediately begin the requested protocol.
+//!
+//! If the OPTIMISTIC flag is not set:
+//! - If the protocol is unsupported, the responder SHOULD send a NOT_SUPPORTED message response to the initiator,
+//!    - The responder SHOULD await further messages from the initiator,
+//! - If the protocol is supported, the responder SHOULD respond with no flags and an acceptable protocol ID and
+//!   immediately begin the requested protocol,
+//! - The initiator or responder SHOULD send a TERMINATE message if it does not wish to negotiate further.
+
 use std::convert::TryInto;
 
 use bitflags::bitflags;
@@ -31,9 +53,10 @@ use super::{ProtocolError, ProtocolId};
 
 const LOG_TARGET: &str = "comms::connection_manager::protocol";
 
-const BUF_CAPACITY: usize = std::u8::MAX as usize;
+const BUF_CAPACITY: usize = u8::MAX as usize;
 const MAX_ROUNDS_ALLOWED: u8 = 5;
 
+/// Encapsulates a protocol negotiation.
 pub struct ProtocolNegotiation<'a, TSocket> {
     buf: BytesMut,
     socket: &'a mut TSocket,

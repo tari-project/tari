@@ -47,10 +47,13 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
 };
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
-use tari_utilities::hex::to_hex;
+use tari_utilities::{
+    hash::Hashable,
+    hex::{to_hex, Hex},
+    ByteArray,
+};
 
 use crate::{
     blocks::{
