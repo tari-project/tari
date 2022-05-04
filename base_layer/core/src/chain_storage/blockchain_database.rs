@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// A number of functions break this rule. In many/all cases this because the async_db needs owned arguments.
+#![allow(clippy::needless_pass_by_value)]
+
 use std::{
     cmp,
     cmp::Ordering,
@@ -92,7 +95,7 @@ use crate::{
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Configuration for the BlockchainDatabase.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
@@ -211,7 +214,7 @@ where B: BlockchainBackend
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
-            config: config.clone(),
+            config,
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
@@ -1324,6 +1327,7 @@ pub fn fetch_headers<T: BlockchainBackend>(
     }
 
     // Allow the headers to be returned in reverse order
+    #[allow(clippy::cast_possible_truncation)]
     let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
     for h in start..=end_inclusive {
         match db.fetch(&DbKey::BlockHeader(h))? {
@@ -1669,7 +1673,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         return Ok(vec![]);
     }
 
-    let mut removed_blocks = Vec::with_capacity(steps_back as usize);
+    let mut removed_blocks = Vec::with_capacity(usize::try_from(steps_back).unwrap_or(usize::MAX));
     info!(
         target: LOG_TARGET,
         "Rewinding blocks from height {} to {}",
@@ -1755,6 +1759,8 @@ fn rewind_to_hash<T: BlockchainBackend>(
 
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
 // is reorganised if necessary.
+// TODO: Reduce LOC in this function
+#[allow(clippy::too_many_lines)]
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
@@ -2340,7 +2346,7 @@ impl<T> Clone for BlockchainDatabase<T> {
         BlockchainDatabase {
             db: self.db.clone(),
             validators: self.validators.clone(),
-            config: self.config.clone(),
+            config: self.config,
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),

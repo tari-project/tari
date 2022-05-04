@@ -26,6 +26,7 @@
 #![allow(clippy::ptr_arg)]
 
 use std::{
+    convert::TryFrom,
     fmt,
     fmt::Formatter,
     fs,
@@ -178,7 +179,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(lmdb_store, file_lock)
+    LMDBDatabase::new(&lmdb_store, file_lock)
 }
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
@@ -212,36 +213,36 @@ pub struct LMDBDatabase {
 }
 
 impl LMDBDatabase {
-    pub fn new(store: LMDBStore, file_lock: File) -> Result<Self, ChainStorageError> {
+    pub fn new(store: &LMDBStore, file_lock: File) -> Result<Self, ChainStorageError> {
         let env = store.env();
 
         let db = Self {
-            metadata_db: get_database(&store, LMDB_DB_METADATA)?,
-            headers_db: get_database(&store, LMDB_DB_HEADERS)?,
-            header_accumulated_data_db: get_database(&store, LMDB_DB_HEADER_ACCUMULATED_DATA)?,
-            block_accumulated_data_db: get_database(&store, LMDB_DB_BLOCK_ACCUMULATED_DATA)?,
-            block_hashes_db: get_database(&store, LMDB_DB_BLOCK_HASHES)?,
-            utxos_db: get_database(&store, LMDB_DB_UTXOS)?,
-            inputs_db: get_database(&store, LMDB_DB_INPUTS)?,
-            txos_hash_to_index_db: get_database(&store, LMDB_DB_TXOS_HASH_TO_INDEX)?,
-            kernels_db: get_database(&store, LMDB_DB_KERNELS)?,
-            kernel_excess_index: get_database(&store, LMDB_DB_KERNEL_EXCESS_INDEX)?,
-            kernel_excess_sig_index: get_database(&store, LMDB_DB_KERNEL_EXCESS_SIG_INDEX)?,
-            kernel_mmr_size_index: get_database(&store, LMDB_DB_KERNEL_MMR_SIZE_INDEX)?,
-            output_mmr_size_index: get_database(&store, LMDB_DB_UTXO_MMR_SIZE_INDEX)?,
-            utxo_commitment_index: get_database(&store, LMDB_DB_UTXO_COMMITMENT_INDEX)?,
-            unique_id_index: get_database(&store, LMDB_DB_UNIQUE_ID_INDEX)?,
+            metadata_db: get_database(store, LMDB_DB_METADATA)?,
+            headers_db: get_database(store, LMDB_DB_HEADERS)?,
+            header_accumulated_data_db: get_database(store, LMDB_DB_HEADER_ACCUMULATED_DATA)?,
+            block_accumulated_data_db: get_database(store, LMDB_DB_BLOCK_ACCUMULATED_DATA)?,
+            block_hashes_db: get_database(store, LMDB_DB_BLOCK_HASHES)?,
+            utxos_db: get_database(store, LMDB_DB_UTXOS)?,
+            inputs_db: get_database(store, LMDB_DB_INPUTS)?,
+            txos_hash_to_index_db: get_database(store, LMDB_DB_TXOS_HASH_TO_INDEX)?,
+            kernels_db: get_database(store, LMDB_DB_KERNELS)?,
+            kernel_excess_index: get_database(store, LMDB_DB_KERNEL_EXCESS_INDEX)?,
+            kernel_excess_sig_index: get_database(store, LMDB_DB_KERNEL_EXCESS_SIG_INDEX)?,
+            kernel_mmr_size_index: get_database(store, LMDB_DB_KERNEL_MMR_SIZE_INDEX)?,
+            output_mmr_size_index: get_database(store, LMDB_DB_UTXO_MMR_SIZE_INDEX)?,
+            utxo_commitment_index: get_database(store, LMDB_DB_UTXO_COMMITMENT_INDEX)?,
+            unique_id_index: get_database(store, LMDB_DB_UNIQUE_ID_INDEX)?,
             deleted_txo_mmr_position_to_height_index: get_database(
-                &store,
+                store,
                 LMDB_DB_DELETED_TXO_MMR_POSITION_TO_HEIGHT_INDEX,
             )?,
-            orphans_db: get_database(&store, LMDB_DB_ORPHANS)?,
-            orphan_header_accumulated_data_db: get_database(&store, LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA)?,
-            monero_seed_height_db: get_database(&store, LMDB_DB_MONERO_SEED_HEIGHT)?,
-            orphan_chain_tips_db: get_database(&store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
-            orphan_parent_map_index: get_database(&store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
-            bad_blocks: get_database(&store, LMDB_DB_BAD_BLOCK_LIST)?,
-            reorgs: get_database(&store, LMDB_DB_REORGS)?,
+            orphans_db: get_database(store, LMDB_DB_ORPHANS)?,
+            orphan_header_accumulated_data_db: get_database(store, LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA)?,
+            monero_seed_height_db: get_database(store, LMDB_DB_MONERO_SEED_HEIGHT)?,
+            orphan_chain_tips_db: get_database(store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
+            orphan_parent_map_index: get_database(store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
+            bad_blocks: get_database(store, LMDB_DB_BAD_BLOCK_LIST)?,
+            reorgs: get_database(store, LMDB_DB_REORGS)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -262,6 +263,7 @@ impl LMDBDatabase {
         WriteTransaction::new(&*self.env).map_err(Into::into)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn apply_db_transaction(&mut self, txn: &DbTransaction) -> Result<(), ChainStorageError> {
         #[allow(clippy::enum_glob_use)]
         use WriteOperation::*;
@@ -1143,6 +1145,8 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    // Break function up into smaller pieces
+    #[allow(clippy::too_many_lines)]
     fn insert_block_body(
         &self,
         txn: &WriteTransaction<'_>,
@@ -1206,7 +1210,10 @@ impl LMDBDatabase {
                 "Inserting kernel `{}`",
                 kernel.excess_sig.get_signature().to_hex()
             );
-            self.insert_kernel(txn, &block_hash, &kernel, pos as u32)?;
+            let pos = u32::try_from(pos).map_err(|_| {
+                ChainStorageError::InvalidOperation(format!("Kernel MMR node count ({}) is greater than u32::MAX", pos))
+            })?;
+            self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
@@ -1254,7 +1261,13 @@ impl LMDBDatabase {
 
         for (output, mmr_count) in outputs {
             trace!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
-            self.insert_output(txn, &block_hash, header.height, &output, mmr_count as u32 - 1)?;
+            let mmr_count = u32::try_from(mmr_count).map(|c| c - 1).map_err(|_| {
+                ChainStorageError::InvalidOperation(format!(
+                    "Output MMR node count ({}) is greater than u32::MAX",
+                    mmr_count
+                ))
+            })?;
+            self.insert_output(txn, &block_hash, header.height, &output, mmr_count)?;
         }
 
         for commitment in spent_zero_conf_commitments {
