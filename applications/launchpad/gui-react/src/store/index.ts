@@ -4,6 +4,7 @@ import appReducer from './app'
 import baseNodeReducer from './baseNode'
 import miningReducer from './mining'
 import walletReducer from './wallet'
+import servicesReducer from './services'
 
 // exported for tests
 export const rootReducer = {
@@ -12,6 +13,7 @@ export const rootReducer = {
   mining: miningReducer,
   wallet: walletReducer,
   settings: settingsReducer,
+  services: servicesReducer,
 }
 
 export const store = configureStore({
