@@ -3,8 +3,10 @@ import { useTheme } from 'styled-components'
 
 import t from '../../../locales'
 
+import Text from '../../../components/Text'
+
 import Smiley from './Smiley'
-import { Label, SemiTransparent, TariIdContainer, TariIdBox } from './styles'
+import { SemiTransparent, TariIdContainer, TariIdBox } from './styles'
 
 const TariId = ({
   tariId,
@@ -18,10 +20,17 @@ const TariId = ({
 
   return (
     <>
-      <Label>
+      <Text
+        as='label'
+        color={theme.inverted.primary}
+        style={{
+          display: 'inline-block',
+          marginBottom: theme.spacingVertical(0.62),
+        }}
+      >
         {t.wallet.wallet.walletId}{' '}
         <SemiTransparent>({t.wallet.wallet.address})</SemiTransparent>
-      </Label>
+      </Text>
       <TariIdContainer>
         <TariIdBox>{showEmoji ? emojiTariId.join(' | ') : tariId}</TariIdBox>
         <div

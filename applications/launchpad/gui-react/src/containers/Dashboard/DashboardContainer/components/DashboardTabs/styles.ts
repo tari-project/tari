@@ -17,4 +17,5 @@ export const LoadingWrapper = styled.div`
   margin-left: 8px;
   margin-top: 6px;
   opacity: 0.5;
+  line-height: 16px;
 `

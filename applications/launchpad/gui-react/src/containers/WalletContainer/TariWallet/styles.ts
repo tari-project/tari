@@ -1,12 +1,5 @@
 import styled from 'styled-components'
 
-export const Label = styled.label`
-  font-size: 1em;
-  display: inline-block;
-  margin-bottom: ${({ theme }) => theme.spacingVertical()};
-  color: ${({ theme }) => theme.inverted.primary};
-`
-
 export const SemiTransparent = styled.span`
   opacity: 0.7;
 `
