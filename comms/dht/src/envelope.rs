@@ -58,6 +58,7 @@ pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc
 
 /// Utility function that converts a `chrono::DateTime` to a `EpochTime`
 pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
+    #[allow(clippy::cast_sign_loss)]
     EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
 }
 

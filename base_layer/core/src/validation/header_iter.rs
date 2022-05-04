@@ -53,6 +53,7 @@ impl<'a, B> HeaderIter<'a, B> {
     }
 
     fn next_chunk(&self) -> (u64, u64) {
+        #[allow(clippy::cast_possible_truncation)]
         let upper_bound = cmp::min(self.cursor + self.chunk_size, self.height as usize);
         (self.cursor as u64, upper_bound as u64)
     }

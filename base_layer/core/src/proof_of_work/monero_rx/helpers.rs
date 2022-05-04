@@ -122,6 +122,7 @@ pub fn construct_monero_data(block: monero::Block, seed: FixedByteArray) -> Resu
                 .to_string(),
         )
     })?;
+    #[allow(clippy::cast_possible_truncation)]
     Ok(MoneroPowData {
         header: block.header,
         randomx_key: seed,

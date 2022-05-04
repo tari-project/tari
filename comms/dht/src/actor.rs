@@ -264,8 +264,7 @@ impl DhtActor {
         debug!(
             target: LOG_TARGET,
             "Message dedup cache will be trimmed to capacity every {}s",
-            config.dedup_cache_trim_interval.as_secs() as f64 +
-                f64::from(config.dedup_cache_trim_interval.subsec_nanos()) * 1e-9
+            config.dedup_cache_trim_interval.as_secs()
         );
         Self {
             msg_hash_dedup_cache: DedupCacheDatabase::new(conn.clone(), config.dedup_cache_capacity),
@@ -463,6 +462,8 @@ impl DhtActor {
         Ok(())
     }
 
+    // TODO: Break up this function
+    #[allow(clippy::too_many_lines)]
     async fn select_peers(
         config: &DhtConfig,
         node_identity: Arc<NodeIdentity>,
