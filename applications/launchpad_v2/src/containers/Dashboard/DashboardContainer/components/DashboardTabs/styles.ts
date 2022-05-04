@@ -12,10 +12,6 @@ export const TabMainText = styled.div<{ spacingRight?: boolean }>`
   margin-right: ${({ spacingRight }) => (spacingRight ? '8px' : 0)};
 `
 
-export const TabTagSubText = styled.span`
-  opacity: 0.5;
-`
-
 export const LoadingWrapper = styled.div`
   display: flex;
   margin-left: 8px;

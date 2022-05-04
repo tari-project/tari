@@ -1,6 +1,6 @@
 import { ReactNode, CSSProperties } from 'react'
 
-export type ButtonVariantType = 'primary' | 'text'
+export type ButtonVariantType = 'primary' | 'secondary' | 'text'
 
 export interface ButtonProps {
   disabled?: boolean

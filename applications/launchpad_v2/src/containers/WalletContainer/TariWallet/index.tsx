@@ -11,9 +11,11 @@ import TariId from './TariId'
 const TariWallet = ({
   address,
   emojiId,
+  running,
 }: {
   address: string
   emojiId: string[]
+  running: boolean
 }) => {
   const theme = useTheme()
 
@@ -26,9 +28,11 @@ const TariWallet = ({
       }}
     >
       <TariBackgroundSignet style={{ color: theme.accentDark }} />
-      <Tag type='running'>
-        <Text type='smallMedium'>{t.common.adjectives.running}</Text>
-      </Tag>
+      {running && (
+        <Tag type='running'>
+          <Text type='smallMedium'>{t.common.adjectives.running}</Text>
+        </Tag>
+      )}
       <Text
         type='header'
         style={{

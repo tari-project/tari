@@ -1,17 +1,24 @@
-import Modal from '../../components/Modal'
+import { useAppSelector, useAppDispatch } from '../../store/hooks'
+import { actions } from '../../store/settings'
+import {
+  selectSettingsOpen,
+  selectActiveSettings,
+} from '../../store/settings/selectors'
 
-const SettingsContainer = ({
-  open,
-  onClose,
-}: {
-  open?: boolean
-  onClose: () => void
-}) => {
+import SettingsComponent from './SettingsComponent'
+
+const SettingsContainer = () => {
+  const dispatch = useAppDispatch()
+  const settingsOpen = useAppSelector(selectSettingsOpen)
+  const activeSettings = useAppSelector(selectActiveSettings)
+
   return (
-    <Modal open={open} onClose={onClose}>
-      <button onClick={onClose}>close</button>
-      <p>hello world</p>
-    </Modal>
+    <SettingsComponent
+      open={settingsOpen}
+      onClose={() => dispatch(actions.close())}
+      activeSettings={activeSettings}
+      goToSettings={settingsPage => dispatch(actions.goTo(settingsPage))}
+    />
   )
 }
 

@@ -29,8 +29,6 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
   // Decrease the padding when the main container becomes 'small'
   const [tightSpace, setTightSpace] = useState(false)
 
-  const [settingsOpen, setSettingsOpen] = useState(false)
-
   const [expertViewSize, invertedExpertViewSize] =
     ExpertViewUtils.convertExpertViewModeToValue(expertView, drawerViewWidth)
 
@@ -73,10 +71,7 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
 
   return (
     <ScreenContainer>
-      <TitleBar
-        drawerViewWidth={drawerViewWidth}
-        openSettings={() => setSettingsOpen(true)}
-      />
+      <TitleBar drawerViewWidth={drawerViewWidth} />
 
       <MainLayoutContainer>
         <MainContainer
@@ -106,10 +101,7 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
           <ExpertView />
         </ExpertViewDrawer>
       </MainLayoutContainer>
-      <SettingsContainer
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
+      <SettingsContainer />
     </ScreenContainer>
   )
 }

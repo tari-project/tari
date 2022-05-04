@@ -15,12 +15,7 @@ import { WalletState } from '../../../../../store/wallet/types'
 
 import t from '../../../../../locales'
 
-import {
-  StyledTabContent,
-  TabMainText,
-  LoadingWrapper,
-  TabTagSubText,
-} from './styles'
+import { StyledTabContent, TabMainText, LoadingWrapper } from './styles'
 
 /**
  * Helper unifying the way how the content of each tab tile is composed.
@@ -42,14 +37,8 @@ const TabContent = ({
         {text}
       </TabMainText>
       {running && !pending ? (
-        <Tag variant='small' type='running'>
+        <Tag variant='small' type='running' subText={tagSubText}>
           <span>{t.common.adjectives.running}</span>
-          {tagSubText ? (
-            <>
-              {' '}
-              <TabTagSubText>{tagSubText}</TabTagSubText>
-            </>
-          ) : null}
         </Tag>
       ) : null}
       {pending ? (

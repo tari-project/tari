@@ -1,8 +1,9 @@
-const translations = {
+const translations: { [key: string]: { [key: string]: string } } = {
   verbs: {
     accept: 'Accept',
     cancel: 'Cancel',
     stop: 'Stop',
+    start: 'Start',
     pause: 'Pause',
     continue: 'Continue',
   },
