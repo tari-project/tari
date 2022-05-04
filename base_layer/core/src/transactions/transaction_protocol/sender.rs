@@ -815,7 +815,7 @@ mod test {
             stp.clone().take_transaction(),
             Err(TransactionProtocolError::InvalidStateError)
         );
-        assert!(!stp.check_tx_id(0.into()));
+        assert!(!stp.check_tx_id(0u64.into()));
         assert_eq!(stp.get_tx_id(), Err(TransactionProtocolError::InvalidStateError));
         assert_eq!(stp.get_total_amount(), Err(TransactionProtocolError::InvalidStateError));
         assert_eq!(
