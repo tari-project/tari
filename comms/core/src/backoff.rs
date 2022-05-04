@@ -59,7 +59,6 @@ impl Backoff for ExponentialBackoff {
             return Duration::from_secs(0);
         }
         // We put an upper bound on attempts so that it can never overflow the 52-bit mantissa when converting to f64
-        #[allow(clippy::cast_precision_loss)]
         let secs = (f64::from(self.factor)) * ((1usize << min(attempts, 51)) as f64 - 1.0);
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         Duration::from_secs(secs.ceil() as u64)

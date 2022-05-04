@@ -458,7 +458,6 @@ where
             match result {
                 Ok(frame) => {
                     let start = Instant::now();
-                    #[allow(clippy::cast_precision_loss)]
                     request_bytes.observe(frame.len() as f64);
                     if let Err(err) = self.handle_request(frame.freeze()).await {
                         if let Err(err) = self.framed.close().await {
@@ -665,7 +664,6 @@ where
             );
             match time::timeout(deadline, next_item).await {
                 Ok(Some(msg)) => {
-                    #[allow(clippy::cast_precision_loss)]
                     response_bytes.observe(msg.len() as f64);
                     debug!(
                         target: LOG_TARGET,
