@@ -3,7 +3,6 @@ import { useTheme } from 'styled-components'
 import Tag from '../../../components/Tag'
 import Text from '../../../components/Text'
 import Button from '../../../components/Button'
-import Link from '../../../components/Link'
 import CopyBox from '../../../components/CopyBox'
 import t from '../../../locales'
 
@@ -55,9 +54,9 @@ const WalletSettings = ({
         {t.wallet.settings.explanations.storage}{' '}
         {t.wallet.settings.explanations.send} (
         {t.wallet.settings.explanations.try}{' '}
-        <Link href='https://aurora.tari.com/'>
+        <Button href='https://aurora.tari.com/'>
           {t.wallet.settings.explanations.aurora}
-        </Link>{' '}
+        </Button>{' '}
         - {t.wallet.settings.explanations.itsGreat}){' '}
         {t.wallet.settings.explanations.extendedFunctionality}{' '}
         {t.wallet.settings.explanations.convert}
