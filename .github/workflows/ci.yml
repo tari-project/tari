@@ -5,6 +5,8 @@ on:
       - main
       - ci-*
   pull_request:
+    branches-ignore:
+      - 'launchpad_such_wow' # TODO: Remove this filter once the branch is merged into development
     types:
       - opened
       - reopened
