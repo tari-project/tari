@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "TariLaunchpad"
-version = "0.1.0"
+version = "0.31.1"
 dependencies = [
  "bollard",
  "config",
@@ -7069,32 +7069,6 @@ dependencies = [
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-test",
-]
-
-[[package]]
-name = "tari_launchpad"
-version = "0.31.1"
-dependencies = [
- "bollard",
- "config",
- "derivative",
- "env_logger 0.9.0",
- "futures 0.3.21",
- "log",
- "rand 0.8.5",
- "regex",
- "serde",
- "serde_json",
- "strum 0.23.0",
- "strum_macros 0.23.1",
- "tari_app_utilities",
- "tari_common",
- "tari_comms",
- "tauri",
- "tauri-build",
- "thiserror",
- "tokio 1.17.0",
- "tor-hash-passwd",
 ]
 
 [[package]]
