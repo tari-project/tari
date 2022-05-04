@@ -12,3 +12,10 @@ export const StyledBox = styled.span`
   display: flex;
   justify-content: space-between;
 `
+
+export const FeedbackContainer = styled.div`
+  position: absolute;
+  left: 50%;
+  bottom: 120%;
+  transform: translateX(-50%);
+`
