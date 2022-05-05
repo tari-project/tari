@@ -2,7 +2,7 @@
 
 ## The Mempool for Unconfirmed Transactions on the Tari Base Layer
 
-![status: draft](theme/images/status-draft.svg)
+![status: outdated](theme/images/status-outofdate.svg)
 
 **Maintainer(s)**: [Yuko Roodt](https://github.com/neonknight64)
 

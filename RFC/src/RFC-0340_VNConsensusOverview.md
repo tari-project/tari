@@ -81,10 +81,10 @@ This document describes at a high level how smart contract state is managed on t
 
 ## Related RFCs
 
-* [RFC-0300: The Tari Digital Assets Network](RFC-0300_DAN.md)
-* [RFC-0302: Validator Nodes](RFC-0302_ValidatorNodes.md)
+* [RFC-0300: The Tari Digital Assets Network](RFCD-0300_DAN.md)
+* [RFC-0302: Validator Nodes](RFCD-0302_ValidatorNodes.md)
 * [RFC-0304: Validator Node committee selection](RFC-0304_VNCommittees.md)
-* [RFC-0341: Asset Registration](RFC-0341_AssetRegistration.md)
+* [RFC-0341: Asset Registration](RFC-0341D_AssetRegistration.md)
 
 ## Description
 

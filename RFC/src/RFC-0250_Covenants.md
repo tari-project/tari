@@ -60,7 +60,7 @@ use-cases, such as
 ## Related Requests for Comment
 
 - [RFC-0200: Base Layer Extensions](BaseLayerExtensions.md)
-- [RFC-0300: The Tari Digital Assets Network](RFC-0300_DAN.md)
+- [RFC-0300: The Tari Digital Assets Network](RFCD-0300_DAN.md)
 
 ## Introduction
 
