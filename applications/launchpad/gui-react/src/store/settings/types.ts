@@ -10,5 +10,5 @@ export enum Settings {
 export type SettingsState = {
   open: boolean
   which: Settings
-  serviceSettings: unknown
+  serviceSettings: any
 }

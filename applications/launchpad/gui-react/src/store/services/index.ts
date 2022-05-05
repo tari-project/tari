@@ -1,7 +1,7 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { createSlice } from '@reduxjs/toolkit'
 
-import { ServiceDescriptor, ServicesState, Service } from './types'
-import { start } from './thunks'
+import { ServicesState, Service } from './types'
+import { start, stop } from './thunks'
 
 export const initialState: ServicesState = {
   services: {},
@@ -40,24 +40,41 @@ const servicesSlice = createSlice({
   reducers: {},
   extraReducers: builder => {
     builder.addCase(start.pending, (state, { meta }) => {
-      console.log('pending', meta.arg)
       state.servicesStatus[meta.arg].pending = true
-      state.servicesStatus[meta.arg].error = ''
+      state.servicesStatus[meta.arg].error = undefined
     })
     builder.addCase(start.fulfilled, (state, action) => {
       state.servicesStatus[action.payload.service].pending = false
+      state.servicesStatus[action.payload.service].running = true
       state.servicesStatus[action.payload.service].id =
         action.payload.descriptor.id
-
-      console.log(action.payload)
     })
     builder.addCase(start.rejected, (state, action) => {
-      console.log('ERROR STARING')
+      state.servicesStatus[action.meta.arg].pending = false
+      state.servicesStatus[action.meta.arg].running = false
+      state.servicesStatus[action.meta.arg].error = action.error.message
+      console.log(`ERROR STARTING SERVICE ${action.meta.arg}`)
+      console.log(action.error)
+    })
+
+    builder.addCase(stop.pending, (state, { meta }) => {
+      state.servicesStatus[meta.arg].pending = true
+      state.servicesStatus[meta.arg].error = undefined
+    })
+    builder.addCase(stop.fulfilled, (state, action) => {
+      state.servicesStatus[action.meta.arg].pending = false
+      state.servicesStatus[action.meta.arg].running = false
+    })
+    builder.addCase(stop.rejected, (state, action) => {
+      state.servicesStatus[action.meta.arg].pending = false
+      state.servicesStatus[action.meta.arg].running = false
+      state.servicesStatus[action.meta.arg].error = action.error.message
+      console.log(`ERROR STOPPING SERVICE ${action.meta.arg}`)
       console.log(action.error)
     })
   },
 })
 
-export const actions = { start }
+export const actions = { start, stop }
 
 export default servicesSlice.reducer

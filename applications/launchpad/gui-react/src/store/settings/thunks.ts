@@ -7,7 +7,7 @@ const getSettings = async () => ({
     '5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48',
   numMiningThreads: 1,
   tariNetwork: 'dibbler',
-  rootFolder: (await cacheDir()) + 'tari' + sep + 'tmp' + sep + 'dibbler',
+  cacheDir: await cacheDir(),
   dockerRegistry: 'quay.io/tarilabs',
   dockerTag: 'latest',
   monerodUrl:

@@ -10,7 +10,7 @@ import t from '../../locales'
 
 import { BaseNodeProps, Network } from './types'
 
-const networks = ['mainnet', 'testnet']
+const networks = ['dibbler', 'testnet']
 const networkOptions = networks.map(network => ({
   label: network,
   value: network,
