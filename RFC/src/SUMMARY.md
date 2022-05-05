@@ -31,15 +31,18 @@
     - [RFC-0241: XMR Atomic swap](RFC-0241_AtomicSwapXMR.md)
     - [RFC-0250: Covenants](RFC-0250_Covenants.md)
 - [RFC-0312: High level Digital Asset Network Specification](RFC-0312_DANHighLevelSpecification.md)
+
   - [Asset Management](AssetManagement.md)
     - [RFC-0311: Digital Asset templates](RFC-0311_AssetTemplates.md)
   - [RFC-0301: Namespace Registration](RFC-0301_NamespaceRegistration.md)
   - [Validator Nodes]()
     - [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
     - [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
+  - [RFC-0351: ZK Rollups](RFC-0351_ZKRollup.md)
   - [RFC-0360: NFT sale using MimbleWimble Invoice](RFC-0360_NFTInvoices.md)
 
 - [Proposals]()
+
   - [RFC-8001: Multi-party transactions](RFC-8001_MultiPartyTransactions.md)
   - [RFC-8002: Transaction protocol](RFC-8002_TransactionProtocol.md)
   - [RFC-8003: Tari Use Cases](RFC-8003_TariUseCases.md)
