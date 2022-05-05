@@ -15,7 +15,11 @@ export const TabOptions = styled.div`
   align-items: center;
 `
 
-export const Tab = styled.button<{ selected?: string; tab?: TabProp }>`
+export const Tab = styled.button<{
+  inverted?: boolean
+  selected?: string
+  tab?: TabProp
+}>`
   display: flex;
   padding: 8px 12px;
   box-shadow: none;
@@ -35,18 +39,20 @@ export const Tab = styled.button<{ selected?: string; tab?: TabProp }>`
   align-items: center;
   transition: ease-in-out 300ms;
   &:hover {
-    background-color: ${({ theme }) => theme.backgroundSecondary};
+    background-color: ${({ theme, inverted }) =>
+      inverted ? '#141414' : theme.backgroundSecondary};
   }
   &:last-child {
     margin-right: 0;
   }
 `
 
-export const TabSelectedBorder = styled(animated.div)`
+export const TabSelectedBorder = styled(animated.div)<{ inverted?: boolean }>`
   position: absolute;
   height: 4px;
   border-radius: 2px;
-  background: ${({ theme }) => theme.accent};
+  background: ${({ theme, inverted }) =>
+    inverted ? theme.inverted.accent : theme.accent};
   bottom: 0;
 `
 
