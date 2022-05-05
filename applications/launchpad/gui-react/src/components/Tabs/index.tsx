@@ -90,6 +90,8 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
             key={`tab-${index}`}
             ref={el => (tabsRefs.current[index] = el)}
             onClick={() => onSelect(tab.id)}
+            selected={selected}
+            tab={tab}
           >
             <FontWeightCompensation>
               <Text

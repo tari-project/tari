@@ -1,3 +1,4 @@
+import { TabProp } from './types'
 import { animated } from 'react-spring'
 import styled from 'styled-components'
 
@@ -14,13 +15,17 @@ export const TabOptions = styled.div`
   align-items: center;
 `
 
-export const Tab = styled.button`
+export const Tab = styled.button<{ selected?: string; tab?: TabProp }>`
   display: flex;
   padding: 8px 12px;
   box-shadow: none;
   border-width: 0px;
   border-bottom: 4px solid transparent;
   border-radius: ${({ theme }) => theme.tightBorderRadius(1.5)};
+  border-bottom-left-radius: ${({ theme, selected, tab }) =>
+    selected === tab?.id ? 0 : theme.tightBorderRadius(1.5)};
+  border-bottom-right-radius: ${({ theme, selected, tab }) =>
+    selected === tab?.id ? 0 : theme.tightBorderRadius(1.5)};
   background: transparent;
   box-sizing: border-box;
   margin: 0px;
@@ -31,6 +36,9 @@ export const Tab = styled.button`
   transition: ease-in-out 300ms;
   &:hover {
     background-color: ${({ theme }) => theme.backgroundSecondary};
+  }
+  &:last-child {
+    margin-right: 0;
   }
 `
 
