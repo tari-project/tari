@@ -23,6 +23,7 @@ export const Tab = styled.button`
   background: transparent;
   box-sizing: border-box;
   margin: 0px;
+  margin-right: ${({ theme }) => `${theme.tabsMarginRight}`}px;
   position: relative;
   cursor: pointer;
   align-items: center;
