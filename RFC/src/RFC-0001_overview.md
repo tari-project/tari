@@ -103,7 +103,7 @@ Tari overcomes this constraint by building two layers:
 
 1. A base layer that provides a public ledger of Tari coin transactions, secured by PoW to maximize security.
 2. A DAN consisting of multiple independent side-chains that each manage the state of a digital asset. They are typically
-   is very fast and cheap, at the expense of decentralization.
+   very fast and cheap, at the expense of decentralization.
 
 If required, the digital assets layer can refer back to the base layer to temporarily give up speed in exchange for
 increased security. These commitments allow token owners to make attestations based on their asset state without relying completely on
@@ -181,7 +181,6 @@ The Base Layer fulfils these, and only these, major roles:
    and simple smart contracts such as cross-chain atomic swaps.
 2. It maintains the Digital Asset register. This includes functionality for side-chain management, checkpoints, and transfer
    of funds into and out of side-chains.
-3. Maintain the Validator Node register. This includes support for registering and de-registering Validator Nodes.
 4. Maintain a register of smart contract templates. This allows users to verify that digital assets are running the code that they 
    expect and includes functionality like version tracking.
 
