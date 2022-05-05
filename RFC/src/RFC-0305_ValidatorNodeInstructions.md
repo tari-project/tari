@@ -92,36 +92,34 @@ The caller MUST provide an authentication signature for the instruction. This pr
 by the sender and prevents malleability. A [validator node] SHOULD verify this signature before processing the instruction.
 
 ```protobuf
-message InstructionAuthentication {
+message Instruction {
+  // Authenticates the caller
+  required CallerAuthentication caller_auth = 1;
+  // Serialized instruction body
+  required bytes body = 2;
+}
+
+message CallerAuthentication {
   // A signature (a Schnorr <R, s> tuple) committing to the instruction body.
   // i.e. e = H(<sender_public_key>||<sig_public_nonce>||<serialized body>)
   required Signature signature = 1;
   // The public key of the signer and sender.
   required bytes sender_public_key = 2;
 }
-```
 
-#### Instruction Body
-
-The authenticated instruction can then be deserialized and processed. 
-
-```protobuf
 // An instruction that is validated and executed by a validator node. 
-message Instruction {
+message InstructionBody {
    // The contract ID that uniquely identifies the contract on which to execute this instruction 
    required bytes contract_id = 1;
    // The stateless proof that the caller is authorized to execute this instruction. 
    required Authorization authorization = 2;
-   // The function to execute, given by the template and function ids.
-   required Function function = 3;
-   // Function arguments. The number and type of argument must be valid for the function.
-   required Arguments arguments = 4;
+   // The template function to execute.
+   required FunctionCall call = 3;
    // A nonce used to disambiguate instructions.
    // It may be desirable to submit the same instruction more than once. This nonce allows
    // a disambiguation between purposefully duplicate instructions.
-   required uint64 nonce = 5;
+   required uint64 nonce = 4;
 }
-
 
 message Authorization {
   required BearerToken bearer_token = 1;
@@ -131,11 +129,13 @@ message BearerToken {
   // ... See RFC on BearerTokens
 }
 
-message Function {
+message FunctionCall {
    // An ID that uniquely identifies the template, registered on the base layer.
    required bytes template_id = 1;
-   // The function ID defined within a template.
-   required uint64 function_id = 2; 
+   // The function ID defined within a template. (alternative: name string)
+   required uint64 function_id = 2;
+   // Arguments for the function. The number and type of argument must be valid for the function.
+   required Arguments arguments = 3;
 }
 
 message Arguments { 
@@ -148,19 +148,22 @@ message Argument {
 }
 ```
 
-On receipt of an _authenticated_ instruction, the validator committee node performs the following checks:
-1. The instruction is well-formed and all required fields are present.
-2. The `contract_id` is managed by the validator and the contract has been initialized.
-3. The `template_id` and `function_id` exist within the contract.
-4. A validator MUST verify the [bearer_token] authorizes the execution of the instruction against the [contract] interface.
-   * The instruction MUST be discarded if the [bearer_token] is revoked.
-   * The grantee in the [bearer_token] MUST match the public key in the [Instruction Authentication].
-   * The [bearer_token] MUST be valid for the provided `contract_id`.
-   * The [bearer_token] MUST be valid for the invoked function scope/s and function arguments.
-5. Check if the instruction already exists in the mempool, if so, discard the instruction.
+On receipt of an instruction, the [validator node] MUST authenticate the caller by validating the caller signature.
+
+Once the instruction is authenticated , the validator committee node performs the following actions:
+1. Deserialize the instruction body;
+2. check that the instruction is well-formed and all required fields are present;
+3. check the `contract_id` is managed by the validator and the contract has been initialized;
+4. check the `template_id` and `function_id` exist within the contract;
+5. MUST verify the [bearer_token] authorizes the execution of the instruction against the [contract] interface;
+   * instruction MUST be discarded if the [bearer_token] is revoked;
+   * grantee in the [bearer_token] MUST match the public key in the [Instruction Authentication];
+   * [bearer_token] MUST be valid for the provided `contract_id`;
+   * [bearer_token] MUST be valid for the invoked function scope/s and function arguments.
+6. check if the instruction already exists in the mempool, if so, discard the instruction;
     * Instruction uniqueness can be determined by hashing the authenticated message body.
-6. Store the instruction in the mempool, and propagate the authentication and instruction messages to other validators 
-   in the committee.
+7. store the instruction in the mempool;
+8. and lastly, propagate the authentication and instruction messages to other validators in the committee.
 
 ### Submission of Instructions to a Validator Node Committee
 
