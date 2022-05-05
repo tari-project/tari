@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSpring } from 'react-spring'
+import { useTheme } from 'styled-components'
 
 import Text from '../Text'
 
@@ -11,6 +12,7 @@ import {
   TabSelectedBorder,
   FontWeightCompensation,
 } from './styles'
+
 import { TabsProps } from './types'
 
 /**
@@ -37,6 +39,7 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
   // Also, the Tabs component needs to re-render tabs twice on the initial mount,
   // because the selected tab uses bold font, which changes tabs widths.
   const [initialized, setInitialzed] = useState(0)
+  const theme = useTheme()
 
   useEffect(() => {
     tabsRefs.current = tabsRefs.current.slice(0, tabs.length)
@@ -53,6 +56,7 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
   let width = 0
   let left = 0
   let totalWidth = 0
+  const tabMargin = theme.tabsMarginRight
 
   if (selectedIndex > -1) {
     if (
@@ -63,7 +67,7 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
       tabsRefs.current.forEach((el, index) => {
         if (el) {
           if (index < selectedIndex) {
-            left = left + el.offsetWidth
+            left = left + el.offsetWidth + tabMargin
           } else if (index === selectedIndex) {
             width = el.offsetWidth
           }
