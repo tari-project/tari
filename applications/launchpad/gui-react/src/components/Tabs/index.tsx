@@ -29,7 +29,7 @@ import { TabsProps } from './types'
  * @param {string} id - unique identifier of the tab
  * @param {ReactNode} content - the tab header content
  */
-const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
+const Tabs = ({ tabs, selected, onSelect, inverted }: TabsProps) => {
   const tabsRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   // The animation of the bottom 'border' that indicates the selected tab,
@@ -92,6 +92,7 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
             onClick={() => onSelect(tab.id)}
             selected={selected}
             tab={tab}
+            inverted={inverted}
           >
             <FontWeightCompensation>
               <Text
@@ -107,6 +108,7 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
                 as={'span'}
                 type={selected === tab.id ? 'defaultHeavy' : 'defaultMedium'}
                 style={{ whiteSpace: 'nowrap', width: '100%' }}
+                color={inverted ? theme.inverted.primary : undefined}
               >
                 {tab.content}
               </Text>
@@ -115,6 +117,7 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
         ))}
       </TabOptions>
       <TabSelectedBorder
+        inverted={inverted}
         style={{
           ...activeBorder,
         }}
