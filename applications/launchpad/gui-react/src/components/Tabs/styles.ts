@@ -20,6 +20,7 @@ export const Tab = styled.button`
   box-shadow: none;
   border-width: 0px;
   border-bottom: 4px solid transparent;
+  border-radius: ${({ theme }) => theme.tightBorderRadius(1.5)};
   background: transparent;
   box-sizing: border-box;
   margin: 0px;
@@ -27,6 +28,10 @@ export const Tab = styled.button`
   position: relative;
   cursor: pointer;
   align-items: center;
+  transition: ease-in-out 300ms;
+  &:hover {
+    background-color: ${({ theme }) => theme.backgroundSecondary};
+  }
 `
 
 export const TabSelectedBorder = styled(animated.div)`
