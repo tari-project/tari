@@ -8,6 +8,7 @@ import Button from '../../../components/Button'
 import TabContent from '../../../components/TabContent'
 import ExpandIcon from '../../../styles/Icons/Monitor'
 import CollapseIcon from '../../../styles/Icons/Grid'
+import t from '../../../locales'
 
 import { TabsContainer, ExpertBox } from './styles'
 
@@ -21,15 +22,15 @@ const ExpertView = () => {
   const tabs = [
     {
       id: 'PERFORMANCE',
-      content: <TabContent text='Performance' />,
+      content: <TabContent text={t.common.nouns.performance} />,
     },
     {
       id: 'CONTAINERS',
-      content: <TabContent text='Containers' />,
+      content: <TabContent text={t.common.nouns.containers} />,
     },
     {
       id: 'LOGS',
-      content: <TabContent text='Logs' />,
+      content: <TabContent text={t.common.nouns.logs} />,
     },
   ]
 
@@ -57,7 +58,7 @@ const ExpertView = () => {
             style={{ paddingRight: 0, paddingLeft: 0 }}
             onClick={() => dispatch(setExpertView('fullscreen'))}
           >
-            Open full screen
+            {t.expertView.fullscreen.open}
           </Button>
         )}
         {isFullscreen && (
@@ -67,7 +68,7 @@ const ExpertView = () => {
             style={{ paddingRight: 0, paddingLeft: 0 }}
             onClick={() => dispatch(setExpertView('open'))}
           >
-            Close full screen
+            {t.expertView.fullscreen.close}
           </Button>
         )}
       </TabsContainer>

@@ -12,6 +12,9 @@ const translations: { [key: string]: { [key: string]: string } } = {
     problem: 'Problem',
     settings: 'Settings',
     wallet: 'Wallet',
+    performance: 'Performance',
+    containers: 'Containers',
+    logs: 'Logs',
   },
   adjectives: {
     running: 'Running',
