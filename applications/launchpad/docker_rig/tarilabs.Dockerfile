@@ -27,13 +27,6 @@ RUN --mount=type=cache,id=build-apt-cache-${TARGETOS}-${TARGETARCH}${TARGETVARIA
   clang \
   cmake
 
-WORKDIR /tari
-
-# Adding only necessary things up front and copying the entrypoint script last
-# to take advantage of layer caching in docker
-ADD Cargo.lock applications/deps_only/Cargo.lock
-ADD rust-toolchain.toml .
-
 ARG ARCH=native
 #ARG FEATURES=avx2
 ARG FEATURES=safe
@@ -43,19 +36,6 @@ ENV CARGO_HTTP_MULTIPLEXING=false
 
 ARG APP_NAME=wallet
 ARG APP_EXEC=tari_console_wallet
-
-# Caches downloads across docker builds
-ADD applications/deps_only applications/deps_only
-WORKDIR applications/deps_only
-
-#RUN cargo build --bin deps_only --release
-
-RUN --mount=type=cache,id=rust-git-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},sharing=locked,target=/home/rust/.cargo/git \
-    --mount=type=cache,id=rust-home-registry-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},sharing=locked,target=/home/rust/.cargo/registry \
-    --mount=type=cache,id=rust-local-registry-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},sharing=locked,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=rust-src-target-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},sharing=locked,target=/home/rust/src/target \
-    --mount=type=cache,id=rust-target-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},sharing=locked,target=/tari/target \
-    cargo build --bin deps_only --release
 
 WORKDIR /tari
 
