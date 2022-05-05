@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Instant};
+use std::{convert::TryFrom, sync::Arc, time::Instant};
 
 use log::*;
 use tari_comms::{
@@ -138,6 +138,8 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    // TODO: Split into smaller functions
+    #[allow(clippy::too_many_lines)]
     async fn start_streaming(
         &self,
         tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
@@ -217,9 +219,12 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
+            let skip = usize::try_from(skip_outputs)
+                .map_err(|_| RpcStatus::bad_request("skip_outputs exceeds a 32-bit unsigned integer"))?;
+
             let utxos = utxos
                 .into_iter()
-                .skip(skip_outputs as usize)
+                .skip(skip)
                 // Only enumerate after skip, because `start` already has the offset in it so `i` can begin from 0
                 .enumerate()
                 .filter_map(|(i, utxo)| {

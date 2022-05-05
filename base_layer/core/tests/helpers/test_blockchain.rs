@@ -122,6 +122,7 @@ impl TestBlockchain {
     }
 
     pub fn outputs_at(&self, height: u64) -> &[UnblindedOutput] {
+        #[allow(clippy::cast_possible_truncation)]
         self.outputs.get(height as usize).unwrap()
     }
 

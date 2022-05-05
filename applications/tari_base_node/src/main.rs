@@ -219,7 +219,7 @@ async fn run_node(
         recovery::initiate_recover_db(&config.base_node)?;
         recovery::run_recovery(&config.base_node)
             .await
-            .map_err(|e| ExitError::new(ExitCode::RecoveryError, &e))?;
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e.to_string()))?;
         return Ok(());
     };
 

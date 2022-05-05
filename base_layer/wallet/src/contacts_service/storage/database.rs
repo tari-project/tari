@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     sync::Arc,
+    time::Duration,
 };
 
 use chrono::NaiveDateTime;
@@ -161,7 +163,7 @@ where T: ContactsBackend + 'static
         &self,
         node_id: &NodeId,
         last_seen: NaiveDateTime,
-        latency: Option<u32>,
+        latency: Option<Duration>,
     ) -> Result<CommsPublicKey, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
         let node_id_clone = node_id.clone();
@@ -170,7 +172,7 @@ where T: ContactsBackend + 'static
             db_clone.write(WriteOperation::UpdateLastSeen(Box::new(DbKeyValuePair::LastSeen(
                 node_id_clone,
                 last_seen,
-                latency.map(|val| val as i32),
+                latency.map(|val| i32::try_from(val.as_millis()).unwrap_or(i32::MAX)),
             ))))
         })
         .await

@@ -465,6 +465,7 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchAssetRegistrations { range } => {
                 let top_level_pubkey = PublicKey::default();
+                #[allow(clippy::range_plus_one)]
                 let exclusive_range = (*range.start())..(*range.end() + 1);
                 let outputs = self
                     .blockchain_db
@@ -813,6 +814,7 @@ where B: BlockchainBackend + 'static
             },
             BlockAddResult::ChainReorg { added, removed } => {
                 if let Some(fork_height) = added.last().map(|b| b.height()) {
+                    #[allow(clippy::cast_possible_wrap)]
                     metrics::tip_height().set(fork_height as i64);
                     metrics::reorg(fork_height, added.len(), removed.len()).inc();
                 }

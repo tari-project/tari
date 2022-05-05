@@ -211,6 +211,7 @@ impl InnerService {
         Ok(proxy::into_response(parts, &json))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_submit_block(
         &self,
         request: Request<json::Value>,
@@ -344,6 +345,7 @@ impl InnerService {
         Ok(proxy::into_response(parts, &json_resp))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_get_block_template(
         &self,
         monerod_resp: Response<json::Value>,

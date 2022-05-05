@@ -12,10 +12,10 @@ pub struct ExitError {
 }
 
 impl ExitError {
-    pub fn new(exit_code: ExitCode, details: String) -> Self {
+    pub fn new<T: ToString>(exit_code: ExitCode, details: T) -> Self {
         Self {
             exit_code,
-            details: Some(details),
+            details: Some(details.to_string()),
         }
     }
 }

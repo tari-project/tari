@@ -98,7 +98,7 @@ async fn main_inner() -> Result<(), ExitError> {
         let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
             ExitError::new(
                 ExitCode::ConfigError,
-                &"Miner is not configured with a valid wallet address.",
+                "Miner is not configured with a valid wallet address.",
             )
         })?;
         if !config.mining_worker_name.is_empty() {
@@ -126,14 +126,14 @@ async fn main_inner() -> Result<(), ExitError> {
 
         mc.run()
             .await
-            .map_err(|err| ExitError::new(ExitCode::UnknownError, &format!("Stratum error: {:?}", err)))?;
+            .map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {:?}", err)))?;
 
         Ok(())
     } else {
         let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(|e| {
             ExitError::new(
                 ExitCode::GrpcError,
-                &format!("Could not connect to wallet or base node: {}", e),
+                format!("Could not connect to wallet or base node: {}", e),
             )
         })?;
 

@@ -78,9 +78,9 @@ use crate::transactions::transaction_components::Transaction;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
-    pub total_txs: usize,
-    pub unconfirmed_txs: usize,
-    pub reorg_txs: usize,
+    pub total_txs: u64,
+    pub unconfirmed_txs: u64,
+    pub reorg_txs: u64,
     pub total_weight: u64,
 }
 

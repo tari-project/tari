@@ -77,6 +77,7 @@ impl ApplicationConfig {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BaseNodeConfig {
     override_from: Option<String>,
     pub network: Network,

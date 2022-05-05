@@ -39,12 +39,15 @@ deny = [
     'clippy::explicit_iter_loop',
     'clippy::if_not_else',
     'clippy::match_bool',
-    'clippy::needless_pass_by_value',
+    # Although generally good practice, this is disabled because the code becomes worse
+    # or needs mod-level exclusion in these cases:
+    # tauri commands, blockchain async db needs owned copy, &Arc<T>, Copy types, T: AsRef<..>, T: ToString
+    # 'clippy::needless_pass_by_value',
     'clippy::range_plus_one',
     'clippy::struct_excessive_bools',
     'clippy::too_many_lines',
     'clippy::trivially_copy_pass_by_ref',
-    # casting mistakes
+    # Highlights potential casting mistakes
     'clippy::cast_lossless',
 #    'clippy::cast_possible_truncation',
 #    'clippy::cast_possible_wrap',

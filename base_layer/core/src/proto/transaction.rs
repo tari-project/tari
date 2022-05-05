@@ -78,12 +78,13 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             .ok_or_else(|| "excess_sig not provided".to_string())?
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
+        let kernel_features = u8::try_from(kernel.features).map_err(|_| "Kernel features must be a single byte")?;
 
         Ok(TransactionKernel::new(
             TransactionKernelVersion::try_from(
                 u8::try_from(kernel.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            KernelFeatures::from_bits(kernel.features as u8)
+            KernelFeatures::from_bits(kernel_features)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
             MicroTari::from(kernel.fee),
             kernel.lock_height,
@@ -281,12 +282,13 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
 
+        let flags = u8::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
+
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            OutputFlags::from_bits(features.flags as u8)
-                .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
+            OutputFlags::from_bits(flags).ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,

@@ -20,9 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// A number of functions break this rule. In many/all cases this because the async_db needs owned arguments.
-#![allow(clippy::needless_pass_by_value)]
-
 use std::{
     cmp,
     cmp::Ordering,

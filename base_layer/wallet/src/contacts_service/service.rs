@@ -281,10 +281,11 @@ where T: ContactsBackend + 'static
                         if online_status == ContactOnlineStatus::Online {
                             continue;
                         }
+                        let latency = contact.latency.map(|ms| Duration::from_millis(ms.into()));
                         let data = ContactsLivenessData::new(
                             contact.public_key.clone(),
                             contact.node_id.clone(),
-                            contact.latency,
+                            latency,
                             contact.last_seen,
                             ContactMessageType::NoMessage,
                             online_status,
@@ -315,10 +316,11 @@ where T: ContactsBackend + 'static
     }
 
     fn is_online(&self, last_seen: NaiveDateTime) -> bool {
-        Utc::now().naive_utc().sub(last_seen) <=
-            chrono::Duration::seconds(
-                (self.contacts_online_ping_window as u64 * self.contacts_auto_ping_interval.as_secs()) as i64,
-            )
+        #[allow(clippy::cast_possible_wrap)]
+        let ping_window = chrono::Duration::seconds(
+            (self.contacts_online_ping_window as u64 * self.contacts_auto_ping_interval.as_secs()) as i64,
+        );
+        Utc::now().naive_utc().sub(last_seen) <= ping_window
     }
 
     async fn update_with_ping_pong(
@@ -328,7 +330,7 @@ where T: ContactsBackend + 'static
     ) -> Result<(), ContactsServiceError> {
         self.number_of_rounds_no_pings = 0;
         if event.metadata.has(MetadataKey::ContactsLiveness) {
-            let mut latency: Option<u32> = None;
+            let mut latency = None;
             if let Some(pos) = self
                 .liveness_data
                 .iter()
@@ -341,7 +343,7 @@ where T: ContactsBackend + 'static
             let last_seen = Utc::now();
             // Do not overwrite measured latency with value 'None' if this is a ping from a neighbouring node
             if event.latency.is_some() {
-                latency = event.latency.map(|val| val.as_millis() as u32);
+                latency = event.latency;
             }
             let this_public_key = self
                 .db
@@ -358,11 +360,11 @@ where T: ContactsBackend + 'static
             );
             self.liveness_data.push(data.clone());
 
+            trace!(target: LOG_TARGET, "{}", data);
             // Send only fails if there are no subscribers.
             let _size = self
                 .event_publisher
-                .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data.clone()))));
-            trace!(target: LOG_TARGET, "{}", data);
+                .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))));
         } else {
             trace!(
                 target: LOG_TARGET,

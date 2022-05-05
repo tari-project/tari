@@ -82,7 +82,7 @@ pub fn list_assets(offset: u64, count: u64, state: &ConcurrentAppState) -> Resul
       println!("{}", serde_json::to_string_pretty(&rows).unwrap());
       Ok(())
     }
-    Err(e) => Err(ExitError::new(ExitCode::CommandError, &e)),
+    Err(e) => Err(ExitError::new(ExitCode::CommandError, e.to_string())),
   }
 }
 
@@ -110,7 +110,7 @@ pub(crate) fn make_it_rain(
       match source_address {
         Some(source_address) => {
           let source_uuid = Uuid::parse_str(&source_address)
-            .map_err(|e| ExitError::new(ExitCode::CommandError, &e))?;
+            .map_err(|e| ExitError::new(ExitCode::CommandError, e))?;
           if !rows.iter().any(|wallet| wallet.id == source_uuid) {
             return Err(ExitError::new(ExitCode::CommandError, "Wallet not found!"));
           }
@@ -120,13 +120,13 @@ pub(crate) fn make_it_rain(
       }
     }
     Err(e) => {
-      return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
+      return Err(ExitError::new(ExitCode::CommandError, e));
     }
   };
 
   runtime
     .block_on(commands::wallets::inner_wallets_unlock(id, state))
-    .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+    .map_err(|e| ExitError::new(ExitCode::CommandError, e))?;
   println!(
     "Sending {} of {} to {} {} times.",
     asset_public_key, amount, to_address, number_transactions

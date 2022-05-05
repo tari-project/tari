@@ -65,7 +65,7 @@ pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
         DatabaseType::Lmdb => {
             create_recovery_lmdb_database(config.lmdb_path.as_path()).map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
-                ExitError::new(ExitCode::UnknownError, &err)
+                ExitError::new(ExitCode::UnknownError, err)
             })?;
         },
     };

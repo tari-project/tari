@@ -42,7 +42,6 @@ use crate::{commands::AppState, docker::create_workspace_folders, error::Launche
 /// Create a new workspace environment by creating a folder hierarchy (if required) at the `root_folder`, and copying
 /// the default config files into it.
 #[tauri::command]
-#[allow(clippy::needless_pass_by_value)]
 pub fn create_new_workspace(app: AppHandle<Wry>, root_path: Option<String>) -> Result<(), String> {
     let config = app.config();
     let package_info = &app.state::<AppState>().package_info;

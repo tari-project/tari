@@ -171,6 +171,8 @@ impl ConsensusConstants {
     /// Any block with a timestamp greater than this is rejected.
     /// This function returns the FTL as a UTC datetime
     pub fn ftl_as_time(&self) -> DateTime<Utc> {
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_possible_wrap)]
         Utc::now().add(Duration::seconds(self.future_time_limit as i64))
     }
 

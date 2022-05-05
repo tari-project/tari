@@ -267,6 +267,7 @@ mod test {
         let header = consensus::serialize::<monero::BlockHeader>(&block.header);
         let tx_count = 1 + block.tx_hashes.len() as u64;
         let mut count = consensus::serialize::<VarInt>(&VarInt(tx_count));
+        #[allow(clippy::cast_possible_truncation)]
         let mut hashes = Vec::with_capacity(tx_count as usize);
         hashes.push(block.miner_tx.hash());
         for item in block.clone().tx_hashes {
@@ -315,7 +316,7 @@ mod test {
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
-            transaction_count: hashes.len() as u16,
+            transaction_count: u16::try_from(hashes.len()).unwrap(),
             merkle_root: root,
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,

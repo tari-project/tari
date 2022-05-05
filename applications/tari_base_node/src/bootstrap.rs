@@ -93,7 +93,7 @@ where B: BlockchainBackend + 'static
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from).map(|p| p.node_id))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e.to_string()))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
@@ -101,7 +101,7 @@ where B: BlockchainBackend + 'static
         let mempool_protocol = mempool_sync.get_protocol_extension();
 
         let tor_identity = load_from_json(&base_node_config.tor_identity_file)
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
         p2p_config.transport.tor.identity = tor_identity;
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
@@ -157,19 +157,19 @@ where B: BlockchainBackend + 'static
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
         let comms = initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone())
             .await
-            .map_err(|e| ExitError::new(ExitCode::NetworkError, &e))?;
+            .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
             TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
                 identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
-                    .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
+                    .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
             },
         };
         if let Some(hs) = comms.hidden_service() {
             identity_management::save_as_json(&base_node_config.tor_identity_file, hs.tor_identity())
-                .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
+                .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
         }
 
         handles.register(comms);

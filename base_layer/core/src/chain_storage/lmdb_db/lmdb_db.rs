@@ -384,38 +384,38 @@ impl LMDBDatabase {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::ChainHeight,
-                        MetadataValue::ChainHeight(*height),
+                        &MetadataValue::ChainHeight(*height),
                     )?;
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::BestBlock,
-                        MetadataValue::BestBlock(hash.clone()),
+                        &MetadataValue::BestBlock(hash.clone()),
                     )?;
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::AccumulatedWork,
-                        MetadataValue::AccumulatedWork(*accumulated_difficulty),
+                        &MetadataValue::AccumulatedWork(*accumulated_difficulty),
                     )?;
                 },
                 SetPruningHorizonConfig(pruning_horizon) => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::PruningHorizon,
-                        MetadataValue::PruningHorizon(*pruning_horizon),
+                        &MetadataValue::PruningHorizon(*pruning_horizon),
                     )?;
                 },
                 SetPrunedHeight { height } => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::PrunedHeight,
-                        MetadataValue::PrunedHeight(*height),
+                        &MetadataValue::PrunedHeight(*height),
                     )?;
                 },
                 SetHorizonData { horizon_data } => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::HorizonData,
-                        MetadataValue::HorizonData(horizon_data.clone()),
+                        &MetadataValue::HorizonData(horizon_data.clone()),
                     )?;
                 },
                 InsertBadBlock { hash, height } => {
@@ -734,9 +734,9 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         k: MetadataKey,
-        v: MetadataValue,
+        v: &MetadataValue,
     ) -> Result<(), ChainStorageError> {
-        lmdb_replace(txn, &self.metadata_db, &k.as_u32(), &v)?;
+        lmdb_replace(txn, &self.metadata_db, &k.as_u32(), v)?;
         Ok(())
     }
 

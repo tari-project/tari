@@ -29,9 +29,9 @@ impl TryFrom<ProtoStatsResponse> for StatsResponse {
 
     fn try_from(stats: ProtoStatsResponse) -> Result<Self, Self::Error> {
         Ok(Self {
-            total_txs: stats.total_txs as usize,
-            unconfirmed_txs: stats.unconfirmed_txs as usize,
-            reorg_txs: stats.reorg_txs as usize,
+            total_txs: stats.total_txs,
+            unconfirmed_txs: stats.unconfirmed_txs,
+            reorg_txs: stats.reorg_txs,
             total_weight: stats.total_weight,
         })
     }
