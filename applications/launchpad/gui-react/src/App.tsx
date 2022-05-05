@@ -3,10 +3,8 @@ import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 import styled, { ThemeProvider } from 'styled-components'
 
-import { selectThemeConfig } from './store/app/selectors'
-import { actions } from './store/services'
-import { Service } from './store/services/types'
 import { useAppSelector, useAppDispatch } from './store/hooks'
+import { selectThemeConfig } from './store/app/selectors'
 
 import HomePage from './pages/home'
 import { loadDefaultServiceSettings } from './store/settings/thunks'
@@ -37,35 +35,14 @@ const App = () => {
       })
     }
 
-    // listenToSystemEvents()
+    listenToSystemEvents()
 
     return unsubscribe
   }, [])
 
-  const launch = async (service: Service) => {
-    dispatch(actions.start(service))
-  }
-
-  const magic = async () => {
-    await launch(Service.Tor)
-    await launch(Service.BaseNode)
-  }
-
   return (
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <button onClick={() => launch(Service.Tor)}>tor</button>
-          <button onClick={() => launch(Service.BaseNode)}>base_node</button>
-          <button onClick={magic}>magic</button>
-        </div>
         <HomePage />
       </AppContainer>
     </ThemeProvider>
