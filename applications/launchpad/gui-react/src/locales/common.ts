@@ -15,6 +15,8 @@ const translations: { [key: string]: { [key: string]: string } } = {
     performance: 'Performance',
     containers: 'Containers',
     logs: 'Logs',
+    cpu: 'CPU',
+    memory: 'Memory',
   },
   adjectives: {
     running: 'Running',
