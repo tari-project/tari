@@ -40,6 +40,7 @@ const lightTheme = {
     backgroundSecondary: styles.colors.darkMode.modalBackground,
     backgroundImage: styles.colors.light.backgroundImage,
     accent: styles.colors.tari.purple,
+    accentSecondary: styles.colors.secondary.onTextLight,
     accentDark: styles.colors.tari.purpleDark,
     disabledText: styles.colors.dark.placeholder,
     tariGradient: styles.gradients.tari,

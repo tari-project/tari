@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 
-import Loading from '../../../../../components/Loading'
 import Tabs from '../../../../../components/Tabs'
-import Tag from '../../../../../components/Tag'
+import TabContent from '../../../../../components/TabContent'
 
 import { setPage } from '../../../../../store/app'
 import { ViewType } from '../../../../../store/app/types'
@@ -18,41 +17,6 @@ import { selectState as selectWalletState } from '../../../../../store/wallet/se
 import { WalletState } from '../../../../../store/wallet/types'
 
 import t from '../../../../../locales'
-
-import { StyledTabContent, TabMainText, LoadingWrapper } from './styles'
-
-/**
- * Helper unifying the way how the content of each tab tile is composed.
- */
-const TabContent = ({
-  text,
-  running,
-  pending,
-  tagSubText,
-}: {
-  text: string
-  running?: boolean
-  pending?: boolean
-  tagSubText?: string
-}) => {
-  return (
-    <StyledTabContent>
-      <TabMainText spacingRight={running || pending ? true : false}>
-        {text}
-      </TabMainText>
-      {running && !pending ? (
-        <Tag variant='small' type='running' subText={tagSubText}>
-          <span>{t.common.adjectives.running}</span>
-        </Tag>
-      ) : null}
-      {pending ? (
-        <LoadingWrapper>
-          <Loading loading={true} size='12px' />
-        </LoadingWrapper>
-      ) : null}
-    </StyledTabContent>
-  )
-}
 
 /**
  * Helper composing all dashboard tabs.

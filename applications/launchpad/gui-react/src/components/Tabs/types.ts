@@ -9,4 +9,5 @@ export interface TabsProps {
   tabs: TabProp[]
   selected: string
   onSelect: (id: string) => void
+  inverted?: boolean
 }
