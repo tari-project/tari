@@ -23,7 +23,6 @@
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
-    time::Duration,
 };
 
 use chrono::{DateTime, Local, NaiveDateTime};
@@ -42,7 +41,7 @@ use crate::contacts_service::{
 pub struct ContactsLivenessData {
     public_key: CommsPublicKey,
     node_id: NodeId,
-    latency: Option<Duration>,
+    latency: Option<u32>,
     last_seen: Option<NaiveDateTime>,
     message_type: ContactMessageType,
     online_status: ContactOnlineStatus,
@@ -52,7 +51,7 @@ impl ContactsLivenessData {
     pub fn new(
         public_key: CommsPublicKey,
         node_id: NodeId,
-        latency: Option<Duration>,
+        latency: Option<u32>,
         last_seen: Option<NaiveDateTime>,
         message_type: ContactMessageType,
         online_status: ContactOnlineStatus,
@@ -75,7 +74,7 @@ impl ContactsLivenessData {
         &self.node_id
     }
 
-    pub fn latency(&self) -> Option<Duration> {
+    pub fn latency(&self) -> Option<u32> {
         self.latency
     }
 

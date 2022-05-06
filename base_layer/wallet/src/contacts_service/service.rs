@@ -281,11 +281,10 @@ where T: ContactsBackend + 'static
                         if online_status == ContactOnlineStatus::Online {
                             continue;
                         }
-                        let latency = contact.latency.map(|ms| Duration::from_millis(ms.into()));
                         let data = ContactsLivenessData::new(
                             contact.public_key.clone(),
                             contact.node_id.clone(),
-                            latency,
+                            contact.latency,
                             contact.last_seen,
                             ContactMessageType::NoMessage,
                             online_status,
@@ -330,7 +329,7 @@ where T: ContactsBackend + 'static
     ) -> Result<(), ContactsServiceError> {
         self.number_of_rounds_no_pings = 0;
         if event.metadata.has(MetadataKey::ContactsLiveness) {
-            let mut latency = None;
+            let mut latency: Option<u32> = None;
             if let Some(pos) = self
                 .liveness_data
                 .iter()
@@ -343,7 +342,7 @@ where T: ContactsBackend + 'static
             let last_seen = Utc::now();
             // Do not overwrite measured latency with value 'None' if this is a ping from a neighbouring node
             if event.latency.is_some() {
-                latency = event.latency;
+                latency = event.latency.map(|val| val.as_millis() as u32);
             }
             let this_public_key = self
                 .db
