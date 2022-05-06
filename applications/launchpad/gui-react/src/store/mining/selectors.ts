@@ -1,5 +1,7 @@
 import { createSelector } from '@reduxjs/toolkit'
+import { RootState } from '..'
 import { MiningNodeType } from '../../types/general'
+import { MiningNodesStatus } from './types'
 
 /**
  * Get Redux state of the given mining node
@@ -21,3 +23,22 @@ export const selectLastSession = createSelector(
       ? miningState[node].sessions[miningState[node].sessions.length - 1]
       : undefined,
 )
+
+/**
+ * Is any mining node running?
+ * @returns {boolean}
+ */
+export const selectTariMiningStatus = (state: RootState) =>
+  state.mining.tari.status
+
+/**
+ * Is any mining able to run?
+ * (Is not in unknown, error or setup_required state)
+ */
+export const selectCanAnyMiningNodeRun = (state: RootState) =>
+  [MiningNodesStatus.RUNNING, MiningNodesStatus.PAUSED].includes(
+    state.mining.tari.status,
+  ) ||
+  [MiningNodesStatus.RUNNING, MiningNodesStatus.PAUSED].includes(
+    state.mining.merged.status,
+  )

@@ -27,9 +27,10 @@ const NodeBox = ({
   titleStyle,
   contentStyle,
   children,
+  testId = 'node-box-cmp',
 }: NodeBoxProps) => {
   return (
-    <Box testId='node-box-cmp' style={style}>
+    <Box testId={testId} style={style}>
       <BoxHeader>
         {tag ? (
           <Tag type={tag.type} variant='large'>
@@ -53,6 +54,7 @@ const NodeBox = ({
  */
 export const NodeBoxContentPlaceholder = ({
   children,
+  testId = 'node-box-content-placeholder',
 }: NodeBoxContentPlaceholderProps) => {
   let content = children
 
@@ -60,7 +62,7 @@ export const NodeBoxContentPlaceholder = ({
     content = <Text color='inherit'>{children}</Text>
   }
 
-  return <NodeBoxPlacholder>{content}</NodeBoxPlacholder>
+  return <NodeBoxPlacholder data-testid={testId}>{content}</NodeBoxPlacholder>
 }
 
 export default NodeBox

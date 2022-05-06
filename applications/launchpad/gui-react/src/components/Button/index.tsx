@@ -20,6 +20,7 @@ const Button = ({
   rightIcon,
   onClick,
   loading,
+  testId = 'button-cmp',
 }: ButtonProps) => {
   const btnContent = (
     <>
@@ -34,6 +35,20 @@ const Button = ({
     </>
   )
 
+  if (type === 'button-in-text') {
+    return (
+      <StyledLink
+        as='button'
+        onClick={onClick}
+        style={style}
+        variant='text'
+        data-testid={testId}
+      >
+        {btnContent}
+      </StyledLink>
+    )
+  }
+
   if (type === 'link' || href) {
     return (
       <StyledLink
@@ -42,6 +57,7 @@ const Button = ({
         style={style}
         target='_blank'
         variant='text'
+        data-testid={testId}
       >
         {btnContent}
       </StyledLink>
@@ -55,6 +71,7 @@ const Button = ({
       onClick={onClick}
       style={style}
       variant={variant}
+      data-testid={testId}
     >
       {btnContent}
     </StyledButton>

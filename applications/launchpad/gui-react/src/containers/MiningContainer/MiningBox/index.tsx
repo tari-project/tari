@@ -74,7 +74,11 @@ const parseLastSessionToCoins = (lastSession: MiningSession | undefined) => {
  * @param {Record<keyof MiningNodesStatus, NodeBoxStatusConfig>} [statuses] - the optional config overriding specific states.
  * @param {ReactNode} [children] - component overriding the generic one composed by this container for a given status./
  */
-const MiningBox = ({ node, children }: MiningBoxProps) => {
+const MiningBox = ({
+  node,
+  children,
+  testId = 'mining-box-cmp',
+}: MiningBoxProps) => {
   const dispatch = useAppDispatch()
   const theme = useTheme()
 
@@ -164,36 +168,37 @@ const MiningBox = ({ node, children }: MiningBoxProps) => {
     switch (nodeState.status) {
       case 'UNKNOWN':
         return (
-          <NodeBoxContentPlaceholder>
+          <NodeBoxContentPlaceholder testId='node-box-placeholder--unknown'>
             {t.mining.placeholders.statusUnknown}
           </NodeBoxContentPlaceholder>
         )
       case 'SETUP_REQUIRED':
         return (
-          <NodeBoxContentPlaceholder>
+          <NodeBoxContentPlaceholder testId='node-box-placeholder--setup-required'>
             {t.mining.placeholders.statusSetupRequired}
           </NodeBoxContentPlaceholder>
         )
       case 'BLOCKED':
         return (
-          <NodeBoxContentPlaceholder>
+          <NodeBoxContentPlaceholder testId='node-box-placeholder--blocked'>
             {t.mining.placeholders.statusBlocked}
           </NodeBoxContentPlaceholder>
         )
       case 'ERROR':
         return (
-          <NodeBoxContentPlaceholder>
+          <NodeBoxContentPlaceholder testId='node-box-placeholder--error'>
             {t.mining.placeholders.statusError}
           </NodeBoxContentPlaceholder>
         )
       case 'PAUSED':
         return (
-          <MiningBoxContent>
+          <MiningBoxContent data-testid='mining-box-paused-content'>
             {coins ? <CoinsList coins={coins} /> : null}
             <Button
               onClick={() => dispatch(actions.startMiningNode({ node: node }))}
               disabled={disableActions}
               loading={disableActions}
+              testId={`${node}-run-btn`}
             >
               {t.mining.actions.startMining}
             </Button>
@@ -201,7 +206,7 @@ const MiningBox = ({ node, children }: MiningBoxProps) => {
         )
       case 'RUNNING':
         return (
-          <MiningBoxContent>
+          <MiningBoxContent data-testid='mining-box-running-content'>
             {coins ? (
               <CoinsList coins={coins} color={theme.inverted.primary} />
             ) : null}
@@ -210,6 +215,7 @@ const MiningBox = ({ node, children }: MiningBoxProps) => {
               onClick={() => dispatch(actions.stopMiningNode({ node: node }))}
               disabled={disableActions}
               loading={disableActions}
+              testId={`${node}-pause-btn`}
             >
               {t.common.verbs.pause}
             </Button>
@@ -227,6 +233,7 @@ const MiningBox = ({ node, children }: MiningBoxProps) => {
       style={currentState.boxStyle}
       titleStyle={currentState.titleStyle}
       contentStyle={currentState.contentStyle}
+      testId={testId}
     >
       {content}
     </NodeBox>

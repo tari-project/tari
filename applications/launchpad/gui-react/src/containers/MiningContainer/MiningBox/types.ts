@@ -14,4 +14,5 @@ export interface MiningBoxProps {
   node: MiningNodeType
   statuses?: Record<keyof MiningNodesStatus, NodeBoxStatusConfig>
   children?: ReactNode
+  testId?: string
 }

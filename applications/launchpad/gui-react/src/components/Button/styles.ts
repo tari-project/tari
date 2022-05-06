@@ -86,6 +86,22 @@ export const StyledLink = styled.a<Pick<ButtonProps, 'variant'>>`
     variant === 'text' ? 'transparent' : theme.tariGradient};
   color: ${({ variant, theme }) =>
     variant === 'text' ? theme.secondary : theme.primary};
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  text-decoration: underline;
+  box-sizing: border-box;
+  border-width: 0;
+  box-shadow: none;
+  font-size: inherit;
+  color: inherit;
+  line-height: inherit;
+  font-family: inherit;
+  font-weight: inherit;
+
+  &:hover {
+    opacity: 0.7;
+  }
 `
 
 export const ButtonText = styled.span``
