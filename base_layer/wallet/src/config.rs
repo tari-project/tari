@@ -56,7 +56,7 @@ pub struct WalletConfig {
     pub auto_update: AutoUpdateConfig,
     pub data_dir: PathBuf,
     pub db_file: PathBuf,
-    pub connection_manager_pool_size: usize,
+    pub db_connection_pool_size: usize,
     pub password: Option<String>, // TODO: Make clear on drop
     #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
@@ -89,7 +89,7 @@ impl Default for WalletConfig {
             auto_update: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             db_file: PathBuf::from_str("console_wallet").unwrap(),
-            connection_manager_pool_size: 5, // TODO: get actual default
+            db_connection_pool_size: 5, // TODO: get actual default
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,
