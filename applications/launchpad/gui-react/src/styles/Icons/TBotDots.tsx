@@ -5,19 +5,19 @@ const SvgTBotDots = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width='1em'
     height='1em'
-    viewBox='0 0 99 41'
+    viewBox='0 0 1133 470'
     fill='none'
     xmlns='http://www.w3.org/2000/svg'
     data-testid='svg-tbotdots'
     {...props}
   >
     <path
-      d='M0 20.5C0 9.178 9.178 0 20.5 0h58C89.822 0 99 9.178 99 20.5S89.822 41 78.5 41h-58C9.178 41 0 31.822 0 20.5Z'
+      d='M0 234.606C0 105.037 105.037 0 234.606 0h663.765c129.569 0 234.609 105.037 234.609 234.606 0 129.57-105.04 234.607-234.609 234.607H234.607C105.037 469.213 0 364.176 0 234.606Z'
       fill='#fff'
     />
-    <circle cx={28.5} cy={20.5} r={4.5} fill='#D6D4D9' />
-    <circle cx={49.5} cy={20.5} r={4.5} fill='#EDECEE' />
-    <circle cx={70.5} cy={20.5} r={4.5} fill='#EDECEE' />
+    <circle cx={326.161} cy={234.606} r={51.499} fill='#D6D4D9' />
+    <circle cx={566.489} cy={234.606} r={51.499} fill='#EDECEE' />
+    <circle cx={806.817} cy={234.606} r={51.499} fill='#EDECEE' />
   </svg>
 )
 

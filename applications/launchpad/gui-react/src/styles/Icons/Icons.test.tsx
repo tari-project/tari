@@ -147,7 +147,7 @@ const ICONS = [
   'TBotHearts',
   'TBotHeartsMonero',
   'TBotLoading',
-  'TBotRadar',
+  'TBotSearch',
   'Text',
   'Tick',
   'Todo',

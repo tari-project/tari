@@ -5,70 +5,79 @@ const SvgTBotLoading = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width='1em'
     height='1em'
-    viewBox='0 0 118 117'
+    viewBox='0 0 1428 1428'
     fill='none'
     xmlns='http://www.w3.org/2000/svg'
     data-testid='svg-tbotloading'
     {...props}
   >
-    <g filter='url(#TBotLoading_svg__a)' shapeRendering='crispEdges'>
+    <g filter='url(#TBotLoading_svg__a)'>
       <path
-        d='M16.725 41.091a36.723 36.723 0 0 1 27.366-27.366 65.283 65.283 0 0 1 29.818 0 36.723 36.723 0 0 1 27.366 27.366 65.291 65.291 0 0 1 0 29.818 36.723 36.723 0 0 1-27.366 27.366 65.285 65.285 0 0 1-29.818 0 36.723 36.723 0 0 1-27.366-27.366 65.283 65.283 0 0 1 0-29.818Z'
+        d='M194.639 503.58c39.126-166.799 169.364-297.036 336.162-336.162a801.96 801.96 0 0 1 366.285 0c166.794 39.126 297.034 169.364 336.164 336.162a802.126 802.126 0 0 1 0 366.285c-39.13 166.795-169.37 297.035-336.164 336.165a802.122 802.122 0 0 1-366.284 0c-166.799-39.13-297.037-169.37-336.163-336.165a801.96 801.96 0 0 1 0-366.285Z'
         fill='url(#TBotLoading_svg__b)'
       />
       <path
-        d='M16.725 41.091a36.723 36.723 0 0 1 27.366-27.366 65.283 65.283 0 0 1 29.818 0 36.723 36.723 0 0 1 27.366 27.366 65.291 65.291 0 0 1 0 29.818 36.723 36.723 0 0 1-27.366 27.366 65.285 65.285 0 0 1-29.818 0 36.723 36.723 0 0 1-27.366-27.366 65.283 65.283 0 0 1 0-29.818Z'
+        d='M194.639 503.58c39.126-166.799 169.364-297.036 336.162-336.162a801.96 801.96 0 0 1 366.285 0c166.794 39.126 297.034 169.364 336.164 336.162a802.126 802.126 0 0 1 0 366.285c-39.13 166.795-169.37 297.035-336.164 336.165a802.122 802.122 0 0 1-366.284 0c-166.799-39.13-297.037-169.37-336.163-336.165a801.96 801.96 0 0 1 0-366.285Z'
         fill='url(#TBotLoading_svg__c)'
         fillOpacity={0.2}
       />
+    </g>
+    <g filter='url(#TBotLoading_svg__d)'>
       <path
-        d='M43.54 11.378a39.133 39.133 0 0 0-29.162 29.163 67.695 67.695 0 0 0 0 30.919 39.134 39.134 0 0 0 29.163 29.162 67.7 67.7 0 0 0 30.919 0 39.134 39.134 0 0 0 29.162-29.162 67.7 67.7 0 0 0 0-30.92A39.133 39.133 0 0 0 74.46 11.379a67.694 67.694 0 0 0-30.92 0Z'
-        stroke='url(#TBotLoading_svg__d)'
-        strokeOpacity={0.2}
-        strokeWidth={4.821}
+        fillRule='evenodd'
+        clipRule='evenodd'
+        d='M136.978 883.391a861.18 861.18 0 0 1 0-393.336c44.263-188.698 191.6-336.035 380.298-380.298a861.189 861.189 0 0 1 393.336 0c188.698 44.263 336.038 191.6 380.298 380.298a861.263 861.263 0 0 1 0 393.336c-44.26 188.699-191.6 336.039-380.299 380.299a861.259 861.259 0 0 1-393.335 0c-188.698-44.26-336.035-191.6-380.298-380.299Zm393.823-715.972C364.003 206.544 233.765 336.782 194.639 503.58a801.964 801.964 0 0 0 0 366.286c39.126 166.794 169.364 297.034 336.163 336.164a802.122 802.122 0 0 0 366.284 0c166.794-39.13 297.034-169.37 336.164-336.165a802.122 802.122 0 0 0 0-366.284c-39.13-166.799-169.37-297.037-336.164-336.162a801.932 801.932 0 0 0-366.285 0Z'
+        fill='url(#TBotLoading_svg__e)'
+        fillOpacity={0.2}
+        shapeRendering='crispEdges'
       />
     </g>
-    <g filter='url(#TBotLoading_svg__e)'>
+    <g filter='url(#TBotLoading_svg__f)'>
       <path
-        d='M16.882 41.128a36.562 36.562 0 0 1 27.246-27.246 65.126 65.126 0 0 1 29.744 0 36.561 36.561 0 0 1 27.246 27.246 65.112 65.112 0 0 1 0 29.744 36.561 36.561 0 0 1-27.246 27.246 65.123 65.123 0 0 1-29.744 0 36.562 36.562 0 0 1-27.246-27.246 65.126 65.126 0 0 1 0-29.744Z'
-        stroke='#fff'
-        strokeOpacity={0.6}
-        strokeWidth={0.321}
-      />
-    </g>
-    <g filter='url(#TBotLoading_svg__f)' shapeRendering='crispEdges'>
-      <path
-        d='M23.273 50.425A18.648 18.648 0 0 1 37.94 33.803a100.413 100.413 0 0 1 42.12 0 18.648 18.648 0 0 1 14.668 16.622l.174 2.011c.16 1.848.16 3.707 0 5.555l-.174 2.012A18.648 18.648 0 0 1 80.06 76.625a100.416 100.416 0 0 1-42.12 0 18.648 18.648 0 0 1-14.667-16.622l-.175-2.012a32.143 32.143 0 0 1 0-5.555l.175-2.011Z'
-        fill='#20053D'
-      />
-      <path
-        d='M37.435 31.445A21.059 21.059 0 0 0 20.87 50.218l-.174 2.011a34.558 34.558 0 0 0 0 5.971l.174 2.012a21.06 21.06 0 0 0 16.564 18.771 102.826 102.826 0 0 0 43.13 0A21.06 21.06 0 0 0 97.13 60.211l.175-2.011a34.538 34.538 0 0 0 0-5.972l-.175-2.011a21.06 21.06 0 0 0-16.563-18.771 102.823 102.823 0 0 0-43.131 0Z'
-        stroke='#fff'
-        strokeOpacity={0.28}
-        strokeWidth={4.821}
+        fillRule='evenodd'
+        clipRule='evenodd'
+        d='M198.483 504.482a798.006 798.006 0 0 0 0 364.481c38.784 165.337 167.882 294.437 333.22 333.217a797.923 797.923 0 0 0 364.481 0c165.336-38.78 294.436-167.88 333.216-333.217a797.923 797.923 0 0 0 0-364.481c-38.78-165.339-167.88-294.437-333.216-333.22a798.006 798.006 0 0 0-364.481 0c-165.339 38.783-294.436 167.881-333.22 333.22Zm332.318-337.064C364.003 206.544 233.765 336.781 194.639 503.58a801.96 801.96 0 0 0 0 366.285c39.126 166.795 169.364 297.035 336.163 336.165a802.122 802.122 0 0 0 366.284 0c166.794-39.13 297.034-169.37 336.164-336.165a802.126 802.126 0 0 0 0-366.285c-39.13-166.798-169.37-297.036-336.164-336.162a801.96 801.96 0 0 0-366.285 0Z'
+        fill='#fff'
+        fillOpacity={0.6}
       />
     </g>
     <g filter='url(#TBotLoading_svg__g)'>
       <path
-        d='M23.273 50.425A18.648 18.648 0 0 1 37.94 33.803a100.413 100.413 0 0 1 42.12 0 18.648 18.648 0 0 1 14.668 16.622l.174 2.011c.16 1.848.16 3.707 0 5.555l-.174 2.012A18.648 18.648 0 0 1 80.06 76.625a100.416 100.416 0 0 1-42.12 0 18.648 18.648 0 0 1-14.667-16.622l-.175-2.012a32.143 32.143 0 0 1 0-5.555l.175-2.011Z'
+        d='M275.069 618.243c8.695-100.247 81.79-183.083 180.175-204.187'
+        fill='#20053D'
+      />
+    </g>
+    <g filter='url(#TBotLoading_svg__h)'>
+      <path
+        fillRule='evenodd'
+        clipRule='evenodd'
+        d='m1211.83 613.125 2.14 24.709a452.97 452.97 0 0 1 0 78.472l-2.14 24.709c-10.94 126.166-102.94 230.419-226.761 256.979a1292.682 1292.682 0 0 1-542.246 0C319 971.434 227.007 867.181 216.064 741.015l-2.143-24.709a454.166 454.166 0 0 1 0-78.472l2.143-24.709C227.007 486.96 319 382.707 442.823 356.146a1292.714 1292.714 0 0 1 542.246 0c123.821 26.561 215.821 130.814 226.761 256.979ZM455.244 414.056c-98.385 21.103-171.48 103.94-180.175 204.187l-2.143 24.709a394.86 394.86 0 0 0 0 68.236l2.143 24.71c8.695 100.247 81.79 183.083 180.175 204.187a1233.483 1233.483 0 0 0 517.404 0c98.382-21.104 171.482-103.94 180.172-204.187l2.15-24.71a394.66 394.66 0 0 0 0-68.236l-2.15-24.709c-8.69-100.247-81.79-183.084-180.172-204.187a1233.483 1233.483 0 0 0-517.404 0Z'
+        fill='#fff'
+        fillOpacity={0.28}
+        shapeRendering='crispEdges'
+      />
+    </g>
+    <g filter='url(#TBotLoading_svg__i)'>
+      <path
+        d='M275.071 618.243c8.695-100.247 81.79-183.083 180.175-204.187a1233.483 1233.483 0 0 1 517.404 0c98.39 21.104 171.48 103.94 180.17 204.187l2.15 24.709a394.672 394.672 0 0 1 0 68.237l-2.15 24.709c-8.69 100.247-81.78 183.083-180.17 204.187a1233.483 1233.483 0 0 1-517.404 0c-98.385-21.104-171.48-103.94-180.175-204.187l-2.143-24.709a394.871 394.871 0 0 1 0-68.237l2.143-24.709Z'
         fill='#16032B'
       />
     </g>
-    <g filter='url(#TBotLoading_svg__i)' clipPath='url(#TBotLoading_svg__h)'>
+    <g filter='url(#TBotLoading_svg__k)' clipPath='url(#TBotLoading_svg__j)'>
       <path
-        d='m48.917 50.534 2.98-2.98M35.854 63.596l2.98-2.98m12.17-5.04h4.215m-22.688 0h4.214m7.13-7.13V44.23m0 22.688v-4.214m-5.041-12.171-2.98-2.98m16.042 16.042-2.98-2.98'
-        stroke='url(#TBotLoading_svg__j)'
-        strokeWidth={2.109}
+        d='m590.092 619.578 36.604-36.604M429.63 780.039l36.601-36.601m149.509-61.932h51.766m-278.693 0h51.761m87.585-87.581v-51.766m0 278.694v-51.762m-61.928-149.513-36.604-36.604m197.065 197.065-36.601-36.601'
+        stroke='url(#TBotLoading_svg__l)'
+        strokeWidth={25.912}
         strokeLinecap='round'
         strokeLinejoin='round'
         shapeRendering='crispEdges'
       />
     </g>
-    <g filter='url(#TBotLoading_svg__l)' clipPath='url(#TBotLoading_svg__k)'>
+    <g filter='url(#TBotLoading_svg__n)' clipPath='url(#TBotLoading_svg__m)'>
       <path
-        d='m80.542 50.533 2.98-2.98M67.478 63.596l2.98-2.98m12.17-5.042h4.215m-22.688 0h4.214m7.13-7.13V44.23m0 22.688v-4.214m-5.041-12.171-2.98-2.98M83.52 63.596l-2.98-2.98'
-        stroke='url(#TBotLoading_svg__m)'
-        strokeWidth={2.109}
+        d='m978.57 619.565 36.6-36.604M818.109 780.027l36.601-36.601m149.51-61.932h51.76m-278.689 0h51.762m87.585-87.581v-51.766m0 278.693v-51.761m-61.929-149.514-36.603-36.603m197.064 197.065-36.6-36.601'
+        stroke='url(#TBotLoading_svg__o)'
+        strokeWidth={25.912}
         strokeLinecap='round'
         strokeLinejoin='round'
         shapeRendering='crispEdges'
@@ -79,13 +88,13 @@ const SvgTBotLoading = (props: SVGProps<SVGSVGElement>) => (
         mixBlendMode: 'lighten',
       }}
       opacity={0.4}
-      filter='url(#TBotLoading_svg__n)'
+      filter='url(#TBotLoading_svg__p)'
     >
       <path
         fillRule='evenodd'
         clipRule='evenodd'
-        d='M39.356 60.714c26.47 0 47.928-16.533 47.928-36.928 0-1.386-.099-2.755-.292-4.101a36.677 36.677 0 0 0-13.084-5.96 65.283 65.283 0 0 0-29.818 0 36.723 36.723 0 0 0-27.366 27.366A65.287 65.287 0 0 0 15 55.598c7.137 3.25 15.464 5.116 24.356 5.116Z'
-        fill='url(#TBotLoading_svg__o)'
+        d='M472.643 744.637c325.16 0 588.757-203.098 588.757-453.631 0-17.025-1.22-33.831-3.59-50.368-47.41-34.182-101.794-59.391-160.745-73.219a801.96 801.96 0 0 0-366.285 0c-166.798 39.126-297.036 169.363-336.162 336.162a801.937 801.937 0 0 0-21.177 178.195c87.68 39.94 189.967 62.861 299.202 62.861Z'
+        fill='url(#TBotLoading_svg__q)'
         fillOpacity={0.16}
       />
     </g>
@@ -94,23 +103,23 @@ const SvgTBotLoading = (props: SVGProps<SVGSVGElement>) => (
         mixBlendMode: 'lighten',
       }}
       opacity={0.5}
-      filter='url(#TBotLoading_svg__p)'
+      filter='url(#TBotLoading_svg__r)'
     >
       <path
         fillRule='evenodd'
         clipRule='evenodd'
-        d='M45.404 60.423c2.598-3.299 4.168-7.59 4.168-12.28 0-6.243-2.78-11.777-7.065-15.21-1.527.255-3.05.545-4.566.87a18.648 18.648 0 0 0-14.668 16.622l-.174 2.012a32.143 32.143 0 0 0 0 5.555l.048.557c5.063 1.402 10.521 2.166 16.21 2.166 2.049 0 4.067-.1 6.047-.292Z'
-        fill='url(#TBotLoading_svg__q)'
+        d='M546.925 741.063c31.914-40.53 51.199-93.237 51.199-150.858 0-76.687-34.16-144.671-86.786-186.83a1234.324 1234.324 0 0 0-56.092 10.681c-98.385 21.104-171.48 103.94-180.175 204.187l-2.143 24.709a394.871 394.871 0 0 0 0 68.237l.593 6.841c62.199 17.223 129.249 26.607 199.144 26.607 25.153 0 49.938-1.215 74.26-3.574Z'
+        fill='url(#TBotLoading_svg__s)'
         fillOpacity={0.23}
       />
     </g>
     <defs>
       <filter
         id='TBotLoading_svg__a'
-        x={0.939}
-        y={0.147}
-        width={116.123}
-        height={116.121}
+        x={59.955}
+        y={59.854}
+        width={1307.98}
+        height={1307.98}
         filterUnits='userSpaceOnUse'
         colorInterpolationFilters='sRGB'
       >
@@ -120,241 +129,298 @@ const SvgTBotLoading = (props: SVGProps<SVGSVGElement>) => (
           values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
           result='hardAlpha'
         />
-        <feOffset dy={2.208} />
-        <feGaussianBlur stdDeviation={4.62} />
+        <feOffset dy={27.121} />
+        <feGaussianBlur stdDeviation={56.746} />
         <feComposite in2='hardAlpha' operator='out' />
         <feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.16 0' />
         <feBlend
           in2='BackgroundImageFix'
-          result='effect1_dropShadow_743_125052'
+          result='effect1_dropShadow_1628_74351'
         />
         <feBlend
           in='SourceGraphic'
-          in2='effect1_dropShadow_743_125052'
+          in2='effect1_dropShadow_1628_74351'
           result='shape'
         />
       </filter>
       <filter
-        id='TBotLoading_svg__e'
-        x={11.786}
-        y={8.786}
-        width={94.429}
-        height={94.429}
+        id='TBotLoading_svg__d'
+        x={0.728}
+        y={0.628}
+        width={1426.43}
+        height={1426.43}
         filterUnits='userSpaceOnUse'
         colorInterpolationFilters='sRGB'
       >
         <feFlood floodOpacity={0} result='BackgroundImageFix' />
-        <feBlend in='SourceGraphic' in2='BackgroundImageFix' result='shape' />
-        <feGaussianBlur
-          stdDeviation={1.607}
-          result='effect1_foregroundBlur_743_125052'
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset dy={27.121} />
+        <feGaussianBlur stdDeviation={56.746} />
+        <feComposite in2='hardAlpha' operator='out' />
+        <feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.16 0' />
+        <feBlend
+          in2='BackgroundImageFix'
+          result='effect1_dropShadow_1628_74351'
+        />
+        <feBlend
+          in='SourceGraphic'
+          in2='effect1_dropShadow_1628_74351'
+          result='shape'
         />
       </filter>
       <filter
         id='TBotLoading_svg__f'
-        x={11.728}
-        y={21.927}
-        width={94.545}
-        height={69.789}
-        filterUnits='userSpaceOnUse'
-        colorInterpolationFilters='sRGB'
-      >
-        <feFlood floodOpacity={0} result='BackgroundImageFix' />
-        <feColorMatrix
-          in='SourceAlpha'
-          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
-          result='hardAlpha'
-        />
-        <feOffset dy={1.607} />
-        <feGaussianBlur stdDeviation={3.214} />
-        <feComposite in2='hardAlpha' operator='out' />
-        <feColorMatrix values='0 0 0 0 0.172415 0 0 0 0 0.0238889 0 0 0 0 0.334444 0 0 0 0.13 0' />
-        <feBlend
-          in2='BackgroundImageFix'
-          result='effect1_dropShadow_743_125052'
-        />
-        <feBlend
-          in='SourceGraphic'
-          in2='effect1_dropShadow_743_125052'
-          result='shape'
-        />
-        <feColorMatrix
-          in='SourceAlpha'
-          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
-          result='hardAlpha'
-        />
-        <feOffset />
-        <feGaussianBlur stdDeviation={0.804} />
-        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
-        <feColorMatrix values='0 0 0 0 0.179586 0 0 0 0 0.00546876 0 0 0 0 0.369531 0 0 0 1 0' />
-        <feBlend in2='shape' result='effect2_innerShadow_743_125052' />
-      </filter>
-      <filter
-        id='TBotLoading_svg__g'
-        x={22.979}
-        y={31.569}
-        width={72.045}
-        height={47.289}
-        filterUnits='userSpaceOnUse'
-        colorInterpolationFilters='sRGB'
-      >
-        <feFlood floodOpacity={0} result='BackgroundImageFix' />
-        <feBlend in='SourceGraphic' in2='BackgroundImageFix' result='shape' />
-        <feColorMatrix
-          in='SourceAlpha'
-          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
-          result='hardAlpha'
-        />
-        <feOffset />
-        <feGaussianBlur stdDeviation={0.804} />
-        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
-        <feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' />
-        <feBlend in2='shape' result='effect1_innerShadow_743_125052' />
-      </filter>
-      <filter
-        id='TBotLoading_svg__i'
-        x={26.905}
-        y={39.748}
-        width={33.94}
-        height={33.94}
-        filterUnits='userSpaceOnUse'
-        colorInterpolationFilters='sRGB'
-      >
-        <feFlood floodOpacity={0} result='BackgroundImageFix' />
-        <feColorMatrix
-          in='SourceAlpha'
-          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
-          result='hardAlpha'
-        />
-        <feOffset dy={1.143} />
-        <feGaussianBlur stdDeviation={2.286} />
-        <feComposite in2='hardAlpha' operator='out' />
-        <feColorMatrix values='0 0 0 0 0.172415 0 0 0 0 0.0238889 0 0 0 0 0.334444 0 0 0 0.13 0' />
-        <feBlend
-          in2='BackgroundImageFix'
-          result='effect1_dropShadow_743_125052'
-        />
-        <feBlend
-          in='SourceGraphic'
-          in2='effect1_dropShadow_743_125052'
-          result='shape'
-        />
-        <feColorMatrix
-          in='SourceAlpha'
-          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
-          result='hardAlpha'
-        />
-        <feOffset />
-        <feGaussianBlur stdDeviation={0.571} />
-        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
-        <feColorMatrix values='0 0 0 0 0.179586 0 0 0 0 0.00546876 0 0 0 0 0.369531 0 0 0 1 0' />
-        <feBlend in2='shape' result='effect2_innerShadow_743_125052' />
-      </filter>
-      <filter
-        id='TBotLoading_svg__l'
-        x={58.53}
-        y={39.747}
-        width={33.94}
-        height={33.94}
-        filterUnits='userSpaceOnUse'
-        colorInterpolationFilters='sRGB'
-      >
-        <feFlood floodOpacity={0} result='BackgroundImageFix' />
-        <feColorMatrix
-          in='SourceAlpha'
-          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
-          result='hardAlpha'
-        />
-        <feOffset dy={1.143} />
-        <feGaussianBlur stdDeviation={2.286} />
-        <feComposite in2='hardAlpha' operator='out' />
-        <feColorMatrix values='0 0 0 0 0.172415 0 0 0 0 0.0238889 0 0 0 0 0.334444 0 0 0 0.13 0' />
-        <feBlend
-          in2='BackgroundImageFix'
-          result='effect1_dropShadow_743_125052'
-        />
-        <feBlend
-          in='SourceGraphic'
-          in2='effect1_dropShadow_743_125052'
-          result='shape'
-        />
-        <feColorMatrix
-          in='SourceAlpha'
-          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
-          result='hardAlpha'
-        />
-        <feOffset />
-        <feGaussianBlur stdDeviation={0.571} />
-        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
-        <feColorMatrix values='0 0 0 0 0.179586 0 0 0 0 0.00546876 0 0 0 0 0.369531 0 0 0 1 0' />
-        <feBlend in2='shape' result='effect2_innerShadow_743_125052' />
-      </filter>
-      <filter
-        id='TBotLoading_svg__n'
-        x={13.393}
-        y={10.393}
-        width={75.499}
-        height={51.929}
-        filterUnits='userSpaceOnUse'
-        colorInterpolationFilters='sRGB'
-      >
-        <feFlood floodOpacity={0} result='BackgroundImageFix' />
-        <feGaussianBlur in='BackgroundImage' stdDeviation={0.804} />
-        <feComposite
-          in2='SourceAlpha'
-          operator='in'
-          result='effect1_backgroundBlur_743_125052'
-        />
-        <feBlend
-          in='SourceGraphic'
-          in2='effect1_backgroundBlur_743_125052'
-          result='shape'
-        />
-      </filter>
-      <filter
-        id='TBotLoading_svg__p'
-        x={21.371}
-        y={31.326}
-        width={29.808}
-        height={30.995}
+        x={133.963}
+        y={106.742}
+        width={1159.96}
+        height={1159.96}
         filterUnits='userSpaceOnUse'
         colorInterpolationFilters='sRGB'
       >
         <feFlood floodOpacity={0} result='BackgroundImageFix' />
         <feBlend in='SourceGraphic' in2='BackgroundImageFix' result='shape' />
         <feGaussianBlur
-          stdDeviation={0.804}
-          result='effect1_foregroundBlur_743_125052'
+          stdDeviation={19.742}
+          result='effect1_foregroundBlur_1628_74351'
+        />
+      </filter>
+      <filter
+        id='TBotLoading_svg__g'
+        x={192.481}
+        y={327.395}
+        width={1042.93}
+        height={738.835}
+        filterUnits='userSpaceOnUse'
+        colorInterpolationFilters='sRGB'
+      >
+        <feFlood floodOpacity={0} result='BackgroundImageFix' />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset dy={19.742} />
+        <feGaussianBlur stdDeviation={39.484} />
+        <feComposite in2='hardAlpha' operator='out' />
+        <feColorMatrix values='0 0 0 0 0.172415 0 0 0 0 0.0238889 0 0 0 0 0.334444 0 0 0 0.13 0' />
+        <feBlend
+          in2='BackgroundImageFix'
+          result='effect1_dropShadow_1628_74351'
+        />
+        <feBlend
+          in='SourceGraphic'
+          in2='effect1_dropShadow_1628_74351'
+          result='shape'
+        />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset />
+        <feGaussianBlur stdDeviation={9.871} />
+        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
+        <feColorMatrix values='0 0 0 0 0.179586 0 0 0 0 0.00546876 0 0 0 0 0.369531 0 0 0 1 0' />
+        <feBlend in2='shape' result='effect2_innerShadow_1628_74351' />
+      </filter>
+      <filter
+        id='TBotLoading_svg__h'
+        x={133.254}
+        y={268.169}
+        width={1161.38}
+        height={857.288}
+        filterUnits='userSpaceOnUse'
+        colorInterpolationFilters='sRGB'
+      >
+        <feFlood floodOpacity={0} result='BackgroundImageFix' />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset dy={19.742} />
+        <feGaussianBlur stdDeviation={39.484} />
+        <feComposite in2='hardAlpha' operator='out' />
+        <feColorMatrix values='0 0 0 0 0.172415 0 0 0 0 0.0238889 0 0 0 0 0.334444 0 0 0 0.13 0' />
+        <feBlend
+          in2='BackgroundImageFix'
+          result='effect1_dropShadow_1628_74351'
+        />
+        <feBlend
+          in='SourceGraphic'
+          in2='effect1_dropShadow_1628_74351'
+          result='shape'
+        />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset />
+        <feGaussianBlur stdDeviation={9.871} />
+        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
+        <feColorMatrix values='0 0 0 0 0.179586 0 0 0 0 0.00546876 0 0 0 0 0.369531 0 0 0 1 0' />
+        <feBlend in2='shape' result='effect2_innerShadow_1628_74351' />
+      </filter>
+      <filter
+        id='TBotLoading_svg__i'
+        x={271.451}
+        y={386.622}
+        width={884.994}
+        height={580.897}
+        filterUnits='userSpaceOnUse'
+        colorInterpolationFilters='sRGB'
+      >
+        <feFlood floodOpacity={0} result='BackgroundImageFix' />
+        <feBlend in='SourceGraphic' in2='BackgroundImageFix' result='shape' />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset />
+        <feGaussianBlur stdDeviation={9.871} />
+        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
+        <feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' />
+        <feBlend in2='shape' result='effect1_innerShadow_1628_74351' />
+      </filter>
+      <filter
+        id='TBotLoading_svg__k'
+        x={296.889}
+        y={469.977}
+        width={462.541}
+        height={462.542}
+        filterUnits='userSpaceOnUse'
+        colorInterpolationFilters='sRGB'
+      >
+        <feFlood floodOpacity={0} result='BackgroundImageFix' />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset dy={19.742} />
+        <feGaussianBlur stdDeviation={39.484} />
+        <feComposite in2='hardAlpha' operator='out' />
+        <feColorMatrix values='0 0 0 0 0.172415 0 0 0 0 0.0238889 0 0 0 0 0.334444 0 0 0 0.13 0' />
+        <feBlend
+          in2='BackgroundImageFix'
+          result='effect1_dropShadow_1628_74351'
+        />
+        <feBlend
+          in='SourceGraphic'
+          in2='effect1_dropShadow_1628_74351'
+          result='shape'
+        />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset />
+        <feGaussianBlur stdDeviation={9.871} />
+        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
+        <feColorMatrix values='0 0 0 0 0.179586 0 0 0 0 0.00546876 0 0 0 0 0.369531 0 0 0 1 0' />
+        <feBlend in2='shape' result='effect2_innerShadow_1628_74351' />
+      </filter>
+      <filter
+        id='TBotLoading_svg__n'
+        x={685.367}
+        y={469.965}
+        width={462.541}
+        height={462.542}
+        filterUnits='userSpaceOnUse'
+        colorInterpolationFilters='sRGB'
+      >
+        <feFlood floodOpacity={0} result='BackgroundImageFix' />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset dy={19.742} />
+        <feGaussianBlur stdDeviation={39.484} />
+        <feComposite in2='hardAlpha' operator='out' />
+        <feColorMatrix values='0 0 0 0 0.172415 0 0 0 0 0.0238889 0 0 0 0 0.334444 0 0 0 0.13 0' />
+        <feBlend
+          in2='BackgroundImageFix'
+          result='effect1_dropShadow_1628_74351'
+        />
+        <feBlend
+          in='SourceGraphic'
+          in2='effect1_dropShadow_1628_74351'
+          result='shape'
+        />
+        <feColorMatrix
+          in='SourceAlpha'
+          values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0'
+          result='hardAlpha'
+        />
+        <feOffset />
+        <feGaussianBlur stdDeviation={9.871} />
+        <feComposite in2='hardAlpha' operator='arithmetic' k2={-1} k3={1} />
+        <feColorMatrix values='0 0 0 0 0.179586 0 0 0 0 0.00546876 0 0 0 0 0.369531 0 0 0 1 0' />
+        <feBlend in2='shape' result='effect2_innerShadow_1628_74351' />
+      </filter>
+      <filter
+        id='TBotLoading_svg__p'
+        x={153.699}
+        y={126.485}
+        width={927.441}
+        height={637.894}
+        filterUnits='userSpaceOnUse'
+        colorInterpolationFilters='sRGB'
+      >
+        <feFlood floodOpacity={0} result='BackgroundImageFix' />
+        <feGaussianBlur in='BackgroundImage' stdDeviation={9.871} />
+        <feComposite
+          in2='SourceAlpha'
+          operator='in'
+          result='effect1_backgroundBlur_1628_74351'
+        />
+        <feBlend
+          in='SourceGraphic'
+          in2='effect1_backgroundBlur_1628_74351'
+          result='shape'
+        />
+      </filter>
+      <filter
+        id='TBotLoading_svg__r'
+        x={251.709}
+        y={383.633}
+        width={366.158}
+        height={380.746}
+        filterUnits='userSpaceOnUse'
+        colorInterpolationFilters='sRGB'
+      >
+        <feFlood floodOpacity={0} result='BackgroundImageFix' />
+        <feBlend in='SourceGraphic' in2='BackgroundImageFix' result='shape' />
+        <feGaussianBlur
+          stdDeviation={9.871}
+          result='effect1_foregroundBlur_1628_74351'
         />
       </filter>
       <linearGradient
-        id='TBotLoading_svg__d'
-        x1={103}
-        y1={12}
-        x2={-33.316}
-        y2={90.987}
+        id='TBotLoading_svg__e'
+        x1={1254.44}
+        y1={146.227}
+        x2={-420.069}
+        y2={1116.51}
         gradientUnits='userSpaceOnUse'
       >
         <stop stopColor='#9330FF' />
         <stop offset={1} stopColor='#593A9B' />
       </linearGradient>
       <linearGradient
-        id='TBotLoading_svg__j'
-        x1={35.752}
-        y1={46.612}
-        x2={43.875}
-        y2={55.575}
-        gradientUnits='userSpaceOnUse'
-      >
-        <stop stopColor='#fff' />
-        <stop offset={1} stopColor='#fff' stopOpacity={0.2} />
-      </linearGradient>
-      <linearGradient
-        id='TBotLoading_svg__m'
-        x1={67.377}
-        y1={46.611}
-        x2={75.5}
-        y2={55.574}
+        id='TBotLoading_svg__l'
+        x1={428.38}
+        y1={571.405}
+        x2={528.159}
+        y2={681.506}
         gradientUnits='userSpaceOnUse'
       >
         <stop stopColor='#fff' />
@@ -362,21 +428,32 @@ const SvgTBotLoading = (props: SVGProps<SVGSVGElement>) => (
       </linearGradient>
       <linearGradient
         id='TBotLoading_svg__o'
-        x1={51.142}
-        y1={12}
-        x2={51.142}
-        y2={60.714}
+        x1={816.859}
+        y1={571.393}
+        x2={916.638}
+        y2={681.494}
+        gradientUnits='userSpaceOnUse'
+      >
+        <stop stopColor='#fff' />
+        <stop offset={1} stopColor='#fff' stopOpacity={0.2} />
+      </linearGradient>
+      <linearGradient
+        id='TBotLoading_svg__q'
+        x1={617.42}
+        y1={146.227}
+        x2={617.42}
+        y2={744.637}
         gradientUnits='userSpaceOnUse'
       >
         <stop stopColor='#fff' />
         <stop offset={1} stopColor='#9330FF' />
       </linearGradient>
       <linearGradient
-        id='TBotLoading_svg__q'
-        x1={48.001}
-        y1={26.143}
-        x2={29.143}
-        y2={57.57}
+        id='TBotLoading_svg__s'
+        x1={578.824}
+        y1={319.959}
+        x2={347.169}
+        y2={706.006}
         gradientUnits='userSpaceOnUse'
       >
         <stop stopColor='#fff' stopOpacity={0.51} />
@@ -388,7 +465,7 @@ const SvgTBotLoading = (props: SVGProps<SVGSVGElement>) => (
         cy={0}
         r={1}
         gradientUnits='userSpaceOnUse'
-        gradientTransform='rotate(54.544 -15.19 57.113) scale(63.6623 112.524)'
+        gradientTransform='matrix(453.63136 637.01365 -1125.93425 801.80242 482.302 445.429)'
       >
         <stop stopColor='#9330FF' />
         <stop offset={1} stopColor='#593A9B' />
@@ -399,23 +476,23 @@ const SvgTBotLoading = (props: SVGProps<SVGSVGElement>) => (
         cy={0}
         r={1}
         gradientUnits='userSpaceOnUse'
-        gradientTransform='matrix(0 44 -44 0 59 56)'
+        gradientTransform='rotate(90 13.61 700.334) scale(540.496)'
       >
         <stop offset={0.693} stopOpacity={0} />
         <stop offset={1} />
       </radialGradient>
-      <clipPath id='TBotLoading_svg__h'>
+      <clipPath id='TBotLoading_svg__j'>
         <path
           fill='#fff'
-          transform='translate(28.75 40.45)'
-          d='M0 0h30.25v30.25H0z'
+          transform='translate(342.354 495.709)'
+          d='M0 0h371.591v371.591H0z'
         />
       </clipPath>
-      <clipPath id='TBotLoading_svg__k'>
+      <clipPath id='TBotLoading_svg__m'>
         <path
           fill='#fff'
-          transform='translate(60.375 40.45)'
-          d='M0 0h30.25v30.25H0z'
+          transform='translate(730.832 495.697)'
+          d='M0 0h371.591v371.591H0z'
         />
       </clipPath>
     </defs>
