@@ -1,10 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 import { SettingsState, Settings } from './types'
+import { loadDefaultServiceSettings } from './thunks'
 
 export const initialState: SettingsState = {
   open: false,
   which: Settings.Mining,
+  serviceSettings: {},
 }
 
 const settingsSlice = createSlice({
@@ -25,8 +27,18 @@ const settingsSlice = createSlice({
       state.which = action.payload
     },
   },
+  extraReducers: builder => {
+    builder.addCase(loadDefaultServiceSettings.fulfilled, (state, action) => {
+      state.serviceSettings = action.payload
+    })
+  },
 })
 
-export const { actions } = settingsSlice
+const { actions: syncActions } = settingsSlice
+
+export const actions = {
+  ...syncActions,
+  loadDefaultServiceSettings,
+}
 
 export default settingsSlice.reducer

@@ -7,8 +7,12 @@ import TabContent from '../../../../../components/TabContent'
 import { setPage } from '../../../../../store/app'
 import { ViewType } from '../../../../../store/app/types'
 import { selectView } from '../../../../../store/app/selectors'
-import { selectState as selectBaseNodeState } from '../../../../../store/baseNode/selectors'
+import {
+  selectState as selectBaseNodeState,
+  selectStatus as selectBaseNodeStatus,
+} from '../../../../../store/baseNode/selectors'
 import { BaseNodeState } from '../../../../../store/baseNode/types'
+import { ServiceStatus } from '../../../../../store/services/types'
 import { selectState as selectWalletState } from '../../../../../store/wallet/selectors'
 import { WalletState } from '../../../../../store/wallet/types'
 
@@ -23,7 +27,7 @@ const composeNodeTabs = ({
   walletState,
 }: {
   miningNodeState?: unknown
-  baseNodeState?: BaseNodeState
+  baseNodeState: BaseNodeState & ServiceStatus
   walletState?: WalletState
 }) => {
   const miningContent = <TabContent text={t.common.nouns.mining} />
@@ -74,13 +78,14 @@ const DashboardTabs = () => {
 
   const currentPage = useSelector(selectView)
   const baseNodeState = useSelector(selectBaseNodeState)
+  const baseNodeStatus = useSelector(selectBaseNodeStatus)
   const walletState = useSelector(selectWalletState)
 
   const tabs = useMemo(
     () =>
       composeNodeTabs({
         miningNodeState: undefined,
-        baseNodeState,
+        baseNodeState: { ...baseNodeStatus, ...baseNodeState },
         walletState,
       }),
     [walletState, baseNodeState],
