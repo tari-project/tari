@@ -102,9 +102,9 @@ mod test {
         assert_eq!(backoff.calculate_backoff(8).as_secs(), 383);
         assert_eq!(backoff.calculate_backoff(9).as_secs(), 767);
         assert_eq!(backoff.calculate_backoff(10).as_secs(), 1535);
-        assert_eq!(backoff.calculate_backoff(63).as_secs(), 13835058055282163712);
-        assert_eq!(backoff.calculate_backoff(64).as_secs(), 13835058055282163712);
-        assert_eq!(backoff.calculate_backoff(200).as_secs(), 13835058055282163712);
+        assert_eq!(backoff.calculate_backoff(63).as_secs(), 3377699720527871);
+        assert_eq!(backoff.calculate_backoff(64).as_secs(), 3377699720527871);
+        assert_eq!(backoff.calculate_backoff(200).as_secs(), 3377699720527871);
     }
 
     #[test]
