@@ -53,6 +53,7 @@ bitflags! {
     #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
         const NONE = 0x00;
+        const SEED = 0x01;
     }
 }
 
@@ -297,6 +298,15 @@ impl Peer {
             self.identity_signature = None;
         }
         self
+    }
+
+    pub fn add_flags(&mut self, flags: PeerFlags) -> &mut Self {
+        self.flags |= flags;
+        self
+    }
+
+    pub fn is_seed(&self) -> bool {
+        self.flags.contains(PeerFlags::SEED)
     }
 
     pub fn to_short_string(&self) -> String {
