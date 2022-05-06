@@ -17,7 +17,7 @@ const TBot = ({ type, size, style }: TBotProps) => {
 
   const TBotComponent = botVariants[type]
 
-  return <TBotComponent fontSize={size} style={style} />
+  return <TBotComponent fontSize={size} style={style} data-testid='tbot-cmp' />
 }
 
 export default TBot
