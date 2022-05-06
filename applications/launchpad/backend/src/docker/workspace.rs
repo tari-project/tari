@@ -50,7 +50,7 @@ use crate::docker::{
     DockerWrapperError,
     ImageType,
     LaunchpadConfig,
-    LogMessage,
+    LogMessage, container::{add_container, change_container_status},
 };
 
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
@@ -302,7 +302,11 @@ impl TariWorkspace {
             stderr: true,
             ..Default::default()
         };
-        CONTAINERS.read().unwrap().get(container_name).map(move |container| {
+        CONTAINERS
+        .read()
+        .unwrap()
+        .get(container_name)
+        .map(move |container| {
             let id = container.id();
             docker
                 .logs(id.as_str(), Some(options))
@@ -404,10 +408,12 @@ impl TariWorkspace {
         let container = docker.create_container(options, config).await?;
         let name = image.container_name();
         let id = container.id.clone();
-        self.add_container(name, container);
+        let id = ContainerId::from(id.clone());
+        let state = ContainerState::new(name.to_string(), id.clone(), container);
+        add_container(name, state);
         info!("Starting {}.", image_name);
         docker.start_container::<String>(id.as_str(), None).await?;
-        self.mark_container_running(name)?;
+        change_container_status(name, crate::docker::ContainerStatus::Running)?;
         info!("{} started with id {}", image_name, id);
 
         Ok(name.to_string())
@@ -437,24 +443,6 @@ impl TariWorkspace {
         images
     }
 
-
-    /// Add the container info to the list of containers the wrapper is managing
-    fn add_container(&mut self, name: &str, container: ContainerCreateResponse) {
-        let id = ContainerId::from(container.id.clone());
-        let state = ContainerState::new(name.to_string(), id, container);
-        CONTAINERS.write().unwrap().insert(name.to_string(), state);
-    }
-
-    // Tag the container with id `id` as Running
-    fn mark_container_running(&mut self, name: &str) -> Result<(), DockerWrapperError> {
-        if let Some(container) = CONTAINERS.write().unwrap().get_mut(name) {
-            container.running();
-            Ok(())
-        } else {
-            Err(DockerWrapperError::ContainerNotFound(name.to_string()))
-        }
-    }
-
     /// Stop the container with the given `name` and optionally delete it
     pub async fn stop_container(&mut self, name: &str, delete: bool, docker: &Docker) {
         let about_to_delete = CONTAINERS.write().unwrap().remove(name);
@@ -469,8 +457,7 @@ impl TariWorkspace {
                         let updated = ContainerState::new(container.name().to_string().clone(),
                             id.clone(),
                             container.info().clone());
-                        
-                        CONTAINERS.write().unwrap().insert(name.to_string(), updated);
+                        add_container(name, updated);
                     }
                 },
                 Err(err) => {
