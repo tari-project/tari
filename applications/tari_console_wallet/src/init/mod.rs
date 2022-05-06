@@ -217,6 +217,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
 }
 
 /// Set up the app environment and state for use by the UI
+#[allow(clippy::too_many_lines)]
 pub async fn init_wallet(
     config: &ApplicationConfig,
     arg_password: Option<String>,
@@ -410,15 +411,12 @@ async fn setup_identity_from_db<D: WalletBackend + 'static>(
     if !node_identity.is_signed() {
         node_identity.sign();
         // unreachable panic: signed above
-        wallet_db
-            .set_comms_identity_signature(
-                node_identity
-                    .identity_signature_read()
-                    .as_ref()
-                    .expect("unreachable panic")
-                    .clone(),
-            )
-            .await?;
+        let sig = node_identity
+            .identity_signature_read()
+            .as_ref()
+            .expect("unreachable panic")
+            .clone();
+        wallet_db.set_comms_identity_signature(sig).await?;
     }
 
     Ok(node_identity)

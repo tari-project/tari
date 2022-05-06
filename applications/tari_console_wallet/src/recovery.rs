@@ -78,6 +78,7 @@ pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, E
 /// Recovers wallet funds by connecting to a given base node peer, downloading the transaction outputs stored in the
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
+#[allow(clippy::too_many_lines)]
 pub async fn wallet_recovery(
     wallet: &WalletSqlite,
     base_node_config: &PeerConfig,
