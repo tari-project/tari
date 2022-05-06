@@ -6,7 +6,18 @@ import SvgTBotRadar from '../../styles/Icons/TBotRadar'
 
 import { TBotProps } from './types'
 
-const TBot = ({ type, size, style }: TBotProps) => {
+/**
+ * TBot component
+ *
+ * @prop {TBotType} [type] - TBot variant to render
+ * @prop {number} [size] - fontSize of TBot
+ * @prop {CSSProperties} [style] - optional TBot additional styling
+ *
+ * @example
+ * <TBot type='hearts' size={64} />
+ */
+
+const TBot = ({ type = 'base', size, style }: TBotProps) => {
   const botVariants = {
     base: SvgTBotBase,
     hearts: SvgTBotHearts,
