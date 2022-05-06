@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTheme } from 'styled-components'
 
 import { useAppDispatch, useAppSelector } from '../../../store/hooks'
 import { setExpertView } from '../../../store/app'
@@ -8,14 +9,16 @@ import Button from '../../../components/Button'
 import TabContent from '../../../components/TabContent'
 import ExpandIcon from '../../../styles/Icons/Monitor'
 import CollapseIcon from '../../../styles/Icons/Grid'
+import { MainContainer } from '../../../layouts/MainLayout/styles'
 import t from '../../../locales'
 
 import Containers from './Containers'
-import { TabsContainer, ExpertBox } from './styles'
+import { TabsContainer } from './styles'
 
 const ExpertView = () => {
   const dispatch = useAppDispatch()
   const expertView = useAppSelector(selectExpertView)
+  const theme = useTheme()
   const [selectedTab, setTab] = useState('CONTAINERS')
 
   const isFullscreen = expertView === 'fullscreen'
@@ -49,7 +52,9 @@ const ExpertView = () => {
   }
 
   return (
-    <ExpertBox>
+    <MainContainer
+      style={{ paddingRight: theme.spacing(), paddingLeft: theme.spacing() }}
+    >
       <TabsContainer>
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setTab} inverted />
         {!isFullscreen && (
@@ -74,7 +79,7 @@ const ExpertView = () => {
         )}
       </TabsContainer>
       {renderPage()}
-    </ExpertBox>
+    </MainContainer>
   )
 }
 
