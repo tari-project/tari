@@ -1,10 +1,12 @@
-import { useDispatch, useSelector } from 'react-redux'
+import { useAppDispatch, useAppSelector } from '../../../store/hooks'
 import { setExpertView } from '../../../store/app'
 import { selectExpertView } from '../../../store/app/selectors'
+import { selectState } from '../../../store/services/selectors'
 
 const ExpertView = () => {
-  const dispatch = useDispatch()
-  const expertView = useSelector(selectExpertView)
+  const dispatch = useAppDispatch()
+  const expertView = useAppSelector(selectExpertView)
+  const servicesState = useAppSelector(selectState)
 
   return (
     <div>
@@ -18,6 +20,9 @@ const ExpertView = () => {
       >
         Fullscreen
       </button>
+      <pre style={{ color: 'white' }}>
+        {JSON.stringify(servicesState, null, 2)}
+      </pre>
     </div>
   )
 }

@@ -1,13 +1,10 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
-import { BaseNodeState } from './types'
 import { startNode, stopNode } from './thunks'
 import { Network } from '../../containers/BaseNodeContainer/types'
 
-const initialState: BaseNodeState = {
-  network: 'mainnet',
-  running: false,
-  pending: false,
+const initialState = {
+  network: 'dibbler',
 }
 
 const baseNodeSlice = createSlice({
@@ -16,22 +13,6 @@ const baseNodeSlice = createSlice({
   reducers: {
     setTariNetwork(state, action: PayloadAction<Network>) {
       state.network = action.payload
-    },
-  },
-  extraReducers: {
-    [`${startNode.pending}`]: (state: BaseNodeState) => {
-      state.pending = true
-    },
-    [`${startNode.fulfilled}`]: (state: BaseNodeState) => {
-      state.running = true
-      state.pending = false
-    },
-    [`${stopNode.pending}`]: (state: BaseNodeState) => {
-      state.pending = true
-    },
-    [`${stopNode.fulfilled}`]: (state: BaseNodeState) => {
-      state.running = false
-      state.pending = false
     },
   },
 })
