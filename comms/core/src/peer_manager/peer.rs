@@ -159,11 +159,6 @@ impl Peer {
             .map(|since| Duration::from_millis(u64::try_from(since.num_milliseconds()).unwrap()))
     }
 
-    /// TODO: Remove once we don't have to sync wallet and base node db
-    pub fn unset_id(&mut self) {
-        self.id = None;
-    }
-
     pub(super) fn set_id(&mut self, id: PeerId) {
         self.id = Some(id);
     }
@@ -174,7 +169,6 @@ impl Peer {
     }
 
     #[allow(clippy::option_option)]
-
     pub fn update(
         &mut self,
         net_addresses: Option<Vec<Multiaddr>>,
