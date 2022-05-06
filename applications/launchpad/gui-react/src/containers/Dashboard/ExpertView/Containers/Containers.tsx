@@ -5,6 +5,7 @@ import Text from '../../../../components/Text'
 import Tag from '../../../../components/Tag'
 import StopIcon from '../../../../styles/Icons/TurnOff'
 import StartIcon from '../../../../styles/Icons/Play'
+import t from '../../../../locales'
 
 import { ServiceDto } from './types'
 import { ContainersTable, TdRight } from './styles'
@@ -24,7 +25,7 @@ const Containers = ({ services }: { services: ServiceDto[] }) => {
               {service.cpu}%
             </Text>{' '}
             <Text color={theme.secondary} as='span' type='smallMedium'>
-              CPU
+              {t.common.nouns.cpu}
             </Text>
           </TdRight>
           <TdRight>
@@ -32,13 +33,13 @@ const Containers = ({ services }: { services: ServiceDto[] }) => {
               {service.memory}
             </Text>{' '}
             <Text color={theme.secondary} as='span' type='smallMedium'>
-              Memory
+              {t.common.nouns.memory}
             </Text>
           </TdRight>
           <td>
             {service.running && (
               <Tag type='running' inverted style={{ margin: '0 auto' }}>
-                Running
+                {t.common.adjectives.running}
               </Tag>
             )}
           </td>
@@ -54,7 +55,7 @@ const Containers = ({ services }: { services: ServiceDto[] }) => {
                   color: theme.inverted.accentSecondary,
                 }}
               >
-                Start
+                {t.common.verbs.start}
               </Button>
             )}
             {service.running && (
@@ -74,7 +75,7 @@ const Containers = ({ services }: { services: ServiceDto[] }) => {
                   color: theme.inverted.primary,
                 }}
               >
-                Stop
+                {t.common.verbs.stop}
               </Button>
             )}
           </td>
