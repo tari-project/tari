@@ -1,7 +1,7 @@
 # RFC-0341: Asset Registration
 ## Asset Registration Process
 
-![status: draft](theme/images/status-draft.svg)
+![status: deprecated](theme/images/status-deprecated.svg)
 
 **Maintainer(s)**: [Philip Robinson](https://github.com/philipr-za)
 
@@ -52,7 +52,7 @@ register a [Digital Asset] (DA) and commence its operation on the [Digital Asset
 
 ## Related Requests for Comment
 * [RFC-0311: Digital Asset Templates](RFC-0311_AssetTemplates.md)
-* [RFC-0302: Validator Nodes](RFC-0302_ValidatorNodes.md)
+* [RFC-0302: Validator Nodes](RFCD-0302_ValidatorNodes.md)
 * [RFC-0304: Validator Node Committee Selection](RFC-0304_VNCommittees.md)
 * [RFC-0220: Asset Checkpoints](RFC-0220_AssetCheckpoints.md)
 

@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::message::MessageError;
-use tari_crypto::{signatures::SchnorrSignatureError, tari_utilities::message_format::MessageFormatError};
+use tari_crypto::signatures::SchnorrSignatureError;
+use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 

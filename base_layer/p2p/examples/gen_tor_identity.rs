@@ -27,7 +27,7 @@ use std::{env::current_dir, fs, path::Path};
 /// populate the peer manager in other examples.
 use clap::{App, Arg};
 use tari_comms::{multiaddr::Multiaddr, tor};
-use tari_crypto::tari_utilities::message_format::MessageFormat;
+use tari_utilities::message_format::MessageFormat;
 
 fn to_abs_path(path: &str) -> String {
     let path = Path::new(path);

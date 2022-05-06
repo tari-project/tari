@@ -212,8 +212,20 @@ impl TariWorkspace {
     /// It also lets power users customise which version of docker images they want to run in the workspace.
     pub fn fully_qualified_image(image: ImageType, registry: Option<&str>, tag: Option<&str>) -> String {
         let reg = registry.unwrap_or(DEFAULT_REGISTRY);
-        let tag = tag.unwrap_or(DEFAULT_TAG);
+        let tag = Self::arch_specific_tag(tag);
         format!("{}/{}:{}", reg, image.image_name(), tag)
+    }
+
+    /// Returns an architecture-specific tag based on the current CPU and the given label. e.g.
+    ///  `arch_specific_tag(Some("v1.0"))` returns `"v1.0-arm64"` on M1 chips, and `v1.0-amd64` on Intel and AMD chips.
+    pub fn arch_specific_tag(label: Option<&str>) -> String {
+        let label = label.unwrap_or(DEFAULT_TAG);
+        let platform = match std::env::consts::ARCH {
+            "x86_64" => "amd64",
+            "aarch64" => "arm64",
+            _ => "unsupported",
+        };
+        format!("{}-{}", label, platform)
     }
 
     /// Starts the Tari workspace recipe.

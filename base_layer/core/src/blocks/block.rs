@@ -33,8 +33,7 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
-use tari_crypto::tari_utilities::Hashable;
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, Hashable};
 use thiserror::Error;
 
 use crate::{
@@ -170,7 +169,6 @@ impl Display for Block {
     }
 }
 
-#[derive(Default)]
 pub struct BlockBuilder {
     header: BlockHeader,
     inputs: Vec<TransactionInput>,

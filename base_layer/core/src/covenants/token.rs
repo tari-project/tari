@@ -48,7 +48,7 @@ use crate::covenants::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CovenantToken {
     Filter(CovenantFilter),
-    Arg(CovenantArg),
+    Arg(Box<CovenantArg>),
 }
 
 impl CovenantToken {
@@ -65,7 +65,7 @@ impl CovenantToken {
             },
             code if CovenantArg::is_valid_code(code) => {
                 let arg = CovenantArg::read_from(reader, code)?;
-                Ok(Some(CovenantToken::Arg(arg)))
+                Ok(Some(CovenantToken::Arg(Box::new(arg))))
             },
             code => Err(CovenantDecodeError::UnknownByteCode { code }),
         }
@@ -88,7 +88,7 @@ impl CovenantToken {
     pub fn as_arg(&self) -> Option<&CovenantArg> {
         match self {
             CovenantToken::Filter(_) => None,
-            CovenantToken::Arg(arg) => Some(arg),
+            CovenantToken::Arg(arg) => Some(&**arg),
         }
     }
 
@@ -96,97 +96,109 @@ impl CovenantToken {
 
     #[allow(dead_code)]
     pub fn identity() -> Self {
-        CovenantToken::Filter(CovenantFilter::Identity(IdentityFilter))
+        CovenantFilter::Identity(IdentityFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn and() -> Self {
-        CovenantToken::Filter(CovenantFilter::And(AndFilter))
+        CovenantFilter::And(AndFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn or() -> Self {
-        CovenantToken::Filter(CovenantFilter::Or(OrFilter))
+        CovenantFilter::Or(OrFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn xor() -> Self {
-        CovenantToken::Filter(CovenantFilter::Xor(XorFilter))
+        CovenantFilter::Xor(XorFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn not() -> Self {
-        CovenantToken::Filter(CovenantFilter::Not(NotFilter))
+        CovenantFilter::Not(NotFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn output_hash_eq() -> Self {
-        CovenantToken::Filter(CovenantFilter::OutputHashEq(OutputHashEqFilter))
+        CovenantFilter::OutputHashEq(OutputHashEqFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn fields_preserved() -> Self {
-        CovenantToken::Filter(CovenantFilter::FieldsPreserved(FieldsPreservedFilter))
+        CovenantFilter::FieldsPreserved(FieldsPreservedFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn field_eq() -> Self {
-        CovenantToken::Filter(CovenantFilter::FieldEq(FieldEqFilter))
+        CovenantFilter::FieldEq(FieldEqFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn fields_hashed_eq() -> Self {
-        CovenantToken::Filter(CovenantFilter::FieldsHashedEq(FieldsHashedEqFilter))
+        CovenantFilter::FieldsHashedEq(FieldsHashedEqFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn absolute_height() -> Self {
-        CovenantToken::Filter(CovenantFilter::AbsoluteHeight(AbsoluteHeightFilter))
+        CovenantFilter::AbsoluteHeight(AbsoluteHeightFilter).into()
     }
 
     #[allow(dead_code)]
     pub fn hash(hash: Hash) -> Self {
-        CovenantToken::Arg(CovenantArg::Hash(hash))
+        CovenantArg::Hash(hash).into()
     }
 
     #[allow(dead_code)]
     pub fn public_key(public_key: PublicKey) -> Self {
-        CovenantToken::Arg(CovenantArg::PublicKey(public_key))
+        CovenantArg::PublicKey(public_key).into()
     }
 
     #[allow(dead_code)]
     pub fn commitment(commitment: Commitment) -> Self {
-        CovenantToken::Arg(CovenantArg::Commitment(commitment))
+        CovenantArg::Commitment(commitment).into()
     }
 
     #[allow(dead_code)]
     pub fn script(script: TariScript) -> Self {
-        CovenantToken::Arg(CovenantArg::TariScript(script))
+        CovenantArg::TariScript(script).into()
     }
 
     #[allow(dead_code)]
     pub fn covenant(covenant: Covenant) -> Self {
-        CovenantToken::Arg(CovenantArg::Covenant(covenant))
+        CovenantArg::Covenant(covenant).into()
     }
 
     #[allow(dead_code)]
     pub fn uint(val: u64) -> Self {
-        CovenantToken::Arg(CovenantArg::Uint(val))
+        CovenantArg::Uint(val).into()
     }
 
     #[allow(dead_code)]
     pub fn field(field: OutputField) -> Self {
-        CovenantToken::Arg(CovenantArg::OutputField(field))
+        CovenantArg::OutputField(field).into()
     }
 
     #[allow(dead_code)]
     pub fn fields(fields: Vec<OutputField>) -> Self {
-        CovenantToken::Arg(CovenantArg::OutputFields(fields.into()))
+        CovenantArg::OutputFields(fields.into()).into()
     }
 
     #[allow(dead_code)]
     pub fn bytes(bytes: Vec<u8>) -> Self {
-        CovenantToken::Arg(CovenantArg::Bytes(bytes))
+        CovenantArg::Bytes(bytes).into()
+    }
+}
+
+impl From<CovenantArg> for CovenantToken {
+    fn from(arg: CovenantArg) -> Self {
+        CovenantToken::Arg(Box::new(arg))
+    }
+}
+
+impl From<CovenantFilter> for CovenantToken {
+    fn from(filter: CovenantFilter) -> Self {
+        CovenantToken::Filter(filter)
     }
 }
 

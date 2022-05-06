@@ -42,11 +42,11 @@ use tari_comms::{
     peer_manager::{IdentitySignature, PeerFeatures},
     tor::TorIdentity,
 };
-use tari_crypto::tari_utilities::{
+use tari_key_manager::cipher_seed::CipherSeed;
+use tari_utilities::{
     hex::{from_hex, Hex},
     message_format::MessageFormat,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::time::Instant;
 
 use crate::{
@@ -768,9 +768,9 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::tari_utilities::hex::Hex;
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
+    use tari_utilities::hex::Hex;
     use tempfile::tempdir;
 
     use crate::storage::{

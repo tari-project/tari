@@ -33,7 +33,7 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
     transactions::{transaction_components::UnblindedOutput, CryptoFactories},
 };
-use tari_crypto::tari_utilities::Hashable;
+use tari_utilities::Hashable;
 
 use crate::helpers::{
     block_builders::{chain_block_with_new_coinbase, find_header_with_achieved_difficulty},

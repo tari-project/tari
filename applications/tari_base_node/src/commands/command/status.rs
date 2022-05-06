@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::consts;
 use tari_comms::connectivity::ConnectivitySelection;
@@ -66,7 +66,10 @@ impl CommandContext {
             .get_header(height)
             .await?
             .ok_or_else(|| anyhow!("No last header"))?;
-        let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
+        let last_block_time = DateTime::<Utc>::from_utc(
+            NaiveDateTime::from_timestamp(last_header.header().timestamp.as_u64() as i64, 0),
+            Utc,
+        );
         status_line.add_field(
             "Tip",
             format!(

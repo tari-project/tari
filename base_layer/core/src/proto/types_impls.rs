@@ -31,7 +31,7 @@ use tari_common_types::types::{
     PublicKey,
     Signature,
 };
-use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
 

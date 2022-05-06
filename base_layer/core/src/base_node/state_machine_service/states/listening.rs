@@ -30,7 +30,7 @@ use log::*;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
 use crate::{
