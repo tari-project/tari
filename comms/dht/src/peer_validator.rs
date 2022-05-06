@@ -88,11 +88,14 @@ impl<'a> PeerValidator<'a> {
                         .map(|i| i.updated_at())
                         .expect("unreachable panic");
 
-                    // Update if new_peer has newer timestamp than current_peer
+                    // Update if new_peer has newer timestamp than current_peer, and if the newer timestamp is after the
+                    // added date
                     current_peer
                         .identity_signature
                         .as_ref()
-                        .map(|i| i.updated_at() < new_dt)
+                        .map(|i| i.updated_at() < new_dt && (
+                            !current_peer.is_seed() ||
+                            current_peer.added_at < new_dt.naive_utc()))
                         // If None, update to peer with valid signature
                         .unwrap_or(true)
                 };
