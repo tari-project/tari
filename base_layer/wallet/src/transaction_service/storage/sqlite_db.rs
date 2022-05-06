@@ -222,6 +222,7 @@ impl TransactionServiceSqliteDatabase {
 }
 
 impl TransactionBackend for TransactionServiceSqliteDatabase {
+    #[allow(clippy::too_many_lines)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -2173,6 +2174,7 @@ mod test {
     };
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_crud() {
         let factories = CryptoFactories::default();
         let db_name = format!("{}.sqlite3", string(8).as_str());
@@ -2779,6 +2781,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_customized_transactional_queries() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();

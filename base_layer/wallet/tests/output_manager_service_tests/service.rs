@@ -125,6 +125,7 @@ struct TestOmsService<U> {
 }
 
 #[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_lines)]
 async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyManagerBackend + 'static>(
     backend: T,
     ks_backend: U,
@@ -533,8 +534,9 @@ async fn test_utxo_selection_no_chain_metadata() {
     }
 }
 
-#[allow(clippy::identity_op)]
 #[tokio::test]
+#[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 async fn test_utxo_selection_with_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -1286,6 +1288,7 @@ async fn handle_coinbase() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_txo_validation() {
     let factories = CryptoFactories::default();
 
@@ -1844,6 +1847,7 @@ async fn test_txo_validation() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_txo_revalidation() {
     let factories = CryptoFactories::default();
 

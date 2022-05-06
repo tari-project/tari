@@ -5450,13 +5450,13 @@ fn broadcast_all_completed_transactions_on_startup() {
             tokio::select! {
                 event = event_stream.recv() => {
                     if let TransactionEvent::TransactionBroadcast(tx_id) = (*event.unwrap()).clone() {
-                        if tx_id == TxId::from(1u64) {
+                        if tx_id == 1u64 {
                             found1 = true
                         }
-                        if tx_id == TxId::from(2u64) {
+                        if tx_id == 2u64 {
                             found2 = true
                         }
-                        if tx_id == TxId::from(3u64) {
+                        if tx_id == 3u64 {
                             found3 = true
                         }
                         if found1 && found3 {

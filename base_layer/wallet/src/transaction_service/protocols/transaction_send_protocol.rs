@@ -258,6 +258,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn initial_send_transaction(
         &mut self,
         mut sender_protocol: SenderTransactionProtocol,
@@ -374,6 +375,7 @@ where
         Ok(transaction_status)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn wait_for_reply(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         // Waiting  for Transaction Reply
         let tx_id = self.id;
@@ -665,6 +667,7 @@ where
     /// the transaction will be cancelled.
     /// # Argumentswallet_sync_with_base_node
     /// `msg`: The transaction data message to be sent
+    #[allow(clippy::too_many_lines)]
     async fn send_transaction_direct(
         &mut self,
         msg: SingleRoundSenderData,

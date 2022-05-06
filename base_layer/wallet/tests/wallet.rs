@@ -214,6 +214,7 @@ async fn create_wallet(
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_wallet() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
@@ -529,6 +530,7 @@ fn test_many_iterations_store_and_forward_send_tx() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_store_and_forward_send_tx() {
     let shutdown_a = Shutdown::new();
     let shutdown_c = Shutdown::new();
@@ -812,6 +814,7 @@ async fn test_recovery_birthday() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_contacts_service_liveness() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();

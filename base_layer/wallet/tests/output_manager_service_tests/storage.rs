@@ -40,7 +40,7 @@ use tokio::runtime::Runtime;
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
-#[allow(clippy::same_item_push)]
+#[allow(clippy::too_many_lines)]
 pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let runtime = Runtime::new().unwrap();
 

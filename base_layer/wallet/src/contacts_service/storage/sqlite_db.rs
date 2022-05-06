@@ -231,6 +231,7 @@ impl TryFrom<ContactSql> for Contact {
 }
 
 /// Conversion from a Contact to the Sql datatype form
+#[allow(clippy::cast_possible_wrap)]
 impl From<Contact> for ContactSql {
     fn from(o: Contact) -> Self {
         Self {

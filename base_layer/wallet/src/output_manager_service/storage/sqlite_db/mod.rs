@@ -143,6 +143,7 @@ impl OutputManagerSqliteDatabase {
 
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
     #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
