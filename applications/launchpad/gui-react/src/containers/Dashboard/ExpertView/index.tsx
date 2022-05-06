@@ -10,6 +10,7 @@ import ExpandIcon from '../../../styles/Icons/Monitor'
 import CollapseIcon from '../../../styles/Icons/Grid'
 import t from '../../../locales'
 
+import Containers from './Containers'
 import { TabsContainer, ExpertBox } from './styles'
 
 const ExpertView = () => {
@@ -39,7 +40,7 @@ const ExpertView = () => {
       case 'PERFORMANCE':
         return <p style={{ color: 'white' }}>performance tab</p>
       case 'CONTAINERS':
-        return <p style={{ color: 'white' }}>containers tab</p>
+        return <Containers />
       case 'LOGS':
         return <p style={{ color: 'white' }}>logs tab</p>
       default:
@@ -72,7 +73,7 @@ const ExpertView = () => {
           </Button>
         )}
       </TabsContainer>
-      <ExpertBox>{renderPage()}</ExpertBox>
+      {renderPage()}
     </ExpertBox>
   )
 }

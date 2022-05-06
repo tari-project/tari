@@ -15,6 +15,7 @@ import { TagContainer, IconWrapper } from './styles'
  * @prop {'info' | 'running' | 'warning' | 'expert' | 'light'} [type] - tag types to determine color settings
  * @prop {ReactNode} [icon] - optional SVG icon
  * @prop {ReactNode} [subText] - optional additional tag text
+ * @prop {boolean} [inverted] - optional prop indicating whether tag should be rendered in inverted coloring
  *
  * @example
  * <Tag type='running' style={extraStyles} icon={<someIconComponent/>} subText='Mainnet'>
@@ -29,6 +30,7 @@ const Tag = ({
   variant = 'small',
   icon,
   subText,
+  inverted,
 }: TagProps) => {
   const theme = useTheme()
 
@@ -38,10 +40,12 @@ const Tag = ({
   switch (type) {
     case 'running':
       baseStyle = {
-        backgroundColor: theme.on,
+        backgroundColor: inverted
+          ? theme.transparent(theme.onText, 40)
+          : theme.on,
       }
       textStyle = {
-        color: theme.onText,
+        color: inverted ? theme.inverted.accentSecondary : theme.onText,
       }
       break
     case 'warning':
@@ -112,11 +116,7 @@ const Tag = ({
     </>
   )
   return (
-    <TagContainer
-      style={baseStyle}
-      variant={variant}
-      data-testid='tag-component'
-    >
+    <TagContainer style={baseStyle} data-testid='tag-component'>
       {tagContent}
     </TagContainer>
   )
