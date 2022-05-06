@@ -120,19 +120,20 @@ A fraud proof consists of an UTXO in the base layer. It MUST have the `fraud_pro
 | `contract_id`                      | Keccak 256 hash         | Immutable contract ID, calculated as a hash of the contract's definition fields|
 | `checkpoint_block_height`          | `u64`                   | Needed for fast access by the base layer nodes in fraud proof validation |
 | `checkpoint_unique_id`             | `u64`                   | Unique identifier of the checkpoint being challenged |
+| `initial_view_state`               | ?                       | The full state of the template execution in the previous checkpoint
 | `instructions`                     | `Vec<Instruction>`      | A vector containing all the ordered instructions that happened since the previous checkpoint of the one being challenged |
 | `challenger_public_key`            | Public key              | Ristretto's public key of the challenger VN |
 
 The fraud proof UTXO MUST stake at least the minimum amount of Tari specified in the contract constitution, the same amount as the checkpoint. It will only be unlocked to be spent if the base layer validates the fraud proof as correct.
 
-The size of the `instructions` field could be potentially huge. After the fraud proof is considered either correct or incorrect by the base layer, the UTXO will be spent so all the instruction data could be pruned from the blockchain.
+The size of the `initial_view_state` and the `instructions` field could be potentially huge. After the fraud proof is considered either correct or incorrect by the base layer, the UTXO will be spent so all that data could be pruned from the blockchain.
 
-We left out the potentially correct view state or merkle root from the fraud proof. As the base layer MUST recalculate it anyway, and we are only interested in if it matches with the merkle root of the challenged checkpoint, there is no point in including it in the fraud proof.
+We left out the potentially correct view state or merkle root from the fraud proof. As the base layer MUST recalculate it anyway, and we are only interested in if it matches with the merkle root of the challenged checkpoint, there is no point in including it in the fraud proof. Applying all the `instructions` to the `initial_view_state` should get us the correct view state of the challenged checkpoint.
 
 Also, the checkpoint transaction MUST contain a valid signature of the challenger.
 
 #### Open questions:
-* With the proposed approach, all the instructions need to be stored in the fraud proof, on-chain. To avoid making it too costly, an off-chain decentralized storage solution could be implemented to make fraud proofs only include references to the raw data, but the base layer must implement a protocol to retrieve and check that off-chain data. 
+* With the proposed approach, all the view state and the instructions need to be stored in the fraud proof, on-chain. To avoid making it too costly, an off-chain decentralized storage solution could be implemented to make fraud proofs only include references to the raw data, but the base layer must implement a protocol to retrieve and check that off-chain data. 
 * The proposal assumes that the fraud proofs are non-interactive, that means the whole work done since the last checkpoint must be redone in the base layer to determine if a checkpoint is fraudulent or not. Non-interactive fraud proofs are the simplest implementation. There are also more sophisticated protocols that make fraud proof interactive, meaning that both the challenger and the challenged parties collaborate to create a fraud proof with only the individual disputed instructions to be checked by the base layer.
 
 ### Validating fraud proofs
@@ -142,15 +143,16 @@ The validation of fraud proofs MUST be done by base layer, to leverage the secur
 To determine if a fraud proof is valid, the base layer MUST check, in order, that:
 1. The signature in the proof UTXO matches the specified public key.
 2. The challenge window for the checkpoint has not expired yet.
-3. The initial state in the proof corresponds to the previous checkpoint to the one being challenged. It needs to retrieve all the raw view data provided in the fraud proof, calculate the hash and compare it to the one included in the previous checkpoint.
-4. The instructions in the proof corresponds to the ones in the challenged checkpoint. It needs to retrieve all the raw instruction data provided in the fraud proof, calculate the merkle tree root and compare it with the one in the challenged checkpoint.
-5. The final view does not match the one in the challenged checkpoint. To do that, the base layer must apply ALL the instructions to the initial view to calculate the final view, calculate the hash of that final view and compare it to the one being provided in the checkpoint.
+3. The `initial_view_state` in the proof corresponds to the previous checkpoint to the one being challenged. It needs to retrieve all the raw view data provided in the fraud proof, calculate the hash and compare it to the one included in the previous checkpoint.
+4. The `instructions` in the proof corresponds to the ones in the challenged checkpoint. It needs to retrieve all the raw instruction data provided in the fraud proof, calculate the merkle tree root and compare it with the one in the challenged checkpoint.
+5. The final view does not match the one in the challenged checkpoint. To check that, the base layer must apply ALL the instructions to the initial view to calculate the final view, calculate the hash of that final view and compare it to the one being provided in the checkpoint.
 
 If all the previous checks are valid the fraud proof is considered valid and the challenged checkpoint is considered fraudulent. Otherwise, if any of the checks are invalid, the fraud proof is considered invalid and the checkpoint is still valid.
 
 Note that it's not needed to check if a checkpoint was already considered fraudulent in the past. This is because the UTXO of a fraudulent checkpoint will be spent by the successful challenger.
 
 #### Open questions:
+* How are templates and instructions going to be implemented? This is a heavy dependency for optimistic rollups, as all the computations MUST be deterministic to be reproduced in a fraud proof.
 * Currently, the base layer does not have the tools to reproduce the computations being done in the side-chains. This requires the base layer to be able to execute template code when a `fraud_proof` output flag is present in a transaction. This is a huge extension to the base layer. An alternative could be to move the validation off-chain (as some implementations do), in this case to a wider set of VNs outside the contract VNC, with the proper economical incentives.
 * How do we handle the dispute over the instructions themselves? Instructions could be signed by the user emitting them, so fake instructions can be checked, but there is the case of a challenger claiming that a checkpoint censored or reordered one or more instructions. This last case is not possible to verify in the base layer with the current proposal. Many implementations of optimistic rollups rely on the instructions being stored on-chain to solve this.
 
