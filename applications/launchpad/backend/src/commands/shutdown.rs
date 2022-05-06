@@ -31,9 +31,8 @@ use crate::commands::AppState;
 // Return a Result until https://github.com/tauri-apps/tauri/issues/2533 is fixed
 pub async fn shutdown(state: State<'_, AppState>) -> Result<String, ()> {
     info!("Shutting down");
-    let docker = state.docker_handle().await;
     let mut workspaces = state.workspaces.write().await;
-    let msg = match workspaces.shutdown(&docker).await {
+    let msg = match workspaces.shutdown().await {
         Ok(()) => {
             info!("Docker has shut down");
             "Docker has shut down"

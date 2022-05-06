@@ -65,7 +65,7 @@ pub async fn start_service(
     
     info!("starting docker container for {}", service_name);
     let _ = service::create_workspace(app.clone(), settings.clone()).await;
-    let workspace = configure_workspace(app.clone(), "default").await.unwrap();
+    let workspace = configure_workspace(app.clone(), settings.tari_network.as_str()).await.unwrap();
 
     let app1 = app.clone();
     let app2 = app.clone();
@@ -96,9 +96,8 @@ pub async fn start_service(
 /// Then, deletes the container.
 /// Returns the container id
 #[tauri::command]
-pub async fn stop_service( app: AppHandle<Wry>, service_name: String) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    service::stop_service_impl(state, service_name).await.map_err(|e| e.to_string())
+pub async fn stop_service(service_name: String) -> Result<(), String> {
+    service::stop_service_impl(service_name).await.map_err(|e| e.to_string())
 }
 
 

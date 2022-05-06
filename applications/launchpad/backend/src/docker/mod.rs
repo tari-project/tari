@@ -48,6 +48,7 @@ pub use settings::{
 };
 pub use workspace::{TariWorkspace, Workspaces};
 pub use wrapper::DockerWrapper;
+pub use container::{add_container, change_container_status, container_state, remove_container};
 
 lazy_static! {
     pub static ref DOCKER_INSTANCE: Docker = Docker::connect_with_local_defaults().unwrap();

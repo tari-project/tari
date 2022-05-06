@@ -45,13 +45,13 @@ use tari_app_utilities::identity_management::setup_node_identity;
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
 use super::CONTAINERS;
-use crate::docker::{
+use crate::{docker::{
     models::{ContainerId, ContainerState},
     DockerWrapperError,
     ImageType,
     LaunchpadConfig,
     LogMessage, container::{add_container, change_container_status},
-};
+}, commands::stop_containers};
 
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
 static DEFAULT_TAG: &str = "latest";
@@ -105,10 +105,10 @@ impl Workspaces {
 
     /// Gracefully shut down the docker images and delete them
     /// The volumes are kept, since if we restart, we don't want to re-sync the entire blockchain again
-    pub async fn shutdown(&mut self, docker: &Docker) -> Result<(), DockerWrapperError> {
-        for (name, system) in &mut self.workspaces {
+    pub async fn shutdown(&mut self) -> Result<(), DockerWrapperError> {
+        for (name, _system) in &mut self.workspaces {
             info!("Shutting down {}", name);
-            system.stop_containers(true, docker).await;
+            stop_containers(true).await;
         }
         Ok(())
     }
@@ -441,39 +441,6 @@ impl TariWorkspace {
         }
         // TODO - add monerod support
         images
-    }
-
-    /// Stop the container with the given `name` and optionally delete it
-    pub async fn stop_container(&mut self, name: &str, delete: bool, docker: &Docker) {
-        let about_to_delete = CONTAINERS.write().unwrap().remove(name);
-        if about_to_delete.is_some() {
-            let container = about_to_delete.unwrap();
-            let id = container.id();
-            let options = StopContainerOptions { t: 0 };
-            match docker.stop_container(id.as_str(), Some(options)).await {
-                Ok(_res) => {
-                    info!("Container {} stopped", id);
-                    if !delete {
-                        let updated = ContainerState::new(container.name().to_string().clone(),
-                            id.clone(),
-                            container.info().clone());
-                        add_container(name, updated);
-                    }
-                },
-                Err(err) => {
-                    warn!("Could not stop container {} due to {}", id, err.to_string());
-                },
-            }
-        }
-    }
-
-    /// Stop all running containers and optionally delete them
-    pub async fn stop_containers(&mut self, delete: bool, docker: &Docker) {
-        let names = CONTAINERS.read().unwrap().keys().cloned().collect::<Vec<String>>();
-        for name in names {
-            // Stop the container immediately
-            self.stop_container(name.as_str(), delete, docker).await;
-        }
     }
 
     /// Returns the network name

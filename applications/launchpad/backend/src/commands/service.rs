@@ -21,10 +21,19 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
+use std::{collections::HashMap, convert::TryFrom, path::PathBuf, time::Duration};
 
 use bollard::{
-    container::{LogsOptions, Stats, StatsOptions},
+    container::{
+        Config,
+        CreateContainerOptions,
+        LogsOptions,
+        NetworkingConfig,
+        Stats,
+        StatsOptions,
+        StopContainerOptions,
+    },
+    models::{EndpointSettings, HostConfig},
     Docker,
 };
 use derivative::Derivative;
@@ -37,10 +46,15 @@ use crate::{
     commands::{create_workspace::copy_config_file, AppState},
     docker::{
         self,
+        add_container,
+        change_container_status,
+        container_state,
         create_workspace_folders,
         helpers::{create_password, process_stream},
+        remove_container,
         BaseNodeConfig,
         ContainerId,
+        ContainerState,
         DockerWrapperError,
         ImageType,
         LaunchpadConfig,
@@ -158,12 +172,12 @@ pub async fn create_default_workspace(app: AppHandle<Wry>, settings: ServiceSett
 }
 
 async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<bool, LauncherError> {
-    let config = LaunchpadConfig::try_from(settings)?;
+    let config = LaunchpadConfig::try_from(settings.clone())?;
     let state = app.state::<AppState>();
     let app_config = app.config();
     let should_create_workspace = {
         let wrapper = state.workspaces.read().await;
-        !wrapper.workspace_exists("default")
+        !wrapper.workspace_exists(settings.tari_network.as_str())
     }; // drop read-only lock
     if should_create_workspace {
         let package_info = &state.package_info;
@@ -172,7 +186,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "config.toml")?;
         // Only get a write-lock if we need one
         let mut wrapper = state.workspaces.write().await;
-        wrapper.create_workspace("default", config)?;
+        wrapper.create_workspace(settings.tari_network.as_str(), config)?;
     }
     Ok(should_create_workspace)
 }
@@ -190,8 +204,6 @@ where
     FunSendErr: Fn(String, String) -> Result<(), tauri::Error> + std::marker::Send + Clone,
 {
     debug!("Starting {} service", service_name);
-    let registry = workspace.config().registry.clone();
-    let tag = workspace.config().tag.clone();
 
     let ids = workspace.create_or_load_identities().unwrap();
     for id in ids.values() {
@@ -199,58 +211,55 @@ where
     }
 
     let image = ImageType::try_from(service_name.as_str()).unwrap();
-    let mut wrk1 = workspace.clone();
-    let _container_name = wrk1
-        .start_service(image, registry, tag, DOCKER_INSTANCE.clone())
+    let config = workspace.config().clone();
+    start_container(&service_name, image, config)
         .await
-        .unwrap();
+        .map_err(|e| {
+            let error = e.chained_message();
+            error!("{}", error);
+            error
+        })?;
 
-    let found_state = match CONTAINERS.try_read().unwrap().get(service_name.as_str()){
-        Some(reference) => Some((*reference).to_owned()),
-        None => None,
+    let container_state = container_state(&service_name)
+    .map_err(|e| {
+        let error = e.chained_message();
+        error!("{}", error);
+        error
+    })?;
+    let stats_events_name = stats_event_name(container_state.id());
+    let log_events_name = log_event_name(container_state.name());
+    info!("==> stats_events_name: {}", stats_events_name);
+    info!("==> log_events_name: {}", log_events_name);
+    let log_error_destination = format!("{}_error", log_events_name.clone());
+    let stats_error_destination = format!("{}_error", stats_events_name.clone());
+
+    container_logs(
+        send_logs,
+        send_err.clone(),
+        container_state.id().clone().as_str(),
+        log_events_name.clone(),
+        log_error_destination,
+        DOCKER_INSTANCE.clone(),
+    );
+
+    container_statistic(
+        send_stat,
+        send_err,
+        stats_events_name.as_str(),
+        container_state.id().clone().as_str(),
+        stats_error_destination.clone(),
+        DOCKER_INSTANCE.clone(),
+    );
+    // Collect data for the return object
+    let result = StartServiceResult {
+        name: service_name,
+        id: container_state.id().clone().to_string(),
+        action: "unimplemented".to_string(),
+        log_events_name,
+        stats_events_name,
     };
-    
-    if found_state.is_some() {
-        
-        let container_state = found_state.unwrap();
-        let stats_events_name = stats_event_name(container_state.id());
-        let log_events_name = log_event_name(container_state.name());
-        info!("==> stats_events_name: {}", stats_events_name);
-        info!("==> log_events_name: {}", log_events_name);
-        let log_error_destination = format!("{}_error", log_events_name.clone());
-        let stats_error_destination = format!("{}_error", stats_events_name.clone());
-        
-        container_logs(
-            send_logs,
-            send_err.clone(),
-            container_state.id().clone().as_str(),
-            log_events_name.clone(),
-            log_error_destination,
-            DOCKER_INSTANCE.clone(),
-        );
-
-        container_statistic(
-            send_stat,
-            send_err,
-            stats_events_name.as_str(),
-            container_state.id().clone().as_str(),
-            stats_error_destination.clone(),
-            DOCKER_INSTANCE.clone(),
-        );
-        // Collect data for the return object
-        let result = StartServiceResult {
-            name: service_name,
-            id: container_state.id().clone().to_string(),
-            action: "unimplemented".to_string(),
-            log_events_name,
-            stats_events_name,
-        };
-        info!("Tari service {} has launched", image.container_name());
-        Ok(result)
-    } else {
-        Err(DockerWrapperError::ContainerNotFound(format!("Container {} is not found", service_name)).to_string())
-    }
-    
+    info!("Tari service {} has launched", image.container_name());
+    Ok(result)
 }
 
 fn container_statistic<FM: 'static, FE: 'static>(
@@ -283,11 +292,11 @@ fn container_statistic<FM: 'static, FE: 'static>(
 pub async fn create_workspace(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<(), LauncherError> {
     let state = app.state::<AppState>();
     let docker = state.docker_handle().await;
-    let _ = create_default_workspace_impl(app.clone(), settings).await?;
+    let _ = create_default_workspace_impl(app.clone(), settings.clone()).await?;
     let mut wrapper = state.workspaces.write().await;
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper
-        .get_workspace_mut("default")
+        .get_workspace_mut(settings.tari_network.as_str())
         .ok_or(DockerWrapperError::UnexpectedError)?;
     // Check the identity requirements for the service
     let ids = workspace.create_or_load_identities()?;
@@ -372,15 +381,108 @@ fn container_stats(
     }
 }
 
-pub async fn stop_service_impl(state: State<'_, AppState>, service_name: String) -> Result<(), LauncherError> {
-    let mut wrapper = state.workspaces.write().await;
-    debug!("Stopping {} service", service_name);
-    // We've just checked this, so it should never fail:
-    let workspace: &mut TariWorkspace = wrapper
-        .get_workspace_mut("default")
-        .ok_or_else(|| DockerWrapperError::WorkspaceDoesNotExist("default".into()))?;
-    workspace
-        .stop_container(service_name.as_str(), true, &DOCKER_INSTANCE)
-        .await;
+pub async fn stop_service_impl(service_name: String) -> Result<(), LauncherError> {
+    stop_container(service_name.as_str(), true).await;
     Ok(())
+}
+
+/// Stop all running containers and optionally delete them
+pub async fn stop_containers(delete: bool) {
+    let names = CONTAINERS.read().unwrap().keys().cloned().collect::<Vec<String>>();
+    for name in names {
+        // Stop the container immediately
+        stop_container(name.as_str(), delete).await;
+    }
+}
+
+/// Stop the container with the given `name` and optionally delete it
+pub async fn stop_container(name: &str, delete: bool) {
+    if let Ok(container) = remove_container(name) {
+        let id = container.id();
+        let options = StopContainerOptions { t: 0 };
+        match &DOCKER_INSTANCE.stop_container(id.as_str(), Some(options)).await {
+            Ok(_res) => {
+                info!("Container {} stopped", id);
+                if !delete {
+                    let updated = ContainerState::new(
+                        container.name().to_string().clone(),
+                        id.clone(),
+                        container.info().clone(),
+                    );
+                    add_container(name, updated);
+                }
+            },
+            Err(err) => {
+                warn!("Could not stop container {} due to {}", id, err.to_string());
+            },
+        }
+    }
+}
+
+pub async fn start_container(
+    service_name: &str,
+    image: ImageType,
+    config: LaunchpadConfig,
+) -> Result<String, DockerWrapperError> {
+    let args = config.command(image);
+    let registry = config.clone().registry;
+    let tag = config.clone().tag;
+    let blockchain_volume = format!("{}_{}_volume", service_name, config.tari_network.lower_case());
+    let docker_network = format!("{}_network", "dibbler");
+    let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
+
+    let options = Some(CreateContainerOptions {
+        name: format!("{}_{}", service_name, image.image_name()),
+    });
+    let envars = config.environment(image);
+    let volumes = config.volumes(image);
+    let ports
+     = config.ports(image);
+    let port_map = config.port_map(image);
+    let mounts = config.mounts(image, blockchain_volume);
+    let mut endpoints = HashMap::new();
+    let endpoint = EndpointSettings {
+        aliases: Some(vec![image.container_name().to_string()]),
+        ..Default::default()
+    };
+    endpoints.insert(docker_network, endpoint);
+    let docker_config = Config::<String> {
+        image: Some(image_name.clone()),
+        attach_stdin: Some(false),
+        attach_stdout: Some(false),
+        attach_stderr: Some(false),
+        exposed_ports: Some(ports),
+        open_stdin: Some(true),
+        stdin_once: Some(false),
+        tty: Some(true),
+        env: Some(envars),
+        volumes: Some(volumes),
+        cmd: Some(args),
+        host_config: Some(HostConfig {
+            binds: Some(vec![]),
+            network_mode: Some("bridge".to_string()),
+            port_bindings: Some(port_map),
+            mounts: Some(mounts),
+            ..Default::default()
+        }),
+        networking_config: Some(NetworkingConfig {
+            endpoints_config: endpoints,
+        }),
+        ..Default::default()
+    };
+    info!("Creating {}", image_name);
+    debug!("Options: {:?}", options);
+    debug!("{} has configuration object: {:#?}", image_name, config);
+    let container = DOCKER_INSTANCE.clone().create_container(options, docker_config).await?;
+    let name = image.container_name();
+    let id = container.id.clone();
+    let id = ContainerId::from(id.clone());
+    let state = ContainerState::new(name.to_string(), id.clone(), container.clone());
+    add_container(name, state);
+    info!("Starting {}.", image_name);
+    let _ = &DOCKER_INSTANCE.start_container::<String>(id.as_str(), None).await?;
+    change_container_status(name, crate::docker::ContainerStatus::Running)?;
+    info!("{} started with id {}", image_name, id);
+
+    Ok(name.to_string())
 }

@@ -37,9 +37,9 @@ pub fn container_state(id: &str) -> Result<ContainerState, DockerWrapperError> {
     }
 }
 ///Remove the container and state.
-pub fn remove_container(id: &str) -> Result<(), DockerWrapperError> {
-    if let Some(_state) = CONTAINERS.write().unwrap().remove(id) {
-        Ok(())
+pub fn remove_container(id: &str) -> Result<ContainerState, DockerWrapperError> {
+    if let Some(state) = CONTAINERS.write().unwrap().remove(id) {
+        Ok(state)
     } else {
         Err(DockerWrapperError::ContainerNotFound(id.to_string()))
     }
@@ -71,7 +71,8 @@ fn create_get_update_and_delete_container_test() {
     let value = container_state("tor").unwrap();
     assert_eq!(ContainerStatus::Deleted, value.status());
 
-    remove_container("tor").unwrap();
+    let deleted = remove_container("tor").unwrap();
+    assert_eq!(state.name(), deleted.clone().name());
     assert!(container_state("tor").is_err());
     assert!(change_container_status("tor", ContainerStatus::Running).is_err());
     assert!(remove_container("tor").is_err());
