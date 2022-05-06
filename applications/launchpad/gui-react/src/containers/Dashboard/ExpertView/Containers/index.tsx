@@ -41,10 +41,11 @@ const Containers = ({ services }: { services: any[] }) => {
               </Tag>
             )}
           </td>
-          <td>
+          <td style={{ minWidth: '75px' }}>
             {!service.running && (
               <Button
                 variant='text'
+                loading={service.pending}
                 leftIcon={<StartIcon width='24px' height='24px' />}
                 style={{
                   paddingRight: 0,
@@ -58,6 +59,7 @@ const Containers = ({ services }: { services: any[] }) => {
             {service.running && (
               <Button
                 variant='text'
+                loading={service.pending}
                 leftIcon={
                   <StopIcon
                     width='24px'
@@ -93,9 +95,25 @@ const ContainersContainer = () => {
     {
       id: 'oiausdofiasdofiu',
       name: 'Base Node',
-      cpu: 2,
+      cpu: 113,
       memory: '12 MB',
       running: false,
+    },
+    {
+      id: 'oiauweroasidfu',
+      name: 'Wallet',
+      cpu: 3,
+      memory: '4.4 GB',
+      running: false,
+      pending: true,
+    },
+    {
+      id: 'oiauweroasidfu',
+      name: 'SHA3 miner',
+      cpu: 11,
+      memory: '1012 MB',
+      running: true,
+      pending: true,
     },
   ]
 
