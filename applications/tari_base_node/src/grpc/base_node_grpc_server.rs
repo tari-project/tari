@@ -321,6 +321,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn list_headers(
         &self,
         request: Request<tari_rpc::ListHeadersRequest>,

@@ -101,13 +101,13 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
             factories.clone(),
         ),
     );
-    let mut config = node_config.storage.clone();
+    let mut config = node_config.storage;
     config.cleanup_orphans_at_startup = true;
     let db = BlockchainDatabase::new(
         main_db,
         rules.clone(),
         validators,
-        node_config.storage.clone(),
+        node_config.storage,
         DifficultyCalculator::new(rules, randomx_factory),
     )?;
     do_recovery(db.into(), temp_db).await?;

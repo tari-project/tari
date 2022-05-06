@@ -225,7 +225,7 @@ async fn build_node_context(
         backend,
         rules.clone(),
         validators,
-        app_config.base_node.storage.clone(),
+        app_config.base_node.storage,
         DifficultyCalculator::new(rules.clone(), randomx_factory),
     )
     .map_err(|err| {
