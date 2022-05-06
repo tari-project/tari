@@ -7,6 +7,7 @@ import { AnimatedComponent, SpringValue } from 'react-spring'
  * @prop {ReactNode} children - text content to display
  * @prop {string} [color] - font color
  * @prop {CSSProperties} [style] - optional component styles
+ * @prop {'h1' | 'h2' | 'h3' | 'h4' | 'h4' | 'h5' | 'h6' | 'p' | 'span' | 'label' | AnimatedComponent<'h1' | 'h2' | 'h3' | 'h4' | 'h4' | 'h5' | 'h6' | 'p' | 'span' | 'label'> } [as] - prop controlling what component to use for text
  */
 
 export interface TextProps {

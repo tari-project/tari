@@ -7,8 +7,8 @@ export const StyledCoinsList = styled.ul<{ color?: string }>`
   margin-top: 0;
 `
 
-export const CoinsListItem = styled.li<{ loading?: boolean }>`
-  opacity: ${({ loading }) => (loading ? 0.64 : 1)};
+export const CoinsListItem = styled.li<{ $loading?: boolean }>`
+  opacity: ${({ $loading }) => ($loading ? 0.64 : 1)};
   display: flex;
   align-items: center;
 `

@@ -12,8 +12,10 @@ export interface NodeBoxProps {
   titleStyle?: CSSWithSpring
   contentStyle?: CSSWithSpring
   children?: ReactNode
+  testId?: string
 }
 
 export interface NodeBoxContentPlaceholderProps {
   children: string | ReactNode
+  testId?: string
 }
