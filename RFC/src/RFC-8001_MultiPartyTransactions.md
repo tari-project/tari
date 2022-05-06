@@ -1,8 +1,8 @@
-# RFC-xxxx/Multi-party-transactions
+# RFC-8001/MultiPartyTransactions
 
 ## Time related transactions
 
-![status: draft](/Users/schalkvanheerden/Code/tari/RFC/src/theme/images/status-draft.svg)
+![status: draft](theme/images/status-draft.svg)
 
 **Maintainer(s)**: [SW van heerden](https://github.com/SWvheerden)
 
@@ -56,11 +56,17 @@ This document describes a few extension to [MimbleWimble](MimbleWimble) to allow
 
 #### Multi Party UTXO
 
-Normal [MimbleWimble] does not have the concept of a [multisig] UTXO. The UTXO is a commitment `C(v,r) = r·G + v·H` with the value blinded. However, the blinding factor `r` can be composed of multiple blinding factors where `r = r1 + r2 + ... + rn`, as pedersen commitments are linear. 
+Normal [MimbleWimble] does not have the concept of a [multisig] UTXO. The UTXO is a commitment `C(v,r) = r·G + v·H` with
+the value blinded. However, the blinding factor `r` can be composed of multiple blinding factors where `r = r1 + r2 + ... + rn`, as Pedersen commitments are linear.
 
-The output commitment can then be constructed as `C(v,r) = r1·G + r2·G + ... + rn·G + v·H = (r1 + r2 + ... + rn)·G + v·H`. This can be exploited for multiple users where each participant has their own `ri` and keeps their private blinding factor hidden and only provides their public blinding factor.
+The output commitment can then be constructed as `C(v,r) = r1·G + r2·G + ... + rn·G + v·H = (r1 + r2 + ... + rn)·G + v·H`.
+This can be exploited for multiple users where each participant has their own `ri` and keeps their private blinding factor
+hidden and only provides their public blinding factor.
 
- The base layer is oblivious as to how the commitment and related signature were constructed. To open such commitments (in order to spend it) only the n-of-n blinding factor `r` is required, and not the original aggregated signature that was used to sign the transaction. The parties that wants to open the commitment needs to collaborate to produce the n-of-n blinding factor `r`.
+The base layer is oblivious as to how the commitment and related signature were constructed.
+To open such commitments (in order to spend it) only the n-of-n blinding factor `r` is required, and not the original
+aggregated signature that was used to sign the transaction. The parties that wants to open the commitment needs to
+collaborate to produce the n-of-n blinding factor `r`.
 
 [mimblewimble]: Glossary.md#mimblewimble
 [UTXO]: Glossary.md#unspent-transaction-outputs
