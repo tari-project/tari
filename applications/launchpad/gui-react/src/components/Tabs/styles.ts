@@ -40,7 +40,9 @@ export const Tab = styled.button<{
   transition: ease-in-out 300ms;
   &:hover {
     background-color: ${({ theme, inverted }) =>
-      inverted ? '#141414' : theme.backgroundSecondary};
+      inverted
+        ? theme.inverted.backgroundSecondary
+        : theme.backgroundSecondary};
   }
   &:last-child {
     margin-right: 0;
@@ -52,7 +54,7 @@ export const TabSelectedBorder = styled(animated.div)<{ inverted?: boolean }>`
   height: 4px;
   border-radius: 2px;
   background: ${({ theme, inverted }) =>
-    inverted ? theme.inverted.accent : theme.accent};
+    inverted ? theme.inverted.accentSecondary : theme.accent};
   bottom: 0;
 `
 

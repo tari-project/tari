@@ -56,6 +56,7 @@ declare module 'styled-components' {
       backgroundSecondary: string
       backgroundImage: string
       accent: string
+      accentSecondary: string
       accentDark: string
       disabledText: string
       tariGradient: string
