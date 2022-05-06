@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { useTheme } from 'styled-components'
 import { useSpring } from 'react-spring'
-import { useSelector } from 'react-redux'
 
+import { useAppSelector } from '../../store/hooks'
 import { selectExpertView } from '../../store/app/selectors'
 import ExpertViewUtils from '../../utils/ExpertViewUtils'
 import TitleBar from '../../components/TitleBar'
@@ -23,8 +24,9 @@ import {
  */
 const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
   const mainContainerRef = useRef(null)
+  const theme = useTheme()
 
-  const expertView = useSelector(selectExpertView)
+  const expertView = useAppSelector(selectExpertView)
 
   // Decrease the padding when the main container becomes 'small'
   const [tightSpace, setTightSpace] = useState(false)
@@ -59,8 +61,14 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
     width: expertView === 'open' ? invertedExpertViewSize : '100%',
   })
   const dashboardContainerStyle = useSpring({
-    paddingLeft: expertView === 'open' || tightSpace ? 40 : 100,
-    paddingRight: expertView === 'open' || tightSpace ? 40 : 100,
+    paddingLeft:
+      expertView === 'open' || tightSpace
+        ? theme.spacing(1.5)
+        : theme.spacing(4),
+    paddingRight:
+      expertView === 'open' || tightSpace
+        ? theme.spacing(1.5)
+        : theme.spacing(4),
   })
   const drawerContainerStyle = ExpertViewUtils.useDrawerAnim(expertViewSize)
   const drawerContentStyle = useSpring({
