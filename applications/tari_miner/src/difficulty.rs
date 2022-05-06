@@ -40,6 +40,8 @@ pub struct BlockHeaderSha3 {
 }
 
 impl BlockHeaderSha3 {
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn new(header: BlockHeader) -> Result<Self, MinerError> {
         use std::convert::TryFrom;
 
@@ -111,6 +113,7 @@ impl BlockHeaderSha3 {
         big_endian_difficulty(&hash)
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     pub fn create_header(&self) -> BlockHeader {
         let mut header = self.header.clone();
         header.timestamp = Some(prost_types::Timestamp {
@@ -141,6 +144,7 @@ pub mod test {
 
     use super::*;
 
+    #[allow(clippy::cast_sign_loss)]
     pub fn get_header() -> (BlockHeader, CoreBlockHeader) {
         let mut header = CoreBlockHeader::new(0);
         header.timestamp =
