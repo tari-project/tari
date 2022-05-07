@@ -11,8 +11,6 @@ import {
   selectState as selectBaseNodeState,
   selectStatus as selectBaseNodeStatus,
 } from '../../../../../store/baseNode/selectors'
-import { BaseNodeState } from '../../../../../store/baseNode/types'
-import { ServiceStatus } from '../../../../../store/services/types'
 import { selectState as selectWalletState } from '../../../../../store/wallet/selectors'
 import { WalletState } from '../../../../../store/wallet/types'
 
@@ -27,7 +25,7 @@ const composeNodeTabs = ({
   walletState,
 }: {
   miningNodeState?: unknown
-  baseNodeState: BaseNodeState & ServiceStatus
+  baseNodeState: { network: string; running: boolean; pending: boolean } // TODO proper state
   walletState?: WalletState
 }) => {
   const miningContent = <TabContent text={t.common.nouns.mining} />
