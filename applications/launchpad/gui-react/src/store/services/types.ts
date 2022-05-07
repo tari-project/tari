@@ -11,19 +11,22 @@ export enum Service {
   Frontail = 'frontail',
 }
 
-export type ServiceId = string
+export enum SystemEventAction {
+  Destroy = 'destroy',
+  Create = 'create',
+  Start = 'start',
+}
 
 export type ServiceDescriptor = {
-  id: ServiceId
+  id: ContainerId
   logEventsName: string
   statsEventsName: string
   name: string
 }
 
 export type ServiceStatus = {
-  id: ServiceId
-  pending: boolean
-  running: boolean
+  id: ContainerId
+  lastAction: SystemEventAction
   error?: string
   stats: {
     cpu: number
@@ -32,9 +35,17 @@ export type ServiceStatus = {
   }
 }
 
+export type ContainerId = string
+
 export type ServicesState = {
-  services: Record<string, unknown>
-  servicesStatus: Record<Service, ServiceStatus>
+  containers: Record<ContainerId, ServiceStatus>
+  services: Record<
+    Service,
+    {
+      pending: boolean
+      containerId: ContainerId
+    }
+  >
 }
 
 export interface StatsEventPayload {

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import { useAppSelector, useAppDispatch } from '../../../../store/hooks'
-import { selectState as selectServicesState } from '../../../../store/services/selectors'
+import { selectAllServicesStatuses } from '../../../../store/services/selectors'
 import { Service } from '../../../../store/services/types'
 import { actions } from '../../../../store/services'
 import t from '../../../../locales'
@@ -10,10 +10,10 @@ import Containers from './Containers'
 
 const ContainersContainer = () => {
   const dispatch = useAppDispatch()
-  const { servicesStatus } = useAppSelector(selectServicesState)
+  const allServicesStatuses = useAppSelector(selectAllServicesStatuses)
   const services = useMemo(
     () =>
-      Object.entries(servicesStatus).map(([service, status]) => ({
+      allServicesStatuses.map(({ service, status }) => ({
         id: status.id,
         service,
         name: t.common.services[service],
@@ -22,7 +22,7 @@ const ContainersContainer = () => {
         pending: status.pending,
         running: status.running,
       })),
-    [servicesStatus],
+    [allServicesStatuses],
   )
 
   const startService = (service: Service) => dispatch(actions.start(service))

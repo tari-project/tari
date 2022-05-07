@@ -9,13 +9,13 @@ import { selectServiceSettings } from '../settings/selectors'
 import { selectServiceStatus } from './selectors'
 import {
   StatsEventPayload,
-  ServiceId,
+  ContainerId,
   Service,
   ServiceDescriptor,
 } from './types'
 
 export const start = createAsyncThunk<
-  { id: ServiceId; unsubscribeStats: UnlistenFn },
+  { id: ContainerId; unsubscribeStats: UnlistenFn },
   Service,
   { state: RootState }
 >('services/start', async (service, thunkApi) => {
@@ -33,7 +33,7 @@ export const start = createAsyncThunk<
       (statsEvent: { payload: StatsEventPayload }) => {
         thunkApi.dispatch({
           type: 'services/stats',
-          payload: { service, stats: statsEvent.payload },
+          payload: { containerId: descriptor.id, stats: statsEvent.payload },
         })
       },
     )
