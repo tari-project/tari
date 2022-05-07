@@ -1,6 +1,11 @@
-import { createSlice } from '@reduxjs/toolkit'
+import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
-import { ServiceStatus, ServicesState, Service } from './types'
+import {
+  StatsEventPayload,
+  ServiceStatus,
+  ServicesState,
+  Service,
+} from './types'
 import { start, stop } from './thunks'
 
 const getInitialServiceStatus = (): ServiceStatus => ({
@@ -8,8 +13,8 @@ const getInitialServiceStatus = (): ServiceStatus => ({
   pending: false,
   running: false,
   stats: {
-    cpu: -1,
-    memory: -1,
+    cpu: 0,
+    memory: 0,
     unsubscribe: () => null,
   },
 })
@@ -31,7 +36,28 @@ export const initialState: ServicesState = {
 const servicesSlice = createSlice({
   name: 'services',
   initialState,
-  reducers: {},
+  reducers: {
+    stats: (
+      state,
+      action: PayloadAction<{ service: Service; stats: StatsEventPayload }>,
+    ) => {
+      const { stats, service } = action.payload
+
+      const cs = stats.cpu_stats
+      const pcs = stats.precpu_stats
+      const cpu_delta = cs.cpu_usage.total_usage - pcs.cpu_usage.total_usage
+      const system_cpu_delta = cs.system_cpu_usage - pcs.system_cpu_usage
+      const numCpu = cs.online_cpus
+      const cpu = (cpu_delta / system_cpu_delta) * numCpu * 100.0
+
+      state.servicesStatus[service].stats.cpu = cpu
+
+      const ms = stats.memory_stats
+      const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
+
+      state.servicesStatus[service].stats.memory = memory
+    },
+  },
   extraReducers: builder => {
     builder.addCase(start.pending, (state, { meta }) => {
       state.servicesStatus[meta.arg].pending = true
@@ -59,6 +85,8 @@ const servicesSlice = createSlice({
     builder.addCase(stop.fulfilled, (state, action) => {
       state.servicesStatus[action.meta.arg].pending = false
       state.servicesStatus[action.meta.arg].running = false
+      state.servicesStatus[action.meta.arg].stats.cpu = 0
+      state.servicesStatus[action.meta.arg].stats.memory = 0
     })
     builder.addCase(stop.rejected, (state, action) => {
       state.servicesStatus[action.meta.arg].pending = false
