@@ -10,6 +10,21 @@ import t from '../../../../locales'
 import { ContainersProps } from './types'
 import { ContainersTable, TdRight } from './styles'
 
+/**
+ * @name Containers
+ * @description Presentation component showing service containers state
+ *
+ * @prop {ServiceDto[]} services - services which status should be displayed
+ * @prop {(service: Service) => void} startService - callback for starting a service
+ * @prop {(service: Service) => void} stopService - callback for stopping a service
+ *
+ * @typedef ServiceDto
+ * @prop {Service} service - service which is described by this Dto
+ * @prop {number} cpu - % cpu usage of the service
+ * @prop {number} memory - memory in MB of the service
+ * @prop {boolean} running - indicates if service is running
+ * @prop {boolean} pending - indicates if service "running" state is about to change
+ */
 const Containers = ({
   services,
   stopService,
@@ -23,7 +38,9 @@ const Containers = ({
         {services.map(service => (
           <tr key={service.service}>
             <td>
-              <Text color={theme.inverted.primary}>{service.name}</Text>
+              <Text color={theme.inverted.primary}>
+                {t.common.services[service.service]}
+              </Text>
             </td>
             <TdRight>
               <Text color={theme.secondary} as='span'>

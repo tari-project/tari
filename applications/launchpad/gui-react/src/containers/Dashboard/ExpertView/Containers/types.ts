@@ -2,7 +2,11 @@ import { Service } from '../../../../store/services/types'
 
 type ServiceDto = {
   service: Service
-} & any
+  cpu: number
+  memory: number
+  pending: boolean
+  running: boolean
+}
 
 export type ContainersProps = {
   services: ServiceDto[]
