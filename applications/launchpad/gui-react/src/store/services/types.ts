@@ -1,12 +1,17 @@
+import type { UnlistenFn } from '@tauri-apps/api/event'
+
 export enum Service {
   Tor = 'tor',
   BaseNode = 'base_node',
   Wallet = 'wallet',
   SHA3Miner = 'sha3_miner',
   MMProxy = 'mm_proxy',
+  XMrig = 'xmrig',
+  Monerod = 'monerod',
+  Frontail = 'frontail',
 }
 
-type ServiceId = string
+export type ServiceId = string
 
 export type ServiceDescriptor = {
   id: ServiceId
@@ -20,6 +25,11 @@ export type ServiceStatus = {
   pending: boolean
   running: boolean
   error?: string
+  stats: {
+    cpu: number
+    memory: number
+    unsubscribe: UnlistenFn
+  }
 }
 
 export type ServicesState = {
