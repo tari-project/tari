@@ -1,36 +1,30 @@
 import { createSlice } from '@reduxjs/toolkit'
 
-import { ServicesState, Service } from './types'
+import { ServiceStatus, ServicesState, Service } from './types'
 import { start, stop } from './thunks'
+
+const getInitialServiceStatus = (): ServiceStatus => ({
+  id: '',
+  pending: false,
+  running: false,
+  stats: {
+    cpu: -1,
+    memory: -1,
+    unsubscribe: () => null,
+  },
+})
 
 export const initialState: ServicesState = {
   services: {},
   servicesStatus: {
-    [Service.Tor]: {
-      id: '',
-      pending: false,
-      running: false,
-    },
-    [Service.BaseNode]: {
-      id: '',
-      pending: false,
-      running: false,
-    },
-    [Service.Wallet]: {
-      id: '',
-      pending: false,
-      running: false,
-    },
-    [Service.SHA3Miner]: {
-      id: '',
-      pending: false,
-      running: false,
-    },
-    [Service.MMProxy]: {
-      id: '',
-      pending: false,
-      running: false,
-    },
+    [Service.Tor]: getInitialServiceStatus(),
+    [Service.BaseNode]: getInitialServiceStatus(),
+    [Service.Wallet]: getInitialServiceStatus(),
+    [Service.SHA3Miner]: getInitialServiceStatus(),
+    [Service.MMProxy]: getInitialServiceStatus(),
+    [Service.XMrig]: getInitialServiceStatus(),
+    [Service.Monerod]: getInitialServiceStatus(),
+    [Service.Frontail]: getInitialServiceStatus(),
   },
 }
 
@@ -44,10 +38,11 @@ const servicesSlice = createSlice({
       state.servicesStatus[meta.arg].error = undefined
     })
     builder.addCase(start.fulfilled, (state, action) => {
-      state.servicesStatus[action.payload.service].pending = false
-      state.servicesStatus[action.payload.service].running = true
-      state.servicesStatus[action.payload.service].id =
-        action.payload.descriptor.id
+      state.servicesStatus[action.meta.arg].pending = false
+      state.servicesStatus[action.meta.arg].running = true
+      state.servicesStatus[action.meta.arg].id = action.payload.id
+      state.servicesStatus[action.meta.arg].stats.unsubscribe =
+        action.payload.unsubscribeStats
     })
     builder.addCase(start.rejected, (state, action) => {
       state.servicesStatus[action.meta.arg].pending = false
