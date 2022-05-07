@@ -1,6 +1,6 @@
 import styled, { CSSProperties } from 'styled-components'
 
-export const TagContainer = styled.div<{ variant?: string }>`
+export const TagContainer = styled.div`
   display: flex;
   flex-direction: row;
   justify-content: center;
@@ -16,7 +16,6 @@ export const TagContainer = styled.div<{ variant?: string }>`
 export const IconWrapper = styled.div<{
   type?: string
   textStyle?: CSSProperties
-  baseStyle?: CSSProperties
 }>`
   display: flex;
   align-items: center;

@@ -13,6 +13,8 @@ const withShared = (theme: Record<string, unknown>): DefaultTheme =>
     spacing: (count = 1) => `${count * SPACING}px`,
     spacingVertical: (count = 1) => `${count * (0.54 * SPACING)}px`,
     spacingHorizontal: (count = 1) => `${count * SPACING}px`,
+    transparent: (color: string, transparency: number) =>
+      `${color}${Math.round((transparency / 100) * 256).toString(16)}`,
     tabsMarginRight: 32,
   } as DefaultTheme)
 

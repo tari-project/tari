@@ -14,7 +14,7 @@ export const MainLayoutContainer = styled.div`
   flex: 1;
   top: 0;
   bottom: 0;
-  borderradius: 10px;
+  border-radius: 10px;
   overflow: hidden;
 `
 
@@ -23,7 +23,7 @@ export const MainContainer = styled(animated.div)`
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  padding-top: 60px;
+  padding-top: ${({ theme }) => theme.spacing(2.5)};
 `
 
 export const ExpertViewBackgroundOverlay = styled(animated.div)`
@@ -43,6 +43,6 @@ export const ExpertViewDrawer = styled(animated.div)`
   overflow: hidden;
   padding-left: 10px;
   padding-right: 10px;
-  padding-top: 60px;
+  padding-top: ${({ theme }) => theme.spacing(2.5)};
   box-sizing: border-box;
 `
