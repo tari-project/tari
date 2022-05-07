@@ -7,7 +7,12 @@ import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 
 import { selectServiceStatus } from './selectors'
-import { ServiceId, Service, ServiceDescriptor } from './types'
+import {
+  StatsEventPayload,
+  ServiceId,
+  Service,
+  ServiceDescriptor,
+} from './types'
 
 export const start = createAsyncThunk<
   { id: ServiceId; unsubscribeStats: UnlistenFn },
@@ -23,9 +28,15 @@ export const start = createAsyncThunk<
       settings,
     })
 
-    const unsubscribe = await listen(descriptor.statsEventsName, statsEvent => {
-      console.log(statsEvent)
-    })
+    const unsubscribe = await listen(
+      descriptor.statsEventsName,
+      (statsEvent: { payload: StatsEventPayload }) => {
+        thunkApi.dispatch({
+          type: 'services/stats',
+          payload: { service, stats: statsEvent.payload },
+        })
+      },
+    )
 
     return {
       id: descriptor.id,

@@ -27,7 +27,7 @@ const Containers = ({
             </td>
             <TdRight>
               <Text color={theme.secondary} as='span'>
-                {service.cpu}%
+                {service.cpu.toFixed(2)}%
               </Text>{' '}
               <Text color={theme.secondary} as='span' type='smallMedium'>
                 {t.common.nouns.cpu}
@@ -35,7 +35,7 @@ const Containers = ({
             </TdRight>
             <TdRight>
               <Text color={theme.secondary} as='span'>
-                {service.memory}
+                {service.memory.toFixed(2)} MB
               </Text>{' '}
               <Text color={theme.secondary} as='span' type='smallMedium'>
                 {t.common.nouns.memory}
