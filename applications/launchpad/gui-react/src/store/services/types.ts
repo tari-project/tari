@@ -24,10 +24,19 @@ export type ServiceDescriptor = {
   name: string
 }
 
-export type ServiceStatus = {
-  id: ContainerId
+export type ContainerStatus = {
   lastAction: SystemEventAction
   error?: string
+  stats: {
+    cpu: number
+    memory: number
+    unsubscribe: UnlistenFn
+  }
+}
+
+export type ServiceStatus = {
+  running: boolean
+  pending: boolean
   stats: {
     cpu: number
     memory: number
@@ -38,7 +47,7 @@ export type ServiceStatus = {
 export type ContainerId = string
 
 export type ServicesState = {
-  containers: Record<ContainerId, ServiceStatus>
+  containers: Record<ContainerId, ContainerStatus>
   services: Record<
     Service,
     {

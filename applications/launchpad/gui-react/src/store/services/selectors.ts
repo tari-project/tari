@@ -1,35 +1,35 @@
 import { RootState } from '../'
 
-import { Service, SystemEventAction } from './types'
+import { ServiceStatus, Service, SystemEventAction } from './types'
 
 export const selectState = (rootState: RootState) => rootState.services
 
-export const selectServiceStatus =
-  (service: Service) => (rootState: RootState) => {
+type ServiceStatusSelector = (s: Service) => (r: RootState) => ServiceStatus
+export const selectServiceStatus: ServiceStatusSelector =
+  service => rootState => {
     const serviceState = rootState.services.services[service]
 
     if (!serviceState.containerId) {
       return {
         running: false,
         pending: serviceState.pending,
-        id: '',
         stats: {
           cpu: 0,
           memory: 0,
-          unsubscribe: () => null,
+          unsubscribe: () => undefined,
         },
       }
     }
 
-    const containerStatus =
+    const { lastAction, ...containerStatus } =
       rootState.services.containers[serviceState.containerId]
 
     return {
       ...containerStatus,
       pending:
         serviceState.pending ||
-        (containerStatus.lastAction !== SystemEventAction.Start &&
-          containerStatus.lastAction !== SystemEventAction.Destroy),
+        (lastAction !== SystemEventAction.Start &&
+          lastAction !== SystemEventAction.Destroy),
       running: true,
     }
   }
