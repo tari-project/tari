@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 import {
   StatsEventPayload,
-  ServiceStatus,
+  ContainerStatus,
   ServicesState,
   ContainerId,
   Service,
@@ -12,8 +12,7 @@ import { start, stop } from './thunks'
 
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
-): ServiceStatus => ({
-  id: '',
+): ContainerStatus => ({
   lastAction,
   stats: {
     cpu: 0,
@@ -87,7 +86,7 @@ const servicesSlice = createSlice({
           state.containers[action.payload.containerId].stats.cpu = 0
           state.containers[action.payload.containerId].stats.unsubscribe() // case for container destroyed outside of our application
           state.containers[action.payload.containerId].stats.unsubscribe = () =>
-            null
+            undefined
           if (service) {
             state.services[service as Service].containerId = ''
           }
