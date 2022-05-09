@@ -408,10 +408,11 @@ Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount) {
 });
 
 Then(/(.*) has at least (\d+) peers/, async function (nodeName, peerCount) {
-  await sleep(500);
   const client = this.getClient(nodeName);
-  const peers = await client.getPeers();
-  expect(peers.length).to.be.greaterThanOrEqual(peerCount);
+  await waitForPredicate(async () => {
+    const peers = await client.getPeers();
+    return peers.length >= peerCount;
+  }, 10 * 1000);
 });
 
 When("I print the world", function () {
