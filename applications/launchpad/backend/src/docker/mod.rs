@@ -24,7 +24,9 @@ mod container;
 mod error;
 mod filesystem;
 mod models;
+mod network;
 mod settings;
+mod volume;
 mod workspace;
 mod wrapper;
 
@@ -46,8 +48,11 @@ pub use settings::{
     DEFAULT_MINING_ADDRESS,
     DEFAULT_MONEROD_URL,
 };
-pub use workspace::{TariWorkspace, Workspaces};
+pub use workspace::{TariWorkspace, Workspaces, 
+    images_to_start, create_or_load_identities};
 pub use wrapper::DockerWrapper;
+pub use network::{connect_to_network, try_create_network, network_name};
+pub use volume::tari_blockchain_volume_name;
 pub use container::{add_container, change_container_status, container_state, remove_container};
 
 lazy_static! {

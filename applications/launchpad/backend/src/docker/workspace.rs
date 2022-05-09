@@ -45,13 +45,18 @@ use tari_app_utilities::identity_management::setup_node_identity;
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
 use super::CONTAINERS;
-use crate::{docker::{
-    models::{ContainerId, ContainerState},
-    DockerWrapperError,
-    ImageType,
-    LaunchpadConfig,
-    LogMessage, container::{add_container, change_container_status},
-}, commands::stop_containers};
+use crate::{
+    commands::stop_containers,
+    docker::{
+        container::{add_container, change_container_status},
+        models::{ContainerId, ContainerState},
+        DockerWrapperError,
+        ImageType,
+        LaunchpadConfig,
+        LogMessage,
+        DOCKER_INSTANCE,
+    },
+};
 
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
 static DEFAULT_TAG: &str = "latest";
@@ -103,15 +108,6 @@ impl Workspaces {
         Ok(())
     }
 
-    /// Gracefully shut down the docker images and delete them
-    /// The volumes are kept, since if we restart, we don't want to re-sync the entire blockchain again
-    pub async fn shutdown(&mut self) -> Result<(), DockerWrapperError> {
-        for (name, _system) in &mut self.workspaces {
-            info!("Shutting down {}", name);
-            stop_containers(true).await;
-        }
-        Ok(())
-    }
 }
 
 /// A TariWorkspace is a configuration of docker images (node, wallet, miner etc), configuration files and secrets,
@@ -229,329 +225,66 @@ impl TariWorkspace {
         format!("{}-{}", label, platform)
     }
 
-    /// Starts the Tari workspace recipe.
-    ///
-    /// This is an MVP / PoC version that starts everything in one go, but TODO, should really take some sort of recipe
-    /// object to allow us to build up different recipes (wallet only, full miner, SHA3-mining only etc)
-    pub async fn start_recipe(&mut self, docker: Docker) -> Result<(), DockerWrapperError> {
-        // Create or load identities
-        let _ids = self.create_or_load_identities()?;
-        // Set up the local network
-        if !self.network_exists(&docker).await? {
-            self.create_network(&docker).await?;
-        }
-        // Create or restart the volume
 
-        let registry = self.config.registry.clone();
-        let tag = self.config.tag.clone();
-        for image in self.images_to_start() {
-            // Start each container
-            let name = self
-                .start_service(image, registry.clone(), tag.clone(), docker.clone())
-                .await?;
-            info!(
-                "Docker container {} ({}) successfully started",
-                image.image_name(),
-                name
-            );
-        }
-        Ok(())
+}
+
+
+
+
+// helper function for start recipe. This will be overhauled to be more flexible in future
+pub fn images_to_start(config: LaunchpadConfig) -> Vec<ImageType> {
+    let mut images = Vec::with_capacity(6);
+    // Always use Tor for now
+    images.push(ImageType::Tor);
+    if config.base_node.is_some() {
+        images.push(ImageType::BaseNode);
     }
-
-    /// Bootstraps a node identity for the container, typically a base node or wallet instance. If an identity file
-    /// already exists at the canonical path location, it is loaded and returned instead.
-    ///
-    /// The canonical path is defined as `{root_path}/{image_type}/config/{network}/{image_type}_id.json`
-    pub fn create_or_load_identity(
-        &self,
-        root_path: &str,
-        image: ImageType,
-    ) -> Result<Option<NodeIdentity>, DockerWrapperError> {
-        if let Some(id_file_path) = self.config.id_path(root_path, image) {
-            debug!("Loading or creating identity file {}", id_file_path.to_string_lossy());
-            let id = setup_node_identity(id_file_path, None, true, PeerFeatures::COMMUNICATION_NODE)?
-                .as_ref()
-                .clone();
-            Ok(Some(id))
-        } else {
-            Ok(None)
-        }
+    if config.wallet.is_some() {
+        images.push(ImageType::Wallet);
     }
-
-    /// A convenience method that calls [create_or_load_identity] for each image type.
-    pub fn create_or_load_identities(&self) -> Result<HashMap<ImageType, NodeIdentity>, DockerWrapperError> {
-        let root_path = self.config.data_directory.to_string_lossy().to_string();
-        let mut ids = HashMap::new();
-        for image in ImageType::iter() {
-            if let Some(id) = self.create_or_load_identity(root_path.as_str(), image)? {
-                let _node_identity = ids.insert(image, id);
-            }
-        }
-        Ok(ids)
+    if config.xmrig.is_some() {
+        images.push(ImageType::XmRig);
     }
-
-    /// Create and return a [`Stream`] of [`LogMessage`] instances for the `name`d container in the workspace.  
-    pub fn logs(
-        &self,
-        container_name: &str,
-        docker: Docker,
-    ) -> Option<impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
-        let options = LogsOptions::<String> {
-            follow: true,
-            stdout: true,
-            stderr: true,
-            ..Default::default()
-        };
-        CONTAINERS
-        .read()
-        .unwrap()
-        .get(container_name)
-        .map(move |container| {
-            let id = container.id();
-            docker
-                .logs(id.as_str(), Some(options))
-                .map(|log| log.map(LogMessage::from).map_err(DockerWrapperError::from))
-        })
+    if config.sha3_miner.is_some() {
+        images.push(ImageType::Sha3Miner);
     }
+    if config.mm_proxy.is_some() {
+        images.push(ImageType::MmProxy);
+    }
+    // TODO - add monerod support
+    images
+}
 
-    /// Returns a [`Stream`] of resource stats for the container `name`, if it exists
-    pub fn resource_stats(
-        &self,
-        name: &str,
-        docker: Docker,
-    ) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
-        if let Some(container) = CONTAINERS.read().unwrap().get(name) {
-            let options = StatsOptions {
-                stream: true,
-                one_shot: false,
-            };
-            let id = container.id();
-            let stream = docker
-                .stats(id.as_str(), Some(options))
-                .map_err(DockerWrapperError::from);
-            Some(stream)
-        } else {
-            None
+
+/// Bootstraps a node identity for the container, typically a base node or wallet instance. If an identity file
+/// already exists at the canonical path location, it is loaded and returned instead.
+///
+/// The canonical path is defined as `{root_path}/{image_type}/config/{network}/{image_type}_id.json`
+pub fn create_or_load_identity(
+    config: LaunchpadConfig,
+    root_path: &str,
+    image: ImageType,
+) -> Result<Option<NodeIdentity>, DockerWrapperError> {
+    if let Some(id_file_path) = config.id_path(root_path, image) {
+        debug!("Loading or creating identity file {}", id_file_path.to_string_lossy());
+        let id = setup_node_identity(id_file_path, None, true, PeerFeatures::COMMUNICATION_NODE)?
+            .as_ref()
+            .clone();
+        Ok(Some(id))
+    } else {
+        Ok(None)
+    }
+}
+/// A convenience method that calls [create_or_load_identity] for each image type.
+pub fn create_or_load_identities(
+    config: LaunchpadConfig,
+) -> Result<HashMap<ImageType, NodeIdentity>, DockerWrapperError> {
+    let root_path = config.data_directory.to_string_lossy().to_string();
+    let mut ids = HashMap::new();
+    for image in ImageType::iter() {
+        if let Some(id) = create_or_load_identity(config.clone(), root_path.as_str(), image)? {
+            let _node_identity = ids.insert(image, id);
         }
     }
-
-    /// Create and run a docker container.
-    ///
-    /// ## Arguments
-    /// * `image`: The type of image to start. See [`ImageType`].
-    /// * `registry`: An optional docker registry path to use. The default is `quay.io/tarilabs`
-    /// * `tag`: The image tag to use. The default is `latest`.
-    /// * `docker`: a [`Docker`] instance.
-    ///
-    /// ## Return
-    ///
-    /// The method returns a future that resolves to a [`DockerWrapperError`] on an error, or the container name on
-    /// success.
-    ///
-    /// `start_service` creates a new docker container and runs it. As part of this process,
-    /// * it pulls configuration data from the [`LaunchConfig`] instance attached to this [`DockerWRapper`] to construct
-    ///   the Environment, Volume configuration, and exposed Port configuration.
-    /// * creates a new container
-    /// * starts the container
-    /// * adds the container reference to the current list of containers being managed
-    /// * Returns the container name
-    pub async fn start_service(
-        &mut self,
-        image: ImageType,
-        registry: Option<String>,
-        tag: Option<String>,
-        docker: Docker,
-    ) -> Result<String, DockerWrapperError> {
-        let args = self.config.command(image);
-        let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
-        let options = Some(CreateContainerOptions {
-            name: format!("{}_{}", self.name, image.image_name()),
-        });
-        let envars = self.config.environment(image);
-        let volumes = self.config.volumes(image);
-        let ports = self.config.ports(image);
-        let port_map = self.config.port_map(image);
-        let mounts = self.config.mounts(image, self.tari_blockchain_volume_name());
-        let mut endpoints = HashMap::new();
-        let endpoint = EndpointSettings {
-            aliases: Some(vec![image.container_name().to_string()]),
-            ..Default::default()
-        };
-        endpoints.insert(self.network_name(), endpoint);
-        let config = Config::<String> {
-            image: Some(image_name.clone()),
-            attach_stdin: Some(false),
-            attach_stdout: Some(false),
-            attach_stderr: Some(false),
-            exposed_ports: Some(ports),
-            open_stdin: Some(true),
-            stdin_once: Some(false),
-            tty: Some(true),
-            env: Some(envars),
-            volumes: Some(volumes),
-            cmd: Some(args),
-            host_config: Some(HostConfig {
-                binds: Some(vec![]),
-                network_mode: Some("bridge".to_string()),
-                port_bindings: Some(port_map),
-                mounts: Some(mounts),
-                ..Default::default()
-            }),
-            networking_config: Some(NetworkingConfig {
-                endpoints_config: endpoints,
-            }),
-            ..Default::default()
-        };
-        info!("Creating {}", image_name);
-        debug!("Options: {:?}", options);
-        debug!("{} has configuration object: {:#?}", image_name, config);
-        let container = docker.create_container(options, config).await?;
-        let name = image.container_name();
-        let id = container.id.clone();
-        let id = ContainerId::from(id.clone());
-        let state = ContainerState::new(name.to_string(), id.clone(), container);
-        add_container(name, state);
-        info!("Starting {}.", image_name);
-        docker.start_container::<String>(id.as_str(), None).await?;
-        change_container_status(name, crate::docker::ContainerStatus::Running)?;
-        info!("{} started with id {}", image_name, id);
-
-        Ok(name.to_string())
-    }
-
-    // helper function for start recipe. This will be overhauled to be more flexible in future
-    fn images_to_start(&self) -> Vec<ImageType> {
-        let mut images = Vec::with_capacity(6);
-        // Always use Tor for now
-        images.push(ImageType::Tor);
-        if self.config.base_node.is_some() {
-            images.push(ImageType::BaseNode);
-        }
-        if self.config.wallet.is_some() {
-            images.push(ImageType::Wallet);
-        }
-        if self.config.xmrig.is_some() {
-            images.push(ImageType::XmRig);
-        }
-        if self.config.sha3_miner.is_some() {
-            images.push(ImageType::Sha3Miner);
-        }
-        if self.config.mm_proxy.is_some() {
-            images.push(ImageType::MmProxy);
-        }
-        // TODO - add monerod support
-        images
-    }
-
-    /// Returns the network name
-    pub fn network_name(&self) -> String {
-        format!("{}_network", self.name)
-    }
-
-    /// Returns the name of the volume holding blockchain data. Currently this is namespaced to the workspace. We might
-    /// want to change this to be shareable across networks, i.e. only namespace across the network type.
-    pub fn tari_blockchain_volume_name(&self) -> String {
-        format!("{}_{}_volume", self.name, self.config.tari_network.lower_case())
-    }
-
-    /// Checks if the network for this docker configuration exists
-    pub async fn network_exists(&self, docker: &Docker) -> Result<bool, DockerWrapperError> {
-        let name = self.network_name();
-        let options = InspectNetworkOptions {
-            verbose: false,
-            scope: "local",
-        };
-        let network = docker.inspect_network(name.as_str(), Some(options)).await;
-        // hardcore pattern matching yo!
-        if let Ok(Network {
-            name: Some(name),
-            id: Some(id),
-            ..
-        }) = network
-        {
-            info!("Network {} (id:{}) exists", name, id);
-            Ok(true)
-        } else {
-            info!("Network {} does not exist", name);
-            Ok(false)
-        }
-    }
-
-    /// Create a network in docker to allow the containers in this workspace to communicate with each other.
-    pub async fn create_network(&self, docker: &Docker) -> Result<(), DockerWrapperError> {
-        let name = self.network_name();
-        let options = CreateNetworkOptions {
-            name: name.as_str(),
-            check_duplicate: true,
-            driver: "bridge",
-            internal: false,
-            attachable: false,
-            ingress: false,
-            ipam: Default::default(),
-            enable_ipv6: false,
-            options: Default::default(),
-            labels: Default::default(),
-        };
-        let res = docker.create_network(options).await?;
-        if let Some(id) = &res.id {
-            info!("Network {} (id:{}) created", name, id);
-        }
-        if let Some(warn) = res.warning {
-            warn!("Creating {} network had warnings: {}", name, warn);
-        }
-        Ok(())
-    }
-
-    /// Checks whether the blockchain data volume exists
-    pub async fn volume_exists(&self, docker: &Docker) -> Result<bool, DockerWrapperError> {
-        let name = self.tari_blockchain_volume_name();
-        let volume = docker.inspect_volume(name.as_str()).await?;
-        trace!("Volume {} exists at {}", name, volume.mountpoint);
-        Ok(true)
-    }
-
-    /// Tries to create a new blockchain data volume for this workspace.
-    pub async fn create_volume(&self, docker: &Docker) -> Result<(), DockerWrapperError> {
-        let name = self.tari_blockchain_volume_name();
-        let config = CreateVolumeOptions {
-            name,
-            driver: "local".to_string(),
-            ..Default::default()
-        };
-        let volume = docker.create_volume(config).await?;
-        info!("Docker volume {} created at {}", volume.name, volume.mountpoint);
-        Ok(())
-    }
-
-    /// Connects a container to the workspace network. This is not typically needed, since the container will
-    /// automatically be connected to the network when it is created in [`start_service`].
-    pub async fn connect_to_network(
-        &self,
-        id: &ContainerId,
-        image: ImageType,
-        docker: &Docker,
-    ) -> Result<(), DockerWrapperError> {
-        let network = self.network_name();
-        let options = ConnectNetworkOptions {
-            container: id.as_str(),
-            endpoint_config: EndpointSettings {
-                aliases: Some(vec![image.container_name().to_string()]),
-                ..Default::default()
-            },
-        };
-        info!(
-            "Connecting container {} ({}) to network {}...",
-            image.image_name(),
-            id,
-            network
-        );
-        docker.connect_network(network.as_str(), options).await?;
-        info!(
-            "Docker container {} ({}) connected to network {}",
-            image.image_name(),
-            id,
-            network
-        );
-        Ok(())
-    }
+    Ok(ids)
 }

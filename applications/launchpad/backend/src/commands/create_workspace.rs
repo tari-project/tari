@@ -37,7 +37,10 @@ use tauri::{
     Wry,
 };
 
-use crate::{commands::AppState, docker::{create_workspace_folders, TariWorkspace, DockerWrapperError, DOCKER_INSTANCE}, error::LauncherError};
+use crate::{commands::AppState, 
+    docker::{create_workspace_folders, TariWorkspace, DockerWrapperError, DOCKER_INSTANCE, try_create_network, create_or_load_identities}, error::LauncherError};
+
+use super::network;
 
 /// Create a new workspace environment by creating a folder hierarchy (if required) at the `root_folder`, and copying
 /// the default config files into it.
@@ -61,19 +64,20 @@ pub async fn configure_workspace (app: AppHandle<Wry>, name: &str) -> Result<Tar
     let state = app.state::<AppState>();
     let wrapper = state
     .workspaces.write().await;
+    info!("creating workspace: {}", name);
     // We've just checked this, so it should never fail:
     let workspace= wrapper
         .get_workspace(name)
         .ok_or(DockerWrapperError::UnexpectedError)?;
     // Check the identity requirements for the service
-    let ids = workspace.create_or_load_identities().unwrap();
+    let launchpad_config =  workspace.config().clone();
+    info!("workspace: {:?} config", &launchpad_config);
+    let ids = create_or_load_identities(launchpad_config.clone()).unwrap();
     for id in ids.values() {
-        debug!("Identity loaded: {}", id);
+        info!("Identity loaded: {}", id);
     }
     // Check network requirements for the service
-    if !workspace.network_exists(&DOCKER_INSTANCE).await.is_ok() {
-        workspace.create_network(&DOCKER_INSTANCE).await.unwrap();
-    }
+   try_create_network(launchpad_config.tari_network.lower_case()).await?;
 
     Ok(workspace.clone())
 }

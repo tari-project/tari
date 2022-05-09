@@ -17,8 +17,8 @@ use super::{
     AppState,
 };
 use crate::{
-    commands::{service::{start_service_impl, self}, create_workspace::{self, configure_workspace}},
-    docker::{ImageType, LogMessage, TariNetwork, Workspaces, TariWorkspace, DockerWrapperError, DOCKER_INSTANCE},
+    commands::{service::{start_service_impl, self}, create_workspace::{self, configure_workspace}, DEFAULT_WORKSPACE},
+    docker::{ImageType, LogMessage, TariNetwork, Workspaces, TariWorkspace, DockerWrapperError, DOCKER_INSTANCE, create_or_load_identities},
     error::LauncherError,
 };
 
@@ -65,7 +65,7 @@ pub async fn start_service(
     
     info!("starting docker container for {}", service_name);
     let _ = service::create_workspace(app.clone(), settings.clone()).await;
-    let workspace = configure_workspace(app.clone(), settings.tari_network.as_str()).await.unwrap();
+    let workspace = configure_workspace(app.clone(), DEFAULT_WORKSPACE).await.unwrap();
 
     let app1 = app.clone();
     let app2 = app.clone();
@@ -83,8 +83,7 @@ pub async fn start_service(
     let send_err = 
         move |destination: String, msg: String| 
             send_tauri_message::<String>(app2.clone(), destination, msg);
-
-
+    
     start_service_impl(send_msg, send_stats, send_err, service_name, workspace)
         .await.map_err(|_|"ooppss...Do not panic! Something went very very wrong...".to_string())
     
@@ -107,6 +106,6 @@ pub fn send_tauri_message<P: Debug + Clone + Serialize>(
     event: String,
     payload: P,
 ) -> Result<(), tauri::Error> {
-    debug!("sending: {:?} to {}", payload, event.clone());
+    debug!("sending: {:?} to {}", payload, event);
     app.emit_all(event.as_str(), payload)
 }

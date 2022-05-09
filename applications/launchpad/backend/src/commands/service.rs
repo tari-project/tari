@@ -51,10 +51,12 @@ use crate::{
         container_state,
         create_workspace_folders,
         helpers::{create_password, process_stream},
+        images_to_start,
         remove_container,
         BaseNodeConfig,
         ContainerId,
         ContainerState,
+        ContainerStatus,
         DockerWrapperError,
         ImageType,
         LaunchpadConfig,
@@ -68,10 +70,12 @@ use crate::{
         CONTAINERS,
         DEFAULT_MINING_ADDRESS,
         DEFAULT_MONEROD_URL,
-        DOCKER_INSTANCE,
+        DOCKER_INSTANCE, create_or_load_identities, try_create_network, network_name, tari_blockchain_volume_name,
     },
     error::LauncherError,
 };
+
+use super::DEFAULT_WORKSPACE;
 
 /// "Global" settings from the launcher front-end
 #[derive(Clone, Derivative, Deserialize)]
@@ -177,7 +181,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
     let app_config = app.config();
     let should_create_workspace = {
         let wrapper = state.workspaces.read().await;
-        !wrapper.workspace_exists(settings.tari_network.as_str())
+        !wrapper.workspace_exists(DEFAULT_WORKSPACE)
     }; // drop read-only lock
     if should_create_workspace {
         let package_info = &state.package_info;
@@ -186,7 +190,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "config.toml")?;
         // Only get a write-lock if we need one
         let mut wrapper = state.workspaces.write().await;
-        wrapper.create_workspace(settings.tari_network.as_str(), config)?;
+        wrapper.create_workspace(DEFAULT_WORKSPACE, config)?;
     }
     Ok(should_create_workspace)
 }
@@ -204,24 +208,15 @@ where
     FunSendErr: Fn(String, String) -> Result<(), tauri::Error> + std::marker::Send + Clone,
 {
     debug!("Starting {} service", service_name);
-
-    let ids = workspace.create_or_load_identities().unwrap();
-    for id in ids.values() {
-        info!("@@@ Identity loaded: {}", id);
-    }
-
     let image = ImageType::try_from(service_name.as_str()).unwrap();
     let config = workspace.config().clone();
-    start_container(&service_name, image, config)
-        .await
-        .map_err(|e| {
-            let error = e.chained_message();
-            error!("{}", error);
-            error
-        })?;
+    start_container(image, config).await.map_err(|e| {
+        let error = e.chained_message();
+        error!("{}", error);
+        error
+    })?;
 
-    let container_state = container_state(&service_name)
-    .map_err(|e| {
+    let container_state = container_state(&service_name).map_err(|e| {
         let error = e.chained_message();
         error!("{}", error);
         error
@@ -230,8 +225,8 @@ where
     let log_events_name = log_event_name(container_state.name());
     info!("==> stats_events_name: {}", stats_events_name);
     info!("==> log_events_name: {}", log_events_name);
-    let log_error_destination = format!("{}_error", log_events_name.clone());
-    let stats_error_destination = format!("{}_error", stats_events_name.clone());
+    let log_error_destination = format!("{}_error", log_events_name);
+    let stats_error_destination = format!("{}_error", stats_events_name);
 
     container_logs(
         send_logs,
@@ -247,7 +242,7 @@ where
         send_err,
         stats_events_name.as_str(),
         container_state.id().clone().as_str(),
-        stats_error_destination.clone(),
+        stats_error_destination,
         DOCKER_INSTANCE.clone(),
     );
     // Collect data for the return object
@@ -291,25 +286,20 @@ fn container_statistic<FM: 'static, FE: 'static>(
 
 pub async fn create_workspace(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<(), LauncherError> {
     let state = app.state::<AppState>();
-    let docker = state.docker_handle().await;
+    
     let _ = create_default_workspace_impl(app.clone(), settings.clone()).await?;
     let mut wrapper = state.workspaces.write().await;
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper
         .get_workspace_mut(settings.tari_network.as_str())
         .ok_or(DockerWrapperError::UnexpectedError)?;
+    let launchpad_config =  workspace.config().clone();   
     // Check the identity requirements for the service
-    let ids = workspace.create_or_load_identities()?;
+    let ids = create_or_load_identities(launchpad_config.clone())?;
     for id in ids.values() {
         debug!("Identity loaded: {}", id);
     }
-    // Check network requirements for the service
-    if !workspace.network_exists(&docker).await? {
-        workspace.create_network(&docker).await?;
-    }
-    // Launch the container
-    let _registry = workspace.config().registry.clone();
-    let _tag = workspace.config().tag.clone();
+    try_create_network(launchpad_config.tari_network.lower_case()).await?;
     Ok(())
 }
 
@@ -349,50 +339,29 @@ fn container_logs<FM: 'static, FE: 'static>(
     info!("Resource logs events configured.");
 }
 
-fn container_stats(
-    app: AppHandle<Wry>,
-    event_name: &str,
-    container_name: &str,
-    docker: Docker,
-    workspace: &mut TariWorkspace,
-) {
-    info!("Setting up Resource stats events for {}", container_name);
-    if let Some(mut stream) = workspace.resource_stats(container_name, docker) {
-        let event_name = event_name.to_string();
-        tauri::async_runtime::spawn(async move {
-            while let Some(message) = stream.next().await {
-                trace!("log event: {:?}", message);
-                let emit_result = match message {
-                    Ok(payload) => app.emit_all(event_name.as_str(), payload),
-                    Err(err) => app.emit_all(format!("{}_error", event_name).as_str(), err.chained_message()),
-                };
-                if let Err(err) = emit_result {
-                    warn!("Error emitting event: {}", err.to_string());
-                }
-            }
-            info!("Resource stats stream for {} has closed.", event_name);
-        });
-        info!("Resource stats events configured.");
-    } else {
-        info!(
-            "Resource stats events could not be configured: {} is not a running container",
-            container_name
-        );
-    }
-}
-
 pub async fn stop_service_impl(service_name: String) -> Result<(), LauncherError> {
     stop_container(service_name.as_str(), true).await;
     Ok(())
 }
 
 /// Stop all running containers and optionally delete them
-pub async fn stop_containers(delete: bool) {
-    let names = CONTAINERS.read().unwrap().keys().cloned().collect::<Vec<String>>();
-    for name in names {
+pub async fn stop_containers(delete: bool) -> Result<(), DockerWrapperError> {
+    let names: Vec<String> = CONTAINERS
+        .read()
+        .unwrap()
+        .clone()
+        .into_iter()
+        .filter(|(_k, v)| ((*v).clone()).status() == ContainerStatus::Running)
+        .map(|(k, _v)| k)
+        .collect();
+
+    info!("Stopping containers: [{:?}] ...", &names);
+    for name in names.clone() {
         // Stop the container immediately
+        info!("Stopping container: {} ...", name);
         stop_container(name.as_str(), delete).await;
     }
+    Ok(())
 }
 
 /// Stop the container with the given `name` and optionally delete it
@@ -405,7 +374,7 @@ pub async fn stop_container(name: &str, delete: bool) {
                 info!("Container {} stopped", id);
                 if !delete {
                     let updated = ContainerState::new(
-                        container.name().to_string().clone(),
+                        container.name().to_string(),
                         id.clone(),
                         container.info().clone(),
                     );
@@ -419,25 +388,44 @@ pub async fn stop_container(name: &str, delete: bool) {
     }
 }
 
+ /// Create and run a docker container.
+    ///
+    /// ## Arguments
+    /// * `image`: The type of image to start. See [`ImageType`].
+    /// * `registry`: An optional docker registry path to use. The default is `quay.io/tarilabs`
+    /// * `tag`: The image tag to use. The default is `latest`.
+    /// * `docker`: a [`Docker`] instance.
+    ///
+    /// ## Return
+    ///
+    /// The method returns a future that resolves to a [`DockerWrapperError`] on an error, or the container name on
+    /// success.
+    ///
+    /// `start_service` creates a new docker container and runs it. As part of this process,
+    /// * it pulls configuration data from the [`LaunchConfig`] instance attached to this [`DockerWRapper`] to construct
+    ///   the Environment, Volume configuration, and exposed Port configuration.
+    /// * creates a new container
+    /// * starts the container
+    /// * adds the container reference to the current list of containers being managed
+    /// * Returns the container name
 pub async fn start_container(
-    service_name: &str,
     image: ImageType,
     config: LaunchpadConfig,
 ) -> Result<String, DockerWrapperError> {
     let args = config.command(image);
     let registry = config.clone().registry;
     let tag = config.clone().tag;
-    let blockchain_volume = format!("{}_{}_volume", service_name, config.tari_network.lower_case());
-    let docker_network = format!("{}_network", "dibbler");
+    let tari_network = config.tari_network.lower_case();
+    let blockchain_volume = tari_blockchain_volume_name(DEFAULT_WORKSPACE, tari_network);
+    let docker_network = network_name(tari_network);
     let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
 
     let options = Some(CreateContainerOptions {
-        name: format!("{}_{}", service_name, image.image_name()),
+        name: format!("{}_{}", image.container_name(), image.image_name()),
     });
     let envars = config.environment(image);
     let volumes = config.volumes(image);
-    let ports
-     = config.ports(image);
+    let ports = config.ports(image);
     let port_map = config.port_map(image);
     let mounts = config.mounts(image, blockchain_volume);
     let mut endpoints = HashMap::new();
@@ -485,4 +473,21 @@ pub async fn start_container(
     info!("{} started with id {}", image_name, id);
 
     Ok(name.to_string())
+}
+
+pub async fn start_recipe(config: LaunchpadConfig) -> Result<(), DockerWrapperError> {
+    // Set up the local network
+    try_create_network(config.tari_network.lower_case()).await?;
+    // Create or restart the volume
+
+    for image in images_to_start(config.clone()) {
+        // Start each container
+        let name = start_container(image, config.clone()).await?;
+        info!(
+            "Docker container {} ({}) successfully started",
+            image.image_name(),
+            name
+        );
+    }
+    Ok(())
 }

@@ -24,15 +24,15 @@
 use log::*;
 use tauri::State;
 
-use crate::commands::AppState;
+use crate::commands::{AppState, stop_containers};
 
 /// Gracefully shutdown all containers and delete them. Blockchain volumes are preserved.
 #[tauri::command]
 // Return a Result until https://github.com/tauri-apps/tauri/issues/2533 is fixed
 pub async fn shutdown(state: State<'_, AppState>) -> Result<String, ()> {
     info!("Shutting down");
-    let mut workspaces = state.workspaces.write().await;
-    let msg = match workspaces.shutdown().await {
+    let _workspaces = state.workspaces.read().await;
+    let msg = match stop_containers(true).await {
         Ok(()) => {
             info!("Docker has shut down");
             "Docker has shut down"

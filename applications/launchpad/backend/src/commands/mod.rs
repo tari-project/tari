@@ -47,3 +47,5 @@ pub use service::stop_containers;
 pub use service::create_default_workspace;
 pub use shutdown::shutdown;
 pub use state::AppState;
+
+pub const DEFAULT_WORKSPACE: &str = "default";

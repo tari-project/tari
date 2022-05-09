@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::{
-    commands::AppState,
+    commands::{AppState, service::start_recipe},
     docker::{
         helpers::create_password,
         BaseNodeConfig,
@@ -169,7 +169,6 @@ async fn launch_docker_impl(
 ) -> Result<(), LauncherError> {
     debug!("Starting docker launch sequence");
     let state = app.state::<AppState>();
-    let docker = state.docker_handle().await;
     let should_create_workspace = {
         let wrapper = state.workspaces.read().await;
         !wrapper.workspace_exists(name.as_str())
@@ -190,7 +189,8 @@ async fn launch_docker_impl(
             .get_workspace_mut(name.as_str())
             .ok_or(DockerWrapperError::UnexpectedError)?;
         // Pipe docker container logs to Tauri using namespaced events
-        workspace.start_recipe(docker.clone()).await?;
+        let launchpad_config = (*workspace.config()).clone();
+       start_recipe(launchpad_config).await?;
     } // Drop write lock
     info!("Tari system, {} has launched", name);
     Ok(())
