@@ -1,18 +1,26 @@
 import { createAsyncThunk } from '@reduxjs/toolkit'
 import { invoke } from '@tauri-apps/api/tauri'
+import type { UnlistenFn } from '@tauri-apps/api/event'
+import { listen } from '@tauri-apps/api/event'
 
 import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 
-import { Service, ServiceDescriptor } from './types'
+import { selectServiceStatus } from './selectors'
+import {
+  StatsEventPayload,
+  ContainerId,
+  Service,
+  ServiceDescriptor,
+} from './types'
 
 export const start = createAsyncThunk<
-  { service: Service; descriptor: ServiceDescriptor },
+  { id: ContainerId; unsubscribeStats: UnlistenFn },
   Service,
   { state: RootState }
->('services/start', async (service, thunkAPI) => {
+>('services/start', async (service, thunkApi) => {
   try {
-    const rootState = thunkAPI.getState()
+    const rootState = thunkApi.getState()
     const settings = selectServiceSettings(rootState)
 
     const descriptor: ServiceDescriptor = await invoke('start_service', {
@@ -20,24 +28,38 @@ export const start = createAsyncThunk<
       settings,
     })
 
+    const unsubscribe = await listen(
+      descriptor.statsEventsName,
+      (statsEvent: { payload: StatsEventPayload }) => {
+        thunkApi.dispatch({
+          type: 'services/stats',
+          payload: { containerId: descriptor.id, stats: statsEvent.payload },
+        })
+      },
+    )
+
     return {
-      service,
-      descriptor,
+      id: descriptor.id,
+      unsubscribeStats: unsubscribe,
     }
   } catch (error) {
-    return thunkAPI.rejectWithValue(error)
+    return thunkApi.rejectWithValue(error)
   }
 })
 
-export const stop = createAsyncThunk<void, Service>(
+export const stop = createAsyncThunk<void, Service, { state: RootState }>(
   'services/stop',
-  async (service, thunkAPI) => {
+  async (service, thunkApi) => {
     try {
+      const rootState = thunkApi.getState()
+      const serviceStatus = selectServiceStatus(service)(rootState)
+
+      serviceStatus.stats.unsubscribe()
       await invoke('stop_service', {
         serviceName: service.toString(),
       })
     } catch (error) {
-      return thunkAPI.rejectWithValue(error)
+      return thunkApi.rejectWithValue(error)
     }
   },
 )

@@ -1,40 +1,37 @@
+import { useMemo } from 'react'
+
+import { useAppSelector, useAppDispatch } from '../../../../store/hooks'
+import { selectAllServicesStatuses } from '../../../../store/services/selectors'
+import { Service } from '../../../../store/services/types'
+import { actions } from '../../../../store/services'
+
 import Containers from './Containers'
 
 const ContainersContainer = () => {
-  const services = [
-    {
-      id: 'asdflksajdflkasjdf',
-      name: 'Tor',
-      cpu: 1.2,
-      memory: '8 MB',
-      running: true,
-    },
-    {
-      id: 'oiausdofiasdofiu',
-      name: 'Base Node',
-      cpu: 113,
-      memory: '12 MB',
-      running: false,
-    },
-    {
-      id: 'oiauweroasidfu',
-      name: 'Wallet',
-      cpu: 3,
-      memory: '4.4 GB',
-      running: false,
-      pending: true,
-    },
-    {
-      id: 'oiauweroasidfu',
-      name: 'SHA3 miner',
-      cpu: 11,
-      memory: '1012 MB',
-      running: true,
-      pending: true,
-    },
-  ]
+  const dispatch = useAppDispatch()
+  const allServicesStatuses = useAppSelector(selectAllServicesStatuses)
+  const services = useMemo(
+    () =>
+      allServicesStatuses.map(({ service, status }) => ({
+        service: service as Service,
+        cpu: status.stats.cpu,
+        memory: status.stats.memory,
+        pending: status.pending,
+        running: status.running,
+      })),
+    [allServicesStatuses],
+  )
 
-  return <Containers services={services} />
+  const startService = (service: Service) => dispatch(actions.start(service))
+  const stopService = (service: Service) => dispatch(actions.stop(service))
+
+  return (
+    <Containers
+      services={services}
+      stopService={stopService}
+      startService={startService}
+    />
+  )
 }
 
 export default ContainersContainer

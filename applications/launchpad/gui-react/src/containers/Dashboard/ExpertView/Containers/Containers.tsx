@@ -7,80 +7,105 @@ import StopIcon from '../../../../styles/Icons/TurnOff'
 import StartIcon from '../../../../styles/Icons/Play'
 import t from '../../../../locales'
 
-import { ServiceDto } from './types'
+import { ContainersProps } from './types'
 import { ContainersTable, TdRight } from './styles'
 
-const Containers = ({ services }: { services: ServiceDto[] }) => {
+/**
+ * @name Containers
+ * @description Presentation component showing service containers state
+ *
+ * @prop {ServiceDto[]} services - services which status should be displayed
+ * @prop {(service: Service) => void} startService - callback for starting a service
+ * @prop {(service: Service) => void} stopService - callback for stopping a service
+ *
+ * @typedef ServiceDto
+ * @prop {Service} service - service which is described by this Dto
+ * @prop {number} cpu - % cpu usage of the service
+ * @prop {number} memory - memory in MB of the service
+ * @prop {boolean} running - indicates if service is running
+ * @prop {boolean} pending - indicates if service "running" state is about to change
+ */
+const Containers = ({
+  services,
+  stopService,
+  startService,
+}: ContainersProps) => {
   const theme = useTheme()
 
   return (
     <ContainersTable>
-      {services.map(service => (
-        <tr key={service.id}>
-          <td>
-            <Text color={theme.inverted.primary}>{service.name}</Text>
-          </td>
-          <TdRight>
-            <Text color={theme.secondary} as='span'>
-              {service.cpu}%
-            </Text>{' '}
-            <Text color={theme.secondary} as='span' type='smallMedium'>
-              {t.common.nouns.cpu}
-            </Text>
-          </TdRight>
-          <TdRight>
-            <Text color={theme.secondary} as='span'>
-              {service.memory}
-            </Text>{' '}
-            <Text color={theme.secondary} as='span' type='smallMedium'>
-              {t.common.nouns.memory}
-            </Text>
-          </TdRight>
-          <td>
-            {service.running && (
-              <Tag type='running' inverted style={{ margin: '0 auto' }}>
-                {t.common.adjectives.running}
-              </Tag>
-            )}
-          </td>
-          <td style={{ minWidth: '75px' }}>
-            {!service.running && (
-              <Button
-                variant='text'
-                loading={service.pending}
-                leftIcon={<StartIcon width='24px' height='24px' />}
-                style={{
-                  paddingRight: 0,
-                  paddingLeft: 0,
-                  color: theme.inverted.accentSecondary,
-                }}
-              >
-                {t.common.verbs.start}
-              </Button>
-            )}
-            {service.running && (
-              <Button
-                variant='text'
-                loading={service.pending}
-                leftIcon={
-                  <StopIcon
-                    width='24px'
-                    height='24px'
-                    style={{ color: theme.secondary }}
-                  />
-                }
-                style={{
-                  paddingRight: 0,
-                  paddingLeft: 0,
-                  color: theme.inverted.primary,
-                }}
-              >
-                {t.common.verbs.stop}
-              </Button>
-            )}
-          </td>
-        </tr>
-      ))}
+      <tbody>
+        {services.map(service => (
+          <tr key={service.service}>
+            <td>
+              <Text color={theme.inverted.primary}>
+                {t.common.services[service.service]}
+              </Text>
+            </td>
+            <TdRight>
+              <Text color={theme.secondary} as='span'>
+                {service.cpu.toFixed(2)}%
+              </Text>{' '}
+              <Text color={theme.secondary} as='span' type='smallMedium'>
+                {t.common.nouns.cpu}
+              </Text>
+            </TdRight>
+            <TdRight>
+              <Text color={theme.secondary} as='span'>
+                {service.memory.toFixed(2)} MB
+              </Text>{' '}
+              <Text color={theme.secondary} as='span' type='smallMedium'>
+                {t.common.nouns.memory}
+              </Text>
+            </TdRight>
+            <td>
+              {service.running && (
+                <Tag type='running' inverted style={{ margin: '0 auto' }}>
+                  {t.common.adjectives.running}
+                </Tag>
+              )}
+            </td>
+            <td style={{ minWidth: '75px' }}>
+              {!service.running && (
+                <Button
+                  variant='text'
+                  loading={service.pending}
+                  leftIcon={<StartIcon width='24px' height='24px' />}
+                  style={{
+                    paddingRight: 0,
+                    paddingLeft: 0,
+                    color: theme.inverted.accentSecondary,
+                  }}
+                  onClick={() => startService(service.service)}
+                >
+                  {t.common.verbs.start}
+                </Button>
+              )}
+              {service.running && (
+                <Button
+                  variant='text'
+                  loading={service.pending}
+                  leftIcon={
+                    <StopIcon
+                      width='24px'
+                      height='24px'
+                      style={{ color: theme.secondary }}
+                    />
+                  }
+                  style={{
+                    paddingRight: 0,
+                    paddingLeft: 0,
+                    color: theme.inverted.primary,
+                  }}
+                  onClick={() => stopService(service.service)}
+                >
+                  {t.common.verbs.stop}
+                </Button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
     </ContainersTable>
   )
 }
