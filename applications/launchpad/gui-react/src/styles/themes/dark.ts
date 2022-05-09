@@ -9,8 +9,10 @@ const darkTheme = {
   backgroundImage: styles.colors.light.backgroundImage,
   accent: styles.colors.tari.purple,
   accentDark: styles.colors.tari.purpleDark,
+  accentMerged: styles.colors.merged.dark,
   disabledText: styles.colors.dark.placeholder,
-  tariGradient: styles.gradients.tari,
+  tariGradient: styles.gradients.tariDark,
+  mergedGradient: styles.gradients.mergedDark,
   borderColor: styles.colors.light.backgroundImage,
 
   titleBar: styles.colors.dark.primary,
@@ -28,6 +30,7 @@ const darkTheme = {
   lightTag: styles.colors.light.backgroundImage,
   lightTagText: styles.colors.dark.secondary,
   placeholderText: styles.colors.dark.placeholder,
+  mergedAccent: styles.colors.merged.dark,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -38,8 +41,10 @@ const darkTheme = {
     backgroundImage: styles.colors.light.backgroundImage,
     accent: styles.colors.tari.purple,
     accentDark: styles.colors.tari.purpleDark,
+    accentMerged: styles.colors.merged.dark,
     disabledText: styles.colors.dark.placeholder,
-    tariGradient: styles.gradients.tari,
+    tariGradient: styles.gradients.tariDark,
+    mergedGradient: styles.gradients.mergedDark,
     info: styles.colors.secondary.info,
     infoText: styles.colors.secondary.infoText,
     on: styles.colors.secondary.on,

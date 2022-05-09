@@ -25,7 +25,7 @@ export const selectLastSession = createSelector(
 )
 
 /**
- * Is any mining node running?
+ * Select the Tari mining status
  * @returns {boolean}
  */
 export const selectTariMiningStatus = (state: RootState) =>
