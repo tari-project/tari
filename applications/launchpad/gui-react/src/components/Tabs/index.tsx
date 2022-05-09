@@ -92,7 +92,7 @@ const Tabs = ({ tabs, selected, onSelect, inverted }: TabsProps) => {
             onClick={() => onSelect(tab.id)}
             selected={selected}
             tab={tab}
-            inverted={inverted}
+            $inverted={inverted}
           >
             <FontWeightCompensation>
               <Text
@@ -117,7 +117,7 @@ const Tabs = ({ tabs, selected, onSelect, inverted }: TabsProps) => {
         ))}
       </TabOptions>
       <TabSelectedBorder
-        inverted={inverted}
+        $inverted={inverted}
         style={{
           ...activeBorder,
         }}

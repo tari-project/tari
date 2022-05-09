@@ -86,6 +86,7 @@ const ICONS = [
   'Mic',
   'Minus',
   'Mobile',
+  'MoneroSignet',
   'Monitor',
   'Moon',
   'More',

@@ -16,7 +16,7 @@ export const TabOptions = styled.div`
 `
 
 export const Tab = styled.button<{
-  inverted?: boolean
+  $inverted?: boolean
   selected?: string
   tab?: TabProp
 }>`
@@ -39,8 +39,8 @@ export const Tab = styled.button<{
   align-items: center;
   transition: ease-in-out 300ms;
   &:hover {
-    background-color: ${({ theme, inverted }) =>
-      inverted
+    background-color: ${({ theme, $inverted }) =>
+      $inverted
         ? theme.inverted.backgroundSecondary
         : theme.backgroundSecondary};
   }
@@ -49,12 +49,12 @@ export const Tab = styled.button<{
   }
 `
 
-export const TabSelectedBorder = styled(animated.div)<{ inverted?: boolean }>`
+export const TabSelectedBorder = styled(animated.div)<{ $inverted?: boolean }>`
   position: absolute;
   height: 4px;
   border-radius: 2px;
-  background: ${({ theme, inverted }) =>
-    inverted ? theme.inverted.accentSecondary : theme.accent};
+  background: ${({ theme, $inverted }) =>
+    $inverted ? theme.inverted.accentSecondary : theme.accent};
   bottom: 0;
 `
 
