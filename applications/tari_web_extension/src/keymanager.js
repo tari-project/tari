@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 /* global BigInt */
-const wasm = import("./key_manager");
+const wasm = import("./key_manager/index_bg.wasm");
 
 async function KeyManagerFactory(branch = "") {
   const module = await wasm;

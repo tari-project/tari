@@ -16,12 +16,13 @@
     "tari"
   ],
   "author": "The Tari Development Community",
-  "license": "MIT",
+  "license": "BSD3",
   "bugs": {
     "url": "https://github.com/tari-project/tari/issues"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^1.6.2",
+    "node-sass": "^7.0.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-redux": "^7.2.6",
@@ -38,7 +39,7 @@
     "eslint-config-react-app": "^6.0.0",
     "eslint-plugin-flowtype": "^5.2.0",
     "eslint-plugin-import": "^2.25.4",
-    "eslint-plugin-jest": "^24.1.0",
+    "eslint-plugin-jest": "^24.7.0",
     "eslint-plugin-jsx-a11y": "^6.5.1",
     "eslint-plugin-react": "^7.28.0",
     "eslint-plugin-react-hooks": "^4.3.0",
