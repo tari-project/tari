@@ -5,6 +5,7 @@ const path = require("path");
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 const KEY_MANAGER_PATH = "../../base_layer/key_manager/";
 const { override, addWebpackPlugin } = require("customize-cra");
+const webpack = require("webpack");
 
 const wasmPlugin = new WasmPackPlugin({
   crateDirectory: path.resolve(__dirname, KEY_MANAGER_PATH),
@@ -24,6 +25,20 @@ module.exports = override(addWebpackPlugin(wasmPlugin), (config) => {
       }
     });
   });
+
+  config.resolve.fallback = {
+    ...config.resolve.fallback,
+    // stream: require.resolve("stream-browserify"),
+    buffer: require.resolve("buffer"),
+  }
+  config.resolve.extensions = [...config.resolve.extensions, ".ts", ".js"]
+  config.plugins = [
+    ...config.plugins,
+    new webpack.ProvidePlugin({
+      process: "process/browser",
+      Buffer: ["buffer", "Buffer"],
+    }),
+  ]
 
   return config;
 });

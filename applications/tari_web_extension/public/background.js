@@ -9,7 +9,7 @@ let triggered_port = []; // All the triggered ports
 let connecting = {}; // Callbacks for the connect requests
 
 // I'm not sure if this changes yet
-const extension_url = "chrome-extension://kljpkkadbelknhmpabjkkhmljaebnopo";
+const extension_url = "chrome-extension://jdhjhjoihkdkgdmanhkkbohcgmmncken";
 
 let allowedOrigins = {
   [extension_url]: true,
