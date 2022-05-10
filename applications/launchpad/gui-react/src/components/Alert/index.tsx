@@ -4,22 +4,32 @@ import { useTheme } from 'styled-components'
 import Modal from '../Modal'
 import Box from '../Box'
 import Button from '../Button'
+import Text from '../Text'
 import t from '../../locales'
 
 const Alert = ({
   content,
   open,
   onClose,
+  title,
 }: {
   content: ReactNode
   open: boolean
   onClose: () => void
+  title?: string
 }) => {
   const theme = useTheme()
 
   return (
     <Modal open={open} onClose={onClose} size='auto'>
-      <Box border={false}>{content}</Box>
+      <Box border={false} style={{ wordBreak: 'break-all' }}>
+        {Boolean(title) && (
+          <Text type='subheader' style={{ marginTop: `-${theme.spacing()}` }}>
+            {title}
+          </Text>
+        )}
+        {content}
+      </Box>
       <Box
         border={false}
         style={{
