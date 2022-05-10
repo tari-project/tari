@@ -42,6 +42,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tauri::{App, AppHandle, Manager, State, Wry};
 
+use super::DEFAULT_WORKSPACE;
 use crate::{
     commands::{create_workspace::copy_config_file, AppState},
     docker::{
@@ -49,10 +50,14 @@ use crate::{
         add_container,
         change_container_status,
         container_state,
+        create_or_load_identities,
         create_workspace_folders,
         helpers::{create_password, process_stream},
         images_to_start,
+        network_name,
         remove_container,
+        tari_blockchain_volume_name,
+        try_create_network,
         BaseNodeConfig,
         ContainerId,
         ContainerState,
@@ -70,12 +75,10 @@ use crate::{
         CONTAINERS,
         DEFAULT_MINING_ADDRESS,
         DEFAULT_MONEROD_URL,
-        DOCKER_INSTANCE, create_or_load_identities, try_create_network, network_name, tari_blockchain_volume_name,
+        DOCKER_INSTANCE,
     },
     error::LauncherError,
 };
-
-use super::DEFAULT_WORKSPACE;
 
 /// "Global" settings from the launcher front-end
 #[derive(Clone, Derivative, Deserialize)]
@@ -286,14 +289,14 @@ fn container_statistic<FM: 'static, FE: 'static>(
 
 pub async fn create_workspace(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<(), LauncherError> {
     let state = app.state::<AppState>();
-    
+
     let _ = create_default_workspace_impl(app.clone(), settings.clone()).await?;
     let mut wrapper = state.workspaces.write().await;
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper
         .get_workspace_mut(settings.tari_network.as_str())
         .ok_or(DockerWrapperError::UnexpectedError)?;
-    let launchpad_config =  workspace.config().clone();   
+    let launchpad_config = workspace.config().clone();
     // Check the identity requirements for the service
     let ids = create_or_load_identities(launchpad_config.clone())?;
     for id in ids.values() {
@@ -373,11 +376,8 @@ pub async fn stop_container(name: &str, delete: bool) {
             Ok(_res) => {
                 info!("Container {} stopped", id);
                 if !delete {
-                    let updated = ContainerState::new(
-                        container.name().to_string(),
-                        id.clone(),
-                        container.info().clone(),
-                    );
+                    let updated =
+                        ContainerState::new(container.name().to_string(), id.clone(), container.info().clone());
                     add_container(name, updated);
                 }
             },
@@ -388,30 +388,27 @@ pub async fn stop_container(name: &str, delete: bool) {
     }
 }
 
- /// Create and run a docker container.
-    ///
-    /// ## Arguments
-    /// * `image`: The type of image to start. See [`ImageType`].
-    /// * `registry`: An optional docker registry path to use. The default is `quay.io/tarilabs`
-    /// * `tag`: The image tag to use. The default is `latest`.
-    /// * `docker`: a [`Docker`] instance.
-    ///
-    /// ## Return
-    ///
-    /// The method returns a future that resolves to a [`DockerWrapperError`] on an error, or the container name on
-    /// success.
-    ///
-    /// `start_service` creates a new docker container and runs it. As part of this process,
-    /// * it pulls configuration data from the [`LaunchConfig`] instance attached to this [`DockerWRapper`] to construct
-    ///   the Environment, Volume configuration, and exposed Port configuration.
-    /// * creates a new container
-    /// * starts the container
-    /// * adds the container reference to the current list of containers being managed
-    /// * Returns the container name
-pub async fn start_container(
-    image: ImageType,
-    config: LaunchpadConfig,
-) -> Result<String, DockerWrapperError> {
+/// Create and run a docker container.
+///
+/// ## Arguments
+/// * `image`: The type of image to start. See [`ImageType`].
+/// * `registry`: An optional docker registry path to use. The default is `quay.io/tarilabs`
+/// * `tag`: The image tag to use. The default is `latest`.
+/// * `docker`: a [`Docker`] instance.
+///
+/// ## Return
+///
+/// The method returns a future that resolves to a [`DockerWrapperError`] on an error, or the container name on
+/// success.
+///
+/// `start_service` creates a new docker container and runs it. As part of this process,
+/// * it pulls configuration data from the [`LaunchConfig`] instance attached to this [`DockerWRapper`] to construct the
+///   Environment, Volume configuration, and exposed Port configuration.
+/// * creates a new container
+/// * starts the container
+/// * adds the container reference to the current list of containers being managed
+/// * Returns the container name
+pub async fn start_container(image: ImageType, config: LaunchpadConfig) -> Result<String, DockerWrapperError> {
     let args = config.command(image);
     let registry = config.clone().registry;
     let tag = config.clone().tag;

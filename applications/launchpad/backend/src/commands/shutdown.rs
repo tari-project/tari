@@ -24,7 +24,7 @@
 use log::*;
 use tauri::State;
 
-use crate::commands::{AppState, stop_containers};
+use crate::commands::{stop_containers, AppState};
 
 /// Gracefully shutdown all containers and delete them. Blockchain volumes are preserved.
 #[tauri::command]

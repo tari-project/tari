@@ -40,8 +40,21 @@ use super::{
     AppState,
 };
 use crate::{
-    commands::{service::{start_service_impl, self}, create_workspace::{self, configure_workspace}, DEFAULT_WORKSPACE},
-    docker::{ImageType, LogMessage, TariNetwork, Workspaces, TariWorkspace, DockerWrapperError, DOCKER_INSTANCE, create_or_load_identities},
+    commands::{
+        create_workspace::{self, configure_workspace},
+        service::{self, start_service_impl},
+        DEFAULT_WORKSPACE,
+    },
+    docker::{
+        create_or_load_identities,
+        DockerWrapperError,
+        ImageType,
+        LogMessage,
+        TariNetwork,
+        TariWorkspace,
+        Workspaces,
+        DOCKER_INSTANCE,
+    },
     error::LauncherError,
 };
 
@@ -85,10 +98,8 @@ pub async fn start_service(
     service_name: String,
     settings: ServiceSettings,
 ) -> Result<StartServiceResult, String> {
-    
     info!("starting docker container for {}", service_name);
-    let created = service::create_workspace(app.clone(), settings.clone())
-        .await;
+    let created = service::create_workspace(app.clone(), settings.clone()).await;
     if created.is_ok() {
         info!("New workspace [{}] has been created.", settings.root_folder.as_str());
     } else {
@@ -99,23 +110,17 @@ pub async fn start_service(
     let app1 = app.clone();
     let app2 = app.clone();
     let app3 = app.clone();
-    
-    
+
     let send_msg =
-        move |destination: String, msg: LogMessage| 
-            send_tauri_message::<LogMessage>(app1.clone(), destination, msg);
+        move |destination: String, msg: LogMessage| send_tauri_message::<LogMessage>(app1.clone(), destination, msg);
 
-    let send_stats = 
-        move |destination: String, msg: Stats| 
-            send_tauri_message::<Stats>(app3.clone(), destination, msg);
+    let send_stats = move |destination: String, msg: Stats| send_tauri_message::<Stats>(app3.clone(), destination, msg);
 
-    let send_err = 
-        move |destination: String, msg: String| 
-            send_tauri_message::<String>(app2.clone(), destination, msg);
-    
+    let send_err = move |destination: String, msg: String| send_tauri_message::<String>(app2.clone(), destination, msg);
+
     start_service_impl(send_msg, send_stats, send_err, service_name, workspace)
-        .await.map_err(|_|"ooppss...Do not panic! Something went very very wrong...".to_string())
-    
+        .await
+        .map_err(|_| "ooppss...Do not panic! Something went very very wrong...".to_string())
 }
 
 /// Stops the specified service
@@ -125,11 +130,12 @@ pub async fn start_service(
 /// Returns the container id
 #[tauri::command]
 pub async fn stop_service(service_name: String) -> Result<(), String> {
-    service::stop_service_impl(service_name).await.map_err(|e| e.to_string())
+    service::stop_service_impl(service_name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
-
-///Sending messages to the Tauri
+/// Sending messages to the Tauri
 pub fn send_tauri_message<P: Debug + Clone + Serialize>(
     app: AppHandle<Wry>,
     event: String,

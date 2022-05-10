@@ -32,12 +32,14 @@ mod wrapper;
 
 pub mod helpers;
 
-use std::{sync::RwLock, collections::HashMap};
+use std::{collections::HashMap, sync::RwLock};
 
 use bollard::Docker;
+pub use container::{add_container, change_container_status, container_state, remove_container};
 pub use error::DockerWrapperError;
 pub use filesystem::create_workspace_folders;
 pub use models::{ContainerId, ContainerState, ContainerStatus, ImageType, LogMessage, TariNetwork};
+pub use network::{connect_to_network, network_name, try_create_network};
 pub use settings::{
     BaseNodeConfig,
     LaunchpadConfig,
@@ -48,17 +50,14 @@ pub use settings::{
     DEFAULT_MINING_ADDRESS,
     DEFAULT_MONEROD_URL,
 };
-pub use workspace::{TariWorkspace, Workspaces, 
-    images_to_start, create_or_load_identities};
-pub use wrapper::DockerWrapper;
-pub use network::{connect_to_network, try_create_network, network_name};
 pub use volume::tari_blockchain_volume_name;
-pub use container::{add_container, change_container_status, container_state, remove_container};
+pub use workspace::{create_or_load_identities, images_to_start, TariWorkspace, Workspaces};
+pub use wrapper::DockerWrapper;
 
 lazy_static! {
     pub static ref DOCKER_INSTANCE: Docker = Docker::connect_with_local_defaults().unwrap();
 }
 
 lazy_static! {
-    pub static ref CONTAINERS: RwLock<HashMap<String,  ContainerState>> = RwLock::new(HashMap::new());
+    pub static ref CONTAINERS: RwLock<HashMap<String, ContainerState>> = RwLock::new(HashMap::new());
 }

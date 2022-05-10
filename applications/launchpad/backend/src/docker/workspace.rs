@@ -107,7 +107,6 @@ impl Workspaces {
         self.workspaces.insert(name.to_string(), new_system);
         Ok(())
     }
-
 }
 
 /// A TariWorkspace is a configuration of docker images (node, wallet, miner etc), configuration files and secrets,
@@ -224,12 +223,7 @@ impl TariWorkspace {
         };
         format!("{}-{}", label, platform)
     }
-
-
 }
-
-
-
 
 // helper function for start recipe. This will be overhauled to be more flexible in future
 pub fn images_to_start(config: LaunchpadConfig) -> Vec<ImageType> {
@@ -254,7 +248,6 @@ pub fn images_to_start(config: LaunchpadConfig) -> Vec<ImageType> {
     // TODO - add monerod support
     images
 }
-
 
 /// Bootstraps a node identity for the container, typically a base node or wallet instance. If an identity file
 /// already exists at the canonical path location, it is loaded and returned instead.

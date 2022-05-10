@@ -21,15 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use bollard::{models::CreateImageInfo, image::CreateImageOptions, Docker};
-use futures::{future::join_all, stream::StreamExt, TryFutureExt, Stream, TryStreamExt};
+use bollard::{image::CreateImageOptions, models::CreateImageInfo, Docker};
+use futures::{future::join_all, stream::StreamExt, Stream, TryFutureExt, TryStreamExt};
 use log::{debug, error};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::{
     commands::AppState,
-    docker::{ImageType, TariWorkspace, DOCKER_INSTANCE, DockerWrapperError},
+    docker::{DockerWrapperError, ImageType, TariWorkspace, DOCKER_INSTANCE},
     error::LauncherError,
 };
 
@@ -72,7 +72,6 @@ where F: Fn(Payload) -> Result<(), tauri::Error> + Copy {
     }
     Ok(())
 }
-
 
 async fn pull_image<F>(image: ImageType, send_message: F) -> Result<(), LauncherError>
 where F: Fn(Payload) -> Result<(), tauri::Error> + Copy {

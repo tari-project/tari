@@ -36,7 +36,6 @@ pub fn create_password(len: usize) -> String {
     Alphanumeric.sample_iter(&mut rng).take(len).map(char::from).collect()
 }
 
-
 pub async fn process_stream<FnSendMsg, FnSendErr, T: Debug + Clone + Serialize>(
     send_message: FnSendMsg,
     send_error: FnSendErr,
@@ -49,9 +48,7 @@ pub async fn process_stream<FnSendMsg, FnSendErr, T: Debug + Clone + Serialize>(
 {
     while let Some(message) = stream.next().await {
         let emit_result = match message {
-            Ok(payload) => {
-                send_message(message_destination.clone(), payload)
-            },
+            Ok(payload) => send_message(message_destination.clone(), payload),
             Err(err) => send_error(error_destination.clone(), err.chained_message()),
         };
         if let Err(err) = emit_result {

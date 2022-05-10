@@ -21,12 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use bollard::{network::{ConnectNetworkOptions, InspectNetworkOptions, CreateNetworkOptions}, models::{EndpointSettings, Network}};
+use bollard::{
+    models::{EndpointSettings, Network},
+    network::{ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions},
+};
 use log::{info, warn};
 
+use super::{ContainerId, DockerWrapperError, ImageType};
 use crate::docker::DOCKER_INSTANCE;
-
-use super::{DockerWrapperError, ContainerId, ImageType};
 
 pub async fn network_exists(network_name: &str) -> Result<bool, DockerWrapperError> {
     let options = InspectNetworkOptions {
@@ -73,13 +75,12 @@ pub async fn create_network(network: &str) -> Result<(), DockerWrapperError> {
     Ok(())
 }
 
-//docker network name following the pattern: {tari_network}_netwrok
+// docker network name following the pattern: {tari_network}_netwrok
 pub fn network_name(network: &str) -> String {
     format!("{}_network", network)
 }
 
-
-//Creates new docker network with name {tari_network}_network if not exist.
+// Creates new docker network with name {tari_network}_network if not exist.
 pub async fn try_create_network(tari_network: &str) -> Result<(), DockerWrapperError> {
     let docker_network = network_name(tari_network);
     info!("trying to connect to network: {}", docker_network);

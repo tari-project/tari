@@ -37,14 +37,11 @@ mod service;
 mod shutdown;
 mod state;
 
-
-
+pub use api::{image_list, pull_images, start_service, stop_service};
 pub use create_workspace::create_new_workspace;
 pub use events::events;
 pub use launch_docker::launch_docker;
-pub use api::{image_list, pull_images, start_service, stop_service};
-pub use service::stop_containers;
-pub use service::create_default_workspace;
+pub use service::{create_default_workspace, stop_containers};
 pub use shutdown::shutdown;
 pub use state::AppState;
 

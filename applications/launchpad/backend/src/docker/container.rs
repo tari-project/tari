@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-
 use bollard::models::ContainerCreateResponse;
 use log::debug;
 
@@ -52,7 +51,7 @@ pub fn change_container_status(id: &str, status: ContainerStatus) -> Result<(), 
         Err(DockerWrapperError::ContainerNotFound(id.to_string()))
     }
 }
-///Get the state of the container by name or id.
+/// Get the state of the container by name or id.
 pub fn container_state(id: &str) -> Result<ContainerState, DockerWrapperError> {
     if let Some(container) = CONTAINERS.read().unwrap().get(id) {
         Ok((*container).clone())
@@ -60,7 +59,7 @@ pub fn container_state(id: &str) -> Result<ContainerState, DockerWrapperError> {
         Err(DockerWrapperError::ContainerNotFound(id.to_string()))
     }
 }
-///Remove the container and state.
+/// Remove the container and state.
 pub fn remove_container(id: &str) -> Result<ContainerState, DockerWrapperError> {
     if let Some(state) = CONTAINERS.write().unwrap().remove(id) {
         Ok(state)

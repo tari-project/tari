@@ -22,13 +22,10 @@
 //
 
 use bollard::volume::CreateVolumeOptions;
-use log::{trace, info};
-
-use crate::docker::DOCKER_INSTANCE;
+use log::{info, trace};
 
 use super::DockerWrapperError;
-
-
+use crate::docker::DOCKER_INSTANCE;
 
 /// Checks whether the blockchain data volume exists
 pub async fn volume_exists(workspace_name: &str, network: &str) -> Result<bool, DockerWrapperError> {
@@ -42,7 +39,6 @@ pub async fn volume_exists(workspace_name: &str, network: &str) -> Result<bool, 
 pub fn tari_blockchain_volume_name(workspace_name: &str, network: &str) -> String {
     format!("{}_{}_volume", workspace_name, network)
 }
-
 
 /// Tries to create a new blockchain data volume for this workspace.
 pub async fn create_volume(workspace_name: &str, network: &str) -> Result<(), DockerWrapperError> {

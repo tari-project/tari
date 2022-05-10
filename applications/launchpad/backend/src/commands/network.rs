@@ -31,10 +31,7 @@ use crate::{commands::AppState, docker::TariNetwork};
 pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
 
 pub fn enum_to_list<T: Sized + ToString + Clone>(enums: &[T]) -> Vec<String> {
-    enums
-    .iter()
-    .map(|enum_value| enum_value.to_string())
-    .collect()
+    enums.iter().map(|enum_value| enum_value.to_string()).collect()
 }
 
 #[test]

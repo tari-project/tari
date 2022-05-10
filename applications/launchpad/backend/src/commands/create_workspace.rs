@@ -37,10 +37,19 @@ use tauri::{
     Wry,
 };
 
-use crate::{commands::AppState, 
-    docker::{create_workspace_folders, TariWorkspace, DockerWrapperError, DOCKER_INSTANCE, try_create_network, create_or_load_identities}, error::LauncherError};
-
 use super::network;
+use crate::{
+    commands::AppState,
+    docker::{
+        create_or_load_identities,
+        create_workspace_folders,
+        try_create_network,
+        DockerWrapperError,
+        TariWorkspace,
+        DOCKER_INSTANCE,
+    },
+    error::LauncherError,
+};
 
 /// Create a new workspace environment by creating a folder hierarchy (if required) at the `root_folder`, and copying
 /// the default config files into it.
@@ -60,24 +69,21 @@ pub fn create_new_workspace(app: AppHandle<Wry>, root_path: Option<String>) -> R
     Ok(())
 }
 
-pub async fn configure_workspace (app: AppHandle<Wry>, name: &str) -> Result<TariWorkspace, LauncherError>{
+pub async fn configure_workspace(app: AppHandle<Wry>, name: &str) -> Result<TariWorkspace, LauncherError> {
     let state = app.state::<AppState>();
-    let wrapper = state
-    .workspaces.write().await;
+    let wrapper = state.workspaces.write().await;
     info!("creating workspace: {}", name);
     // We've just checked this, so it should never fail:
-    let workspace= wrapper
-        .get_workspace(name)
-        .ok_or(DockerWrapperError::UnexpectedError)?;
+    let workspace = wrapper.get_workspace(name).ok_or(DockerWrapperError::UnexpectedError)?;
     // Check the identity requirements for the service
-    let launchpad_config =  workspace.config().clone();
+    let launchpad_config = workspace.config().clone();
     info!("workspace: {:?} config", &launchpad_config);
     let ids = create_or_load_identities(launchpad_config.clone()).unwrap();
     for id in ids.values() {
         info!("Identity loaded: {}", id);
     }
     // Check network requirements for the service
-   try_create_network(launchpad_config.tari_network.lower_case()).await?;
+    try_create_network(launchpad_config.tari_network.lower_case()).await?;
 
     Ok(workspace.clone())
 }

@@ -273,4 +273,3 @@ impl fmt::Display for ImageType {
         write!(f, "{:?}", self)
     }
 }
-
