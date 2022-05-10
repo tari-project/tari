@@ -16,7 +16,8 @@ create table utxos (
     id integer primary key autoincrement not null,
 
     block_height sqlite3_uint64 not null,
-    block_timestamp datetime not null,
+
+    -- this identifies the output in the block. Is there a better way?
     output_hash blob(32) not null,
 
     -- question: do we need to store more data about the output?
@@ -105,7 +106,8 @@ create table contract_constitutions (
     -- list of public keys of the proposed VNC
     vnc_key_list integer not_null,
 
-    expiry_timestamp datetime not null,
+    -- in relative number of blocks since the constitution
+    expiration_window sqlite3_uint64 not null,
 
     -- percentage of vnc nodes for the contract acceptance (default 100% of VN)
     acceptance_quorum integer check( 0 >= acceptance_quorum <= 100 ) not null default 100,
@@ -148,7 +150,8 @@ create table contract_acceptances (
     stake sqlite3_uint64 not null,
 
     -- the accpetance UTXO time-lock expiration
-    stake_release_timestamp datetime not null,
+    -- in relative number of blocks since the acceptance publication
+    stake_release_window sqlite3_uint64 not null,
 
     -- transaction that hold the contract acceptance
     utxo_id integer not null,
@@ -172,8 +175,8 @@ create table contract_checkpoints (
     id integer primary key autoincrement not null,
     contract_id blob(32) not null,
 
-    -- we don't need to store the checkpoint timestamp
-    -- as we already have the utxo block timestamp
+    -- we don't need to store the checkpoint height
+    -- as we already have that info in the referenced utxo table
 
     --  current contract state, let's assume it's a merkle root
     contract_state_commitment blob(32) not null,
@@ -214,8 +217,9 @@ create table contract_constitution_changes (
     -- list of public keys of the proposed VNC
     vnc_key_list integer not_null,
 
-    -- timestamp expiration for the constitution change acceptance by the VNC
-    expiry_timestamp datetime not null,
+    -- expiration for the constitution change acceptance by the VNC
+    -- in relative blocks since the constitution change publication
+    expiration_window datetime not null,
 
     -- side-chain metadata record
     consensus_algorithm varchar(32) null,
@@ -255,7 +259,8 @@ create table contract_constitution_change_acceptances (
     stake sqlite3_uint64 not null,
 
     -- the accpetance UTXO time-lock expiration
-    stake_release_timestamp datetime not null,
+    -- in relative number of blocks since the acceptance publication
+    stake_release_window datetime not null,
 
     -- transaction that hold the change acceptance
     utxo_id integer not null,
