@@ -20,6 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # DHT discovery protocol
+//!
+//! This protocol broadcasts an encrypted discovery message to the destination peer.
+//! The source of this message is unknown to other network peers without using heuristic-based network analysis.
+//! This method of discovery requires both peers to be online.
+//!
+//! The protocol functions as follows:
+//! 1. Broadcast an encrypted [Discovery](crate::envelope::DhtMessageType) message destined for the peer containing the
+//! necessary details to connect to this peer.
+//! 1. If the peer is online, it may decrypt the message and view the peer
+//! connection details.
+//! 1. The peer may then add the peer and attempt to connect to it.
+//! 1. Once a direct connection is established, the discovery is complete.
+
 mod error;
 pub use error::DhtDiscoveryError;
 

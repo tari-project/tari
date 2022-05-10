@@ -24,8 +24,8 @@ use std::string::ToString;
 
 use blake2::Blake2b;
 use digest::Digest;
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::MerkleMountainRange;
+use tari_utilities::hex::Hex;
 #[allow(clippy::vec_init_then_push)]
 pub fn hash_values() -> Vec<String> {
     let mut hashvalues = Vec::new();

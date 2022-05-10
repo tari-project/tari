@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! A builder for customizing and constructing the DHT
+
 use std::{sync::Arc, time::Duration};
 
 use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
@@ -35,6 +37,13 @@ use crate::{
     DhtConfig,
 };
 
+/// Builder for the DHT.
+///
+/// ```rust
+/// # use tari_comms_dht::{DbConnectionUrl, Dht};
+/// let builder = Dht::builder().mainnet().with_database_url(DbConnectionUrl::Memory);
+/// // let dht = builder.build(...).unwrap();
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct DhtBuilder {
     config: DhtConfig,
@@ -42,7 +51,7 @@ pub struct DhtBuilder {
 }
 
 impl DhtBuilder {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             #[cfg(test)]
             config: DhtConfig::default_local_test(),
@@ -52,87 +61,89 @@ impl DhtBuilder {
         }
     }
 
+    /// Specify a complete [DhtConfig](crate::DhtConfig).
     pub fn with_config(&mut self, config: DhtConfig) -> &mut Self {
         self.config = config;
         self
     }
 
+    /// Default configuration for local test environments.
     pub fn local_test(&mut self) -> &mut Self {
         self.config = DhtConfig::default_local_test();
         self
     }
 
+    /// Sets the DHT protocol version.
     pub fn with_protocol_version(&mut self, protocol_version: DhtProtocolVersion) -> &mut Self {
         self.config.protocol_version = protocol_version;
         self
     }
 
+    /// Sets whether SAF messages are automatically requested on every new connection to a SAF node.
     pub fn set_auto_store_and_forward_requests(&mut self, enabled: bool) -> &mut Self {
         self.config.saf.auto_request = enabled;
         self
     }
 
+    /// Sets the mpsc sender that is hooked up to the outbound messaging pipeline.
     pub fn with_outbound_sender(&mut self, outbound_tx: mpsc::Sender<DhtOutboundRequest>) -> &mut Self {
         self.outbound_tx = Some(outbound_tx);
         self
     }
 
+    /// Use the default testnet configuration.
     pub fn testnet(&mut self) -> &mut Self {
         self.config = DhtConfig::default_testnet();
         self
     }
 
+    /// Use the default mainnet configuration.
     pub fn mainnet(&mut self) -> &mut Self {
         self.config = DhtConfig::default_mainnet();
         self
     }
 
+    /// Sets the [DbConnectionUrl](crate::DbConnectionUrl).
     pub fn with_database_url(&mut self, database_url: DbConnectionUrl) -> &mut Self {
         self.config.database_url = database_url;
         self
     }
 
-    pub fn with_dedup_cache_trim_interval(&mut self, trim_interval: Duration) -> &mut Self {
-        self.config.dedup_cache_trim_interval = trim_interval;
-        self
-    }
-
-    pub fn with_dedup_cache_capacity(&mut self, capacity: usize) -> &mut Self {
-        self.config.dedup_cache_capacity = capacity;
-        self
-    }
-
-    pub fn with_dedup_discard_hit_count(&mut self, max_hit_count: usize) -> &mut Self {
-        self.config.dedup_allowed_message_occurrences = max_hit_count;
-        self
-    }
-
+    /// The number of connections to random peers that should be maintained.
+    /// Connections to random peers are reshuffled every `DhtConfig::connectivity::random_pool_refresh_interval`.
     pub fn with_num_random_nodes(&mut self, n: usize) -> &mut Self {
         self.config.num_random_nodes = n;
         self
     }
 
+    /// The number of neighbouring peers that the DHT should try maintain connections to.
     pub fn with_num_neighbouring_nodes(&mut self, n: usize) -> &mut Self {
         self.config.num_neighbouring_nodes = n;
         self.config.saf.num_neighbouring_nodes = n;
         self
     }
 
+    /// The number of peers to send a message using the
+    /// [Broadcast](crate::broadcast_strategy::BroadcastStrategy::Propagate) strategy.
     pub fn with_propagation_factor(&mut self, propagation_factor: usize) -> &mut Self {
         self.config.propagation_factor = propagation_factor;
         self
     }
 
+    /// The number of peers to send a message broadcast using the
+    /// [Broadcast](crate::broadcast_strategy::BroadcastStrategy::Broadcast) strategy.
     pub fn with_broadcast_factor(&mut self, broadcast_factor: usize) -> &mut Self {
         self.config.broadcast_factor = broadcast_factor;
         self
     }
 
+    /// The length of time to wait for a discovery reply after a discovery message has been sent.
     pub fn with_discovery_timeout(&mut self, timeout: Duration) -> &mut Self {
         self.config.discovery_request_timeout = timeout;
         self
     }
 
+    /// Enables automatically sending a join/announce message when connected to enough peers on the network.
     pub fn enable_auto_join(&mut self) -> &mut Self {
         self.config.auto_join = true;
         self

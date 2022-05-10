@@ -57,6 +57,7 @@ const LOG_TARGET: &str = "comms::connection_manager::manager";
 const EVENT_CHANNEL_SIZE: usize = 32;
 const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 
+/// Connection events
 #[derive(Debug)]
 pub enum ConnectionManagerEvent {
     // Peer connection
@@ -88,6 +89,7 @@ impl fmt::Display for ConnectionManagerEvent {
     }
 }
 
+/// Configuration for ConnectionManager
 #[derive(Debug, Clone)]
 pub struct ConnectionManagerConfig {
     /// The address to listen on for incoming connections. This address must be supported by the transport.
@@ -147,16 +149,20 @@ pub struct ListenerInfo {
 }
 
 impl ListenerInfo {
+    /// The address that was bound on. In the case of TCP, if the OS has decided which port to bind on (0.0.0.0:0), this
+    /// address contains the actual port that was used.
     pub fn bind_address(&self) -> &Multiaddr {
         &self.bind_address
     }
 
+    /// The auxiliary TCP address that was bound on if enabled.
     pub fn auxiliary_bind_address(&self) -> Option<&Multiaddr> {
         self.aux_bind_address.as_ref()
     }
 }
 
-pub struct ConnectionManager<TTransport, TBackoff> {
+/// The actor responsible for connection management.
+pub(crate) struct ConnectionManager<TTransport, TBackoff> {
     request_rx: mpsc::Receiver<ConnectionManagerRequest>,
     internal_event_rx: mpsc::Receiver<ConnectionManagerEvent>,
     dialer_tx: mpsc::Sender<DialerRequest>,
@@ -178,7 +184,7 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
-    pub fn new(
+    pub(crate) fn new(
         mut config: ConnectionManagerConfig,
         transport: TTransport,
         noise_config: NoiseConfig,

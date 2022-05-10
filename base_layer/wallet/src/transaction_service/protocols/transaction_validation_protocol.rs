@@ -40,7 +40,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -322,7 +322,7 @@ where
                 .map_err(TransactionServiceError::ProtobufConversionError)?;
             let sig = response.signature;
             if let Some(unconfirmed_tx) = batch_signatures.get(&sig) {
-                if response.location == TxLocation::Mined {
+                if response.location == TxLocation::Mined && response.block_hash.is_some() {
                     mined.push((
                         (*unconfirmed_tx).clone(),
                         response.block_height,
@@ -330,6 +330,14 @@ where
                         response.confirmations,
                     ));
                 } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Marking transaction {} as unmined and confirmed '{}' with block '{}' (Operation ID: {})",
+                        &unconfirmed_tx.tx_id,
+                        &response.confirmations >= &self.config.num_confirmations_required,
+                        response.block_hash.is_some(),
+                        self.operation_id,
+                    );
                     unmined.push((*unconfirmed_tx).clone());
                 }
             }

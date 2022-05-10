@@ -16,7 +16,7 @@ async function createDefaultSettings() {
         rootFolder: await cacheDir() + "tari" + sep + "tmp" + sep + "dibbler",
         dockerRegistry: "quay.io/tarilabs",
         dockerTag: "latest",
-        monerodUrl: "http://monero-stagenet.exan.tech:38081",
+        monerodUrl: "http://stagenet.community.xmr.to:38081,http://monero-stagenet.exan.tech:3808",
         moneroUseAuth: false,
         moneroUsername: "",
         moneroPassword: ""

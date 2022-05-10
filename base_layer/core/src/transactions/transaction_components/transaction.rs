@@ -31,7 +31,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, HashOutput, Signature};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,

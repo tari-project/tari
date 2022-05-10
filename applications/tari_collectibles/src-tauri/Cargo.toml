@@ -19,14 +19,14 @@ tari_app_grpc = { path = "../../tari_app_grpc" }
 tari_app_utilities = { path = "../../tari_app_utilities" }
 tari_common = { path = "../../../common" }
 tari_common_types = { path = "../../../base_layer/common_types" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
 tari_key_manager = { path = "../../../base_layer/key_manager" }
-tari_mmr = { path = "../../../base_layer/mmr"}
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
-tari_dan_common_types = { path = "../../../dan_layer/common_types"}
+tari_mmr = { path = "../../../base_layer/mmr" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
+tari_dan_common_types = { path = "../../../dan_layer/common_types" }
 
 blake2 = "^0.9.0"
-clap = "3.1.8"
+clap = { version = "3.1.8", features = ["env"] }
 derivative = "2.2.0"
 diesel = { version = "1.4.8", features = ["sqlite"] }
 diesel_migrations = "1.4.0"
@@ -43,8 +43,8 @@ tauri = { version = "1.0.0-rc.6", features = ["api-all"] }
 thiserror = "1.0.30"
 tokio = { version = "1.11", features = ["signal"] }
 tonic = "0.6.2"
-uuid = {  version = "0.8.2", features = ["serde"] }
+uuid = { version = "0.8.2", features = ["serde"] }
 
 [features]
-default = [ "custom-protocol" ]
-custom-protocol = [ "tauri/custom-protocol" ]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

@@ -24,7 +24,7 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::mpsc, task};
 
 use crate::{

@@ -23,42 +23,6 @@
 //! # Message
 //!
 //! The message module contains the message types which wrap domain-level messages.
-//!
-//! Described further in [RFC-0172](https://rfc.tari.com/RFC-0172_PeerToPeerMessagingProtocol.html#messaging-structure)
-//!
-//! - [Frame] and [FrameSet]
-//!
-//! A [FrameSet] consists of multiple [Frame]s. A [Frame] is the raw byte representation of a message.
-//!
-//! - [MessageEnvelope]
-//!
-//! Represents data that is about to go on the wire or has just come off.
-//!
-//! - [MessageEnvelopeHeader]
-//!
-//! The header that every message contains.
-//!
-//! - [Message]
-//!
-//! This message is deserialized from the body [Frame] of the [MessageEnvelope].
-//! It consists of a [MessageHeader] and a domain-level body [Frame].
-//! This part of the [MessageEnvelope] can optionally be encrypted for a particular peer.
-//!
-//! - [MessageHeader]
-//!
-//! Information about the contained message. Currently, this only contains the
-//! domain-level message type.
-//!
-//! - [MessageData]
-//!
-//! [Frame]: ./tyoe.Frame.html
-//! [FrameSet]: ./tyoe.FrameSet.html
-//! [MessageEnvelope]: ./envelope/struct.MessageEnvelope.html
-//! [MessageEnvelopeHeader]: ./envelope/struct.MessageEnvelopeHeader.html
-//! [Message]: ./message/struct.Message.html
-//! [MessageHeader]: ./message/struct.MessageHeader.html
-//! [MessageData]: ./message/struct.MessageData.html
-//! [DomainConnector]: ../domain_connector/struct.DomainConnector.html
 
 #[macro_use]
 mod envelope;
@@ -76,6 +40,7 @@ pub use outbound::{MessagingReplyRx, MessagingReplyTx, OutboundMessage};
 mod tag;
 pub use tag::MessageTag;
 
+/// Provides extensions to the prost Message trait.
 pub trait MessageExt: prost::Message {
     /// Encodes a message, allocating the buffer on the heap as necessary
     fn to_encoded_bytes(&self) -> Vec<u8>

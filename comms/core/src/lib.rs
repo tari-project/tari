@@ -7,7 +7,7 @@
 //!
 //! See [CommsBuilder] for more information on using this library.
 //!
-//! [CommsBuilder]: ./builder/index.html
+//! [CommsBuilder]: crate::CommsBuilder
 #[macro_use]
 extern crate lazy_static;
 

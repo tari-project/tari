@@ -88,8 +88,7 @@ use tari_comms::{
     Bytes,
     PeerConnection,
 };
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::Semaphore,

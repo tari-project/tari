@@ -39,8 +39,8 @@ use tari_comms::{
     PeerConnection,
     Substream,
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::Shutdown;
+use tari_utilities::hex::Hex;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{mpsc, oneshot, RwLock},

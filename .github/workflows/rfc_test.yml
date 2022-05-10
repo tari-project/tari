@@ -4,6 +4,8 @@ on:
       - development
   pull_request:
     types: [opened]
+    branches-ignore:
+      - 'launchpad_such_wow' # TODO: Remove this filter once the branch is merged into development
 
 name: Test RFC Docs
 
@@ -16,6 +18,7 @@ jobs:
 
       - name: Install 🦀
         run: |
+          curl -L https://github.com/badboy/mdbook-mermaid/releases/download/v0.10.0/mdbook-mermaid-v0.10.0-x86_64-unknown-linux-gnu.tar.gz | tar xvz
           cd RFC
           curl -L https://github.com/rust-lang/mdBook/releases/download/v0.4.8/mdbook-v0.4.8-x86_64-unknown-linux-gnu.tar.gz | tar xvz
 

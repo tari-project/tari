@@ -39,7 +39,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     pipeline,
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
@@ -94,6 +94,8 @@ pub enum CommsInitializationError {
     FailedToAddSeedPeer(#[from] PeerManagerError),
     #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
     CannotAcquireFileLock,
+    #[error("Invalid tor forward address: `{0}`")]
+    InvalidTorForwardAddress(std::io::Error),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
 }
@@ -141,7 +143,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
-    add_all_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
+    add_seed_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
 
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -249,10 +251,10 @@ pub async fn spawn_comms_using_transport(
 
 async fn initialize_hidden_service(
     mut config: TorTransportConfig,
-) -> Result<tor::HiddenServiceController, tor::HiddenServiceBuilderError> {
+) -> Result<tor::HiddenServiceController, CommsInitializationError> {
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)
-        .with_port_mapping(config.to_port_mapping())
+        .with_port_mapping(config.to_port_mapping()?)
         .with_socks_authentication(config.to_socks_auth())
         .with_control_server_auth(config.to_control_auth())
         .with_socks_address_override(config.socks_address_override)
@@ -267,7 +269,8 @@ async fn initialize_hidden_service(
         builder = builder.with_tor_identity(identity);
     }
 
-    builder.build().await
+    let hidden_svc_ctl = builder.build().await?;
+    Ok(hidden_svc_ctl)
 }
 
 async fn configure_comms_and_dht(
@@ -323,8 +326,6 @@ async fn configure_comms_and_dht(
     }
 
     // Hook up DHT messaging middlewares
-    // TODO: messaging events should be optional
-    let (messaging_events_sender, _) = broadcast::channel(1);
     let messaging_pipeline = pipeline::Builder::new()
         .outbound_buffer_size(config.outbound_buffer_size)
         .with_outbound_pipeline(outbound_rx, |sink| {
@@ -339,6 +340,8 @@ async fn configure_comms_and_dht(
         )
         .build();
 
+    // TODO: messaging events should be optional
+    let (messaging_events_sender, _) = broadcast::channel(1);
     comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
         messaging_events_sender,
         messaging_pipeline,
@@ -381,12 +384,12 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializati
 ///
 /// ## Returns
 /// A Result to determine if the call was successful or not, string will indicate the reason on error
-async fn add_all_peers(
+async fn add_seed_peers(
     peer_manager: &PeerManager,
     node_identity: &NodeIdentity,
     peers: Vec<Peer>,
 ) -> Result<(), CommsInitializationError> {
-    for peer in peers {
+    for mut peer in peers {
         if &peer.public_key == node_identity.public_key() {
             debug!(
                 target: LOG_TARGET,
@@ -394,6 +397,7 @@ async fn add_all_peers(
             );
             continue;
         }
+        peer.add_flags(PeerFlags::SEED);
 
         debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
         peer_manager
@@ -541,12 +545,12 @@ impl ServiceInitializer for P2pInitializer {
                 Vec::new()
             },
         };
-        add_all_peers(&peer_manager, &node_identity, peers).await?;
+        add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
         // TODO: Use serde
         let peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
 
-        add_all_peers(&peer_manager, &node_identity, peers).await?;
+        add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());
         context.register_handle(peer_manager);

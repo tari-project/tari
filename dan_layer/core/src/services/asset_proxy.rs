@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use log::*;
 use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tokio_stream::StreamExt;
 
 use crate::{

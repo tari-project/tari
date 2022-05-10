@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::envelope::DhtMessageError;
 
+/// Versions for the DHT protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "u32", into = "u32")]
 pub enum DhtProtocolVersion {
@@ -39,18 +40,22 @@ pub enum DhtProtocolVersion {
 }
 
 impl DhtProtocolVersion {
+    /// Returns the latest version
     pub fn latest() -> Self {
         DhtProtocolVersion::v2()
     }
 
+    /// Returns v1 version
     pub fn v1() -> Self {
         DhtProtocolVersion::V1 { minor: 0 }
     }
 
+    /// Returns v2 version
     pub fn v2() -> Self {
         DhtProtocolVersion::V2 { minor: 0 }
     }
 
+    /// Returns the byte representation for the version
     pub fn to_bytes(self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(4 * 2);
         buf.write_all(&self.as_major().to_le_bytes()).unwrap();
@@ -58,6 +63,7 @@ impl DhtProtocolVersion {
         buf
     }
 
+    /// Returns the major version number
     pub fn as_major(&self) -> u32 {
         use DhtProtocolVersion::{V1, V2};
         match self {
@@ -66,6 +72,7 @@ impl DhtProtocolVersion {
         }
     }
 
+    /// Returns the minor version number
     pub fn as_minor(&self) -> u32 {
         use DhtProtocolVersion::{V1, V2};
         match self {

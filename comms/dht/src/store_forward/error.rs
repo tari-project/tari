@@ -32,6 +32,7 @@ use thiserror::Error;
 
 use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
 
+/// Error type for SAF
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {
     #[error("DhtMessageError: {0}")]

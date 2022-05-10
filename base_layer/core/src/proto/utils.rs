@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use prost_types::Timestamp;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_utilities::epoch_time::EpochTime;
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {

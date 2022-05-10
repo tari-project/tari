@@ -36,6 +36,8 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::pipeline::outbound";
 
+/// Calls a service in a new task whenever a message is received by the configured channel and forwards the resulting
+/// message as a [MessageRequest](crate::protocol::messaging::MessageRequest).
 pub struct Outbound<TPipeline, TItem> {
     /// Executor used to spawn a pipeline for each received item on the stream
     executor: OptionallyBoundedExecutor,
@@ -52,6 +54,7 @@ where
     TPipeline::Error: Display + Send,
     TPipeline::Future: Send,
 {
+    /// New outbound pipeline.
     pub fn new(
         executor: OptionallyBoundedExecutor,
         config: OutboundPipelineConfig<TItem, TPipeline>,
@@ -64,6 +67,7 @@ where
         }
     }
 
+    /// Run the outbound pipeline.
     pub async fn run(mut self) {
         let mut current_id = 0;
         loop {

@@ -22,15 +22,13 @@
 
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveTime, Utc};
+use chrono::{DateTime, Local, NaiveDateTime, Utc};
 
 pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
     let old_duration = chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::max_value());
-    Utc::now().checked_add_signed(old_duration).unwrap_or_else(|| {
-        chrono::MAX_DATE
-            .and_time(NaiveTime::from_hms(0, 0, 0))
-            .expect("cannot fail")
-    })
+    Utc::now()
+        .checked_add_signed(old_duration)
+        .unwrap_or(chrono::MAX_DATETIME)
 }
 
 pub fn format_duration(duration: Duration) -> String {
@@ -46,6 +44,15 @@ pub fn format_duration(duration: Duration) -> String {
     } else {
         format!("{}s", secs)
     }
+}
+
+pub fn format_local_datetime(datetime: &NaiveDateTime) -> String {
+    let local_datetime = DateTime::<Local>::from_utc(*datetime, Local::now().offset().to_owned());
+    local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+pub fn is_max_datetime(datetime: &NaiveDateTime) -> bool {
+    chrono::MAX_DATETIME.naive_utc() == *datetime
 }
 
 #[cfg(test)]

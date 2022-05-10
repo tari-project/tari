@@ -10,17 +10,18 @@ version = "0.31.1"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_storage = { version = "^0.31", path = "../../infrastructure/storage" }
 tari_shutdown = { version = "^0.31", path = "../../infrastructure/shutdown" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
 bitflags = "1.0.4"
 blake2 = "0.9.0"
 bytes = { version = "1", features = ["serde"] }
-chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["serde", "clock"] }
 cidr = "0.1.0"
 clear_on_drop = "=0.2.4"
 data-encoding = "2.2.0"

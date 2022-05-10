@@ -30,7 +30,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity, NodeIdentity};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "tari_application";
 
@@ -187,7 +187,7 @@ pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Op
 /// `path` - Path to the `TorIdentity` JSON file
 ///
 /// ## Returns
-/// The deserialized `TorIdentity` struct. Returns an Ok(None) if the path does not exist,  
+/// The deserialized `TorIdentity` struct. Returns an Ok(None) if the path does not exist,
 pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<Option<TorIdentity>, IdentityError> {
     check_identity_file(&path)?;
     let identity = load_from_json(path)?;

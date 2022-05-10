@@ -20,6 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Connectivity
+//! The ConnectivityManager actor is responsible for tracking the state of all peer
+//! connections in the system and maintaining a _pool_ of active peer connections.
+//!
+//! It emits [ConnectivityEvent](crate::connectivity::ConnectivityEvent)s that can keep client components
+//! in the loop with the state of the node's connectivity.
+
 mod connection_stats;
 
 mod config;

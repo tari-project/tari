@@ -174,11 +174,13 @@ impl BoundedExecutor {
     }
 }
 
+/// A task executor that can be configured to be bounded or unbounded.
 pub struct OptionallyBoundedExecutor {
     inner: Either<runtime::Handle, BoundedExecutor>,
 }
 
 impl OptionallyBoundedExecutor {
+    /// Create a new OptionallyBoundedExecutor. If `num_permits` is `None` the executor will be unbounded.
     pub fn new(executor: runtime::Handle, num_permits: Option<usize>) -> Self {
         Self {
             inner: num_permits
@@ -187,10 +189,13 @@ impl OptionallyBoundedExecutor {
         }
     }
 
+    /// Create a new OptionallyBoundedExecutor from the current tokio context. If `num_permits` is `None` the executor
+    /// will be unbounded.
     pub fn from_current(num_permits: Option<usize>) -> Self {
         Self::new(current(), num_permits)
     }
 
+    /// Returns true if this executor can spawn, otherwise false.
     pub fn can_spawn(&self) -> bool {
         match &self.inner {
             Either::Left(_) => true,
@@ -198,6 +203,8 @@ impl OptionallyBoundedExecutor {
         }
     }
 
+    /// Try spawn a new task returning its `JoinHandle`. An error is returned if the executor is bounded and currently
+    /// full.
     pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, TrySpawnError>
     where
         F: Future + Send + 'static,
@@ -209,6 +216,8 @@ impl OptionallyBoundedExecutor {
         }
     }
 
+    /// Spawns a new task returning its `JoinHandle`. If the executor is running `num_permits` tasks, this waits until a
+    /// task is available.
     pub async fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,

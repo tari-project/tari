@@ -41,6 +41,16 @@ const LOG_TARGET: &str = "comms::protocol::identity";
 
 const MAX_IDENTITY_PROTOCOL_MSG_SIZE: u16 = 1024;
 
+/// Perform the identity exchange protocol.
+///
+/// This occurs on each new connection. Identity data is sent immediately by both the initiator and responder, therefore
+/// this protocol has a half RTT.
+///
+/// ```text
+/// [initiator]   (simultaneous)   [responder]
+///   |  ---------[identity]--------> |
+///   |  <---------[identity]-------- |
+/// ```
 pub async fn identity_exchange<'p, TSocket, P>(
     node_identity: &NodeIdentity,
     our_supported_protocols: P,
@@ -133,6 +143,7 @@ async fn write_protocol_frame<S: AsyncWrite + Unpin>(
     Ok(())
 }
 
+/// Error type for the identity protocol
 #[derive(Debug, Error, Clone)]
 pub enum IdentityProtocolError {
     #[error("IoError: {0}")]

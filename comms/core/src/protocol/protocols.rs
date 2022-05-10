@@ -30,14 +30,18 @@ use crate::{
     Substream,
 };
 
+/// Protocol notification sender
 pub type ProtocolNotificationTx<TSubstream> = mpsc::Sender<ProtocolNotification<TSubstream>>;
+/// Protocol notification receiver
 pub type ProtocolNotificationRx<TSubstream> = mpsc::Receiver<ProtocolNotification<TSubstream>>;
 
+/// Event emitted when a new inbound substream is requested by a remote node.
 #[derive(Debug, Clone)]
 pub enum ProtocolEvent<TSubstream> {
     NewInboundSubstream(NodeId, TSubstream),
 }
 
+/// Notification of a new protocol
 #[derive(Debug, Clone)]
 pub struct ProtocolNotification<TSubstream> {
     pub event: ProtocolEvent<TSubstream>,
@@ -50,6 +54,7 @@ impl<TSubstream> ProtocolNotification<TSubstream> {
     }
 }
 
+/// Keeps a map of supported protocols and the sender that should be notified.
 pub struct Protocols<TSubstream> {
     protocols: HashMap<ProtocolId, ProtocolNotificationTx<TSubstream>>,
 }
@@ -71,14 +76,17 @@ impl<TSubstream> Default for Protocols<TSubstream> {
 }
 
 impl<TSubstream> Protocols<TSubstream> {
+    /// New empty protocol map
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// New empty protocol map
     pub fn empty() -> Self {
         Default::default()
     }
 
+    /// Add a new protocol ID and notifier
     pub fn add<I: AsRef<[ProtocolId]>>(
         &mut self,
         protocols: I,
@@ -89,15 +97,18 @@ impl<TSubstream> Protocols<TSubstream> {
         self
     }
 
+    /// Extend this instance with all the protocols from another instance
     pub fn extend(&mut self, protocols: Self) -> &mut Self {
         self.protocols.extend(protocols.protocols);
         self
     }
 
+    /// Returns all registered protocol IDs
     pub fn get_supported_protocols(&self) -> Vec<ProtocolId> {
         self.protocols.keys().cloned().collect()
     }
 
+    /// Send a notification to the registered notifier for the protocol ID.
     pub async fn notify(
         &mut self,
         protocol: &ProtocolId,
@@ -115,6 +126,7 @@ impl<TSubstream> Protocols<TSubstream> {
         }
     }
 
+    /// Returns an iterator of currently registered [ProtocolId](self::ProtocolId)
     pub fn iter(&self) -> impl Iterator<Item = &ProtocolId> {
         self.protocols.iter().map(|(protocol_id, _)| protocol_id)
     }

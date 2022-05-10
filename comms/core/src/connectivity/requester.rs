@@ -43,9 +43,12 @@ use crate::{connection_manager::ConnectionManagerError, peer_manager::NodeId, Pe
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
+/// Connectivity event broadcast receiver.
 pub type ConnectivityEventRx = broadcast::Receiver<ConnectivityEvent>;
+/// Connectivity event broadcast sender.
 pub type ConnectivityEventTx = broadcast::Sender<ConnectivityEvent>;
 
+/// Node connectivity events emitted by the ConnectivityManager.
 #[derive(Debug, Clone)]
 pub enum ConnectivityEvent {
     PeerDisconnected(NodeId),
@@ -78,6 +81,7 @@ impl fmt::Display for ConnectivityEvent {
     }
 }
 
+/// Request types for the ConnectivityManager actor.
 #[derive(Debug)]
 pub enum ConnectivityRequest {
     WaitStarted(oneshot::Sender<()>),
@@ -98,6 +102,7 @@ pub enum ConnectivityRequest {
     RemovePeerFromAllowList(NodeId),
 }
 
+/// Handle to make requests and read events from the ConnectivityManager actor.
 #[derive(Debug, Clone)]
 pub struct ConnectivityRequester {
     sender: mpsc::Sender<ConnectivityRequest>,
@@ -105,10 +110,13 @@ pub struct ConnectivityRequester {
 }
 
 impl ConnectivityRequester {
-    pub fn new(sender: mpsc::Sender<ConnectivityRequest>, event_tx: ConnectivityEventTx) -> Self {
+    pub(crate) fn new(sender: mpsc::Sender<ConnectivityRequest>, event_tx: ConnectivityEventTx) -> Self {
         Self { sender, event_tx }
     }
 
+    /// Returns a subscription to [ConnectivityEvent]s.
+    ///
+    /// [ConnectivityEvent](self::ConnectivityEvent)
     pub fn get_event_subscription(&self) -> ConnectivityEventRx {
         self.event_tx.subscribe()
     }
@@ -173,6 +181,7 @@ impl ConnectivityRequester {
         .try_for_each(|result| result.map_err(|_| ConnectivityError::ActorDisconnected))
     }
 
+    /// Queries the ConnectivityManager and returns the matching [PeerConnection](crate::PeerConnection)s.
     pub async fn select_connections(
         &mut self,
         selection: ConnectivitySelection,
@@ -195,6 +204,7 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
+    /// Get the current [ConnectivityStatus](self::ConnectivityStatus).
     pub async fn get_connectivity_status(&mut self) -> Result<ConnectivityStatus, ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -204,6 +214,7 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
+    /// Get the full connection state that the connectivity actor.
     pub async fn get_all_connection_states(&mut self) -> Result<Vec<PeerConnectionState>, ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -213,6 +224,7 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
+    /// Get all currently connection [PeerConnection](crate::PeerConnection]s.
     pub async fn get_active_connections(&mut self) -> Result<Vec<PeerConnection>, ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -222,6 +234,7 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
+    /// Ban peer for the given Duration. The ban `reason` is persisted in the peer database for reference.
     pub async fn ban_peer_until(
         &mut self,
         node_id: NodeId,
@@ -235,11 +248,13 @@ impl ConnectivityRequester {
         Ok(())
     }
 
+    /// Ban the peer indefinitely.
     pub async fn ban_peer(&mut self, node_id: NodeId, reason: String) -> Result<(), ConnectivityError> {
         self.ban_peer_until(node_id, Duration::from_secs(u64::MAX), reason)
             .await
     }
 
+    /// Adds a peer to an allow list, preventing it from being banned.
     pub async fn add_peer_to_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
         self.sender
             .send(ConnectivityRequest::AddPeerToAllowList(node_id))
@@ -248,6 +263,7 @@ impl ConnectivityRequester {
         Ok(())
     }
 
+    /// Removes a peer from an allow list that prevents it from being banned.
     pub async fn remove_peer_from_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
         self.sender
             .send(ConnectivityRequest::RemovePeerFromAllowList(node_id))
@@ -256,6 +272,7 @@ impl ConnectivityRequester {
         Ok(())
     }
 
+    /// Returns a Future that resolves when the connectivity actor has started.
     pub async fn wait_started(&mut self) -> Result<(), ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender

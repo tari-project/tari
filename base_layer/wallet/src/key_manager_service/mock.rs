@@ -37,6 +37,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::key_manager_service::{error::KeyManagerServiceError, storage::database::KeyManagerState};
 
+/// Testing Mock for the key manager service
+/// Contains all functionality of the normal key manager service except persistent storage
 #[derive(Clone)]
 pub struct KeyManagerMock {
     key_managers: Arc<RwLock<HashMap<String, KeyManager<PrivateKey, KeyDigest>>>>,
@@ -44,6 +46,7 @@ pub struct KeyManagerMock {
 }
 
 impl KeyManagerMock {
+    /// Creates a new testing mock key manager service
     pub fn new(master_seed: CipherSeed) -> Self {
         KeyManagerMock {
             key_managers: Arc::new(RwLock::new(HashMap::new())),
@@ -53,6 +56,7 @@ impl KeyManagerMock {
 }
 
 impl KeyManagerMock {
+    /// Adds a new branch for the key manager mock to track
     pub async fn add_key_manager_mock(&self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
         let result = if self.key_managers.read().await.contains_key(&branch) {
             AddResult::AlreadyExists
@@ -75,6 +79,7 @@ impl KeyManagerMock {
         Ok(result)
     }
 
+    /// Gets the next key in the branch and increments the index
     pub async fn get_next_key_mock(&self, branch: String) -> Result<NextKeyResult, KeyManagerServiceError> {
         let mut lock = self.key_managers.write().await;
         let km = lock.get_mut(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
@@ -85,6 +90,7 @@ impl KeyManagerMock {
         })
     }
 
+    /// get the key at the request index for the branch
     pub async fn get_key_at_index_mock(
         &self,
         branch: String,

@@ -31,6 +31,7 @@ use futures::{
 };
 use log::*;
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_utilities::hex::Hex;
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt},
     sync::{mpsc, oneshot},
@@ -40,7 +41,7 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{self, span, Instrument, Level};
 
-use super::{error::ConnectionManagerError, peer_connection::PeerConnection, types::ConnectionDirection};
+use super::{direction::ConnectionDirection, error::ConnectionManagerError, peer_connection::PeerConnection};
 use crate::{
     backoff::Backoff,
     connection_manager::{
@@ -76,6 +77,7 @@ pub(crate) enum DialerRequest {
     NotifyNewInboundConnection(PeerConnection),
 }
 
+/// Responsible for dialing peers on the given transport.
 pub struct Dialer<TTransport, TBackoff> {
     config: ConnectionManagerConfig,
     peer_manager: Arc<PeerManager>,
@@ -354,7 +356,10 @@ where
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
 
         if &authenticated_public_key != expected_public_key {
-            return Err(ConnectionManagerError::DialedPublicKeyMismatch);
+            return Err(ConnectionManagerError::DialedPublicKeyMismatch {
+                authenticated_pk: authenticated_public_key.to_hex(),
+                expected_pk: expected_public_key.to_hex(),
+            });
         }
 
         Ok(authenticated_public_key)

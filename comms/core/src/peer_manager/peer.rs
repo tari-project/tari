@@ -32,7 +32,7 @@ use bitflags::bitflags;
 use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::hex::serialize_to_hex;
+use tari_utilities::hex::serialize_to_hex;
 
 use super::{
     connection_stats::PeerConnectionStats,
@@ -45,20 +45,16 @@ use crate::{
     peer_manager::identity_signature::IdentitySignature,
     protocol::ProtocolId,
     types::CommsPublicKey,
-    utils::datetime::safe_future_datetime_from_duration,
+    utils::datetime::{format_local_datetime, is_max_datetime, safe_future_datetime_from_duration},
 };
 
 bitflags! {
+    /// Miscellaneous Peer flags
     #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
         const NONE = 0x00;
+        const SEED = 0x01;
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerIdentity {
-    pub node_id: NodeId,
-    pub public_key: CommsPublicKey,
 }
 
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
@@ -164,11 +160,6 @@ impl Peer {
             .map(|since| Duration::from_millis(u64::try_from(since.num_milliseconds()).unwrap()))
     }
 
-    /// TODO: Remove once we don't have to sync wallet and base node db
-    pub fn unset_id(&mut self) {
-        self.id = None;
-    }
-
     pub(super) fn set_id(&mut self, id: PeerId) {
         self.id = Some(id);
     }
@@ -179,7 +170,6 @@ impl Peer {
     }
 
     #[allow(clippy::option_option)]
-
     pub fn update(
         &mut self,
         net_addresses: Option<Vec<Multiaddr>>,
@@ -310,6 +300,15 @@ impl Peer {
         self
     }
 
+    pub fn add_flags(&mut self, flags: PeerFlags) -> &mut Self {
+        self.flags |= flags;
+        self
+    }
+
+    pub fn is_seed(&self) -> bool {
+        self.flags.contains(PeerFlags::SEED)
+    }
+
     pub fn to_short_string(&self) -> String {
         format!(
             "{}::{}",
@@ -336,11 +335,15 @@ impl Display for Peer {
         let status_str = {
             let mut s = Vec::new();
             if let Some(offline_at) = self.offline_at.as_ref() {
-                s.push(format!("Offline since: {}", offline_at));
+                s.push(format!("Offline since: {}", format_local_datetime(offline_at)));
             }
 
             if let Some(dt) = self.banned_until() {
-                s.push(format!("Banned until: {}", dt));
+                if is_max_datetime(dt) {
+                    s.push("Banned permanently".to_string());
+                } else {
+                    s.push(format!("Banned until: {}", format_local_datetime(dt)));
+                }
                 s.push(format!("Reason: {}", self.banned_reason))
             }
             s.join(". ")

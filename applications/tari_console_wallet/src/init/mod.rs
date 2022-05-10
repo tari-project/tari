@@ -555,8 +555,16 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
         Ok(WalletBoot::Existing)
     } else {
         // automation/wallet created with --password
-        if cli.password.is_some() {
+        if cli.password.is_some() || wallet_config.password.is_some() {
             return Ok(WalletBoot::New);
+        }
+
+        // In non-interactive mode, we never prompt. Otherwise, it's not very non-interactive, now is it?
+        if cli.non_interactive_mode {
+            let msg = "Wallet does not exist and no password was given to create one. Since we're in non-interactive \
+                       mode, we need to quit here. Try setting the TARI_WALLET__PASSWORD envar, or setting --password \
+                       on the command line";
+            return Err(ExitError::new(ExitCode::WalletError, &msg));
         }
 
         // prompt for new or recovery
