@@ -1,4 +1,4 @@
-import { Service } from '../store/services/types'
+import { Container } from '../store/containers/types'
 
 const translations: { [key: string]: { [key: string]: string } } = {
   verbs: {
@@ -30,15 +30,15 @@ const translations: { [key: string]: { [key: string]: string } } = {
     actionRequired: 'Action required',
     startHere: 'Start here',
   },
-  services: {
-    [Service.Tor]: 'Tor',
-    [Service.BaseNode]: 'Base Node',
-    [Service.Wallet]: 'Wallet',
-    [Service.SHA3Miner]: 'SHA3 miner',
-    [Service.MMProxy]: 'Merge miner proxy',
-    [Service.XMrig]: 'xmrig',
-    [Service.Monerod]: 'monerod',
-    [Service.Frontail]: 'frontail',
+  containers: {
+    [Container.Tor]: 'Tor',
+    [Container.BaseNode]: 'Base Node',
+    [Container.Wallet]: 'Wallet',
+    [Container.SHA3Miner]: 'SHA3 miner',
+    [Container.MMProxy]: 'Merge miner proxy',
+    [Container.XMrig]: 'xmrig',
+    [Container.Monerod]: 'monerod',
+    [Container.Frontail]: 'frontail',
   },
 }
 

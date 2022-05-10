@@ -6,19 +6,18 @@ import { listen } from '@tauri-apps/api/event'
 import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 
-import { selectServiceStatus } from './selectors'
 import {
   StatsEventPayload,
   ContainerId,
-  Service,
+  Container,
   ServiceDescriptor,
 } from './types'
 
 export const start = createAsyncThunk<
   { id: ContainerId; unsubscribeStats: UnlistenFn },
-  Service,
+  Container,
   { state: RootState }
->('services/start', async (service, thunkApi) => {
+>('containers/start', async (service, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
     const settings = selectServiceSettings(rootState)
@@ -32,7 +31,7 @@ export const start = createAsyncThunk<
       descriptor.statsEventsName,
       (statsEvent: { payload: StatsEventPayload }) => {
         thunkApi.dispatch({
-          type: 'services/stats',
+          type: 'containers/stats',
           payload: { containerId: descriptor.id, stats: statsEvent.payload },
         })
       },
@@ -47,16 +46,16 @@ export const start = createAsyncThunk<
   }
 })
 
-export const stop = createAsyncThunk<void, Service, { state: RootState }>(
-  'services/stop',
-  async (service, thunkApi) => {
+export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
+  'containers/stop',
+  async (containerId, thunkApi) => {
     try {
       const rootState = thunkApi.getState()
-      const serviceStatus = selectServiceStatus(service)(rootState)
+      const containerStatus = rootState.containers.containers[containerId]
 
-      serviceStatus.stats.unsubscribe()
+      containerStatus.stats.unsubscribe()
       await invoke('stop_service', {
-        serviceName: service.toString(),
+        serviceName: (containerStatus.type || '').toString(),
       })
     } catch (error) {
       return thunkApi.rejectWithValue(error)

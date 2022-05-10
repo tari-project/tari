@@ -1,15 +1,15 @@
 import { RootState } from '../'
 
-import { ServiceStatus, Service, SystemEventAction } from './types'
-import { selectServiceStatus } from './selectors'
+import { ServiceStatus, Container, SystemEventAction } from './types'
+import { selectContainerStatus } from './selectors'
 
 describe('services/selectors', () => {
   it('should return default state for service if no containerId is present', () => {
     // given
     const rootState = {
-      services: {
+      containers: {
         services: {
-          [Service.Tor]: { containerId: '', pending: false },
+          [Container.Tor]: { containerId: '', pending: false },
         },
       },
     } as unknown as RootState
@@ -24,7 +24,7 @@ describe('services/selectors', () => {
     }
 
     // when
-    const selected = selectServiceStatus(Service.Tor)(rootState)
+    const selected = selectContainerStatus(Container.Tor)(rootState)
 
     // then
     expect(JSON.stringify(selected)).toBe(JSON.stringify(expected)) // need to check this way because of unsubscribe function
@@ -33,9 +33,9 @@ describe('services/selectors', () => {
   it('should indicate pending status of service', () => {
     // given
     const rootState = {
-      services: {
+      containers: {
         services: {
-          [Service.Tor]: { containerId: '', pending: true },
+          [Container.Tor]: { containerId: '', pending: true },
         },
       },
     } as unknown as RootState
@@ -50,7 +50,7 @@ describe('services/selectors', () => {
     }
 
     // when
-    const selected = selectServiceStatus(Service.Tor)(rootState)
+    const selected = selectContainerStatus(Container.Tor)(rootState)
 
     // then
     expect(JSON.stringify(selected)).toBe(JSON.stringify(expected)) // need to check this way because of unsubscribe function
@@ -60,7 +60,7 @@ describe('services/selectors', () => {
     // given
     const unsubscribe = jest.fn()
     const rootState = {
-      services: {
+      containers: {
         containers: {
           containerId: {
             lastAction: SystemEventAction.Start,
@@ -72,7 +72,7 @@ describe('services/selectors', () => {
           },
         },
         services: {
-          [Service.Tor]: { containerId: 'containerId', pending: false },
+          [Container.Tor]: { containerId: 'containerId', pending: false },
         },
       },
     } as unknown as RootState
@@ -87,7 +87,7 @@ describe('services/selectors', () => {
     }
 
     // when
-    const selected = selectServiceStatus(Service.Tor)(
+    const selected = selectContainerStatus(Container.Tor)(
       rootState,
     ) as ServiceStatus
 
@@ -99,7 +99,7 @@ describe('services/selectors', () => {
     // given
     const unsubscribe = jest.fn()
     const rootState = {
-      services: {
+      containers: {
         containers: {
           containerId: {
             lastAction: SystemEventAction.Create,
@@ -111,7 +111,7 @@ describe('services/selectors', () => {
           },
         },
         services: {
-          [Service.Tor]: { containerId: 'containerId', pending: false },
+          [Container.Tor]: { containerId: 'containerId', pending: false },
         },
       },
     } as unknown as RootState
@@ -126,7 +126,7 @@ describe('services/selectors', () => {
     }
 
     // when
-    const selected = selectServiceStatus(Service.Tor)(
+    const selected = selectContainerStatus(Container.Tor)(
       rootState,
     ) as ServiceStatus
 

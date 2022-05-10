@@ -1,5 +1,5 @@
 import servicesReducer from './'
-import { Service, SystemEventAction, ServicesState } from './types'
+import { Container, SystemEventAction, ServicesState } from './types'
 
 describe('updateStatus action', () => {
   it('should update container lastAction state', () => {
@@ -113,7 +113,7 @@ describe('updateStatus action', () => {
       // given
       const state = {
         services: {
-          [Service.Tor]: {
+          [Container.Tor]: {
             containerId: 'someContainerId',
             pending: false,
           },
@@ -131,7 +131,7 @@ describe('updateStatus action', () => {
       } as unknown as ServicesState
       const expected = {
         services: {
-          [Service.Tor]: {
+          [Container.Tor]: {
             containerId: '',
             pending: false,
           },
