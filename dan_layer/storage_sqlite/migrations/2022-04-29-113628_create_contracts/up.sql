@@ -20,8 +20,6 @@ create table utxos (
     -- this identifies the output in the block. Is there a better way?
     output_hash blob(32) not null,
 
-    -- question: do we need to store more data about the output?
-
     -- indicates wheter this utxto was spent or not
     spent integer not null default false
 );
@@ -114,14 +112,23 @@ create table contract_constitutions (
 
     -- optional initial reward that is paid to the VN committee when the UTXO is spent
     initial_reward sqlite3_uint64 null,
+ 
+    -- "enum" for the checkpoint consensus algorithm
+    consensus_algorithm text 
+        check (consensus_algorithm IN ('HotStuff', 'Custom'))
+        not null default 'HotStuff',
 
-    -- side-chain metadata record
-    consensus_algorithm varchar(32) null,
-    checkpoint_quorum integer check( 0 >= checkpoint_quorum <= 100 ) not null default 100,
+    -- quorum conditions
+    quorum_committee_count inteter not null,
+    quorum_required_acceptances integer not null,
+    quorum_required_checkpoint_votes integer not null,
 
     -- checkpoint parameter record
     min_checkpoint_frequency integer not null, -- as number of blocks
-    committee_change_rules varchar(255) null, -- the format is not clear
+
+    -- no need to store "committee_change_rules"...
+    -- ... as they are covenants & scripts and will be forced by base layer ...
+    -- ... and just in case we store a reference to the UTXO where they are declared
 
     -- requirements for constitution change record (optional)
     checkpoint_paramenters_change varchar(255) null, -- the format is not clear
