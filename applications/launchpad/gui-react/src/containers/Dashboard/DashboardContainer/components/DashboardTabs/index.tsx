@@ -7,12 +7,10 @@ import TabContent from '../../../../../components/TabContent'
 import { setPage } from '../../../../../store/app'
 import { ViewType } from '../../../../../store/app/types'
 import { selectView } from '../../../../../store/app/selectors'
-import {
-  selectState as selectBaseNodeState,
-  selectStatus as selectBaseNodeStatus,
-} from '../../../../../store/baseNode/selectors'
+import { selectPending as selectBaseNodePending } from '../../../../../store/baseNode/selectors'
 import { selectState as selectWalletState } from '../../../../../store/wallet/selectors'
 import { WalletState } from '../../../../../store/wallet/types'
+import BaseNodeState from '../../../../BaseNodeContainer/StateTag'
 
 import t from '../../../../../locales'
 
@@ -25,7 +23,7 @@ const composeNodeTabs = ({
   walletState,
 }: {
   miningNodeState?: unknown
-  baseNodeState: { network: string; running: boolean; pending: boolean } // TODO proper state
+  baseNodeState: { pending: boolean }
   walletState?: WalletState
 }) => {
   const miningContent = <TabContent text={t.common.nouns.mining} />
@@ -33,14 +31,8 @@ const composeNodeTabs = ({
   const baseNodeContent = (
     <TabContent
       text={t.common.nouns.baseNode}
-      running={baseNodeState?.running}
       pending={baseNodeState?.pending}
-      tagSubText={
-        baseNodeState?.network
-          ? baseNodeState.network[0].toUpperCase() +
-            baseNodeState.network.substring(1)
-          : undefined
-      }
+      tag={<BaseNodeState />}
     />
   )
 
@@ -75,18 +67,17 @@ const DashboardTabs = () => {
   const dispatch = useDispatch()
 
   const currentPage = useSelector(selectView)
-  const baseNodeState = useSelector(selectBaseNodeState)
-  const baseNodeStatus = useSelector(selectBaseNodeStatus)
+  const baseNodePending = useSelector(selectBaseNodePending)
   const walletState = useSelector(selectWalletState)
 
   const tabs = useMemo(
     () =>
       composeNodeTabs({
         miningNodeState: undefined,
-        baseNodeState: { ...baseNodeStatus, ...baseNodeState },
+        baseNodeState: { pending: baseNodePending },
         walletState,
       }),
-    [walletState, baseNodeState],
+    [walletState, baseNodePending],
   )
 
   const setPageTab = (tabId: string) => {

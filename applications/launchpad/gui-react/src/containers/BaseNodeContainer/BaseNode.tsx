@@ -6,7 +6,6 @@ import Box from '../../components/Box'
 import Button from '../../components/Button'
 import Tag from '../../components/Tag'
 import Callout from '../../components/Callout'
-import Capitalize from '../../components/Capitalize'
 import CenteredLayout from '../../components/CenteredLayout'
 import t from '../../locales'
 
@@ -20,25 +19,17 @@ const networkOptions = networks.map(network => ({
 }))
 
 const BaseNode = ({
+  running,
+  pending,
+  healthy,
+  unhealthyContainers,
   startNode,
   stopNode,
   openExpertView,
-  containers,
   tariNetwork,
   setTariNetwork,
 }: BaseNodeProps) => {
   const theme = useTheme()
-
-  const pending = containers.some(container => container.pending)
-  const notRunningContainers = containers.filter(
-    container => !container.running,
-  )
-  const runningContainers = containers.filter(container => container.running)
-  const running = Boolean(runningContainers.length)
-
-  const unhealthy =
-    containers.some(container => !container.pending && container.running) &&
-    containers.some(container => !container.pending && !container.running)
 
   return (
     <CenteredLayout horizontally>
@@ -61,14 +52,14 @@ const BaseNode = ({
           color={running ? theme.inverted.primary : undefined}
         >
           {t.baseNode.title}
-          {running && !unhealthy && (
+          {running && healthy && (
             <Tag type='running' variant='large'>
               {t.common.adjectives.running}
             </Tag>
           )}
-          {unhealthy && (
+          {!healthy && (
             <Tag type='warning' variant='large'>
-              Unhealthy
+              {t.common.adjectives.unhealthy}
             </Tag>
           )}
         </Text>
@@ -109,15 +100,12 @@ const BaseNode = ({
             <Text type='defaultMedium'>{t.common.verbs.stop}</Text>
           </Button>
         )}
-        {unhealthy && (
+        {!healthy && (
           <div style={{ marginTop: theme.spacing() }}>
             <Callout type='warning'>
-              <Capitalize>{t.common.adjectives.only}</Capitalize>{' '}
-              <strong>{runningContainers.length}</strong>{' '}
-              {t.baseNode.unhealthy.ofTheRequired}{' '}
-              {t.baseNode.unhealthy.containers}
+              {t.baseNode.unhealthy.warning} {t.baseNode.unhealthy.containers}
               <br />
-              {notRunningContainers.map((c, index, arr) => (
+              {unhealthyContainers.map((c, index, arr) => (
                 <em key={c.type}>
                   {t.common.containers[c.type]}
                   {index < arr.length - 1 ? ', ' : ''}
