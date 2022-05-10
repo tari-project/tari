@@ -5,10 +5,11 @@ import { ContainerStatusDto, Container, SystemEventAction } from './types'
 export const selectState = (rootState: RootState) => rootState.containers
 
 const selectContainerByType = (c: Container) => (r: RootState) => {
-  const [containerId, containerStatus] =
-    Object.entries(r.containers.containers).filter(
-      ([, value]) => value.type === c,
-    )[0] || []
+  const containers = Object.entries(r.containers.containers).filter(
+    ([, value]) => value.type === c,
+  )
+  containers.sort(([, a], [, b]) => b.timestamp - a.timestamp)
+  const [containerId, containerStatus] = containers[0] || []
 
   return { containerId, containerStatus }
 }

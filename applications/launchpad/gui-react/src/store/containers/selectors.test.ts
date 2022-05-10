@@ -56,7 +56,7 @@ describe('containers/selectors', () => {
     expect(JSON.stringify(selected)).toBe(JSON.stringify(expected)) // need to check this way because of unsubscribe function
   })
 
-  it('should return container', () => {
+  it('should return container by type', () => {
     // given
     const unsubscribe = jest.fn()
     const rootState = {
@@ -64,7 +64,6 @@ describe('containers/selectors', () => {
         pending: [],
         containers: {
           containerId: {
-            id: 'containerId',
             type: Container.Tor,
             status: SystemEventAction.Start,
             stats: {
@@ -98,6 +97,59 @@ describe('containers/selectors', () => {
     expect(selected).toStrictEqual(expected) // need to check this way because of unsubscribe function
   })
 
+  it('should return container with biggest timestamp value if multiple containers of the same type are present', () => {
+    // given
+    const unsubscribe = jest.fn()
+    const rootState = {
+      containers: {
+        pending: [],
+        containers: {
+          containerId: {
+            timestamp: 0,
+            type: Container.Tor,
+            status: SystemEventAction.Start,
+            stats: {
+              cpu: 7,
+              memory: 7,
+              unsubscribe,
+            },
+          },
+          anotherContainerId: {
+            timestamp: 1,
+            type: Container.Tor,
+            status: SystemEventAction.Start,
+            stats: {
+              cpu: 8,
+              memory: 8,
+              unsubscribe,
+            },
+          },
+        },
+      },
+    } as unknown as RootState
+    const expected = {
+      id: 'anotherContainerId',
+      timestamp: 1,
+      status: SystemEventAction.Start,
+      type: Container.Tor,
+      running: true,
+      pending: false,
+      stats: {
+        cpu: 8,
+        memory: 8,
+        unsubscribe,
+      },
+    }
+
+    // when
+    const selected = selectContainerStatus(Container.Tor)(
+      rootState,
+    ) as ContainerStatusDto
+
+    // then
+    expect(selected).toStrictEqual(expected) // need to check this way because of unsubscribe function
+  })
+
   it('should return container other than Start or Destroy as pending', () => {
     // given
     const unsubscribe = jest.fn()
@@ -106,7 +158,6 @@ describe('containers/selectors', () => {
         pending: [],
         containers: {
           containerId: {
-            id: 'containerId',
             type: Container.Tor,
             status: SystemEventAction.Create,
             stats: {
