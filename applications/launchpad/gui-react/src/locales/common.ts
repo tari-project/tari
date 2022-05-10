@@ -25,6 +25,9 @@ const translations: { [key: string]: { [key: string]: string } } = {
     paused: 'Paused',
     copied: 'Copied',
   },
+  conjunctions: {
+    or: 'or',
+  },
   phrases: {
     actionRequired: 'Action required',
     startHere: 'Start here',

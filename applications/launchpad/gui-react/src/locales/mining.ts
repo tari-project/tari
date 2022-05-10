@@ -1,6 +1,6 @@
 const translations = {
-  set_up_mining_hours: 'Set up mining hours',
   minedInLastSession: 'mined in last session',
+  setUpTariWalletSubmitBtn: 'Set up Tari Wallet & start mining',
   headerTips: {
     oneStepAway: 'You are one step away from starting mining.',
     continueMining:
