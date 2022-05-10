@@ -418,7 +418,7 @@ pub async fn start_container(image: ImageType, config: LaunchpadConfig) -> Resul
     let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
 
     let options = Some(CreateContainerOptions {
-        name: format!("{}_{}", image.container_name(), image.image_name()),
+        name: format!("{}_{}", DEFAULT_WORKSPACE, image.image_name()),
     });
     let envars = config.environment(image);
     let volumes = config.volumes(image);
