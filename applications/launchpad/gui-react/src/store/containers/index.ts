@@ -71,6 +71,8 @@ const servicesSlice = createSlice({
         case SystemEventAction.Destroy:
         case SystemEventAction.Die:
           state.containers[action.payload.containerId].stats.unsubscribe()
+          state.containers[action.payload.containerId].stats.cpu = 0
+          state.containers[action.payload.containerId].stats.memory = 0
           break
       }
     },

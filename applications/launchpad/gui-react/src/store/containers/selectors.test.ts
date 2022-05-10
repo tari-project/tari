@@ -97,6 +97,43 @@ describe('containers/selectors', () => {
     expect(selected).toStrictEqual(expected) // need to check this way because of unsubscribe function
   })
 
+  const runningIndicationTestcases = [
+    [SystemEventAction.Start, true],
+    [SystemEventAction.Destroy, false],
+    [SystemEventAction.Die, false],
+    ['something else', false],
+  ]
+  runningIndicationTestcases.forEach(([status, expected]) =>
+    it(`should return running=${expected} for status "${status}"`, () => {
+      // given
+      const unsubscribe = jest.fn()
+      const rootState = {
+        containers: {
+          pending: [],
+          containers: {
+            containerId: {
+              type: Container.Tor,
+              status: status,
+              stats: {
+                cpu: 7,
+                memory: 7,
+                unsubscribe,
+              },
+            },
+          },
+        },
+      } as unknown as RootState
+
+      // when
+      const selected = selectContainerStatus(Container.Tor)(
+        rootState,
+      ) as ContainerStatusDto
+
+      // then
+      expect(selected.running).toBe(expected)
+    }),
+  )
+
   it('should return container with biggest timestamp value if multiple containers of the same type are present', () => {
     // given
     const unsubscribe = jest.fn()
@@ -173,7 +210,7 @@ describe('containers/selectors', () => {
       id: 'containerId',
       type: Container.Tor,
       status: SystemEventAction.Create,
-      running: true,
+      running: false,
       pending: true,
       stats: {
         cpu: 7,
