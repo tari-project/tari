@@ -21,7 +21,9 @@ export const selectContainerStatus: ContainerStatusSelector =
     const { containerId, containerStatus } =
       selectContainerByType(containerType)(rootState)
 
-    const pending = rootState.containers.pending.includes(containerType)
+    const pending =
+      rootState.containers.pending.includes(containerType) ||
+      rootState.containers.pending.includes(containerId)
 
     if (!containerId) {
       return {
