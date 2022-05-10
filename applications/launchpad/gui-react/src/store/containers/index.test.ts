@@ -159,7 +159,7 @@ describe('updateStatus action', () => {
         expect(unsubscribe).toHaveBeenCalledTimes(1)
       })
 
-      it(`[${action}] should NOT remove container from state`, () => {
+      it(`[${action}] should NOT remove container from state and 0-out the stats`, () => {
         // given
         const state = {
           pending: [],
@@ -186,6 +186,8 @@ describe('updateStatus action', () => {
 
         // then
         expect(nextState.containers.someContainerId).toBeDefined()
+        expect(nextState.containers.someContainerId.stats.cpu).toBe(0)
+        expect(nextState.containers.someContainerId.stats.memory).toBe(0)
       })
     })
   })
