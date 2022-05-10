@@ -29,6 +29,7 @@ export type ServiceDescriptor = {
 
 export type ContainerStatus = {
   status: SystemEventAction
+  timestamp: number
   type?: Container
   error?: string
   stats: {
