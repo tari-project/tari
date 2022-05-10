@@ -7,6 +7,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     stop: 'Stop',
     pause: 'Pause',
     continue: 'Continue',
+    close: 'Close',
   },
   nouns: {
     expertView: 'Expert view',
