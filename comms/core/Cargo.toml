@@ -21,7 +21,7 @@ async-trait = "0.1.36"
 bitflags = "1.0.4"
 blake2 = "0.9.0"
 bytes = { version = "1", features = ["serde"] }
-chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["serde", "clock"] }
 cidr = "0.1.0"
 clear_on_drop = "=0.2.4"
 data-encoding = "2.2.0"
