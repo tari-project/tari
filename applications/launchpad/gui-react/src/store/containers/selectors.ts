@@ -1,6 +1,6 @@
 import { RootState } from '../'
 
-import { ServiceStatus, Container, SystemEventAction } from './types'
+import { ContainerStatusDto, Container, SystemEventAction } from './types'
 
 export const selectState = (rootState: RootState) => rootState.containers
 
@@ -13,7 +13,9 @@ const selectContainerByType = (c: Container) => (r: RootState) => {
   return { containerId, containerStatus }
 }
 
-type ContainerStatusSelector = (s: Container) => (r: RootState) => ServiceStatus
+type ContainerStatusSelector = (
+  c: Container,
+) => (r: RootState) => ContainerStatusDto
 export const selectContainerStatus: ContainerStatusSelector =
   containerType => rootState => {
     const { containerId, containerStatus } =
@@ -36,6 +38,7 @@ export const selectContainerStatus: ContainerStatusSelector =
 
     return {
       ...containerStatus,
+      id: containerId,
       pending:
         pending ||
         (containerStatus.lastAction !== SystemEventAction.Start &&
@@ -54,6 +57,6 @@ export const selectRunningContainers = (rootState: RootState): Container[] =>
 
 export const selectContainersStatuses = (rootState: RootState) =>
   Object.values(Container).map(type => ({
-    service: type,
+    container: type,
     status: selectContainerStatus(type as Container)(rootState),
   }))

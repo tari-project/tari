@@ -28,7 +28,6 @@ export type ServiceDescriptor = {
 }
 
 export type ContainerStatus = {
-  id: ContainerId
   lastAction: SystemEventAction
   type?: Container
   error?: string
@@ -39,7 +38,7 @@ export type ContainerStatus = {
   }
 }
 
-export type ServiceStatus = {
+export type ContainerStatusDto = {
   id: ContainerId
   running: boolean
   pending: boolean

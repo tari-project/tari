@@ -10,11 +10,11 @@ import Containers from './Containers'
 const ContainersContainer = () => {
   const dispatch = useAppDispatch()
   const containerStatuses = useAppSelector(selectContainersStatuses)
-  const services = useMemo(
+  const containers = useMemo(
     () =>
-      containerStatuses.map(({ service, status }) => ({
+      containerStatuses.map(({ container, status }) => ({
         id: status.id,
-        service: service as Container,
+        container: container as Container,
         cpu: status.stats.cpu,
         memory: status.stats.memory,
         pending: status.pending,
@@ -26,7 +26,7 @@ const ContainersContainer = () => {
   const start = (container: Container) => dispatch(actions.start(container))
   const stop = (containerId: ContainerId) => dispatch(actions.stop(containerId))
 
-  return <Containers containers={services} stop={stop} start={start} />
+  return <Containers containers={containers} stop={stop} start={start} />
 }
 
 export default ContainersContainer
