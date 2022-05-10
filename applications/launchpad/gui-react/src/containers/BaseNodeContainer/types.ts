@@ -7,6 +7,9 @@ export interface BaseNodeProps {
   stopNode: () => void
   tariNetwork: Network
   setTariNetwork: (selected: Network) => void
-  containers: ContainerStatusDto[]
   openExpertView: () => void
+  running: boolean
+  pending: boolean
+  healthy: boolean
+  unhealthyContainers: ContainerStatusDto[]
 }
