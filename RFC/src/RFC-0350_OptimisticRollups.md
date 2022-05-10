@@ -154,7 +154,9 @@ Note that it's not needed to check if a checkpoint was already considered fraudu
 #### Open questions:
 * How are templates and instructions going to be implemented? This is a heavy dependency for optimistic rollups, as all the computations MUST be deterministic to be reproduced in a fraud proof.
 * Currently, the base layer does not have the tools to reproduce the computations being done in the side-chains. This requires the base layer to be able to execute template code when a `fraud_proof` output flag is present in a transaction. This is a huge extension to the base layer. An alternative could be to move the validation off-chain (as some implementations do), in this case to a wider set of VNs outside the contract VNC, with the proper economical incentives.
-* How do we handle the dispute over the instructions themselves? Instructions could be signed by the user emitting them, so fake instructions can be checked, but there is the case of a challenger claiming that a checkpoint censored or reordered one or more instructions. This last case is not possible to verify in the base layer with the current proposal. Many implementations of optimistic rollups rely on the instructions being stored on-chain to solve this.
+* How do we handle the dispute over the instructions themselves? Instructions could be signed by the user emitting them, so fake instructions can be checked, but there is the case of a challenger claiming that a checkpoint censored or reordered one or more instructions.
+    * Many implementations of optimistic rollups rely on the instructions being stored on-chain to solve this.
+    * An off-line solution could be for the VN (or the whole VNC) to return a signed ACK message to the users for each instruction message they send. The implicit agreement is for the instruction to be processed and included in the next checkpoint. If it isn't, then the user has a valid proof and can claim the VN stakes or have their reputation impacted.
 
 ### Checkpoint sequence forks
 
