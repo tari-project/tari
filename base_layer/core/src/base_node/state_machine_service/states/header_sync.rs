@@ -28,6 +28,7 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use crate::{
     base_node::{
         comms_interface::BlockEvent,
+        metrics,
         state_machine_service::states::{BlockSyncInfo, StateEvent, StateInfo, StatusInfo},
         sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeer},
         BaseNodeStateMachine,
@@ -112,8 +113,13 @@ impl HeaderSyncState {
         });
 
         let local_nci = shared.local_node_interface.clone();
-        synchronizer.on_rewind(move |blocks| {
-            local_nci.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
+        synchronizer.on_rewind(move |removed| {
+            if let Some(fork_height) = removed.last().map(|b| b.height()) {
+                metrics::tip_height().set(fork_height as i64);
+                metrics::reorg(fork_height, 0, removed.len()).inc();
+            }
+
+            local_nci.publish_block_event(BlockEvent::BlockSyncRewind(removed));
         });
 
         let timer = Instant::now();
