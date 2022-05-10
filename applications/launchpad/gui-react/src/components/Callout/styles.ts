@@ -14,6 +14,8 @@ export const StyledCallout = styled.div<{
     return $inverted ? theme.inverted.warningText : theme.warningText
   }};
   border-radius: ${({ theme }) => theme.borderRadius(0.5)};
+  font-size: 0.9em;
+  line-height: 150%;
 `
 
 export const CalloutIcon = styled.span`

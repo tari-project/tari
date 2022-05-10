@@ -29,6 +29,7 @@ export const selectContainerStatus: ContainerStatusSelector =
     if (!containerId) {
       return {
         id: '',
+        type: containerType,
         running: false,
         pending,
         stats: {
@@ -47,6 +48,7 @@ export const selectContainerStatus: ContainerStatusSelector =
         (containerStatus.status !== SystemEventAction.Start &&
           containerStatus.status !== SystemEventAction.Destroy),
       running: containerStatus.status === SystemEventAction.Start,
+      type: containerType,
     }
   }
 

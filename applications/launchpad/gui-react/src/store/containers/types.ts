@@ -41,6 +41,7 @@ export type ContainerStatus = {
 
 export type ContainerStatusDto = {
   id: ContainerId
+  type: Container
   running: boolean
   pending: boolean
   stats: {

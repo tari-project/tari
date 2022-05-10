@@ -3,6 +3,7 @@ import {
   selectState,
   selectContainerStatuses,
 } from '../../store/baseNode/selectors'
+import { setExpertView } from '../../store/app'
 import { actions } from '../../store/baseNode'
 
 import BaseNode from './BaseNode'
@@ -19,6 +20,7 @@ const BaseNodeContainer = () => {
       stopNode={() => dispatch(actions.stopNode())}
       tariNetwork={network}
       setTariNetwork={network => dispatch(actions.setTariNetwork(network))}
+      openExpertView={() => dispatch(setExpertView('open'))}
     />
   )
 }

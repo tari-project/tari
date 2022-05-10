@@ -5,6 +5,8 @@ import Text from '../../components/Text'
 import Box from '../../components/Box'
 import Button from '../../components/Button'
 import Tag from '../../components/Tag'
+import Callout from '../../components/Callout'
+import Capitalize from '../../components/Capitalize'
 import CenteredLayout from '../../components/CenteredLayout'
 import t from '../../locales'
 
@@ -20,6 +22,7 @@ const networkOptions = networks.map(network => ({
 const BaseNode = ({
   startNode,
   stopNode,
+  openExpertView,
   containers,
   tariNetwork,
   setTariNetwork,
@@ -39,16 +42,6 @@ const BaseNode = ({
 
   return (
     <CenteredLayout horizontally>
-      {unhealthy && (
-        <p>
-          Only {runningContainers.length} of the required containers is running.
-          Containers that are not running correctly:{' '}
-          {notRunningContainers.map(c => c.type).join(', ')}
-          You can check their state in Expert View or bring the service down
-          entirely and start again. If the problem persists, feel free to ask on
-          our discord for help.
-        </p>
-      )}
       <Box
         border={!running}
         gradient={
@@ -115,6 +108,33 @@ const BaseNode = ({
           >
             <Text type='defaultMedium'>{t.common.verbs.stop}</Text>
           </Button>
+        )}
+        {unhealthy && (
+          <div style={{ marginTop: theme.spacing() }}>
+            <Callout type='warning'>
+              <Capitalize>{t.common.adjectives.only}</Capitalize>{' '}
+              <strong>{runningContainers.length}</strong>{' '}
+              {t.baseNode.unhealthy.ofTheRequired}{' '}
+              {t.baseNode.unhealthy.containers}
+              <br />
+              {notRunningContainers.map((c, index, arr) => (
+                <em key={c.type}>
+                  {t.common.containers[c.type]}
+                  {index < arr.length - 1 ? ', ' : ''}
+                </em>
+              ))}
+              <br />
+              {t.baseNode.unhealthy.checkTheirState}{' '}
+              <Button
+                variant='text'
+                style={{ display: 'inline-block', padding: 0 }}
+                onClick={openExpertView}
+              >
+                {t.common.nouns.expertView}
+              </Button>{' '}
+              {t.baseNode.unhealthy.bringItDown}
+            </Callout>
+          </div>
         )}
       </Box>
     </CenteredLayout>

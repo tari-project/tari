@@ -9,6 +9,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     continue: 'Continue',
   },
   nouns: {
+    expertView: 'Expert view',
     baseNode: 'Base Node',
     mining: 'Mining',
     problem: 'Problem',
@@ -24,6 +25,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     running: 'Running',
     paused: 'Paused',
     copied: 'Copied',
+    only: 'only',
   },
   conjunctions: {
     or: 'or',

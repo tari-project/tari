@@ -200,7 +200,7 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
         </Button>
         <Switch
           value={expertView !== 'hidden'}
-          rightLabel='Expert view'
+          rightLabel={t.common.nouns.expertView}
           onClick={onExpertViewClick}
           testId={'titlebar-expert-view-btn'}
           inverted={expertView !== 'hidden'}
