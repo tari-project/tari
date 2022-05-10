@@ -39,6 +39,6 @@ pub fn enum_to_list<T: Sized + ToString + Clone>(enums: &[T]) -> Vec<String> {
 
 #[test]
 fn network_list_test() {
-    let networks = ["dibbler".to_string(), "igor".to_string(), "mainnet".to_string()].to_vec();
+    let networks = ["Dibbler".to_string(), "Igor".to_string(), "Mainnet".to_string()].to_vec();
     assert_eq!(networks, enum_to_list(&TARI_NETWORKS));
 }
