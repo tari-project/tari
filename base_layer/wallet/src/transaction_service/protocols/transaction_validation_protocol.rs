@@ -334,7 +334,7 @@ where
                         target: LOG_TARGET,
                         "Marking transaction {} as unmined and confirmed '{}' with block '{}' (Operation ID: {})",
                         &unconfirmed_tx.tx_id,
-                        &response.confirmations >= &self.config.num_confirmations_required,
+                        response.confirmations >= self.config.num_confirmations_required,
                         response.block_hash.is_some(),
                         self.operation_id,
                     );
