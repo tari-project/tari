@@ -9,7 +9,6 @@ describe('updateStatus action', () => {
       pending: [],
       containers: {
         someContainerId: {
-          id: 'someContainerId',
           lastAction: SystemEventAction.Create,
           stats: {
             cpu: 2,
@@ -23,7 +22,6 @@ describe('updateStatus action', () => {
       pending: [],
       containers: {
         someContainerId: {
-          id: 'someContainerId',
           lastAction: SystemEventAction.Start,
           stats: {
             cpu: 2,
@@ -57,7 +55,6 @@ describe('updateStatus action', () => {
       pending: [],
       containers: {
         newContainerId: {
-          id: 'newContainerId',
           lastAction: SystemEventAction.Create,
           stats: {
             cpu: 0,
@@ -92,7 +89,6 @@ describe('updateStatus action', () => {
           pending: [],
           containers: {
             someContainerId: {
-              id: 'someContainerId',
               lastAction: SystemEventAction.Create,
               stats: {
                 cpu: 2,

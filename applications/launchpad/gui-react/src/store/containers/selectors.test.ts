@@ -1,6 +1,6 @@
 import { RootState } from '../'
 
-import { ServiceStatus, Container, SystemEventAction } from './types'
+import { ContainerStatusDto, Container, SystemEventAction } from './types'
 import { selectContainerStatus } from './selectors'
 
 describe('containers/selectors', () => {
@@ -92,7 +92,7 @@ describe('containers/selectors', () => {
     // when
     const selected = selectContainerStatus(Container.Tor)(
       rootState,
-    ) as ServiceStatus
+    ) as ContainerStatusDto
 
     // then
     expect(selected).toStrictEqual(expected) // need to check this way because of unsubscribe function
@@ -134,7 +134,7 @@ describe('containers/selectors', () => {
     // when
     const selected = selectContainerStatus(Container.Tor)(
       rootState,
-    ) as ServiceStatus
+    ) as ContainerStatusDto
 
     // then
     expect(selected).toStrictEqual(expected) // need to check this way because of unsubscribe function

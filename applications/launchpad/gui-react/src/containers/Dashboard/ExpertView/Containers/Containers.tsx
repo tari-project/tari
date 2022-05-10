@@ -18,12 +18,12 @@ import { ContainersTable, TdRight } from './styles'
  * @prop {(container: Container) => void} start - callback for starting a container
  * @prop {(containerId: ContainerId) => void} stop - callback for stopping a container
  *
- * @typedef ServiceDto
- * @prop {Container} service - service which is described by this Dto
- * @prop {number} cpu - % cpu usage of the service
- * @prop {number} memory - memory in MB of the service
- * @prop {boolean} running - indicates if service is running
- * @prop {boolean} pending - indicates if service "running" state is about to change
+ * @typedef ContainerDto
+ * @prop {Container} container - container which is described by this Dto
+ * @prop {number} cpu - % cpu usage of the container
+ * @prop {number} memory - memory in MB of the container
+ * @prop {boolean} running - indicates if container is running
+ * @prop {boolean} pending - indicates if container "running" state is about to change
  */
 const Containers = ({ containers, stop, start }: ContainersProps) => {
   const theme = useTheme()
@@ -32,10 +32,10 @@ const Containers = ({ containers, stop, start }: ContainersProps) => {
     <ContainersTable>
       <tbody>
         {containers.map(container => (
-          <tr key={container.service}>
+          <tr key={container.container}>
             <td>
               <Text color={theme.inverted.primary}>
-                {t.common.containers[container.service]}
+                {t.common.containers[container.container]}
               </Text>
             </td>
             <TdRight>
@@ -72,7 +72,7 @@ const Containers = ({ containers, stop, start }: ContainersProps) => {
                     paddingLeft: 0,
                     color: theme.inverted.accentSecondary,
                   }}
-                  onClick={() => start(container.service)}
+                  onClick={() => start(container.container)}
                 >
                   {t.common.verbs.start}
                 </Button>
