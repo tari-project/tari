@@ -87,7 +87,13 @@ pub async fn start_service(
 ) -> Result<StartServiceResult, String> {
     
     info!("starting docker container for {}", service_name);
-    let _ = service::create_workspace(app.clone(), settings.clone()).await;
+    let created = service::create_workspace(app.clone(), settings.clone())
+        .await;
+    if created.is_ok() {
+        info!("New workspace [{}] has been created.", settings.root_folder.as_str());
+    } else {
+        info!("Workspace: [{}] already exists.", settings.root_folder.as_str());
+    }
     let workspace = configure_workspace(app.clone(), DEFAULT_WORKSPACE).await.unwrap();
 
     let app1 = app.clone();

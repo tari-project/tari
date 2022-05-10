@@ -278,7 +278,7 @@ fn container_statistic<FM: 'static, FE: 'static>(
         .map_err(DockerWrapperError::from);
     let event_name = event_name.to_string();
     tauri::async_runtime::spawn(async move {
-        let _ = process_stream(send_message, send_error, event_name.clone(), error_destination, stream).await;
+        process_stream(send_message, send_error, event_name.clone(), error_destination, stream).await;
         info!("Resource stats stream for {} has closed.", event_name);
     });
     info!("Resource stats events configured.");
@@ -333,7 +333,7 @@ fn container_logs<FM: 'static, FE: 'static>(
         .logs(container_name, Some(options))
         .map(|log| log.map(LogMessage::from).map_err(DockerWrapperError::from));
     tauri::async_runtime::spawn(async move {
-        let _ = process_stream(send_message, send_error, message_destination, error_destination, stream).await;
+        process_stream(send_message, send_error, message_destination, error_destination, stream).await;
         info!("Resource logs stream for has closed.");
     });
     info!("Resource logs events configured.");

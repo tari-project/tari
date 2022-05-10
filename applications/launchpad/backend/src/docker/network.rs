@@ -84,7 +84,7 @@ pub async fn try_create_network(tari_network: &str) -> Result<(), DockerWrapperE
     let docker_network = network_name(tari_network);
     info!("trying to connect to network: {}", docker_network);
     // Check network requirements for the service
-    if !network_exists(&docker_network).await? {
+    if let Ok(false) = network_exists(&docker_network).await {
         create_network(&docker_network).await?;
         Ok(())
     } else {
