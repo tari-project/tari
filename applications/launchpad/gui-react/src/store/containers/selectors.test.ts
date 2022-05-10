@@ -14,6 +14,7 @@ describe('containers/selectors', () => {
     } as unknown as RootState
     const expected = {
       id: '',
+      type: Container.Tor,
       running: false,
       pending: false,
       stats: {
@@ -40,6 +41,7 @@ describe('containers/selectors', () => {
     } as unknown as RootState
     const expected = {
       id: '',
+      type: Container.Tor,
       running: false,
       pending: true,
       stats: {
