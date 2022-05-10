@@ -2,14 +2,14 @@ import servicesReducer from './'
 import { SystemEventAction, ServicesState } from './types'
 
 describe('updateStatus action', () => {
-  it('should update container lastAction state', () => {
+  it('should update container status state', () => {
     // given
     const unsubscribe = jest.fn()
     const state = {
       pending: [],
       containers: {
         someContainerId: {
-          lastAction: SystemEventAction.Create,
+          status: SystemEventAction.Create,
           stats: {
             cpu: 2,
             memory: 1,
@@ -22,7 +22,7 @@ describe('updateStatus action', () => {
       pending: [],
       containers: {
         someContainerId: {
-          lastAction: SystemEventAction.Start,
+          status: SystemEventAction.Start,
           stats: {
             cpu: 2,
             memory: 1,
@@ -51,19 +51,6 @@ describe('updateStatus action', () => {
       pending: [],
       containers: {},
     } as unknown as ServicesState
-    const expected = {
-      pending: [],
-      containers: {
-        newContainerId: {
-          lastAction: SystemEventAction.Create,
-          stats: {
-            cpu: 0,
-            memory: 0,
-            unsubscribe: () => undefined,
-          },
-        },
-      },
-    }
 
     // when
     const nextState = servicesReducer(state, {
@@ -75,7 +62,14 @@ describe('updateStatus action', () => {
     })
 
     // then
-    expect(JSON.stringify(nextState)).toStrictEqual(JSON.stringify(expected)) // need to compare like this because () => undefined in initial container state
+    const newContainer = nextState.containers.newContainerId
+    expect(newContainer).toMatchObject({
+      status: SystemEventAction.Create,
+      stats: {
+        cpu: 0,
+        memory: 0,
+      },
+    })
   })
 
   describe('when container is reported as destroyed or dead', () => {
@@ -89,7 +83,7 @@ describe('updateStatus action', () => {
           pending: [],
           containers: {
             someContainerId: {
-              lastAction: SystemEventAction.Create,
+              status: SystemEventAction.Create,
               stats: {
                 cpu: 2,
                 memory: 1,
@@ -118,7 +112,7 @@ describe('updateStatus action', () => {
           pending: [],
           containers: {
             someContainerId: {
-              lastAction: SystemEventAction.Create,
+              status: SystemEventAction.Create,
               stats: {
                 cpu: 2,
                 memory: 1,

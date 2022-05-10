@@ -13,7 +13,7 @@ import { start, stop } from './thunks'
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
 ): ContainerStatus => ({
-  lastAction,
+  status: lastAction,
   stats: {
     cpu: 0,
     memory: 0,
@@ -62,7 +62,7 @@ const servicesSlice = createSlice({
           action.payload.action,
         )
       } else {
-        state.containers[action.payload.containerId].lastAction =
+        state.containers[action.payload.containerId].status =
           action.payload.action
       }
 

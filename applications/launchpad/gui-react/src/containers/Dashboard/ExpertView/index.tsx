@@ -4,6 +4,7 @@ import { useTheme } from 'styled-components'
 import { useAppDispatch, useAppSelector } from '../../../store/hooks'
 import { setExpertView } from '../../../store/app'
 import { selectExpertView } from '../../../store/app/selectors'
+import { selectRootState } from '../../../store'
 import Tabs from '../../../components/Tabs'
 import Button from '../../../components/Button'
 import TabContent from '../../../components/TabContent'
@@ -18,6 +19,7 @@ import { TabsContainer } from './styles'
 const ExpertView = () => {
   const dispatch = useAppDispatch()
   const expertView = useAppSelector(selectExpertView)
+  const rootState = useAppSelector(selectRootState)
   const theme = useTheme()
   const [selectedTab, setTab] = useState('CONTAINERS')
 
@@ -79,6 +81,9 @@ const ExpertView = () => {
         )}
       </TabsContainer>
       {renderPage()}
+      <pre style={{ color: 'white' }}>
+        {JSON.stringify(rootState.containers, null, 2)}
+      </pre>
     </MainContainer>
   )
 }

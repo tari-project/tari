@@ -66,7 +66,7 @@ describe('containers/selectors', () => {
           containerId: {
             id: 'containerId',
             type: Container.Tor,
-            lastAction: SystemEventAction.Start,
+            status: SystemEventAction.Start,
             stats: {
               cpu: 7,
               memory: 7,
@@ -78,7 +78,7 @@ describe('containers/selectors', () => {
     } as unknown as RootState
     const expected = {
       id: 'containerId',
-      lastAction: SystemEventAction.Start,
+      status: SystemEventAction.Start,
       type: Container.Tor,
       running: true,
       pending: false,
@@ -108,7 +108,7 @@ describe('containers/selectors', () => {
           containerId: {
             id: 'containerId',
             type: Container.Tor,
-            lastAction: SystemEventAction.Create,
+            status: SystemEventAction.Create,
             stats: {
               cpu: 7,
               memory: 7,
@@ -121,7 +121,7 @@ describe('containers/selectors', () => {
     const expected = {
       id: 'containerId',
       type: Container.Tor,
-      lastAction: SystemEventAction.Create,
+      status: SystemEventAction.Create,
       running: true,
       pending: true,
       stats: {
