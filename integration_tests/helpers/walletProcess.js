@@ -213,17 +213,17 @@ class WalletProcess {
     });
   }
 
-  async start(password) {
+  async start(opts = {}) {
     const args = [
       "--base-path",
       ".",
       "--password",
-      `${password ? password : "kensentme"}`,
+      opts.password || "kensentme",
       "--seed-words-file-name",
       this.seedWordsFile,
       "--non-interactive",
       "--network",
-      "localnet",
+      opts.network || (this.options || {}).network || "localnet",
     ];
     if (this.recoverWallet) {
       args.push("--recover", "--seed-words", this.seedWords);
@@ -231,7 +231,7 @@ class WalletProcess {
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
-    const overrides = this.getOverrides();
+    const overrides = Object.assign(this.getOverrides(), opts.config);
     Object.keys(overrides).forEach((k) => {
       args.push("-p");
       args.push(`${k}=${overrides[k]}`);

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use argon2::password_hash::Error as PasswordHashError;
-use tari_crypto::tari_utilities::ByteArrayError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]

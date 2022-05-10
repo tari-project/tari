@@ -30,6 +30,7 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Basic connection stats for a [Peer](super::Peer).
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PeerConnectionStats {
     /// The last time a connection was successfully made or, None if a successful
@@ -40,6 +41,7 @@ pub struct PeerConnectionStats {
 }
 
 impl PeerConnectionStats {
+    /// New connection stats
     pub fn new() -> Self {
         Default::default()
     }
@@ -109,7 +111,7 @@ impl fmt::Display for PeerConnectionStats {
     }
 }
 
-/// Peer connection statistics
+/// Details on the last connection attempt
 #[derive(Debug, Clone, Deserialize, Serialize, PartialOrd, PartialEq, Eq)]
 pub enum LastConnectionAttempt {
     /// This node has never attempted to connect to this peer

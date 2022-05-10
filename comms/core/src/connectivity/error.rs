@@ -24,6 +24,7 @@ use thiserror::Error;
 
 use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError, PeerConnectionError};
 
+/// Errors for the Connectivity actor.
 #[derive(Debug, Error)]
 pub enum ConnectivityError {
     #[error("Cannot send request because ConnectivityActor disconnected")]

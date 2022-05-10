@@ -24,6 +24,7 @@ use std::fmt;
 
 use crate::schema::dht_metadata;
 
+/// Supported metadata keys for the DHT database
 #[derive(Debug, Clone, Copy)]
 pub enum DhtMetadataKey {
     /// Timestamp each time the DHT is shut down
@@ -38,6 +39,7 @@ impl fmt::Display for DhtMetadataKey {
     }
 }
 
+/// Struct used to create a new metadata entry
 #[derive(Clone, Debug, Insertable)]
 #[table_name = "dht_metadata"]
 pub struct NewDhtMetadataEntry {
@@ -45,6 +47,7 @@ pub struct NewDhtMetadataEntry {
     pub value: Vec<u8>,
 }
 
+/// Struct used that contains a metadata entry
 #[derive(Clone, Debug, Queryable, Identifiable)]
 #[table_name = "dht_metadata"]
 pub struct DhtMetadataEntry {

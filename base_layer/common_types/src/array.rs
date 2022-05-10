@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp;
+
 use tari_utilities::ByteArrayError;
 
 pub fn copy_into_fixed_array<T: Default + Copy, const SZ: usize>(elems: &[T]) -> Result<[T; SZ], ByteArrayError> {
@@ -29,4 +31,13 @@ pub fn copy_into_fixed_array<T: Default + Copy, const SZ: usize>(elems: &[T]) ->
     let mut buf = [T::default(); SZ];
     buf.copy_from_slice(&elems[0..SZ]);
     Ok(buf)
+}
+
+/// Copies `SZ` elements from a slice into a fixed array of size `SZ`. If the length of the slice is less than `SZ` the
+/// default value is used  for the  remaining elements.
+pub fn copy_into_fixed_array_lossy<T: Default + Copy, const SZ: usize>(elems: &[T]) -> [T; SZ] {
+    let len = cmp::min(elems.len(), SZ);
+    let mut buf = [T::default(); SZ];
+    buf[..len].copy_from_slice(&elems[..len]);
+    buf
 }

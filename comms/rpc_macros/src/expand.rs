@@ -183,36 +183,13 @@ impl TraitInfoCollector {
             ));
         }
 
-        let request_arg = &node.sig.inputs[1];
-        match request_arg {
-            FnArg::Typed(syn::PatType { ty, .. }) => match &**ty {
-                Type::Path(syn::TypePath { path, .. }) => {
-                    let path = path
-                        .segments
-                        .first()
-                        .ok_or_else(|| syn_error!(request_arg, "unexpected type in trait definition"))?;
+        self.parse_request_type(node, info)?;
+        self.parse_method_return_type(node, info)?;
 
-                    match &path.arguments {
-                        PathArguments::AngleBracketed(args) => {
-                            let arg = args
-                                .args
-                                .first()
-                                .ok_or_else(|| syn_error!(request_arg, "expected Request<T>"))?;
-                            match arg {
-                                GenericArgument::Type(ty) => {
-                                    info.request_type = Some((*ty).clone());
-                                },
-                                _ => return Err(syn_error!(request_arg, "expected request type")),
-                            }
-                        },
-                        _ => return Err(syn_error!(request_arg, "expected request type")),
-                    }
-                },
-                _ => return Err(syn_error!(request_arg, "expected request type")),
-            },
-            _ => return Err(syn_error!(request_arg, "expected request argument, got a receiver")),
-        }
+        Ok(())
+    }
 
+    fn parse_method_return_type(&self, node: &syn::TraitItemMethod, info: &mut RpcMethodInfo) -> syn::Result<()> {
         let ident = info.method_ident.clone();
         let invalid_return_type = || {
             syn_error!(
@@ -223,9 +200,7 @@ impl TraitInfoCollector {
         };
 
         match &node.sig.output {
-            ReturnType::Default => {
-                return Err(invalid_return_type());
-            },
+            ReturnType::Default => Err(invalid_return_type()),
             ReturnType::Type(_, ty) => match &**ty {
                 Type::Path(path) => match path.path.segments.first() {
                     Some(syn::PathSegment {
@@ -253,26 +228,56 @@ impl TraitInfoCollector {
                                         match arg {
                                             GenericArgument::Type(ty) => {
                                                 info.return_type = Some((*ty).clone());
+                                                Ok(())
                                             },
-                                            _ => return Err(invalid_return_type()),
+                                            _ => Err(invalid_return_type()),
                                         }
                                     },
-                                    _ => return Err(invalid_return_type()),
+                                    _ => Err(invalid_return_type()),
                                 }
                             },
 
-                            _ => return Err(invalid_return_type()),
+                            _ => Err(invalid_return_type()),
                         }
                     },
-                    _ => return Err(invalid_return_type()),
+                    _ => Err(invalid_return_type()),
                 },
-                _ => {
-                    return Err(invalid_return_type());
-                },
+                _ => Err(invalid_return_type()),
             },
         }
+    }
 
-        Ok(())
+    fn parse_request_type(&self, node: &syn::TraitItemMethod, info: &mut RpcMethodInfo) -> syn::Result<()> {
+        let request_arg = &node.sig.inputs[1];
+        match request_arg {
+            FnArg::Typed(syn::PatType { ty, .. }) => match &**ty {
+                Type::Path(syn::TypePath { path, .. }) => {
+                    let path = path
+                        .segments
+                        .first()
+                        .ok_or_else(|| syn_error!(request_arg, "unexpected type in trait definition"))?;
+
+                    match &path.arguments {
+                        PathArguments::AngleBracketed(args) => {
+                            let arg = args
+                                .args
+                                .first()
+                                .ok_or_else(|| syn_error!(request_arg, "expected Request<T>"))?;
+                            match arg {
+                                GenericArgument::Type(ty) => {
+                                    info.request_type = Some((*ty).clone());
+                                    Ok(())
+                                },
+                                _ => Err(syn_error!(request_arg, "expected request type")),
+                            }
+                        },
+                        _ => Err(syn_error!(request_arg, "expected request type")),
+                    }
+                },
+                _ => Err(syn_error!(request_arg, "expected request type")),
+            },
+            _ => Err(syn_error!(request_arg, "expected request argument, got a receiver")),
+        }
     }
 }
 

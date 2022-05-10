@@ -106,6 +106,7 @@ pub struct BaseNodeConfig {
     pub metadata_auto_ping_interval: Duration,
     pub state_machine: BaseNodeStateMachineConfig,
     pub resize_terminal_on_startup: bool,
+    pub report_grpc_error: bool,
 }
 
 impl Default for BaseNodeConfig {
@@ -136,6 +137,7 @@ impl Default for BaseNodeConfig {
             metadata_auto_ping_interval: Duration::from_secs(30),
             state_machine: Default::default(),
             resize_terminal_on_startup: true,
+            report_grpc_error: false,
         }
     }
 }
@@ -150,6 +152,9 @@ impl BaseNodeConfig {
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         if !self.identity_file.is_absolute() {
             self.identity_file = base_path.as_ref().join(self.identity_file.as_path());
+        }
+        if !self.tor_identity_file.is_absolute() {
+            self.tor_identity_file = base_path.as_ref().join(self.tor_identity_file.as_path());
         }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());

@@ -25,6 +25,7 @@ use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::task;
 
+/// Error type for DHT storage
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("ConnectionError: {0}")]

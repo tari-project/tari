@@ -24,6 +24,13 @@
 // Copyright (c) The Libra Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+//! # Transports
+//!
+//! Provides an abstraction for [Transport](self::Transport)s and several implemenations:
+//! - [TCP](self::TcpTransport) - communication over TCP and IP4/IP6 and DNS
+//! - [SOCKS](self::SocksTransport) - communication over a SOCKS5 proxy.
+//! - [Memory](self::MemoryTransport) - in-process communication (mpsc channel), typically for testing.
+
 use multiaddr::Multiaddr;
 use tokio_stream::Stream;
 
@@ -43,6 +50,7 @@ pub use tcp::TcpTransport;
 mod tcp_with_tor;
 pub use tcp_with_tor::TcpWithTorTransport;
 
+/// Defines an abstraction for implementations that can dial and listen for connections over a provided address.
 #[crate::async_trait]
 pub trait Transport {
     /// The output of the transport after a connection is established

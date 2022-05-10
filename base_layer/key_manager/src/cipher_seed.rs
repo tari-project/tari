@@ -34,7 +34,7 @@ use chacha20::{
 use crc32fast::Hasher as CrcHasher;
 use digest::Update;
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use crate::{
     error::KeyManagerError,

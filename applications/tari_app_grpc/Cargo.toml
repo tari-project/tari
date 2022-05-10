@@ -11,9 +11,9 @@ edition = "2018"
 tari_common_types = { version = "^0.31", path = "../../base_layer/common_types"}
 tari_comms = { path = "../../comms/core"}
 tari_core = {  path = "../../base_layer/core"}
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
 
 chrono = { version = "0.4.19", default-features = false }
 prost = "0.9"

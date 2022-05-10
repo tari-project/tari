@@ -36,7 +36,7 @@ use tari_core::transactions::transaction_components::{
     SideChainCheckpointFeatures,
     TemplateParameter,
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 

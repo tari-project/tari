@@ -20,13 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove #[allow(dead_code)] when used
-#[allow(dead_code)]
-mod config;
-mod crypto_resolver;
-mod error;
-mod socket;
+//! An implementation of the [Noise protocol](https://noiseprotocol.org/) using the [snow crate](https://crates.io/crates/snow)
+//! using the Ristretto curve from dalek via [tari_crypto](https://github.com/tari-project/tari-crypto).
 
+mod config;
 pub use config::NoiseConfig;
+
+mod crypto_resolver;
+
+mod error;
 pub use error::NoiseError;
+
+mod socket;
 pub use socket::NoiseSocket;

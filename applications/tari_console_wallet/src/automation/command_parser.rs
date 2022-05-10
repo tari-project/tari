@@ -32,7 +32,7 @@ use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, parse_hash};
 use tari_common_types::types::PublicKey;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::automation::{commands::WalletCommand, error::ParseError};
 

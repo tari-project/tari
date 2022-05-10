@@ -43,7 +43,7 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_crypto::tari_utilities::{
+use tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
 };

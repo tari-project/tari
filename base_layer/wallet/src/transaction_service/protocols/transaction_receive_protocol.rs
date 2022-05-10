@@ -34,7 +34,7 @@ use tari_core::transactions::{
     transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
-use tari_crypto::tari_utilities::Hashable;
+use tari_utilities::Hashable;
 use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,

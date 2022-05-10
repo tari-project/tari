@@ -29,7 +29,12 @@ use std::{
 use log::*;
 use nom::lib::std::collections::hash_map::Entry;
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::mpsc, task::JoinHandle, time, time::MissedTickBehavior};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+    time,
+    time::MissedTickBehavior,
+};
 use tracing::{span, Instrument, Level};
 
 use super::{
@@ -61,13 +66,8 @@ const LOG_TARGET: &str = "comms::connectivity::manager";
 /// # Connectivity Manager
 ///
 /// The ConnectivityManager actor is responsible for tracking the state of all peer
-/// connections in the system and maintaining a _managed pool_ of peer connections.
-/// It provides a simple interface to fetch active peer connections.
-/// Selection includes selecting a single peer, random selection and selecting connections
-/// closer to a `NodeId`.
+/// connections in the system and maintaining a _pool_ of peer connections.
 ///
-/// Additionally, set of managed peers can be provided. ConnectivityManager actor will
-/// attempt to ensure that all provided peers have active peer connections.
 /// It emits [ConnectivityEvent](crate::connectivity::ConnectivityEvent)s that can keep client components
 /// in the loop with the state of the node's connectivity.
 pub struct ConnectivityManager {
@@ -101,11 +101,16 @@ impl ConnectivityManager {
     }
 }
 
+/// Node connectivity status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectivityStatus {
+    /// Initial connectivity status before the Connectivity actor has initialized.
     Initializing,
+    /// Connectivity is online.
     Online(usize),
+    /// Connectivity is less than the required minimum, but some connections are still active.
     Degraded(usize),
+    /// There are no active connections.
     Offline,
 }
 
@@ -226,52 +231,9 @@ impl ConnectivityManagerActor {
             },
             DialPeer { node_id, reply_tx } => {
                 let tracing_id = tracing::Span::current().id();
-                let span = span!(Level::TRACE, "handle_request");
+                let span = span!(Level::TRACE, "handle_dial_peer");
                 span.follows_from(tracing_id);
-                async move {
-                    match self.peer_manager.is_peer_banned(&node_id).await {
-                        Ok(true) => {
-                            if let Some(reply) = reply_tx {
-                                let _result = reply.send(Err(ConnectionManagerError::PeerBanned));
-                            }
-                            return;
-                        },
-                        Ok(false) => {},
-                        Err(err) => {
-                            if let Some(reply) = reply_tx {
-                                let _result = reply.send(Err(err.into()));
-                            }
-                            return;
-                        },
-                    }
-                    match self.pool.get(&node_id) {
-                        Some(state) if state.is_connected() => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Found existing connection for peer `{}`",
-                                node_id.short_str()
-                            );
-                            if let Some(reply_tx) = reply_tx {
-                                let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
-                            }
-                        },
-                        _ => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "No existing connection found for peer `{}`. Dialing...",
-                                node_id.short_str()
-                            );
-                            if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply_tx).await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "Failed to send dial request to connection manager: {:?}", err
-                                );
-                            }
-                        },
-                    }
-                }
-                .instrument(span)
-                .await
+                self.handle_dial_peer(node_id, reply_tx).instrument(span).await;
             },
             SelectConnections(selection, reply) => {
                 let _result = reply.send(self.select_connections(selection).await);
@@ -319,6 +281,53 @@ impl ConnectivityManagerActor {
                         .cloned()
                         .collect(),
                 );
+            },
+        }
+    }
+
+    async fn handle_dial_peer(
+        &mut self,
+        node_id: NodeId,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+    ) {
+        match self.peer_manager.is_peer_banned(&node_id).await {
+            Ok(true) => {
+                if let Some(reply) = reply_tx {
+                    let _result = reply.send(Err(ConnectionManagerError::PeerBanned));
+                }
+                return;
+            },
+            Ok(false) => {},
+            Err(err) => {
+                if let Some(reply) = reply_tx {
+                    let _result = reply.send(Err(err.into()));
+                }
+                return;
+            },
+        }
+        match self.pool.get(&node_id) {
+            Some(state) if state.is_connected() => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Found existing connection for peer `{}`",
+                    node_id.short_str()
+                );
+                if let Some(reply_tx) = reply_tx {
+                    let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
+                }
+            },
+            _ => {
+                debug!(
+                    target: LOG_TARGET,
+                    "No existing connection found for peer `{}`. Dialing...",
+                    node_id.short_str()
+                );
+                if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply_tx).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send dial request to connection manager: {:?}", err
+                    );
+                }
             },
         }
     }
@@ -508,57 +517,12 @@ impl ConnectivityManagerActor {
         debug!(target: LOG_TARGET, "Received event: {}", event);
         match event {
             PeerConnected(new_conn) => {
-                match self.pool.get_connection(new_conn.peer_node_id()).cloned() {
-                    Some(existing_conn) if !existing_conn.is_connected() => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Tie break: Existing connection (id: {}, peer: {}, direction: {}) was not connected, \
-                             resolving tie break by using the new connection. (New: id: {}, peer: {}, direction: {})",
-                            existing_conn.id(),
-                            existing_conn.peer_node_id(),
-                            existing_conn.direction(),
-                            new_conn.id(),
-                            new_conn.peer_node_id(),
-                            new_conn.direction(),
-                        );
-                        self.pool.remove(existing_conn.peer_node_id());
+                match self.handle_new_connection_tie_break(new_conn).await {
+                    TieBreak::KeepExisting => {
+                        // Ignore event, we discarded the new connection and keeping the current one
+                        return Ok(());
                     },
-                    Some(mut existing_conn) => {
-                        if self.tie_break_existing_connection(&existing_conn, new_conn) {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect \
-                                 existing connection (id: {}, peer: {}, direction: {})",
-                                new_conn.id(),
-                                new_conn.peer_node_id(),
-                                new_conn.direction(),
-                                existing_conn.id(),
-                                existing_conn.peer_node_id(),
-                                existing_conn.direction(),
-                            );
-
-                            let _result = existing_conn.disconnect_silent().await;
-                            self.pool.remove(existing_conn.peer_node_id());
-                        } else {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Tie break: Keeping existing connection (id: {}, peer: {}, direction: {}). \
-                                 Disconnecting new connection (id: {}, peer: {}, direction: {})",
-                                new_conn.id(),
-                                new_conn.peer_node_id(),
-                                new_conn.direction(),
-                                existing_conn.id(),
-                                existing_conn.peer_node_id(),
-                                existing_conn.direction(),
-                            );
-
-                            let _result = new_conn.clone().disconnect_silent().await;
-                            // Ignore this event - state can stay as is
-                            return Ok(());
-                        }
-                    },
-
-                    _ => {},
+                    TieBreak::UseNew | TieBreak::None => {},
                 }
             },
             PeerDisconnected(id, node_id) => {
@@ -645,6 +609,62 @@ impl ConnectivityManagerActor {
         self.update_connectivity_status();
         self.update_connectivity_metrics();
         Ok(())
+    }
+
+    async fn handle_new_connection_tie_break(&mut self, new_conn: &PeerConnection) -> TieBreak {
+        match self.pool.get_connection(new_conn.peer_node_id()).cloned() {
+            Some(existing_conn) if !existing_conn.is_connected() => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tie break: Existing connection (id: {}, peer: {}, direction: {}) was not connected, resolving \
+                     tie break by using the new connection. (New: id: {}, peer: {}, direction: {})",
+                    existing_conn.id(),
+                    existing_conn.peer_node_id(),
+                    existing_conn.direction(),
+                    new_conn.id(),
+                    new_conn.peer_node_id(),
+                    new_conn.direction(),
+                );
+                self.pool.remove(existing_conn.peer_node_id());
+                TieBreak::UseNew
+            },
+            Some(mut existing_conn) => {
+                if self.tie_break_existing_connection(&existing_conn, new_conn) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect existing \
+                         connection (id: {}, peer: {}, direction: {})",
+                        new_conn.id(),
+                        new_conn.peer_node_id(),
+                        new_conn.direction(),
+                        existing_conn.id(),
+                        existing_conn.peer_node_id(),
+                        existing_conn.direction(),
+                    );
+
+                    let _result = existing_conn.disconnect_silent().await;
+                    self.pool.remove(existing_conn.peer_node_id());
+                    TieBreak::UseNew
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Tie break: Keeping existing connection (id: {}, peer: {}, direction: {}). Disconnecting new \
+                         connection (id: {}, peer: {}, direction: {})",
+                        new_conn.id(),
+                        new_conn.peer_node_id(),
+                        new_conn.direction(),
+                        existing_conn.id(),
+                        existing_conn.peer_node_id(),
+                        existing_conn.direction(),
+                    );
+
+                    let _result = new_conn.clone().disconnect_silent().await;
+                    TieBreak::KeepExisting
+                }
+            },
+
+            None => TieBreak::None,
+        }
     }
 
     /// Two connections to the same peer have been created. This function deterministically determines which peer
@@ -839,4 +859,10 @@ impl ConnectivityManagerActor {
             self.connection_stats.remove(&node_id);
         }
     }
+}
+
+enum TieBreak {
+    None,
+    UseNew,
+    KeepExisting,
 }

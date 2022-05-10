@@ -39,9 +39,11 @@ use tari_comms::{
     types::CommsPublicKey,
     PeerConnection,
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use tari_utilities::{
+    hex::Hex,
+    message_format::{MessageFormat, MessageFormatError},
+};
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, oneshot},
@@ -63,6 +65,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
+/// Error type for the DHT actor
 #[derive(Debug, Error)]
 pub enum DhtActorError {
     #[error("MPSC channel is disconnected")]
@@ -93,6 +96,7 @@ impl<T> From<mpsc::error::SendError<T>> for DhtActorError {
     }
 }
 
+/// Request type for the DHT actor
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum DhtRequest {
@@ -143,20 +147,23 @@ impl Display for DhtRequest {
     }
 }
 
+/// DHT actor requester
 #[derive(Clone)]
 pub struct DhtRequester {
     sender: mpsc::Sender<DhtRequest>,
 }
 
 impl DhtRequester {
-    pub fn new(sender: mpsc::Sender<DhtRequest>) -> Self {
+    pub(crate) fn new(sender: mpsc::Sender<DhtRequest>) -> Self {
         Self { sender }
     }
 
+    /// Send a Join message to the network
     pub async fn send_join(&mut self) -> Result<(), DhtActorError> {
         self.sender.send(DhtRequest::SendJoin).await.map_err(Into::into)
     }
 
+    /// Select peers by [BroadcastStrategy](crate::broadcast_strategy::BroadcastStrategy]
     pub async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -165,6 +172,7 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
+    /// Adds a message hash to the dedup cache.
     pub async fn add_message_to_dedup_cache(
         &mut self,
         message_hash: Vec<u8>,
@@ -182,6 +190,7 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
+    /// Gets the number of hits for a given message hash.
     pub async fn get_message_cache_hit_count(&mut self, message_hash: Vec<u8>) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -191,6 +200,7 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
+    /// Returns the deserialized metadata value for the given key
     pub async fn get_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey) -> Result<Option<T>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender.send(DhtRequest::GetMetadata(key, reply_tx)).await?;
@@ -202,6 +212,7 @@ impl DhtRequester {
         }
     }
 
+    /// Sets the metadata value for the given key
     pub async fn set_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey, value: T) -> Result<(), DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let bytes = value.to_binary().map_err(DhtActorError::FailedToSerializeValue)?;
@@ -223,6 +234,7 @@ impl DhtRequester {
     }
 }
 
+/// DHT actor. Responsible for executing DHT-related tasks.
 pub struct DhtActor {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
@@ -237,7 +249,8 @@ pub struct DhtActor {
 }
 
 impl DhtActor {
-    pub fn new(
+    /// Create a new DhtActor
+    pub(crate) fn new(
         config: Arc<DhtConfig>,
         conn: DbConnection,
         node_identity: Arc<NodeIdentity>,
@@ -268,6 +281,7 @@ impl DhtActor {
         }
     }
 
+    /// Spawns the DHT actor on a new task.
     pub fn spawn(self) {
         task::spawn(async move {
             if let Err(err) = self.run().await {

@@ -28,7 +28,7 @@ use std::{
 
 use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
-use tari_crypto::tari_utilities::{
+use tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
 };

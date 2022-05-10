@@ -26,7 +26,7 @@ use chrono::NaiveDateTime;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use tari_common_types::types::PublicKey;
 use tari_comms::peer_manager::NodeId;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use crate::{
     contacts_service::{

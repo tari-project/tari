@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::peer_manager::NodeId;
-use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_utilities::hex::Hex;
 
 #[tokio::main]
 async fn main() {

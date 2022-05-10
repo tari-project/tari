@@ -18,7 +18,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
-      - uses: Swatinem/rust-cache@v1
+          override: true
+          components: llvm-tools-preview
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -28,7 +29,6 @@ jobs:
             pkg-config \
             libsqlite3-dev \
             clang-10 \
-            clang \
             git \
             cmake \
             libc++-dev \
@@ -47,12 +47,9 @@ jobs:
             libappindicator3-dev \
             patchelf \
             librsvg2-dev \
-      - name: test key manager wasm
+      - name: install grcov
         run: |
-          npm install -g wasm-pack
-          cd base_layer/key_manager
-          rustup target add wasm32-unknown-unknown
-          make test
+          cargo install grcov
       - name: cargo test compile
         uses: actions-rs/cargo@v1
         with:

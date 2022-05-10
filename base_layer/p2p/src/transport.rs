@@ -28,9 +28,10 @@ use tari_comms::{
     tor,
     tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig},
+    utils::multiaddr::multiaddr_to_socketaddr,
 };
 
-use crate::{SocksAuthentication, TorControlAuthentication};
+use crate::{initialization::CommsInitializationError, SocksAuthentication, TorControlAuthentication};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -146,14 +147,29 @@ pub struct TorTransportConfig {
     /// When set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy, setting
     /// to true may improve network performance for TCP nodes.
     pub proxy_bypass_for_outbound_tcp: bool,
+    /// If set, instructs tor to forward traffic the the provided address.
+    pub forward_address: Option<Multiaddr>,
     /// The tor identity to use to create the hidden service. If None, a new one will be generated.
     #[serde(skip)]
     pub identity: Option<TorIdentity>,
 }
 
 impl TorTransportConfig {
-    pub fn to_port_mapping(&self) -> tor::PortMapping {
-        tor::PortMapping::new(self.onion_port.get(), ([127, 0, 0, 1], 0).into())
+    /// Returns a [self::tor::PortMapping] struct that maps the [onion_port] to an address that is listening for
+    /// traffic. If [forward_address] is set, that address is used, otherwise 127.0.0.1:[onion_port] is used.
+    ///
+    /// [onion_port]: TorTransportConfig::onion_port
+    /// [forward_address]: TorTransportConfig::forward_address
+    pub fn to_port_mapping(&self) -> Result<tor::PortMapping, CommsInitializationError> {
+        let forward_addr = self
+            .forward_address
+            .as_ref()
+            .map(|addr| multiaddr_to_socketaddr(addr))
+            .transpose()
+            .map_err(CommsInitializationError::InvalidTorForwardAddress)?
+            .unwrap_or_else(|| ([127, 0, 0, 1], 0).into());
+
+        Ok(tor::PortMapping::new(self.onion_port.get(), forward_addr))
     }
 
     pub fn to_control_auth(&self) -> tor::Authentication {
@@ -175,6 +191,7 @@ impl Default for TorTransportConfig {
             onion_port: NonZeroU16::new(18141).unwrap(),
             proxy_bypass_addresses: vec![],
             proxy_bypass_for_outbound_tcp: false,
+            forward_address: None,
             identity: None,
         }
     }

@@ -30,6 +30,7 @@ use crate::{
     protocol::{IdentityProtocolError, ProtocolError},
 };
 
+/// Error for ConnectionManager
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
     #[error("Peer manager error: {0}")]
@@ -52,8 +53,14 @@ pub enum ConnectionManagerError {
     ListenerError { address: String, details: String },
     #[error("Transport error for {address}: {details}")]
     TransportError { address: String, details: String },
-    #[error("The peer authenticated to a public key which did not match the dialed peer's public key")]
-    DialedPublicKeyMismatch,
+    #[error(
+        "The peer authenticated to public key '{authenticated_pk}' which did not match the dialed peer's public key \
+         '{expected_pk}'"
+    )]
+    DialedPublicKeyMismatch {
+        authenticated_pk: String,
+        expected_pk: String,
+    },
     #[error("The noise transport failed to provide a valid static public key for the peer")]
     InvalidStaticPublicKey,
     // This is a String because we need this error to be clonable so that we can
@@ -100,6 +107,7 @@ impl From<PeerConnectionError> for ConnectionManagerError {
     }
 }
 
+/// Error type for PeerConnection
 #[derive(Debug, Error)]
 pub enum PeerConnectionError {
     #[error("Yamux connection error: {0}")]

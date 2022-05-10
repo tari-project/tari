@@ -66,10 +66,12 @@ impl DialState {
         self
     }
 
+    /// The number of attempts
     pub fn num_attempts(&self) -> usize {
         self.attempts
     }
 
+    /// Sends the connection result on the reply channel. If a reply has previously been sent, this is a no-op.
     pub fn send_reply(
         &mut self,
         result: Result<PeerConnection, ConnectionManagerError>,
@@ -81,6 +83,7 @@ impl DialState {
         Ok(())
     }
 
+    /// Returns a reference to the Peer that is currently being dialed.
     pub fn peer(&self) -> &Peer {
         &self.peer
     }

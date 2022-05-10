@@ -16,6 +16,7 @@ grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
 # This requires that the base node was built with the optional "libtor" feature flag.
+# This requires that the base node was built with the optional "libtor" feature flag.
 #use_libtor = true
 
 [dibbler.base_node]
@@ -64,6 +65,8 @@ tor.proxy_bypass_addresses = []
 #tor.proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 tor.proxy_bypass_for_outbound_tcp = false
+# Custom address to forward tor traffic.
+#tor.forward_address = "/ip4/127.0.0.1/tcp/0"
 
 # Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
 #type = "socks5"
