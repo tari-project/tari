@@ -399,3 +399,34 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self.db.write(transaction).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::blockchain::{create_new_blockchain, TempDatabase};
+
+    impl AsyncBlockchainDb<TempDatabase> {
+        pub fn sample() -> Self {
+            Self {
+                db: create_new_blockchain(),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn coverage_async_blockchain_db() {
+        let obj = AsyncBlockchainDb::sample();
+        obj.clone().into_inner();
+        obj.fetch_horizon_data().await.unwrap();
+        obj.fetch_chain_header(0).await.unwrap();
+        obj.fetch_last_header().await.unwrap();
+        obj.clear_all_pending_headers().await.unwrap();
+        obj.fetch_last_chain_header().await.unwrap();
+        obj.cleanup_orphans().await.unwrap();
+        obj.cleanup_all_orphans().await.unwrap();
+        obj.prune_to_height(0).await.unwrap();
+        obj.get_stats().await.unwrap();
+        obj.fetch_total_size_stats().await.unwrap();
+        let _trans = obj.write_transaction();
+    }
+}

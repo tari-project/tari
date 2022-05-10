@@ -28,7 +28,7 @@ use tari_common_types::types::HashOutput;
 
 use crate::blocks::ChainBlock;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Reorg {
     pub new_height: u64,
     pub new_hash: HashOutput,

@@ -1455,7 +1455,13 @@ impl LMDBDatabase {
         hash: &HashOutput,
         height: u64,
     ) -> Result<(), ChainStorageError> {
+        // TODO: Any idea how to improve that?
+        // As an alternative we could add "ignored" test
+        // that will generate blocks equals to this const.
+        #[cfg(test)]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 10000;
+        #[cfg(not(test))]
+        const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 0;
 
         lmdb_replace(txn, &self.bad_blocks, hash, &height)?;
         // Clean up bad blocks that are far from the tip
