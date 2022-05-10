@@ -8,6 +8,8 @@ import {
 import { actions as containersActions } from '../containers'
 import { Container } from '../containers/types'
 
+import { selectContainerStatuses } from './selectors'
+
 export const startNode = createAsyncThunk<void, void, { state: RootState }>(
   'baseNode/startNode',
   async (_, thunkApi) => {
@@ -32,17 +34,18 @@ export const stopNode = createAsyncThunk<void, void, { state: RootState }>(
   'baseNode/stopNode',
   async (_, thunkApi) => {
     try {
-      await thunkApi
-        .dispatch(containersActions.stop(Container.BaseNode))
-        .unwrap()
-
       const rootState = thunkApi.getState()
-      const runningServices = selectRunningContainers(rootState)
-      if (
-        runningServices.length === 1 &&
-        runningServices[0] === Container.Tor
-      ) {
-        await thunkApi.dispatch(containersActions.stop(Container.Tor)).unwrap()
+      const [torContainerStatus, baseNodeContainerStatus] =
+        selectContainerStatuses(rootState)
+
+      thunkApi.dispatch(containersActions.stop(baseNodeContainerStatus.id))
+
+      const runningContainers = selectRunningContainers(rootState)
+      const otherServicesRunning = runningContainers.some(
+        rc => rc !== Container.Tor && rc !== Container.BaseNode,
+      )
+      if (!otherServicesRunning) {
+        thunkApi.dispatch(containersActions.stop(torContainerStatus.id))
       }
     } catch (e) {
       return thunkApi.rejectWithValue(e)

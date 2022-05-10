@@ -9,4 +9,10 @@ export const selectState = (state: RootState): BaseNodeState => ({
   network: state.baseNode.network as Network,
 })
 
+const requiredContainers = [Container.Tor, Container.BaseNode]
+export const selectContainerStatuses = (rootState: RootState) =>
+  requiredContainers.map(containerType =>
+    selectContainerStatus(containerType)(rootState),
+  )
+
 export const selectStatus = selectContainerStatus(Container.BaseNode)
