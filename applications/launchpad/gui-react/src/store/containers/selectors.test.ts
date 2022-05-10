@@ -3,17 +3,17 @@ import { RootState } from '../'
 import { ServiceStatus, Container, SystemEventAction } from './types'
 import { selectContainerStatus } from './selectors'
 
-describe('services/selectors', () => {
-  it('should return default state for service if no containerId is present', () => {
+describe('containers/selectors', () => {
+  it('should return default state for container if no container of that type is present', () => {
     // given
     const rootState = {
       containers: {
-        services: {
-          [Container.Tor]: { containerId: '', pending: false },
-        },
+        pending: [],
+        containers: {},
       },
     } as unknown as RootState
     const expected = {
+      id: '',
       running: false,
       pending: false,
       stats: {
@@ -34,12 +34,12 @@ describe('services/selectors', () => {
     // given
     const rootState = {
       containers: {
-        services: {
-          [Container.Tor]: { containerId: '', pending: true },
-        },
+        pending: [Container.Tor],
+        containers: {},
       },
     } as unknown as RootState
     const expected = {
+      id: '',
       running: false,
       pending: true,
       stats: {
@@ -56,13 +56,16 @@ describe('services/selectors', () => {
     expect(JSON.stringify(selected)).toBe(JSON.stringify(expected)) // need to check this way because of unsubscribe function
   })
 
-  it('should return service with assigned containerId as running with stats', () => {
+  it('should return container', () => {
     // given
     const unsubscribe = jest.fn()
     const rootState = {
       containers: {
+        pending: [],
         containers: {
           containerId: {
+            id: 'containerId',
+            type: Container.Tor,
             lastAction: SystemEventAction.Start,
             stats: {
               cpu: 7,
@@ -71,12 +74,12 @@ describe('services/selectors', () => {
             },
           },
         },
-        services: {
-          [Container.Tor]: { containerId: 'containerId', pending: false },
-        },
       },
     } as unknown as RootState
     const expected = {
+      id: 'containerId',
+      lastAction: SystemEventAction.Start,
+      type: Container.Tor,
       running: true,
       pending: false,
       stats: {
@@ -100,8 +103,11 @@ describe('services/selectors', () => {
     const unsubscribe = jest.fn()
     const rootState = {
       containers: {
+        pending: [],
         containers: {
           containerId: {
+            id: 'containerId',
+            type: Container.Tor,
             lastAction: SystemEventAction.Create,
             stats: {
               cpu: 7,
@@ -110,12 +116,12 @@ describe('services/selectors', () => {
             },
           },
         },
-        services: {
-          [Container.Tor]: { containerId: 'containerId', pending: false },
-        },
       },
     } as unknown as RootState
     const expected = {
+      id: 'containerId',
+      type: Container.Tor,
+      lastAction: SystemEventAction.Create,
       running: true,
       pending: true,
       stats: {
