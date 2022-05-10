@@ -20,15 +20,35 @@ const networkOptions = networks.map(network => ({
 const BaseNode = ({
   startNode,
   stopNode,
-  running,
-  pending,
+  containers,
   tariNetwork,
   setTariNetwork,
 }: BaseNodeProps) => {
   const theme = useTheme()
 
+  const pending = containers.some(container => container.pending)
+  const notRunningContainers = containers.filter(
+    container => !container.running,
+  )
+  const runningContainers = containers.filter(container => container.running)
+  const running = Boolean(runningContainers.length)
+
+  const unhealthy =
+    containers.some(container => !container.pending && container.running) &&
+    containers.some(container => !container.pending && !container.running)
+
   return (
     <CenteredLayout horizontally>
+      {unhealthy && (
+        <p>
+          Only {runningContainers.length} of the required containers is running.
+          Containers that are not running correctly:{' '}
+          {notRunningContainers.map(c => c.type).join(', ')}
+          You can check their state in Expert View or bring the service down
+          entirely and start again. If the problem persists, feel free to ask on
+          our discord for help.
+        </p>
+      )}
       <Box
         border={!running}
         gradient={
@@ -48,9 +68,14 @@ const BaseNode = ({
           color={running ? theme.inverted.primary : undefined}
         >
           {t.baseNode.title}
-          {running && (
+          {running && !unhealthy && (
             <Tag type='running' variant='large'>
               {t.common.adjectives.running}
+            </Tag>
+          )}
+          {unhealthy && (
+            <Tag type='warning' variant='large'>
+              Unhealthy
             </Tag>
           )}
         </Text>
