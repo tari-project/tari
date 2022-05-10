@@ -8,4 +8,5 @@ export interface BaseNodeProps {
   tariNetwork: Network
   setTariNetwork: (selected: Network) => void
   containers: ContainerStatusDto[]
+  openExpertView: () => void
 }
