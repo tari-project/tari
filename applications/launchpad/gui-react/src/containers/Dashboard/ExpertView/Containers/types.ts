@@ -1,7 +1,8 @@
-import { Service } from '../../../../store/services/types'
+import { Container, ContainerId } from '../../../../store/containers/types'
 
 type ServiceDto = {
-  service: Service
+  id: ContainerId
+  service: Container
   cpu: number
   memory: number
   pending: boolean
@@ -9,7 +10,7 @@ type ServiceDto = {
 }
 
 export type ContainersProps = {
-  services: ServiceDto[]
-  startService: (service: Service) => void
-  stopService: (service: Service) => void
+  containers: ServiceDto[]
+  start: (container: Container) => void
+  stop: (container: ContainerId) => void
 }

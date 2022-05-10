@@ -12,39 +12,35 @@ import { ContainersTable, TdRight } from './styles'
 
 /**
  * @name Containers
- * @description Presentation component showing service containers state
+ * @description Presentation component showing containers state
  *
- * @prop {ServiceDto[]} services - services which status should be displayed
- * @prop {(service: Service) => void} startService - callback for starting a service
- * @prop {(service: Service) => void} stopService - callback for stopping a service
+ * @prop {ServiceDto[]} containers - containers which status should be displayed
+ * @prop {(container: Container) => void} start - callback for starting a container
+ * @prop {(containerId: ContainerId) => void} stop - callback for stopping a container
  *
  * @typedef ServiceDto
- * @prop {Service} service - service which is described by this Dto
+ * @prop {Container} service - service which is described by this Dto
  * @prop {number} cpu - % cpu usage of the service
  * @prop {number} memory - memory in MB of the service
  * @prop {boolean} running - indicates if service is running
  * @prop {boolean} pending - indicates if service "running" state is about to change
  */
-const Containers = ({
-  services,
-  stopService,
-  startService,
-}: ContainersProps) => {
+const Containers = ({ containers, stop, start }: ContainersProps) => {
   const theme = useTheme()
 
   return (
     <ContainersTable>
       <tbody>
-        {services.map(service => (
-          <tr key={service.service}>
+        {containers.map(container => (
+          <tr key={container.service}>
             <td>
               <Text color={theme.inverted.primary}>
-                {t.common.services[service.service]}
+                {t.common.containers[container.service]}
               </Text>
             </td>
             <TdRight>
               <Text color={theme.secondary} as='span'>
-                {service.cpu.toFixed(2)}%
+                {container.cpu.toFixed(2)}%
               </Text>{' '}
               <Text color={theme.secondary} as='span' type='smallMedium'>
                 {t.common.nouns.cpu}
@@ -52,39 +48,39 @@ const Containers = ({
             </TdRight>
             <TdRight>
               <Text color={theme.secondary} as='span'>
-                {service.memory.toFixed(2)} MB
+                {container.memory.toFixed(2)} MB
               </Text>{' '}
               <Text color={theme.secondary} as='span' type='smallMedium'>
                 {t.common.nouns.memory}
               </Text>
             </TdRight>
             <td>
-              {service.running && (
+              {container.running && (
                 <Tag type='running' inverted style={{ margin: '0 auto' }}>
                   {t.common.adjectives.running}
                 </Tag>
               )}
             </td>
             <td style={{ minWidth: '75px' }}>
-              {!service.running && (
+              {!container.running && (
                 <Button
                   variant='text'
-                  loading={service.pending}
+                  loading={container.pending}
                   leftIcon={<StartIcon width='24px' height='24px' />}
                   style={{
                     paddingRight: 0,
                     paddingLeft: 0,
                     color: theme.inverted.accentSecondary,
                   }}
-                  onClick={() => startService(service.service)}
+                  onClick={() => start(container.service)}
                 >
                   {t.common.verbs.start}
                 </Button>
               )}
-              {service.running && (
+              {container.running && (
                 <Button
                   variant='text'
-                  loading={service.pending}
+                  loading={container.pending}
                   leftIcon={
                     <StopIcon
                       width='24px'
@@ -97,7 +93,7 @@ const Containers = ({
                     paddingLeft: 0,
                     color: theme.inverted.primary,
                   }}
-                  onClick={() => stopService(service.service)}
+                  onClick={() => stop(container.id)}
                 >
                   {t.common.verbs.stop}
                 </Button>
