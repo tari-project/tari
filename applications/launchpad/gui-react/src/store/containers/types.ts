@@ -28,7 +28,7 @@ export type ServiceDescriptor = {
 }
 
 export type ContainerStatus = {
-  lastAction: SystemEventAction
+  status: SystemEventAction
   type?: Container
   error?: string
   stats: {

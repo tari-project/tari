@@ -43,8 +43,8 @@ export const selectContainerStatus: ContainerStatusSelector =
       id: containerId,
       pending:
         pending ||
-        (containerStatus.lastAction !== SystemEventAction.Start &&
-          containerStatus.lastAction !== SystemEventAction.Destroy),
+        (containerStatus.status !== SystemEventAction.Start &&
+          containerStatus.status !== SystemEventAction.Destroy),
       running: true,
     }
   }
