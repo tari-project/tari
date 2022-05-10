@@ -7,7 +7,7 @@ import {
   UnitsText,
   IconWrapper,
 } from './styles'
-import { ChangeEvent } from 'react'
+import { ChangeEvent, forwardRef } from 'react'
 
 /**
  * @name Input component
@@ -26,19 +26,22 @@ import { ChangeEvent } from 'react'
  * @prop {CSSProperties} [containerStyle] - styles for input container
  */
 
-const Input = ({
-  type = 'text',
-  value,
-  disabled,
-  placeholder,
-  inputIcon,
-  inputUnits,
-  onIconClick,
-  onChange,
-  testId,
-  style,
-  containerStyle,
-}: InputProps) => {
+const Input = (
+  {
+    type = 'text',
+    value,
+    disabled,
+    placeholder,
+    inputIcon,
+    inputUnits,
+    onIconClick,
+    onChange,
+    testId,
+    style,
+    containerStyle,
+  }: InputProps,
+  ref?: React.ForwardedRef<HTMLInputElement>,
+) => {
   const onChangeTextLocal = (event: ChangeEvent<HTMLInputElement>) => {
     if (onChange) {
       onChange(event.target.value)
@@ -55,6 +58,7 @@ const Input = ({
         spellCheck={false}
         data-testid={testId || 'input-cmp'}
         style={style}
+        ref={ref}
       />
       <IconUnitsContainer>
         {inputIcon && (
@@ -75,4 +79,4 @@ const Input = ({
   )
 }
 
-export default Input
+export default forwardRef(Input)

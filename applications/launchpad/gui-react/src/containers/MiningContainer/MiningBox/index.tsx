@@ -114,6 +114,10 @@ const MiningBox = ({
       tag: {
         text: t.common.phrases.startHere,
       },
+      boxStyle: {
+        boxShadow: theme.shadow,
+        borderColor: 'transparent',
+      },
     },
     BLOCKED: {
       tag: {

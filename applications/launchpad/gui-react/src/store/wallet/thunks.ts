@@ -10,6 +10,7 @@ export const unlockWallet = createAsyncThunk<
   },
   WalletPassword
 >('wallet/unlock', async password => {
+  console.log('thunk')
   await new Promise(resolve => setTimeout(resolve, 2000))
 
   return {
