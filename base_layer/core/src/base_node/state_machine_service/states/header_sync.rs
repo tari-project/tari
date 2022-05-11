@@ -114,7 +114,7 @@ impl HeaderSyncState {
 
         let local_nci = shared.local_node_interface.clone();
         synchronizer.on_rewind(move |removed| {
-            if let Some(fork_height) = removed.last().map(|b| b.height()) {
+            if let Some(fork_height) = removed.last().map(|b| b.height() - 1) {
                 metrics::tip_height().set(fork_height as i64);
                 metrics::reorg(fork_height, 0, removed.len()).inc();
             }
