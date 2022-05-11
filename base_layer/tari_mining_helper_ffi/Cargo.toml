@@ -7,7 +7,7 @@ version = "0.30.2"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.31", path = "../../comms/core" }
+tari_comms = { version = "^0.32", path = "../../comms/core" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
