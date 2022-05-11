@@ -68,6 +68,7 @@ impl Display for ParsedCommand {
             CreateInitialCheckpoint => "create-initial-checkpoint",
             CreateCommitteeDefinition => "create-committee-definition",
             RevalidateWalletDb => "revalidate-wallet-db",
+            PublishContractDefinition => "publish-contract-definition",
         };
 
         let args = self
@@ -148,6 +149,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         CreateInitialCheckpoint => parser_builder(args).pub_key().text().build()?,
         CreateCommitteeDefinition => parser_builder(args).pub_key().pub_key_array().build()?,
         RevalidateWalletDb => Vec::new(),
+        PublishContractDefinition => Vec::new(),
     };
 
     Ok(ParsedCommand { command, args })

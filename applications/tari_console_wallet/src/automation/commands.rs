@@ -93,6 +93,7 @@ pub enum WalletCommand {
     CreateInitialCheckpoint,
     CreateCommitteeDefinition,
     RevalidateWalletDb,
+    PublishContractDefinition,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy)]
@@ -916,6 +917,9 @@ pub async fn command_runner(
                     .revalidate_all_transactions()
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
+            },
+            PublishContractDefinition => {
+                println!("Hello World!");
             },
         }
     }
