@@ -18,6 +18,7 @@ const ContainersContainer = () => {
       containerStatuses.map(({ container, status }) => ({
         id: status.id,
         container: container as Container,
+        error: status.error,
         cpu: status.stats.cpu,
         memory: status.stats.memory,
         pending: status.pending,
