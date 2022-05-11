@@ -4,6 +4,7 @@ type ContainerDto = {
   id: ContainerId
   container: Container
   cpu: number
+  error?: any
   memory: number
   pending: boolean
   running: boolean

@@ -10,6 +10,10 @@ const translations = {
     checkTheirState: 'You can check their state in',
     bringItDown: 'or bring the service down entirely and start again.',
   },
+  errors: {
+    start: 'Base Node could not start.',
+    stop: 'Base Node did not stop.',
+  },
 }
 
 export default translations

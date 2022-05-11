@@ -23,6 +23,16 @@ const getInitialServiceStatus = (
 })
 
 export const initialState: ServicesState = {
+  errors: {
+    [Container.Tor]: undefined,
+    [Container.BaseNode]: undefined,
+    [Container.Wallet]: undefined,
+    [Container.SHA3Miner]: undefined,
+    [Container.MMProxy]: undefined,
+    [Container.XMrig]: undefined,
+    [Container.Monerod]: undefined,
+    [Container.Frontail]: undefined,
+  },
   pending: [],
   containers: {},
 }
@@ -79,7 +89,8 @@ const servicesSlice = createSlice({
   },
   extraReducers: builder => {
     builder.addCase(start.pending, (state, { meta }) => {
-      state.pending.push(meta.arg as Container)
+      state.pending.push(meta.arg)
+      state.errors[meta.arg] = undefined
     })
     builder.addCase(start.fulfilled, (state, action) => {
       if (!state.containers[action.payload.id]) {
@@ -94,21 +105,20 @@ const servicesSlice = createSlice({
         action.payload.unsubscribeStats
     })
     builder.addCase(start.rejected, (state, action) => {
-      console.log(`ERROR STARTING CONTAINER ${action.meta.arg}`)
-      console.log(action.error)
+      state.errors[action.meta.arg] = action.payload
       state.pending = state.pending.filter(p => p !== action.meta.arg)
     })
 
     builder.addCase(stop.pending, (state, { meta }) => {
       state.pending.push(meta.arg)
+      state.containers[meta.arg].error = undefined
     })
     builder.addCase(stop.fulfilled, (state, { meta }) => {
       state.pending = state.pending.filter(p => p !== meta.arg)
     })
     builder.addCase(stop.rejected, (state, action) => {
-      console.log(`ERROR STOPPING CONTAINER ${action.meta.arg}`)
-      console.log(action.error)
       state.pending = state.pending.filter(p => p !== action.meta.arg)
+      state.containers[action.meta.arg].error = action.payload
     })
   },
 })

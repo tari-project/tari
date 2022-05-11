@@ -26,8 +26,18 @@ export const Backdrop = styled.div`
 `
 
 export const ModalContent = styled.div<Pick<ModalProps, 'size'>>`
-  width: ${({ size }) => (size === 'large' ? '880px' : '449px')};
-  height: 642px;
+  width: ${({ size }) => {
+    if (size === 'large') {
+      return '880px'
+    }
+
+    if (size === 'small') {
+      return '449px'
+    }
+
+    return 'auto'
+  }};
+  height: ${({ size }) => (size === 'auto' ? 'auto' : '642px')};
   max-width: 80vw;
   max-height: 80vh;
   background: ${({ theme }) => theme.background};

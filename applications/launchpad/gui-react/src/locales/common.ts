@@ -8,6 +8,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     start: 'Start',
     pause: 'Pause',
     continue: 'Continue',
+    close: 'Close',
   },
   nouns: {
     expertView: 'Expert view',
@@ -21,6 +22,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     logs: 'Logs',
     cpu: 'CPU',
     memory: 'Memory',
+    error: 'Error',
   },
   adjectives: {
     running: 'Running',
