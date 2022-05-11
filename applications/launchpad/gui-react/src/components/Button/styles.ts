@@ -1,18 +1,25 @@
 /* eslint-disable indent */
 import styled, { DefaultTheme } from 'styled-components'
 
-import { ButtonProps } from './types'
+import { ButtonProps, ButtonVariantType } from './types'
 
 const getButtonBackgroundColor = ({
   disabled,
   variant,
   theme,
 }: Pick<ButtonProps, 'variant' | 'disabled'> & { theme: DefaultTheme }) => {
-  if (disabled || variant === 'secondary') {
+  if ((disabled || variant === 'secondary') && variant !== 'text') {
     return theme.backgroundImage
   }
 
-  return variant === 'text' ? 'transparent' : theme.tariGradient
+  switch (variant) {
+    case 'text':
+      return 'transparent'
+    case 'warning':
+      return theme.warningGradient
+    default:
+      return theme.tariGradient
+  }
 }
 
 export const StyledButton = styled.button<
@@ -42,10 +49,14 @@ export const StyledButton = styled.button<
       return `1px solid ${theme.borderColor}`
     }
 
+    if (variant === 'warning') {
+      return `1px solid ${theme.warning}`
+    }
+
     return `1px solid ${theme.accent}`
   }};
   box-shadow: none;
-  padding: ${({ theme }) => theme.spacingVertical(0.6)}
+  padding: ${({ theme }) => theme.spacingVertical(0.5)}
     ${({ theme }) => theme.spacingHorizontal()};
   cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
   background: ${getButtonBackgroundColor};
@@ -76,12 +87,20 @@ export const StyledButton = styled.button<
         return theme.backgroundSecondary
       }
 
+      if (variant === 'warning') {
+        return theme.warningDark
+      }
+
       return theme.accent
     }};
-  }
+
+    ${({ variant, disabled }) =>
+      variant === 'text' && !disabled ? 'opacity: 0.7;' : ''}
 `
 
-export const StyledLink = styled.a<Pick<ButtonProps, 'variant'>>`
+export const StyledLink = styled.a<Pick<ButtonProps, 'variant' | 'disabled'>>`
+  display: inline-flex;
+  align-items: center;
   background: ${({ variant, theme }) =>
     variant === 'text' ? 'transparent' : theme.tariGradient};
   color: ${({ variant, theme }) =>
@@ -99,17 +118,69 @@ export const StyledLink = styled.a<Pick<ButtonProps, 'variant'>>`
   font-family: inherit;
   font-weight: inherit;
 
+  ${({ disabled }) => {
+    if (disabled) {
+      return `
+        opacity: 0.5;
+      `
+    }
+
+    return ''
+  }}
+
   &:hover {
-    opacity: 0.7;
+    opacity: ${({ disabled }) => (disabled ? '0.5' : '0.7')};
   }
 `
 
-export const ButtonText = styled.span``
+export const StyledButtonText = styled.span<Pick<ButtonProps, 'size'>>`
+  display: flex;
+  padding-top: ${({ theme, size }) =>
+    theme.spacingVertical(size === 'small' ? 0.1 : 0.2)};
+`
 
-export const IconWrapper = styled.span`
+export const IconWrapper = styled.span<{
+  $spacing?: 'left' | 'right'
+  $autosizeIcon?: boolean
+  $variant?: ButtonVariantType
+  $disabled?: boolean
+}>`
   display: inline-flex;
+  ${({ $spacing, $variant, theme }) => {
+    if ($spacing) {
+      const factor = $variant && $variant === 'button-in-text' ? 0.25 : 0.4
+      return `margin-${$spacing}: ${theme.spacingHorizontal(factor)};`
+    }
+
+    return ''
+  }}
+
+  color: ${({ $variant, $disabled, theme }) =>
+    $variant === 'text' && !$disabled ? theme.primary : 'inherit'};
+
+  ${({ $autosizeIcon }) => {
+    if ($autosizeIcon) {
+      return `
+        & > svg {
+          width: 16px;
+          height: 16px;
+        }
+      `
+    }
+    return ''
+  }}
+`
+
+export const ButtonContentWrapper = styled.span<{
+  $variant?: ButtonVariantType
+  disabled?: boolean
+}>`
+  display: inline-flex;
+  color: ${({ $variant, disabled, theme }) =>
+    $variant === 'text' && !disabled ? theme.primary : 'inherit'};
 `
 
 export const LoadingIconWrapper = styled.span`
   display: inline-flex;
+  margin-left: ${({ theme }) => theme.spacingHorizontal(0.2)};
 `

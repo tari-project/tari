@@ -34,6 +34,7 @@ const colors = {
     infoText: '#4D6FE8',
     warning: '#FFEED3',
     warningText: '#D18A18',
+    warningDark: '#D85240',
     actionBackground: '#76A59D',
     borderLight: '#DBDBDD',
   },

@@ -16,6 +16,10 @@ import MiningBoxTari from './MiningBoxTari'
 import MiningBoxMerged from './MiningBoxMerged'
 import { actions } from '../../store/wallet'
 import { useAppDispatch } from '../../store/hooks'
+import Button from '../../components/Button'
+import SvgArrowLeft1 from '../../styles/Icons/ArrowLeft1'
+import SvgWallet from '../../styles/Icons/Wallet'
+import SvgSetting from '../../styles/Icons/Setting'
 
 /**
  * The Mining dashboard

@@ -64,7 +64,7 @@ const WalletPasswordForm = ({
           style={{ marginTop: theme.spacingVertical(0.62) }}
         >
           <span>{t.common.conjunctions.or} </span>
-          <Button type='button-in-text'>
+          <Button variant='button-in-text'>
             {t.walletPasswordWizard.generatePasswordBtn}
           </Button>
         </Text>

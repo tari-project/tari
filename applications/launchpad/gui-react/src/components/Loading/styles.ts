@@ -10,6 +10,7 @@ const spinKeyframes = keyframes`
 `
 
 export const StyledSpan = styled.span`
+  line-height: 0;
   & > svg {
     animation: ${spinKeyframes} infinite 2s linear;
   }
