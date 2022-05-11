@@ -7,6 +7,22 @@ import Button from '../Button'
 import Text from '../Text'
 import t from '../../locales'
 
+/**
+ * @name Alert
+ * @description A simple modal component showing a message with optional title
+ *
+ * @prop {ReactNode} content - content shown in the alert
+ * @prop {boolean} open - indicates whether alert should be shown or not
+ * @prop {() => void} onClose - callback on close action of the alert (Close button and backdrop)
+ * @prop {string} [title] - optional title of the alert
+ *
+ * @example
+ * <Alert
+ *   content='Something went wrong'
+ *   open={isOpen}
+ *   onClose={() => setIsOpen(false)}
+ * />
+ */
 const Alert = ({
   content,
   open,
