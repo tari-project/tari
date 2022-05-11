@@ -26,10 +26,13 @@ export const selectContainerStatus: ContainerStatusSelector =
       rootState.containers.pending.includes(containerType) ||
       rootState.containers.pending.includes(containerId)
 
+    const typeError = rootState.containers.errors[containerType]
+
     if (!containerId) {
       return {
         id: '',
         type: containerType,
+        error: typeError,
         running: false,
         pending,
         stats: {
@@ -49,6 +52,7 @@ export const selectContainerStatus: ContainerStatusSelector =
           containerStatus.status !== SystemEventAction.Destroy),
       running: containerStatus.status === SystemEventAction.Start,
       type: containerType,
+      error: containerStatus.error || typeError,
     }
   }
 
