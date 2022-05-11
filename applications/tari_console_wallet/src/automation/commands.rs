@@ -22,7 +22,7 @@
 
 use std::{
     fs::File,
-    io::{LineWriter, Write},
+    io::{BufReader, LineWriter, Write},
     str::FromStr,
     time::{Duration, Instant},
 };
@@ -31,6 +31,7 @@ use chrono::Utc;
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use serde::Deserialize;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
@@ -105,6 +106,14 @@ pub enum TransactionStage {
     MinedUnconfirmed,
     Mined,
     TimedOut,
+}
+
+#[derive(Deserialize)]
+pub struct ContractDefinition {
+    contract_id: String,
+    contract_name: String,
+    contract_spec: String,
+    contract_issuer: String,
 }
 
 #[derive(Debug)]
@@ -919,7 +928,17 @@ pub async fn command_runner(
                     .map_err(CommandError::TransactionServiceError)?;
             },
             PublishContractDefinition => {
-                println!("Hello World!");
+                let file_path = match parsed.args.get(0) {
+                    Some(ParsedArgument::JSONFileName(ref file_path)) => Ok(file_path),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let file = File::open(file_path).map_err(|e| CommandError::JSONFile(e.to_string()))?;
+                let file_reader = BufReader::new(file);
+                let contract_definition: ContractDefinition =
+                    serde_json::from_reader(file_reader).map_err(|e| CommandError::JSONFile(e.to_string()))?;
+
+                println!("contract name: {}", contract_definition.contract_name);
             },
         }
     }

@@ -68,6 +68,8 @@ pub enum CommandError {
     HexError(#[from] HexError),
     #[error("Error `{0}`")]
     ShaError(String),
+    #[error("JSON file error `{0}`")]
+    JSONFile(String),
 }
 
 impl From<CommandError> for ExitError {
