@@ -119,7 +119,7 @@ pub mod util {
     pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
         let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
         let result = U256::MAX / scalar;
-        let result = result.min(u64::MAX.into()); // if difficulty is less than 
+        let result = result.min(u64::MAX.into());
         result.low_u64().into()
     }
 
@@ -132,7 +132,7 @@ pub mod util {
 }
 #[cfg(test)]
 mod test {
-    use crate::proof_of_work::difficulty::Difficulty;
+    use crate::proof_of_work::difficulty::{Difficulty, util::big_endian_difficulty};
 
     #[test]
     fn add_difficulty() {
@@ -149,4 +149,25 @@ mod test {
         let d = Difficulty::from(1_000_000);
         assert_eq!("1,000,000", format!("{}", d));
     }
+
+    #[test]
+    fn high_target() {
+        let target: &[u8] = &[0xff, 0xff, 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 ];
+        let expected = Difficulty::from(1);
+        assert_eq!(big_endian_difficulty(target), expected);
+    } 
+
+    #[test]
+    fn max_difficulty() {
+        let target = u64::MAX;
+        let expected = u64::MAX;
+        assert_eq!(big_endian_difficulty(&target.to_be_bytes()), Difficulty::from(expected));
+    } 
+
+    #[test]
+    fn stop_overflow() {
+        let target: u64 = 64;
+        let expected = u64::MAX;
+        assert_eq!(big_endian_difficulty(&target.to_be_bytes()), Difficulty::from(expected));
+    } 
 }
