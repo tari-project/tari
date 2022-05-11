@@ -19,4 +19,21 @@ describe('Alert', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('should render title when provided', () => {
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Alert
+          open={true}
+          onClose={() => null}
+          content={<p>alert content</p>}
+          title='alert title'
+        />
+      </ThemeProvider>,
+    )
+
+    const title = screen.getByText('alert title')
+
+    expect(title).toBeInTheDocument()
+  })
 })
