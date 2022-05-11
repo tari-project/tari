@@ -14,7 +14,6 @@ export const TabMainText = styled.div`
 
 export const LoadingWrapper = styled.div`
   display: flex;
-  margin-top: 6px;
   opacity: 0.5;
   line-height: 16px;
 `

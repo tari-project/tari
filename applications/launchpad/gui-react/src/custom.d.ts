@@ -29,6 +29,7 @@ declare module 'styled-components' {
     disabledText: string
     tariGradient: string
     mergedGradient: string
+    warningGradient: string
     borderColor: string
     borderColorLight: string
     actionBackground: string
@@ -45,6 +46,7 @@ declare module 'styled-components' {
     onTextLight: string
     warning: string
     warningText: string
+    warningDark: string
     expert: string
     expertText: string
     lightTag: string
@@ -64,6 +66,7 @@ declare module 'styled-components' {
       accentMerged: string
       disabledText: string
       tariGradient: string
+      warningGradient: string
       info: string
       infoText: string
       on: string
@@ -71,6 +74,7 @@ declare module 'styled-components' {
       onTextLight: string
       warning: string
       warningText: string
+      warningDark: string
       expert: string
       expertText: string
       lightTag: string

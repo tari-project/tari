@@ -44,7 +44,11 @@ const MiningHeaderTip = () => {
       <Text type='defaultHeavy'>
         {text}{' '}
         <Text as='span' type='defaultMedium'>
-          <Button type='button-in-text' variant='text' rightIcon={<SvgInfo1 />}>
+          <Button
+            variant='button-in-text'
+            rightIcon={<SvgInfo1 width='20px' height='20px' />}
+            autosizeIcons={false}
+          >
             {t.mining.headerTips.wantToKnowMore}
           </Button>
         </Text>
