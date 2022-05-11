@@ -31,15 +31,22 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 
 bitflags! {
     #[derive(Deserialize, Serialize)]
-    pub struct OutputFlags: u8 {
-        /// Output is a coinbase output, must not be spent until maturity
-        const COINBASE_OUTPUT      = 0b0000_0001;
-        const NON_FUNGIBLE         = 0b0000_1000;
-        const ASSET_REGISTRATION   = 0b0000_0010 | Self::NON_FUNGIBLE.bits;
-        const MINT_NON_FUNGIBLE    = 0b0000_0100 | Self::NON_FUNGIBLE.bits;
-        const BURN_NON_FUNGIBLE    = 0b1000_0000 | Self::NON_FUNGIBLE.bits;
-        const SIDECHAIN_CHECKPOINT = 0b0001_0000 | Self::NON_FUNGIBLE.bits;
-        const COMMITTEE_DEFINITION = 0b0010_0000 | Self::NON_FUNGIBLE.bits;
+    pub struct OutputFlags: u16 {
+        /// Output is a coinbase output, must not be spent until maturity.
+        const COINBASE_OUTPUT       = 0x0001;
+        /// Output defines a side-chain contract.
+        const CONTRACT_DEFINITION   = 0x0100;
+        /// Output defines the constitution for a side-chain contract.
+        const CONTRACT_CONSTITUTION = 0x0200;
+        /// Output signals validator node acceptance to run a contract.
+        const CONTRACT_ACCEPT       = 0x0400;
+        /// Output is a contract checkpoint.
+        const CONTRACT_CHECKPOINT   = 0x0800;
+        /// Output that deregisters an existing contract. This MUST be combined with
+        /// CONTRACT_DEFINITION or CONTRACT_CONSTITUTION.
+        const CONTRACT_DEREGISTER   = 0x1000;
+        /// Output is an abandoned contract checkpoint.
+        const CONTRACT_ABANDONED    = 0x2000;
     }
 }
 
