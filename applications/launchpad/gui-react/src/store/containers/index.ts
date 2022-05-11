@@ -105,7 +105,7 @@ const servicesSlice = createSlice({
         action.payload.unsubscribeStats
     })
     builder.addCase(start.rejected, (state, action) => {
-      state.errors[action.meta.arg] = action.error
+      state.errors[action.meta.arg] = action.payload
       state.pending = state.pending.filter(p => p !== action.meta.arg)
     })
 
@@ -118,7 +118,7 @@ const servicesSlice = createSlice({
     })
     builder.addCase(stop.rejected, (state, action) => {
       state.pending = state.pending.filter(p => p !== action.meta.arg)
-      state.containers[action.meta.arg].error = action.error
+      state.containers[action.meta.arg].error = action.payload
     })
   },
 })
