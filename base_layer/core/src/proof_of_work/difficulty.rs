@@ -118,6 +118,9 @@ pub mod util {
     /// This will provide the difficulty of the hash assuming the hash is big_endian
     pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
         let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
+        if scalar <= U256::from(2).pow(U256::from(192)) {
+            return u64::MAX.into();
+        }
         let result = U256::MAX / scalar;
         result.low_u64().into()
     }
