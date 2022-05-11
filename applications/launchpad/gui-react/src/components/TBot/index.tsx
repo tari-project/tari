@@ -35,7 +35,9 @@ const TBot = ({ type = 'base', style, animate }: TBotProps) => {
       width: '100%',
       height: '100%',
     },
-    config: config.wobbly,
+    config: {
+      duration: 100,
+    },
   })
 
   // Animation for new T-Bot messages
@@ -46,7 +48,7 @@ const TBot = ({ type = 'base', style, animate }: TBotProps) => {
       transition: 'all ease-in-out',
     },
     config: {
-      duration: 200,
+      duration: 300,
     },
     loop: {
       transform: 'scale(1)',
