@@ -93,7 +93,7 @@ impl Default for WalletConfig {
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,
-            command_send_wait_stage: String::new(),
+            command_send_wait_stage: "Broadcast".to_string(),
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
             grpc_address: None,
