@@ -5,7 +5,7 @@ import {
   ContainerStatus,
   ServicesState,
   ContainerId,
-  Service,
+  Container,
   SystemEventAction,
 } from './types'
 import { start, stop } from './thunks'
@@ -13,7 +13,8 @@ import { start, stop } from './thunks'
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
 ): ContainerStatus => ({
-  lastAction,
+  timestamp: Date.now(),
+  status: lastAction,
   stats: {
     cpu: 0,
     memory: 0,
@@ -22,21 +23,12 @@ const getInitialServiceStatus = (
 })
 
 export const initialState: ServicesState = {
+  pending: [],
   containers: {},
-  services: {
-    [Service.Tor]: { pending: false, containerId: '' },
-    [Service.BaseNode]: { pending: false, containerId: '' },
-    [Service.Wallet]: { pending: false, containerId: '' },
-    [Service.SHA3Miner]: { pending: false, containerId: '' },
-    [Service.MMProxy]: { pending: false, containerId: '' },
-    [Service.XMrig]: { pending: false, containerId: '' },
-    [Service.Monerod]: { pending: false, containerId: '' },
-    [Service.Frontail]: { pending: false, containerId: '' },
-  },
 }
 
 const servicesSlice = createSlice({
-  name: 'services',
+  name: 'containers',
   initialState,
   reducers: {
     stats: (
@@ -71,32 +63,23 @@ const servicesSlice = createSlice({
           action.payload.action,
         )
       } else {
-        state.containers[action.payload.containerId].lastAction =
+        state.containers[action.payload.containerId].status =
           action.payload.action
       }
 
-      const [service] =
-        Object.entries(state.services).find(
-          ([, status]) => status.containerId === action.payload.containerId,
-        ) || []
-
       switch (action.payload.action) {
         case SystemEventAction.Destroy:
-          state.containers[action.payload.containerId].stats.memory = 0
+        case SystemEventAction.Die:
+          state.containers[action.payload.containerId].stats.unsubscribe()
           state.containers[action.payload.containerId].stats.cpu = 0
-          state.containers[action.payload.containerId].stats.unsubscribe() // case for container destroyed outside of our application
-          state.containers[action.payload.containerId].stats.unsubscribe = () =>
-            undefined
-          if (service) {
-            state.services[service as Service].containerId = ''
-          }
+          state.containers[action.payload.containerId].stats.memory = 0
           break
       }
     },
   },
   extraReducers: builder => {
     builder.addCase(start.pending, (state, { meta }) => {
-      state.services[meta.arg].pending = true
+      state.pending.push(meta.arg as Container)
     })
     builder.addCase(start.fulfilled, (state, action) => {
       if (!state.containers[action.payload.id]) {
@@ -105,26 +88,27 @@ const servicesSlice = createSlice({
         return
       }
 
+      state.pending = state.pending.filter(p => p !== action.meta.arg)
+      state.containers[action.payload.id].type = action.meta.arg
       state.containers[action.payload.id].stats.unsubscribe =
         action.payload.unsubscribeStats
-      state.services[action.meta.arg].pending = false
-      state.services[action.meta.arg].containerId = action.payload.id
     })
     builder.addCase(start.rejected, (state, action) => {
-      console.log(`ERROR STARTING SERVICE ${action.meta.arg}`)
+      console.log(`ERROR STARTING CONTAINER ${action.meta.arg}`)
       console.log(action.error)
+      state.pending = state.pending.filter(p => p !== action.meta.arg)
     })
 
     builder.addCase(stop.pending, (state, { meta }) => {
-      state.services[meta.arg].pending = true
+      state.pending.push(meta.arg)
     })
     builder.addCase(stop.fulfilled, (state, { meta }) => {
-      state.services[meta.arg].pending = false
-      state.services[meta.arg].containerId = ''
+      state.pending = state.pending.filter(p => p !== meta.arg)
     })
     builder.addCase(stop.rejected, (state, action) => {
-      console.log(`ERROR STOPPING SERVICE ${action.meta.arg}`)
+      console.log(`ERROR STOPPING CONTAINER ${action.meta.arg}`)
       console.log(action.error)
+      state.pending = state.pending.filter(p => p !== action.meta.arg)
     })
   },
 })

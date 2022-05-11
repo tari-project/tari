@@ -5,16 +5,15 @@ export const StyledTabContent = styled.div`
   align-items: center;
   justify-content: space-between;
   padding-bottom: 4px;
+  column-gap: 8px;
 `
 
-export const TabMainText = styled.div<{ spacingRight?: boolean }>`
+export const TabMainText = styled.div`
   margin-top: 4px;
-  margin-right: ${({ spacingRight }) => (spacingRight ? '8px' : 0)};
 `
 
 export const LoadingWrapper = styled.div`
   display: flex;
-  margin-left: 8px;
   margin-top: 6px;
   opacity: 0.5;
   line-height: 16px;

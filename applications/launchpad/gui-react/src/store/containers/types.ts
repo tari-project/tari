@@ -1,6 +1,8 @@
 import type { UnlistenFn } from '@tauri-apps/api/event'
 
-export enum Service {
+export type ContainerId = string
+
+export enum Container {
   Tor = 'tor',
   BaseNode = 'base_node',
   Wallet = 'wallet',
@@ -15,6 +17,7 @@ export enum SystemEventAction {
   Destroy = 'destroy',
   Create = 'create',
   Start = 'start',
+  Die = 'die',
 }
 
 export type ServiceDescriptor = {
@@ -25,7 +28,9 @@ export type ServiceDescriptor = {
 }
 
 export type ContainerStatus = {
-  lastAction: SystemEventAction
+  status: SystemEventAction
+  timestamp: number
+  type?: Container
   error?: string
   stats: {
     cpu: number
@@ -34,7 +39,9 @@ export type ContainerStatus = {
   }
 }
 
-export type ServiceStatus = {
+export type ContainerStatusDto = {
+  id: ContainerId
+  type: Container
   running: boolean
   pending: boolean
   stats: {
@@ -44,17 +51,9 @@ export type ServiceStatus = {
   }
 }
 
-export type ContainerId = string
-
 export type ServicesState = {
+  pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
-  services: Record<
-    Service,
-    {
-      pending: boolean
-      containerId: ContainerId
-    }
-  >
 }
 
 export interface StatsEventPayload {

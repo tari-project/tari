@@ -5,6 +5,7 @@ import Text from '../../components/Text'
 import Box from '../../components/Box'
 import Button from '../../components/Button'
 import Tag from '../../components/Tag'
+import Callout from '../../components/Callout'
 import CenteredLayout from '../../components/CenteredLayout'
 import t from '../../locales'
 
@@ -18,10 +19,13 @@ const networkOptions = networks.map(network => ({
 }))
 
 const BaseNode = ({
-  startNode,
-  stopNode,
   running,
   pending,
+  healthy,
+  unhealthyContainers,
+  startNode,
+  stopNode,
+  openExpertView,
   tariNetwork,
   setTariNetwork,
 }: BaseNodeProps) => {
@@ -48,9 +52,14 @@ const BaseNode = ({
           color={running ? theme.inverted.primary : undefined}
         >
           {t.baseNode.title}
-          {running && (
+          {running && healthy && (
             <Tag type='running' variant='large'>
               {t.common.adjectives.running}
+            </Tag>
+          )}
+          {!healthy && (
+            <Tag type='warning' variant='large'>
+              {t.common.adjectives.unhealthy}
             </Tag>
           )}
         </Text>
@@ -90,6 +99,30 @@ const BaseNode = ({
           >
             <Text type='defaultMedium'>{t.common.verbs.stop}</Text>
           </Button>
+        )}
+        {!healthy && (
+          <div style={{ marginTop: theme.spacing() }}>
+            <Callout type='warning'>
+              {t.baseNode.unhealthy.warning} {t.baseNode.unhealthy.containers}
+              <br />
+              {unhealthyContainers.map((c, index, arr) => (
+                <em key={c.type}>
+                  {t.common.containers[c.type]}
+                  {index < arr.length - 1 ? ', ' : ''}
+                </em>
+              ))}
+              <br />
+              {t.baseNode.unhealthy.checkTheirState}{' '}
+              <Button
+                variant='text'
+                style={{ display: 'inline-block', padding: 0 }}
+                onClick={openExpertView}
+              >
+                {t.common.nouns.expertView}
+              </Button>{' '}
+              {t.baseNode.unhealthy.bringItDown}
+            </Callout>
+          </div>
         )}
       </Box>
     </CenteredLayout>
