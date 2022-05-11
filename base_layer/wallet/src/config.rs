@@ -27,6 +27,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use strum::EnumString;
 use tari_common::{
     configuration::{serializers, Network, StringList},
     SubConfigPath,
@@ -63,7 +64,7 @@ pub struct WalletConfig {
     pub contacts_online_ping_window: usize,
     #[serde(with = "serializers::seconds")]
     pub command_send_wait_timeout: Duration,
-    pub command_send_wait_stage: String,
+    pub command_send_wait_stage: TransactionStage,
     pub notify_file: Option<PathBuf>,
     pub grpc_address: Option<Multiaddr>,
     pub custom_base_node: Option<String>,
@@ -93,7 +94,7 @@ impl Default for WalletConfig {
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,
-            command_send_wait_stage: "Broadcast".to_string(),
+            command_send_wait_stage: TransactionStage::Broadcast,
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
             grpc_address: None,
@@ -124,4 +125,15 @@ impl WalletConfig {
         }
         self.p2p.set_base_path(self.data_dir.as_path());
     }
+}
+
+#[derive(Debug, EnumString, PartialEq, Clone, Copy, Serialize, Deserialize)]
+pub enum TransactionStage {
+    Initiated,
+    DirectSendOrSaf,
+    Negotiated,
+    Broadcast,
+    MinedUnconfirmed,
+    Mined,
+    TimedOut,
 }
