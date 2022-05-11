@@ -39,7 +39,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     pipeline,
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
@@ -143,7 +143,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
-    add_all_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
+    add_seed_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
 
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -384,12 +384,12 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializati
 ///
 /// ## Returns
 /// A Result to determine if the call was successful or not, string will indicate the reason on error
-async fn add_all_peers(
+async fn add_seed_peers(
     peer_manager: &PeerManager,
     node_identity: &NodeIdentity,
     peers: Vec<Peer>,
 ) -> Result<(), CommsInitializationError> {
-    for peer in peers {
+    for mut peer in peers {
         if &peer.public_key == node_identity.public_key() {
             debug!(
                 target: LOG_TARGET,
@@ -397,6 +397,7 @@ async fn add_all_peers(
             );
             continue;
         }
+        peer.add_flags(PeerFlags::SEED);
 
         debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
         peer_manager
@@ -543,12 +544,12 @@ impl ServiceInitializer for P2pInitializer {
                 Vec::new()
             },
         };
-        add_all_peers(&peer_manager, &node_identity, peers).await?;
+        add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
         // TODO: Use serde
         let peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
 
-        add_all_peers(&peer_manager, &node_identity, peers).await?;
+        add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());
         context.register_handle(peer_manager);

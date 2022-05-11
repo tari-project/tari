@@ -154,6 +154,9 @@ impl BaseNodeConfig {
         if !self.identity_file.is_absolute() {
             self.identity_file = base_path.as_ref().join(self.identity_file.as_path());
         }
+        if !self.tor_identity_file.is_absolute() {
+            self.tor_identity_file = base_path.as_ref().join(self.tor_identity_file.as_path());
+        }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());
         }

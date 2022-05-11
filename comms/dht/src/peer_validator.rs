@@ -88,11 +88,14 @@ impl<'a> PeerValidator<'a> {
                         .map(|i| i.updated_at())
                         .expect("unreachable panic");
 
-                    // Update if new_peer has newer timestamp than current_peer
+                    // Update if new_peer has newer timestamp than current_peer, and if the newer timestamp is after the
+                    // added date
                     current_peer
                         .identity_signature
                         .as_ref()
-                        .map(|i| i.updated_at() < new_dt)
+                        .map(|i| i.updated_at() < new_dt && (
+                            !current_peer.is_seed() ||
+                            current_peer.added_at < new_dt.naive_utc()))
                         // If None, update to peer with valid signature
                         .unwrap_or(true)
                 };
@@ -132,5 +135,116 @@ fn validate_node_id(public_key: &CommsPublicKey, node_id: &NodeId) -> Result<Nod
         Ok(expected_node_id)
     } else {
         Err(PeerValidatorError::InvalidNodeId { peer: node_id.clone() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use tari_comms::{net_address::MultiaddressesWithStats, peer_manager::PeerFlags};
+    use tari_test_utils::unpack_enum;
+
+    use super::*;
+    use crate::test_utils::{build_peer_manager, make_node_identity};
+
+    #[tokio::test]
+    async fn it_adds_a_valid_unsigned_peer() {
+        let peer_manager = build_peer_manager();
+        let config = DhtConfig::default_local_test();
+        let node_identity = make_node_identity();
+        let mut peer = node_identity.to_peer();
+        peer.identity_signature = None;
+        let validator = PeerValidator::new(&peer_manager, &config);
+        let is_new = validator.validate_and_add_peer(peer.clone()).await.unwrap();
+        assert!(is_new);
+        assert!(peer_manager.exists(&peer.public_key).await);
+    }
+
+    #[tokio::test]
+    async fn it_does_not_add_an_invalid_peer() {
+        let peer_manager = build_peer_manager();
+        let config = DhtConfig::default_local_test();
+        let node_identity = make_node_identity();
+        let mut peer = node_identity.to_peer();
+        // Peer MUST provide at least one address
+        peer.addresses = MultiaddressesWithStats::new(vec![]);
+        let validator = PeerValidator::new(&peer_manager, &config);
+        let err = validator.validate_and_add_peer(peer.clone()).await.unwrap_err();
+        unpack_enum!(PeerValidatorError::InvalidPeerAddresses { .. } = err);
+        assert!(!peer_manager.exists(&peer.public_key).await);
+    }
+
+    #[tokio::test]
+    async fn it_updates_a_newer_signed_peer() {
+        let peer_manager = build_peer_manager();
+        let config = DhtConfig::default_local_test();
+        let validator = PeerValidator::new(&peer_manager, &config);
+
+        let node_identity = make_node_identity();
+        let peer = node_identity.to_peer();
+        peer_manager.add_peer(peer).await.unwrap();
+
+        node_identity.set_public_address("/dns4/updated.com/tcp/1234".parse().unwrap());
+        node_identity.sign();
+        let peer = node_identity.to_peer();
+
+        let is_new = validator.validate_and_add_peer(peer.clone()).await.unwrap();
+        assert!(!is_new);
+        let peer = peer_manager
+            .find_by_public_key(&peer.public_key)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(peer.addresses[0].address.to_string(), "/dns4/updated.com/tcp/1234");
+    }
+
+    #[tokio::test]
+    async fn it_does_not_update_a_valid_unsigned_peer() {
+        let peer_manager = build_peer_manager();
+        let config = DhtConfig::default_local_test();
+        let validator = PeerValidator::new(&peer_manager, &config);
+
+        let node_identity = make_node_identity();
+        let prev_addr = node_identity.public_address();
+        let mut peer = node_identity.to_peer();
+        peer_manager.add_peer(peer.clone()).await.unwrap();
+
+        peer.identity_signature = None;
+        peer.update_addresses(vec!["/dns4/updated.com/tcp/1234".parse().unwrap()]);
+
+        let is_new = validator.validate_and_add_peer(peer.clone()).await.unwrap();
+        assert!(!is_new);
+        let peer = peer_manager
+            .find_by_public_key(&peer.public_key)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(peer.addresses[0].address, prev_addr);
+    }
+
+    #[tokio::test]
+    async fn it_does_not_add_a_seed_peer_if_added_more_recently_than_update() {
+        let peer_manager = build_peer_manager();
+        let config = DhtConfig::default_local_test();
+        let validator = PeerValidator::new(&peer_manager, &config);
+
+        let node_identity = make_node_identity();
+        let mut peer = node_identity.to_peer();
+        peer.add_flags(PeerFlags::SEED);
+        peer.added_at = (Utc::now() - chrono::Duration::minutes(10)).naive_utc();
+        peer_manager.add_peer(peer).await.unwrap();
+
+        node_identity.set_public_address("/dns4/updated.com/tcp/1234".parse().unwrap());
+        node_identity.sign();
+
+        let peer = node_identity.to_peer();
+        let is_new = validator.validate_and_add_peer(peer.clone()).await.unwrap();
+        assert!(!is_new);
+        let peer = peer_manager
+            .find_by_public_key(&peer.public_key)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(peer.addresses[0].address, node_identity.public_address());
     }
 }
