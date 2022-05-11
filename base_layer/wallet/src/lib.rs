@@ -24,6 +24,7 @@ pub mod types;
 pub mod util;
 pub mod wallet;
 pub use operation_id::OperationId;
+pub mod contract_service;
 
 #[macro_use]
 extern crate diesel;

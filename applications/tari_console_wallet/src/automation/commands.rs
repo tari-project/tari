@@ -24,14 +24,13 @@ use std::{
     fs::File,
     io::{BufReader, LineWriter, Write},
     str::FromStr,
-    time::{Duration, Instant}, iter::Map, collections::HashMap,
+    time::{Duration, Instant}
 };
 
 use chrono::Utc;
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
-use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
@@ -54,7 +53,7 @@ use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletConfig,
-    WalletSqlite,
+    WalletSqlite, contract_service::ContractDefinition,
 };
 use tokio::{
     sync::{broadcast, mpsc},
@@ -106,46 +105,6 @@ pub enum TransactionStage {
     MinedUnconfirmed,
     Mined,
     TimedOut,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ContractDefinition {
-    contract_id: String, // TODO: make it a hash
-    contract_name: String, // TODO: limit to 32 chars
-    contract_issuer: String, // TODO: make it a pubkey
-    contract_spec: ContractSpecification,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ContractSpecification {
-    runtime: String,
-    public_functions: Vec<PublicFunction>,
-    initialization: Vec<FunctionCall>
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PublicFunction {
-    name: String, // TODO: limit it to 32 chars
-    function: FunctionRef,
-    argument_def: HashMap<String, ArgType>
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct FunctionCall {
-    function: FunctionRef,
-    arguments: HashMap<String, ArgType>
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct FunctionRef {
-    template_func: String, // TODO: limit to 32 chars
-    template_id: String, // TODO: make it a hash
-}
-
-#[derive(Serialize, Deserialize)]
-pub enum ArgType {
-    String,
-    UInt64
 }
 
 #[derive(Debug)]
