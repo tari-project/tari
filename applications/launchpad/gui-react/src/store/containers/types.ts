@@ -31,7 +31,7 @@ export type ContainerStatus = {
   status: SystemEventAction
   timestamp: number
   type?: Container
-  error?: string
+  error?: any
   stats: {
     cpu: number
     memory: number
@@ -44,6 +44,7 @@ export type ContainerStatusDto = {
   type: Container
   running: boolean
   pending: boolean
+  error?: any
   stats: {
     cpu: number
     memory: number
@@ -52,6 +53,7 @@ export type ContainerStatusDto = {
 }
 
 export type ServicesState = {
+  errors: Record<Container, any>
   pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
 }

@@ -8,6 +8,7 @@ describe('containers/selectors', () => {
     // given
     const rootState = {
       containers: {
+        errors: {},
         pending: [],
         containers: {},
       },
@@ -35,6 +36,7 @@ describe('containers/selectors', () => {
     // given
     const rootState = {
       containers: {
+        errors: {},
         pending: [Container.Tor],
         containers: {},
       },
@@ -63,6 +65,7 @@ describe('containers/selectors', () => {
     const unsubscribe = jest.fn()
     const rootState = {
       containers: {
+        errors: {},
         pending: [],
         containers: {
           containerId: {
@@ -81,6 +84,7 @@ describe('containers/selectors', () => {
       id: 'containerId',
       status: SystemEventAction.Start,
       type: Container.Tor,
+      error: undefined,
       running: true,
       pending: false,
       stats: {
@@ -99,6 +103,70 @@ describe('containers/selectors', () => {
     expect(selected).toStrictEqual(expected) // need to check this way because of unsubscribe function
   })
 
+  it('should return prioritize local error over container-type-errors', () => {
+    // given
+    const containerError = { some: 'error' }
+    const containerTypeError = { some: 'other error' }
+    const rootState = {
+      containers: {
+        errors: {
+          [Container.Tor]: containerTypeError,
+        },
+        pending: [],
+        containers: {
+          containerId: {
+            type: Container.Tor,
+            error: containerError,
+            status: SystemEventAction.Start,
+            stats: {
+              cpu: 7,
+              memory: 7,
+            },
+          },
+        },
+      },
+    } as unknown as RootState
+
+    // when
+    const selectedContainer = selectContainerStatus(Container.Tor)(
+      rootState,
+    ) as ContainerStatusDto
+
+    // then
+    expect(selectedContainer.error).toBe(containerError)
+  })
+
+  it('should return container by type with error if present', () => {
+    // given
+    const containerTypeError = { some: 'error' }
+    const rootState = {
+      containers: {
+        errors: {
+          [Container.Tor]: containerTypeError,
+        },
+        pending: [],
+        containers: {
+          containerId: {
+            type: Container.Tor,
+            status: SystemEventAction.Start,
+            stats: {
+              cpu: 7,
+              memory: 7,
+            },
+          },
+        },
+      },
+    } as unknown as RootState
+
+    // when
+    const selectedContainer = selectContainerStatus(Container.Tor)(
+      rootState,
+    ) as ContainerStatusDto
+
+    // then
+    expect(selectedContainer.error).toBe(containerTypeError)
+  })
+
   const runningIndicationTestcases = [
     [SystemEventAction.Start, true],
     [SystemEventAction.Destroy, false],
@@ -111,6 +179,7 @@ describe('containers/selectors', () => {
       const unsubscribe = jest.fn()
       const rootState = {
         containers: {
+          errors: {},
           pending: [],
           containers: {
             containerId: {
@@ -141,6 +210,7 @@ describe('containers/selectors', () => {
     const unsubscribe = jest.fn()
     const rootState = {
       containers: {
+        errors: {},
         pending: [],
         containers: {
           containerId: {
@@ -171,6 +241,7 @@ describe('containers/selectors', () => {
       timestamp: 1,
       status: SystemEventAction.Start,
       type: Container.Tor,
+      error: undefined,
       running: true,
       pending: false,
       stats: {
@@ -194,6 +265,7 @@ describe('containers/selectors', () => {
     const unsubscribe = jest.fn()
     const rootState = {
       containers: {
+        errors: {},
         pending: [],
         containers: {
           containerId: {
@@ -212,6 +284,7 @@ describe('containers/selectors', () => {
       id: 'containerId',
       type: Container.Tor,
       status: SystemEventAction.Create,
+      error: undefined,
       running: false,
       pending: true,
       stats: {
@@ -230,5 +303,3 @@ describe('containers/selectors', () => {
     expect(selected).toStrictEqual(expected) // need to check this way because of unsubscribe function
   })
 })
-
-export {}
