@@ -6,7 +6,7 @@ export const TBotContainer = styled(animated.div)`
   align-items: center;
   justify-content: center;
   height: 100px;
-  width: 100%;
+  width: 100px;
 `
 
 export const TBotScaleContainer = styled(animated.div)`

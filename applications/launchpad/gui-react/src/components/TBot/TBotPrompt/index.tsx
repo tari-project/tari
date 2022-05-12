@@ -1,7 +1,7 @@
 import { config, useSpring } from 'react-spring'
 
-import SvgClose from '../../styles/Icons/Close'
-import TBot from '../TBot'
+import SvgClose from '../../../styles/Icons/Close'
+import TBot from '..'
 
 import { TBotPromptProps } from './types'
 
@@ -50,6 +50,7 @@ const TBotPrompt = ({ open, onClose, children, testid }: TBotPromptProps) => {
       </ContentRow>
       <TBotContainer>
         <TBot />
+        {/* <TBot /> */}
       </TBotContainer>
     </PromptContainer>
   )

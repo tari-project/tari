@@ -20,6 +20,7 @@ const lightTheme = {
   resetBackground: styles.colors.light.overlay,
   resetBackgroundHover: styles.colors.light.overlayDark,
   shadow: '0 0 40px #00000011',
+  shadow2: '0 0 24px #00000006',
 
   titleBar: styles.colors.light.background,
   controlBackground: 'transparent',
