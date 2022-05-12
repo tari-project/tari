@@ -11,4 +11,5 @@ export const selectThemeConfig = ({ app }: RootState) => {
   return themes[app.theme]
 }
 
-export const selectSchedules = ({ app }: RootState) => app.schedules
+export const selectSchedules = ({ app }: RootState) =>
+  Object.values(app.schedules)

@@ -8,5 +8,5 @@ export interface AppState {
   expertView: ExpertViewType
   view?: ViewType
   theme: ThemeType
-  schedules: Schedule[]
+  schedules: Record<string, Schedule>
 }

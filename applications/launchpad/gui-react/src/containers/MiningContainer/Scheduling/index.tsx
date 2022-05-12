@@ -1,8 +1,9 @@
 import { useState } from 'react'
 
 import Modal from '../../../components/Modal'
-import { useAppSelector } from '../../../store/hooks'
+import { useAppSelector, useAppDispatch } from '../../../store/hooks'
 import { selectSchedules } from '../../../store/app/selectors'
+import { toggleSchedule } from '../../../store/app'
 
 import ScheduleList from './ScheduleList'
 import { ScheduleContainer } from './styles'
@@ -16,6 +17,7 @@ const SchedulingContainer = ({
 }) => {
   const [addingSchedule, setAddingSchedule] = useState(false)
   const schedules = useAppSelector(selectSchedules)
+  const dispatch = useAppDispatch()
 
   const close = () => {
     setAddingSchedule(false)
@@ -30,7 +32,7 @@ const SchedulingContainer = ({
             schedules={schedules}
             cancel={close}
             addSchedule={() => setAddingSchedule(true)}
-            toggle={() => null}
+            toggle={scheduleId => dispatch(toggleSchedule(scheduleId))}
             edit={() => null}
             remove={() => null}
           />

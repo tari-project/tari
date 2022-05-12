@@ -7,8 +7,8 @@ const appInitialState: AppState = {
   expertView: 'hidden',
   view: 'MINING',
   theme: 'light',
-  schedules: [
-    {
+  schedules: {
+    asdf: {
       id: 'asdf',
       enabled: true,
       days: [0, 1, 2],
@@ -18,7 +18,7 @@ const appInitialState: AppState = {
       },
       type: ['merged'],
     },
-    {
+    qwer: {
       id: 'qwer',
       enabled: false,
       days: [4, 5],
@@ -28,8 +28,8 @@ const appInitialState: AppState = {
       },
       type: ['merged', 'tari'],
     },
-    {
-      id: 'qwer1',
+    wqer1: {
+      id: 'wqer1',
       enabled: true,
       date: new Date('2022-05-14'),
       interval: {
@@ -38,8 +38,8 @@ const appInitialState: AppState = {
       },
       type: ['merged', 'tari'],
     },
-    {
-      id: 'qwer3',
+    asdf2: {
+      id: 'asdf2',
       enabled: false,
       date: new Date('2022-05-14'),
       interval: {
@@ -48,7 +48,7 @@ const appInitialState: AppState = {
       },
       type: ['merged', 'tari'],
     },
-  ],
+  },
 }
 
 const appSlice = createSlice({
@@ -64,10 +64,14 @@ const appSlice = createSlice({
     setPage(state, { payload }: { payload: ViewType }) {
       state.view = payload
     },
+    toggleSchedule(state, { payload: scheduleId }: { payload: string }) {
+      state.schedules[scheduleId].enabled = !state.schedules[scheduleId].enabled
+    },
   },
 })
 
-export const { setExpertView, setTheme, setPage } = appSlice.actions
+export const { setExpertView, setTheme, setPage, toggleSchedule } =
+  appSlice.actions
 
 const reducer = appSlice.reducer
 export default reducer
