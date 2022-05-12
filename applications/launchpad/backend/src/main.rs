@@ -5,7 +5,10 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#[macro_use]
+extern crate lazy_static;
 use log::*;
+mod api;
 mod commands;
 mod docker;
 mod error;
@@ -23,17 +26,19 @@ use tauri::{
     Submenu,
 };
 
-use crate::commands::{
-    create_default_workspace,
-    create_new_workspace,
-    events,
-    image_list,
-    launch_docker,
-    pull_images,
-    shutdown,
-    start_service,
-    stop_service,
-    AppState,
+use crate::{
+    api::{image_list, network_list},
+    commands::{
+        create_default_workspace,
+        create_new_workspace,
+        events,
+        launch_docker,
+        pull_images,
+        shutdown,
+        start_service,
+        stop_service,
+        AppState,
+    },
 };
 
 fn main() {
@@ -89,6 +94,7 @@ fn main() {
         .menu(menu)
         .invoke_handler(tauri::generate_handler![
             image_list,
+            network_list,
             pull_images,
             create_new_workspace,
             create_default_workspace,

@@ -33,6 +33,7 @@ use tauri::{AppHandle, Manager, State, Wry};
 use crate::{
     commands::{create_workspace::copy_config_file, AppState},
     docker::{
+        container_state,
         create_workspace_folders,
         helpers::create_password,
         BaseNodeConfig,
@@ -235,9 +236,7 @@ async fn start_service_impl(
     let tag = workspace.config().tag.clone();
     let image = ImageType::try_from(service_name.as_str())?;
     let container_name = workspace.start_service(image, registry, tag, docker.clone()).await?;
-    let state = workspace
-        .container_mut(container_name.as_str())
-        .ok_or(DockerWrapperError::UnexpectedError)?;
+    let state = container_state(container_name.as_str()).ok_or(DockerWrapperError::UnexpectedError)?;
     let id = state.id().to_string();
     let stats_events_name = stats_event_name(state.id());
     let log_events_name = log_event_name(state.name());
