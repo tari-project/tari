@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTheme } from 'styled-components'
 
 import Text from '../../../components/Text'
@@ -8,16 +9,27 @@ import { Schedule } from './types'
 import { SchedulesListContainer, NoSchedulesContainer, Actions } from './styles'
 import SchedulePresentation from './Schedule'
 
+type ScheduleId = string
+type ScheduleActions = {
+  toggle: (id: ScheduleId) => void
+  edit: (id: ScheduleId) => void
+  remove: (id: ScheduleId) => void
+}
+
 const ScheduleList = ({
   schedules,
   addSchedule,
   cancel,
+  toggle,
+  edit,
+  remove,
 }: {
   schedules: Schedule[]
   cancel: () => void
   addSchedule: () => void
-}) => {
+} & ScheduleActions) => {
   const theme = useTheme()
+  const [selectedSchedule, setSelected] = useState('')
 
   return (
     <>
@@ -39,7 +51,15 @@ const ScheduleList = ({
       {schedules.length !== 0 && (
         <SchedulesListContainer>
           {schedules.map(schedule => (
-            <SchedulePresentation key={schedule.id} {...schedule} />
+            <SchedulePresentation
+              key={schedule.id}
+              {...schedule}
+              toggle={() => toggle(schedule.id)}
+              edit={() => edit(schedule.id)}
+              selected={selectedSchedule === schedule.id}
+              select={() => setSelected(schedule.id)}
+              remove={() => remove(schedule.id)}
+            />
           ))}
         </SchedulesListContainer>
       )}

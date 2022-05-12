@@ -70,6 +70,9 @@ const SchedulingContainer = ({
             schedules={schedules}
             cancel={close}
             addSchedule={() => setAddingSchedule(true)}
+            toggle={() => null}
+            edit={() => null}
+            remove={() => null}
           />
         )}
       </ScheduleContainer>
