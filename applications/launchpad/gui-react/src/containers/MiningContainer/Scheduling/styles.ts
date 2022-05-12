@@ -18,6 +18,7 @@ export const NoSchedulesContainer = styled.div`
 `
 
 export const SchedulesListContainer = styled.div`
+  outline: none;
   flex-grow: 1;
   display: flex;
   flex-direction: column;
@@ -25,4 +26,6 @@ export const SchedulesListContainer = styled.div`
   align-items: center;
   width: 100%;
   overflow: auto;
+  box-sizing: border-box;
+  padding: 0 ${({ theme }) => theme.spacing()};
 `

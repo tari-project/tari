@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback, KeyboardEvent } from 'react'
 import { useTheme } from 'styled-components'
 
 import Text from '../../../components/Text'
@@ -32,6 +32,16 @@ const ScheduleList = ({
   const theme = useTheme()
   const [selectedSchedule, setSelected] = useState('')
 
+  const onListKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      const { key } = event
+      if (['Delete', 'Backspace'].includes(key)) {
+        remove(selectedSchedule)
+      }
+    },
+    [remove, selectedSchedule],
+  )
+
   return (
     <>
       <Box border={false} style={{ width: '100%', marginBottom: 0 }}>
@@ -50,7 +60,7 @@ const ScheduleList = ({
         </NoSchedulesContainer>
       )}
       {schedules.length !== 0 && (
-        <SchedulesListContainer>
+        <SchedulesListContainer tabIndex={0} onKeyDown={onListKeyDown}>
           {schedules.map(schedule => (
             <SchedulePresentation
               key={schedule.id}
@@ -59,7 +69,6 @@ const ScheduleList = ({
               edit={() => edit(schedule.id)}
               selected={selectedSchedule === schedule.id}
               select={() => setSelected(schedule.id)}
-              remove={() => remove(schedule.id)}
             />
           ))}
         </SchedulesListContainer>

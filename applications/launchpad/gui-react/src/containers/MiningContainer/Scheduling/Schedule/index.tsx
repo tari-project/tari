@@ -10,7 +10,6 @@ type ScheduleActions = {
   toggle: () => void
   select: () => void
   edit: () => void
-  remove: () => void
 }
 
 const Schedule = ({
@@ -20,9 +19,15 @@ const Schedule = ({
   interval,
   type,
   toggle,
+  selected,
+  select,
 }: ScheduleType & { selected: boolean } & ScheduleActions) => {
   return (
-    <ScheduleContainer>
+    <ScheduleContainer
+      onClick={select}
+      selected={selected}
+      data-selected={selected}
+    >
       <ScheduleInfo>
         <When days={days} date={date} disabled={!enabled} />
         <Interval {...interval} disabled={!enabled} />

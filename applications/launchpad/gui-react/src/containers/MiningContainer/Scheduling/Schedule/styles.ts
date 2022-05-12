@@ -33,19 +33,24 @@ export const EnabledDot = styled.div<{ disabled: boolean }>`
   transform: translate(-50%, -75%);
 `
 
-export const ScheduleContainer = styled.div`
+export const ScheduleContainer = styled.div<{ selected: boolean }>`
   width: 100%;
-  margin-top: ${({ theme }) => theme.spacing(0.5)};
+  box-sizing: border-box;
+  border-radius: ${({ theme, selected }) =>
+    selected ? theme.borderRadius() : 0};
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 ${({ theme }) => theme.spacing()};
-  box-sizing: border-box;
-  &:not(:last-of-type) {
-    border-bottom: 1px solid ${({ theme }) => theme.borderColor};
-    padding-bottom: ${({ theme }) => theme.spacing()};
-    margin-bottom: ${({ theme }) => theme.spacing()};
+  padding: ${({ theme }) => theme.spacing()};
+  &:not(:first-of-type) {
+    border-top: 1px solid
+      ${({ theme, selected }) => (selected ? 'transparent' : theme.borderColor)};
   }
+  *[data-selected='true'] + & {
+    border-color: transparent;
+  }
+  background-color: ${({ theme, selected }) =>
+    selected ? theme.backgroundImage : 'none'};
 `
 
 export const ScheduleInfo = styled.div``
