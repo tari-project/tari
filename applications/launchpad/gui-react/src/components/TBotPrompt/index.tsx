@@ -10,14 +10,23 @@ import {
   TBotContainer,
   MessageContainer,
 } from './styles'
+import { config, useSpring } from 'react-spring'
 
 const TBotPrompt = ({ open, onClose, children }: TBotPromptProps) => {
+  const promptAnim = useSpring({
+    from: {
+      opacity: 0,
+    },
+    opacity: 1,
+    config: config.wobbly,
+  })
+
   if (!open) {
     return null
   }
 
   return (
-    <PromptContainer>
+    <PromptContainer style={promptAnim}>
       <ContentRow>
         <MessageContainer>
           <StyledCloseIcon>
