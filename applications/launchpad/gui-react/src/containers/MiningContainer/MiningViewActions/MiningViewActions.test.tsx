@@ -48,7 +48,7 @@ describe('MiningViewActions', () => {
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningViewActions />
+          <MiningViewActions openScheduling={() => null} />
         </ThemeProvider>
       </Provider>,
     )
@@ -95,7 +95,7 @@ describe('MiningViewActions', () => {
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningViewActions />
+          <MiningViewActions openScheduling={() => null} />
         </ThemeProvider>
       </Provider>,
     )

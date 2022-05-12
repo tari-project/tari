@@ -1,4 +1,5 @@
 import { useSelector } from 'react-redux'
+
 import Button from '../../../components/Button'
 import t from '../../../locales'
 import { selectCanAnyMiningNodeRun } from '../../../store/mining/selectors'
@@ -9,7 +10,11 @@ import SvgSetting2 from '../../../styles/Icons/Setting2'
 /**
  * Renders set of links/actions in Mining dashboard
  */
-const MiningViewActions = () => {
+const MiningViewActions = ({
+  openScheduling,
+}: {
+  openScheduling: () => void
+}) => {
   const canAnyMiningBeRun = useSelector(selectCanAnyMiningNodeRun)
 
   return (
@@ -19,6 +24,7 @@ const MiningViewActions = () => {
         leftIcon={<SvgClock />}
         testId='mining-action-setup-mining-hours'
         disabled={!canAnyMiningBeRun}
+        onClick={openScheduling}
       >
         {t.mining.viewActions.setUpMiningHours}
       </Button>
