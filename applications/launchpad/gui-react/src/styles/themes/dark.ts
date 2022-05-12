@@ -18,6 +18,8 @@ const darkTheme = {
 
   titleBar: styles.colors.dark.primary,
   borderColorLight: styles.colors.secondary.borderLight,
+  resetBackground: styles.colors.light.overlay,
+  resetBackgroundHover: styles.colors.light.overlayDark,
   controlBackground: 'rgba(255,255,255,.2)',
   info: styles.colors.secondary.info,
   infoText: styles.colors.secondary.infoText,
@@ -62,6 +64,8 @@ const darkTheme = {
     lightTagText: styles.colors.dark.secondary,
     borderColor: styles.colors.light.backgroundImage,
     borderColorLight: styles.colors.secondary.borderLight,
+    resetBackground: styles.colors.light.overlay,
+    resetBackgroundHover: styles.colors.light.overlayDark,
     controlBackground: 'transparent',
   },
 }
