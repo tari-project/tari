@@ -47,6 +47,14 @@ bitflags! {
         const CONTRACT_DEREGISTER   = 0x1000;
         /// Output is an abandoned contract checkpoint.
         const CONTRACT_ABANDONED    = 0x2000;
+
+        // TODO: Remove these deprecated flags
+        const NON_FUNGIBLE         = 0b0000_1000;
+        const ASSET_REGISTRATION   = 0b0000_0010 | Self::NON_FUNGIBLE.bits;
+        const MINT_NON_FUNGIBLE    = 0b0000_0100 | Self::NON_FUNGIBLE.bits;
+        const BURN_NON_FUNGIBLE    = 0b1000_0000 | Self::NON_FUNGIBLE.bits;
+        const SIDECHAIN_CHECKPOINT = 0b0001_0000 | Self::NON_FUNGIBLE.bits;
+        const COMMITTEE_DEFINITION = 0b0010_0000 | Self::NON_FUNGIBLE.bits;
     }
 }
 
@@ -58,13 +66,13 @@ impl ConsensusEncoding for OutputFlags {
 
 impl ConsensusEncodingSized for OutputFlags {
     fn consensus_encode_exact_size(&self) -> usize {
-        1
+        2
     }
 }
 
 impl ConsensusDecoding for OutputFlags {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let mut buf = [0u8; 1];
+        let mut buf = [0u8; 2];
         reader.read_exact(&mut buf)?;
         // SAFETY: we have 3 options here:
         // 1. error if unsupported flags are used, meaning that every new flag will be a hard fork
@@ -73,6 +81,6 @@ impl ConsensusDecoding for OutputFlags {
         //   Once those flags are defined at some point in the future, depending on the functionality of the flag,
         //   a consensus rule may be needed that ignores flags prior to a given block height.
         // Option 3 is used here
-        Ok(unsafe { OutputFlags::from_bits_unchecked(u8::from_le_bytes(buf)) })
+        Ok(unsafe { OutputFlags::from_bits_unchecked(u16::from_le_bytes(buf)) })
     }
 }
