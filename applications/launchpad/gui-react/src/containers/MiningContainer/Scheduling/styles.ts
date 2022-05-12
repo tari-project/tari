@@ -1,6 +1,4 @@
-import styled, { useTheme } from 'styled-components'
-
-import Box from '../../../components/Box'
+import styled from 'styled-components'
 
 export const ScheduleContainer = styled.div`
   display: flex;
@@ -28,23 +26,3 @@ export const SchedulesListContainer = styled.div`
   width: 100%;
   overflow: auto;
 `
-
-export const Actions = (props: any) => {
-  const theme = useTheme()
-
-  return (
-    <Box
-      {...props}
-      border={false}
-      style={{
-        width: '100%',
-        borderTopLeftRadius: 0,
-        borderTopRightRadius: 0,
-        borderTop: `1px solid ${theme.borderColor}`,
-        marginBottom: 0,
-        display: 'flex',
-        justifyContent: 'flex-end',
-      }}
-    />
-  )
-}

@@ -1,6 +1,5 @@
 import Switch from '../../../../components/Switch'
-
-import { Schedule as ScheduleType } from '../types'
+import { Schedule as ScheduleType } from '../../../../types/general'
 
 import { ScheduleContainer, ScheduleInfo } from './styles'
 import When from './When'

@@ -4,9 +4,10 @@ import { useTheme } from 'styled-components'
 import Text from '../../../components/Text'
 import Box from '../../../components/Box'
 import Button from '../../../components/Button'
+import { Schedule } from '../../../types/general'
 
-import { Schedule } from './types'
-import { SchedulesListContainer, NoSchedulesContainer, Actions } from './styles'
+import { SchedulesListContainer, NoSchedulesContainer } from './styles'
+import Actions from './Actions'
 import SchedulePresentation from './Schedule'
 
 type ScheduleId = string

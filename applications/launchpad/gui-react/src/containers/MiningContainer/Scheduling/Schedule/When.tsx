@@ -3,7 +3,7 @@ import { useTheme } from 'styled-components'
 import Text from '../../../../components/Text'
 import { day } from '../../../../utils/Format'
 import t from '../../../../locales'
-import { Schedule } from '../types'
+import { Schedule } from '../../../../types/general'
 
 import DayIndicator from './DayIndicator'
 

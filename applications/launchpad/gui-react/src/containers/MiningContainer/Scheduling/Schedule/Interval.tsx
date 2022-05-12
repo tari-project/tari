@@ -2,7 +2,7 @@ import { useTheme } from 'styled-components'
 
 import { hour } from '../../../../utils/Format'
 import Text from '../../../../components/Text'
-import { Interval as IntervalType } from '../types'
+import { Interval as IntervalType } from '../../../../types/general'
 
 const Interval = ({
   from,
