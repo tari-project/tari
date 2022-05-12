@@ -35,6 +35,8 @@ use crate::{
     error::WalletError,
 };
 
+use super::ContractDefinition;
+
 #[derive(Clone)]
 pub struct AssetManagerHandle {
     handle: SenderService<AssetManagerRequest, Result<AssetManagerResponse, WalletError>>,
@@ -189,6 +191,22 @@ impl AssetManagerHandle {
             AssetManagerResponse::CreateMintingTransaction { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_minting_transaction".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_definition(
+        &mut self, contract_definition: &ContractDefinition
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractDefinition { contract_definition: Box::new(contract_definition.clone()) })
+            .await??
+        {
+            AssetManagerResponse::CreateContractDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_definition".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

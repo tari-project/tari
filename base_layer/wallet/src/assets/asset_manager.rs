@@ -39,6 +39,8 @@ use crate::{
     },
 };
 
+use super::ContractDefinition;
+
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 const ASSET_FPG: u64 = 10;
 
@@ -261,6 +263,26 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                     effective_sidechain_height,
                     is_initial,
                 ),
+            )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_contract_definition(
+        &mut self,
+        _contract_definition: ContractDefinition
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_contract_definition(),
             )
             .await?;
 

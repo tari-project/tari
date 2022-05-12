@@ -297,6 +297,16 @@ impl OutputFeatures {
         }
     }
 
+    // TODO: pass the contract definition as parameters, use the features?
+    pub fn for_contract_definition() -> OutputFeatures {
+        Self {
+            // TODO: create an output flag for contract definition
+            flags: OutputFlags::ASSET_REGISTRATION,
+            // TODO: create output features for contract definition
+            ..Default::default()
+        }
+    }
+
     pub fn unique_asset_id(&self) -> Option<&[u8]> {
         self.unique_id.as_deref()
     }

@@ -30,6 +30,8 @@ use tari_core::transactions::transaction_components::{OutputFeatures, TemplatePa
 
 use crate::assets::Asset;
 
+use super::ContractDefinition;
+
 pub mod initializer;
 
 #[derive(Debug)]
@@ -68,6 +70,9 @@ pub enum AssetManagerRequest {
         effective_sidechain_height: u64,
         is_initial: bool,
     },
+    CreateContractDefinition {
+        contract_definition: Box<ContractDefinition>,
+    },
 }
 
 pub enum AssetManagerResponse {
@@ -78,4 +83,5 @@ pub enum AssetManagerResponse {
     CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateFollowOnCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateCommitteeDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId }
 }

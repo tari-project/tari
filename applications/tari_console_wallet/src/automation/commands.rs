@@ -24,7 +24,7 @@ use std::{
     fs::File,
     io::{BufReader, LineWriter, Write},
     str::FromStr,
-    time::{Duration, Instant}
+    time::{Duration, Instant},
 };
 
 use chrono::Utc;
@@ -47,13 +47,13 @@ use tari_core::transactions::{
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::KEY_MANAGER_ASSET_BRANCH,
+    assets::{KEY_MANAGER_ASSET_BRANCH, ContractDefinition},
     error::WalletError,
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletConfig,
-    WalletSqlite, contract_service::ContractDefinition,
+    WalletSqlite,
 };
 use tokio::{
     sync::{broadcast, mpsc},
@@ -919,18 +919,34 @@ pub async fn command_runner(
                     .map_err(CommandError::TransactionServiceError)?;
             },
             PublishContractDefinition => {
+                // open the JSON file with the contract definition values
                 let file_path = match parsed.args.get(0) {
                     Some(ParsedArgument::JSONFileName(ref file_path)) => Ok(file_path),
                     _ => Err(CommandError::Argument),
                 }?;
-
                 let file = File::open(file_path).map_err(|e| CommandError::JSONFile(e.to_string()))?;
                 let file_reader = BufReader::new(file);
+
+                // parse the JSON file
                 let contract_definition: ContractDefinition =
                     serde_json::from_reader(file_reader).map_err(|e| CommandError::JSONFile(e.to_string()))?;
 
-                let result = serde_json::to_string_pretty(&contract_definition).unwrap();
-                println!("contract name: {}", result);
+                // create the contract definition transaction
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager
+                    .create_contract_definition(&contract_definition)
+                    .await?;
+
+                // publish the contract definition transaction
+                let message = format!(
+                    "Contract definition for contract with id={}",
+                    contract_definition.contract_id
+                );
+                transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+
+                println!("Done!");
             },
         }
     }

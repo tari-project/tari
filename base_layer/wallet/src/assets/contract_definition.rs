@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,16 +20,46 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod asset_manager;
-pub(crate) use asset_manager::AssetManager;
-pub use asset_manager::KEY_MANAGER_ASSET_BRANCH;
+use std::collections::HashMap;
 
-mod asset;
-pub use asset::Asset;
+use serde::{Deserialize, Serialize};
 
-mod asset_manager_handle;
-pub use asset_manager_handle::AssetManagerHandle;
-pub(crate) mod infrastructure;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContractDefinition {
+    pub contract_id: String,     // TODO: make it a hash
+    pub contract_name: String,   // TODO: limit to 32 chars
+    pub contract_issuer: String, // TODO: make it a pubkey
+    pub contract_spec: ContractSpecification,
+}
 
-mod contract_definition;
-pub use contract_definition::ContractDefinition;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContractSpecification {
+    pub runtime: String,
+    pub public_functions: Vec<PublicFunction>,
+    pub initialization: Vec<FunctionCall>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublicFunction {
+    pub name: String, // TODO: limit it to 32 chars
+    pub function: FunctionRef,
+    pub argument_def: HashMap<String, ArgType>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub function: FunctionRef,
+    pub arguments: HashMap<String, ArgType>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FunctionRef {
+    pub template_func: String, // TODO: limit to 32 chars
+    pub template_id: String,   // TODO: make it a hash
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ArgType {
+    String,
+    UInt64,
+}

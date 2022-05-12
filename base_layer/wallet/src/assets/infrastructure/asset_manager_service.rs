@@ -179,6 +179,18 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
+            AssetManagerRequest::CreateContractDefinition { contract_definition } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_definition(
+                        *contract_definition
+                    )
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractDefinition {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 }
