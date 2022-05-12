@@ -34,6 +34,8 @@ export const EnabledDot = styled.div<{ disabled: boolean }>`
 `
 
 export const ScheduleContainer = styled.div<{ selected: boolean }>`
+  cursor: pointer;
+  user-select: none;
   width: 100%;
   box-sizing: border-box;
   border-radius: ${({ theme, selected }) =>

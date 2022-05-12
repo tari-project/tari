@@ -33,7 +33,7 @@ const SchedulingContainer = ({
             cancel={close}
             addSchedule={() => setAddingSchedule(true)}
             toggle={scheduleId => dispatch(toggleSchedule(scheduleId))}
-            edit={() => null}
+            edit={scheduleId => console.log(`editing ${scheduleId}`)}
             remove={scheduleId => console.log(`removing ${scheduleId}`)}
           />
         )}

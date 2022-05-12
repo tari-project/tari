@@ -5,6 +5,7 @@ import { ScheduleContainer, ScheduleInfo } from './styles'
 import When from './When'
 import MiningType from './MiningType'
 import Interval from './Interval'
+import useSingleAndDoubleClick from '../../../../utils/useSingleAndDoubleClick'
 
 type ScheduleActions = {
   toggle: () => void
@@ -21,10 +22,16 @@ const Schedule = ({
   toggle,
   selected,
   select,
+  edit,
 }: ScheduleType & { selected: boolean } & ScheduleActions) => {
+  const clickHandler = useSingleAndDoubleClick({
+    single: select,
+    double: edit,
+  })
+
   return (
     <ScheduleContainer
-      onClick={select}
+      onClick={clickHandler}
       selected={selected}
       data-selected={selected}
     >
