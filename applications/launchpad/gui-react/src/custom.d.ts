@@ -34,6 +34,7 @@ declare module 'styled-components' {
     borderColorLight: string
     actionBackground: string
     resetBackground: string
+    resetBackgroundHover: string
     shadow: string
 
     titleBar: string
@@ -67,6 +68,8 @@ declare module 'styled-components' {
       disabledText: string
       tariGradient: string
       warningGradient: string
+      resetBackground: string
+      resetBackgroundHover: string
       info: string
       infoText: string
       on: string

@@ -9,9 +9,9 @@ const colors = {
   },
   light: {
     primary: '#FFFFFF',
-    textSecondary: '#FFFFFF64',
-    overlay: '#FFFFFF22',
-    overlayDark: '#FFFFFF44',
+    textSecondary: '#FFFFFFa3',
+    overlay: '#FFFFFF38',
+    overlayDark: '#FFFFFF70',
     backgroundImage: '#F6F5F8',
     background: '#FAFAFA',
     gray: '#E5E5E5',

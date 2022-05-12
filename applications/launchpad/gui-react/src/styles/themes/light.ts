@@ -18,6 +18,7 @@ const lightTheme = {
   borderColorLight: styles.colors.secondary.borderLight,
   actionBackground: styles.colors.secondary.actionBackground,
   resetBackground: styles.colors.light.overlay,
+  resetBackgroundHover: styles.colors.light.overlayDark,
   shadow: '0 0 40px #00000011',
 
   titleBar: styles.colors.light.background,
@@ -66,6 +67,8 @@ const lightTheme = {
     borderColor: styles.colors.secondary.borderLight,
     borderColorLight: styles.colors.secondary.borderLight,
     actionBackground: styles.colors.secondary.actionBackground,
+    resetBackground: styles.colors.light.overlay,
+    resetBackgroundHover: styles.colors.light.overlayDark,
     controlBackground: 'rgba(255,255,255,.2)',
   },
 }
