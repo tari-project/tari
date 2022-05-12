@@ -12,7 +12,7 @@ import {
 } from './styles'
 import { config, useSpring } from 'react-spring'
 
-const TBotPrompt = ({ open, onClose, children }: TBotPromptProps) => {
+const TBotPrompt = ({ open, onClose, children, testid }: TBotPromptProps) => {
   const promptAnim = useSpring({
     from: {
       opacity: 0,
@@ -26,7 +26,10 @@ const TBotPrompt = ({ open, onClose, children }: TBotPromptProps) => {
   }
 
   return (
-    <PromptContainer style={promptAnim}>
+    <PromptContainer
+      style={promptAnim}
+      data-testid={testid || 'tbotprompt-cmp'}
+    >
       <ContentRow>
         <MessageContainer>
           <StyledCloseIcon>
