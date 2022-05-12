@@ -1,3 +1,5 @@
+import { config, useSpring } from 'react-spring'
+
 import SvgClose from '../../styles/Icons/Close'
 import TBot from '../TBot'
 
@@ -10,7 +12,15 @@ import {
   TBotContainer,
   MessageContainer,
 } from './styles'
-import { config, useSpring } from 'react-spring'
+
+/**
+ * @name TBotPrompt
+ *
+ * @prop {boolean} open - controls rendering of prompt component
+ * @prop {() => void} [onClose] - callback on close action of prompt
+ * @prop {ReactNode} [children] - content rendered inside prompt component
+ * @prop {string} [testid] - for testing
+ */
 
 const TBotPrompt = ({ open, onClose, children, testid }: TBotPromptProps) => {
   const promptAnim = useSpring({

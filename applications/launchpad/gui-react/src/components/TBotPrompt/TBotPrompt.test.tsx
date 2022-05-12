@@ -16,10 +16,10 @@ describe('TBot', () => {
     expect(el).toBeInTheDocument()
   })
 
-  it('should not render the component when open prop is not set / false', () => {
+  it('should not render the component when open prop is false', () => {
     render(
       <ThemeProvider theme={themes.light}>
-        <TBotPrompt />
+        <TBotPrompt open={false} />
       </ThemeProvider>,
     )
 

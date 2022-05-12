@@ -1,7 +1,7 @@
 import { ReactNode } from 'react'
 
 export interface TBotPromptProps {
-  open?: boolean
+  open: boolean
   onClose?: () => void
   children?: ReactNode
   testid?: string
