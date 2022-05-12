@@ -129,10 +129,41 @@ pub mod util {
         let result = U256::MAX / scalar;
         result.low_u64().into()
     }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        #[test]
+        fn high_target() {
+            let target: &[u8] = &[
+                0xff, 0xff, 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            ];
+            let expected = Difficulty::from(1);
+            assert_eq!(big_endian_difficulty(target), expected);
+        }
+
+        #[test]
+        fn max_difficulty() {
+            let target = U256::MAX / U256::from(u64::MAX);
+            let mut bytes = [0u8; 32];
+            target.to_big_endian(&mut bytes);
+            assert_eq!(big_endian_difficulty(&bytes), Difficulty::from(u64::MAX));
+        }
+
+        #[test]
+        fn stop_overflow() {
+            let target: u64 = 64;
+            let expected = u64::MAX;
+            assert_eq!(big_endian_difficulty(&target.to_be_bytes()), Difficulty::from(expected));
+        }
+    }
 }
+
 #[cfg(test)]
 mod test {
-    use crate::proof_of_work::difficulty::{Difficulty, util::big_endian_difficulty};
+    use crate::proof_of_work::difficulty::Difficulty;
 
     #[test]
     fn add_difficulty() {
@@ -149,25 +180,4 @@ mod test {
         let d = Difficulty::from(1_000_000);
         assert_eq!("1,000,000", format!("{}", d));
     }
-
-    #[test]
-    fn high_target() {
-        let target: &[u8] = &[0xff, 0xff, 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 ];
-        let expected = Difficulty::from(1);
-        assert_eq!(big_endian_difficulty(target), expected);
-    } 
-
-    #[test]
-    fn max_difficulty() {
-        let target = u64::MAX;
-        let expected = u64::MAX;
-        assert_eq!(big_endian_difficulty(&target.to_be_bytes()), Difficulty::from(expected));
-    } 
-
-    #[test]
-    fn stop_overflow() {
-        let target: u64 = 64;
-        let expected = u64::MAX;
-        assert_eq!(big_endian_difficulty(&target.to_be_bytes()), Difficulty::from(expected));
-    } 
 }
