@@ -36,6 +36,7 @@ declare module 'styled-components' {
     resetBackground: string
     resetBackgroundHover: string
     shadow: string
+    shadow2: string
 
     titleBar: string
 

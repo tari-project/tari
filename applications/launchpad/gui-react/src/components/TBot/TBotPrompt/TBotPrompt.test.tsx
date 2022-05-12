@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
-import themes from '../../styles/themes'
+import themes from '../../../styles/themes'
 import TBotPrompt from '.'
 
 describe('TBot', () => {

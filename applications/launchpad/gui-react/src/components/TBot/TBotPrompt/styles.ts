@@ -34,9 +34,8 @@ export const MessageContainer = styled(animated.div)`
 `
 
 export const TBotContainer = styled(animated.div)`
-  display: flex;
   width: 100%;
-  align-items: flex-end;
+  display: flex;
   justify-content: flex-end;
 `
 
