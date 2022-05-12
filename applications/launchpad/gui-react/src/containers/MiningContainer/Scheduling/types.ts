@@ -1,18 +1,20 @@
 import { MiningNodeType } from '../../../types/general'
 
-type Time = {
+export type Time = {
   hours: number
   minutes: number
 }
 
-type Interval = {
+export type Interval = {
   from: Time
   to: Time
 }
 
 export type Schedule = {
+  id: string
   enabled: boolean
-  days: number[]
+  days?: number[]
+  date?: Date
   interval: Interval
-  type: MiningNodeType
+  type: MiningNodeType[]
 }

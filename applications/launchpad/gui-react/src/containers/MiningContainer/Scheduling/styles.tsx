@@ -8,6 +8,7 @@ export const ScheduleContainer = styled.div`
   justify-content: space-between;
   align-items: center;
   height: 100%;
+  max-height: 100%;
 `
 
 export const NoSchedulesContainer = styled.div`
@@ -24,6 +25,8 @@ export const SchedulesListContainer = styled.div`
   flex-direction: column;
   justify-content: flex-start;
   align-items: center;
+  width: 100%;
+  overflow: auto;
 `
 
 export const Actions = (props: any) => {

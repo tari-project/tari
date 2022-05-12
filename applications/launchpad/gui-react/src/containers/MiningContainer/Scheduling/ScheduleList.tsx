@@ -5,7 +5,8 @@ import Box from '../../../components/Box'
 import Button from '../../../components/Button'
 
 import { Schedule } from './types'
-import { NoSchedulesContainer, Actions } from './styles'
+import { SchedulesListContainer, NoSchedulesContainer, Actions } from './styles'
+import SchedulePresentation from './Schedule'
 
 const ScheduleList = ({
   schedules,
@@ -20,7 +21,7 @@ const ScheduleList = ({
 
   return (
     <>
-      <Box border={false} style={{ width: '100%' }}>
+      <Box border={false} style={{ width: '100%', marginBottom: 0 }}>
         <Text type='header'>Mining schedules</Text>
         <Text as='p' style={{ marginTop: theme.spacing() }}>
           Tari Launchpad must be open at the scheduled hours for mining to
@@ -34,6 +35,13 @@ const ScheduleList = ({
           </Text>
           <Button onClick={addSchedule}>Add schedule</Button>
         </NoSchedulesContainer>
+      )}
+      {schedules.length !== 0 && (
+        <SchedulesListContainer>
+          {schedules.map(schedule => (
+            <SchedulePresentation key={schedule.id} {...schedule} />
+          ))}
+        </SchedulesListContainer>
       )}
       <Actions>
         <Button variant='secondary' onClick={cancel}>
