@@ -30,7 +30,7 @@ import Scheduling from './Scheduling'
 const MiningContainer = () => {
   const dispatch = useAppDispatch()
   const currentTheme = useAppSelector(selectTheme)
-  const [schedulingOpen, setSchedulingOpen] = useState(true)
+  const [schedulingOpen, setSchedulingOpen] = useState(false)
 
   return (
     <div>
