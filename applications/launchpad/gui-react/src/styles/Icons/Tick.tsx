@@ -1,4 +1,3 @@
-import * as React from 'react'
 import { SVGProps } from 'react'
 
 const SvgTick = (props: SVGProps<SVGSVGElement>) => (
@@ -14,7 +13,7 @@ const SvgTick = (props: SVGProps<SVGSVGElement>) => (
     <path
       d='M18 7 9.429 17 6 13'
       stroke='currentColor'
-      strokeWidth={1.5}
+      strokeWidth={3}
       strokeLinecap='round'
       strokeLinejoin='round'
     />
