@@ -2013,6 +2013,28 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(result)
     }
 
+    fn fetch_all_constitutions(
+        &self,
+        dan_node_public_key: &PublicKey,
+    ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.utxos_db, |output: TransactionOutputRowData| {
+            match output.output {
+                None => None,
+                Some(output) => match output.features.committee_definition.clone() {
+                    None => None,
+                    Some(committee_definition) => {
+                        if committee_definition.committee.contains(dan_node_public_key) {
+                            Some(output.clone())
+                        } else {
+                            None
+                        }
+                    },
+                },
+            }
+        })
+    }
+
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         Ok(lmdb_fetch_matching_after(&txn, &self.utxos_db, header_hash)?

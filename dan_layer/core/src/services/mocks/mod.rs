@@ -28,6 +28,7 @@ use std::{
 
 use async_trait::async_trait;
 use tari_common_types::types::{FixedHash, PublicKey};
+use tari_core::transactions::transaction_components::TransactionOutput;
 
 use super::CommitteeManager;
 use crate::{
@@ -218,6 +219,13 @@ impl BaseNodeClient for MockBaseNodeClient {
         _asset_public_key: PublicKey,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
         todo!()
+    }
+
+    async fn check_for_constitutions_for_me(
+        &mut self,
+        _dan_node_public_key: PublicKey,
+    ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
+        todo!();
     }
 }
 
