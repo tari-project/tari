@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit'
 
 import appReducer from './app'
+import settingsReducer from './settings'
 import baseNodeReducer from './baseNode'
 import miningReducer from './mining'
 import walletReducer from './wallet'
