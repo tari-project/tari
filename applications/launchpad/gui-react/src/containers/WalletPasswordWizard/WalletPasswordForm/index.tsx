@@ -59,15 +59,6 @@ const WalletPasswordForm = ({
           )}
         />
 
-        <Text
-          color={theme.primary}
-          style={{ marginTop: theme.spacingVertical(0.62) }}
-        >
-          <span>{t.common.conjunctions.or} </span>
-          <Button variant='button-in-text'>
-            {t.walletPasswordWizard.generatePasswordBtn}
-          </Button>
-        </Text>
         <FormButtons>
           <Button
             type='submit'
