@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    sync::{atomic::AtomicBool, Arc},
+    sync::{atomic::AtomicBool, Arc, Mutex},
     time::Duration,
 };
 
@@ -30,6 +30,7 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::PublicKey;
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
+use tari_core::transactions::transaction_components::TransactionOutput;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_dan_core::{
     models::{AssetDefinition, Committee},
@@ -83,16 +84,32 @@ impl DanNode {
         db_factory: SqliteDbFactory,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
+        committee_proposals: Arc<Mutex<Vec<TransactionOutput>>>,
     ) -> Result<(), ExitError> {
         let mut base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
         let mut next_scanned_height = 0u64;
         let mut last_tip = 0u64;
         let mut monitoring = Monitoring::new(self.config.committee_management_confirmation_time);
+        let mut next_committee_scan = 0u64;
         loop {
             let tip = base_node_client
                 .get_tip_info()
                 .await
                 .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
+            // Check if there is any new constitution proposal that I'm part of.
+            if self.config.committee_scanning_enabled && tip.height_of_longest_chain >= next_committee_scan {
+                let committees_for_me = base_node_client
+                    .check_for_constitutions_for_me(node_identity.public_key().clone())
+                    .await
+                    .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
+                for committee in committees_for_me {
+                    if !committee_proposals.lock().unwrap().contains(&committee) {
+                        committee_proposals.lock().unwrap().push(committee);
+                    }
+                }
+                next_committee_scan = tip.height_of_longest_chain + self.config.committee_scanning_interval;
+            }
+            // base_node_client.check_if_in_committee(asset_public_key, dan_node_public_key);
             if tip.height_of_longest_chain >= next_scanned_height {
                 info!(
                     target: LOG_TARGET,

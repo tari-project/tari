@@ -67,6 +67,9 @@ pub struct ValidatorNodeConfig {
     pub p2p: P2pConfig,
     pub committee_management_polling_interval: u64,
     pub committee_management_confirmation_time: u64,
+    pub grpc_address: Option<Multiaddr>,
+    pub committee_scanning_enabled: bool,
+    pub committee_scanning_interval: u64,
 }
 
 impl ValidatorNodeConfig {
@@ -98,6 +101,9 @@ impl Default for ValidatorNodeConfig {
             committee_management_confirmation_time: 10,
             committee_management_polling_interval: 5,
             p2p: P2pConfig::default(),
+            grpc_address: Some("/ip4/127.0.0.1/tcp/18144".parse().unwrap()),
+            committee_scanning_enabled: true,
+            committee_scanning_interval: 10,
         }
     }
 }
