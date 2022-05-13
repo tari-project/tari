@@ -28,7 +28,7 @@ const SchedulingContainer = ({
   onClose: () => void
 }) => {
   const [idToEdit, setScheduleToEdit] = useState('')
-  const [editOpen, setEditOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(true)
   const schedules = useAppSelector(selectSchedules)
   const scheduleToEdit = useAppSelector(selectSchedule(idToEdit))
   const dispatch = useAppDispatch()
@@ -61,7 +61,7 @@ const SchedulingContainer = ({
   return (
     <Modal open={open} onClose={close} size='small'>
       <ScheduleContainer>
-        {false && !editOpen && (
+        {!editOpen && (
           <ScheduleList
             schedules={schedules}
             cancel={close}
@@ -71,7 +71,7 @@ const SchedulingContainer = ({
             remove={scheduleId => dispatch(removeSchedule(scheduleId))}
           />
         )}
-        {(editOpen || true) && (
+        {editOpen && (
           <ScheduleForm
             value={scheduleToEdit}
             cancel={stopEditing}
