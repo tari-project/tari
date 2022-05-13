@@ -27,6 +27,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_script::script;
+use tari_test_utils::unpack_enum;
 use tari_utilities::Hashable;
 
 use crate::{
@@ -42,17 +43,22 @@ use crate::{
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
+    tx,
     validation::{
         header_iter::HeaderIter,
         header_validator::HeaderValidator,
+        transaction_validators::TxInternalConsistencyValidator,
         ChainBalanceValidator,
+        DifficultyCalculator,
         FinalHorizonStateValidation,
+        HeaderValidation,
+        MempoolTransactionValidation,
+        ValidationError,
     },
 };
 
 mod header_validators {
     use super::*;
-    use crate::validation::{DifficultyCalculator, HeaderValidation, ValidationError};
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
@@ -273,4 +279,20 @@ fn chain_balance_validation() {
     validator
         .validate(&*db.db_read_access().unwrap(), 2, &utxo_sum, &kernel_sum)
         .unwrap_err();
+}
+
+mod transaction_validator {
+    use super::*;
+
+    #[test]
+    fn it_rejects_coinbase_outputs() {
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let db = create_store_with_consensus(consensus_manager);
+        let factories = CryptoFactories::default();
+        let validator = TxInternalConsistencyValidator::new(factories, true, db);
+        let features = OutputFeatures::create_coinbase(0, 0);
+        let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
+        let err = validator.validate(&tx).unwrap_err();
+        unpack_enum!(ValidationError::MempoolTransactionContainsCoinbase = err);
+    }
 }
