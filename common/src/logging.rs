@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{fs, fs::File, io::Write, path::Path};
+use std::{fmt, fs, fs::File, io::Write, ops::DerefMut, path::Path};
 
 use crate::ConfigError;
 
@@ -100,8 +100,46 @@ macro_rules! log_if_error_fmt {
     }};
 }
 
+pub struct Hidden<T> {
+    inner: T,
+}
+
+impl<T> Hidden<T> {
+    pub fn new(inner: T) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T> fmt::Debug for Hidden<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[FILTERED]")
+    }
+}
+
+impl<T> fmt::Display for Hidden<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[FILTERED]")
+    }
+}
+
+impl<T> std::ops::Deref for Hidden<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> DerefMut for Hidden<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use super::*;
+
     #[test]
     fn log_if_error() {
         let err = Result::<(), _>::Err("What a shame");
@@ -113,5 +151,11 @@ mod test {
 
         let opt = log_if_error!(level: trace, "Error: {}", Result::<_, &str>::Ok("answer"));
         assert_eq!(opt, Some("answer"));
+    }
+
+    #[test]
+    fn deref_hidden_reveals_inner_value() {
+        let wrapped = Hidden::new(42);
+        assert_eq!(42, *wrapped)
     }
 }
