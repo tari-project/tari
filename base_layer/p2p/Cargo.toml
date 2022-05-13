@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.31", path = "../../comms/core" }
-tari_comms_dht = { version = "^0.31", path = "../../comms/dht" }
-tari_common = { version = "^0.31", path = "../../common" }
+tari_comms = { version = "^0.32", path = "../../comms/core" }
+tari_comms_dht = { version = "^0.32", path = "../../comms/dht" }
+tari_common = { version = "^0.32", path = "../../common" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
-tari_service_framework = { version = "^0.31", path = "../service_framework" }
-tari_shutdown = { version = "^0.31", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.31", path = "../../infrastructure/storage" }
+tari_service_framework = { version = "^0.32", path = "../service_framework" }
+tari_shutdown = { version = "^0.32", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.32", path = "../../infrastructure/storage" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
 
 anyhow = "1.0.53"
