@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTheme } from 'styled-components'
 
 import { Schedule } from '../../../../types/general'
 import Button from '../../../../components/Button'
+import Box from '../../../../components/Box'
 import t from '../../../../locales'
 import Actions from '../Actions'
 
@@ -21,6 +23,7 @@ const ScheduleForm = ({
   onChange: (s: Schedule) => void
 }) => {
   const editing = Boolean(value)
+  const theme = useTheme()
   const [days, setDays] = useState(value?.days)
   const [date, setDate] = useState(value?.date)
   const [miningType, setMiningType] = useState(value?.type)
@@ -31,16 +34,26 @@ const ScheduleForm = ({
 
   return (
     <>
-      <MiningTypeSelector value={miningType} onChange={setMiningType} />
-      <DateScheduler
-        days={days}
-        date={date}
-        onChange={({ days, date }) => {
-          setDays(days?.sort((a, b) => a - b))
-          setDate(date)
+      <Box
+        border={false}
+        style={{
+          rowGap: theme.spacing(),
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
         }}
-      />
-      {editing && <RemoveSchedule remove={remove} />}
+      >
+        <MiningTypeSelector value={miningType} onChange={setMiningType} />
+        <DateScheduler
+          days={days}
+          date={date}
+          onChange={({ days, date }) => {
+            setDays(days?.sort((a, b) => a - b))
+            setDate(date)
+          }}
+        />
+        {editing && <RemoveSchedule remove={remove} />}
+      </Box>
       <Actions>
         <Button variant='secondary' onClick={cancel}>
           {t.common.verbs.cancel}

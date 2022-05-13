@@ -1,6 +1,5 @@
 import { useTheme } from 'styled-components'
 
-import Box from '../../../../../components/Box'
 import Text from '../../../../../components/Text'
 import { day } from '../../../../../utils/Format'
 import CalendarIcon from '../../../../../styles/Icons/Calendar'
@@ -35,7 +34,7 @@ const DateScheduler = ({
   }
 
   return (
-    <Box border={false}>
+    <>
       <WeekdaySelector days={days} onChange={days => scheduleDays(days)} />
       <HumanReadableScheduledDate>
         {!date && days && (
@@ -62,7 +61,7 @@ const DateScheduler = ({
           <CalendarIcon height='18px' width='18px' />
         </div>
       </HumanReadableScheduledDate>
-    </Box>
+    </>
   )
 }
 DateScheduler.defaultProps = {
