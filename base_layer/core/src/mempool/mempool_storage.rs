@@ -33,6 +33,7 @@ use crate::{
         error::MempoolError,
         reorg_pool::ReorgPool,
         unconfirmed_pool::UnconfirmedPool,
+        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
@@ -299,5 +300,14 @@ impl MempoolStorage {
             unconfirmed_pool,
             reorg_pool,
         }
+    }
+
+    pub fn get_fee_per_gram_stats(&self, count: usize, tip_height: u64) -> Result<Vec<FeePerGramStat>, MempoolError> {
+        let target_weight = self
+            .rules
+            .consensus_constants(tip_height)
+            .get_max_block_weight_excluding_coinbase();
+        let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
+        Ok(stats)
     }
 }

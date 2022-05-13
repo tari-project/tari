@@ -57,7 +57,7 @@ impl MempoolInboundHandlers {
     /// Handle inbound Mempool service requests from remote nodes and local services.
     pub async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         debug!(target: LOG_TARGET, "Handling remote request: {}", request);
-        use MempoolRequest::{GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
+        use MempoolRequest::{GetFeePerGramStats, GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
         match request {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
             GetState => Ok(MempoolResponse::State(self.mempool.state().await?)),
@@ -71,6 +71,10 @@ impl MempoolInboundHandlers {
                     tx.body.kernels()[0].excess_sig.get_signature().to_hex(),
                 );
                 Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
+            },
+            GetFeePerGramStats { count, tip_height } => {
+                let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
+                Ok(MempoolResponse::FeePerGramStats { response: stats })
             },
         }
     }
