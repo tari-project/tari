@@ -13,3 +13,8 @@ export const selectThemeConfig = ({ app }: RootState) => {
 
 export const selectSchedules = ({ app }: RootState) =>
   Object.values(app.schedules)
+
+export const selectSchedule =
+  (scheduleId: string) =>
+  ({ app }: RootState) =>
+    app.schedules[scheduleId]

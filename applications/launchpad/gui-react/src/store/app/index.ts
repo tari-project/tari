@@ -1,5 +1,7 @@
 import { createSlice } from '@reduxjs/toolkit'
+
 import { ThemeType } from '../../styles/themes/types'
+import { Schedule } from '../../types/general'
 
 import { AppState, ExpertViewType, ViewType } from './types'
 
@@ -67,11 +69,26 @@ const appSlice = createSlice({
     toggleSchedule(state, { payload: scheduleId }: { payload: string }) {
       state.schedules[scheduleId].enabled = !state.schedules[scheduleId].enabled
     },
+    removeSchedule(state, { payload: scheduleId }: { payload: string }) {
+      delete state.schedules[scheduleId]
+    },
+    updateSchedule(
+      state,
+      { payload }: { payload: { scheduleId: string; value: Schedule } },
+    ) {
+      console.log('update schedule', payload)
+    },
   },
 })
 
-export const { setExpertView, setTheme, setPage, toggleSchedule } =
-  appSlice.actions
+export const {
+  setExpertView,
+  setTheme,
+  setPage,
+  toggleSchedule,
+  removeSchedule,
+  updateSchedule,
+} = appSlice.actions
 
 const reducer = appSlice.reducer
 export default reducer
