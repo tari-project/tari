@@ -17,6 +17,7 @@ const Actions = (props: any) => {
         marginBottom: 0,
         display: 'flex',
         justifyContent: 'flex-end',
+        columnGap: theme.spacing(),
       }}
     />
   )

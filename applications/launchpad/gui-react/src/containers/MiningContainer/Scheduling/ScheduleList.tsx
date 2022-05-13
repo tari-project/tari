@@ -77,6 +77,14 @@ const ScheduleList = ({
         <Button variant='secondary' onClick={cancel}>
           Cancel
         </Button>
+        {schedules.length !== 0 && (
+          <Button
+            style={{ flexGrow: 2, justifyContent: 'center' }}
+            onClick={addSchedule}
+          >
+            Add schedule
+          </Button>
+        )}
       </Actions>
     </>
   )
