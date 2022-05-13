@@ -277,6 +277,7 @@ class WalletProcess {
       "--command",
       command,
       "--non-interactive",
+      "--network",
       "localnet",
     ];
     if (this.logFilePath) {
