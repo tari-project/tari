@@ -348,21 +348,47 @@ pub unsafe extern "C" fn share_validate(
 
 #[cfg(test)]
 mod tests {
+
     use libc::c_int;
     use tari_common::configuration::Network;
-    use tari_core::blocks::{genesis_block::get_genesis_block, Block};
+    use tari_core::{
+        blocks::{genesis_block::get_genesis_block, Block},
+        proof_of_work::Difficulty,
+    };
 
     use super::*;
     use crate::{inject_nonce, public_key_hex_validate, share_difficulty, share_validate};
 
-    // For Difficulty 23386
-    const NONCE: u64 = 15810454562122378150;
+    const MIN_DIFFICULTY: Difficulty = Difficulty::from_u64(1000);
+
     fn create_test_block() -> Block {
         get_genesis_block(Network::LocalNet).block().clone()
     }
 
+    fn generate_nonce_with_min_difficulty(difficulty: Difficulty) -> Result<(Difficulty, u64), String> {
+        use rand::Rng;
+        let mut block = create_test_block();
+        block.header.nonce = rand::thread_rng().gen();
+        for _ in 0..20000 {
+            if sha3_difficulty(&block.header) >= difficulty {
+                return Ok((sha3_difficulty(&block.header), block.header.nonce));
+            }
+            block.header.nonce += 1;
+        }
+        Err(format!(
+            "Failed to generate nonce for difficulty {} within 20000 iterations",
+            difficulty
+        ))
+    }
+
     #[test]
-    fn check_difficulty() {
+    fn detect_change_in_consensus_encoding() {
+        const NONCE: u64 = 6491946420438978147;
+        const DIFFICULTY: Difficulty = Difficulty::from_u64(1272);
+        // Use this to generate new NONCE and DIFFICULTY
+        // let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
+        // eprintln!("nonce = {:?}", nonce);
+        // eprintln!("difficulty = {:?}", difficulty);
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -374,7 +400,31 @@ mod tests {
             inject_nonce(byte_vec, NONCE, error_ptr);
             assert_eq!(error, 0);
             let result = share_difficulty(byte_vec, error_ptr);
-            assert_eq!(result, 23386);
+            if result != DIFFICULTY.as_u64() {
+                panic!(
+                    "detect_change_in_consensus_encoding has failed. This indicates a change in consensus encoding \
+                     which requires an update to the pool miner code."
+                )
+            }
+            byte_vector_destroy(byte_vec);
+        }
+    }
+
+    #[test]
+    fn check_difficulty() {
+        unsafe {
+            let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
+            let mut error = -1;
+            let error_ptr = &mut error as *mut c_int;
+            let block = create_test_block();
+            let mut header_bytes: Vec<u8> = Vec::new();
+            block.header.consensus_encode(&mut header_bytes).unwrap();
+            let len = header_bytes.len() as u32;
+            let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
+            inject_nonce(byte_vec, nonce, error_ptr);
+            assert_eq!(error, 0);
+            let result = share_difficulty(byte_vec, error_ptr);
+            assert_eq!(result, difficulty.as_u64());
             byte_vector_destroy(byte_vec);
         }
     }
@@ -389,10 +439,10 @@ mod tests {
             block.header.consensus_encode(&mut header_bytes).unwrap();
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
-            inject_nonce(byte_vec, NONCE, error_ptr);
+            inject_nonce(byte_vec, 1234, error_ptr);
             assert_eq!(error, 0);
             let header = BlockHeader::consensus_decode(&mut (*byte_vec).0.as_slice()).unwrap();
-            assert_eq!(header.nonce, NONCE);
+            assert_eq!(header.nonce, 1234);
             byte_vector_destroy(byte_vec);
         }
     }
@@ -400,6 +450,7 @@ mod tests {
     #[test]
     fn check_share() {
         unsafe {
+            let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
@@ -411,7 +462,7 @@ mod tests {
             block.header.consensus_encode(&mut header_bytes).unwrap();
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
-            inject_nonce(byte_vec, NONCE, error_ptr);
+            inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
             // let calculate for invalid hash
             let result = share_validate(
@@ -431,13 +482,13 @@ mod tests {
             assert_eq!(result, 4);
             assert_eq!(error, 4);
             // let calculate for valid share and invalid target diff
-            share_difficulty = 10000;
+            share_difficulty = difficulty.as_u64();
             let hash_hex = CString::new(hash.clone()).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;
             let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
             assert_eq!(result, 1);
             // let calculate for valid target diff
-            template_difficulty = 10000;
+            template_difficulty = difficulty.as_u64();
             let hash_hex = CString::new(hash).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;
             let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);

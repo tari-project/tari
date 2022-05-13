@@ -7175,6 +7175,7 @@ version = "0.30.2"
 dependencies = [
  "hex",
  "libc",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "tari_common",

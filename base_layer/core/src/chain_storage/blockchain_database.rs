@@ -3154,7 +3154,7 @@ mod test {
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
-        let (block_names, chain) = create_chained_blocks(blocks.into(), genesis_block);
+        let (block_names, chain) = create_chained_blocks(blocks, genesis_block);
 
         let mut results = vec![];
         for name in block_names {
