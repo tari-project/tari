@@ -13,10 +13,10 @@ import { TBotProps } from './types'
  *
  * @prop {TBotType} [type] - TBot variant to render
  * @prop {CSSProperties} [style] - optional TBot additional styling
- * @prop {boolean} [animate] - optional prop to trigger the new message T-Bot animation
+ * @prop {boolean} [animate] - optional prop to trigger the new message T-Bot animation, set to true to trigger animation
  *
  * @example
- * <TBot type='hearts' style={{ fontSize: '24px' }} />
+ * <TBot type='hearts' style={{ fontSize: '24px' }} animate={triggerAnimation} />
  */
 
 const TBot = ({ type = 'base', style, animate }: TBotProps) => {

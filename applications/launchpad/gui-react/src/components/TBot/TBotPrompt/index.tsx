@@ -12,6 +12,8 @@ import {
   TBotContainer,
   MessageContainer,
 } from './styles'
+import { useAppDispatch } from '../../../store/hooks'
+import { tbotactions } from '../../../store/tbot'
 
 /**
  * @name TBotPrompt
@@ -22,7 +24,8 @@ import {
  * @prop {string} [testid] - for testing
  */
 
-const TBotPrompt = ({ open, onClose, children, testid }: TBotPromptProps) => {
+const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
+  const dispatch = useAppDispatch()
   const promptAnim = useSpring({
     from: {
       opacity: 0,
@@ -43,14 +46,16 @@ const TBotPrompt = ({ open, onClose, children, testid }: TBotPromptProps) => {
       <ContentRow>
         <MessageContainer>
           <StyledCloseIcon>
-            <SvgClose fontSize={20} onClick={onClose} />
+            <SvgClose
+              fontSize={20}
+              onClick={() => dispatch(tbotactions.close())}
+            />
           </StyledCloseIcon>
           {children}
         </MessageContainer>
       </ContentRow>
       <TBotContainer>
         <TBot />
-        {/* <TBot /> */}
       </TBotContainer>
     </PromptContainer>
   )

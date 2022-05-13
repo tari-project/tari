@@ -7,6 +7,7 @@ import baseNodeReducer from './baseNode'
 import miningReducer from './mining'
 import walletReducer from './wallet'
 import containersReducer from './containers'
+import tbotReducer from './tbot'
 
 // exported for tests
 export const rootReducer = {
@@ -16,6 +17,7 @@ export const rootReducer = {
   wallet: walletReducer,
   settings: settingsReducer,
   containers: containersReducer,
+  tbot: tbotReducer,
 }
 
 export const store = configureStore({

@@ -7,6 +7,7 @@ import { useSystemEvents } from './useSystemEvents'
 import HomePage from './pages/home'
 import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
+import TBotManager from './TBotManager'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -26,6 +27,7 @@ const App = () => {
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
         <HomePage />
+        <TBotManager />
       </AppContainer>
     </ThemeProvider>
   )

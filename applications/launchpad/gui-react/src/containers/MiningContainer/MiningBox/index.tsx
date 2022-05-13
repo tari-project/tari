@@ -115,7 +115,7 @@ const MiningBox = ({
         text: t.common.phrases.startHere,
       },
       boxStyle: {
-        boxShadow: theme.shadow,
+        boxShadow: theme.shadow40,
         borderColor: 'transparent',
       },
     },
