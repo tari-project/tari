@@ -7,16 +7,20 @@ import Actions from '../Actions'
 
 import DateScheduler from './DateScheduler'
 import MiningTypeSelector from './MiningTypeSelector'
+import RemoveSchedule from './RemoveSchedule'
 
 const ScheduleForm = ({
   value,
   cancel,
   onChange,
+  remove,
 }: {
   value: Schedule
   cancel: () => void
+  remove: () => void
   onChange: (s: Schedule) => void
 }) => {
+  const editing = Boolean(value)
   const [days, setDays] = useState(value?.days)
   const [date, setDate] = useState(value?.date)
   const [miningType, setMiningType] = useState(value?.type)
@@ -36,6 +40,7 @@ const ScheduleForm = ({
           setDate(date)
         }}
       />
+      {editing && <RemoveSchedule remove={remove} />}
       <Actions>
         <Button variant='secondary' onClick={cancel}>
           {t.common.verbs.cancel}

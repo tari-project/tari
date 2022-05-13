@@ -53,6 +53,11 @@ const SchedulingContainer = ({
     onClose()
   }
 
+  const removeScheduleBeingEdited = () => {
+    dispatch(removeSchedule(idToEdit))
+    stopEditing()
+  }
+
   return (
     <Modal open={open} onClose={close} size='small'>
       <ScheduleContainer>
@@ -70,6 +75,7 @@ const SchedulingContainer = ({
           <ScheduleForm
             value={scheduleToEdit}
             cancel={stopEditing}
+            remove={removeScheduleBeingEdited}
             onChange={value =>
               dispatch(updateSchedule({ value, scheduleId: idToEdit }))
             }
