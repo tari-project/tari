@@ -27,6 +27,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
 
+use super::ContractDefinition;
 use crate::{
     assets::Asset,
     error::WalletError,
@@ -38,8 +39,6 @@ use crate::{
         },
     },
 };
-
-use super::ContractDefinition;
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 const ASSET_FPG: u64 = 10;
@@ -276,14 +275,11 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
     pub async fn create_contract_definition(
         &mut self,
-        _contract_definition: ContractDefinition
+        _contract_definition: ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
-            .create_output_with_features(
-                0.into(),
-                OutputFeatures::for_contract_definition(),
-            )
+            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition())
             .await?;
 
         let (tx_id, transaction) = self

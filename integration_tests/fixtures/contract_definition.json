@@ -1,0 +1,54 @@
+{
+    "contract_id": "contract_id value",
+    "contract_name": "contract_name value",
+    "contract_issuer": "contract_issuer value",
+    "contract_spec": {
+        "runtime": "runtime value",
+        "public_functions": [
+            {
+                "name": "function1",
+                "function": {
+                    "template_func": "template_func1",
+                    "template_id": "template_id1"
+                },
+                "argument_def": {
+                    "arg1": "String",
+                    "arg2": "UInt64"
+                }
+            },
+            {
+                "name": "function2",
+                "function": {
+                    "template_func": "template_func2",
+                    "template_id": "template_id2"
+                },
+                "argument_def": {
+                    "arg1": "String",
+                    "arg2": "UInt64"
+                }
+            }
+        ],
+        "initialization": [
+            {
+                "function": {
+                    "template_func": "template_func1",
+                    "template_id": "template_id1"
+                },
+                "arguments": {
+                    "arg1": "String",
+                    "arg2": "UInt64"
+                }
+            },
+            {
+                "function": {
+                    "template_func": "template_func2",
+                    "template_id": "template_id2"
+                },
+                "arguments": {
+                    "arg1": "String",
+                    "arg2": "UInt64"
+                }
+            }
+        ]
+    }
+}

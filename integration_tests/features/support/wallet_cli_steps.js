@@ -23,6 +23,8 @@
 const { Given, Then, When } = require("@cucumber/cucumber");
 const { expect } = require("chai");
 const { waitFor, sleep, byteArrayToHex } = require("../../helpers/util");
+const  path = require("path");
+
 Given(
   /I change the password of wallet (.*) to (.*) via command line/,
   async function (name, newPassword) {
@@ -295,5 +297,19 @@ Then(
     );
     // console.log(output.buffer);
     expect(output.buffer).to.have.string("Minting tokens for asset");
+  }
+);
+
+Then(
+  "I create a contract definition from file {string} on wallet {word} via command line",
+  { timeout: 120 * 1000 },
+  async function (relative_file_path, wallet_name) {
+    let absolute_path = path.resolve(relative_file_path);
+    let wallet = this.getWallet(wallet_name);
+    let output = await wallet_run_command(
+      wallet,
+      `publish-contract-definition --json-file ${absolute_path}`
+    );
+    console.log(output.buffer);
   }
 );

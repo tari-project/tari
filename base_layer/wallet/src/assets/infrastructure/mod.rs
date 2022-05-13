@@ -28,9 +28,8 @@ use tari_common_types::{
 };
 use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
 
-use crate::assets::Asset;
-
 use super::ContractDefinition;
+use crate::assets::Asset;
 
 pub mod initializer;
 
@@ -83,5 +82,5 @@ pub enum AssetManagerResponse {
     CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateFollowOnCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateCommitteeDefinition { transaction: Box<Transaction>, tx_id: TxId },
-    CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId }
+    CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId },
 }

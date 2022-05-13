@@ -150,3 +150,11 @@ Feature: Wallet CLI
         And I create committee definition for asset on wallet WALLET via command line
         And mining node MINE mines 1 blocks
         Then WALLET is connected to BASE
+
+     Scenario: As a user I want to publish a contract definition via command line
+        Given I have a base node BASE
+        And I have wallet WALLET connected to base node BASE
+        And I have mining node MINE connected to base node BASE and wallet WALLET
+        And mining node MINE mines 4 blocks
+        Then I wait for wallet WALLET to have at least 1000000 uT
+        And I create a contract definition from file "fixtures/contract_definition.json" on wallet WALLET via command line

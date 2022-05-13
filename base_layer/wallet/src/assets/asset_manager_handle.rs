@@ -27,6 +27,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
 use tari_service_framework::{reply_channel::SenderService, Service};
 
+use super::ContractDefinition;
 use crate::{
     assets::{
         infrastructure::{AssetManagerRequest, AssetManagerResponse},
@@ -34,8 +35,6 @@ use crate::{
     },
     error::WalletError,
 };
-
-use super::ContractDefinition;
 
 #[derive(Clone)]
 pub struct AssetManagerHandle {
@@ -197,11 +196,14 @@ impl AssetManagerHandle {
     }
 
     pub async fn create_contract_definition(
-        &mut self, contract_definition: &ContractDefinition
+        &mut self,
+        contract_definition: &ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
-            .call(AssetManagerRequest::CreateContractDefinition { contract_definition: Box::new(contract_definition.clone()) })
+            .call(AssetManagerRequest::CreateContractDefinition {
+                contract_definition: Box::new(contract_definition.clone()),
+            })
             .await??
         {
             AssetManagerResponse::CreateContractDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),

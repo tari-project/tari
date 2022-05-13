@@ -47,7 +47,7 @@ use tari_core::transactions::{
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::{KEY_MANAGER_ASSET_BRANCH, ContractDefinition},
+    assets::{ContractDefinition, KEY_MANAGER_ASSET_BRANCH},
     error::WalletError,
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
@@ -924,6 +924,7 @@ pub async fn command_runner(
                     Some(ParsedArgument::JSONFileName(ref file_path)) => Ok(file_path),
                     _ => Err(CommandError::Argument),
                 }?;
+
                 let file = File::open(file_path).map_err(|e| CommandError::JSONFile(e.to_string()))?;
                 let file_reader = BufReader::new(file);
 
@@ -933,9 +934,7 @@ pub async fn command_runner(
 
                 // create the contract definition transaction
                 let mut asset_manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = asset_manager
-                    .create_contract_definition(&contract_definition)
-                    .await?;
+                let (tx_id, transaction) = asset_manager.create_contract_definition(&contract_definition).await?;
 
                 // publish the contract definition transaction
                 let message = format!(
