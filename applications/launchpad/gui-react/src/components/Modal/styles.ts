@@ -44,5 +44,5 @@ export const ModalContent = styled.div<Pick<ModalProps, 'size'>>`
   border-radius: ${({ theme }) => theme.borderRadius()};
   z-index: 2;
   box-sizing: border-box;
-  box-shadow: ${({ theme }) => theme.shadow};
+  box-shadow: ${({ theme }) => theme.shadow40};
 `

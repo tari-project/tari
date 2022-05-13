@@ -7,6 +7,8 @@ import SvgStar from '../../../styles/Icons/Star'
 import SvgInfo1 from '../../../styles/Icons/Info1'
 import { StyledMiningHeaderTip } from './styles'
 import { useSelector } from 'react-redux'
+import { useAppDispatch } from '../../../store/hooks'
+import { tbotactions } from '../../../store/tbot'
 import {
   selectLastSession,
   selectTariMiningStatus,
@@ -17,11 +19,15 @@ import { RootState } from '../../../store'
 /**
  * Renders instructions above mining node boxes
  */
+
 const MiningHeaderTip = () => {
   const tariMiningStatus = useSelector(selectTariMiningStatus)
   const lastSession = useSelector((state: RootState) =>
     selectLastSession(state, 'tari'),
   )
+  const dispatch = useAppDispatch()
+
+  const MiningHelp = ['message1', 'message2', 'message3']
 
   let text = t.mining.headerTips.oneStepAway
 
@@ -48,6 +54,7 @@ const MiningHeaderTip = () => {
             variant='button-in-text'
             rightIcon={<SvgInfo1 width='20px' height='20px' />}
             autosizeIcons={false}
+            onClick={() => dispatch(tbotactions.push(MiningHelp))}
           >
             {t.mining.headerTips.wantToKnowMore}
           </Button>
