@@ -31,7 +31,7 @@ const When = ({
   return (
     <div>
       {days &&
-        Object.values(t.common.dayCapitals).map((capital, index) => (
+        Object.values(t.common.weekdayCapitals).map((capital, index) => (
           <DayIndicator
             key={`${capital}${index}`}
             enabled={days.includes(index)}
