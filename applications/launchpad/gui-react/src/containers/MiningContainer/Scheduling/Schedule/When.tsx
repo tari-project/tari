@@ -7,6 +7,18 @@ import { Schedule } from '../../../../types/general'
 
 import DayIndicator from './DayIndicator'
 
+/**
+ * @name When
+ * @description renders days of the week with enabled state or date
+ *
+ * @prop {number[]} [days] - list of days of the week that should be shown as active (0-Sunday, 1-Monday...)
+ * @prop {Date} [date] - specific date to be displayed
+ * @prop {boolean} disabled - indicates whether to render in disabled UI state
+ *
+ * @example
+ * <When days={[0, 3]} /> - renders days of the week with Sunday and Wednesday in enabled state
+ * <When date={new Date('2022-05-13')} /> - renders 13th of May in localized string
+ */
 const When = ({
   days,
   date,

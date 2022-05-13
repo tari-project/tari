@@ -18,6 +18,17 @@ type ScheduleActions = {
   remove: (id: ScheduleId) => void
 }
 
+/**
+ * @name ScheduleList
+ * @description renders list of schedules and handles adding/editing/remove events
+ *
+ * @prop {Schedule[]} schedules - list of schedules to render
+ * @prop {() => void} addSchedule - event called when user wants to add a new schedule
+ * @prop {() => void} cancel - event called to close the list
+ * @prop {(scheduleId: string) => void} toggle - event called to toggle selection of schedule
+ * @prop {(scheduleId: string) => void} edit - event called to edit schedule
+ * @prop {(scheduleId: string) => void} remove - event called to remove schedule
+ */
 const ScheduleList = ({
   schedules,
   addSchedule,

@@ -4,6 +4,13 @@ import { MiningNodeType } from '../../../../types/general'
 import Text from '../../../../components/Text'
 import t from '../../../../locales'
 
+/**
+ * @name MiningType
+ * @description renders comma separate list of translated strings of mining type
+ *
+ * @prop {MiningNodeType[]} type - list of types of mining
+ * @prop {boolean} disabled - indicates whether to render in disabled UI state
+ */
 const MiningType = ({
   type,
   disabled,

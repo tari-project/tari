@@ -1,8 +1,15 @@
 import { useTheme } from 'styled-components'
 
 import Box from '../../../components/Box'
+import { BoxProps } from '../../../components/Box/types'
 
-const Actions = (props: any) => {
+/**
+ * @name Actions
+ * @description modified Box used as a container for scheduling modal action buttons
+ *
+ * @param {BoxProps} props - Box props
+ */
+const Actions = (props: BoxProps) => {
   const theme = useTheme()
 
   return (

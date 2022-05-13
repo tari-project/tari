@@ -13,6 +13,13 @@ import ScheduleList from './ScheduleList'
 import ScheduleForm from './ScheduleForm'
 import { ScheduleContainer } from './styles'
 
+/**
+ * @name SchedulingContainer
+ * @description container component that renders scheduling info and allows to modify it
+ *
+ * @prop {boolean} open - indicates whether scheduling info should be rendered on screen
+ * @prop {() => void} onClose - called to close scheduling info container
+ */
 const SchedulingContainer = ({
   open,
   onClose,
