@@ -1,4 +1,4 @@
-# RFC-1000/TariUseCases
+# RFC-8003/TariUseCases
 
 ## Digital Asset Framework
 
@@ -55,7 +55,7 @@ their ecosystems today.
 
 ## Related Requests for Comment
 * [RFC-0001: Overview of Tari Network](RFC-0001_overview.md)
-* [RFC-0300: Digital Assets Network](RFC-0300_DAN.md)
+* [RFC-0300: Digital Assets Network](RFCD-0300_DAN.md)
 
 ## Description
 

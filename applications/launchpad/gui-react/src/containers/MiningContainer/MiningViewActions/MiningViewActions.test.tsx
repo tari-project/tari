@@ -48,7 +48,11 @@ describe('MiningViewActions', () => {
         })}
       >
         <ThemeProvider theme={themes.light}>
+<<<<<<< HEAD
           <MiningViewActions openScheduling={() => null} />
+=======
+          <MiningViewActions />
+>>>>>>> launchpad_such_wow
         </ThemeProvider>
       </Provider>,
     )

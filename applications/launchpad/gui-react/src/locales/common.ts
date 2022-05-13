@@ -56,10 +56,13 @@ const translations: { [key: string]: { [key: string]: string } } = {
     [Container.Monerod]: 'monerod',
     [Container.Frontail]: 'frontail',
   },
+<<<<<<< HEAD
   miningType: {
     tari: 'Tari Mining',
     merged: 'Merged Mining',
   },
+=======
+>>>>>>> launchpad_such_wow
 }
 
 export default translations

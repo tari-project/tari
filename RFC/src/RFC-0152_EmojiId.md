@@ -2,7 +2,7 @@
 
 ## Emoji Id specification
 
-![Status: Draft](theme/images/status-draft.svg)
+![Status: Outdated](theme/images/status-outofdate.svg)
 
 **Maintainer(s)**:[Cayle Sharrock](https://github.com/CjS77)
 
