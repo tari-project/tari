@@ -5,6 +5,7 @@ import Text from '../../../components/Text'
 import Box from '../../../components/Box'
 import Button from '../../../components/Button'
 import { Schedule } from '../../../types/general'
+import t from '../../../locales'
 
 import { SchedulesListContainer, NoSchedulesContainer } from './styles'
 import Actions from './Actions'
@@ -45,18 +46,17 @@ const ScheduleList = ({
   return (
     <>
       <Box border={false} style={{ width: '100%', marginBottom: 0 }}>
-        <Text type='header'>Mining schedules</Text>
+        <Text type='header'>{t.mining.scheduling.title}</Text>
         <Text as='p' style={{ marginTop: theme.spacing() }}>
-          Tari Launchpad must be open at the scheduled hours for mining to
-          start.
+          {t.mining.scheduling.launchpadOpen}
         </Text>
       </Box>
       {schedules.length === 0 && (
         <NoSchedulesContainer>
           <Text as='p' style={{ marginBottom: theme.spacing() }}>
-            No mining schedule has been set up yet
+            {t.mining.scheduling.noSchedules}
           </Text>
-          <Button onClick={addSchedule}>Add schedule</Button>
+          <Button onClick={addSchedule}>{t.mining.scheduling.add}</Button>
         </NoSchedulesContainer>
       )}
       {schedules.length !== 0 && (
@@ -75,14 +75,14 @@ const ScheduleList = ({
       )}
       <Actions>
         <Button variant='secondary' onClick={cancel}>
-          Cancel
+          {t.common.verbs.cancel}
         </Button>
         {schedules.length !== 0 && (
           <Button
             style={{ flexGrow: 2, justifyContent: 'center' }}
             onClick={addSchedule}
           >
-            Add schedule
+            {t.mining.scheduling.add}
           </Button>
         )}
       </Actions>
