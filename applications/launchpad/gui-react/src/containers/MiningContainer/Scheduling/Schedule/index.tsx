@@ -17,6 +17,7 @@ type ScheduleActions = {
  * @name Schedule
  * @description Container rendering a single schedule on schedule list
  *
+ * @prop {string} id - id of schedule, used only for test-id
  * @prop {boolean} enabled - indicates if the schedule is in enabled state
  * @prop {number[]} [days] - days of the week when schedule is active
  * @prop {Date} [date] - date when schedule is active
@@ -28,6 +29,7 @@ type ScheduleActions = {
  * @prop {() => void} edit - called when user wants to edit schedule (on double click)
  */
 const Schedule = ({
+  id,
   enabled,
   days,
   date,
@@ -48,6 +50,7 @@ const Schedule = ({
       onClick={clickHandler}
       selected={selected}
       data-selected={selected}
+      data-testid={`schedule-${id}`}
     >
       <ScheduleInfo>
         <When days={days} date={date} disabled={!enabled} />
