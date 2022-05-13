@@ -61,7 +61,7 @@ const SchedulingContainer = ({
   return (
     <Modal open={open} onClose={close} size='small'>
       <ScheduleContainer>
-        {!editOpen && (
+        {false && !editOpen && (
           <ScheduleList
             schedules={schedules}
             cancel={close}
@@ -71,7 +71,7 @@ const SchedulingContainer = ({
             remove={scheduleId => dispatch(removeSchedule(scheduleId))}
           />
         )}
-        {editOpen && (
+        {(editOpen || true) && (
           <ScheduleForm
             value={scheduleToEdit}
             cancel={stopEditing}
