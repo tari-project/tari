@@ -35,7 +35,7 @@ use std::{ffi::CString, slice};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_core::{
     blocks::BlockHeader,
-    consensus::{ConsensusDecoding, ConsensusEncoding},
+    consensus::{ConsensusDecoding, ToConsensusBytes},
     proof_of_work::sha3_difficulty,
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -229,15 +229,7 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
         },
     };
     block_header.nonce = nonce;
-    let mut header_bytes = Vec::new();
-    match block_header.consensus_encode(&mut header_bytes) {
-        Ok(_) => {},
-        Err(e) => {
-            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-        },
-    };
-    (*header).0 = header_bytes;
+    (*header).0 = block_header.to_consensus_bytes();
 }
 
 /// Returns the difficulty of a share
@@ -350,7 +342,10 @@ pub unsafe extern "C" fn share_validate(
 mod tests {
     use libc::c_int;
     use tari_common::configuration::Network;
-    use tari_core::blocks::{genesis_block::get_genesis_block, Block};
+    use tari_core::{
+        blocks::{genesis_block::get_genesis_block, Block},
+        consensus::ConsensusEncoding,
+    };
 
     use super::*;
     use crate::{inject_nonce, public_key_hex_validate, share_difficulty, share_validate};
