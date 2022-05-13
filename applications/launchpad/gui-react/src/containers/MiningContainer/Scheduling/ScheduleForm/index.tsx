@@ -6,6 +6,7 @@ import t from '../../../../locales'
 import Actions from '../Actions'
 
 import DateScheduler from './DateScheduler'
+import MiningTypeSelector from './MiningTypeSelector'
 
 const ScheduleForm = ({
   value,
@@ -18,6 +19,7 @@ const ScheduleForm = ({
 }) => {
   const [days, setDays] = useState(value?.days)
   const [date, setDate] = useState(value?.date)
+  const [miningType, setMiningType] = useState(value?.type)
 
   const updateSchedule = () => {
     // do things
@@ -25,6 +27,7 @@ const ScheduleForm = ({
 
   return (
     <>
+      <MiningTypeSelector value={miningType} onChange={setMiningType} />
       <DateScheduler
         days={days}
         date={date}
