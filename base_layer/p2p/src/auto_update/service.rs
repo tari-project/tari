@@ -160,7 +160,7 @@ impl SoftwareUpdaterService {
                 None
             },
             Err(err) => {
-                log::error!(target: LOG_TARGET, "Failed up fetch updates: {}", err);
+                log::warn!(target: LOG_TARGET, "Unable to check for software updates: {}", err);
                 None
             },
         }
