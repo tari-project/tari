@@ -76,9 +76,10 @@ const SchedulingContainer = ({
             value={scheduleToEdit}
             cancel={stopEditing}
             remove={removeScheduleBeingEdited}
-            onChange={value =>
+            onChange={value => {
               dispatch(updateSchedule({ value, scheduleId: idToEdit }))
-            }
+              stopEditing()
+            }}
           />
         )}
       </ScheduleContainer>

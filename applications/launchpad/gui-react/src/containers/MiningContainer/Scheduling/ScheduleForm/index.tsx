@@ -68,8 +68,7 @@ const ScheduleForm = ({
       setError(error)
     }
 
-    // update and stuff
-    console.log(updatedSchedule)
+    onChange(updatedSchedule)
   }
 
   return (
