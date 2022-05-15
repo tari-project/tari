@@ -37,23 +37,29 @@ const DateScheduler = ({
     <>
       <WeekdaySelector days={days} onChange={days => scheduleDays(days)} />
       <HumanReadableScheduledDate>
-        {!date && days && (
-          <div>
-            <Text as='span' color={theme.secondary} type='smallMedium'>
-              Every
-            </Text>{' '}
+        <div>
+          {!date && days && (
+            <>
+              <Text as='span' color={theme.secondary} type='smallMedium'>
+                Every
+              </Text>{' '}
+              <Text as='span' type='smallMedium'>
+                {days &&
+                  days
+                    .map(
+                      selectedDay =>
+                        Object.values(t.common.weekdayShort)[selectedDay],
+                    )
+                    .join(', ')}
+              </Text>
+            </>
+          )}
+          {date && (
             <Text as='span' type='smallMedium'>
-              {days &&
-                days
-                  .map(
-                    selectedDay =>
-                      Object.values(t.common.weekdayShort)[selectedDay],
-                  )
-                  .join(', ')}
+              {day(date)}
             </Text>
-          </div>
-        )}
-        {date && <Text type='smallMedium'>{day(date)}</Text>}
+          )}
+        </div>
         <div
           onClick={() => scheduleDate(new Date())}
           style={{ cursor: 'pointer' }}

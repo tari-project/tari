@@ -10,6 +10,7 @@ import Actions from '../Actions'
 import DateScheduler from './DateScheduler'
 import MiningTypeSelector from './MiningTypeSelector'
 import RemoveSchedule from './RemoveSchedule'
+import IntervalPicker from './IntervalPicker'
 
 const ScheduleForm = ({
   value,
@@ -27,9 +28,23 @@ const ScheduleForm = ({
   const [days, setDays] = useState(value?.days)
   const [date, setDate] = useState(value?.date)
   const [miningType, setMiningType] = useState(value?.type)
+  const [interval, setInterval] = useState(value?.interval)
+
+  const enableSave =
+    ((days?.length || 0) > 0 || date) && (miningType?.length || 0) > 0
 
   const updateSchedule = () => {
-    // do things
+    const updatedSchedule = {
+      id: value?.id || Date.now().toString(),
+      enabled: value ? value.enabled : true,
+      days,
+      date,
+      interval,
+      type: miningType,
+    }
+
+    console.log('UPDATE SCHEDULE')
+    console.log(updatedSchedule)
   }
 
   return (
@@ -41,6 +56,9 @@ const ScheduleForm = ({
           display: 'flex',
           flexDirection: 'column',
           width: '100%',
+          padding: `${theme.spacing()} ${theme.spacing(1.5)}`,
+          paddingBottom: 0,
+          marginBottom: 0,
         }}
       >
         <MiningTypeSelector value={miningType} onChange={setMiningType} />
@@ -52,6 +70,7 @@ const ScheduleForm = ({
             setDate(date)
           }}
         />
+        <IntervalPicker value={interval} onChange={setInterval} />
         {editing && <RemoveSchedule remove={remove} />}
       </Box>
       <Actions>
@@ -61,6 +80,7 @@ const ScheduleForm = ({
         <Button
           style={{ flexGrow: 2, justifyContent: 'center' }}
           onClick={updateSchedule}
+          disabled={!enableSave}
         >
           {t.common.verbs.save}
         </Button>

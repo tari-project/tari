@@ -22,6 +22,7 @@ const Actions = (props: BoxProps) => {
         borderTopRightRadius: 0,
         borderTop: `1px solid ${theme.borderColor}`,
         marginBottom: 0,
+        marginTop: 0,
         display: 'flex',
         justifyContent: 'flex-end',
         columnGap: theme.spacing(),
