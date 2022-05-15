@@ -14,18 +14,8 @@ export const ModalContainer = styled.div`
   align-items: center;
 `
 
-export const Backdrop = styled.div`
-  background: ${({ theme }) => theme.secondary};
-  opacity: 0.1;
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  left: 0;
-  z-index: 1;
-`
-
 export const ModalContent = styled.div<Pick<ModalProps, 'size'>>`
+  position: relative;
   width: ${({ size }) => {
     if (size === 'large') {
       return '880px'

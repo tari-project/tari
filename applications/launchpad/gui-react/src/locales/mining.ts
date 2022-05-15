@@ -29,6 +29,10 @@ const translations = {
     noSchedules: 'No mining schedule has been set up yet',
     add: 'Add schedule',
     removeSchedule: 'Remove schedule',
+    ops: 'Ops!',
+    error_miningEndsBeforeItStarts:
+      /* eslint-disable-next-line quotes */
+      "I guess you need to correct the hours because mining can't stop before it even starts",
   },
 }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTheme } from 'styled-components'
 
-import { Schedule } from '../../../../types/general'
+import { Schedule, Interval } from '../../../../types/general'
 import Button from '../../../../components/Button'
 import Box from '../../../../components/Box'
 import t from '../../../../locales'
@@ -11,6 +11,25 @@ import DateScheduler from './DateScheduler'
 import MiningTypeSelector from './MiningTypeSelector'
 import RemoveSchedule from './RemoveSchedule'
 import IntervalPicker from './IntervalPicker'
+import ScheduleFormError from './ScheduleFormError'
+
+const validateInterval = (interval: Interval): string | undefined => {
+  if (interval.from.hours === interval.to.hours) {
+    if (interval.from.minutes > interval.to.minutes) {
+      return t.mining.scheduling.error_miningEndsBeforeItStarts
+    }
+  }
+
+  if (interval.from.hours > interval.to.hours) {
+    return t.mining.scheduling.error_miningEndsBeforeItStarts
+  }
+}
+
+const validate = (schedule: Schedule): string | undefined => {
+  const intervalError = validateInterval(schedule.interval)
+
+  return intervalError
+}
 
 const ScheduleForm = ({
   value,
@@ -25,6 +44,7 @@ const ScheduleForm = ({
 }) => {
   const editing = Boolean(value)
   const theme = useTheme()
+  const [error, setError] = useState<string | undefined>()
   const [days, setDays] = useState(value?.days)
   const [date, setDate] = useState(value?.date)
   const [miningType, setMiningType] = useState(value?.type)
@@ -43,7 +63,12 @@ const ScheduleForm = ({
       type: miningType,
     }
 
-    console.log('UPDATE SCHEDULE')
+    const error = validate(updatedSchedule)
+    if (error) {
+      setError(error)
+    }
+
+    // update and stuff
     console.log(updatedSchedule)
   }
 
@@ -85,6 +110,7 @@ const ScheduleForm = ({
           {t.common.verbs.save}
         </Button>
       </Actions>
+      <ScheduleFormError error={error} clearError={() => setError(undefined)} />
     </>
   )
 }

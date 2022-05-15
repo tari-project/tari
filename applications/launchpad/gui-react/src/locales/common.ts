@@ -4,6 +4,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
   verbs: {
     accept: 'Accept',
     cancel: 'Cancel',
+    tryAgain: 'Try again',
     stop: 'Stop',
     start: 'Start',
     save: 'Save',
