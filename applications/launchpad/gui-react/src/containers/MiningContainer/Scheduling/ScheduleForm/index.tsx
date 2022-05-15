@@ -39,6 +39,7 @@ const ScheduleForm = ({
   const [error, setError] = useState<string | undefined>()
   const [days, setDays] = useState(value?.days)
   const [date, setDate] = useState(value?.date)
+<<<<<<< HEAD
   const [miningType, setMiningType] = useState(value?.type || [])
   const [interval, setInterval] = useState(
     value?.interval ||
@@ -53,6 +54,16 @@ const ScheduleForm = ({
 
   const updateSchedule = useCallback(() => {
     const updatedSchedule: Schedule = {
+=======
+  const [miningType, setMiningType] = useState(value?.type)
+  const [interval, setInterval] = useState(value?.interval)
+
+  const enableSave =
+    ((days?.length || 0) > 0 || date) && (miningType?.length || 0) > 0
+
+  const updateSchedule = () => {
+    const updatedSchedule = {
+>>>>>>> 310854a24 (added hour interval picker to schedule form)
       id: value?.id || Date.now().toString(),
       enabled: value ? value.enabled : true,
       days,
