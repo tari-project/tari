@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useTheme } from 'styled-components'
 
-import { Schedule, Interval } from '../../../../types/general'
+import { Schedule } from '../../../../types/general'
 import Button from '../../../../components/Button'
 import Box from '../../../../components/Box'
 import t from '../../../../locales'
