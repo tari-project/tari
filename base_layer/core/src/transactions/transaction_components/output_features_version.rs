@@ -17,6 +17,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 pub enum OutputFeaturesVersion {
     V0 = 0,
     V1 = 1,
+    V2 = 2,
 }
 
 impl OutputFeaturesVersion {
@@ -36,6 +37,7 @@ impl TryFrom<u8> for OutputFeaturesVersion {
         match value {
             0 => Ok(OutputFeaturesVersion::V0),
             1 => Ok(OutputFeaturesVersion::V1),
+            2 => Ok(OutputFeaturesVersion::V2),
             _ => Err("Unknown or unsupported OutputFeaturesVersion".into()),
         }
     }

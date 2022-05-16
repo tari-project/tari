@@ -44,6 +44,7 @@ use crate::{
         transaction_components::{
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
+            ContractDefinitionFeatures,
             MintNonFungibleFeatures,
             OutputFlags,
             SideChainCheckpointFeatures,
@@ -73,6 +74,7 @@ pub struct OutputFeatures {
     pub mint_non_fungible: Option<MintNonFungibleFeatures>,
     pub sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
     pub committee_definition: Option<CommitteeDefinitionFeatures>,
+    pub contract_definition: Option<ContractDefinitionFeatures>,
 }
 
 impl OutputFeatures {
@@ -88,6 +90,7 @@ impl OutputFeatures {
         mint_non_fungible: Option<MintNonFungibleFeatures>,
         sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
         committee_definition: Option<CommitteeDefinitionFeatures>,
+        contract_definition: Option<ContractDefinitionFeatures>,
     ) -> OutputFeatures {
         OutputFeatures {
             version,
@@ -101,6 +104,7 @@ impl OutputFeatures {
             mint_non_fungible,
             sidechain_checkpoint,
             committee_definition,
+            contract_definition,
         }
     }
 
@@ -115,6 +119,7 @@ impl OutputFeatures {
         mint_non_fungible: Option<MintNonFungibleFeatures>,
         sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
         committee_definition: Option<CommitteeDefinitionFeatures>,
+        contract_definition: Option<ContractDefinitionFeatures>,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
@@ -128,6 +133,7 @@ impl OutputFeatures {
             mint_non_fungible,
             sidechain_checkpoint,
             committee_definition,
+            contract_definition,
         )
     }
 
@@ -298,11 +304,19 @@ impl OutputFeatures {
     }
 
     // TODO: pass the contract definition as parameters, use the features?
-    pub fn for_contract_definition() -> OutputFeatures {
+    pub fn for_contract_definition(
+        contract_id: Vec<u8>,
+        contract_name: Vec<u8>,
+        contract_issuer: Vec<u8>,
+    ) -> OutputFeatures {
         Self {
             // TODO: create an output flag for contract definition
             flags: OutputFlags::ASSET_REGISTRATION,
-            // TODO: create output features for contract definition
+            contract_definition: Some(ContractDefinitionFeatures {
+                contract_id,
+                contract_name,
+                contract_issuer,
+            }),
             ..Default::default()
         }
     }
@@ -343,7 +357,7 @@ impl ConsensusEncoding for OutputFeatures {
         written += self.flags.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
-            OutputFeaturesVersion::V1 => {
+            _=> {
                 written += OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
             },
         }
@@ -355,7 +369,7 @@ impl ConsensusEncoding for OutputFeatures {
         written += self.metadata.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
-            OutputFeaturesVersion::V1 => {
+            _=> {
                 written += self.committee_definition.consensus_encode(writer)?;
             },
         }
@@ -374,7 +388,7 @@ impl ConsensusDecoding for OutputFeatures {
         let flags = OutputFlags::consensus_decode(reader)?;
         let recovery_byte = match version {
             OutputFeaturesVersion::V0 => 0,
-            OutputFeaturesVersion::V1 => OutputFeatures::consensus_decode_recovery_byte(reader)?,
+            _ => OutputFeatures::consensus_decode_recovery_byte(reader)?,
         };
         let parent_public_key = <Option<PublicKey> as ConsensusDecoding>::consensus_decode(reader)?;
         const MAX_UNIQUE_ID_SIZE: usize = 256;
@@ -387,9 +401,13 @@ impl ConsensusDecoding for OutputFeatures {
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
         let committee_definition = match version {
             OutputFeaturesVersion::V0 => None,
-            OutputFeaturesVersion::V1 => {
+            _ => {
                 <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?
             },
+        };
+        let contract_definition =  match version {
+            OutputFeaturesVersion::V2 => <Option<ContractDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?,
+            _ => None,
         };
         Ok(Self {
             version,
@@ -403,13 +421,26 @@ impl ConsensusDecoding for OutputFeatures {
             sidechain_checkpoint,
             metadata: metadata.into(),
             committee_definition,
+            contract_definition,
         })
     }
 }
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputFlags::empty(), 0, 0, vec![], None, None, None, None, None, None)
+        OutputFeatures::new_current_version(
+            OutputFlags::empty(),
+            0,
+            0,
+            vec![],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 }
 
@@ -451,7 +482,7 @@ mod test {
             maturity: u64::MAX,
             recovery_byte: match version {
                 OutputFeaturesVersion::V0 => 0,
-                OutputFeaturesVersion::V1 => u8::MAX,
+                _ => u8::MAX,
             },
             metadata: vec![1; 1024],
             unique_id: Some(vec![0u8; 256]),
@@ -477,10 +508,18 @@ mod test {
             }),
             committee_definition: match version {
                 OutputFeaturesVersion::V0 => None,
-                OutputFeaturesVersion::V1 => Some(CommitteeDefinitionFeatures {
+                _ => Some(CommitteeDefinitionFeatures {
                     committee: iter::repeat_with(PublicKey::default).take(50).collect(),
                     effective_sidechain_height: u64::MAX,
                 }),
+            },
+            contract_definition: match version {
+                OutputFeaturesVersion::V2 => Some(ContractDefinitionFeatures {
+                    contract_id: Default::default(),
+                    contract_name: Default::default(),
+                    contract_issuer: Default::default(),
+                }),
+                _ => None,
             },
         }
     }

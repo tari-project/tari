@@ -275,11 +275,18 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
     pub async fn create_contract_definition(
         &mut self,
-        _contract_definition: ContractDefinition,
+        contract_definition: ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
-            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition())
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_contract_definition(
+                    contract_definition.contract_id.into_bytes(),
+                    contract_definition.contract_name.into_bytes(),
+                    contract_definition.contract_issuer.into_bytes(),
+                ),
+            )
             .await?;
 
         let (tx_id, transaction) = self

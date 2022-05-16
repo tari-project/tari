@@ -103,6 +103,8 @@ message OutputFeatures {
     // The recovery byte - not consensus critical - can help reduce the bandwidth with wallet recovery or in other
     // instances when a wallet needs to request the complete UTXO set from a base node.
     uint32 recovery_byte = 11;
+
+    ContractDefinitionFeatures contract_definition = 12;
 }
 
 message AssetOutputFeatures {
@@ -131,6 +133,13 @@ message CommitteeDefinitionFeatures {
     repeated bytes committee = 1;
     uint64 effective_sidechain_height = 2;
 }
+
+message ContractDefinitionFeatures {
+    bytes contract_id = 1;
+    bytes contract_name = 2;
+    bytes contract_issuer = 3;
+}
+
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
 // be sorted by their Blake2b-256bit digest hash

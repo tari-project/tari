@@ -1072,6 +1072,7 @@ async fn consensus_validation_versions() {
         None,
         None,
         None,
+        None,
     );
 
     let test_params = TestParams::new();

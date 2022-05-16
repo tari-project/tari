@@ -41,6 +41,7 @@ use crate::{
         transaction_components::{
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
+            ContractDefinitionFeatures,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
@@ -302,6 +303,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             },
             features.sidechain_checkpoint.map(|s| s.try_into()).transpose()?,
             features.committee_definition.map(|c| c.try_into()).transpose()?,
+            features.contract_definition.map(|d| d.try_into()).transpose()?,
         ))
     }
 }
@@ -323,6 +325,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
             recovery_byte: u32::from(features.recovery_byte),
+            contract_definition: features.contract_definition.map(|d| d.into()),
         }
     }
 }
@@ -452,6 +455,28 @@ impl From<CommitteeDefinitionFeatures> for proto::types::CommitteeDefinitionFeat
         Self {
             committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
             effective_sidechain_height: value.effective_sidechain_height,
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractDefinitionFeatures> for ContractDefinitionFeatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
+        Ok(Self {
+            contract_id: value.contract_id,
+            contract_name: value.contract_name,
+            contract_issuer: value.contract_issuer,
+        })
+    }
+}
+
+impl From<ContractDefinitionFeatures> for proto::types::ContractDefinitionFeatures {
+    fn from(value: ContractDefinitionFeatures) -> Self {
+        Self {
+            contract_id: value.contract_id,
+            contract_name: value.contract_name,
+            contract_issuer: value.contract_issuer,
         }
     }
 }

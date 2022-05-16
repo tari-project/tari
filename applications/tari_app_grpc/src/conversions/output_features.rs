@@ -29,6 +29,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     AssetOutputFeatures,
     CommitteeDefinitionFeatures,
+    ContractDefinitionFeatures,
     MintNonFungibleFeatures,
     OutputFeatures,
     OutputFeaturesVersion,
@@ -70,6 +71,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
             features.sidechain_checkpoint.map(|s| s.try_into()).transpose()?,
             features.committee_definition.map(|c| c.try_into()).transpose()?,
+            features.contract_definition.map(|d| d.try_into()).transpose()?,
         ))
     }
 }
@@ -91,6 +93,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
             recovery_byte: u32::from(features.recovery_byte),
+            contract_definition: features.contract_definition.map(|c| c.into()),
         }
     }
 }
@@ -216,5 +219,27 @@ impl TryFrom<grpc::CommitteeDefinitionFeatures> for CommitteeDefinitionFeatures 
             committee,
             effective_sidechain_height,
         })
+    }
+}
+
+impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
+        Ok(Self {
+            contract_id: value.contract_id,
+            contract_name: value.contract_name,
+            contract_issuer: value.contract_issuer,
+        })
+    }
+}
+
+impl From<ContractDefinitionFeatures> for grpc::ContractDefinitionFeatures {
+    fn from(value: ContractDefinitionFeatures) -> Self {
+        Self {
+            contract_id: value.contract_id,
+            contract_name: value.contract_name,
+            contract_issuer: value.contract_issuer,
+        }
     }
 }
