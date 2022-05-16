@@ -26,6 +26,7 @@ use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct MergeMiningProxyConfig {
     override_from: Option<String>,
     pub monerod_url: StringList,

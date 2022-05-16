@@ -145,6 +145,7 @@ impl MempoolInboundHandlers {
         }
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     async fn update_pool_size_metrics(&self) {
         if let Ok(stats) = self.mempool.stats().await {
             metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
