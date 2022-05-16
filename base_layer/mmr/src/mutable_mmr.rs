@@ -84,7 +84,6 @@ where
     /// nodes in the MMR, while this function returns the number of leaf nodes minus the number of nodes marked for
     /// deletion.
     #[allow(clippy::len_without_is_empty)]
-    #[inline(always)]
     pub fn len(&self) -> u32 {
         self.size - u32::try_from(self.deleted.cardinality()).unwrap()
     }

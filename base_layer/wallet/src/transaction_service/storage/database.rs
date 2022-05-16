@@ -184,13 +184,23 @@ impl fmt::Debug for DbKey {
         // Add in i64 representatives for easy debugging in sqlite. This should probably be removed at some point
         match self {
             PendingOutboundTransaction(tx_id) => {
-                write!(f, "PendingOutboundTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
+                write!(
+                    f,
+                    "PendingOutboundTransaction ({}u64, {}i64)",
+                    tx_id,
+                    tx_id.as_i64_wrapped()
+                )
             },
             PendingInboundTransaction(tx_id) => {
-                write!(f, "PendingInboundTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
+                write!(
+                    f,
+                    "PendingInboundTransaction ({}u64, {}i64)",
+                    tx_id,
+                    tx_id.as_i64_wrapped()
+                )
             },
             CompletedTransaction(tx_id) => {
-                write!(f, "CompletedTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
+                write!(f, "CompletedTransaction ({}u64, {}i64)", tx_id, tx_id.as_i64_wrapped())
             },
             PendingOutboundTransactions => {
                 write!(f, "PendingOutboundTransactions ")
@@ -215,7 +225,7 @@ impl fmt::Debug for DbKey {
                     f,
                     "CancelledPendingOutboundTransaction ({}u64, {}i64)",
                     tx_id,
-                    i64::from(*tx_id)
+                    tx_id.as_i64_wrapped()
                 )
             },
             CancelledPendingInboundTransaction(tx_id) => {
@@ -223,11 +233,11 @@ impl fmt::Debug for DbKey {
                     f,
                     "CancelledPendingInboundTransaction ({}u64, {}i64)",
                     tx_id,
-                    i64::from(*tx_id)
+                    tx_id.as_i64_wrapped()
                 )
             },
             AnyTransaction(tx_id) => {
-                write!(f, "AnyTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
+                write!(f, "AnyTransaction ({}u64, {}i64)", tx_id, tx_id.as_i64_wrapped())
             },
         }
     }

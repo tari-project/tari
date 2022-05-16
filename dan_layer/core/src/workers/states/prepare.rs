@@ -317,6 +317,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
         max_qc.unwrap()
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn create_proposal<TStateDbUnitOfWork: StateDbUnitOfWork>(
         &self,
         parent: TreeNodeHash,

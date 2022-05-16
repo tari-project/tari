@@ -135,6 +135,7 @@ fn token_of_owner_by_index<TUnitOfWork: StateDbUnitOfWorkReader>(
     let owner = request.owner.clone();
     let index = request.index;
     let owner_records = state_db.find_keys_by_value("owners", &owner)?;
+    #[allow(clippy::cast_possible_truncation)]
     if let Some(token_id) = owner_records.into_iter().nth(index as usize) {
         let token = state_db
             .get_value("tokens", &token_id)?

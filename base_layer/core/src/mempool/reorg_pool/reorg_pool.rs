@@ -310,6 +310,8 @@ impl ReorgPool {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn compact(&mut self) {
         fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
             let cap = map.capacity();

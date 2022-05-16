@@ -28,6 +28,7 @@ const DEFAULT_NETWORK: &str = "dibbler";
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,

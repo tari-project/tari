@@ -178,6 +178,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
     let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    #[allow(clippy::cast_possible_truncation)]
     let monero_data = MoneroPowData {
         header: mblock.header,
         randomx_key: FixedByteArray::from_hex(seed_key).unwrap(),
@@ -362,6 +363,7 @@ OutputFeatures::default()),
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_orphan_body_validation() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
@@ -674,6 +676,7 @@ OutputFeatures::default()),
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;

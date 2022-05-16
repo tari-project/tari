@@ -35,7 +35,7 @@ impl Filter for XorFilter {
         let mut output_set_b = output_set.clone();
         b.filter(context, &mut output_set_b)?;
 
-        output_set.set(output_set_a.symmetric_difference(output_set_b));
+        output_set.set(output_set_a.symmetric_difference(&output_set_b));
         Ok(())
     }
 }

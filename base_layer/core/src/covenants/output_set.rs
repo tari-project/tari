@@ -76,7 +76,7 @@ impl<'a> OutputSet<'a> {
         self.0.difference(&other.0).copied().collect()
     }
 
-    pub fn symmetric_difference(&self, other: Self) -> Self {
+    pub fn symmetric_difference(&self, other: &Self) -> Self {
         self.0.symmetric_difference(&other.0).copied().collect()
     }
 

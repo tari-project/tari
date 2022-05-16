@@ -112,6 +112,7 @@ impl From<InterfaceError> for LibWalletError {
 /// This implementation maps the internal WalletError to a set of LibWalletErrors. The mapping is explicitly managed
 /// here and error code 999 is a catch-all code for any errors that are not explicitly mapped
 impl From<WalletError> for LibWalletError {
+    #[allow(clippy::too_many_lines)]
     fn from(w: WalletError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", w));
         match w {

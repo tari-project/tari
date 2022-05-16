@@ -135,6 +135,9 @@ impl StoreAndForwardMock {
                     .collect()));
             },
             InsertMessage(msg, reply_tx) => {
+                // Clippy: There is no data lost here, when converting back to u32 from i32 the unsigned value is
+                // preserved
+                #[allow(clippy::cast_possible_wrap)]
                 self.state.stored_messages.write().await.push(StoredMessage {
                     id: OsRng.next_u32() as i32,
                     version: msg.version,

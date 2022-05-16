@@ -74,6 +74,7 @@ mod test {
     use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
 
     #[derive(Debug)]
+    #[allow(clippy::struct_excessive_bools)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
         pub received_tx_reply_callback_called: bool,
@@ -248,6 +249,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_callback_handler() {
         let runtime = Runtime::new().unwrap();
 

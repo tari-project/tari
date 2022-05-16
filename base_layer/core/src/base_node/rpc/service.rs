@@ -428,10 +428,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let mut not_deleted_positions = vec![];
 
         for position in message.mmr_positions {
-            if position > u64::from(u32::MAX) {
-                return Err(RpcStatus::bad_request("position must fit into a u32"));
-            }
-            let position = position as u32;
+            let position =
+                u32::try_from(position).map_err(|_| RpcStatus::bad_request("All MMR positions must fit into a u32"))?;
             if deleted_bitmap.bitmap().contains(position) {
                 deleted_positions.push(position);
             } else {

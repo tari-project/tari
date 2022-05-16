@@ -115,6 +115,7 @@ impl OutputSql {
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
+    #[allow(clippy::cast_sign_loss)]
     pub fn fetch_unspent_outputs_for_spending(
         mut strategy: UTXOSelectionStrategy,
         amount: u64,
@@ -168,6 +169,7 @@ impl OutputSql {
     }
 
     /// Return all unspent outputs that have a maturity above the provided chain tip
+    #[allow(clippy::cast_possible_wrap)]
     pub fn index_time_locked(tip: u64, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
@@ -244,13 +246,14 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(i64::from(tx_id))
-                    .or(outputs::spent_in_tx_id.eq(i64::from(tx_id))),
+                    .eq(tx_id.as_i64_wrapped())
+                    .or(outputs::spent_in_tx_id.eq(tx_id.as_i64_wrapped())),
             )
             .load(conn)?)
     }
 
     /// Return the available, time locked, pending incoming and pending outgoing balance
+    #[allow(clippy::cast_possible_wrap)]
     pub fn get_balance(
         current_tip_for_time_lock_calculation: Option<u64>,
         conn: &SqliteConnection,
@@ -491,6 +494,7 @@ impl OutputSql {
 impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
+    #[allow(clippy::too_many_lines)]
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
         let mut features: OutputFeatures =
             serde_json::from_str(&o.features_json).map_err(|s| OutputManagerStorageError::ConversionError {

@@ -54,13 +54,13 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
         } else {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
+        let flags = u8::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            OutputFlags::from_bits(features.flags as u8)
-                .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
+            OutputFlags::from_bits(flags).ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,

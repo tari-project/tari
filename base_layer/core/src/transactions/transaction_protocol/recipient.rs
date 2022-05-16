@@ -244,7 +244,7 @@ mod test {
             ..Default::default()
         };
         let msg = SingleRoundSenderData {
-            tx_id: 15.into(),
+            tx_id: 15u64.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
@@ -306,7 +306,7 @@ mod test {
             ..Default::default()
         };
         let msg = SingleRoundSenderData {
-            tx_id: 15.into(),
+            tx_id: 15u64.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do

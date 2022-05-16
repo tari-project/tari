@@ -678,6 +678,7 @@ mod test {
         assert!(peer_storage.find_by_public_key(&peer3.public_key).is_ok());
     }
 
+    #[allow(clippy::too_many_lines)]
     #[test]
     fn test_add_delete_find_peer() {
         let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();

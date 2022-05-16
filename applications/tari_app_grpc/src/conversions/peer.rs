@@ -23,36 +23,29 @@
 use tari_comms::{connectivity::ConnectivityStatus, net_address::MutliaddrWithStats, peer_manager::Peer};
 use tari_utilities::ByteArray;
 
-use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
+use crate::{conversions::naive_datetime_to_timestamp, tari_rpc as grpc};
 
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
 impl From<Peer> for grpc::Peer {
     fn from(peer: Peer) -> Self {
         let public_key = peer.public_key.to_vec();
         let node_id = peer.node_id.to_vec();
-        let mut addresses: Vec<grpc::Address> = Vec::new();
-        let last_connection = match peer.addresses.last_seen() {
-            Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
-            None => Some(datetime_to_timestamp(0.into())),
-        };
+        let mut addresses = Vec::with_capacity(peer.addresses.addresses.len());
+        let last_connection = peer
+            .addresses
+            .last_seen()
+            .map(|v| naive_datetime_to_timestamp(v.naive_utc()));
         for address in peer.addresses.addresses {
             addresses.push(address.clone().into())
         }
         let flags = u32::from(peer.flags.bits());
-        let banned_until = match peer.banned_until {
-            Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
-            None => Some(datetime_to_timestamp(0.into())),
-        };
+        let banned_until = peer.banned_until.map(naive_datetime_to_timestamp);
         let banned_reason = peer.banned_reason.to_string();
-        let offline_at = match peer.offline_at {
-            Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
-            None => Some(datetime_to_timestamp(0.into())),
-        };
+        let offline_at = peer.offline_at.map(naive_datetime_to_timestamp);
         let features = peer.features.bits();
 
-        let last_connected_at = match peer.connection_stats.last_connected_at {
-            Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
-            None => Some(datetime_to_timestamp(0.into())),
-        };
+        let last_connected_at = peer.connection_stats.last_connected_at.map(naive_datetime_to_timestamp);
         let supported_protocols = peer.supported_protocols.into_iter().map(|p| p.to_vec()).collect();
         let user_agent = peer.user_agent;
         Self {
@@ -77,7 +70,7 @@ impl From<MutliaddrWithStats> for grpc::Address {
         let address = address_with_stats.address.to_vec();
         let last_seen = match address_with_stats.last_seen {
             Some(v) => v.to_string(),
-            None => "".to_string(),
+            None => String::new(),
         };
         let connection_attempts = address_with_stats.connection_attempts;
         let rejected_message_count = address_with_stats.rejected_message_count;
