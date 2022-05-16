@@ -33,6 +33,9 @@ const translations = {
     error_miningEndsBeforeItStarts:
       /* eslint-disable-next-line quotes */
       "I guess you need to correct the hours because mining can't stop before it even starts",
+    error_miningEndsWhenItStarts:
+      /* eslint-disable-next-line quotes */
+      "I guess you need to correct the hours because mining can't stop exactly when it starts",
   },
 }
 

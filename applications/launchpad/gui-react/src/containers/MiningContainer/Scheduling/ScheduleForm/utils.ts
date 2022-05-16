@@ -1,4 +1,4 @@
-import { Time } from '../../../../../../types/general'
+import { Time } from '../../../../types/general'
 
 export const timeToString = (t?: Time) =>
   `${t?.hours.toString().padStart(2, '0') || '00'}:${

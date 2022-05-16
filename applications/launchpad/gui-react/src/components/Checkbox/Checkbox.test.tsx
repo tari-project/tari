@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, act } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
 import Checkbox from './'

@@ -5,8 +5,8 @@ import TimePicker from 'react-time-picker-input'
 import { Time } from '../../../../../../types/general'
 import Text from '../../../../../../components/Text'
 import Button from '../../../../../../components/Button'
+import { timeToString, stringToTime } from '../../utils'
 
-import { timeToString, stringToTime } from './utils'
 import { DayTimePickerWrapper } from './styles'
 
 const DayTimePicker = ({
