@@ -8,12 +8,20 @@ import Actions from '../../Actions'
 
 import { ScheduleFormErrorWrapper } from './styles'
 
+/**
+ * @name ScheduleFormError
+ * @description component rendering errors in ScheduleForm modal
+ *
+ * @prop {string} [error] - error to render
+ * @prop {() => void} clearError - callback to call when user elects to fix the error
+ * @prop {() => void} cancel - callback to call when user elects to discard their updates
+ */
 const ScheduleFormError = ({
   error,
   clearError,
   cancel,
 }: {
-  error: string | undefined
+  error?: string
   clearError: () => void
   cancel: () => void
 }) => {

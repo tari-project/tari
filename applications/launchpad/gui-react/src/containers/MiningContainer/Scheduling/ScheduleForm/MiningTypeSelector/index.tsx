@@ -4,6 +4,13 @@ import { MiningNodeType } from '../../../../../types/general'
 import Checkbox from '../../../../../components/Checkbox'
 import t from '../../../../../locales'
 
+/**
+ * @name MiningTypeSelector
+ * @description set of checkboxes for mining types
+ *
+ * @prop {MiningNodeType[]} [value] - initial values of selected MiningNodeType
+ * @prop {(v: MiningNodeType[]) => void} onChange - callback called when value of any checkbox changes
+ */
 const MiningTypeSelector = ({
   value,
   onChange,

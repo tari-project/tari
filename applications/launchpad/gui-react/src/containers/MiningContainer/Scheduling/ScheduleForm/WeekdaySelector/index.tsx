@@ -5,6 +5,13 @@ import t from '../../../../../locales'
 
 import { Weekday } from './styles'
 
+/**
+ * @name WeekdaySelector
+ * @description controlled form to allow users select weekdays
+ *
+ * @prop {number[]} days - selected days
+ * @prop {(days: number[]) => void} onChange - callback on weekdays change
+ */
 const WeekdaySelector = ({
   days,
   onChange,

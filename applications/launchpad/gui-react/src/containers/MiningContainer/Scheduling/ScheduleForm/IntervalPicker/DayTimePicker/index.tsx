@@ -9,6 +9,14 @@ import { timeToString, stringToTime } from '../../utils'
 
 import { DayTimePickerWrapper } from './styles'
 
+/**
+ * @name DayTimePicker
+ * @description form input for 12 hour clock with am/pm toggle
+ *
+ * @prop {Time} [value] - initial value for the picker
+ * @prop {string} [label] - label for the value
+ * @prop {(t: Time) => void} onChange - callback called when value changes
+ */
 const DayTimePicker = ({
   value,
   label,

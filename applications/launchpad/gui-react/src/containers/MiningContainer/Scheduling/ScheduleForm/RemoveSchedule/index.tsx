@@ -5,6 +5,12 @@ import Text from '../../../../../components/Text'
 import Button from '../../../../../components/Button'
 import t from '../../../../../locales'
 
+/**
+ * @name RemoveSchedule
+ * @description button for removing schedule
+ *
+ * @prop {() => void} remove - callback on click
+ */
 const RemoveSchedule = ({ remove }: { remove: () => void }) => {
   const theme = useTheme()
   return (
