@@ -131,7 +131,6 @@ pub fn family_branch(pos: usize, last_pos: usize) -> Vec<(usize, usize)> {
 }
 
 /// The height of a node in a full binary tree from its index.
-#[inline(always)]
 pub fn bintree_height(num: usize) -> usize {
     if num == 0 {
         return 0;

@@ -61,6 +61,7 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
+    #[allow(clippy::cast_possible_wrap)]
     pub async fn save_header_stats(
         &self,
         start_height: u64,

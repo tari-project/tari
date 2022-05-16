@@ -135,6 +135,7 @@ where
     W: ContactsBackend + 'static,
     X: KeyManagerBackend + 'static,
 {
+    #[allow(clippy::too_many_lines)]
     pub async fn start(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
@@ -270,7 +271,8 @@ where
         wallet_database
             .set_node_features(comms.node_identity().features())
             .await?;
-        if let Some(identity_sig) = comms.node_identity().identity_signature_read().as_ref().cloned() {
+        let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
+        if let Some(identity_sig) = identity_sig {
             wallet_database.set_comms_identity_signature(identity_sig).await?;
         }
 

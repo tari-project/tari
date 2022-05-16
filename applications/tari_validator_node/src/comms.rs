@@ -52,7 +52,7 @@ pub async fn build_service_and_comms_stack(
 
     let mut transport_config = config.validator_node.p2p.transport.clone();
     transport_config.tor.identity = load_from_json(&config.validator_node.tor_identity_file)
-        .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
 
     let mut handles = StackBuilder::new(shutdown.clone())
         .add_initializer(P2pInitializer::new(
@@ -65,7 +65,7 @@ pub async fn build_service_and_comms_stack(
         ))
         .build()
         .await
-        .map_err(|err| ExitError::new(ExitCode::ConfigError, &err))?;
+        .map_err(|err| ExitError::new(ExitCode::ConfigError, err.to_string()))?;
 
     let comms = handles
         .take_handle::<UnspawnedCommsNode>()
@@ -75,20 +75,15 @@ pub async fn build_service_and_comms_stack(
 
     let comms = spawn_comms_using_transport(comms, transport_config)
         .await
-        .map_err(|e| {
-            ExitError::new(
-                ExitCode::ConfigError,
-                &format!("Could not spawn using transport: {}", e),
-            )
-        })?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport: {}", e)))?;
 
     // Save final node identity after comms has initialized. This is required because the public_address can be
     // changed by comms during initialization when using tor.
     identity_management::save_as_json(&config.validator_node.identity_file, &*comms.node_identity())
-        .map_err(|e| ExitError::new(ExitCode::ConfigError, &format!("Failed to save node identity: {}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save node identity: {}", e)))?;
     if let Some(hs) = comms.hidden_service() {
         identity_management::save_as_json(&config.validator_node.tor_identity_file, hs.tor_identity())
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, &format!("Failed to save tor identity: {}", e)))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save tor identity: {}", e)))?;
     }
 
     handles.register(comms);
