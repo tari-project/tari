@@ -71,6 +71,7 @@ const PROPAGATION_FACTOR: usize = 4;
 
 #[tokio::main]
 #[allow(clippy::same_item_push)]
+#[allow(clippy::too_many_lines)]
 async fn main() {
     env_logger::init();
 

@@ -582,7 +582,7 @@ fn manage_single_transaction() {
         }
     });
 
-    let mut tx_id = TxId::from(0);
+    let mut tx_id = TxId::from(0u64);
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(90));
         tokio::pin!(delay);
@@ -604,7 +604,9 @@ fn manage_single_transaction() {
         assert_eq!(finalized, 1);
     });
 
-    assert!(runtime.block_on(bob_ts.get_completed_transaction(999.into())).is_err());
+    assert!(runtime
+        .block_on(bob_ts.get_completed_transaction(999u64.into()))
+        .is_err());
 
     let _bob_completed_tx = runtime
         .block_on(bob_ts.get_completed_transaction(tx_id))
@@ -1461,7 +1463,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let mut tx_reply = rtp.get_signed_data().unwrap().clone();
     let mut wrong_tx_id = tx_reply.clone();
-    wrong_tx_id.tx_id = 2.into();
+    wrong_tx_id.tx_id = 2u64.into();
     let (_p, pub_key) = PublicKey::random_keypair(&mut OsRng);
     tx_reply.public_spend_key = pub_key;
     runtime
@@ -1845,7 +1847,7 @@ fn discovery_async_return_test() {
 
     assert_ne!(initial_balance, runtime.block_on(alice_oms.get_balance()).unwrap());
 
-    let mut txid = TxId::from(0);
+    let mut txid = TxId::from(0u64);
     let mut is_success = true;
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(60));
@@ -1880,7 +1882,7 @@ fn discovery_async_return_test() {
         .unwrap();
 
     let mut success_result = false;
-    let mut success_tx_id = TxId::from(0);
+    let mut success_tx_id = TxId::from(0u64);
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(60));
         tokio::pin!(delay);
@@ -1951,7 +1953,7 @@ fn test_power_mode_updates() {
         PrivateKey::random(&mut OsRng),
     );
     let completed_tx1 = CompletedTransaction {
-        tx_id: 1.into(),
+        tx_id: 1u64.into(),
         source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
@@ -1972,7 +1974,7 @@ fn test_power_mode_updates() {
     };
 
     let completed_tx2 = CompletedTransaction {
-        tx_id: 2.into(),
+        tx_id: 2u64.into(),
         source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 6000 * uT,
@@ -1994,13 +1996,13 @@ fn test_power_mode_updates() {
 
     tx_backend
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-            1.into(),
+            1u64.into(),
             Box::new(completed_tx1),
         )))
         .unwrap();
     tx_backend
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-            2.into(),
+            2u64.into(),
             Box::new(completed_tx2),
         )))
         .unwrap();
@@ -5355,7 +5357,7 @@ fn broadcast_all_completed_transactions_on_startup() {
     );
 
     let completed_tx1 = CompletedTransaction {
-        tx_id: 1.into(),
+        tx_id: 1u64.into(),
         source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
@@ -5376,13 +5378,13 @@ fn broadcast_all_completed_transactions_on_startup() {
     };
 
     let completed_tx2 = CompletedTransaction {
-        tx_id: 2.into(),
+        tx_id: 2u64.into(),
         status: TransactionStatus::MinedConfirmed,
         ..completed_tx1.clone()
     };
 
     let completed_tx3 = CompletedTransaction {
-        tx_id: 3.into(),
+        tx_id: 3u64.into(),
         status: TransactionStatus::Completed,
         ..completed_tx1.clone()
     };
@@ -5448,13 +5450,13 @@ fn broadcast_all_completed_transactions_on_startup() {
             tokio::select! {
                 event = event_stream.recv() => {
                     if let TransactionEvent::TransactionBroadcast(tx_id) = (*event.unwrap()).clone() {
-                        if tx_id == TxId::from(1) {
+                        if tx_id == 1u64 {
                             found1 = true
                         }
-                        if tx_id == TxId::from(2) {
+                        if tx_id == 2u64 {
                             found2 = true
                         }
-                        if tx_id == TxId::from(3) {
+                        if tx_id == 3u64 {
                             found3 = true
                         }
                         if found1 && found3 {

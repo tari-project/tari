@@ -93,10 +93,11 @@ impl Default for FixedByteArray {
 
 impl ByteArray for FixedByteArray {
     fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength)?;
-        if len > MAX_ARR_SIZE as u8 {
+        if bytes.len() > MAX_ARR_SIZE {
             return Err(ByteArrayError::IncorrectLength);
         }
+
+        let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength)?;
 
         let mut elems = [0u8; MAX_ARR_SIZE];
         elems[..len as usize].copy_from_slice(&bytes[..len as usize]);
@@ -110,6 +111,7 @@ impl ByteArray for FixedByteArray {
 
 impl Decodable for FixedByteArray {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, encode::Error> {
+        #[allow(clippy::cast_possible_truncation)]
         let len = VarInt::consensus_decode(d)?.0 as usize;
         if len > MAX_ARR_SIZE {
             return Err(encode::Error::ParseFailed(

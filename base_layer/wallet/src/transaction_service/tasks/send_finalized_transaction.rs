@@ -87,6 +87,7 @@ pub async fn send_finalized_transaction_message(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn send_finalized_transaction_message_direct(
     tx_id: TxId,
     transaction: Transaction,

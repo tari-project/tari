@@ -75,6 +75,7 @@ impl LinearWeightedMovingAverage {
         }
         // k is the sum of weights (1+2+..+n) * target_time
         let k = n * (n + 1) * self.target_time / 2;
+        #[allow(clippy::cast_possible_truncation)]
         let target = (ave_difficulty * k / weighted_times) as u64;
         trace!(
             target: LOG_TARGET,

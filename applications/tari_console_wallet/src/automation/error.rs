@@ -73,7 +73,7 @@ pub enum CommandError {
 impl From<CommandError> for ExitError {
     fn from(err: CommandError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        Self::new(ExitCode::CommandError, &err)
+        Self::new(ExitCode::CommandError, err.to_string())
     }
 }
 

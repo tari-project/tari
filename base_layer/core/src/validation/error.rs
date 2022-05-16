@@ -125,7 +125,7 @@ impl From<ChainStorageError> for ValidationError {
 }
 
 impl ValidationError {
-    pub fn custom_error<T: ToString>(err: T) -> Self {
-        ValidationError::CustomError(err.to_string())
+    pub fn custom_error<T: Into<String>>(err: T) -> Self {
+        ValidationError::CustomError(err.into())
     }
 }

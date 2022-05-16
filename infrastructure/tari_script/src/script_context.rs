@@ -40,7 +40,6 @@ impl ScriptContext {
         }
     }
 
-    #[inline(always)]
     pub fn block_height(&self) -> u64 {
         self.block_height
     }

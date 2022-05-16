@@ -237,6 +237,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn start(mut self) {
         let mut shutdown_signal = self
             .shutdown_signal

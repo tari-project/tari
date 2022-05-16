@@ -54,7 +54,7 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
-const NUM_INITIAL_HEADERS_TO_REQUEST: u64 = 1000;
+const NUM_INITIAL_HEADERS_TO_REQUEST: usize = 1000;
 
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
@@ -424,9 +424,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         client: &mut rpc::BaseNodeSyncRpcClient,
     ) -> Result<SyncStatus, BlockHeaderSyncError> {
         let (resp, block_hashes, steps_back) = self
-            .find_chain_split(sync_peer.node_id(), client, NUM_INITIAL_HEADERS_TO_REQUEST)
+            .find_chain_split(sync_peer.node_id(), client, NUM_INITIAL_HEADERS_TO_REQUEST as u64)
             .await?;
-        if resp.headers.len() > NUM_INITIAL_HEADERS_TO_REQUEST as usize {
+        if resp.headers.len() > NUM_INITIAL_HEADERS_TO_REQUEST {
             self.ban_peer_long(
                 sync_peer.node_id(),
                 BanReason::PeerSentTooManyHeaders(resp.headers.len()),
@@ -489,6 +489,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         // NOTE: We can trust that the header associated with this hash exists because `block_hashes` was supplied by
         // this node. Bounds checking for fork_hash_index has been done above.
+        #[allow(clippy::cast_possible_truncation)]
         let chain_split_hash = block_hashes.get(fork_hash_index as usize).unwrap();
 
         self.header_validator.initialize_state(chain_split_hash).await?;
@@ -547,6 +548,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(blocks)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn synchronize_headers(
         &mut self,
         mut sync_peer: SyncPeer,
@@ -588,7 +590,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             has_switched_to_new_chain = true;
         }
 
-        if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST as usize {
+        if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST {
             // Peer returned less than the number of requested headers. This indicates that we have all the available
             // headers.
             debug!(target: LOG_TARGET, "No further headers to download");

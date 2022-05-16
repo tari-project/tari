@@ -164,7 +164,7 @@ fn build_runtime() -> Result<Runtime, ExitError> {
     builder
         .enable_all()
         .build()
-        .map_err(|e| ExitError::new(ExitCode::UnknownError, &e))
+        .map_err(|e| ExitError::new(ExitCode::UnknownError, e))
 }
 
 async fn run_dan_node(

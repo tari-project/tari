@@ -493,6 +493,7 @@ async fn dht_store_forward() {
 
 #[tokio::test]
 #[allow(non_snake_case)]
+#[allow(clippy::too_many_lines)]
 async fn dht_propagate_dedup() {
     let mut config = dht_config();
     // For this test we want to exactly measure the path of a message, so we disable repropagation of messages (i.e
@@ -637,6 +638,7 @@ async fn dht_propagate_dedup() {
 
 #[tokio::test]
 #[allow(non_snake_case)]
+#[allow(clippy::too_many_lines)]
 async fn dht_do_not_store_invalid_message_in_dedup() {
     let mut config = dht_config();
     config.dedup_allowed_message_occurrences = 1;

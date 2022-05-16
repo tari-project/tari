@@ -81,6 +81,7 @@ use crate::{
 
 #[tokio::main]
 #[allow(clippy::same_item_push)]
+#[allow(clippy::too_many_lines)]
 async fn main() {
     let _ = env_logger::from_env(Env::default())
         .format_timestamp_millis()

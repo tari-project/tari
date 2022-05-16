@@ -41,6 +41,7 @@ impl BaseNode {
 }
 
 impl<B: Backend> Component<B> for BaseNode {
+    #[allow(clippy::too_many_lines)]
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let title = Spans::from(vec![Span::styled(
