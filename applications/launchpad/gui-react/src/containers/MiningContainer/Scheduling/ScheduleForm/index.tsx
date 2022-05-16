@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useTheme } from 'styled-components'
 
-import { Schedule } from '../../../../types/general'
+import { Schedule, Interval } from '../../../../types/general'
 import Button from '../../../../components/Button'
 import Box from '../../../../components/Box'
 import t from '../../../../locales'
@@ -14,13 +14,22 @@ import IntervalPicker from './IntervalPicker'
 import ScheduleFormError from './ScheduleFormError'
 import { validate } from './validation'
 
+/**
+ * @name ScheduleForm
+ * @description renders add/edit form for Schedule in mining scheduling
+ *
+ * @prop {Schedule} [value] - initial values of schedule being edited
+ * @prop {() => void} cancel - callback for user action of cancelling editing
+ * @prop {() => void} remove - callback for user action of removing edited schedule
+ * @prop {(s: Schedule) => void} onChange - called with new Schedule after user accepts changes
+ */
 const ScheduleForm = ({
   value,
   cancel,
   onChange,
   remove,
 }: {
-  value: Schedule
+  value?: Schedule
   cancel: () => void
   remove: () => void
   onChange: (s: Schedule) => void
@@ -30,14 +39,20 @@ const ScheduleForm = ({
   const [error, setError] = useState<string | undefined>()
   const [days, setDays] = useState(value?.days)
   const [date, setDate] = useState(value?.date)
-  const [miningType, setMiningType] = useState(value?.type)
-  const [interval, setInterval] = useState(value?.interval)
+  const [miningType, setMiningType] = useState(value?.type || [])
+  const [interval, setInterval] = useState(
+    value?.interval ||
+      ({
+        from: { hours: 0, minutes: 0 },
+        to: { hours: 0, minutes: 0 },
+      } as Interval),
+  )
 
   const enableSave =
-    ((days?.length || 0) > 0 || date) && (miningType?.length || 0) > 0
+    ((days?.length || 0) > 0 || date) && (miningType.length || 0) > 0
 
   const updateSchedule = useCallback(() => {
-    const updatedSchedule = {
+    const updatedSchedule: Schedule = {
       id: value?.id || Date.now().toString(),
       enabled: value ? value.enabled : true,
       days,
