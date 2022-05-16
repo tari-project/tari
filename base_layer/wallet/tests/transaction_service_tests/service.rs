@@ -5610,3 +5610,30 @@ fn test_update_faux_tx_on_oms_validation() {
         "Should have found the updated statuses"
     );
 }
+
+#[test]
+fn test_get_fee_per_gram_per_block_basic() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let mut alice_ts_interface = setup_transaction_service_no_comms(&mut runtime, factories.clone(), connection, None);
+    let stats = vec![base_node_proto::MempoolFeePerGramStat {
+        order: 0,
+        min_fee_per_gram: 1,
+        avg_fee_per_gram: 2,
+        max_fee_per_gram: 3,
+    }];
+    alice_ts_interface
+        .base_node_rpc_mock_state
+        .set_fee_per_gram_stats_response(base_node_proto::GetMempoolFeePerGramStatsResponse { stats: stats.clone() });
+
+    runtime.block_on(async move {
+        let estimates = alice_ts_interface
+            .transaction_service_handle
+            .get_fee_per_gram_stats_per_block(10)
+            .await
+            .unwrap();
+        assert_eq!(estimates.stats, stats.into_iter().map(Into::into).collect::<Vec<_>>());
+        assert_eq!(estimates.stats.len(), 1)
+    });
+}
