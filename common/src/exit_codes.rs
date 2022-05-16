@@ -38,7 +38,7 @@ impl fmt::Display for ExitError {
 
 impl From<anyhow::Error> for ExitError {
     fn from(err: anyhow::Error) -> Self {
-        ExitError::new(ExitCode::UnknownError, err.to_string())
+        ExitError::new(ExitCode::UnknownError, err)
     }
 }
 

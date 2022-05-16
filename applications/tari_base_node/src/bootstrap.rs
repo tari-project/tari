@@ -93,7 +93,7 @@ where B: BlockchainBackend + 'static
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from).map(|p| p.node_id))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, e.to_string()))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 

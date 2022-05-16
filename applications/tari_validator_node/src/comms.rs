@@ -52,7 +52,7 @@ pub async fn build_service_and_comms_stack(
 
     let mut transport_config = config.validator_node.p2p.transport.clone();
     transport_config.tor.identity = load_from_json(&config.validator_node.tor_identity_file)
-        .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
 
     let mut handles = StackBuilder::new(shutdown.clone())
         .add_initializer(P2pInitializer::new(

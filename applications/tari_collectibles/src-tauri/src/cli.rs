@@ -82,7 +82,7 @@ pub fn list_assets(offset: u64, count: u64, state: &ConcurrentAppState) -> Resul
       println!("{}", serde_json::to_string_pretty(&rows).unwrap());
       Ok(())
     }
-    Err(e) => Err(ExitError::new(ExitCode::CommandError, e.to_string())),
+    Err(e) => Err(ExitError::new(ExitCode::CommandError, e)),
   }
 }
 
@@ -139,7 +139,7 @@ pub(crate) fn make_it_rain(
         to_address.clone(),
         state,
       ))
-      .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+      .map_err(|e| ExitError::new(ExitCode::CommandError, e))?;
   }
   Ok(())
 }

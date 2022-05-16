@@ -180,7 +180,7 @@ impl From<WalletStorageError> for ExitError {
         use WalletStorageError::{InvalidPassphrase, NoPasswordError};
         match err {
             NoPasswordError | InvalidPassphrase => ExitCode::IncorrectOrEmptyPassword.into(),
-            e => ExitError::new(ExitCode::WalletError, e.to_string()),
+            e => ExitError::new(ExitCode::WalletError, e),
         }
     }
 }
