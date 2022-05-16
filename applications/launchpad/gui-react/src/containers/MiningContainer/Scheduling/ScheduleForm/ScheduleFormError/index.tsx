@@ -11,9 +11,11 @@ import { ScheduleFormErrorWrapper } from './styles'
 const ScheduleFormError = ({
   error,
   clearError,
+  cancel,
 }: {
   error: string | undefined
   clearError: () => void
+  cancel: () => void
 }) => {
   const theme = useTheme()
 
@@ -37,7 +39,7 @@ const ScheduleFormError = ({
             </>
           }
         >
-          <Button variant='secondary' onClick={clearError}>
+          <Button variant='secondary' onClick={cancel}>
             {t.common.verbs.cancel}
           </Button>
           <Button

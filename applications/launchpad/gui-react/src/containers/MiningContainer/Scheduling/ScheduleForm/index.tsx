@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useTheme } from 'styled-components'
 
 import { Schedule, Interval } from '../../../../types/general'
@@ -53,7 +53,7 @@ const ScheduleForm = ({
   const enableSave =
     ((days?.length || 0) > 0 || date) && (miningType?.length || 0) > 0
 
-  const updateSchedule = () => {
+  const updateSchedule = useCallback(() => {
     const updatedSchedule = {
       id: value?.id || Date.now().toString(),
       enabled: value ? value.enabled : true,
@@ -66,10 +66,12 @@ const ScheduleForm = ({
     const error = validate(updatedSchedule)
     if (error) {
       setError(error)
+
+      return
     }
 
     onChange(updatedSchedule)
-  }
+  }, [value, days, date, interval, miningType])
 
   return (
     <>
@@ -109,7 +111,11 @@ const ScheduleForm = ({
           {t.common.verbs.save}
         </Button>
       </Actions>
-      <ScheduleFormError error={error} clearError={() => setError(undefined)} />
+      <ScheduleFormError
+        error={error}
+        clearError={() => setError(undefined)}
+        cancel={cancel}
+      />
     </>
   )
 }
