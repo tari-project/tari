@@ -90,7 +90,7 @@ const ScheduleForm = ({
           days={days}
           date={date}
           onChange={({ days, date }) => {
-            setDays(days?.sort((a, b) => a - b))
+            setDays(days)
             setDate(date)
           }}
         />

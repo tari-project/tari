@@ -8,6 +8,14 @@ import WeekdaySelector from '../WeekdaySelector'
 
 import { HumanReadableScheduledDate } from './styles'
 
+/**
+ * @name DateScheduler
+ * @description Allows to select schedule - either a specific date or week days for recurring schedules
+ *
+ * @prop {number[]} [days] - selected days (where 0 - Sunday, 1 - Monday etc.)
+ * @prop {Date} [date] - selected date
+ * @prop {(schedule: { days?: number[]; date?: Date }) => void} onChange - called with either selected days array or selected day
+ */
 const DateScheduler = ({
   days,
   date,
@@ -20,8 +28,10 @@ const DateScheduler = ({
   const theme = useTheme()
 
   const scheduleDays = (newDays: number[]) => {
+    const d = [...newDays]
+    d.sort((a, b) => a - b)
     onChange({
-      days: newDays,
+      days: d,
       date: undefined,
     })
   }
