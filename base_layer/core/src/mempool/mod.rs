@@ -74,7 +74,10 @@ use serde::{Deserialize, Serialize};
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::Signature;
 
-use crate::transactions::transaction_components::Transaction;
+use crate::{
+    proto::base_node as base_node_proto,
+    transactions::{tari_amount::MicroTari, transaction_components::Transaction},
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
@@ -129,5 +132,24 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStored => "Not stored",
         };
         fmt.write_str(storage)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FeePerGramStat {
+    pub order: u64,
+    pub min_fee_per_gram: MicroTari,
+    pub avg_fee_per_gram: MicroTari,
+    pub max_fee_per_gram: MicroTari,
+}
+
+impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {
+    fn from(value: base_node_proto::MempoolFeePerGramStat) -> Self {
+        Self {
+            order: value.order,
+            min_fee_per_gram: value.min_fee_per_gram.into(),
+            avg_fee_per_gram: value.avg_fee_per_gram.into(),
+            max_fee_per_gram: value.max_fee_per_gram.into(),
+        }
     }
 }
