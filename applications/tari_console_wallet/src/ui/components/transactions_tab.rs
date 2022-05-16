@@ -272,6 +272,7 @@ impl TransactionsTab {
         column_list.render(f, area, &mut completed_list_state);
     }
 
+    #[allow(clippy::too_many_lines)]
     fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(

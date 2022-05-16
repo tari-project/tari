@@ -3219,6 +3219,7 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 /// # Safety
 /// The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
 #[no_mangle]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
     transport: *const TariTransportConfig,
@@ -3580,6 +3581,7 @@ unsafe fn init_logging(
 /// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
 #[no_mangle]
 #[allow(clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
@@ -3736,15 +3738,12 @@ pub unsafe extern "C" fn wallet_create(
         if !node_identity.is_signed() {
             node_identity.sign();
             // unreachable panic: signed above
-            wallet_database
-                .set_comms_identity_signature(
-                    node_identity
-                        .identity_signature_read()
-                        .as_ref()
-                        .expect("unreachable panic")
-                        .clone(),
-                )
-                .await?;
+            let sig = node_identity
+                .identity_signature_read()
+                .as_ref()
+                .expect("unreachable panic")
+                .clone();
+            wallet_database.set_comms_identity_signature(sig).await?;
         }
         Ok((master_seed, node_identity))
     });
@@ -5251,6 +5250,7 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// # Safety
 /// None
 #[no_mangle]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     wallet: *mut TariWallet,
     amount: c_ulonglong,
@@ -6458,6 +6458,7 @@ mod test {
 
     #[allow(dead_code)]
     #[derive(Debug)]
+    #[allow(clippy::struct_excessive_bools)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
         pub received_tx_reply_callback_called: bool,
@@ -7069,6 +7070,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_master_private_key_persistence() {
         unsafe {
             let mut error = 0;
@@ -7230,6 +7232,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_wallet_encryption() {
         unsafe {
             let mut error = 0;
@@ -7470,6 +7473,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_wallet_client_key_value_store() {
         unsafe {
             let mut error = 0;
@@ -7650,6 +7654,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     pub fn test_import_external_utxo() {
         unsafe {
             let mut error = 0;
@@ -7846,6 +7851,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     pub fn test_seed_words() {
         unsafe {
             let mut error = 0;

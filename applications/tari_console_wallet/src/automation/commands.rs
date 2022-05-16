@@ -334,6 +334,7 @@ pub async fn discover_peer(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
@@ -612,6 +613,7 @@ pub async fn monitor_transactions(
     results
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<ParsedCommand>,

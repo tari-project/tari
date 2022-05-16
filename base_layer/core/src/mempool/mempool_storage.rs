@@ -279,9 +279,9 @@ impl MempoolStorage {
     pub fn stats(&self) -> StatsResponse {
         let weighting = self.get_transaction_weighting(0);
         StatsResponse {
-            total_txs: self.len(),
-            unconfirmed_txs: self.unconfirmed_pool.len(),
-            reorg_txs: self.reorg_pool.len(),
+            total_txs: self.len() as u64,
+            unconfirmed_txs: self.unconfirmed_pool.len() as u64,
+            reorg_txs: self.reorg_pool.len() as u64,
             total_weight: self.unconfirmed_pool.calculate_weight(&weighting),
         }
     }

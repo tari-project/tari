@@ -254,7 +254,7 @@ where
         }
     }
 
-    #[warn(unreachable_code)]
+    #[allow(clippy::too_many_lines)]
     pub async fn start(mut self) -> Result<(), TransactionServiceError> {
         let request_stream = self
             .request_stream
@@ -530,6 +530,7 @@ where
     }
 
     /// This handler is called when requests arrive from the various streams
+    #[allow(clippy::too_many_lines)]
     async fn handle_request(
         &mut self,
         request: TransactionServiceRequest,
@@ -895,6 +896,7 @@ where
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
         dest_pubkey: CommsPublicKey,
@@ -1212,6 +1214,7 @@ where
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn accept_recipient_reply(
         &mut self,
         source_pubkey: CommsPublicKey,
@@ -1539,6 +1542,7 @@ where
     /// # Arguments
     /// 'source_pubkey' - The pubkey from which the message was sent and to which the reply will be sent.
     /// 'sender_message' - Message from a sender containing the setup of the transaction being sent to you
+    #[allow(clippy::too_many_lines)]
     pub async fn accept_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
