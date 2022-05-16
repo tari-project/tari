@@ -225,6 +225,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn wait_for_finalization(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         let mut receiver = self
             .transaction_finalize_receiver

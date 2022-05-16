@@ -245,18 +245,18 @@ async fn tx_broadcast_protocol_submit_success() {
 
     let timeout_watch = Watch::new(Duration::from_secs(1));
 
-    let protocol = TransactionBroadcastProtocol::new(2.into(), resources.clone(), timeout_watch.get_receiver());
+    let protocol = TransactionBroadcastProtocol::new(2u64.into(), resources.clone(), timeout_watch.get_receiver());
     let join_handle = task::spawn(protocol.execute());
 
     // Fails because there is no transaction in the database to be broadcast
     assert!(join_handle.await.unwrap().is_err());
 
-    add_transaction_to_database(1.into(), 1 * T, None, None, resources.db.clone()).await;
+    add_transaction_to_database(1u64.into(), 1 * T, None, None, resources.db.clone()).await;
 
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1u64.into()).await.unwrap();
     assert!(db_completed_tx.confirmations.is_none());
 
-    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_watch.get_receiver());
+    let protocol = TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_watch.get_receiver());
 
     task::spawn(protocol.execute());
 
@@ -320,7 +320,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
     ) = setup().await;
     let mut event_stream = resources.event_publisher.subscribe();
 
-    add_transaction_to_database(1.into(), 1 * T, None, None, resources.db.clone()).await;
+    add_transaction_to_database(1u64.into(), 1 * T, None, None, resources.db.clone()).await;
     let timeout_update_watch = Watch::new(Duration::from_secs(1));
     wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
     // Now we add the connection
@@ -329,7 +329,8 @@ async fn tx_broadcast_protocol_submit_rejection() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
+    let protocol =
+        TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
         accepted: false,
@@ -350,7 +351,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
     }
 
     // Check transaction is cancelled in db
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await;
+    let db_completed_tx = resources.db.get_completed_transaction(1u64.into()).await;
     assert!(db_completed_tx.is_err());
 
     // Check that the appropriate events were emitted
@@ -390,7 +391,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         wallet_connectivity,
     ) = setup().await;
 
-    add_transaction_to_database(1.into(), 1 * T, None, None, resources.db.clone()).await;
+    add_transaction_to_database(1u64.into(), 1 * T, None, None, resources.db.clone()).await;
 
     // Set Base Node query response to be not stored, as if the base node does not have the tx in its pool
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -410,7 +411,8 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
+    let protocol =
+        TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
     let join_handle = task::spawn(protocol.execute());
 
     // Check if in mempool (its not)
@@ -452,10 +454,10 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), TxId::from(1));
+    assert_eq!(result.unwrap(), TxId::from(1u64));
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1u64.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::Broadcast);
 }
 
@@ -478,7 +480,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     ) = setup().await;
     let mut event_stream = resources.event_publisher.subscribe();
 
-    add_transaction_to_database(1.into(), 1 * T, None, None, resources.db.clone()).await;
+    add_transaction_to_database(1u64.into(), 1 * T, None, None, resources.db.clone()).await;
 
     resources.config.transaction_mempool_resubmission_window = Duration::from_secs(3);
     resources.config.broadcast_monitoring_timeout = Duration::from_secs(60);
@@ -492,7 +494,8 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
+    let protocol =
+        TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
@@ -527,7 +530,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     }
 
     // Check transaction is cancelled in db
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await;
+    let db_completed_tx = resources.db.get_completed_transaction(1u64.into()).await;
     assert!(db_completed_tx.is_err());
 
     // Check that the appropriate events were emitted
@@ -566,7 +569,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         _transaction_event_receiver,
         wallet_connectivity,
     ) = setup().await;
-    add_transaction_to_database(1.into(), 1 * T, None, None, resources.db.clone()).await;
+    add_transaction_to_database(1u64.into(), 1 * T, None, None, resources.db.clone()).await;
 
     // Set Base Node to respond with AlreadyMined
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
@@ -583,7 +586,8 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
+    let protocol =
+        TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
@@ -611,7 +615,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     assert_eq!(result.unwrap(), 1);
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1u64.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::Completed);
 }
 
@@ -631,7 +635,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         wallet_connectivity,
     ) = setup().await;
 
-    add_transaction_to_database(1.into(), 1 * T, None, None, resources.db.clone()).await;
+    add_transaction_to_database(1u64.into(), 1 * T, None, None, resources.db.clone()).await;
 
     resources.config.broadcast_monitoring_timeout = Duration::from_secs(60);
 
@@ -651,7 +655,8 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
+    let protocol =
+        TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
@@ -703,10 +708,10 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), TxId::from(1));
+    assert_eq!(result.unwrap(), TxId::from(1u64));
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1u64.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::Broadcast);
 }
 
@@ -732,7 +737,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     add_transaction_to_database(
-        1.into(),
+        1u64.into(),
         1 * T,
         Some(TransactionStatus::Broadcast),
         None,
@@ -740,7 +745,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     )
     .await;
     add_transaction_to_database(
-        2.into(),
+        2u64.into(),
         2 * T,
         Some(TransactionStatus::Completed),
         None,
@@ -748,7 +753,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     )
     .await;
 
-    let tx2 = resources.db.get_completed_transaction(2.into()).await.unwrap();
+    let tx2 = resources.db.get_completed_transaction(2u64.into()).await.unwrap();
 
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
@@ -785,11 +790,11 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
 
     assert_eq!(
-        completed_txs.get(&1.into()).unwrap().status,
+        completed_txs.get(&1u64.into()).unwrap().status,
         TransactionStatus::Broadcast
     );
     assert_eq!(
-        completed_txs.get(&2.into()).unwrap().status,
+        completed_txs.get(&2u64.into()).unwrap().status,
         TransactionStatus::MinedUnconfirmed
     );
 
@@ -813,11 +818,11 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
 
     assert_eq!(
-        completed_txs.get(&1.into()).unwrap().status,
+        completed_txs.get(&1u64.into()).unwrap().status,
         TransactionStatus::Broadcast
     );
     assert_eq!(
-        completed_txs.get(&2.into()).unwrap().status,
+        completed_txs.get(&2u64.into()).unwrap().status,
         TransactionStatus::Completed
     );
 
@@ -857,10 +862,10 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
 
     assert_eq!(
-        completed_txs.get(&2.into()).unwrap().status,
+        completed_txs.get(&2u64.into()).unwrap().status,
         TransactionStatus::MinedConfirmed
     );
-    assert_eq!(completed_txs.get(&2.into()).unwrap().confirmations.unwrap(), 4);
+    assert_eq!(completed_txs.get(&2u64.into()).unwrap().confirmations.unwrap(), 4);
 }
 
 /// Test that revalidation clears the correct db fields and calls for validation of is said transactions
@@ -884,7 +889,7 @@ async fn tx_revalidation() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     add_transaction_to_database(
-        1.into(),
+        1u64.into(),
         1 * T,
         Some(TransactionStatus::Completed),
         None,
@@ -892,7 +897,7 @@ async fn tx_revalidation() {
     )
     .await;
     add_transaction_to_database(
-        2.into(),
+        2u64.into(),
         2 * T,
         Some(TransactionStatus::Completed),
         None,
@@ -900,7 +905,7 @@ async fn tx_revalidation() {
     )
     .await;
 
-    let tx2 = resources.db.get_completed_transaction(2.into()).await.unwrap();
+    let tx2 = resources.db.get_completed_transaction(2u64.into()).await.unwrap();
 
     // set tx2 as fully mined
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
@@ -938,10 +943,10 @@ async fn tx_revalidation() {
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
 
     assert_eq!(
-        completed_txs.get(&2.into()).unwrap().status,
+        completed_txs.get(&2u64.into()).unwrap().status,
         TransactionStatus::MinedConfirmed
     );
-    assert_eq!(completed_txs.get(&2.into()).unwrap().confirmations.unwrap(), 4);
+    assert_eq!(completed_txs.get(&2u64.into()).unwrap().confirmations.unwrap(), 4);
 
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
@@ -965,11 +970,11 @@ async fn tx_revalidation() {
     resources.db.mark_all_transactions_as_unvalidated().await.unwrap();
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
     assert_eq!(
-        completed_txs.get(&2.into()).unwrap().status,
+        completed_txs.get(&2u64.into()).unwrap().status,
         TransactionStatus::MinedConfirmed
     );
-    assert_eq!(completed_txs.get(&2.into()).unwrap().mined_height, None);
-    assert_eq!(completed_txs.get(&2.into()).unwrap().mined_in_block, None);
+    assert_eq!(completed_txs.get(&2u64.into()).unwrap().mined_height, None);
+    assert_eq!(completed_txs.get(&2u64.into()).unwrap().mined_in_block, None);
 
     let protocol = TransactionValidationProtocol::new(
         5.into(),
@@ -987,10 +992,10 @@ async fn tx_revalidation() {
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
     // data should now be updated and changed
     assert_eq!(
-        completed_txs.get(&2.into()).unwrap().status,
+        completed_txs.get(&2u64.into()).unwrap().status,
         TransactionStatus::MinedConfirmed
     );
-    assert_eq!(completed_txs.get(&2.into()).unwrap().confirmations.unwrap(), 8);
+    assert_eq!(completed_txs.get(&2u64.into()).unwrap().confirmations.unwrap(), 8);
 }
 
 /// Test that validation detects transactions becoming mined unconfirmed and then confirmed with some going back to
@@ -1027,7 +1032,7 @@ async fn tx_validation_protocol_reorg() {
     }
 
     add_transaction_to_database(
-        6.into(),
+        6u64.into(),
         6 * T,
         Some(TransactionStatus::Coinbase),
         Some(8),
@@ -1036,7 +1041,7 @@ async fn tx_validation_protocol_reorg() {
     .await;
 
     add_transaction_to_database(
-        7.into(),
+        7u64.into(),
         7 * T,
         Some(TransactionStatus::Coinbase),
         Some(9),
@@ -1052,13 +1057,13 @@ async fn tx_validation_protocol_reorg() {
     }
     rpc_service_state.set_blocks(block_headers.clone());
 
-    let tx1 = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    let tx2 = resources.db.get_completed_transaction(2.into()).await.unwrap();
-    let tx3 = resources.db.get_completed_transaction(3.into()).await.unwrap();
-    let tx4 = resources.db.get_completed_transaction(4.into()).await.unwrap();
-    let tx5 = resources.db.get_completed_transaction(5.into()).await.unwrap();
-    let coinbase_tx1 = resources.db.get_completed_transaction(6.into()).await.unwrap();
-    let coinbase_tx2 = resources.db.get_completed_transaction(7.into()).await.unwrap();
+    let tx1 = resources.db.get_completed_transaction(1u64.into()).await.unwrap();
+    let tx2 = resources.db.get_completed_transaction(2u64.into()).await.unwrap();
+    let tx3 = resources.db.get_completed_transaction(3u64.into()).await.unwrap();
+    let tx4 = resources.db.get_completed_transaction(4u64.into()).await.unwrap();
+    let tx5 = resources.db.get_completed_transaction(5u64.into()).await.unwrap();
+    let coinbase_tx1 = resources.db.get_completed_transaction(6u64.into()).await.unwrap();
+    let coinbase_tx2 = resources.db.get_completed_transaction(7u64.into()).await.unwrap();
 
     let transaction_query_batch_responses = vec![
         TxQueryBatchResponseProto {
@@ -1262,23 +1267,29 @@ async fn tx_validation_protocol_reorg() {
 
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
     assert_eq!(
-        completed_txs.get(&4.into()).unwrap().status,
+        completed_txs.get(&4u64.into()).unwrap().status,
         TransactionStatus::Completed
     );
     assert_eq!(
-        completed_txs.get(&5.into()).unwrap().status,
+        completed_txs.get(&5u64.into()).unwrap().status,
         TransactionStatus::MinedUnconfirmed
     );
-    assert_eq!(completed_txs.get(&5.into()).cloned().unwrap().mined_height.unwrap(), 8);
-    assert_eq!(completed_txs.get(&5.into()).cloned().unwrap().confirmations.unwrap(), 1);
     assert_eq!(
-        completed_txs.get(&7.into()).unwrap().status,
+        completed_txs.get(&5u64.into()).cloned().unwrap().mined_height.unwrap(),
+        8
+    );
+    assert_eq!(
+        completed_txs.get(&5u64.into()).cloned().unwrap().confirmations.unwrap(),
+        1
+    );
+    assert_eq!(
+        completed_txs.get(&7u64.into()).unwrap().status,
         TransactionStatus::Coinbase
     );
     let cancelled_completed_txs = resources.db.get_cancelled_completed_transactions().await.unwrap();
 
     assert!(matches!(
-        cancelled_completed_txs.get(&6.into()).unwrap().cancelled,
+        cancelled_completed_txs.get(&6u64.into()).unwrap().cancelled,
         Some(TxCancellationReason::AbandonedCoinbase)
     ));
 }
