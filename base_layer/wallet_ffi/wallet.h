@@ -456,7 +456,6 @@ struct TariCommsConfig *comms_config_create(const char *public_address,
                                             const char *datastore_path,
                                             unsigned long long discovery_timeout_in_secs,
                                             unsigned long long saf_message_duration_in_secs,
-                                            const char *network,
                                             int *error_out);
 
 // Frees memory for a TariCommsConfig
