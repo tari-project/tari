@@ -935,6 +935,8 @@ pub async fn command_runner(
                 // create the contract definition transaction
                 let mut asset_manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = asset_manager.create_contract_definition(&contract_definition).await?;
+                println!("{}", tx_id.clone());
+                println!("{}", transaction.clone());
 
                 // publish the contract definition transaction
                 let message = format!(
