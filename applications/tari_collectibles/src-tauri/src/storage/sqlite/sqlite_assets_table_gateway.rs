@@ -49,6 +49,8 @@ impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
       .collect::<Result<_, _>>()
   }
 
+  #[allow(clippy::cast_possible_wrap)]
+  #[allow(clippy::cast_possible_truncation)]
   fn insert(&self, asset: &AssetRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
     let mut committee_pub_keys = vec![];
     if let Some(pub_keys) = asset.committee.as_ref() {

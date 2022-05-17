@@ -35,7 +35,7 @@ pub mod key_manager_service;
 pub mod schema;
 pub mod utxo_scanner_service;
 
-pub use config::WalletConfig;
+pub use config::{TransactionStage, WalletConfig};
 pub use wallet::Wallet;
 
 use crate::{

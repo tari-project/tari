@@ -283,6 +283,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             return Ok(Streaming::empty());
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         let chunk_size = cmp::min(100, count) as usize;
         debug!(
             target: LOG_TARGET,
