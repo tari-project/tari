@@ -165,6 +165,7 @@ struct InnerService {
 
 impl InnerService {
     #[instrument]
+    #[allow(clippy::cast_possible_wrap)]
     async fn handle_get_height(&self, monerod_resp: Response<json::Value>) -> Result<Response<Body>, MmProxyError> {
         let (parts, mut json) = monerod_resp.into_parts();
         if json["height"].is_null() {
@@ -211,6 +212,7 @@ impl InnerService {
         Ok(proxy::into_response(parts, &json))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_submit_block(
         &self,
         request: Request<json::Value>,
@@ -344,6 +346,7 @@ impl InnerService {
         Ok(proxy::into_response(parts, &json_resp))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_get_block_template(
         &self,
         monerod_resp: Response<json::Value>,

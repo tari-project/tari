@@ -3450,9 +3450,9 @@ checksum = "33a33a362ce288760ec6a508b94caaec573ae7d3bbbd91b87aa0bad4456839db"
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.12.0"
+version = "0.22.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6457c70bbff456d9fe49deaba35ec47c3e598bf8d7950ff0575ceb7a8a6ad1"
+checksum = "290b64917f8b0cb885d9de0f9959fe1f775d7fa12f1da2db9001c1c8ab60f89d"
 dependencies = [
  "cc",
  "pkg-config",
@@ -6533,7 +6533,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "chrono",
  "prost",
@@ -6550,7 +6550,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "clap 3.1.8",
  "config",
@@ -6573,7 +6573,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6680,7 +6680,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "config",
@@ -6697,7 +6697,7 @@ dependencies = [
  "serde_json",
  "sha2 0.9.9",
  "structopt",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tempfile",
  "thiserror",
  "toml",
@@ -6705,7 +6705,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "diesel",
  "log",
@@ -6714,7 +6714,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "digest 0.9.0",
  "lazy_static",
@@ -6728,7 +6728,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6764,7 +6764,7 @@ dependencies = [
  "tari_metrics",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -6778,7 +6778,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -6812,7 +6812,7 @@ dependencies = [
  "tari_crypto",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -6824,7 +6824,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "futures 0.3.21",
  "proc-macro2",
@@ -6832,14 +6832,14 @@ dependencies = [
  "quote",
  "syn",
  "tari_comms",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tokio 1.17.0",
  "tower-service",
 ]
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
@@ -6886,7 +6886,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6933,7 +6933,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -7036,7 +7036,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "argon2",
  "arrayvec 0.7.2",
@@ -7067,7 +7067,7 @@ dependencies = [
 
 [[package]]
 name = "tari_launchpad"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "bollard",
  "config",
@@ -7110,7 +7110,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -7162,7 +7162,7 @@ dependencies = [
 
 [[package]]
 name = "tari_miner"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "base64 0.13.0",
  "bufstream",
@@ -7213,7 +7213,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -7231,7 +7231,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "bytes 0.5.6",
@@ -7259,7 +7259,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -7288,7 +7288,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7296,7 +7296,7 @@ dependencies = [
  "futures-test",
  "log",
  "tari_shutdown",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "thiserror",
  "tokio 1.17.0",
  "tower",
@@ -7305,7 +7305,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "futures 0.3.21",
  "tokio 1.17.0",
@@ -7313,7 +7313,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -7341,7 +7341,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "futures 0.3.21",
  "futures-test",
@@ -7367,7 +7367,7 @@ dependencies = [
 
 [[package]]
 name = "tari_validator_node"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7401,7 +7401,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "thiserror",
  "tokio 1.17.0",
  "tokio-stream",
@@ -7410,7 +7410,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "aes-gcm 0.8.0",
  "argon2",
@@ -7451,7 +7451,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -7461,7 +7461,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
@@ -7484,7 +7484,7 @@ dependencies = [
  "tari_script",
  "tari_service_framework",
  "tari_shutdown",
- "tari_test_utils 0.31.1",
+ "tari_test_utils 0.32.0",
  "tari_utilities",
  "tari_wallet",
  "tempfile",
@@ -7690,7 +7690,7 @@ dependencies = [
 
 [[package]]
 name = "test_faucet"
-version = "0.31.1"
+version = "0.32.0"
 dependencies = [
  "rand 0.8.5",
  "serde",

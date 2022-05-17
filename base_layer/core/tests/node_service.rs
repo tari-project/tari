@@ -286,6 +286,7 @@ async fn propagate_and_forward_invalid_block_hash() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn propagate_and_forward_invalid_block() {
     let temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();

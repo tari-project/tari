@@ -407,15 +407,13 @@ Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount) {
   expect(peers.length).to.equal(peerCount);
 });
 
-Then(
-  /(.*) should have at least (\d+) peers/,
-  async function (nodeName, peerCount) {
-    await sleep(500);
-    const client = this.getClient(nodeName);
+Then(/(.*) has at least (\d+) peers/, async function (nodeName, peerCount) {
+  const client = this.getClient(nodeName);
+  await waitForPredicate(async () => {
     const peers = await client.getPeers();
-    expect(peers.length).to.be.greaterThanOrEqual(peerCount);
-  }
-);
+    return peers.length >= peerCount;
+  }, 10 * 1000);
+});
 
 When("I print the world", function () {
   console.log(this);
