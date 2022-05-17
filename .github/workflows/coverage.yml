@@ -1,25 +1,16 @@
 name: Source Coverage
 on:
+  workflow_dispatch:
   push:
     branches:
       - development
-
-env:
-  toolchain: nightly-2021-11-20
+      - ci-*
 
 jobs:
   coverage:
-    name: test
-    runs-on: ubuntu-18.04
+    name: test and generate cov
+    runs-on: [ self-hosted, ubuntu18.04-high-mem ]
     steps:
-      - name: checkout
-        uses: actions/checkout@v2
-      - name: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.toolchain }}
-          override: true
-          components: llvm-tools-preview
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -46,28 +37,43 @@ jobs:
             wget \
             libappindicator3-dev \
             patchelf \
-            librsvg2-dev \
-      - name: install grcov
+            librsvg2-dev
+      - name: checkout
+        uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          components: llvm-tools-preview
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features --no-fail-fast
+        env:
+          RUSTFLAGS: "-C instrument-coverage"
+          RUSTDOCFLAGS: "-C instrument-coverage"
+          LLVM_PROFILE_FILE: "coverage_data-%p-%m.profraw"
+      - id: coverage
+        name: Prepare coverage data
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
         run: |
           cargo install grcov
-      - name: cargo test compile
-        uses: actions-rs/cargo@v1
+          grcov . -s . --binary-path ./target/debug -t coveralls --branch --ignore-not-existing \
+             -o ./target/coveralls_coverage.json \
+             --token $COVERALLS_REPO_TOKEN \
+             --vcs-branch $GITHUB_REF_NAME \
+             --service-name github \
+             --service-job-id ${GITHUB_RUN_ID}
+      - id: archive-coverage
+        name: archive-coverage
+        uses: actions/upload-artifact@v3
         with:
-          command: test
-          args: --no-run --locked --all-features
-      - name: cargo test
-        uses: actions-rs/cargo@v1
-        env:
-          LLVM_PROFILE_FILE: "coverage_data-%p-%m.profraw"
-          RUSTFLAGS: "-Zinstrument-coverage"
-        with:
-          command: test
-          args: --all-features
-      - name: generate coverage report
-        run: |
-          grcov . -s . --binary-path ./target/debug -t lcov --branch --ignore-not-existing -o ./target/report.lcov
+          path: target/coveralls_coverage.json
+          name: coveralls-coverage
       - name: Coveralls upload
-        uses: coverallsapp/github-action@master
+        uses: toshke/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: ./target/report.lcov
+          path-to-lcov: ./target/coveralls_coverage.json
+          file-format: coveralls
