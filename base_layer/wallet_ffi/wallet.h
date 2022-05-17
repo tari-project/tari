@@ -204,7 +204,7 @@ struct TariOutputFeatures *output_features_create_from_bytes(
 );
 
 // Frees memory for a TariOutputFeatures
-void output_features_destroy(struct TariOutputFeatures *com_sig);
+void output_features_destroy(struct TariOutputFeatures *output_features);
 
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
