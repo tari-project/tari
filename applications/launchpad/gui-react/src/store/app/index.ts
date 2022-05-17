@@ -9,48 +9,7 @@ const appInitialState: AppState = {
   expertView: 'hidden',
   view: 'MINING',
   theme: 'light',
-  schedules: {
-    asdf: {
-      id: 'asdf',
-      enabled: true,
-      days: [1],
-      interval: {
-        from: { hours: 0, minutes: 0 },
-        to: { hours: 19, minutes: 35 },
-      },
-      type: ['merged'],
-    },
-    qwer: {
-      id: 'qwer',
-      enabled: false,
-      days: [4, 5],
-      interval: {
-        from: { hours: 12, minutes: 32 },
-        to: { hours: 15, minutes: 34 },
-      },
-      type: ['merged', 'tari'],
-    },
-    wqer1: {
-      id: 'wqer1',
-      enabled: true,
-      date: '2022-05-14',
-      interval: {
-        from: { hours: 13, minutes: 7 },
-        to: { hours: 23, minutes: 59 },
-      },
-      type: ['merged', 'tari'],
-    },
-    asdf2: {
-      id: 'asdf2',
-      enabled: false,
-      date: '2022-05-15',
-      interval: {
-        from: { hours: 7, minutes: 0 },
-        to: { hours: 15, minutes: 0 },
-      },
-      type: ['merged', 'tari'],
-    },
-  },
+  schedules: {},
 }
 
 const appSlice = createSlice({
