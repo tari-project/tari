@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTheme } from 'styled-components'
 
 import Text from '../../../../../components/Text'
+import Button from '../../../../../components/Button'
 import DatePicker from '../../../../../components/DatePicker'
 import { day } from '../../../../../utils/Format'
 import CalendarIcon from '../../../../../styles/Icons/Calendar'
@@ -72,9 +73,15 @@ const DateScheduler = ({
             </>
           )}
           {date && (
-            <Text as='span' type='smallMedium'>
-              {day(date)}
-            </Text>
+            <Button
+              variant='button-in-text'
+              onClick={toggleCalendar}
+              style={{ textDecoration: 'none' }}
+            >
+              <Text as='span' type='smallMedium'>
+                {day(date)}
+              </Text>
+            </Button>
           )}
         </div>
         <div onClick={toggleCalendar} style={{ cursor: 'pointer' }}>
