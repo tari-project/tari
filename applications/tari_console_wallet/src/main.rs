@@ -100,8 +100,8 @@ fn main_inner() -> Result<(), ExitError> {
         include_str!("../log4rs_sample.yml"),
     )?;
 
-    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
+    config.wallet.network = cli.network.parse()?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
