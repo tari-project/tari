@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { useTheme } from 'styled-components'
 import { useLilius } from 'use-lilius'
 
@@ -84,7 +85,7 @@ const DatePickerComponent = ({
         </Text>
       ))}
       {calendar[0].map((week, weekId) => (
-        <>
+        <Fragment key={`week-${weekId}`}>
           {week.map(day => {
             const isInMonth = inRange(
               day,
@@ -102,7 +103,7 @@ const DatePickerComponent = ({
             return (
               <Day
                 data-selected={isSelected(day)}
-                key={`week-${weekId}-day-${day}`}
+                key={`week-${weekId}-day-${day.getDay()}`}
                 disabled={disabled || isSelected(day)}
                 onClick={() => {
                   toggle(day, true)
@@ -123,7 +124,7 @@ const DatePickerComponent = ({
               </Day>
             )
           })}
-        </>
+        </Fragment>
       ))}
     </DatePickerWrapper>
   )
