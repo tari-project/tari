@@ -30,12 +30,12 @@
 
 mod error;
 use core::ptr;
-use std::{ffi::CString, slice};
+use std::{convert::TryFrom, ffi::CString, slice};
 
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_core::{
     blocks::BlockHeader,
-    consensus::{ConsensusDecoding, ConsensusEncoding},
+    consensus::{ConsensusDecoding, ToConsensusBytes},
     proof_of_work::sha3_difficulty,
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -127,8 +127,8 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0u8;
     }
-    let len = byte_vector_get_length(ptr, error_out) as c_int - 1; // clamp to length
-    if len < 0 || position > len as c_uint {
+    let len = byte_vector_get_length(ptr, error_out);
+    if len == 0 || position > len - 1 {
         error = MiningHelperError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0u8;
@@ -158,7 +158,14 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*vec).0.len() as c_uint
+    match c_uint::try_from((*vec).0.len()) {
+        Ok(v) => v,
+        Err(_) => {
+            error = MiningHelperError::from(InterfaceError::Conversion("byte_vector".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
 }
 
 /// Validates a hex string is convertible into a TariPublicKey
@@ -229,15 +236,7 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
         },
     };
     block_header.nonce = nonce;
-    let mut header_bytes = Vec::new();
-    match block_header.consensus_encode(&mut header_bytes) {
-        Ok(_) => {},
-        Err(e) => {
-            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-        },
-    };
-    (*header).0 = header_bytes;
+    (*header).0 = block_header.to_consensus_bytes();
 }
 
 /// Returns the difficulty of a share
@@ -350,7 +349,10 @@ pub unsafe extern "C" fn share_validate(
 mod tests {
     use libc::c_int;
     use tari_common::configuration::Network;
-    use tari_core::blocks::{genesis_block::get_genesis_block, Block};
+    use tari_core::{
+        blocks::{genesis_block::get_genesis_block, Block},
+        consensus::ConsensusEncoding,
+    };
 
     use super::*;
     use crate::{inject_nonce, public_key_hex_validate, share_difficulty, share_validate};
@@ -369,6 +371,7 @@ mod tests {
             let block = create_test_block();
             let mut header_bytes: Vec<u8> = Vec::new();
             block.header.consensus_encode(&mut header_bytes).unwrap();
+            #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, NONCE, error_ptr);
@@ -387,6 +390,7 @@ mod tests {
             let block = create_test_block();
             let mut header_bytes: Vec<u8> = Vec::new();
             block.header.consensus_encode(&mut header_bytes).unwrap();
+            #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, NONCE, error_ptr);
@@ -409,6 +413,7 @@ mod tests {
             let mut share_difficulty = 24000;
             let mut header_bytes: Vec<u8> = Vec::new();
             block.header.consensus_encode(&mut header_bytes).unwrap();
+            #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, NONCE, error_ptr);

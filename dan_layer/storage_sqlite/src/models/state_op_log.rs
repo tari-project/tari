@@ -51,6 +51,7 @@ pub struct NewStateOpLogEntry {
 }
 
 impl From<DbStateOpLogEntry> for NewStateOpLogEntry {
+    #[allow(clippy::cast_possible_wrap)]
     fn from(entry: DbStateOpLogEntry) -> Self {
         Self {
             height: entry.height as i64,
@@ -63,6 +64,7 @@ impl From<DbStateOpLogEntry> for NewStateOpLogEntry {
     }
 }
 
+#[allow(clippy::cast_sign_loss)]
 impl TryFrom<StateOpLogEntry> for DbStateOpLogEntry {
     type Error = SqliteStorageError;
 

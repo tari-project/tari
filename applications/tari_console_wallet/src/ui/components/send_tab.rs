@@ -63,6 +63,7 @@ impl SendTab {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn draw_send_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(

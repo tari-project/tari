@@ -362,6 +362,7 @@ async fn test_utxo_scanner_recovery() {
     }
 }
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart() {
     let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
@@ -521,6 +522,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
@@ -774,6 +776,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {
     let factories = CryptoFactories::default();
     let mut test_interface = setup(
