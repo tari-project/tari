@@ -37,8 +37,10 @@ use crate::{
     mempool::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
+        FeePerGramStat,
     },
     transactions::{
+        tari_amount::MicroTari,
         transaction_components::{Transaction, TransactionOutput},
         weight::TransactionWeight,
     },
@@ -542,6 +544,61 @@ impl UnconfirmedPool {
         })
     }
 
+    pub fn get_fee_per_gram_stats(
+        &self,
+        count: usize,
+        target_block_weight: u64,
+    ) -> Result<Vec<FeePerGramStat>, UnconfirmedPoolError> {
+        if count == 0 || target_block_weight == 0 {
+            return Ok(vec![]);
+        }
+
+        if self.len() == 0 {
+            return Ok(vec![]);
+        }
+
+        let mut stats = Vec::new();
+        let mut offset = 0usize;
+        for start in 0..count {
+            let mut total_weight = 0;
+            let mut total_fees = MicroTari::zero();
+            let mut min_fee_per_gram = MicroTari::from(u64::MAX);
+            let mut max_fee_per_gram = MicroTari::zero();
+            let mut last_count = 0;
+            for (i, key) in self.tx_by_priority.values().rev().enumerate().skip(offset) {
+                let tx = self
+                    .tx_by_key
+                    .get(key)
+                    .ok_or_else(|| UnconfirmedPoolError::StorageOutofSync)?;
+                let weight = tx.weight;
+
+                if total_weight + weight > target_block_weight {
+                    break;
+                }
+
+                let total_tx_fee = tx.transaction.body.get_total_fee();
+                last_count = i + 1;
+                let fee_per_gram = total_tx_fee / weight;
+                min_fee_per_gram = min_fee_per_gram.min(fee_per_gram);
+                max_fee_per_gram = max_fee_per_gram.max(fee_per_gram);
+                total_fees += total_tx_fee;
+                total_weight += weight;
+            }
+            if last_count > 0 {
+                let stat = FeePerGramStat {
+                    order: start as u64,
+                    min_fee_per_gram,
+                    avg_fee_per_gram: total_fees / total_weight,
+                    max_fee_per_gram,
+                };
+                stats.push(stat);
+            }
+            offset = last_count;
+        }
+
+        Ok(stats)
+    }
+
     /// Returns false if there are any inconsistencies in the internal mempool state, otherwise true
     #[cfg(test)]
     fn check_data_consistency(&self) -> bool {
@@ -963,8 +1020,6 @@ mod test {
         let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(51), inputs:5, outputs:1, features: nft_features);
         let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(50), inputs:5, outputs:5);
 
-        // Insert multiple transactions with the same outputs into the mempool
-
         let tx_weight = TransactionWeight::latest();
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
@@ -1005,5 +1060,77 @@ mod test {
         assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx3));
         assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx4));
         assert_eq!(results.retrieved_transactions.len(), 3);
+    }
+
+    mod get_fee_per_gram_stats {
+
+        use super::*;
+
+        #[test]
+        fn it_returns_empty_stats_for_empty_mempool() {
+            let unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+            let stats = unconfirmed_pool.get_fee_per_gram_stats(1, 19500).unwrap();
+            assert!(stats.is_empty());
+        }
+
+        #[test]
+        fn it_compiles_correct_stats_for_single_block() {
+            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:5, outputs:1);
+            let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(5), inputs:5, outputs:5);
+            let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(4), inputs:2, outputs:1);
+            let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(4), inputs:4, outputs:5);
+
+            let tx_weight = TransactionWeight::latest();
+            let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+
+            let tx1 = Arc::new(tx1);
+            let tx2 = Arc::new(tx2);
+            let tx3 = Arc::new(tx3);
+            let tx4 = Arc::new(tx4);
+            unconfirmed_pool
+                .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
+                .unwrap();
+
+            let stats = unconfirmed_pool.get_fee_per_gram_stats(1, 19500).unwrap();
+            assert_eq!(stats[0].order, 0);
+            assert_eq!(stats[0].min_fee_per_gram, 4.into());
+            assert_eq!(stats[0].max_fee_per_gram, 5.into());
+            assert_eq!(stats[0].avg_fee_per_gram, 4.into());
+        }
+
+        #[test]
+        fn it_compiles_correct_stats_for_multiple_blocks() {
+            let expected_stats = [
+                FeePerGramStat {
+                    order: 0,
+                    min_fee_per_gram: 10.into(),
+                    avg_fee_per_gram: 10.into(),
+                    max_fee_per_gram: 10.into(),
+                },
+                FeePerGramStat {
+                    order: 1,
+                    min_fee_per_gram: 5.into(),
+                    avg_fee_per_gram: 9.into(),
+                    max_fee_per_gram: 10.into(),
+                },
+            ];
+
+            let mut transactions = (0u64..50)
+                .map(|i| {
+                    let (tx, _, _) = tx!(MicroTari(150_000 + i), fee: MicroTari(10), inputs: 1, outputs: 1);
+                    Arc::new(tx)
+                })
+                .collect::<Vec<_>>();
+            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:1, outputs: 5);
+            transactions.push(Arc::new(tx1));
+
+            let tx_weight = TransactionWeight::latest();
+            let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+
+            unconfirmed_pool.insert_many(transactions, &tx_weight).unwrap();
+
+            let stats = unconfirmed_pool.get_fee_per_gram_stats(2, 2000).unwrap();
+            assert_eq!(stats, expected_stats);
+        }
     }
 }

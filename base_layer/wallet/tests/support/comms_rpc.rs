@@ -48,6 +48,8 @@ use tari_core::{
             ChainMetadata as ChainMetadataProto,
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            GetMempoolFeePerGramStatsRequest,
+            GetMempoolFeePerGramStatsResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures as SignaturesProto,
@@ -108,6 +110,7 @@ pub struct BaseNodeWalletRpcMockState {
     synced: Arc<Mutex<bool>>,
     utxos: Arc<Mutex<Vec<TransactionOutput>>>,
     blocks: Arc<Mutex<HashMap<u64, BlockHeader>>>,
+    get_mempool_fee_per_gram_stats: Arc<Mutex<GetMempoolFeePerGramStatsResponse>>,
     utxos_by_block: Arc<Mutex<Vec<UtxosByBlock>>>,
     sync_utxos_by_block_trigger_channel: Arc<Mutex<Option<mpsc::Receiver<usize>>>>,
 }
@@ -171,6 +174,8 @@ impl BaseNodeWalletRpcMockState {
             synced: Arc::new(Mutex::new(true)),
             utxos: Arc::new(Mutex::new(Vec::new())),
             blocks: Arc::new(Mutex::new(Default::default())),
+            get_mempool_fee_per_gram_stats: Default::default(),
+
             utxos_by_block: Arc::new(Mutex::new(vec![])),
             sync_utxos_by_block_trigger_channel: Arc::new(Mutex::new(None)),
         }
@@ -231,6 +236,11 @@ impl BaseNodeWalletRpcMockState {
     pub fn set_blocks(&self, blocks: HashMap<u64, BlockHeader>) {
         let mut lock = acquire_lock!(self.blocks);
         *lock = blocks;
+    }
+
+    pub fn set_fee_per_gram_stats_response(&self, resp: GetMempoolFeePerGramStatsResponse) {
+        let mut lock = acquire_lock!(self.get_mempool_fee_per_gram_stats);
+        *lock = resp;
     }
 
     pub fn set_utxos_by_block(&self, utxos_by_block: Vec<UtxosByBlock>) {
@@ -825,6 +835,15 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         } else {
             Err(RpcStatus::not_found("Headers not found"))
         }
+    }
+
+    async fn get_mempool_fee_per_gram_stats(
+        &self,
+        _request: Request<GetMempoolFeePerGramStatsRequest>,
+    ) -> Result<Response<GetMempoolFeePerGramStatsResponse>, RpcStatus> {
+        Ok(Response::new(
+            acquire_lock!(self.state.get_mempool_fee_per_gram_stats).clone(),
+        ))
     }
 }
 
