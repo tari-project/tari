@@ -11451,6 +11451,13 @@ url-parse-lax@^3.0.0:
   dependencies:
     prepend-http "^2.0.0"
 
+use-lilius@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/use-lilius/-/use-lilius-2.0.0.tgz#7ff46df8493abcceb0a3d3c4b1a31e1501cb5f81"
+  integrity sha512-cs9y7vwSioJu5B57x97g7j+5npUhzBDk0Rm4HYEQ2W6SWgCGdhCkPgxGsWALoYAZ2w3wtIip6xp/W+zbwxXuwA==
+  dependencies:
+    date-fns "^2.20.1"
+
 use-sync-external-store@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/use-sync-external-store/-/use-sync-external-store-1.0.0.tgz#d98f4a9c2e73d0f958e7e2d2c2bfb5f618cbd8fd"

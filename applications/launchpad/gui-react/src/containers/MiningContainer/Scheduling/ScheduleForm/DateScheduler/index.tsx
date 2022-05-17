@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useTheme } from 'styled-components'
 
 import Text from '../../../../../components/Text'
+import DatePicker from '../../../../../components/DatePicker'
 import { day } from '../../../../../utils/Format'
 import CalendarIcon from '../../../../../styles/Icons/Calendar'
 import t from '../../../../../locales'
@@ -26,6 +28,9 @@ const DateScheduler = ({
   onChange: (schedule: { days?: number[]; date?: Date }) => void
 }) => {
   const theme = useTheme()
+  const [calendarOpen, setCalendarOpen] = useState(false)
+
+  const toggleCalendar = () => setCalendarOpen(s => !s)
 
   const scheduleDays = (newDays: number[]) => {
     const d = [...newDays]
@@ -34,6 +39,7 @@ const DateScheduler = ({
       days: d,
       date: undefined,
     })
+    setCalendarOpen(false)
   }
 
   const scheduleDate = (newDate: Date) => {
@@ -41,6 +47,7 @@ const DateScheduler = ({
       date: newDate,
       days: undefined,
     })
+    setCalendarOpen(false)
   }
 
   return (
@@ -70,13 +77,11 @@ const DateScheduler = ({
             </Text>
           )}
         </div>
-        <div
-          onClick={() => scheduleDate(new Date())}
-          style={{ cursor: 'pointer' }}
-        >
+        <div onClick={toggleCalendar} style={{ cursor: 'pointer' }}>
           <CalendarIcon height='18px' width='18px' />
         </div>
       </HumanReadableScheduledDate>
+      <DatePicker value={date} open={calendarOpen} onChange={scheduleDate} />
     </>
   )
 }
