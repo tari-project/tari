@@ -282,7 +282,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
 
-        let flags = u8::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
+        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(

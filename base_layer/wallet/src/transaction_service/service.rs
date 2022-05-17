@@ -756,7 +756,7 @@ where
             let mut client = connectivity
                 .obtain_base_node_wallet_rpc_client()
                 .await
-                .ok_or_else(|| TransactionServiceError::Shutdown)?;
+                .ok_or(TransactionServiceError::Shutdown)?;
 
             let resp = client
                 .get_mempool_fee_per_gram_stats(base_node_proto::GetMempoolFeePerGramStatsRequest {
