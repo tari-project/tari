@@ -1,4 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit'
+import devToolsEnhancer from 'remote-redux-devtools'
 
 import appReducer from './app'
 import settingsReducer from './settings'
@@ -19,6 +20,14 @@ export const rootReducer = {
 
 export const store = configureStore({
   reducer: rootReducer,
+  enhancers: [
+    devToolsEnhancer({
+      name: 'Tari Launchpad',
+      realtime: true, // remove this to disable devtools on production
+      hostname: 'localhost',
+      port: 8000,
+    }),
+  ],
 })
 
 export type RootState = ReturnType<typeof store.getState>
