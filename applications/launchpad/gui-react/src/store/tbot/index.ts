@@ -12,7 +12,7 @@ const tbotSlice = createSlice({
   initialState,
   reducers: {
     push(state, action) {
-      state.messageQueue = [...state.messageQueue, action.payload]
+      state.messageQueue = [...state.messageQueue, ...action.payload]
     },
     close(state) {
       state.messageQueue = []
