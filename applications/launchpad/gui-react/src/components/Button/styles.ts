@@ -146,17 +146,21 @@ export const IconWrapper = styled.span<{
   $disabled?: boolean
 }>`
   display: inline-flex;
-  ${({ $spacing, $variant, theme }) => {
+  ${({ $spacing, theme }) => {
     if ($spacing) {
-      const factor = $variant && $variant === 'button-in-text' ? 0.25 : 0.4
-      return `margin-${$spacing}: ${theme.spacingHorizontal(factor)};`
+      return `margin-${$spacing}: ${theme.spacingHorizontal(0.25)};`
     }
 
     return ''
   }}
 
-  color: ${({ $variant, $disabled, theme }) =>
-    $variant === 'text' && !$disabled ? theme.primary : 'inherit'};
+  color: ${({ $disabled, theme }) => {
+    if ($disabled) {
+      return theme.placeholderText
+    }
+
+    return 'inherit'
+  }};
 
   ${({ $autosizeIcon }) => {
     if ($autosizeIcon) {
@@ -172,12 +176,16 @@ export const IconWrapper = styled.span<{
 `
 
 export const ButtonContentWrapper = styled.span<{
-  $variant?: ButtonVariantType
   disabled?: boolean
 }>`
   display: inline-flex;
-  color: ${({ $variant, disabled, theme }) =>
-    $variant === 'text' && !disabled ? theme.primary : 'inherit'};
+  color: ${({ disabled, theme }) => {
+    if (disabled) {
+      return theme.placeholderText
+    }
+
+    return 'inherit'
+  }};
 `
 
 export const LoadingIconWrapper = styled.span`

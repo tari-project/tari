@@ -82,9 +82,7 @@ const Button = ({
           {leftIcon}
         </IconWrapper>
       ) : null}
-      <ButtonContentWrapper $variant={variant} disabled={disabled}>
-        {btnText}
-      </ButtonContentWrapper>
+      <ButtonContentWrapper disabled={disabled}>{btnText}</ButtonContentWrapper>
       {rightIcon ? (
         <IconWrapper
           $spacing={'left'}
