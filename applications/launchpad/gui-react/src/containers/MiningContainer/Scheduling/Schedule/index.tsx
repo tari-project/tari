@@ -1,11 +1,11 @@
 import Switch from '../../../../components/Switch'
 import { Schedule as ScheduleType } from '../../../../types/general'
+import useSingleAndDoubleClick from '../../../../utils/useSingleAndDoubleClick'
 
-import { ScheduleContainer, ScheduleInfo } from './styles'
+import { ScheduleWrapper, ScheduleContainer, ScheduleInfo } from './styles'
 import When from './When'
 import MiningType from './MiningType'
 import Interval from './Interval'
-import useSingleAndDoubleClick from '../../../../utils/useSingleAndDoubleClick'
 
 type ScheduleActions = {
   toggle: () => void
@@ -46,19 +46,16 @@ const Schedule = ({
   })
 
   return (
-    <ScheduleContainer
-      onClick={clickHandler}
-      selected={selected}
-      data-selected={selected}
-      data-testid={`schedule-${id}`}
-    >
-      <ScheduleInfo>
-        <When days={days} date={date} disabled={!enabled} />
-        <Interval {...interval} disabled={!enabled} />
-        <MiningType type={type} disabled={!enabled} />
-      </ScheduleInfo>
-      <Switch value={enabled} onClick={toggle} />
-    </ScheduleContainer>
+    <ScheduleWrapper selected={selected} data-selected={selected}>
+      <ScheduleContainer onClick={clickHandler} data-testid={`schedule-${id}`}>
+        <ScheduleInfo>
+          <When days={days} date={date} disabled={!enabled} />
+          <Interval {...interval} disabled={!enabled} />
+          <MiningType type={type} disabled={!enabled} />
+        </ScheduleInfo>
+        <Switch value={enabled} onClick={toggle} />
+      </ScheduleContainer>
+    </ScheduleWrapper>
   )
 }
 

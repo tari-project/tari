@@ -33,26 +33,33 @@ export const EnabledDot = styled.div<{ disabled: boolean }>`
   transform: translate(-50%, -75%);
 `
 
-export const ScheduleContainer = styled.div<{ selected: boolean }>`
+export const ScheduleWrapper = styled.div<{ selected: boolean }>`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 ${({ theme }) => theme.spacing()};
+  background-color: ${({ theme, selected }) =>
+    selected ? theme.backgroundImage : 'none'};
+  border-radius: ${({ theme, selected }) =>
+    selected ? theme.borderRadius() : 0};
+  &:not(:first-of-type) > div {
+    border-top: 1px solid
+      ${({ theme, selected }) => (selected ? 'transparent' : theme.borderColor)};
+  }
+  *[data-selected='true'] + & > div {
+    border-color: transparent;
+  }
+`
+
+export const ScheduleContainer = styled.div`
   cursor: pointer;
   user-select: none;
   width: 100%;
   box-sizing: border-box;
-  border-radius: ${({ theme, selected }) =>
-    selected ? theme.borderRadius() : 0};
   display: flex;
+  padding: ${({ theme }) => theme.spacing()} 0;
+  margin: 0;
   justify-content: space-between;
   align-items: center;
-  padding: ${({ theme }) => theme.spacing()};
-  &:not(:first-of-type) {
-    border-top: 1px solid
-      ${({ theme, selected }) => (selected ? 'transparent' : theme.borderColor)};
-  }
-  *[data-selected='true'] + & {
-    border-color: transparent;
-  }
-  background-color: ${({ theme, selected }) =>
-    selected ? theme.backgroundImage : 'none'};
 `
 
 export const ScheduleInfo = styled.div``

@@ -56,7 +56,14 @@ const ScheduleList = ({
 
   return (
     <>
-      <Box border={false} style={{ width: '100%', marginBottom: 0 }}>
+      <Box
+        border={false}
+        style={{
+          width: '100%',
+          marginBottom: 0,
+          padding: `${theme.spacing(1)} ${theme.spacing(2)}`,
+        }}
+      >
         <Text type='header'>{t.mining.scheduling.title}</Text>
         <Text as='p' style={{ marginTop: theme.spacing() }}>
           {t.mining.scheduling.launchpadOpen}
