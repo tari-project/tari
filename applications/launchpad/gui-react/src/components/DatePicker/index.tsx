@@ -5,6 +5,7 @@ import { useLilius } from 'use-lilius'
 import ArrowLeft from '../../styles/Icons/ArrowLeft2'
 import ArrowRight from '../../styles/Icons/ArrowRight2'
 import t from '../../locales'
+import { month } from '../../utils/Format'
 import Button from '../Button'
 import Text from '../Text'
 
@@ -78,9 +79,7 @@ const DatePicker = ({
         >
           <ArrowLeft width='28px' height='28px' color={theme.onTextLight} />
         </Button>
-        <Text color={theme.secondary}>
-          {viewing.toLocaleDateString([], { year: 'numeric', month: 'long' })}
-        </Text>
+        <Text color={theme.secondary}>{month(viewing)}</Text>
         <Button
           variant='text'
           onClick={viewNextMonth}
