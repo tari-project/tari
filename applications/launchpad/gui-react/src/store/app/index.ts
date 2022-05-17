@@ -5,6 +5,12 @@ import { Schedule } from '../../types/general'
 
 import { AppState, ExpertViewType, ViewType } from './types'
 
+const test = new Date('2022-05-19')
+test.setHours(0)
+test.setMinutes(0)
+test.setSeconds(0)
+test.setMilliseconds(0)
+
 const appInitialState: AppState = {
   expertView: 'hidden',
   view: 'MINING',
@@ -13,7 +19,7 @@ const appInitialState: AppState = {
     asdf: {
       id: 'asdf',
       enabled: true,
-      days: [0, 1, 2],
+      date: test,
       interval: {
         from: { hours: 0, minutes: 0 },
         to: { hours: 19, minutes: 35 },

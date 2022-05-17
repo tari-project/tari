@@ -34,3 +34,14 @@ export const isCurrentMonth = (d: Date) => {
     d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
   )
 }
+
+export const clearTime = (d: Date) => {
+  const copy = new Date(d)
+
+  copy.setHours(0)
+  copy.setMinutes(0)
+  copy.setSeconds(0)
+  copy.setMilliseconds(0)
+
+  return copy
+}
