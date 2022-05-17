@@ -81,7 +81,19 @@ const DateScheduler = ({
           <CalendarIcon height='18px' width='18px' />
         </div>
       </HumanReadableScheduledDate>
-      <DatePicker value={date} open={calendarOpen} onChange={scheduleDate} />
+      <DatePicker
+        value={date}
+        open={calendarOpen}
+        onChange={scheduleDate}
+        style={{
+          position: 'absolute',
+          left: '100%',
+          width: 'auto',
+          minWidth: 0,
+          marginTop: `-${theme.spacing(2)}`,
+          marginLeft: theme.spacing(0.25),
+        }}
+      />
     </>
   )
 }

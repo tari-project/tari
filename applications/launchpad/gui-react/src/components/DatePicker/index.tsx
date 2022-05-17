@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, CSSProperties } from 'react'
 import { useTheme } from 'styled-components'
 import { useLilius } from 'use-lilius'
 
@@ -54,10 +54,12 @@ const DatePicker = ({
   open,
   value,
   onChange,
+  style,
 }: {
   open: boolean
   value?: Date
   onChange: (d: Date) => void
+  style?: CSSProperties
 }) => {
   const theme = useTheme()
   const {
@@ -99,12 +101,6 @@ const DatePicker = ({
   return (
     <Box
       style={{
-        position: 'absolute',
-        left: '100%',
-        width: 'auto',
-        minWidth: 0,
-        marginTop: `-${theme.spacing(2)}`,
-        marginLeft: theme.spacing(0.25),
         display: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
         gridTemplateRows: '1fr 2fr',
@@ -113,6 +109,7 @@ const DatePicker = ({
         justifyItems: 'center',
         alignItems: 'center',
         justifyContent: 'center',
+        ...style,
       }}
     >
       <div
