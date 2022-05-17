@@ -1,4 +1,4 @@
-export enum TBotMessageType {
+export enum TBotMessages {
   MiningHelp = 'miningHelp',
   WalletHelp = 'walletHelp',
   BaseNodeHelp = 'baseNodeHelp',
@@ -11,5 +11,5 @@ export type TBotMessage = {
 }
 
 export interface TBotState {
-  messageQueue: TBotMessageType[]
+  messageQueue: string[]
 }
