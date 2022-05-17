@@ -23,10 +23,10 @@ The Tari Launchpad is dedicated for beginners in Blockchain world, as well as fo
 
 ```bash
 # Installation
-$ npm install
+$ yarn install
 
 # Run the application
-$ npm run dev
+$ cd .. && yarn tauri dev
 ```
 
 ### Other scripts
@@ -34,26 +34,54 @@ $ npm run dev
 #### ESlint
 
 ```bash
-$ npm run lint
+$ yarn lint
 
 # With auto-fix
-$ npm run lint:fix
+$ yarn lint:fix
 
 # Run Lint test - it produces report in temp/reports folder
-$ npm run lint:test
+$ yarn lint:test
 ```
 
 #### Tests
 
 ```bash
-$ npm run test
+$ yarn test
+```
+
+Test sepcific test suite:
+
+```bash
+$ yarn jest Button
 ```
 
 #### Build
 
 ```bash
-$ npm run bundle
+$ yarn bundle
 ```
+
+#### Redux Devtools
+
+1. Run application
+
+```bash
+$ cd .. && yarn tauri dev
+```
+
+2. Start remote server
+
+```bash
+$ yarn redux-devtools
+```
+
+3. Open remote Redux dev tools. You can do this on different ways. One is using Chrome extension by clicking on "Open Remote DevTools".
+
+4. In Redux DevTools, go to "Settings".
+
+a) Select **use local (custom) server**
+b) set **hostname: localhost** and **port: 8000**
+c) click connect
 
 ## Development notes
 
@@ -89,7 +117,7 @@ const TariButton = ({ onClick }: TariButtonProps) => { ... }
 
 - _must have_: a minimal test that tries to render a given component
 - _nice to have_: test that covers state changes and user interactions
-- _nice to have_: brief JSDoc to anything that has `export` label
+- _nice to have_: brief JSDoc to anything that has `export` label
 
 ### Locales
 

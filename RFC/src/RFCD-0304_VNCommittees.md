@@ -2,7 +2,7 @@
 
 ## Validator Node Committee Selection
 
-![status: draft](theme/images/status-draft.svg)
+![status: deprecated](theme/images/status-deprecated.svg)
 
 **Maintainer(s)**: [Philip Robinson](https://github.com/philipr-za)
 
@@ -54,15 +54,15 @@ select the committee of [Validator Node]s
 
 ## Related Requests for Comment
 * [RFC-0311: Digital Asset Templates](RFC-0311_AssetTemplates.md)
-* [RFC-0302: Validator Nodes](RFC-0302_ValidatorNodes.md)
-* [RFC-0341: Asset Registration](RFC-0341_AssetRegistration.md)
+* [RFC-0302: Validator Nodes](RFCD-0302_ValidatorNodes.md)
+* [RFC-0341: Asset Registration](RFC-0341D_AssetRegistration.md)
 
 ## Description
 
 ### Abstract
 [Digital Asset]s (DAs) are managed by [committee]s of nodes called [Validator Node]s (VNs), as described in 
-[RFC-0300](RFC-0300_DAN.md) and [RFC-0302](RFC-0302_ValidatorNodes.md). During the asset creation process, described in 
-[RFC-0341](RFC-0341_AssetRegistration.md), the [Asset Issuer] (AI) MUST select a committee of VNs to manage their asset. 
+[RFC-0300](RFCD-0300_DAN.md) and [RFC-0302](RFCD-0302_ValidatorNodes.md). During the asset creation process, described in
+[RFC-0341](RFC-0341D_AssetRegistration.md), the [Asset Issuer] (AI) MUST select a committee of VNs to manage their asset.
 This process consists of the following steps:
 
 1. Candidate VNs MUST be nominated to be considered for selection by the AI.

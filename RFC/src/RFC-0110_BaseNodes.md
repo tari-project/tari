@@ -78,7 +78,7 @@ Tari Base Nodes MUST carry out the following tasks:
 * provide historical block information to peers that are syncing.
 
 Once the Digital Assets Network (DAN) goes live, Base Nodes will also need to support the tasks described in
-[RFC-0300_DAN](RFC-0300_DAN.md). These requirements are omitted for the moment.
+[RFC-0300_DAN](RFCD-0300_DAN.md). These requirements are omitted for the moment.
 
 To carry out these tasks effectively, Base Nodes SHOULD:
 

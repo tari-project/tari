@@ -61,7 +61,7 @@ or allow for one party to change the elements provided by the counterparty witho
 ## Related Requests for Comment
 
 * [RFC-0201: TariScript](RFC-0201_TariScript.md)
-* [RFC-0300: Digital Assets Network](RFC-0300_DAN.md)
+* [RFC-0300: Digital Assets Network](RFCD-0300_DAN.md)
 
 $$
 \newcommand{\hash}[1]{\mathrm{H}\bigl({#1}\bigr)}

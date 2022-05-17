@@ -53,7 +53,7 @@ The aim of this Request for Comment (RFC) is to describe the fields that a block
 ## Related Requests for Comment
 
 * [RFC-0100: Base Layer](RFC-0100_BaseLayer.md)
-* [RFC-0130: Mining](./RFC-0130_Mining.md)
+* [RFC-0130: Mining](RFCD-0130_Mining.md)
 * [RFC-0140: SyncAndSeeding](RFC-0140_Syncing_and_seeding.md)
 
 ## Description

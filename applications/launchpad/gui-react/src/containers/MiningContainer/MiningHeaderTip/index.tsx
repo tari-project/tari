@@ -20,7 +20,6 @@ import MessagesConfig from '../../../config/messagesConfig'
 /**
  * Renders instructions above mining node boxes
  */
-
 const MiningHeaderTip = () => {
   const tariMiningStatus = useSelector(selectTariMiningStatus)
   const lastSession = useSelector((state: RootState) =>
