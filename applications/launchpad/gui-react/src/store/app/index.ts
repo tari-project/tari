@@ -5,12 +5,6 @@ import { Schedule } from '../../types/general'
 
 import { AppState, ExpertViewType, ViewType } from './types'
 
-const test = new Date('2022-05-19')
-test.setHours(0)
-test.setMinutes(0)
-test.setSeconds(0)
-test.setMilliseconds(0)
-
 const appInitialState: AppState = {
   expertView: 'hidden',
   view: 'MINING',
@@ -19,7 +13,7 @@ const appInitialState: AppState = {
     asdf: {
       id: 'asdf',
       enabled: true,
-      date: test,
+      days: [1],
       interval: {
         from: { hours: 0, minutes: 0 },
         to: { hours: 19, minutes: 35 },
@@ -39,7 +33,7 @@ const appInitialState: AppState = {
     wqer1: {
       id: 'wqer1',
       enabled: true,
-      date: new Date('2022-05-14'),
+      date: '2022-05-14',
       interval: {
         from: { hours: 13, minutes: 7 },
         to: { hours: 23, minutes: 59 },
@@ -49,7 +43,7 @@ const appInitialState: AppState = {
     asdf2: {
       id: 'asdf2',
       enabled: false,
-      date: new Date('2022-05-14'),
+      date: '2022-05-15',
       interval: {
         from: { hours: 7, minutes: 0 },
         to: { hours: 15, minutes: 0 },
@@ -80,9 +74,19 @@ const appSlice = createSlice({
     },
     updateSchedule(
       state,
-      { payload }: { payload: { scheduleId: string; value: Schedule } },
+      {
+        payload: { scheduleId, value },
+      }: { payload: { scheduleId: string; value: Schedule } },
     ) {
-      console.log('update schedule', payload)
+      const { date, ...rest } = value
+      const newSchedule = {
+        ...state.schedules[scheduleId],
+        ...rest,
+      }
+
+      newSchedule.date = date?.toUTCString()
+
+      state.schedules[scheduleId] = newSchedule
     },
   },
 })
