@@ -16,7 +16,15 @@ import { DatePickerProps } from './types'
 
 const allowPast = false
 
-const DatePicker = ({
+/**
+ * @name DatePickerComponent
+ * @description date picker component that renders calendar and returns selected date
+ *
+ * @prop {Date} [value] - selected value
+ * @prop {(d: Date) => void} onChange - callback called when user selects a date
+ * style {CSSProperties} [style] - optional styles to main container of the date picker
+ */
+const DatePickerComponent = ({
   value,
   onChange,
   style,
@@ -75,7 +83,7 @@ const DatePicker = ({
           {weekDay}
         </Text>
       ))}
-      {calendar[0].map(week => (
+      {calendar[0].map((week, weekId) => (
         <>
           {week.map(day => {
             const isInMonth = inRange(
@@ -94,11 +102,19 @@ const DatePicker = ({
             return (
               <Day
                 data-selected={isSelected(day)}
-                key={`week-${week[0]}-day-${day}`}
+                key={`week-${weekId}-day-${day}`}
                 disabled={disabled || isSelected(day)}
                 onClick={() => {
                   toggle(day, true)
-                  onChange(day)
+                  onChange(
+                    new Date(
+                      Date.UTC(
+                        day.getFullYear(),
+                        day.getMonth(),
+                        day.getDate(),
+                      ),
+                    ),
+                  )
                 }}
                 variant='text'
                 selected={isSelected(day)}
@@ -113,4 +129,4 @@ const DatePicker = ({
   )
 }
 
-export default DatePicker
+export default DatePickerComponent

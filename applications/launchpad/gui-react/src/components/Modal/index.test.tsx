@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
-import Modal from '.'
-
 import themes from '../../styles/themes'
+
+import Modal from '.'
 
 describe('Modal', () => {
   it('should not render children when modal is not open', () => {
