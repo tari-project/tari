@@ -45,6 +45,9 @@ const translations = {
     error_miningEndsWhenItStarts:
       /* eslint-disable-next-line quotes */
       "I guess you need to correct the hours because mining can't stop exactly when it starts",
+    error_miningInThePast:
+      /* eslint-disable-next-line quotes */
+      "I guess you need to correct the selected date because we can't mine in the past",
   },
 }
 

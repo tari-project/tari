@@ -6,13 +6,18 @@ import ArrowLeft from '../../styles/Icons/ArrowLeft2'
 import ArrowRight from '../../styles/Icons/ArrowRight2'
 import t from '../../locales'
 import { month } from '../../utils/Format'
+import {
+  clearTime,
+  endOfMonth,
+  startOfMonth,
+  isCurrentMonth,
+} from '../../utils/Date'
 import Button from '../Button'
 import Text from '../Text'
 
 import Day from './Day'
 import DatePickerWrapper from './DatePickerWrapper'
 import { MonthContainer } from './styles'
-import { clearTime, endOfMonth, startOfMonth, isCurrentMonth } from './utils'
 import { DatePickerProps } from './types'
 
 const allowPast = false
