@@ -9,6 +9,8 @@ import Box from '../Box'
 import Button from '../Button'
 import Text from '../Text'
 
+import Day from './Day'
+
 const allowPast = false
 
 const endOfMonth = (d: Date) => {
@@ -41,22 +43,6 @@ const startOfMonth = (d: Date) => {
   return copy
 }
 
-const isToday = (d: Date) => {
-  const startOfToday = new Date()
-  startOfToday.setHours(0)
-  startOfToday.setMinutes(0)
-  startOfToday.setSeconds(0)
-  startOfToday.setMilliseconds(0)
-
-  const endOfToday = new Date()
-  endOfToday.setHours(23)
-  endOfToday.setMinutes(59)
-  endOfToday.setSeconds(59)
-  endOfToday.setMilliseconds(999)
-
-  return d >= startOfToday && d <= endOfToday
-}
-
 const isCurrentMonth = (d: Date) => {
   const now = new Date()
   return Boolean(
@@ -73,6 +59,7 @@ const DatePicker = ({
   value?: Date
   onChange: (d: Date) => void
 }) => {
+  const theme = useTheme()
   const {
     calendar,
     clearSelected,
@@ -80,23 +67,30 @@ const DatePicker = ({
     inRange,
     isSelected,
     select,
+    selected,
     setViewing,
     toggle,
     viewing,
     viewNextMonth,
     viewPreviousMonth,
   } = useLilius()
-  const theme = useTheme()
+
   useEffect(() => {
+    if (!value && selected.length) {
+      clearSelected()
+    }
+
+    if (value && isSelected(value)) {
+      return
+    }
+
     if (value) {
       select(value)
       setViewing(value)
 
       return
     }
-
-    clearSelected()
-  }, [value, select, clearSelected])
+  }, [isSelected, value, select, selected, clearSelected])
 
   if (!open) {
     return null
@@ -115,7 +109,7 @@ const DatePicker = ({
         gridTemplateColumns: 'repeat(7, 1fr)',
         gridTemplateRows: '1fr 2fr',
         gridTemplateAreas: '"month month month month month month month"',
-        columnGap: theme.spacing(0.5),
+        columnGap: theme.spacing(0.25),
         justifyItems: 'center',
         alignItems: 'center',
         justifyContent: 'center',
@@ -126,6 +120,7 @@ const DatePicker = ({
           gridArea: 'month',
           display: 'flex',
           justifyContent: 'center',
+          alignItems: 'center',
         }}
       >
         <Button
@@ -138,7 +133,7 @@ const DatePicker = ({
             color: theme.onTextLight,
           }}
         >
-          <ArrowLeft width='20px' height='20px' color={theme.onTextLight} />
+          <ArrowLeft width='28px' height='28px' color={theme.onTextLight} />
         </Button>
         <Text color={theme.secondary}>
           {viewing.toLocaleDateString([], { year: 'numeric', month: 'long' })}
@@ -152,7 +147,7 @@ const DatePicker = ({
             color: theme.onTextLight,
           }}
         >
-          <ArrowRight width='20px' height='20px' color={theme.onTextLight} />
+          <ArrowRight width='28px' height='28px' color={theme.onTextLight} />
         </Button>
       </div>
       {Object.values(t.common.weekdayShort).map(weekDay => (
@@ -173,37 +168,29 @@ const DatePicker = ({
               startOfMonth(clearTime(viewing)),
               endOfMonth(clearTime(viewing)),
             )
-            const color = isInMonth ? undefined : theme.placeholderText
+            const selected = isSelected(day)
+            const color = isInMonth
+              ? selected
+                ? theme.on
+                : undefined
+              : theme.placeholderText
             const disabled =
               !allowPast && clearTime(day) < clearTime(new Date())
 
             return (
-              <Button
-                data-selected={isSelected(day)}
+              <Day
+                data-selected={selected}
                 key={`week-${week[0]}-day-${day}`}
-                onClick={
-                  disabled
-                    ? undefined
-                    : () => {
-                        toggle(day, true)
-                        onChange(day)
-                      }
-                }
-                variant='text'
-                style={{
-                  padding: theme.spacing(0.25),
-                  backgroundColor: isSelected(day) ? theme.onTextLight : '',
-                  color: disabled
-                    ? theme.placeholderText
-                    : isSelected(day)
-                    ? theme.on
-                    : theme.primary,
-                  borderRadius: '50%',
-                  textDecoration: isToday(day) ? 'underline' : '',
+                disabled={disabled || selected}
+                onClick={() => {
+                  toggle(day, true)
+                  onChange(day)
                 }}
+                variant='text'
+                selected={selected}
               >
                 <Text color={color}>{day.getDate().toString()}</Text>
-              </Button>
+              </Day>
             )
           })}
         </>
