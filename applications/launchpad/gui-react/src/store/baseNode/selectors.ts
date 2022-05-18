@@ -18,7 +18,10 @@ export const selectContainerStatuses = (rootState: RootState) =>
 export const selectRunning = (rootState: RootState) => {
   const containers = selectContainerStatuses(rootState)
 
-  return containers.every(container => container.running)
+  return (
+    containers.every(container => container.running) ||
+    containers.some(container => container.running && container.pending)
+  )
 }
 
 export const selectPending = (rootState: RootState) => {
