@@ -15,7 +15,7 @@ import {
 } from '../../../store/mining/selectors'
 import { MiningNodesStatus } from '../../../store/mining/types'
 import { RootState } from '../../../store'
-import MessagesConfig from '../../../config/messagesConfig'
+import MessagesConfig from '../../../config/helpMessagesConfig'
 
 /**
  * Renders instructions above mining node boxes
@@ -43,8 +43,6 @@ const MiningHeaderTip = () => {
       break
   }
 
-  console.log(MessagesConfig.miningHelp)
-
   return (
     <StyledMiningHeaderTip data-testid='mining-header-tip-cmp'>
       <SvgStar height={24} width={24} style={{ marginRight: 8 }} />
@@ -56,10 +54,21 @@ const MiningHeaderTip = () => {
             rightIcon={<SvgInfo1 width='20px' height='20px' />}
             autosizeIcons={false}
             onClick={() =>
-              dispatch(tbotactions.push(MessagesConfig.miningHelp))
+              dispatch(tbotactions.push(MessagesConfig.cryptoMiningHelp))
             }
           >
             {t.mining.headerTips.wantToKnowMore}
+          </Button>
+          {/* FOR DEV PURPOSES */}
+          <Button
+            variant='button-in-text'
+            rightIcon={<SvgInfo1 width='20px' height='20px' />}
+            autosizeIcons={false}
+            onClick={() =>
+              dispatch(tbotactions.push(MessagesConfig.mergedMiningHelp))
+            }
+          >
+            TEST BUTTON
           </Button>
         </Text>
       </Text>

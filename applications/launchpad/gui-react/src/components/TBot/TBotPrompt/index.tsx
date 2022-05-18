@@ -11,6 +11,8 @@ import {
   StyledCloseIcon,
   TBotContainer,
   MessageContainer,
+  StyledCloseContainer,
+  ContentContainer,
 } from './styles'
 import { useAppDispatch } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
@@ -44,15 +46,17 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
       data-testid={testid || 'tbotprompt-cmp'}
     >
       <ContentRow>
-        <MessageContainer>
-          <StyledCloseIcon>
-            <SvgClose
-              fontSize={20}
-              onClick={() => dispatch(tbotactions.close())}
-            />
-          </StyledCloseIcon>
-          {children}
-        </MessageContainer>
+        <ContentContainer>
+          <StyledCloseContainer>
+            <StyledCloseIcon>
+              <SvgClose
+                fontSize={20}
+                onClick={() => dispatch(tbotactions.close())}
+              />
+            </StyledCloseIcon>
+          </StyledCloseContainer>
+          <MessageContainer>{children}</MessageContainer>
+        </ContentContainer>
       </ContentRow>
       <TBotContainer>
         <TBot />
