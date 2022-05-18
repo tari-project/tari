@@ -70,7 +70,9 @@
   "resolutions": {
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
-    "nth-check": "^2.0.1"
+    "nth-check": "^2.0.1",
+    "async": ">=2.6.4",
+    "minimist": ">=1.2.3"
   },
   "devDependencies": {
     "@redux-devtools/cli": "^1.0.7",
