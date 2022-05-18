@@ -11,7 +11,7 @@ const getSettings = async () => ({
   dockerRegistry: 'quay.io/tarilabs',
   dockerTag: 'latest',
   monerodUrl:
-    'http://stagenet.community.xmr.to:38081,http://monero-stagenet.exan.tech:3808',
+    'http://stagenet.community.xmr.to:38081,http://monero-stagenet.exan.tech:38081',
   moneroUseAuth: false,
   moneroUsername: '',
   moneroPassword: '',

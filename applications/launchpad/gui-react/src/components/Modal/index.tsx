@@ -1,4 +1,6 @@
-import { ModalContainer, Backdrop, ModalContent } from './styles'
+import Backdrop from '../Backdrop'
+
+import { ModalContainer, ModalContent } from './styles'
 import type { ModalProps } from './types'
 
 const Modal = ({ open, children, onClose, size }: ModalProps) => {

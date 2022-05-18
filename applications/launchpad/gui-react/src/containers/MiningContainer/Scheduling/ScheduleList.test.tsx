@@ -3,6 +3,7 @@ import { ThemeProvider } from 'styled-components'
 
 import themes from '../../../styles/themes'
 import { MiningNodeType } from '../../../types/general'
+import t from '../../../locales'
 
 import ScheduleList from './ScheduleList'
 
@@ -45,7 +46,7 @@ describe('ScheduleList', () => {
       </ThemeProvider>,
     )
 
-    const addScheduleButton = screen.getByText('Add schedule')
+    const addScheduleButton = screen.getByText(t.mining.scheduling.add)
     expect(addScheduleButton).toBeInTheDocument()
 
     fireEvent.click(addScheduleButton)
@@ -67,7 +68,7 @@ describe('ScheduleList', () => {
       </ThemeProvider>,
     )
 
-    const addScheduleButton = screen.getByText('Add schedule')
+    const addScheduleButton = screen.getByText(t.mining.scheduling.add)
     expect(addScheduleButton).toBeInTheDocument()
 
     fireEvent.click(addScheduleButton)

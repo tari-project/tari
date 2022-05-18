@@ -4,8 +4,10 @@ const translations: { [key: string]: { [key: string]: string } } = {
   verbs: {
     accept: 'Accept',
     cancel: 'Cancel',
+    tryAgain: 'Try again',
     stop: 'Stop',
     start: 'Start',
+    save: 'Save',
     pause: 'Pause',
     continue: 'Continue',
     close: 'Close',
@@ -24,7 +26,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     memory: 'Memory',
     error: 'Error',
   },
-  dayCapitals: {
+  weekdayCapitals: {
     sunday: 'S',
     monday: 'M',
     tuesday: 'T',
@@ -32,6 +34,15 @@ const translations: { [key: string]: { [key: string]: string } } = {
     thursday: 'T',
     friday: 'F',
     saturday: 'S',
+  },
+  weekdayShort: {
+    sunday: 'Sun',
+    monday: 'Mon',
+    tuesday: 'Tue',
+    wednesday: 'Wed',
+    thursday: 'Thu',
+    friday: 'Fri',
+    saturday: 'Sat',
   },
   adjectives: {
     running: 'Running',

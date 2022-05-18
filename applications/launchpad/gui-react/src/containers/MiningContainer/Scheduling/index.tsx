@@ -33,7 +33,7 @@ const SchedulingContainer = ({
   const scheduleToEdit = useAppSelector(selectSchedule(idToEdit))
   const dispatch = useAppDispatch()
 
-  const clearEditState = () => {
+  const stopEditing = () => {
     setEditOpen(false)
     setScheduleToEdit('')
   }
@@ -49,8 +49,13 @@ const SchedulingContainer = ({
   }
 
   const close = () => {
-    clearEditState()
+    stopEditing()
     onClose()
+  }
+
+  const removeScheduleBeingEdited = () => {
+    dispatch(removeSchedule(idToEdit))
+    stopEditing()
   }
 
   return (
@@ -69,9 +74,12 @@ const SchedulingContainer = ({
         {editOpen && (
           <ScheduleForm
             value={scheduleToEdit}
-            onChange={value =>
+            cancel={stopEditing}
+            remove={removeScheduleBeingEdited}
+            onChange={value => {
               dispatch(updateSchedule({ value, scheduleId: idToEdit }))
-            }
+              stopEditing()
+            }}
           />
         )}
       </ScheduleContainer>

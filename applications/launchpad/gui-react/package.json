@@ -12,11 +12,13 @@
     "@types/react-dom": "^18.0.0",
     "deepmerge": "^4.2.2",
     "react": ">=18.0.0",
+    "react-css-transition-replace": "^4.0.5",
     "react-dom": ">=18.0.0",
     "react-hook-form": "^7.30.0",
     "react-redux": "^8.0.0",
     "react-scripts": "5.0.0",
     "react-spring": "^9.4.5-beta.1",
+    "react-time-picker-input": "^2.0.10",
     "styled-components": "^5.3.5",
     "typescript": "^4.4.2",
     "web-vitals": "^2.1.0"
