@@ -83,7 +83,7 @@ const BaseNode = ({
         </Box>
         {!running && (
           <Button disabled={pending} onClick={startNode} loading={pending}>
-            <Text type='defaultMedium'>{t.baseNode.start}</Text>
+            {t.baseNode.start}
           </Button>
         )}
         {running && (
@@ -97,7 +97,7 @@ const BaseNode = ({
               border: 'none',
             }}
           >
-            <Text type='defaultMedium'>{t.common.verbs.stop}</Text>
+            {t.common.verbs.stop}
           </Button>
         )}
         {!healthy && (
