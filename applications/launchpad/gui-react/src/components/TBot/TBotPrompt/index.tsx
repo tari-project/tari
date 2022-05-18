@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { config, useSpring } from 'react-spring'
 
 import SvgClose from '../../../styles/Icons/Close'
@@ -13,6 +14,7 @@ import {
   MessageContainer,
   StyledCloseContainer,
   ContentContainer,
+  FadeOutSection,
 } from './styles'
 import { useAppDispatch } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
@@ -27,6 +29,7 @@ import { tbotactions } from '../../../store/tbot'
  */
 
 const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
+  const [multipleMessages, setMultipleMessages] = useState(false)
   const dispatch = useAppDispatch()
   const promptAnim = useSpring({
     from: {
@@ -35,6 +38,14 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
     opacity: 1,
     config: config.wobbly,
   })
+
+  useEffect(() => {
+    if (children && children.length > 1) {
+      setMultipleMessages(true)
+    } else {
+      setMultipleMessages(false)
+    }
+  }, [children])
 
   if (!open) {
     return null
@@ -47,6 +58,7 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
     >
       <ContentRow>
         <ContentContainer>
+          {multipleMessages && <FadeOutSection />}
           <StyledCloseContainer>
             <StyledCloseIcon>
               <SvgClose
@@ -55,7 +67,9 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
               />
             </StyledCloseIcon>
           </StyledCloseContainer>
-          <MessageContainer>{children}</MessageContainer>
+          <MessageContainer multi={multipleMessages}>
+            {children}
+          </MessageContainer>
         </ContentContainer>
       </ContentRow>
       <TBotContainer>

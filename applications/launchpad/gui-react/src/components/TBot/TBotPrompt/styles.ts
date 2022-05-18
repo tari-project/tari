@@ -32,9 +32,25 @@ export const ContentContainer = styled(animated.div)`
   padding-bottom: 12px;
 `
 
-export const MessageContainer = styled(animated.div)`
-  height: 468px;
-  overflow-y: auto;
+export const FadeOutSection = styled.div`
+  position: absolute;
+  height: 200px;
+  width: 398px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 1),
+    rgba(255, 255, 255, 0)
+  );
+  z-index: 2;
+  border-radius: ${({ theme }) => theme.borderRadius(2)};
+`
+
+export const MessageContainer = styled(animated.div)<{ multi?: boolean }>`
+  /* height: ${({ multi }) => (multi ? 500 : 300)}; */
+  height: 500px;
+  min-height: 300px;
+  overflow-y: scroll;
+  z-index: 1;
 `
 
 export const TBotContainer = styled(animated.div)`
@@ -54,6 +70,10 @@ export const StyledCloseIcon = styled.div`
   color: ${({ theme }) => theme.secondary};
   cursor: pointer;
   margin-right: 27px;
+  position: absolute;
+  right: 59px;
+  top: 24px;
+  z-index: 3;
 `
 
 export const StyledMessage = styled(animated.div)`
