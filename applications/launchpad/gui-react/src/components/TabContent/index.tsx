@@ -1,5 +1,3 @@
-import { ReactNode } from 'react'
-
 import t from '../../locales'
 import Loading from '../Loading'
 import Tag from '../Tag'
@@ -11,19 +9,16 @@ const TabContent = ({
   running,
   pending,
   tagSubText,
-  tag,
 }: {
   text: string
   running?: boolean
   pending?: boolean
   tagSubText?: string
-  tag?: ReactNode
 }) => {
   return (
     <StyledTabContent>
       <TabMainText>{text}</TabMainText>
-      {tag}
-      {!tag && running && !pending ? (
+      {running && !pending ? (
         <Tag variant='small' type='running' subText={tagSubText}>
           {t.common.adjectives.running}
         </Tag>
