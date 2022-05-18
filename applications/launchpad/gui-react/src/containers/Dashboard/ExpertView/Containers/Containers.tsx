@@ -83,7 +83,14 @@ const Containers = ({ containers, stop, start }: ContainersProps) => {
                   <Button
                     variant='text'
                     loading={container.pending}
-                    leftIcon={<StartIcon width='24px' height='24px' />}
+                    autosizeIcons={false}
+                    leftIcon={
+                      <StartIcon
+                        width='24px'
+                        height='24px'
+                        style={{ color: theme.inverted.accentSecondary }}
+                      />
+                    }
                     style={{
                       paddingRight: 0,
                       paddingLeft: 0,
@@ -91,13 +98,14 @@ const Containers = ({ containers, stop, start }: ContainersProps) => {
                     }}
                     onClick={() => start(container.container)}
                   >
-                    {t.common.verbs.start}
+                    <Text type='smallMedium'>{t.common.verbs.start}</Text>
                   </Button>
                 )}
                 {container.running && (
                   <Button
                     variant='text'
                     loading={container.pending}
+                    autosizeIcons={false}
                     leftIcon={
                       <StopIcon
                         width='24px'
@@ -108,11 +116,11 @@ const Containers = ({ containers, stop, start }: ContainersProps) => {
                     style={{
                       paddingRight: 0,
                       paddingLeft: 0,
-                      color: theme.inverted.primary,
+                      color: theme.placeholderText,
                     }}
                     onClick={() => stop(container.id)}
                   >
-                    {t.common.verbs.stop}
+                    <Text type='smallMedium'>{t.common.verbs.stop}</Text>
                   </Button>
                 )}
               </td>

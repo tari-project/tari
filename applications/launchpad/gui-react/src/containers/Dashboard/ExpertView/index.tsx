@@ -6,6 +6,7 @@ import { setExpertView } from '../../../store/app'
 import { selectExpertView } from '../../../store/app/selectors'
 import Tabs from '../../../components/Tabs'
 import Button from '../../../components/Button'
+import Text from '../../../components/Text'
 import TabContent from '../../../components/TabContent'
 import ExpandIcon from '../../../styles/Icons/Monitor'
 import CollapseIcon from '../../../styles/Icons/Grid'
@@ -60,21 +61,23 @@ const ExpertView = () => {
         {!isFullscreen && (
           <Button
             variant='text'
-            leftIcon={<ExpandIcon width='20px' height='20px' />}
+            autosizeIcons={false}
+            leftIcon={<ExpandIcon width='24px' height='24px' />}
             style={{ paddingRight: 0, paddingLeft: 0 }}
             onClick={() => dispatch(setExpertView('fullscreen'))}
           >
-            {t.expertView.fullscreen.open}
+            <Text type='smallMedium'>{t.expertView.fullscreen.open}</Text>
           </Button>
         )}
         {isFullscreen && (
           <Button
             variant='text'
-            leftIcon={<CollapseIcon width='20px' height='20px' />}
+            autosizeIcons={false}
+            leftIcon={<CollapseIcon width='24px' height='24px' />}
             style={{ paddingRight: 0, paddingLeft: 0 }}
             onClick={() => dispatch(setExpertView('open'))}
           >
-            {t.expertView.fullscreen.close}
+            <Text type='smallMedium'>{t.expertView.fullscreen.close}</Text>
           </Button>
         )}
       </TabsContainer>
