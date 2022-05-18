@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
 import themes from '../../../../../styles/themes'
+import t from '../../../../../locales'
 
 import DateScheduler from './'
 
@@ -14,8 +15,8 @@ describe('DateScheduler', () => {
       </ThemeProvider>,
     )
 
-    fireEvent.click(screen.getByText('M'))
-    fireEvent.click(screen.getByText('W'))
+    fireEvent.click(screen.getByText(t.common.weekdayCapitals.monday))
+    fireEvent.click(screen.getByText(t.common.weekdayCapitals.wednesday))
 
     expect(onChange).toHaveBeenCalledTimes(2)
     expect(onChange).toHaveBeenCalledWith({ days: [1], date: undefined })
@@ -30,7 +31,7 @@ describe('DateScheduler', () => {
       </ThemeProvider>,
     )
 
-    fireEvent.click(screen.getByText('M'))
+    fireEvent.click(screen.getByText(t.common.weekdayCapitals.monday))
 
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange).toHaveBeenCalledWith({ days: [1, 3], date: undefined })
@@ -44,7 +45,7 @@ describe('DateScheduler', () => {
       </ThemeProvider>,
     )
 
-    fireEvent.click(screen.getByText('M'))
+    fireEvent.click(screen.getByText(t.common.weekdayCapitals.monday))
 
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange).toHaveBeenCalledWith({ days: [1], date: undefined })

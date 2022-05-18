@@ -3,6 +3,7 @@ import { ThemeProvider } from 'styled-components'
 
 import { Schedule } from '../../../../types/general'
 import themes from '../../../../styles/themes'
+import t from '../../../../locales'
 
 import ScheduleForm from './'
 
@@ -27,15 +28,21 @@ describe('ScheduleForm', () => {
       </ThemeProvider>,
     )
 
-    expect(screen.getByText('Save').closest('button')).toBeDisabled()
+    expect(
+      screen.getByText(t.common.verbs.save).closest('button'),
+    ).toBeDisabled()
 
-    fireEvent.click(screen.getByText('Tari Mining'))
-    expect(screen.getByText('Save').closest('button')).toBeDisabled()
+    fireEvent.click(screen.getByText(t.common.miningType.tari))
+    expect(
+      screen.getByText(t.common.verbs.save).closest('button'),
+    ).toBeDisabled()
 
-    fireEvent.click(screen.getByText('M'))
-    expect(screen.getByText('Save').closest('button')).not.toBeDisabled()
+    fireEvent.click(screen.getByText(t.common.weekdayCapitals.monday))
+    expect(
+      screen.getByText(t.common.verbs.save).closest('button'),
+    ).not.toBeDisabled()
 
-    fireEvent.click(screen.getByText('Save'))
+    fireEvent.click(screen.getByText(t.common.verbs.save))
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 
@@ -50,7 +57,9 @@ describe('ScheduleForm', () => {
       </ThemeProvider>,
     )
 
-    expect(screen.queryByText('Remove schedule')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(t.mining.scheduling.removeSchedule),
+    ).not.toBeInTheDocument()
   })
 
   it('should allow removing schedule when it is passed to edit', () => {
@@ -67,7 +76,7 @@ describe('ScheduleForm', () => {
       </ThemeProvider>,
     )
 
-    const removeButton = screen.getByText('Remove schedule')
+    const removeButton = screen.getByText(t.mining.scheduling.removeSchedule)
     expect(removeButton).toBeInTheDocument()
 
     fireEvent.click(removeButton)
@@ -95,13 +104,13 @@ describe('ScheduleForm', () => {
       </ThemeProvider>,
     )
 
-    expect(screen.queryByText('Ops!')).not.toBeInTheDocument()
+    expect(screen.queryByText(t.mining.scheduling.ops)).not.toBeInTheDocument()
 
-    const saveButton = screen.getByText('Save')
+    const saveButton = screen.getByText(t.common.verbs.save)
     fireEvent.click(saveButton)
 
-    expect(screen.queryByText('Ops!')).toBeInTheDocument()
-    expect(screen.queryByText('Try again')).toBeInTheDocument()
+    expect(screen.queryByText(t.mining.scheduling.ops)).toBeInTheDocument()
+    expect(screen.queryByText(t.common.verbs.tryAgain)).toBeInTheDocument()
   })
 
   it('cancelling on error should get you back to list', () => {
@@ -126,15 +135,15 @@ describe('ScheduleForm', () => {
       </ThemeProvider>,
     )
 
-    const saveButton = screen.getByText('Save')
+    const saveButton = screen.getByText(t.common.verbs.save)
     fireEvent.click(saveButton)
 
     const errorBox = screen
-      .queryByText('Try again')
+      .queryByText(t.common.verbs.tryAgain)
       ?.closest('[data-testid="box-cmp"]')
     const buttons = Array.from(errorBox?.querySelectorAll('button') || [])
     const cancelButton = buttons?.find(
-      (b: HTMLElement) => b.textContent === 'Cancel',
+      (b: HTMLElement) => b.textContent === t.common.verbs.cancel,
     )
     expect(cancelButton).toBeInTheDocument()
 
