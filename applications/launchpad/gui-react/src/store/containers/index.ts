@@ -115,6 +115,11 @@ const servicesSlice = createSlice({
     })
     builder.addCase(stop.fulfilled, (state, { meta }) => {
       state.pending = state.pending.filter(p => p !== meta.arg)
+      state.containers[meta.arg].error = undefined
+      const type = state.containers[meta.arg].type
+      if (type) {
+        state.errors[type] = undefined
+      }
     })
     builder.addCase(stop.rejected, (state, action) => {
       state.pending = state.pending.filter(p => p !== action.meta.arg)

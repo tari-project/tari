@@ -15,24 +15,15 @@ export const selectContainerStatuses = (rootState: RootState) =>
     selectContainerStatus(containerType)(rootState),
   )
 
-export const selectHealthy = (rootState: RootState) => {
-  const containers = selectContainerStatuses(rootState)
-
-  const unhealthy =
-    containers.some(container => !container.pending && container.running) &&
-    containers.some(container => !container.pending && !container.running)
-
-  return !unhealthy
-}
-export const selectUnhealthyContainers = (rootState: RootState) => {
-  const containers = selectContainerStatuses(rootState)
-  return containers.filter(container => !container.running)
-}
 export const selectRunning = (rootState: RootState) => {
   const containers = selectContainerStatuses(rootState)
 
-  return Boolean(containers.filter(container => container.running).length)
+  return (
+    containers.every(container => container.running) ||
+    containers.some(container => container.running && container.pending)
+  )
 }
+
 export const selectPending = (rootState: RootState) => {
   const containers = selectContainerStatuses(rootState)
 

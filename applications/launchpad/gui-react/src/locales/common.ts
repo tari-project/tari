@@ -35,7 +35,6 @@ const translations: { [key: string]: { [key: string]: string } } = {
   },
   adjectives: {
     running: 'Running',
-    unhealthy: 'Unhealthy',
     paused: 'Paused',
     copied: 'Copied',
   },
