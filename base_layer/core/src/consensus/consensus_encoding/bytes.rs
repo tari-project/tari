@@ -32,11 +32,11 @@ use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 impl ConsensusEncoding for Vec<u8> {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         let len = self.len();
-        let mut written = writer.write_varint(len)?;
-        written += writer.write(self)?;
-        Ok(written)
+        writer.write_varint(len)?;
+        writer.write_all(self)?;
+        Ok(())
     }
 }
 
@@ -98,11 +98,11 @@ impl<const MAX: usize> Deref for MaxSizeBytes<MAX> {
 }
 
 impl ConsensusEncoding for &[u8] {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         let len = self.len();
-        let mut written = writer.write_varint(len)?;
-        written += writer.write(self)?;
-        Ok(written)
+        writer.write_varint(len)?;
+        writer.write_all(self)?;
+        Ok(())
     }
 }
 
@@ -113,10 +113,10 @@ impl ConsensusEncodingSized for &[u8] {
 }
 
 impl<const N: usize> ConsensusEncoding for [u8; N] {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         // For fixed length types we dont need a length byte
         writer.write_all(&self[..])?;
-        Ok(N)
+        Ok(())
     }
 }
 
