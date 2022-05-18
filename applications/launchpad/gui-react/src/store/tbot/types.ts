@@ -1,5 +1,6 @@
 export enum TBotMessages {
-  MiningHelp = 'miningHelp',
+  CryptoMiningHelp = 'cryptoMiningHelp',
+  MergedMiningHelp = 'mergedMiningHelp',
   WalletHelp = 'walletHelp',
   BaseNodeHelp = 'baseNodeHelp',
 }

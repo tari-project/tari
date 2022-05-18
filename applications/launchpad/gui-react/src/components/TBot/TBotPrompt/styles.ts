@@ -15,24 +15,26 @@ export const PromptContainer = styled(animated.div)`
 `
 
 export const ContentRow = styled(animated.div)`
-  width: 100%;
+  width: 90%;
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
 `
 
-export const MessageContainer = styled(animated.div)`
+export const ContentContainer = styled(animated.div)`
   width: 417px;
-  max-height: 500px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  margin-right: 59px;
+  height: fit-content;
+  margin-right: 30px;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   /* hard-code required here */
   background-color: #20053d05;
   backdrop-filter: blur(9px);
-  overflow-y: scroll;
+  padding-bottom: 12px;
+`
+
+export const MessageContainer = styled(animated.div)`
+  height: 468px;
+  overflow-y: auto;
 `
 
 export const TBotContainer = styled(animated.div)`
@@ -41,13 +43,17 @@ export const TBotContainer = styled(animated.div)`
   justify-content: flex-end;
 `
 
-export const StyledCloseIcon = styled.div`
+export const StyledCloseContainer = styled.div`
   display: flex;
   justify-content: flex-end;
   align-items: center;
   height: 72px;
-  margin-right: 27px;
+`
+
+export const StyledCloseIcon = styled.div`
   color: ${({ theme }) => theme.secondary};
+  cursor: pointer;
+  margin-right: 27px;
 `
 
 export const StyledMessage = styled(animated.div)`
@@ -62,6 +68,9 @@ export const StyledMessage = styled(animated.div)`
   box-shadow: ${({ theme }) => theme.shadow24};
   padding: 40px;
   color: ${({ theme }) => theme.primary};
+  &:last-child {
+    margin-bottom: 0;
+  }
 `
 
 export const DotsContainer = styled.div`
