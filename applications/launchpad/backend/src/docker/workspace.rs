@@ -44,8 +44,11 @@ use strum::IntoEnumIterator;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
+use super::{add_container, container_state, CONTAINERS};
 use crate::docker::{
+    change_container_status,
     models::{ContainerId, ContainerState},
+    ContainerStatus,
     DockerWrapperError,
     ImageType,
     LaunchpadConfig,
@@ -181,7 +184,6 @@ impl Workspaces {
 pub struct TariWorkspace {
     name: String,
     config: LaunchpadConfig,
-    containers: HashMap<String, ContainerState>,
 }
 
 impl TariWorkspace {
@@ -190,7 +192,6 @@ impl TariWorkspace {
         Self {
             name: name.to_string(),
             config,
-            containers: HashMap::new(),
         }
     }
 
@@ -301,7 +302,7 @@ impl TariWorkspace {
             stderr: true,
             ..Default::default()
         };
-        self.containers.get(container_name).map(move |container| {
+        CONTAINERS.read().unwrap().get(container_name).map(move |container| {
             let id = container.id();
             docker
                 .logs(id.as_str(), Some(options))
@@ -315,7 +316,7 @@ impl TariWorkspace {
         name: &str,
         docker: Docker,
     ) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
-        if let Some(container) = self.containers.get(name) {
+        if let Some(container) = CONTAINERS.read().unwrap().get(name) {
             let options = StatsOptions {
                 stream: true,
                 one_shot: false,
@@ -436,27 +437,16 @@ impl TariWorkspace {
         images
     }
 
-    /// Returns a reference to the set of managed containers. You can only retrieve immutable references from this
-    /// hash map. If you need a mutable reference tot a container's state, see [`container_mut`].
-    pub fn managed_containers(&self) -> &HashMap<String, ContainerState> {
-        &self.containers
-    }
-
-    /// Return a mutable reference to the named container's [`ContainerState`].
-    pub fn container_mut(&mut self, container_name: &str) -> Option<&mut ContainerState> {
-        self.containers.get_mut(container_name)
-    }
-
     /// Add the container info to the list of containers the wrapper is managing
     fn add_container(&mut self, name: &str, container: ContainerCreateResponse) {
         let id = ContainerId::from(container.id.clone());
         let state = ContainerState::new(name.to_string(), id, container);
-        self.containers.insert(name.to_string(), state);
+        add_container(name, state);
     }
 
     // Tag the container with id `id` as Running
     fn mark_container_running(&mut self, name: &str) -> Result<(), DockerWrapperError> {
-        if let Some(container) = self.containers.get_mut(name) {
+        if let Some(container) = CONTAINERS.write().unwrap().get_mut(name) {
             container.running();
             Ok(())
         } else {
@@ -466,7 +456,7 @@ impl TariWorkspace {
 
     /// Stop the container with the given `name` and optionally delete it
     pub async fn stop_container(&mut self, name: &str, delete: bool, docker: &Docker) {
-        let container = match self.container_mut(name) {
+        let container = match container_state(name) {
             Some(c) => c,
             None => {
                 info!(
@@ -480,8 +470,15 @@ impl TariWorkspace {
         let id = container.id().clone();
         match docker.stop_container(id.as_str(), Some(options)).await {
             Ok(_res) => {
-                info!("Container {} stopped", id);
-                container.set_stop();
+                info!("Container {} stopped", id.clone());
+                match change_container_status(id.as_str(), ContainerStatus::Stopped) {
+                    Ok(_) => (),
+                    Err(err) => warn!(
+                        "Could not update launchpad cache for {} due to: {}",
+                        id,
+                        err.to_string()
+                    ),
+                }
             },
             Err(err) => {
                 warn!("Could not stop container {} due to {}", id, err.to_string());
@@ -492,7 +489,14 @@ impl TariWorkspace {
             match docker.remove_container(id.as_str(), None).await {
                 Ok(()) => {
                     info!("Container {} deleted", id);
-                    container.set_deleted();
+                    match change_container_status(id.as_str(), ContainerStatus::Deleted) {
+                        Ok(_) => (),
+                        Err(err) => warn!(
+                            "Could not update launchpad cache for {} due to: {}",
+                            id,
+                            err.to_string()
+                        ),
+                    }
                 },
                 Err(err) => {
                     warn!("Could not delete container {} due to: {}", id, err.to_string())
@@ -503,7 +507,7 @@ impl TariWorkspace {
 
     /// Stop all running containers and optionally delete them
     pub async fn stop_containers(&mut self, delete: bool, docker: &Docker) {
-        let names = self.containers.keys().cloned().collect::<Vec<String>>();
+        let names = CONTAINERS.write().unwrap().keys().cloned().collect::<Vec<String>>();
         for name in names {
             // Stop the container immediately
             self.stop_container(name.as_str(), delete, docker).await;
