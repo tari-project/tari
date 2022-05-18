@@ -24,6 +24,15 @@ const translations: { [key: string]: { [key: string]: string } } = {
     memory: 'Memory',
     error: 'Error',
   },
+  dayCapitals: {
+    sunday: 'S',
+    monday: 'M',
+    tuesday: 'T',
+    wednesday: 'W',
+    thursday: 'T',
+    friday: 'F',
+    saturday: 'S',
+  },
   adjectives: {
     running: 'Running',
     unhealthy: 'Unhealthy',
@@ -46,6 +55,10 @@ const translations: { [key: string]: { [key: string]: string } } = {
     [Container.XMrig]: 'xmrig',
     [Container.Monerod]: 'monerod',
     [Container.Frontail]: 'frontail',
+  },
+  miningType: {
+    tari: 'Tari Mining',
+    merged: 'Merged Mining',
   },
 }
 

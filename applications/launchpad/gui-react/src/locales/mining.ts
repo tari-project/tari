@@ -22,6 +22,13 @@ const translations = {
     statusSetupRequired: 'The node requires further configuration.',
     statusError: 'The node failed.',
   },
+  scheduling: {
+    title: 'Mining schedules',
+    launchpadOpen:
+      'Tari Launchpad must be open at the scheduled hours for mining to start.',
+    noSchedules: 'No mining schedule has been set up yet',
+    add: 'Add schedule',
+  },
 }
 
 export default translations
