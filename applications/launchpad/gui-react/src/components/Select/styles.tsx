@@ -102,4 +102,5 @@ export const Label = styled(Listbox.Label)<SelectInternalProps>`
   margin-bottom: ${({ theme }) => theme.spacingVertical()};
   color: ${({ theme, inverted }) =>
     inverted ? theme.inverted.primary : theme.primary};
+  font-family 'AvenirMedium';
 `

@@ -1,6 +1,7 @@
-import { ReactNode, CSSProperties } from 'react'
+import { ReactNode, CSSProperties, InputHTMLAttributes } from 'react'
 
-export interface InputProps {
+export interface InputProps
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   type?: string
   disabled?: boolean
   value?: string

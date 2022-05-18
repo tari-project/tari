@@ -28,6 +28,7 @@ import { ChangeEvent, forwardRef } from 'react'
 
 const Input = (
   {
+    autoFocus,
     type = 'text',
     value,
     disabled,
@@ -50,6 +51,7 @@ const Input = (
   return (
     <InputContainer disabled={disabled} style={containerStyle}>
       <StyledInput
+        autoFocus={autoFocus}
         type={type}
         placeholder={placeholder}
         disabled={disabled}

@@ -1,12 +1,10 @@
 /* eslint-disable indent */
+import { InputHTMLAttributes } from 'react'
 import styled from 'styled-components'
+
 import Text from '../../Text'
 
-export const StyledInput = styled.input<{
-  type?: string
-  disabled?: boolean
-  value?: string
-}>`
+export const StyledInput = styled.input<InputHTMLAttributes<HTMLInputElement>>`
   height: 100%;
   width: 100%;
   padding: 0px 16px;

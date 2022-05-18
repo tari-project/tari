@@ -32,12 +32,16 @@ const TariId = ({
         <SemiTransparent>({t.wallet.wallet.address})</SemiTransparent>
       </Text>
       <TariIdContainer>
-        <TariIdBox>{showEmoji ? emojiTariId.join(' | ') : tariId}</TariIdBox>
+        <TariIdBox>
+          <Text as='span'>{showEmoji ? emojiTariId.join(' | ') : tariId}</Text>
+        </TariIdBox>
         <div
           onClick={() => setShowEmoji(a => !a)}
           style={{
             cursor: 'pointer',
             textAlign: 'center',
+            position: 'relative',
+            top: '0.4em',
           }}
         >
           <Smiley
