@@ -86,6 +86,8 @@ struct EmojiSet;
 
 struct TariTransactionKernel;
 
+struct TariFeePerGramStatsResponse;
+
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
@@ -867,6 +869,8 @@ bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base
 /// # Safety
 /// None
 bool wallet_set_one_sided_payment_message(struct TariWallet *wallet, const char *message, int *error_out);
+
+struct TariFeePerGramStatsResponse *wallet_get_fee_estimates_per_block(struct TariWallet *wallet, unsigned int count, int *error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
