@@ -391,8 +391,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let mut header_bytes: Vec<u8> = Vec::new();
-            block.header.consensus_encode(&mut header_bytes).unwrap();
+            let header_bytes = block.header.to_consensus_bytes();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
@@ -416,8 +415,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let mut header_bytes: Vec<u8> = Vec::new();
-            block.header.consensus_encode(&mut header_bytes).unwrap();
+            let header_bytes = block.header.to_consensus_bytes();
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
@@ -434,8 +432,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let mut header_bytes: Vec<u8> = Vec::new();
-            block.header.consensus_encode(&mut header_bytes).unwrap();
+            let header_bytes = block.header.to_consensus_bytes();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
@@ -448,7 +445,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "test requires new value for the NONCE"]
     fn check_share() {
         unsafe {
             let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
@@ -459,8 +455,7 @@ mod tests {
             let hash_hex_broken_ptr: *const c_char = CString::into_raw(hash_hex_broken) as *const c_char;
             let mut template_difficulty = 30000;
             let mut share_difficulty = 24000;
-            let mut header_bytes: Vec<u8> = Vec::new();
-            block.header.consensus_encode(&mut header_bytes).unwrap();
+            let header_bytes = block.header.to_consensus_bytes();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
