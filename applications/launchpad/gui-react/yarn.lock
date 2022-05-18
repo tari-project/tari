@@ -3256,7 +3256,7 @@ ansi-regex@^3.0.0:
   resolved "https://registry.yarnpkg.com/ansi-regex/-/ansi-regex-3.0.1.tgz#123d6479e92ad45ad897d4054e3c7ca7db4944e1"
   integrity sha512-+O9Jct8wf++lXxxFc4hc8LsjaSq0HFzzL7cVsw8pRDIPdjKD2mT4ytDZlLuSBZ4cLKZFXIrMGO7DbQCtMJJMKw==
 
-ansi-regex@^5.0.0, ansi-regex@^5.0.1:
+ansi-regex@^5.0.1:
   version "5.0.1"
   resolved "https://registry.yarnpkg.com/ansi-regex/-/ansi-regex-5.0.1.tgz#082cb2c89c9fe8659a311a53bd6a4dc5301db304"
   integrity sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==
@@ -5020,7 +5020,7 @@ dom-converter@^0.2.0:
   dependencies:
     utila "~0.4"
 
-dom-helpers@^5.0.1, dom-helpers@^5.2.0:
+dom-helpers@^5.0.1:
   version "5.2.1"
   resolved "https://registry.yarnpkg.com/dom-helpers/-/dom-helpers-5.2.1.tgz#d9400536b2bf8225ad98fe052e029451ac40e902"
   integrity sha512-nRCa7CK3VTrM2NmGkIy4cbK7IZlgBE/PYMn55rrXefr5xXDP0LdtfPnblFDoVdcAfslJ7or6iqAUnx0CCGIWQA==
@@ -8369,11 +8369,6 @@ node-releases@^2.0.2:
   resolved "https://registry.yarnpkg.com/node-releases/-/node-releases-2.0.3.tgz#225ee7488e4a5e636da8da52854844f9d716ca96"
   integrity sha512-maHFz6OLqYxz+VQyCAtA3PTX4UP/53pa05fyDNc9CwjvJ0yEh6+xBwKsgCxMNhS8taUKBFYxfuiaD9U/55iFaw==
 
-node-releases@^2.0.3:
-  version "2.0.4"
-  resolved "https://registry.yarnpkg.com/node-releases/-/node-releases-2.0.4.tgz#f38252370c43854dc48aa431c766c6c398f40476"
-  integrity sha512-gbMzqQtTtDz/00jQzZ21PQzdI9PyLYqUSvD0p3naOhX4odFji0ZxYdnVwPTxmSwkmxhcFImpozceidSG+AgoPQ==
-
 nopt@^5.0.0:
   version "5.0.0"
   resolved "https://registry.yarnpkg.com/nopt/-/nopt-5.0.0.tgz#530942bb58a512fccafe53fe210f13a25355dc88"
@@ -9614,14 +9609,6 @@ react-base16-styling@^0.9.1:
     csstype "^3.0.10"
     lodash.curry "^4.1.1"
 
-react-css-transition-replace@^4.0.5:
-  version "4.0.5"
-  resolved "https://registry.yarnpkg.com/react-css-transition-replace/-/react-css-transition-replace-4.0.5.tgz#1f139daf5ec28ae8d34f840e50f24c30e32c227e"
-  integrity sha512-nRBSliVk2exhJxGb+DMTekE59rH1XMbQgbE+U/RLLowO2VBYoU+edo1h9mlRdjKruVItPHBysXiw+uCIOD+UaQ==
-  dependencies:
-    dom-helpers "^5.2.0"
-    prop-types "^15.7.2"
-
 react-dev-utils@^12.0.0:
   version "12.0.1"
   resolved "https://registry.yarnpkg.com/react-dev-utils/-/react-dev-utils-12.0.1.tgz#ba92edb4a1f379bd46ccd6bcd4e7bc398df33e73"
@@ -9816,20 +9803,6 @@ react-spring@^9.4.5-beta.1:
     "@react-spring/three" "~9.4.5-beta.1"
     "@react-spring/web" "~9.4.5-beta.1"
     "@react-spring/zdog" "~9.4.5-beta.1"
-
-react-time-picker-input@^2.0.10:
-  version "2.0.10"
-  resolved "https://registry.yarnpkg.com/react-time-picker-input/-/react-time-picker-input-2.0.10.tgz#89f2796e153daa38ab9a8c8d7141aedc1867c81f"
-  integrity sha512-kCjrRDUJo+9d5ef7ElHs1pCGdtWf/c81fJFWEuHY7X6Rd16laDZcPpuxyOEVC3F9M0MnAL4ya893O6HVcoSk0w==
-  dependencies:
-    "@babel/preset-env" "^7.16.1"
-    "@testing-library/jest-dom" "^5.11.4"
-    "@testing-library/react" "^11.1.0"
-    "@testing-library/user-event" "^12.1.10"
-    core-js "^3.20.3"
-    preact "^10.6.4"
-    sass "^1.49.0"
-    web-vitals "^1.0.1"
 
 react-transition-group@^4.3.0:
   version "4.4.2"
