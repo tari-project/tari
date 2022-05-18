@@ -1,5 +1,8 @@
+import { combineReducers } from 'redux'
 import { configureStore } from '@reduxjs/toolkit'
 import devToolsEnhancer from 'remote-redux-devtools'
+import { persistStore, persistReducer } from 'redux-persist'
+import storage from 'redux-persist/lib/storage'
 
 import appReducer from './app'
 import settingsReducer from './settings'
@@ -19,9 +22,17 @@ export const rootReducer = {
   containers: containersReducer,
   tbot: tbotReducer,
 }
+const reducer = combineReducers(rootReducer)
+
+const persistConfig = {
+  key: 'root',
+  storage,
+  blacklist: ['containers'],
+}
+const persistedReducer = persistReducer(persistConfig, reducer)
 
 export const store = configureStore({
-  reducer: rootReducer,
+  reducer: persistedReducer,
   enhancers: [
     devToolsEnhancer({
       name: 'Tari Launchpad',
@@ -31,6 +42,8 @@ export const store = configureStore({
     }),
   ],
 })
+
+export const persistor = persistStore(store)
 
 export type RootState = ReturnType<typeof store.getState>
 

@@ -189,6 +189,6 @@ export const ButtonContentWrapper = styled.span<{
 `
 
 export const LoadingIconWrapper = styled.span`
-display: inline - flex;
-margin - left: ${({ theme }) => theme.spacingHorizontal(0.2)};
+  display: inline-flex;
+  margin-left: ${({ theme }) => theme.spacingHorizontal(0.2)};
 `
