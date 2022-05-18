@@ -1000,6 +1000,7 @@ mod test {
         (msg, data)
     }
 
+    #[allow(clippy::too_many_lines)]
     #[test]
     fn check_multisig() {
         use crate::{op_codes::Opcode::CheckMultiSig, StackItem::Number};
@@ -1189,6 +1190,7 @@ mod test {
         assert_eq!(result, Number(1));
     }
 
+    #[allow(clippy::too_many_lines)]
     #[test]
     fn check_multisig_verify() {
         use crate::{op_codes::Opcode::CheckMultiSigVerify, StackItem::Number};

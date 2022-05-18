@@ -43,6 +43,8 @@ use crate::{
         base_node::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            GetMempoolFeePerGramStatsRequest,
+            GetMempoolFeePerGramStatsResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures,
@@ -111,6 +113,12 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<SyncUtxosByBlockRequest>,
     ) -> Result<Streaming<SyncUtxosByBlockResponse>, RpcStatus>;
+
+    #[rpc(method = 12)]
+    async fn get_mempool_fee_per_gram_stats(
+        &self,
+        request: Request<GetMempoolFeePerGramStatsRequest>,
+    ) -> Result<Response<GetMempoolFeePerGramStatsResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]
