@@ -41,6 +41,7 @@ const PasswordBox = ({
       <Text>{t.wallet.password.cta}</Text>
       <form onSubmit={formSubmitHandler}>
         <PasswordInput
+          autoFocus
           onChange={updatePassword}
           value={password}
           disabled={pending}
