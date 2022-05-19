@@ -88,14 +88,14 @@ Feature: Wallet FFI
     @critical
     Scenario: As a client I want to receive contact liveness events
         Given I have a seed node SEED
-            # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
+        # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
         And I have non-default wallet WALLET1 connected to all seed nodes using DirectOnly
         And I have non-default wallet WALLET2 connected to all seed nodes using DirectOnly
         And I have a ffi wallet FFI_WALLET connected to seed node SEED
-            # Start the contact liveness pings by adding contacts to the FFI wallet
+        # Start the contact liveness pings by adding contacts to the FFI wallet
         And I add contact with alias ALIAS1 and pubkey WALLET1 to ffi wallet FFI_WALLET
         And I add contact with alias ALIAS2 and pubkey WALLET2 to ffi wallet FFI_WALLET
-            # Do some mining and send transactions to force P2P discovery
+        # Do some mining and send transactions to force P2P discovery
         And I have mining node MINER1 connected to base node SEED and wallet WALLET1
         And I have mining node MINER2 connected to base node SEED and wallet WALLET2
         And mining node MINER1 mines 1 blocks
@@ -137,7 +137,7 @@ Feature: Wallet FFI
         Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-        #BROKEN: Sending via SAF works when running this test alone, but not when run with all other tests. Also works manually on dibbler
+    #BROKEN: Sending via SAF works when running this test alone, but not when run with all other tests. Also works manually on dibbler
     @critical @broken
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
         Given I have a seed node SEED
@@ -208,6 +208,25 @@ Feature: Wallet FFI
         Then all nodes are at height 17
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_CONFIRMED
         And I stop ffi wallet FFI_RECEIVER
+
+    Scenario: As a client I want to get fee per gram stats
+        Given I have a base node BASE
+        And I have wallet WALLET_A connected to base node BASE
+        And I have wallet WALLET_B connected to base node BASE
+        And I have mining node MINER connected to base node BASE and wallet WALLET_A
+        And mining node MINER mines 7 blocks
+        And I have wallet WALLET_B connected to base node BASE
+        Then I wait for wallet WALLET_A to have at least 10000000 uT
+        And I have a ffi wallet FFI_WALLET connected to base node BASE
+        And The fee per gram stats for FFI_WALLET are 1, 1, 1
+        And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+        And The fee per gram stats for FFI_WALLET are 20, 20, 20
+        And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 40
+        And The fee per gram stats for FFI_WALLET are 20, 30, 40
+        And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 60
+        And The fee per gram stats for FFI_WALLET are 20, 40, 60
+        And mining node MINER mines 1 blocks
+        And The fee per gram stats for FFI_WALLET are 1, 1, 1
 
     # Scenario: As a client I want to get my balance
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
