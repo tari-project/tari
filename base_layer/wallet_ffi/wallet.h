@@ -199,6 +199,22 @@ struct TariCovenant *covenant_create_from_bytes(
 
 // Frees memory for a TariCovenant
 void covenant_destroy(struct TariCovenant *covenant);
+/// -------------------------------- Output Features  --------------------------------------------- ///
+
+// Creates a TariOutputFeatures from byte values
+struct TariOutputFeatures *output_features_create_from_bytes(
+    unsigned char version,
+    unsigned short flags,
+    unsigned long long maturity,
+    unsigned char recovery_byte,
+    struct ByteVector *metadata,
+    struct ByteVector *unique_id,
+    struct ByteVector *parent_public_key,
+    int *error_out
+);
+
+// Frees memory for a TariOutputFeatures
+void output_features_destroy(struct TariOutputFeatures *output_features);
 
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
