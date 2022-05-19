@@ -394,22 +394,22 @@ pub(crate) mod hash_serializer {
 }
 
 impl ConsensusEncoding for BlockHeader {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.height.consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
-        written += self.timestamp.consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
-        written += self.output_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
-        written += self.kernel_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
-        written += self.total_kernel_offset.consensus_encode(writer)?;
-        written += self.total_script_offset.consensus_encode(writer)?;
-        written += self.nonce.consensus_encode(writer)?;
-        written += self.pow.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.height.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
+        self.timestamp.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
+        self.output_mmr_size.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
+        self.kernel_mmr_size.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
+        self.total_kernel_offset.consensus_encode(writer)?;
+        self.total_script_offset.consensus_encode(writer)?;
+        self.nonce.consensus_encode(writer)?;
+        self.pow.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

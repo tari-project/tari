@@ -30,21 +30,18 @@ use integer_encoding::VarIntWriter;
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 impl<T: ConsensusEncoding> ConsensusEncoding for Option<T> {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = 0;
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         match self {
             Some(t) => {
                 writer.write_all(&[1u8])?;
-                written += 1;
-                written += t.consensus_encode(writer)?;
+                t.consensus_encode(writer)?;
             },
             None => {
                 writer.write_all(&[0u8])?;
-                written += 1;
             },
         }
 
-        Ok(written)
+        Ok(())
     }
 }
 
@@ -70,12 +67,12 @@ impl<T: ConsensusDecoding> ConsensusDecoding for Option<T> {
 
 //---------------------------------- Vec<T> --------------------------------------------//
 impl<T: ConsensusEncoding> ConsensusEncoding for Vec<T> {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = writer.write_varint(self.len())?;
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_varint(self.len())?;
         for elem in self {
-            written += elem.consensus_encode(writer)?;
+            elem.consensus_encode(writer)?;
         }
-        Ok(written)
+        Ok(())
     }
 }
 
