@@ -21,6 +21,7 @@
     "react-time-picker-input": "^2.0.10",
     "styled-components": "^5.3.5",
     "typescript": "^4.4.2",
+    "uuid": "^8.3.2",
     "web-vitals": "^2.1.0"
   },
   "scripts": {
@@ -70,7 +71,9 @@
   "resolutions": {
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",
-    "nth-check": "^2.0.1"
+    "nth-check": "^2.0.1",
+    "async": ">=2.6.4",
+    "minimist": ">=1.2.3"
   },
   "devDependencies": {
     "@redux-devtools/cli": "^1.0.7",
@@ -79,6 +82,7 @@
     "@testing-library/user-event": "^14.1.0",
     "@types/remote-redux-devtools": "^0.5.5",
     "@types/styled-components": "^5.1.25",
+    "@types/uuid": "^8.3.4",
     "@typescript-eslint/eslint-plugin": "^5.19.0",
     "@typescript-eslint/parser": "^5.19.0",
     "cross-env": "^7.0.3",

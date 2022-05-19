@@ -13,12 +13,6 @@ import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import { setTheme } from '../../store/app'
 import { selectTheme } from '../../store/app/selectors'
 
-import { actions } from '../../store/wallet'
-import Button from '../../components/Button'
-import SvgArrowLeft1 from '../../styles/Icons/ArrowLeft1'
-import SvgWallet from '../../styles/Icons/Wallet'
-import SvgSetting from '../../styles/Icons/Setting'
-
 import { NodesContainer } from './styles'
 import MiningBoxTari from './MiningBoxTari'
 import MiningBoxMerged from './MiningBoxMerged'
@@ -42,14 +36,6 @@ const MiningContainer = () => {
       </NodesContainer>
 
       <MiningViewActions openScheduling={() => setSchedulingOpen(true)} />
-
-      <button onClick={() => dispatch(actions.unlockWallet('pass'))}>
-        Set pass
-      </button>
-
-      <button onClick={() => dispatch(actions.unlockWallet(''))}>
-        Clear pass
-      </button>
 
       <div style={{ marginTop: 80 }}>
         <button onClick={() => dispatch(setTheme('light'))}>

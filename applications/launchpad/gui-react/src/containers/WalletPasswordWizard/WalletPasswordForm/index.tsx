@@ -48,7 +48,7 @@ const WalletPasswordForm = ({
           name='password'
           control={control}
           defaultValue=''
-          rules={{ required: true }}
+          rules={{ required: true, minLength: 4 }}
           render={({ field }) => (
             <Input
               placeholder={t.walletPasswordWizard.passwordPlaceholder}

@@ -52,6 +52,14 @@ export type ContainerStatusDto = {
   }
 }
 
+export type ContainerStateFields = Pick<
+  ContainerStatusDto,
+  'running' | 'pending' | 'error'
+>
+
+export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
+  Pick<ContainerStatusDto, 'id' | 'type'>
+
 export type ServicesState = {
   errors: Record<Container, any>
   pending: Array<Container | ContainerId>
