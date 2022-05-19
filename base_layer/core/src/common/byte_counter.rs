@@ -48,3 +48,24 @@ impl io::Write for ByteCounter {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn write_test() {
+        let mut byte_counter = ByteCounter::new();
+        let buf = [0u8, 1u8, 2u8, 3u8];
+        let new_count = byte_counter.write(&buf).unwrap();
+        assert_eq!(byte_counter.get(), new_count);
+    }
+
+    #[test]
+    fn flush_test() {
+        let mut byte_counter = ByteCounter::new();
+        let flushed = byte_counter.flush().unwrap();
+        assert_eq!(flushed, ());
+    }
+}
