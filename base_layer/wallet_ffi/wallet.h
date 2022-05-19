@@ -86,6 +86,10 @@ struct EmojiSet;
 
 struct TariTransactionKernel;
 
+struct TariFeePerGramStats;
+
+struct TariFeePerGramStat;
+
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
@@ -895,6 +899,22 @@ bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base
 /// # Safety
 /// None
 bool wallet_set_one_sided_payment_message(struct TariWallet *wallet, const char *message, int *error_out);
+
+struct TariFeePerGramStats* wallet_get_fee_per_gram_stats(struct TariWallet *wallet, unsigned int count, int *error_out);
+
+unsigned int fee_per_gram_stats_get_length(struct TariFeePerGramStats *fee_per_gram_stats, int *error_out);
+
+struct TariFeePerGramStat* fee_per_gram_stats_get_at(struct TariFeePerGramStats *fee_per_gram_stats, unsigned int position, int *error_out);
+
+void fee_per_gram_stats_destroy(struct TariFeePerGramStats *fee_per_gram_stats);
+
+unsigned long long fee_per_gram_stat_get_order(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
+
+unsigned long long fee_per_gram_stat_get_min_fee_per_gram(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
+
+unsigned long long fee_per_gram_stat_get_avg_fee_per_gram(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
+
+unsigned long long fee_per_gram_stat_get_max_fee_per_gram(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
