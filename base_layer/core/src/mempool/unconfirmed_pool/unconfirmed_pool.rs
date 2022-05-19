@@ -564,8 +564,7 @@ impl UnconfirmedPool {
             let mut total_fees = MicroTari::zero();
             let mut min_fee_per_gram = MicroTari::from(u64::MAX);
             let mut max_fee_per_gram = MicroTari::zero();
-            let mut last_count = 0;
-            for (i, key) in self.tx_by_priority.values().rev().enumerate().skip(offset) {
+            for key in self.tx_by_priority.values().rev().skip(offset) {
                 let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 let weight = tx.weight;
 
@@ -574,23 +573,23 @@ impl UnconfirmedPool {
                 }
 
                 let total_tx_fee = tx.transaction.body.get_total_fee();
-                last_count = i + 1;
+                offset += 1;
                 let fee_per_gram = total_tx_fee / weight;
                 min_fee_per_gram = min_fee_per_gram.min(fee_per_gram);
                 max_fee_per_gram = max_fee_per_gram.max(fee_per_gram);
                 total_fees += total_tx_fee;
                 total_weight += weight;
             }
-            if last_count > 0 {
-                let stat = FeePerGramStat {
-                    order: start as u64,
-                    min_fee_per_gram,
-                    avg_fee_per_gram: total_fees / total_weight,
-                    max_fee_per_gram,
-                };
-                stats.push(stat);
+            if total_weight == 0 {
+                break;
             }
-            offset = last_count;
+            let stat = FeePerGramStat {
+                order: start as u64,
+                min_fee_per_gram,
+                avg_fee_per_gram: total_fees / total_weight,
+                max_fee_per_gram,
+            };
+            stats.push(stat);
         }
 
         Ok(stats)
