@@ -1,8 +1,21 @@
+import { createSelector } from '@reduxjs/toolkit'
 import { RootState } from '../'
 
 import { ContainerStatusDto, Container, SystemEventAction } from './types'
 
+const noContainerData = (type: Container, error?: string) => ({
+  id: undefined,
+  type,
+  status: undefined,
+  pending: false,
+  running: false,
+  error: error,
+})
+
 export const selectState = (rootState: RootState) => rootState.containers
+
+export const selectPendingContainers = (rootState: RootState) =>
+  rootState.containers.pending
 
 const selectContainerByType = (c: Container) => (r: RootState) => {
   const containers = Object.entries(r.containers.containers).filter(
@@ -12,6 +25,14 @@ const selectContainerByType = (c: Container) => (r: RootState) => {
   const [containerId, containerStatus] = containers[0] || []
 
   return { containerId, containerStatus }
+}
+
+const selectContainerError = (c: Container) => (r: RootState) => {
+  if (r.containers.errors && r.containers.errors[c]) {
+    return r.containers.errors[c]
+  }
+
+  return
 }
 
 type ContainerStatusSelector = (
@@ -69,3 +90,30 @@ export const selectContainersStatuses = (rootState: RootState) =>
     container: type,
     status: selectContainerStatus(type as Container)(rootState),
   }))
+
+export const selectContainerWithMemo = (c: Container) =>
+  createSelector(
+    (s: RootState) => selectContainerByType(c)(s),
+    selectPendingContainers,
+    (s: RootState) => selectContainerError(c)(s),
+    (container, pendingState, errorState) => {
+      if (!container.containerId || !container.containerStatus) {
+        return noContainerData(c, errorState)
+      }
+
+      const pending =
+        pendingState.includes(c) || pendingState.includes(container.containerId)
+
+      return {
+        id: container.containerId,
+        type: c,
+        status: container.containerStatus.status,
+        pending:
+          pending ||
+          (container.containerStatus.status !== SystemEventAction.Start &&
+            container.containerStatus.status !== SystemEventAction.Destroy),
+        running: container.containerStatus.status === SystemEventAction.Start,
+        error: container.containerStatus.error || errorState,
+      }
+    },
+  )

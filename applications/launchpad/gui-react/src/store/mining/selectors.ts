@@ -1,44 +1,124 @@
 import { createSelector } from '@reduxjs/toolkit'
 import { RootState } from '..'
-import { MiningNodeType } from '../../types/general'
-import { MiningNodesStatus } from './types'
+import { selectContainerWithMemo } from '../containers/selectors'
+import { Container } from '../containers/types'
+import { selectWalletSetupRequired } from '../wallet/selectors'
+import {
+  MergedMiningSetupRequired,
+  MiningContainersState,
+  TariMiningSetupRequired,
+} from './types'
 
 /**
- * Get Redux state of the given mining node
- * @example
- * const miningState = useAppSelector(state => selectMiningNode(state, 'merged'))
+ * ============== TARI ===================
  */
-export const selectMiningNode = createSelector(
-  [state => state.mining, (_, node: MiningNodeType) => node],
-  (miningState, node) => miningState[node],
+export const selectTariMiningState = (r: RootState) => r.mining.tari
+
+export const selectTariContainers = createSelector(
+  selectContainerWithMemo(Container.Tor),
+  selectContainerWithMemo(Container.BaseNode),
+  selectContainerWithMemo(Container.Wallet),
+  selectContainerWithMemo(Container.SHA3Miner),
+  (tor, baseNode, wallet, sha3) => {
+    const containers = [tor, baseNode, wallet, sha3]
+    const errors = containers
+      .filter(c => c.error)
+      .map(c => ({
+        type: c.type,
+        id: c.id,
+        error: c.error,
+      }))
+
+    return {
+      running: !containers.some(c => !c.running),
+      pending: containers.some(c => c.pending),
+      error: errors.length > 0 ? errors : undefined,
+      dependsOn: [tor, baseNode, wallet, sha3],
+    } as MiningContainersState
+  },
+  {
+    memoizeOptions: {
+      equalityCheck: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    },
+  },
 )
 
-/**
- * Get stats for last/current session
- */
-export const selectLastSession = createSelector(
-  [state => state.mining, (_, node: MiningNodeType) => node],
-  (miningState, node) =>
-    miningState[node].sessions && miningState[node].sessions.length > 0
-      ? miningState[node].sessions[miningState[node].sessions.length - 1]
+export const selectTariSetupRequired = createSelector(
+  selectWalletSetupRequired,
+  walletSetupRequired =>
+    walletSetupRequired
+      ? TariMiningSetupRequired.MissingWalletAddress
       : undefined,
 )
 
 /**
- * Select the Tari mining status
- * @returns {boolean}
+ * ============== MERGED ===================
  */
-export const selectTariMiningStatus = (state: RootState) =>
-  state.mining.tari.status
+export const selectMergedMiningState = (r: RootState) => r.mining.merged
+export const selectMergedMiningAddress = (r: RootState) =>
+  r.mining.merged.address
+
+export const selectMergedContainers = createSelector(
+  selectContainerWithMemo(Container.Tor),
+  selectContainerWithMemo(Container.BaseNode),
+  selectContainerWithMemo(Container.Wallet),
+  selectContainerWithMemo(Container.MMProxy),
+  selectContainerWithMemo(Container.XMrig),
+  (tor, baseNode, wallet, mmproxy, xmrig) => {
+    const containers = [tor, baseNode, wallet, mmproxy, xmrig]
+    const errors = containers
+      .filter(c => c.error)
+      .map(c => ({
+        type: c.type,
+        id: c.id,
+        error: c.error,
+      }))
+
+    return {
+      running: !containers.some(c => !c.running),
+      pending: containers.some(c => c.pending),
+      error: errors.length > 0 ? errors : undefined,
+      dependsOn: [tor, baseNode, wallet, xmrig, mmproxy],
+    } as MiningContainersState
+  },
+  {
+    memoizeOptions: {
+      equalityCheck: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    },
+  },
+)
+
+export const selectMergedSetupRequired = createSelector(
+  selectWalletSetupRequired,
+  selectMergedMiningAddress,
+  (walletSetupRequired, mergedAddress) => {
+    if (walletSetupRequired) {
+      return MergedMiningSetupRequired.MissingWalletAddress
+    }
+
+    if (!mergedAddress || mergedAddress.length < 1) {
+      return MergedMiningSetupRequired.MissingMoneroAddress
+    }
+
+    return
+  },
+)
 
 /**
- * Is any mining able to run?
- * (Is not in unknown, error or setup_required state)
+ * ============== OTHER ===================
  */
-export const selectCanAnyMiningNodeRun = (state: RootState) =>
-  [MiningNodesStatus.RUNNING, MiningNodesStatus.PAUSED].includes(
-    state.mining.tari.status,
-  ) ||
-  [MiningNodesStatus.RUNNING, MiningNodesStatus.PAUSED].includes(
-    state.mining.merged.status,
+
+/**
+ * Can any mining node be run?
+ */
+export const selectCanAnyMiningNodeRun = (state: RootState) => {
+  const tari = selectTariContainers(state)
+  const merged = selectMergedContainers(state)
+  const tariSetupRequired = selectTariSetupRequired(state)
+  const mergedSetupRequired = selectMergedSetupRequired(state)
+
+  return (
+    (!tari.error && !tariSetupRequired) ||
+    (!merged.error && !mergedSetupRequired)
   )
+}

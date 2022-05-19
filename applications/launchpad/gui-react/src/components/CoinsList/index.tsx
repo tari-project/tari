@@ -21,7 +21,10 @@ const CoinsList = ({ coins, color }: CoinsListProps) => {
       {coins.map((c, idx) => (
         <CoinsListItem key={`coin-${idx}`} $loading={c.loading}>
           {c.loading ? (
-            <Loading loading={true} style={{ marginRight: 12 }} />
+            <Loading
+              loading={true}
+              style={{ marginRight: 12, marginTop: -4 }}
+            />
           ) : null}
           <Text type='subheader'>{c.amount}</Text>
           <Text

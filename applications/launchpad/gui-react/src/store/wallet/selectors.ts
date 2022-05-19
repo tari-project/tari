@@ -1,4 +1,5 @@
 import { RootState } from '../'
+import { WalletSetupRequired } from './types'
 
 export const selectState = (state: RootState) => state.wallet
 export const selectIsUnlocked = (state: RootState) => state.wallet.unlocked
@@ -19,3 +20,6 @@ export const selectWalletEmojiAddress = () => [
 export const selectTariAmount = (state: RootState) => state.wallet.tari
 export const selectIsPending = (state: RootState) => state.wallet.pending
 export const selectIsRunning = (state: RootState) => state.wallet.running
+
+export const selectWalletSetupRequired = (state: RootState) =>
+  !state.wallet.unlocked ? WalletSetupRequired.MissingWalletAddress : undefined

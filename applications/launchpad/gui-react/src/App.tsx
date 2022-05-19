@@ -7,8 +7,11 @@ import { useSystemEvents } from './useSystemEvents'
 import HomePage from './pages/home'
 import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
+
 import TBotManager from './TBotManager'
 import { selectTBotQueue } from './store/tbot/selectors'
+
+import useMiningSimulator from './useMiningSimulator'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -25,6 +28,8 @@ const App = () => {
   dispatch(loadDefaultServiceSettings())
 
   useSystemEvents({ dispatch })
+
+  useMiningSimulator()
 
   return (
     <ThemeProvider theme={themeConfig}>

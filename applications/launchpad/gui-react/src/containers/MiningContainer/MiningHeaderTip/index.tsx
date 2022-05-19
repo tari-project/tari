@@ -6,41 +6,37 @@ import Text from '../../../components/Text'
 import SvgStar from '../../../styles/Icons/Star'
 import SvgInfo1 from '../../../styles/Icons/Info1'
 import { StyledMiningHeaderTip } from './styles'
+
 import { useSelector } from 'react-redux'
 import { useAppDispatch } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
+
 import {
-  selectLastSession,
-  selectTariMiningStatus,
+  selectTariContainers,
+  selectTariMiningState,
 } from '../../../store/mining/selectors'
-import { MiningNodesStatus } from '../../../store/mining/types'
-import { RootState } from '../../../store'
+
 import MessagesConfig from '../../../config/helpMessagesConfig'
+import { useAppSelector } from '../../../store/hooks'
+
 
 /**
  * Renders instructions above mining node boxes
  */
 
 const MiningHeaderTip = () => {
-  const tariMiningStatus = useSelector(selectTariMiningStatus)
-  const lastSession = useSelector((state: RootState) =>
-    selectLastSession(state, 'tari'),
-  )
+
   const dispatch = useAppDispatch()
+
+  const tariMiningState = useAppSelector(selectTariMiningState)
+  const tariContainers = useAppSelector(selectTariContainers)
 
   let text = t.mining.headerTips.oneStepAway
 
-  switch (tariMiningStatus) {
-    case MiningNodesStatus.RUNNING:
-      text = t.mining.headerTips.runningOn
-      break
-    case MiningNodesStatus.PAUSED:
-      if (lastSession) {
-        text = t.mining.headerTips.continueMining
-      }
-      break
-    default:
-      break
+  if (tariContainers.running) {
+    text = t.mining.headerTips.runningOn
+  } else if (tariMiningState.sessions && tariMiningState.sessions.length > 0) {
+    text = t.mining.headerTips.continueMining
   }
 
   return (
