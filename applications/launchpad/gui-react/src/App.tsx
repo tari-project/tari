@@ -8,6 +8,7 @@ import HomePage from './pages/home'
 import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
 import TBotManager from './TBotManager'
+import { selectTBotQueue } from './store/tbot/selectors'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -19,6 +20,8 @@ const AppContainer = styled.div`
 const App = () => {
   const themeConfig = useAppSelector(selectThemeConfig)
   const dispatch = useAppDispatch()
+  const tbotQueue = useAppSelector(selectTBotQueue)
+
   dispatch(loadDefaultServiceSettings())
 
   useSystemEvents({ dispatch })
@@ -27,7 +30,7 @@ const App = () => {
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
         <HomePage />
-        <TBotManager />
+        <TBotManager messages={tbotQueue} />
       </AppContainer>
     </ThemeProvider>
   )

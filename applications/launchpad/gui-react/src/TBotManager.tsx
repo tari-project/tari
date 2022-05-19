@@ -15,10 +15,11 @@ const ComponentMap: { [key: string]: React.FC } = {
   mergedHelpMessage2: Merged2,
 }
 
-const TBotManager = () => {
-  const tbotQueue = useAppSelector(selectTBotQueue)
-  console.log('QUEUE: ', tbotQueue)
-  const renderMessages = tbotQueue.map(msg => {
+// const tbotQueue = useAppSelector(selectTBotQueue)
+
+const TBotManager = ({ messages }: { messages: string[] }) => {
+  // console.log('QUEUE: ', tbotQueue)
+  const renderMessages = messages.map(msg => {
     if (ComponentMap[msg] === undefined) {
       return <StyledMessage>{msg}</StyledMessage>
     }
@@ -30,7 +31,7 @@ const TBotManager = () => {
     )
   })
 
-  return <TBotPrompt open={tbotQueue.length > 0}>{renderMessages}</TBotPrompt>
+  return <TBotPrompt open={messages.length > 0}>{renderMessages}</TBotPrompt>
 }
 
 export default TBotManager
