@@ -17,8 +17,8 @@ tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_app_utilities = { path = "../tari_app_utilities" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
+tari_crypto = { path = "../../../tari-crypto" }
+tari_utilities = { path = "../../../tari_utilities" }
 
 anyhow = "1.0.53"
 crossterm = { version = "0.17" }

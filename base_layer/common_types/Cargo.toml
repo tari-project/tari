@@ -7,8 +7,8 @@ version = "0.32.0"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
+tari_crypto = { path = "../../../tari-crypto" }
+tari_utilities = { path = "../../../tari_utilities" }
 
 digest = "0.9.0"
 lazy_static = "1.4.0"
