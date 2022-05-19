@@ -189,6 +189,17 @@ struct TariCommitmentSignature *commitment_signature_create_from_bytes(
 // Frees memory for a TariCommitmentSignature
 void commitment_signature_destroy(struct TariCommitmentSignature *com_sig);
 
+/// -------------------------------- Covenant  --------------------------------------------- ///
+
+// Creates a TariCovenant from a ByteVector containing the covenant bytes
+struct TariCovenant *covenant_create_from_bytes(
+    struct ByteVector *covenant_bytes,
+    int *error_out
+);
+
+// Frees memory for a TariCovenant
+void covenant_destroy(struct TariCovenant *covenant);
+
 /// -------------------------------- Output Features  --------------------------------------------- ///
 
 // Creates a TariOutputFeatures from byte values
