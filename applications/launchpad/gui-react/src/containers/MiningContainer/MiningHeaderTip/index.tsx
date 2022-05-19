@@ -7,7 +7,6 @@ import SvgStar from '../../../styles/Icons/Star'
 import SvgInfo1 from '../../../styles/Icons/Info1'
 import { StyledMiningHeaderTip } from './styles'
 
-import { useSelector } from 'react-redux'
 import { useAppDispatch } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
 
@@ -19,13 +18,11 @@ import {
 import MessagesConfig from '../../../config/helpMessagesConfig'
 import { useAppSelector } from '../../../store/hooks'
 
-
 /**
  * Renders instructions above mining node boxes
  */
 
 const MiningHeaderTip = () => {
-
   const dispatch = useAppDispatch()
 
   const tariMiningState = useAppSelector(selectTariMiningState)
