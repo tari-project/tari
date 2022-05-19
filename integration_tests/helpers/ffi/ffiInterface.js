@@ -279,6 +279,8 @@ class InterfaceFFI {
       ],
       comms_config_destroy: [this.void, [this.ptr]],
       comms_list_connected_public_keys: [this.ptr, [this.ptr, this.intPtr]],
+      covenant_create_from_bytes: [this.ptr, [this.ptr, this.intPtr]],
+      covenant_destroy:[this.void, [this.ptr]],
       output_features_create_from_bytes: [this.ptr, [this.uchar, this.ushort, this.ulonglong, this.uchar, this.ptr, this.ptr, this.ptr, this.intPtr]],
       output_features_destroy:[this.void, [this.ptr]],
       wallet_create: [
@@ -1142,6 +1144,24 @@ class InterfaceFFI {
   static transactionSendStatusDestroy(ptr) {
     this.fn.transaction_send_status_destroy(ptr);
   }
+  //endregion
+
+  //region Covenant
+  static covenantCreateFromBytes(covenant_bytes) {
+    let error = this.initError();
+
+    let result = this.fn.covenant_create_from_bytes(
+      covenant_bytes,
+      error,
+    )
+    this.checkErrorResult(error, `covenantCreateFromBytes`);
+    return result;
+  }
+
+  static covenantDestroy(ptr) {
+    this.fn.covenant_destroy(ptr);
+  }
+
   //endregion
 
   //region OutputFeatures

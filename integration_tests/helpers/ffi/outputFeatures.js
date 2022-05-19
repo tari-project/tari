@@ -47,7 +47,7 @@ class OutputFeatures {
 
   destroy() {
     if (this.ptr) {
-      InterfaceFFI.destroyOutputFeatures(this.ptr);
+      InterfaceFFI.outputFeaturesDestroy(this.ptr);
       this.ptr = undefined; //prevent double free segfault
     }
   }
