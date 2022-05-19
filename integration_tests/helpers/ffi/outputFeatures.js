@@ -20,27 +20,19 @@ class OutputFeatures {
     return this.ptr;
   }
 
-  static createFromBytes() {
+  static createFromObject(features_object) {
+    let f = features_object;
+    let metadata = ByteVector.fromBytes(f.metadata).getPtr()
+
     let result = new OutputFeatures();
-
-    let version = 0;
-    let flags = 0;
-    let maturity = 0;
-    let recovery_byte = 0;
-
-    let metadata = ByteVector.fromBytes("0000").getPtr();
-
-    let unique_id = null; 
-    let parent_public_key = null;
-
     result.pointerAssign(InterfaceFFI.outputFeaturesCreateFromBytes(
-      version,
-      flags,
-      maturity,
-      recovery_byte,
+      f.version,
+      f.flags,
+      f.maturity,
+      f.recovery_byte,
       metadata,
-      unique_id,
-      parent_public_key
+      f.unique_id,
+      f.parent_public_key
     ));
     return result;
   }

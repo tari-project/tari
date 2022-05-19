@@ -743,7 +743,15 @@ Then(
     const amount = 10000;
     const spending_key_hex = "376592a5dc59ccf10c1baff2b1382e23cc412695bfc75076cb0fcb4f7c678201";
     const source_public_key_hex = "26bd0700ac6ddba8de76cfaac08035a59342b11eb5883e801b397358dbc0b97b";
-    const features = "0";
+    const features_object = {
+      version: 0,
+      flags: 0,
+      maturity: 0,
+      recovery_byte: 0,
+      metadata: "0",
+      unique_id: null, 
+      parent_public_key: null
+    };
     const metadata_signature = "0";
     const sender_offset_public_key_hex = source_public_key_hex;
     const script_private_key_hex = spending_key_hex;
@@ -754,7 +762,7 @@ Then(
       amount,
       spending_key_hex,
       source_public_key_hex,
-      features,
+      features_object,
       metadata_signature,
       sender_offset_public_key_hex,
       script_private_key_hex,

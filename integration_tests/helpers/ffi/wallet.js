@@ -559,7 +559,7 @@ class Wallet {
     amount,
     spending_key_hex,
     source_public_key_hex,
-    features,
+    output_features_object,
     metadata_signature,
     sender_offset_public_key_hex,
     script_private_key_hex,
@@ -570,12 +570,9 @@ class Wallet {
     let source_public_key_ptr = PublicKey.fromHexString(utf8.encode(source_public_key_hex)).getPtr();
     let metadata_signature_ptr = ByteVector.fromBytes(metadata_signature).getPtr();
     let sender_offset_public_key_ptr = PublicKey.fromHexString(utf8.encode(sender_offset_public_key_hex)).getPtr();
-
-    let features_ptr = OutputFeatures.createFromBytes(features).getPtr();
+    let features_ptr = OutputFeatures.createFromObject(output_features_object).getPtr();
     let covenant_ptr = Covenant.createFromBytes(covenant).getPtr();
-
     let script_private_key_ptr = PrivateKey.fromHexString(utf8.encode(script_private_key_hex)).getPtr();;
-
     let message_ptr = utf8.encode(message);
 
     return InterfaceFFI.walletImportUtxo(
