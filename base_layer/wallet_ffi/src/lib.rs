@@ -3298,7 +3298,7 @@ pub unsafe extern "C" fn comms_config_create(
     match public_address {
         Ok(public_address) => {
             let node_identity = NodeIdentity::new(
-                CommsSecretKey::default(),
+                CommsSecretKey::default().into(),
                 public_address,
                 PeerFeatures::COMMUNICATION_CLIENT,
             );
@@ -3728,7 +3728,7 @@ pub unsafe extern "C" fn wallet_create(
 
         // SAFETY: we are manually checking the validity of this signature before adding Some(..)
         let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
-            comms_secret_key.into_inner(),
+            comms_secret_key,
             node_address,
             node_features,
             identity_sig,

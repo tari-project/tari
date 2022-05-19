@@ -31,7 +31,8 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
-    tari_utilities::hex::serialize_to_hex,
+    ristretto::RistrettoSecretKey,
+    tari_utilities::{hex::serialize_to_hex, Hidden},
 };
 
 use super::node_id::deserialize_node_id_from_hex;
@@ -48,7 +49,7 @@ pub struct NodeIdentity {
     node_id: NodeId,
     public_key: CommsPublicKey,
     features: PeerFeatures,
-    secret_key: CommsSecretKey,
+    secret_key: Hidden<CommsSecretKey>,
     public_address: RwLock<Multiaddr>,
     #[serde(default = "rwlock_none")]
     identity_signature: RwLock<Option<IdentitySignature>>,
@@ -60,7 +61,7 @@ fn rwlock_none() -> RwLock<Option<IdentitySignature>> {
 
 impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
-    pub fn new(secret_key: CommsSecretKey, public_address: Multiaddr, features: PeerFeatures) -> Self {
+    pub fn new(secret_key: Hidden<CommsSecretKey>, public_address: Multiaddr, features: PeerFeatures) -> Self {
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key);
 
@@ -82,7 +83,7 @@ impl NodeIdentity {
     /// It is up to the caller to ensure that the given signature is valid for the node identity.
     /// Prefer using NodeIdentity::new over this function.
     pub fn with_signature_unchecked(
-        secret_key: CommsSecretKey,
+        secret_key: Hidden<CommsSecretKey>,
         public_address: Multiaddr,
         features: PeerFeatures,
         identity_signature: Option<IdentitySignature>,
@@ -103,7 +104,7 @@ impl NodeIdentity {
     /// Generates a new random NodeIdentity for CommsPublicKey
     pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
     where R: CryptoRng + Rng {
-        let secret_key = CommsSecretKey::random(rng);
+        let secret_key: Hidden<RistrettoSecretKey> = CommsSecretKey::random(rng).into();
         Self::new(secret_key, public_address, features)
     }
 
