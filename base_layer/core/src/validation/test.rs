@@ -293,6 +293,6 @@ mod transaction_validator {
         let features = OutputFeatures::create_coinbase(0, 0);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
         let err = validator.validate(&tx).unwrap_err();
-        unpack_enum!(ValidationError::MempoolTransactionContainsCoinbase = err);
+        unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
     }
 }

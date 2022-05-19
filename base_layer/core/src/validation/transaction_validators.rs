@@ -65,7 +65,7 @@ impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistencyValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
-            return Err(ValidationError::MempoolTransactionContainsCoinbase);
+            return Err(ValidationError::ErroneousCoinbaseOutput);
         }
 
         let tip = {
