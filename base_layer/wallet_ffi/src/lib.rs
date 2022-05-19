@@ -979,6 +979,66 @@ pub unsafe extern "C" fn commitment_signature_destroy(com_sig: *mut TariCommitme
 
 /// -------------------------------------------------------------------------------------------- ///
 
+/// --------------------------------------- Covenant --------------------------------------------///
+
+/// Creates a TariCovenant from a ByteVector containing the covenant bytes
+///
+/// ## Arguments
+/// `covenant_bytes` - The covenant bytes as a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariCovenant` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```covenant_destroy``` function must be called when finished with a TariCovenant to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn covenant_create_from_bytes(
+    covenant_bytes: *const ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariCovenant {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if covenant_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("covenant_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let decoded_covenant_bytes = (*covenant_bytes).0.clone();
+
+    match TariCovenant::from_bytes(&decoded_covenant_bytes) {
+        Ok(covenant) => Box::into_raw(Box::new(covenant)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a Covenant: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("covenant_bytes".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Frees memory for a TariCovenant
+///
+/// ## Arguments
+/// `covenant` - The pointer to a TariCovenant
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
+    if !covenant.is_null() {
+        Box::from_raw(covenant);
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Seed Words ----------------------------------------------///
 
 /// Create an empty instance of TariSeedWords
@@ -6441,7 +6501,10 @@ mod test {
 
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus};
-    use tari_core::transactions::test_helpers::{create_unblinded_output, TestParams};
+    use tari_core::{
+        covenant,
+        transactions::test_helpers::{create_unblinded_output, TestParams},
+    };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::{
@@ -6947,6 +7010,42 @@ mod test {
             byte_vector_destroy(nonce_bytes);
             byte_vector_destroy(u_bytes);
             byte_vector_destroy(v_bytes);
+        }
+    }
+
+    #[test]
+    fn test_covenant_create_empty() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
+
+            assert_eq!(error, 0);
+            let empty_covenant = covenant!();
+            assert_eq!(*covenant, empty_covenant);
+
+            covenant_destroy(covenant);
+            byte_vector_destroy(covenant_bytes);
+        }
+    }
+
+    #[test]
+    fn test_covenant_create_filled() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let expected_covenant = covenant!(identity());
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(expected_covenant.to_bytes())));
+            let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
+
+            assert_eq!(error, 0);
+            assert_eq!(*covenant, expected_covenant);
+
+            covenant_destroy(covenant);
+            byte_vector_destroy(covenant_bytes);
         }
     }
 
