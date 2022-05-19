@@ -6,108 +6,81 @@ import { ThemeProvider } from 'styled-components'
 import MiningBox from '.'
 
 import { rootReducer } from '../../../store'
-import { initialState as miningInitialState } from '../../../store/mining/index'
 import themes from '../../../styles/themes'
-import { MiningNodesStatus } from '../../../store/mining/types'
+import { Container } from '../../../store/containers/types'
+
+const emptyNodeState = {
+  sessions: [],
+}
+
+const pausedContainersState = {
+  running: false,
+  pending: false,
+  error: undefined,
+  dependsOn: [],
+}
 
 describe('MiningBox', () => {
-  it('should render mining box for the unknown status', () => {
+  it('should render custom children when provided', () => {
+    const testText = 'the test text'
+
     render(
       <Provider
         store={configureStore({
           reducer: rootReducer,
-          preloadedState: {
-            mining: {
-              ...miningInitialState,
-              tari: {
-                ...miningInitialState.tari,
-                status: MiningNodesStatus.UNKNOWN,
-              },
-            },
-          },
+          preloadedState: {},
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningBox node='tari' />
+          <MiningBox
+            node='tari'
+            nodeState={emptyNodeState}
+            containersState={pausedContainersState}
+            containersToStopOnPause={[]}
+          >
+            <p>{testText}</p>
+          </MiningBox>
         </ThemeProvider>
       </Provider>,
     )
-    const el = screen.getByTestId('node-box-placeholder--unknown')
+    const el = screen.getByText(testText)
     expect(el).toBeInTheDocument()
   })
 
   it('should render mining box for the error status', () => {
+    const containersState = {
+      running: true,
+      pending: false,
+      error: [{ type: Container.Tor, error: 'Something went wrong' }],
+      dependsOn: [
+        {
+          type: Container.Tor,
+          id: 'test-tor-container-id',
+          running: false,
+          pending: false,
+          error: 'Something went wrong',
+        },
+      ],
+    }
+
     render(
       <Provider
         store={configureStore({
           reducer: rootReducer,
-          preloadedState: {
-            mining: {
-              ...miningInitialState,
-              tari: {
-                ...miningInitialState.tari,
-                status: MiningNodesStatus.ERROR,
-              },
-            },
-          },
+          preloadedState: {},
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningBox node='tari' />
+          <MiningBox
+            node='tari'
+            nodeState={emptyNodeState}
+            containersState={containersState}
+            containersToStopOnPause={[]}
+          />
         </ThemeProvider>
       </Provider>,
     )
     const el = screen.getByTestId('node-box-placeholder--error')
-    expect(el).toBeInTheDocument()
-  })
-
-  it('should render mining box for the setup required status', () => {
-    render(
-      <Provider
-        store={configureStore({
-          reducer: rootReducer,
-          preloadedState: {
-            mining: {
-              ...miningInitialState,
-              tari: {
-                ...miningInitialState.tari,
-                status: MiningNodesStatus.SETUP_REQUIRED,
-              },
-            },
-          },
-        })}
-      >
-        <ThemeProvider theme={themes.light}>
-          <MiningBox node='tari' />
-        </ThemeProvider>
-      </Provider>,
-    )
-    const el = screen.getByTestId('node-box-placeholder--setup-required')
-    expect(el).toBeInTheDocument()
-  })
-
-  it('should render mining box for the blocked status', () => {
-    render(
-      <Provider
-        store={configureStore({
-          reducer: rootReducer,
-          preloadedState: {
-            mining: {
-              ...miningInitialState,
-              tari: {
-                ...miningInitialState.tari,
-                status: MiningNodesStatus.BLOCKED,
-              },
-            },
-          },
-        })}
-      >
-        <ThemeProvider theme={themes.light}>
-          <MiningBox node='tari' />
-        </ThemeProvider>
-      </Provider>,
-    )
-    const el = screen.getByTestId('node-box-placeholder--blocked')
     expect(el).toBeInTheDocument()
   })
 
@@ -116,19 +89,16 @@ describe('MiningBox', () => {
       <Provider
         store={configureStore({
           reducer: rootReducer,
-          preloadedState: {
-            mining: {
-              ...miningInitialState,
-              tari: {
-                ...miningInitialState.tari,
-                status: MiningNodesStatus.PAUSED,
-              },
-            },
-          },
+          preloadedState: {},
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningBox node='tari' />
+          <MiningBox
+            node='tari'
+            nodeState={emptyNodeState}
+            containersState={pausedContainersState}
+            containersToStopOnPause={[]}
+          />
         </ThemeProvider>
       </Provider>,
     )
@@ -137,55 +107,29 @@ describe('MiningBox', () => {
   })
 
   it('should render mining box for the running status', () => {
+    const containersState = {
+      ...pausedContainersState,
+      running: true,
+    }
+
     render(
       <Provider
         store={configureStore({
           reducer: rootReducer,
-          preloadedState: {
-            mining: {
-              ...miningInitialState,
-              tari: {
-                ...miningInitialState.tari,
-                status: MiningNodesStatus.RUNNING,
-              },
-            },
-          },
+          preloadedState: {},
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningBox node='tari' />
+          <MiningBox
+            node='tari'
+            nodeState={emptyNodeState}
+            containersState={containersState}
+            containersToStopOnPause={[]}
+          />
         </ThemeProvider>
       </Provider>,
     )
     const el = screen.getByTestId('mining-box-running-content')
-    expect(el).toBeInTheDocument()
-  })
-
-  it('should render mining custom children', () => {
-    const testText = 'it is custom test text'
-    render(
-      <Provider
-        store={configureStore({
-          reducer: rootReducer,
-          preloadedState: {
-            mining: {
-              ...miningInitialState,
-              tari: {
-                ...miningInitialState.tari,
-                status: MiningNodesStatus.RUNNING,
-              },
-            },
-          },
-        })}
-      >
-        <ThemeProvider theme={themes.light}>
-          <MiningBox node='tari'>
-            <span>{testText}</span>
-          </MiningBox>
-        </ThemeProvider>
-      </Provider>,
-    )
-    const el = screen.getByText(testText)
     expect(el).toBeInTheDocument()
   })
 })

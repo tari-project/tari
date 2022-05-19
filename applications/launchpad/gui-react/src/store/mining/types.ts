@@ -1,29 +1,23 @@
-/**
- * @TODO - the list of possible statuses may change.
- * If so, then MiningBox and Mining Container may need to be changed as well.
- * UNKNOWN - the status of the container/node is unknown, ie. on app launch it can be default status
- * SETUP_REQUIRED - node/container cannot be run because of missing configuration (merge with BLOCKED?)
- * BLOCKED - node/container cannot be run because some requirement is not satisfied, ie. mining node needs base node running
- * PAUSED - node/container is not running. NOTE: node and container are not necessary the same. Ie. Docker container can be live, but process running inside the container can be stopped. So maybe we should split this also into PAUSED and STOPPED?
- * RUNNING - node/container is running and healthy
- * ERROR - node/container is failed
- */
-export enum MiningNodesStatus {
-  'UNKNOWN' = 'UNKNOWN',
-  'SETUP_REQUIRED' = 'SETUP_REQUIRED',
-  'BLOCKED' = 'BLOCKED',
-  'PAUSED' = 'PAUSED',
-  'RUNNING' = 'RUNNING',
-  'ERROR' = 'ERROR',
+import {
+  ContainerStateFields,
+  Container,
+  ContainerStateFieldsWithIdAndType,
+} from '../containers/types'
+
+export enum TariMiningSetupRequired {
+  MissingWalletAddress = 'missing_wallet_address',
 }
 
-export enum CodesOfTariMining {
-  'MISSING_WALLET_ADDRESS',
+export enum MergedMiningSetupRequired {
+  MissingWalletAddress = 'missing_wallet_address',
+  MissingMoneroAddress = 'missing_monero_address',
 }
 
-export enum CodesOfMergedMining {
-  'MISSING_WALLET_ADDRESS',
-  'MISSING_MONERO_ADDRESS',
+export interface MiningDependencyState {
+  type: Container
+  running: boolean
+  pending: boolean
+  error: boolean
 }
 
 export interface MiningSession {
@@ -31,6 +25,7 @@ export interface MiningSession {
   finishedAt?: string
   id?: string // uuid (?)
   total?: Record<string, string> // i,e { xtr: 1000 bignumber (?) }
+  pending?: boolean
   history?: {
     timestamp?: string // UTC timestamp
     amount?: string // bignumber (?)
@@ -39,19 +34,21 @@ export interface MiningSession {
   }[]
 }
 
-export interface MiningNodeState<TDisabledReason> {
-  pending: boolean
-  status: MiningNodesStatus
-  disabledReason?: TDisabledReason
+export interface MiningNodeState {
   sessions?: MiningSession[]
 }
 
-export type TariMiningNodeState = MiningNodeState<CodesOfTariMining>
-export type MergedMiningNodeState = MiningNodeState<CodesOfMergedMining>
-
-export type MiningNodeStates = TariMiningNodeState | MergedMiningNodeState
+export interface MergedMiningNodeState extends MiningNodeState {
+  address?: string
+  threads?: number
+  urls?: string[]
+}
 
 export interface MiningState {
-  tari: TariMiningNodeState
+  tari: MiningNodeState
   merged: MergedMiningNodeState
+}
+
+export interface MiningContainersState extends ContainerStateFields {
+  dependsOn: ContainerStateFieldsWithIdAndType[]
 }

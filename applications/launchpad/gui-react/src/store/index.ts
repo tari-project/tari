@@ -23,7 +23,7 @@ export const store = configureStore({
   enhancers: [
     devToolsEnhancer({
       name: 'Tari Launchpad',
-      realtime: true, // remove this to disable devtools on production
+      // realtime: true, // enables devtools on production
       hostname: 'localhost',
       port: 8000,
     }),

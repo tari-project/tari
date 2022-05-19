@@ -35,14 +35,19 @@ const Time = ({
  * @param {boolean} [active] - should the timer be active
  * @param {() => void} onClick - on button click
  */
-const RunningButton = ({ startedAt, active, onClick }: RunningButtonProps) => {
+const RunningButton = ({
+  startedAt,
+  active,
+  onClick,
+  testId,
+}: RunningButtonProps) => {
   const theme = useTheme()
 
   return (
     <StyledRunningButton
       type='button'
       onClick={onClick}
-      data-testid='running-button-cmp'
+      data-testid={testId || 'running-button-cmp'}
     >
       <TimeWrapper>
         <Text as='span' color={theme.inverted.secondary} testId='timer-test-id'>
