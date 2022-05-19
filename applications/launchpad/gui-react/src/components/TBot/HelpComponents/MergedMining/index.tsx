@@ -3,7 +3,8 @@ import { StyledTextContainer } from '../styles'
 import Text from '../../../Text'
 import GotItButton from '../GotItButton'
 
-import { TBotClose } from '../../../../utils/TBotHelpers'
+import { useAppDispatch } from '../../../../store/hooks'
+import { tbotactions } from '../../../../store/tbot'
 
 const Message1 = () => {
   return (
@@ -16,6 +17,12 @@ const Message1 = () => {
 }
 
 const Message2 = () => {
+  const dispatch = useAppDispatch()
+
+  const close = () => {
+    return dispatch(tbotactions.close())
+  }
+
   return (
     <>
       <StyledTextContainer>
@@ -23,7 +30,7 @@ const Message2 = () => {
           {t.mergedMiningHelp.message2}
         </Text>
       </StyledTextContainer>
-      <GotItButton onClick={TBotClose} />
+      <GotItButton onClick={close} />
     </>
   )
 }

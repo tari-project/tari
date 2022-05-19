@@ -4,6 +4,8 @@ import { config, useSpring } from 'react-spring'
 import SvgClose from '../../../styles/Icons/Close'
 import TBot from '..'
 
+import { useAppDispatch } from '../../../store/hooks'
+import { tbotactions } from '../../../store/tbot'
 import { TBotPromptProps } from './types'
 
 import {
@@ -16,7 +18,6 @@ import {
   ContentContainer,
   FadeOutSection,
 } from './styles'
-import { TBotClose } from '../../../utils/TBotHelpers'
 
 /**
  * @name TBotPrompt
@@ -29,6 +30,7 @@ import { TBotClose } from '../../../utils/TBotHelpers'
 
 const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
   const [multipleMessages, setMultipleMessages] = useState(false)
+  const dispatch = useAppDispatch()
   const promptAnim = useSpring({
     from: {
       opacity: 0,
@@ -46,6 +48,10 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
   //   }
   // }, [children])
 
+  const close = () => {
+    return dispatch(tbotactions.close())
+  }
+
   if (!open) {
     return null
   }
@@ -60,7 +66,7 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
           <FadeOutSection />
           <StyledCloseContainer>
             <StyledCloseIcon>
-              <SvgClose fontSize={20} onClick={TBotClose} />
+              <SvgClose fontSize={20} onClick={close} />
             </StyledCloseIcon>
           </StyledCloseContainer>
           <MessageContainer multi={multipleMessages}>
