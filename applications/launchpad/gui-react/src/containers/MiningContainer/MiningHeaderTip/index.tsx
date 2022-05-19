@@ -59,17 +59,6 @@ const MiningHeaderTip = () => {
           >
             {t.mining.headerTips.wantToKnowMore}
           </Button>
-          {/* FOR DEV PURPOSES */}
-          <Button
-            variant='button-in-text'
-            rightIcon={<SvgInfo1 width='20px' height='20px' />}
-            autosizeIcons={false}
-            onClick={() =>
-              dispatch(tbotactions.push(MessagesConfig.mergedMiningHelp))
-            }
-          >
-            TEST BUTTON
-          </Button>
         </Text>
       </Text>
     </StyledMiningHeaderTip>
