@@ -111,6 +111,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(count > 0)
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn get_tip_node(&self) -> Result<Option<DbNode>, Self::Error> {
         use crate::schema::nodes::dsl;
 
@@ -137,6 +138,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         debug!(target: LOG_TARGET, "Inserting {:?}", item);
+        #[allow(clippy::cast_possible_wrap)]
         let new_node = NewNode {
             hash: Vec::from(item.hash.as_bytes()),
             parent: Vec::from(item.parent.as_bytes()),
@@ -175,6 +177,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(())
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     fn update_locked_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         use crate::schema::locked_qc::dsl;
         let message_type = i32::from(item.message_type.as_u8());
@@ -213,6 +216,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(())
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         use crate::schema::prepare_qc::dsl;
         let message_type = i32::from(item.message_type.as_u8());
@@ -251,6 +255,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(())
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn get_prepare_qc(&self) -> Result<Option<QuorumCertificate>, Self::Error> {
         let connection = self.get_connection()?;
         use crate::schema::prepare_qc::dsl;
@@ -293,6 +298,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         1
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         use crate::schema::locked_qc::dsl;
         let connection = self.get_connection()?;
@@ -333,6 +339,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         ))
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         use crate::schema::locked_qc::dsl;
         let connection = self.get_connection()?;
@@ -374,6 +381,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         }
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn find_node_by_parent_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
         use crate::schema::nodes::dsl;
         let connection = self.get_connection()?;

@@ -131,6 +131,7 @@ mod header_validators {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn chain_balance_validation() {
     let factories = CryptoFactories::default();
     let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler).build();

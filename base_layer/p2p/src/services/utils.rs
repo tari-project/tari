@@ -40,7 +40,6 @@ where E: Debug {
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
 pub fn map_decode<T>(serialized: Arc<PeerMessage>) -> Result<DomainMessage<T>, prost::DecodeError>
 where T: prost::Message + Default {
     Ok(DomainMessage {

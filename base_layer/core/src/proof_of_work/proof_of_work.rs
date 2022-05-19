@@ -88,10 +88,10 @@ impl Display for ProofOfWork {
 }
 
 impl ConsensusEncoding for ProofOfWork {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.pow_algo.as_u64().consensus_encode(writer)?;
-        written += self.pow_data.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.pow_algo.as_u64().consensus_encode(writer)?;
+        self.pow_data.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

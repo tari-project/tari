@@ -67,7 +67,7 @@ impl Covenant {
         buf
     }
 
-    pub(super) fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    pub(super) fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         CovenantTokenEncoder::new(self.tokens.as_slice()).write_to(writer)
     }
 
@@ -114,11 +114,11 @@ impl Covenant {
 }
 
 impl ConsensusEncoding for Covenant {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         let len = self.get_byte_length();
-        let mut written = writer.write_varint(len)?;
-        written += self.write_to(writer)?;
-        Ok(written)
+        writer.write_varint(len)?;
+        self.write_to(writer)?;
+        Ok(())
     }
 }
 

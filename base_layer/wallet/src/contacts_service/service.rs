@@ -315,10 +315,11 @@ where T: ContactsBackend + 'static
     }
 
     fn is_online(&self, last_seen: NaiveDateTime) -> bool {
-        Utc::now().naive_utc().sub(last_seen) <=
-            chrono::Duration::seconds(
-                (self.contacts_online_ping_window as u64 * self.contacts_auto_ping_interval.as_secs()) as i64,
-            )
+        #[allow(clippy::cast_possible_wrap)]
+        let ping_window = chrono::Duration::seconds(
+            (self.contacts_online_ping_window as u64 * self.contacts_auto_ping_interval.as_secs()) as i64,
+        );
+        Utc::now().naive_utc().sub(last_seen) <= ping_window
     }
 
     async fn update_with_ping_pong(
@@ -358,11 +359,11 @@ where T: ContactsBackend + 'static
             );
             self.liveness_data.push(data.clone());
 
+            trace!(target: LOG_TARGET, "{}", data);
             // Send only fails if there are no subscribers.
             let _size = self
                 .event_publisher
-                .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data.clone()))));
-            trace!(target: LOG_TARGET, "{}", data);
+                .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))));
         } else {
             trace!(
                 target: LOG_TARGET,
