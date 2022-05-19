@@ -734,40 +734,32 @@ Then(
 );
 
 Then(
-  "the ffi wallet {word} imports faucet UTXOs",
+  "I import unspent outputs from {word} as faucet outputs to ffi wallet {word}",
   { timeout: 125 * 1000 },
-  async function (walletName) {
+  async function (walletName, ffiWalletName) {
     const wallet = this.getWallet(walletName);
+    const ffiWallet = this.getWallet(ffiWalletName);
 
-    // For now, let's hardcode a faucet example UTXo
-    const amount = 10000;
-    const spending_key_hex = "376592a5dc59ccf10c1baff2b1382e23cc412695bfc75076cb0fcb4f7c678201";
-    const source_public_key_hex = "26bd0700ac6ddba8de76cfaac08035a59342b11eb5883e801b397358dbc0b97b";
-    const features_object = {
-      version: 0,
-      flags: 0,
-      maturity: 0,
-      recovery_byte: 0,
-      metadata: "0",
-      unique_id: null, 
-      parent_public_key: null
-    };
-    const metadata_signature = "0";
-    const sender_offset_public_key_hex = source_public_key_hex;
-    const script_private_key_hex = spending_key_hex;
-    const covenant = "0";
-    const message = "foo";
+    await wallet.exportUnspentOutputs();
+    let outputs = await wallet.readExportedOutputsAsFaucetOutputs();
+   
+    outputs.forEach(output => {
+      console.log({output});
+      const source_public_key = output.sender_offset_public_key;
+      const covenant = output.covenant || "0";
+      const message = output.covenant || "default message";
 
-    wallet.importUtxo(
-      amount,
-      spending_key_hex,
-      source_public_key_hex,
-      features_object,
-      metadata_signature,
-      sender_offset_public_key_hex,
-      script_private_key_hex,
-      covenant,
-      message
-    );
+      ffiWallet.importUtxo(
+        output.value,
+        output.spending_key.toString("hex"),
+        source_public_key.toString("hex"),
+        output.features,
+        output.metadata_signature.toString("hex"),
+        output.sender_offset_public_key.toString("hex"),
+        output.script_private_key.toString("hex"),
+        covenant,
+        message
+      );
+    });
   }
 );

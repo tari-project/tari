@@ -213,9 +213,16 @@ Feature: Wallet FFI
     Scenario: As a client I want to import faucet UTXOs
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes
-        And I have a ffi wallet FFI_WALLET connected to base node BASE1
-        Then the ffi wallet FFI_WALLET imports faucet UTXOs
-
+        And I have a base node BASE2 connected to all seed nodes
+        And I have wallet SENDER connected to base node BASE1
+        And I have a ffi wallet FFI_WALLET connected to base node BASE2
+        And I have wallet RECEIVER connected to base node BASE2
+        And I have mining node MINER connected to base node BASE1 and wallet SENDER
+        And mining node MINER mines 5 blocks
+        Then all nodes are at height 5
+        Then I wait for wallet SENDER to have at least 10000000000 uT
+        Then I import unspent outputs from SENDER as faucet outputs to ffi wallet FFI_WALLET
+    
     # Scenario: As a client I want to get my balance
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
 

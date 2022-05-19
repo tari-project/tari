@@ -21,7 +21,18 @@ class OutputFeatures {
   }
 
   static createFromObject(features_object) {
-    let f = features_object;
+    // For convenience, default any value that is not specified in parameters
+    const default_features = {
+      version: 0,
+      flags: 0,
+      maturity: 0,
+      recovery_byte: 0,
+      metadata: "0",
+      unique_id: null, 
+      parent_public_key: null
+    };
+    let f = { ...default_features, ...features_object };
+
     let metadata = ByteVector.fromBytes(f.metadata).getPtr()
 
     let result = new OutputFeatures();
