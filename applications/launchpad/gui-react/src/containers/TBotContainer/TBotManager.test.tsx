@@ -1,9 +1,9 @@
 import { render, screen, cleanup } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 import { Provider } from 'react-redux'
-import themes from './styles/themes'
+import themes from '../../styles/themes'
+import { store } from '../../store'
 import TBotManager from './TBotManager'
-import { store } from './store'
 
 afterEach(cleanup)
 
@@ -12,13 +12,13 @@ describe('TBot', () => {
     render(
       <Provider store={store}>
         <ThemeProvider theme={themes.light}>
-          <TBotManager messages={['test']} />
+          <TBotManager messages={['testText']} />
         </ThemeProvider>
         ,
       </Provider>,
     )
 
-    const el = screen.getByText('test')
+    const el = screen.getByText('testText')
     expect(el).toBeInTheDocument()
   })
 })

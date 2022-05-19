@@ -3,7 +3,6 @@ import { createSlice } from '@reduxjs/toolkit'
 import { TBotState } from './types'
 
 export const initialState: TBotState = {
-  // open: true,
   messageQueue: [],
 }
 
