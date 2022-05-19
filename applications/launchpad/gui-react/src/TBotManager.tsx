@@ -1,7 +1,5 @@
 /* eslint-disable react/jsx-key */
-import { useAppSelector } from './store/hooks'
 import TBotPrompt from './components/TBot/TBotPrompt'
-import { selectTBotQueue } from './store/tbot/selectors'
 import { StyledMessage } from './components/TBot/TBotPrompt/styles'
 import { Message1 } from './components/TBot/HelpComponents/CryptoMining'
 import {
@@ -15,10 +13,13 @@ const ComponentMap: { [key: string]: React.FC } = {
   mergedHelpMessage2: Merged2,
 }
 
-// const tbotQueue = useAppSelector(selectTBotQueue)
+/**
+ * @name TBotManager
+ *
+ * Global component that handles all help prompt and notification messages
+ */
 
 const TBotManager = ({ messages }: { messages: string[] }) => {
-  // console.log('QUEUE: ', tbotQueue)
   const renderMessages = messages.map(msg => {
     if (ComponentMap[msg] === undefined) {
       return <StyledMessage>{msg}</StyledMessage>
