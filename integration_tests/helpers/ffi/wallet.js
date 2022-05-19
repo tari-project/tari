@@ -3,6 +3,7 @@
 
 const InterfaceFFI = require("./ffiInterface");
 const PublicKey = require("./publicKey");
+const PrivateKey = require("./privateKey");
 const CompletedTransaction = require("./completedTransaction");
 const CompletedTransactions = require("./completedTransactions");
 const PendingInboundTransaction = require("./pendingInboundTransaction");
@@ -11,6 +12,8 @@ const PendingOutboundTransactions = require("./pendingOutboundTransactions");
 const Contact = require("./contact");
 const Contacts = require("./contacts");
 const Balance = require("./balance");
+const OutputFeatures = require("./outputFeatures");
+const ByteVector = require("./byteVector");
 
 const utf8 = require("utf8");
 const LivenessData = require("./livenessData");
@@ -549,6 +552,55 @@ class Wallet {
 
   listConnectedPublicKeys() {
     return InterfaceFFI.commsListConnectedPublicKeys(this.ptr);
+  }
+
+  importUtxo(
+    amount,
+    spending_key_hex,
+    source_public_key_hex,
+    features,
+    metadata_signature,
+    sender_offset_public_key_hex,
+    script_private_key_hex,
+    covenant,
+    message
+  ) {
+    console.log({
+      amount,
+      spending_key_hex,
+      source_public_key_hex,
+      features,
+      metadata_signature,
+      sender_offset_public_key_hex,
+      script_private_key_hex,
+      covenant,
+      message
+    });
+
+    let spending_key_ptr = PrivateKey.fromHexString(utf8.encode(spending_key_hex)).getPtr();
+    let source_public_key_ptr = PublicKey.fromHexString(utf8.encode(source_public_key_hex)).getPtr();
+    let metadata_signature_ptr = ByteVector.fromBytes(metadata_signature).getPtr();
+    let sender_offset_public_key_ptr = PublicKey.fromHexString(utf8.encode(sender_offset_public_key_hex)).getPtr();
+
+    let features_ptr = OutputFeatures.createFromBytes(features).getPtr();
+    let covenant_ptr = ByteVector.fromBytes(covenant).getPtr();
+
+    let script_private_key_ptr = PrivateKey.fromHexString(utf8.encode(script_private_key_hex)).getPtr();;
+
+    let message_ptr = utf8.encode(message);
+
+    return InterfaceFFI.walletImportUtxo(
+      this.ptr,
+      amount,
+      spending_key_ptr,
+      source_public_key_ptr,
+      features_ptr,
+      metadata_signature_ptr,
+      sender_offset_public_key_ptr,
+      script_private_key_ptr,
+      covenant_ptr,
+      message_ptr
+    );
   }
 
   destroy() {

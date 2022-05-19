@@ -279,6 +279,8 @@ class InterfaceFFI {
       ],
       comms_config_destroy: [this.void, [this.ptr]],
       comms_list_connected_public_keys: [this.ptr, [this.ptr, this.intPtr]],
+      output_features_create_from_bytes: [this.ptr, [this.uchar, this.ushort, this.ulonglong, this.uchar, this.ptr, this.ptr, this.ptr, this.intPtr]],
+      output_features_destroy:[this.void, [this.ptr]],
       wallet_create: [
         this.ptr,
         [
@@ -1142,6 +1144,38 @@ class InterfaceFFI {
   }
   //endregion
 
+  //region OutputFeatures
+  static outputFeaturesCreateFromBytes(
+    version,
+    flags,
+    maturity,
+    recovery_byte,
+    metadata,
+    unique_id,
+    parent_public_key
+  ) {
+    let error = this.initError();
+
+    let result = this.fn.output_features_create_from_bytes(
+      version,
+      flags,
+      maturity,
+      recovery_byte,
+      metadata,
+      unique_id,
+      parent_public_key,
+      error,
+    )
+    this.checkErrorResult(error, `outputFeaturesCreateFromBytes`);
+    return result;
+  }
+
+  static outputFeaturesDestroy(ptr) {
+    this.fn.output_features_destroy(ptr);
+  }
+
+  //endregion
+
   //region Callbacks
   static createCallbackReceivedTransaction(fn) {
     return ffi.Callback(this.void, [this.ptr], fn);
@@ -1533,6 +1567,8 @@ class InterfaceFFI {
     features_ptr,
     metadata_signature_ptr,
     sender_offset_public_key_ptr,
+    script_private_key_ptr,
+    covenant_ptr,
     message
   ) {
     let error = this.initError();
@@ -1544,10 +1580,8 @@ class InterfaceFFI {
       features_ptr,
       metadata_signature_ptr,
       sender_offset_public_key_ptr,
-      // script_private_key
-      spending_key_ptr,
-      // default Covenant
-      null,
+      script_private_key_ptr,
+      covenant_ptr,
       message,
       error
     );

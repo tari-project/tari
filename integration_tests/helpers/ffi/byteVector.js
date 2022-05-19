@@ -16,7 +16,7 @@ class ByteVector {
     }
   }
 
-  fromBytes(input) {
+  static fromBytes(input) {
     let buf = Buffer.from(input, "utf-8"); // ensure encoding is utf=8, js default is utf-16
     let len = buf.length; // get the length
     let result = new ByteVector();

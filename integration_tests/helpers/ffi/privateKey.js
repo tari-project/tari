@@ -21,7 +21,7 @@ class PrivateKey {
     this.ptr = InterfaceFFI.privateKeyGenerate();
   }
 
-  fromHexString(hex) {
+  static fromHexString(hex) {
     let sanitize = utf8.encode(hex); // Make sure it's not UTF-16 encoded (JS default)
     let result = new PrivateKey();
     result.pointerAssign(InterfaceFFI.privateKeyFromHex(sanitize));

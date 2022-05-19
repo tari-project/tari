@@ -209,6 +209,13 @@ Feature: Wallet FFI
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_CONFIRMED
         And I stop ffi wallet FFI_RECEIVER
 
+    @critical
+    Scenario: As a client I want to import faucet UTXOs
+        Given I have a seed node SEED
+        And I have a base node BASE1 connected to all seed nodes
+        And I have a ffi wallet FFI_WALLET connected to base node BASE1
+        Then the ffi wallet FFI_WALLET imports faucet UTXOs
+
     # Scenario: As a client I want to get my balance
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
 

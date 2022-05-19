@@ -163,6 +163,30 @@ class WalletFFIClient {
     );
   }
 
+  importUtxo(
+    amount,
+    spending_key_hex,
+    source_public_key_hex,
+    features,
+    metadata_signature,
+    sender_offset_public_key_hex,
+    script_private_key_hex,
+    covenant,
+    message
+  ) {
+    return this.wallet.importUtxo(
+      amount,
+      spending_key_hex,
+      source_public_key_hex,
+      features,
+      metadata_signature,
+      sender_offset_public_key_hex,
+      script_private_key_hex,
+      covenant,
+      message
+    );
+  }
+
   start(
     seed_words_text,
     pass_phrase,
