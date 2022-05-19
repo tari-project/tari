@@ -85,7 +85,7 @@ impl KeyManagerMock {
         let km = lock.get_mut(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let key = km.next_key()?;
         Ok(NextKeyResult {
-            key: key.k,
+            key: key.k.into_inner(),
             index: km.key_index(),
         })
     }
@@ -99,7 +99,7 @@ impl KeyManagerMock {
         let lock = self.key_managers.read().await;
         let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let key = km.derive_key(index)?;
-        Ok(key.k)
+        Ok(key.k.into_inner())
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
@@ -110,7 +110,7 @@ impl KeyManagerMock {
         let current_index = km.key_index();
 
         for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            if km.derive_key(i)?.k == *key {
+            if km.derive_key(i)?.k.into_inner() == *key {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
                 return Ok(i);
             }

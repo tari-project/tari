@@ -69,6 +69,7 @@ use tari_p2p::{
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::Hidden;
 
 use crate::{
     assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
@@ -629,7 +630,7 @@ pub async fn read_or_create_master_seed<T: WalletBackend + 'static>(
     Ok(master_seed)
 }
 
-pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
+pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<Hidden<CommsSecretKey>, WalletError> {
     let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
         master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),

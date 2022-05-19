@@ -22,34 +22,28 @@
 
 use std::marker::PhantomData;
 
-use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
     keys::SecretKey,
-    tari_utilities::{byte_array::ByteArrayError, hex::Hex},
+    tari_utilities::{byte_array::ByteArrayError, hex::Hex, Hidden},
 };
 
 use crate::cipher_seed::CipherSeed;
 
-#[derive(Clone, Derivative, Serialize, Deserialize)]
-#[derivative(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DerivedKey<K>
 where K: SecretKey
 {
-    #[derivative(Debug = "ignore")]
     #[serde(skip_serializing)]
-    pub k: K,
+    pub k: Hidden<K>,
     pub key_index: u64,
 }
 
-#[derive(Clone, Derivative, PartialEq, Serialize, Deserialize)]
-#[derivative(Debug)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct KeyManager<K: SecretKey, D: Digest> {
-    #[derivative(Debug = "ignore")]
-    seed: CipherSeed,
-    #[derivative(Debug = "ignore")]
-    pub branch_seed: String,
+    seed: Hidden<CipherSeed>,
+    pub branch_seed: Hidden<String>,
     primary_key_index: u64,
     digest_type: PhantomData<D>,
     key_type: PhantomData<K>,
@@ -63,8 +57,8 @@ where
     /// Creates a new KeyManager with a new randomly selected entropy
     pub fn new() -> KeyManager<K, D> {
         KeyManager {
-            seed: CipherSeed::new(),
-            branch_seed: "".to_string(),
+            seed: CipherSeed::new().into(),
+            branch_seed: "".to_string().into(),
             primary_key_index: 0,
             digest_type: PhantomData,
             key_type: PhantomData,
@@ -74,8 +68,8 @@ where
     /// Constructs a KeyManager from known parts
     pub fn from(seed: CipherSeed, branch_seed: String, primary_key_index: u64) -> KeyManager<K, D> {
         KeyManager {
-            seed,
-            branch_seed,
+            seed: seed.into(),
+            branch_seed: branch_seed.into(),
             primary_key_index,
             digest_type: PhantomData,
             key_type: PhantomData,
@@ -91,7 +85,7 @@ where
             key_index
         );
         match K::from_bytes(D::digest(&concatenated.into_bytes()).as_slice()) {
-            Ok(k) => Ok(DerivedKey { k, key_index }),
+            Ok(k) => Ok(DerivedKey { k: k.into(), key_index }),
             Err(e) => Err(e),
         }
     }

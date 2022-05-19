@@ -3728,7 +3728,7 @@ pub unsafe extern "C" fn wallet_create(
 
         // SAFETY: we are manually checking the validity of this signature before adding Some(..)
         let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
-            comms_secret_key,
+            comms_secret_key.into_inner(),
             node_address,
             node_features,
             identity_sig,

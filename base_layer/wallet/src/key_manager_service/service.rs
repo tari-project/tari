@@ -94,7 +94,7 @@ where TBackend: KeyManagerBackend + 'static
         let key = km.next_key()?;
         self.db.increment_key_index(branch).await?;
         Ok(NextKeyResult {
-            key: key.k,
+            key: key.k.into_inner(),
             index: km.key_index(),
         })
     }
@@ -107,7 +107,7 @@ where TBackend: KeyManagerBackend + 'static
             .lock()
             .await;
         let key = km.derive_key(index)?;
-        Ok(key.k)
+        Ok(key.k.into_inner())
     }
 
     pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError> {
@@ -132,7 +132,7 @@ where TBackend: KeyManagerBackend + 'static
         let current_index = km.key_index();
 
         for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            if km.derive_key(i)?.k == *key {
+            if *km.derive_key(i)?.k == *key {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
                 return Ok(i);
             }

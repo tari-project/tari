@@ -110,7 +110,11 @@ impl KeyManagerProvider<SqliteTransaction> for ConcreteKeyManagerProvider {
       .update_last_index(&row, new_key.key_index, transaction)?;
 
     let pub_key = PublicKey::from_secret_key(&new_key.k);
-    Ok((format!("assets:{}", new_key.key_index), new_key.k, pub_key))
+    Ok((
+      format!("assets:{}", new_key.key_index),
+      new_key.k.into_inner(),
+      pub_key,
+    ))
   }
 
   fn generate_asset_address(
@@ -156,7 +160,7 @@ impl KeyManagerProvider<SqliteTransaction> for ConcreteKeyManagerProvider {
     let pub_key = PublicKey::from_secret_key(&new_key.k);
     Ok((
       format!("assets/{}:{}", asset_public_key.to_hex(), new_key.key_index),
-      new_key.k,
+      new_key.k.into_inner(),
       pub_key,
     ))
   }
