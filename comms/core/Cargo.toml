@@ -10,11 +10,11 @@ version = "0.32.0"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { path = "../../../tari-crypto" }
+tari_crypto = { git = "https://github.com/brianp/tari-crypto.git", branch = "hidden-type" }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_storage = { version = "^0.32", path = "../../infrastructure/storage" }
 tari_shutdown = { version = "^0.32", path = "../../infrastructure/shutdown" }
-tari_utilities = { path = "../../../tari_utilities" }
+tari_utilities = { git = "https://github.com/brianp/tari_utilities", branch = "hidden-type" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"

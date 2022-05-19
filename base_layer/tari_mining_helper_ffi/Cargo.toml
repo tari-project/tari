@@ -8,10 +8,10 @@ edition = "2018"
 
 [dependencies]
 tari_comms = { version = "^0.32", path = "../../comms/core" }
-tari_crypto = { path = "../../../tari-crypto" }
+tari_crypto = { git = "https://github.com/brianp/tari-crypto.git", branch = "hidden-type" }
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
-tari_utilities = { path = "../../../tari_utilities" }
+tari_utilities = { git = "https://github.com/brianp/tari_utilities", branch = "hidden-type" }
 libc = "0.2.65"
 thiserror = "1.0.26"
 hex = "0.4.2"

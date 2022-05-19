@@ -13,8 +13,8 @@ tari_common = {  path = "../../common" }
 tari_comms = {  path = "../../comms/core" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_app_grpc = {  path = "../tari_app_grpc" }
-tari_crypto = { path = "../../../tari-crypto" }
-tari_utilities = { path = "../../../tari_utilities" }
+tari_crypto = { git = "https://github.com/brianp/tari-crypto.git", branch = "hidden-type" }
+tari_utilities = { git = "https://github.com/brianp/tari_utilities", branch = "hidden-type" }
 
 crossterm = { version = "0.17" }
 clap = { version = "3.1.1", features = ["derive"] }

@@ -6919,7 +6919,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.13.1"
+version = "0.13.0"
+source = "git+https://github.com/brianp/tari-crypto.git?branch=hidden-type#0f97653306fe669be06f93e5d700d44abd0c3a80"
 dependencies = [
  "base64 0.10.1",
  "blake2",
@@ -7326,7 +7327,8 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.4.4"
+version = "0.4.3"
+source = "git+https://github.com/brianp/tari_utilities?branch=hidden-type#f3ebe080bece63ba51e8be5ca2ceec8aaad8d586"
 dependencies = [
  "base58-monero",
  "base64 0.13.0",

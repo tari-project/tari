@@ -11,8 +11,8 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_crypto = { path = "../../../tari-crypto" }
-tari_utilities = { path = "../../../tari_utilities" }
+tari_crypto = { git = "https://github.com/brianp/tari-crypto.git", branch = "hidden-type" }
+tari_utilities = { git = "https://github.com/brianp/tari_utilities", branch = "hidden-type" }
 
 blake2 = "0.9"
 digest = "0.9.0"

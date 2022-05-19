@@ -19,10 +19,10 @@ tari_app_grpc = { path = "../../tari_app_grpc" }
 tari_app_utilities = { path = "../../tari_app_utilities" }
 tari_common = { path = "../../../common" }
 tari_common_types = { path = "../../../base_layer/common_types" }
-tari_crypto = { path = "../../../../tari-crypto" }
+tari_crypto = { git = "https://github.com/brianp/tari-crypto.git", branch = "hidden-type" }
 tari_key_manager = { path = "../../../base_layer/key_manager" }
 tari_mmr = { path = "../../../base_layer/mmr" }
-tari_utilities = { path = "../../../../tari_utilities" }
+tari_utilities = { git = "https://github.com/brianp/tari_utilities.git", branch = "hidden-type" }
 tari_dan_common_types = { path = "../../../dan_layer/common_types" }
 
 blake2 = "^0.9.0"
