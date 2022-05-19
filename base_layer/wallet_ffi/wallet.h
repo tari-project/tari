@@ -199,6 +199,7 @@ struct TariCovenant *covenant_create_from_bytes(
 
 // Frees memory for a TariCovenant
 void covenant_destroy(struct TariCovenant *covenant);
+
 /// -------------------------------- Output Features  --------------------------------------------- ///
 
 // Creates a TariOutputFeatures from byte values
