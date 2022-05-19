@@ -20,14 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use multiaddr::Multiaddr;
+use rand::rngs::OsRng;
+use tari_crypto::keys::SecretKey;
+use tari_utilities::Hidden;
+
 use super::{TestFactory, TestFactoryError};
 use crate::{
     peer_manager::{NodeIdentity, PeerFeatures},
     types::CommsSecretKey,
 };
-use multiaddr::Multiaddr;
-use rand::rngs::OsRng;
-use tari_crypto::keys::SecretKey;
 
 pub fn create() -> NodeIdentityFactory {
     NodeIdentityFactory::default()
@@ -54,10 +56,11 @@ impl TestFactory for NodeIdentityFactory {
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         // Generate a test identity, set it and return it
-        let secret_key = self
+        let secret_key: Hidden<CommsSecretKey> = self
             .secret_key
             .or_else(|| Some(CommsSecretKey::random(&mut OsRng)))
-            .unwrap();
+            .unwrap()
+            .into();
 
         let control_service_address = self
             .control_service_address

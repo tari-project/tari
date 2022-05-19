@@ -26,7 +26,8 @@ use console_error_panic_hook;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait};
+use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait, ristretto::RistrettoSecretKey};
+use tari_utilities::Hidden;
 use wasm_bindgen::prelude::*;
 
 use crate::{
@@ -49,8 +50,8 @@ struct DerivedKeypair {
 
 impl From<DerivedKey<PrivateKey>> for DerivedKeypair {
     fn from(derived: DerivedKey<PrivateKey>) -> Self {
-        let private_key = derived.k;
-        let public_key = PublicKey::from_secret_key(&private_key);
+        let private_key = derived.k.into_inner();
+        let public_key = PublicKey::from_secret_key(&private_key).into();
         let key_index = derived.key_index;
 
         DerivedKeypair {
@@ -101,7 +102,7 @@ impl From<KeyManagerResponse> for JsValue {
 pub fn key_manager_new(branch_seed: Option<String>) -> JsValue {
     let mut key_manager = KeyManager::new();
     if let Some(branch_seed) = branch_seed {
-        key_manager.branch_seed = branch_seed;
+        key_manager.branch_seed = branch_seed.into();
     }
     KeyManagerResponse::success(key_manager, None).into()
 }
@@ -174,7 +175,7 @@ mod test {
 
         assert!(response.success);
         assert!(response.keypair.is_none());
-        assert_eq!(response.key_manager.branch_seed, "");
+        assert_eq!(response.key_manager.branch_seed, Hidden::from("".to_string()));
     }
 
     #[wasm_bindgen_test]
@@ -189,7 +190,7 @@ mod test {
         let js = key_manager_from(seed, "asdf".into(), 0);
         let mut response = parse::<KeyManagerResponse>(&js).unwrap();
 
-        assert_eq!(response.key_manager.branch_seed, "asdf");
+        assert_eq!(response.key_manager.branch_seed, Hidden::from("asdf".to_string()));
         let next_key = response.key_manager.next_key().unwrap();
         assert_eq!(
             next_key.k.to_hex(),
