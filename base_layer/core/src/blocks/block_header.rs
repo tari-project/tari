@@ -65,7 +65,7 @@ use thiserror::Error;
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 
@@ -398,7 +398,7 @@ impl ConsensusEncoding for BlockHeader {
         let mut written = self.version.consensus_encode(writer)?;
         written += self.height.consensus_encode(writer)?;
         written += copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
-        written += self.timestamp.as_u64().consensus_encode(writer)?;
+        written += self.timestamp.consensus_encode(writer)?;
         written += copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
         written += copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
         written += self.output_mmr_size.consensus_encode(writer)?;
@@ -413,13 +413,15 @@ impl ConsensusEncoding for BlockHeader {
     }
 }
 
+impl ConsensusEncodingSized for BlockHeader {}
+
 impl ConsensusDecoding for BlockHeader {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let version = u16::consensus_decode(reader)?;
         let mut header = BlockHeader::new(version);
         header.height = u64::consensus_decode(reader)?;
         header.prev_hash = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
-        header.timestamp = EpochTime::from(u64::consensus_decode(reader)?);
+        header.timestamp = EpochTime::consensus_decode(reader)?;
         header.output_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
         header.witness_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
         header.output_mmr_size = u64::consensus_decode(reader)?;

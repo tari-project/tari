@@ -675,6 +675,7 @@ mod test {
 
     #[tokio::test]
     #[allow(clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
     async fn request_stored_messages() {
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();

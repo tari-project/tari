@@ -276,7 +276,7 @@ where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Dese
         let final_value: config::Value = merger.get(Self::main_key_prefix())?;
         final_value
             .try_deserialize()
-            .map_err(|ce| ConfigurationError::new(Self::main_key_prefix(), None, ce))
+            .map_err(|ce| ConfigurationError::new(Self::main_key_prefix(), None, ce.to_string()))
     }
 }
 
@@ -290,11 +290,11 @@ pub struct ConfigurationError {
 }
 
 impl ConfigurationError {
-    pub fn new<F: ToString, M: ToString>(field: F, value: Option<String>, msg: M) -> Self {
+    pub fn new<F: Into<String>, M: Into<String>>(field: F, value: Option<String>, msg: M) -> Self {
         ConfigurationError {
-            field: field.to_string(),
+            field: field.into(),
             value,
-            message: msg.to_string(),
+            message: msg.into(),
         }
     }
 }

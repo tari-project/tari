@@ -24,7 +24,7 @@ use std::{fmt, fmt::Formatter};
 
 use tari_common_types::waiting_requests::RequestKey;
 
-use crate::mempool::{StateResponse, StatsResponse, TxStorageResponse};
+use crate::mempool::{FeePerGramStat, StateResponse, StatsResponse, TxStorageResponse};
 
 /// API Response enum for Mempool responses.
 #[derive(Clone, Debug)]
@@ -32,15 +32,17 @@ pub enum MempoolResponse {
     Stats(StatsResponse),
     State(StateResponse),
     TxStorage(TxStorageResponse),
+    FeePerGramStats { response: Vec<FeePerGramStat> },
 }
 
 impl fmt::Display for MempoolResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use MempoolResponse::{State, Stats, TxStorage};
+        use MempoolResponse::{FeePerGramStats, State, Stats, TxStorage};
         match &self {
             Stats(_) => write!(f, "Stats"),
             State(_) => write!(f, "State"),
             TxStorage(_) => write!(f, "TxStorage"),
+            FeePerGramStats { response } => write!(f, "FeePerGramStats({} item(s))", response.len()),
         }
     }
 }

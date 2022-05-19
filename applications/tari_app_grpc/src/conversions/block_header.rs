@@ -39,7 +39,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
             version: u32::from(h.version),
             height: h.height,
             prev_hash: h.prev_hash,
-            timestamp: Some(datetime_to_timestamp(h.timestamp)),
+            timestamp: datetime_to_timestamp(h.timestamp),
             input_mr: h.input_mr,
             output_mr: h.output_mr,
             output_mmr_size: h.output_mmr_size,
@@ -69,15 +69,15 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
 
         let timestamp = header
             .timestamp
-            .map(timestamp_to_datetime)
-            .ok_or_else(|| "timestamp not provided".to_string())?;
+            .and_then(timestamp_to_datetime)
+            .ok_or_else(|| "timestamp not provided or was negative".to_string())?;
 
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
             None => return Err("No proof of work provided".into()),
         };
         Ok(Self {
-            version: header.version as u16,
+            version: u16::try_from(header.version).map_err(|_| "header version too large")?,
             height: header.height,
             prev_hash: header.prev_hash,
             timestamp,

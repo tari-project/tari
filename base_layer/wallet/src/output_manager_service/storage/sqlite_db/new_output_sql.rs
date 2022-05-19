@@ -67,6 +67,7 @@ pub struct NewOutputSql {
 }
 
 impl NewOutputSql {
+    #[allow(clippy::cast_possible_wrap)]
     pub fn new(
         output: DbUnblindedOutput,
         status: OutputStatus,
@@ -76,7 +77,7 @@ impl NewOutputSql {
         Ok(Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
-            value: (u64::from(output.unblinded_output.value)) as i64,
+            value: output.unblinded_output.value.as_u64() as i64,
             flags: i32::from(output.unblinded_output.features.flags.bits()),
             maturity: output.unblinded_output.features.maturity as i64,
             recovery_byte: i32::from(output.unblinded_output.features.recovery_byte),
