@@ -204,6 +204,8 @@ pub struct TariContacts(Vec<TariContact>);
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
+pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;
+pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
@@ -990,7 +992,63 @@ pub unsafe extern "C" fn commitment_signature_destroy(com_sig: *mut TariCommitme
 }
 
 /// -------------------------------------------------------------------------------------------- ///
+/// --------------------------------------- Covenant --------------------------------------------///
 
+/// Creates a TariCovenant from a ByteVector containing the covenant bytes
+///
+/// ## Arguments
+/// `covenant_bytes` - The covenant bytes as a ByteVector
+///
+/// ## Returns
+/// `TariCovenant` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```covenant_destroy``` function must be called when finished with a TariCovenant to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn covenant_create_from_bytes(
+    covenant_bytes: *const ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariCovenant {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if covenant_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("covenant_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let decoded_covenant_bytes = (*covenant_bytes).0.clone();
+
+    match TariCovenant::from_bytes(&decoded_covenant_bytes) {
+        Ok(covenant) => Box::into_raw(Box::new(covenant)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a Covenant: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("covenant_bytes".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Frees memory for a TariCovenant
+///
+/// ## Arguments
+/// `covenant` - The pointer to a TariCovenant
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
+    if !covenant.is_null() {
+        Box::from_raw(covenant);
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
 /// ---------------------------------- Output Features ------------------------------------------///
 
 /// Creates a TariOutputFeatures from byte values
@@ -6574,6 +6632,278 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
     }
 }
 
+/// ------------------------------------- FeePerGramStats ------------------------------------ ///
+
+/// Get the TariFeePerGramStats from a TariWallet.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `count` - The maximum number of blocks to be checked
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// wallet is null or an error is encountered.
+///
+/// # Safety
+/// The ```fee_per_gram_stats_destroy``` method must be called when finished with a TariFeePerGramStats to prevent
+/// a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
+    wallet: *mut TariWallet,
+    count: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariFeePerGramStats {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_fee_per_gram_stats_per_block(count as usize),
+    ) {
+        Ok(estimates) => Box::into_raw(Box::new(estimates)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error getting the fee estimates: {:?}", e);
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Get length of stats from the TariFeePerGramStats.
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter
+///
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_get_length(
+    fee_per_gram_stats: *mut TariFeePerGramStats,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut len = 0;
+    if fee_per_gram_stats.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stats".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        len = (*fee_per_gram_stats).stats.len();
+    }
+    len as c_uint
+}
+
+/// Get TariFeePerGramStat at position from the TariFeePerGramStats.
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats.
+/// `position` - The integer position.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the TariFeePerGramStat, note that it returns ptr::null_mut() if
+/// fee_per_gram_stats is null or an error is encountered.
+///
+/// # Safety
+/// The ```fee_per_gram_stat_destroy``` method must be called when finished with a TariCompletedTransactions to 4prevent
+/// a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_get_at(
+    fee_per_gram_stats: *mut TariFeePerGramStats,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariFeePerGramStat {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if fee_per_gram_stats.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stats".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let len = fee_per_gram_stats_get_length(fee_per_gram_stats, error_out);
+    if *error_out != 0 {
+        return ptr::null_mut();
+    }
+    if len == 0 || position > len - 1 {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new((*fee_per_gram_stats).stats[position as usize].clone()))
+}
+
+/// Frees memory for a TariFeePerGramStats
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStats pointer
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut TariFeePerGramStats) {
+    if !fee_per_gram_stats.is_null() {
+        Box::from_raw(fee_per_gram_stats);
+    }
+}
+
+/// ------------------------------------------------------------------------------------------ ///
+
+/// ------------------------------------- FeePerGramStat ------------------------------------- ///
+
+/// Get the order of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns order
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_order(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut order = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        order = (*fee_per_gram_stat).order;
+    }
+    order
+}
+
+/// Get the minimum fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns minimum fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_min_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).min_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Get the average fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns average fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_avg_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).avg_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Get the maximum fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns maximum fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).max_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Frees memory for a TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat) {
+    if !fee_per_gram_stat.is_null() {
+        Box::from_raw(fee_per_gram_stat);
+    }
+}
+
+/// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
     use std::{
@@ -6585,7 +6915,10 @@ mod test {
 
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus};
-    use tari_core::transactions::test_helpers::{create_unblinded_output, TestParams};
+    use tari_core::{
+        covenant,
+        transactions::test_helpers::{create_unblinded_output, TestParams},
+    };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::{
@@ -7091,6 +7424,42 @@ mod test {
             byte_vector_destroy(nonce_bytes);
             byte_vector_destroy(u_bytes);
             byte_vector_destroy(v_bytes);
+        }
+    }
+
+    #[test]
+    fn test_covenant_create_empty() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
+
+            assert_eq!(error, 0);
+            let empty_covenant = covenant!();
+            assert_eq!(*covenant, empty_covenant);
+
+            covenant_destroy(covenant);
+            byte_vector_destroy(covenant_bytes);
+        }
+    }
+
+    #[test]
+    fn test_covenant_create_filled() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let expected_covenant = covenant!(identity());
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(expected_covenant.to_bytes())));
+            let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
+
+            assert_eq!(error, 0);
+            assert_eq!(*covenant, expected_covenant);
+
+            covenant_destroy(covenant);
+            byte_vector_destroy(covenant_bytes);
         }
     }
 
