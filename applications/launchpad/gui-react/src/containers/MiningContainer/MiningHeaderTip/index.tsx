@@ -6,16 +6,25 @@ import Text from '../../../components/Text'
 import SvgStar from '../../../styles/Icons/Star'
 import SvgInfo1 from '../../../styles/Icons/Info1'
 import { StyledMiningHeaderTip } from './styles'
+
+import { useAppDispatch } from '../../../store/hooks'
+import { tbotactions } from '../../../store/tbot'
+
 import {
   selectTariContainers,
   selectTariMiningState,
 } from '../../../store/mining/selectors'
+
+import MessagesConfig from '../../../config/helpMessagesConfig'
 import { useAppSelector } from '../../../store/hooks'
 
 /**
  * Renders instructions above mining node boxes
  */
+
 const MiningHeaderTip = () => {
+  const dispatch = useAppDispatch()
+
   const tariMiningState = useAppSelector(selectTariMiningState)
   const tariContainers = useAppSelector(selectTariContainers)
 
@@ -37,6 +46,9 @@ const MiningHeaderTip = () => {
             variant='button-in-text'
             rightIcon={<SvgInfo1 width='20px' height='20px' />}
             autosizeIcons={false}
+            onClick={() =>
+              dispatch(tbotactions.push(MessagesConfig.cryptoMiningHelp))
+            }
           >
             {t.mining.headerTips.wantToKnowMore}
           </Button>
