@@ -67,8 +67,8 @@ mod test {
     fn flush_test() {
         let mut byte_counter = ByteCounter::new();
         let buf = [0u8, 1u8, 2u8, 3u8];
-        byte_counter.write(&buf).unwrap();
-        let flushed = byte_counter.flush().unwrap();
-        assert_eq!(flushed, ());
+        let count_bytes = byte_counter.write(&buf).unwrap();
+        // test passes if the following method does not return an error
+        byte_counter.flush().unwrap();
     }
 }

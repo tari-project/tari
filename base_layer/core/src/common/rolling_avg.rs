@@ -108,9 +108,9 @@ mod test {
         let mut subject = RollingAverageTime::new(3);
 
         // durations
-        let duration_1 = Duration::new(1, 999_999_999 as u32);
-        let duration_2 = Duration::new(1, 0 as u32);
-        let duration_3 = Duration::new(0, 999_999_999 as u32);
+        let duration_1 = Duration::new(1, 999_999_999_u32);
+        let duration_2 = Duration::new(1, 0_u32);
+        let duration_3 = Duration::new(0, 999_999_999_u32);
 
         // add samples
         subject.add_sample(duration_1);
@@ -136,7 +136,7 @@ mod test {
         subject.add_sample(Duration::new(0, 1));
 
         // assert that samples per second is correctly defined
-        let total_time = 2_000_000 as f64;
+        let total_time = 2_000_000_f64;
         let correct_sample_per_second = 1_000_000.0 * ((subject.samples.len() as f64) / total_time);
         assert_eq!(subject.calc_samples_per_second(), Some(correct_sample_per_second));
     }
