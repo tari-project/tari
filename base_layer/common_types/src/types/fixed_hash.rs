@@ -25,7 +25,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use digest::consts::U32;
+use digest::{consts::U32, generic_array};
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::{Hex, HexError};
 
@@ -80,7 +80,7 @@ impl TryFrom<&[u8]> for FixedHash {
     }
 }
 
-impl From<digest::generic_array::GenericArray<u8, U32>> for FixedHash {
+impl From<generic_array::GenericArray<u8, U32>> for FixedHash {
     fn from(hash: digest::generic_array::GenericArray<u8, U32>) -> Self {
         Self(hash.into())
     }

@@ -544,7 +544,7 @@ mod test {
     #[test]
     fn test_for_checkpoint() {
         let unique_id = vec![7, 2, 3, 4];
-        let hash = [13; FixedHash::byte_size()].into();
+        let hash = [13; 32].into();
         let committee = vec![PublicKey::default()];
         // Initial
         assert_eq!(
