@@ -402,8 +402,6 @@ impl Display for OutputFeatures {
 mod test {
     use std::{io::ErrorKind, iter};
 
-    use tari_common_types::types::BLOCK_HASH_LENGTH;
-
     use super::*;
     use crate::consensus::check_consensus_encoding_correctness;
 
@@ -435,7 +433,7 @@ mod test {
                 asset_owner_commitment: Default::default(),
             }),
             sidechain_checkpoint: Some(SideChainCheckpointFeatures {
-                merkle_root: [1u8; 32],
+                merkle_root: [1u8; 32].into(),
                 committee: iter::repeat_with(PublicKey::default).take(50).collect(),
             }),
             committee_definition: match version {
@@ -546,7 +544,7 @@ mod test {
     #[test]
     fn test_for_checkpoint() {
         let unique_id = vec![7, 2, 3, 4];
-        let hash = [13; BLOCK_HASH_LENGTH];
+        let hash = [13; FixedHash::byte_size()].into();
         let committee = vec![PublicKey::default()];
         // Initial
         assert_eq!(
