@@ -48,7 +48,7 @@ jobs:
           path: ${{ github.workspace }}/libwallet
       # Copy tarballs to S3
       - name: Sync to S3
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/libwallet') }}
         continue-on-error: true # Don't break if s3 upload fails
         uses: jakejarvis/s3-sync-action@v0.5.1
         with:
@@ -94,7 +94,7 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     needs: [android, ios]
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ startsWith(github.ref, 'refs/tags/libwallet') }}
     steps:
       - name: Download binaries
         uses: actions/download-artifact@v2
