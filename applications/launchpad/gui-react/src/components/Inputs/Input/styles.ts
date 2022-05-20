@@ -51,8 +51,8 @@ export const InputContainer = styled.div<{ disabled?: boolean }>`
   }
 `
 
-export const IconUnitsContainer = styled.div`
-  width: 22px;
+export const IconUnitsContainer = styled.div<{ $iconWrapperWidth: number }>`
+  width: ${({ $iconWrapperWidth }) => $iconWrapperWidth}px;
   height: auto;
   display: flex;
   justify-content: center;
