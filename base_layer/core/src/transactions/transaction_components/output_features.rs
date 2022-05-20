@@ -67,6 +67,11 @@ pub struct OutputFeatures {
     #[serde(default)]
     pub recovery_byte: u8,
     pub metadata: Vec<u8>,
+    // TODO: Add these fields
+    // pub contract_id: Option<FixedHash>,
+    // pub constitution: Option<ContractConstitution>,
+
+    // Deprecated fields
     pub unique_id: Option<Vec<u8>>,
     pub parent_public_key: Option<PublicKey>,
     pub asset: Option<AssetOutputFeatures>,

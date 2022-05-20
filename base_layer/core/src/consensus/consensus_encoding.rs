@@ -85,8 +85,10 @@ pub mod test {
         let mut buf = Vec::new();
         subject.consensus_encode(&mut buf)?;
         assert_eq!(buf.len(), subject.consensus_encode_exact_size());
-        let decoded = T::consensus_decode(&mut buf.as_slice())?;
+        let mut reader = buf.as_slice();
+        let decoded = T::consensus_decode(&mut reader)?;
         assert_eq!(decoded, subject);
+        assert!(reader.is_empty());
         Ok(())
     }
 }
