@@ -4782,6 +4782,11 @@ data-urls@^2.0.0:
     whatwg-mimetype "^2.3.0"
     whatwg-url "^8.0.0"
 
+date-fns@^2.20.1:
+  version "2.28.0"
+  resolved "https://registry.yarnpkg.com/date-fns/-/date-fns-2.28.0.tgz#9570d656f5fc13143e50c975a3b6bbeb46cd08b2"
+  integrity sha512-8d35hViGYx/QH0icHYCeLmsLmMUheMmTyV9Fcm6gvNwdw31yXXH+O85sOBJ+OLnLQMKZowvpKb6FgMIQjcpvQw==
+
 dateformat@^4.6.3:
   version "4.6.3"
   resolved "https://registry.yarnpkg.com/dateformat/-/dateformat-4.6.3.tgz#556fa6497e5217fedb78821424f8a1c22fa3f4b5"
@@ -11450,6 +11455,13 @@ url-parse-lax@^3.0.0:
   integrity sha1-FrXK/Afb42dsGxmZF3gj1lA6yww=
   dependencies:
     prepend-http "^2.0.0"
+
+use-lilius@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/use-lilius/-/use-lilius-2.0.0.tgz#7ff46df8493abcceb0a3d3c4b1a31e1501cb5f81"
+  integrity sha512-cs9y7vwSioJu5B57x97g7j+5npUhzBDk0Rm4HYEQ2W6SWgCGdhCkPgxGsWALoYAZ2w3wtIip6xp/W+zbwxXuwA==
+  dependencies:
+    date-fns "^2.20.1"
 
 use-sync-external-store@^1.0.0:
   version "1.0.0"

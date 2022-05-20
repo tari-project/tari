@@ -10,6 +10,7 @@ import ScheduleList from './ScheduleList'
 const exampleSchedules = [
   {
     id: 'example-schedule',
+    testId: 'schedule-example-schedule',
     enabled: true,
     days: [0, 1, 2],
     interval: {
@@ -20,6 +21,7 @@ const exampleSchedules = [
   },
   {
     id: 'example-schedule-2',
+    testId: 'schedule-example-schedule-2',
     enabled: true,
     days: [0, 1, 2],
     interval: {
@@ -89,10 +91,8 @@ describe('ScheduleList', () => {
       </ThemeProvider>,
     )
 
-    expect(screen.getByTestId('schedule-example-schedule')).toBeInTheDocument()
-    expect(
-      screen.getByTestId('schedule-example-schedule-2'),
-    ).toBeInTheDocument()
+    expect(screen.getByTestId(exampleSchedules[0].testId)).toBeInTheDocument()
+    expect(screen.getByTestId(exampleSchedules[1].testId)).toBeInTheDocument()
   })
 
   it('should select schedule on single click', () => {
@@ -109,7 +109,7 @@ describe('ScheduleList', () => {
       </ThemeProvider>,
     )
 
-    const schedule = screen.getByTestId('schedule-example-schedule')
+    const schedule = screen.getByTestId(exampleSchedules[0].testId)
     fireEvent.click(schedule)
 
     const selectedSchedule = container.querySelector('[data-selected="true"]')
@@ -131,7 +131,7 @@ describe('ScheduleList', () => {
       </ThemeProvider>,
     )
 
-    const schedule = screen.getByTestId('schedule-example-schedule')
+    const schedule = screen.getByTestId(exampleSchedules[0].testId)
     fireEvent.click(schedule)
     fireEvent.click(schedule)
 
@@ -139,7 +139,7 @@ describe('ScheduleList', () => {
     expect(selectedSchedule).toBeInTheDocument()
 
     expect(edit).toHaveBeenCalledTimes(1)
-    expect(edit).toHaveBeenCalledWith('example-schedule')
+    expect(edit).toHaveBeenCalledWith(exampleSchedules[0].id)
   })
 
   it('should toggle schedule on switch click', () => {
@@ -161,7 +161,7 @@ describe('ScheduleList', () => {
     fireEvent.click(switchComponent)
 
     expect(toggle).toHaveBeenCalledTimes(1)
-    expect(toggle).toHaveBeenCalledWith('example-schedule')
+    expect(toggle).toHaveBeenCalledWith(exampleSchedules[0].id)
   })
 
   it('should remove schedule on delete or backspace', () => {
@@ -179,16 +179,16 @@ describe('ScheduleList', () => {
       </ThemeProvider>,
     )
 
-    const schedule1 = screen.getByTestId('schedule-example-schedule')
+    const schedule1 = screen.getByTestId(exampleSchedules[0].testId)
     fireEvent.click(schedule1)
     fireEvent.keyDown(schedule1, { key: 'Delete' })
 
-    const schedule2 = screen.getByTestId('schedule-example-schedule-2')
+    const schedule2 = screen.getByTestId(exampleSchedules[1].testId)
     fireEvent.click(schedule2)
     fireEvent.keyDown(schedule2, { key: 'Backspace' })
 
     expect(remove).toHaveBeenCalledTimes(2)
-    expect(remove).toHaveBeenCalledWith('example-schedule')
-    expect(remove).toHaveBeenCalledWith('example-schedule-2')
+    expect(remove).toHaveBeenCalledWith(exampleSchedules[0].id)
+    expect(remove).toHaveBeenCalledWith(exampleSchedules[1].id)
   })
 })

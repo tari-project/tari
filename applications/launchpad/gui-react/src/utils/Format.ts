@@ -25,6 +25,9 @@ export const day = (date: Date) =>
     day: 'numeric',
   })
 
+export const month = (date: Date) =>
+  date.toLocaleDateString([], { year: 'numeric', month: 'long' })
+
 /**
  * Convert milliseconds to 0:00:00 {hours:minutes:seconds} format.
  * @param {number} time - milliseconds
