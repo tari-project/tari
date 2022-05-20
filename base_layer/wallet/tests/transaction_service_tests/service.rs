@@ -5618,7 +5618,7 @@ fn test_get_fee_per_gram_per_block_basic() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let mut alice_ts_interface = setup_transaction_service_no_comms(&mut runtime, factories.clone(), connection, None);
+    let mut alice_ts_interface = setup_transaction_service_no_comms(&mut runtime, factories, connection, None);
     let stats = vec![base_node_proto::MempoolFeePerGramStat {
         order: 0,
         min_fee_per_gram: 1,

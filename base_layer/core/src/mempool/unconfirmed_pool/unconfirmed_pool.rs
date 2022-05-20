@@ -566,10 +566,7 @@ impl UnconfirmedPool {
             let mut max_fee_per_gram = MicroTari::zero();
             let mut last_count = 0;
             for (i, key) in self.tx_by_priority.values().rev().enumerate().skip(offset) {
-                let tx = self
-                    .tx_by_key
-                    .get(key)
-                    .ok_or_else(|| UnconfirmedPoolError::StorageOutofSync)?;
+                let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 let weight = tx.weight;
 
                 if total_weight + weight > target_block_weight {
@@ -1088,7 +1085,7 @@ mod test {
             let tx3 = Arc::new(tx3);
             let tx4 = Arc::new(tx4);
             unconfirmed_pool
-                .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
+                .insert_many(vec![tx1, tx2, tx3, tx4], &tx_weight)
                 .unwrap();
 
             let stats = unconfirmed_pool.get_fee_per_gram_stats(1, 19500).unwrap();
