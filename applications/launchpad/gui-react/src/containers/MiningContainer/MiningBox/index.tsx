@@ -16,6 +16,7 @@ import { MiningBoxProps, MiningBoxStatus, NodeBoxStatusConfig } from './types'
 import { MiningBoxContent, NodeIcons } from './styles'
 import { useMemo } from 'react'
 import RunningButton from '../../../components/RunningButton'
+import { tbotactions } from '../../../store/tbot'
 
 const parseLastSessionToCoins = (lastSession: MiningSession | undefined) => {
   if (lastSession && lastSession.total) {
@@ -62,7 +63,9 @@ const parseLastSessionToCoins = (lastSession: MiningSession | undefined) => {
  * @param {MiningContainersState} [containersState] - the containers from Redux's mining
  * @param {{ id: string; type: Container }[]} [containersToStopOnPause] - list of containers that need to be stopped when user clicks on pause button.
  * @param {ReactNode} [children] - component overriding the generic one composed by this container for a given status.
+ * @param {string[]} [helpMessages] - object containing help prompt messages
  */
+
 const MiningBox = ({
   node,
   icons,
@@ -73,6 +76,7 @@ const MiningBox = ({
   nodeState,
   containersState,
   containersToStopOnPause,
+  helpMessages,
 }: MiningBoxProps) => {
   const dispatch = useAppDispatch()
   const theme = useTheme()
@@ -249,6 +253,13 @@ const MiningBox = ({
 
   const content = componentForCurrentStatus()
 
+  let helpPromptClick
+
+  if (helpMessages) {
+    helpPromptClick = () => {
+      return dispatch(tbotactions.push(helpMessages))
+    }
+  }
   return (
     <NodeBox
       title={currentState.title}
@@ -256,6 +267,7 @@ const MiningBox = ({
       style={{ position: 'relative', ...currentState.boxStyle }}
       titleStyle={currentState.titleStyle}
       contentStyle={currentState.contentStyle}
+      helpPromptOnClick={helpPromptClick}
       testId={testId}
     >
       {icons && icons.length > 0 ? (

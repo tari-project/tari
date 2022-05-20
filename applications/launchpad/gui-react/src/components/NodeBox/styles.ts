@@ -4,6 +4,21 @@ export const BoxHeader = styled.div`
   height: 36px;
 `
 
+export const TitleRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+`
+
+export const SvgContainer = styled.div<{ running?: boolean }>`
+  display: flex;
+  justify-content: center;
+  font-size: 20px;
+  margin-left: ${({ theme }) => theme.spacingHorizontal(0.333)};
+  cursor: pointer;
+  color: ${({ theme, running }) => (running ? theme.inverted.secondary : null)};
+`
+
 export const BoxContent = styled.div`
   padding-top: ${({ theme }) => theme.spacingVertical(1)};
   padding-bottom: ${({ theme }) => theme.spacingVertical(1)};

@@ -41,4 +41,5 @@ export interface MiningBoxProps {
   nodeState: MiningNodeState
   containersState: MiningContainersState
   containersToStopOnPause: { id: string; type: Container }[]
+  helpMessages?: string[]
 }

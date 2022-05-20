@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
 import themes from '../../styles/themes'
+import lightTheme from '../../styles/themes/light'
 
 import NodeBox, { NodeBoxContentPlaceholder } from '.'
 
@@ -45,5 +46,22 @@ describe('NodeBox', () => {
 
     const el = screen.getByText(testText)
     expect(el).toBeInTheDocument()
+  })
+
+  it('should render the correct help icon colour', () => {
+    const mock = jest.fn()
+    render(
+      <ThemeProvider theme={themes.light}>
+        <NodeBox
+          tag={{ type: 'running', text: 'test' }}
+          helpPromptOnClick={mock}
+        />
+      </ThemeProvider>,
+    )
+
+    const textColour = lightTheme.inverted.secondary
+
+    const el = screen.getByTestId('help-icon-cmp')
+    expect(el).toHaveStyle(`color: ${textColour}`)
   })
 })

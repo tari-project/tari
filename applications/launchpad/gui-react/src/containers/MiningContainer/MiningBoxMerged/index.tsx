@@ -14,6 +14,7 @@ import { MiningBoxStatus } from '../MiningBox/types'
 import { Container } from '../../../store/containers/types'
 // import SetupMerged from './SetupMerged'
 import SetupMergedWithForm from './SetupMergedWithForm'
+import MessagesConfig from '../../../config/helpMessagesConfig'
 
 const MiningBoxMerged = () => {
   const theme = useTheme()
@@ -22,6 +23,7 @@ const MiningBoxMerged = () => {
   let currentStatus: MiningBoxStatus | undefined
 
   const nodeState = useAppSelector(selectMergedMiningState)
+  console.log('NODE_STATE: ', nodeState)
   const containersState = useAppSelector(selectMergedContainers)
   const mergedSetupRequired = useAppSelector(selectMergedSetupRequired)
 
@@ -76,7 +78,6 @@ const MiningBoxMerged = () => {
       <SetupMergedWithForm mergedSetupRequired={mergedSetupRequired} />
     )
   }
-
   return (
     <MiningBox
       node='merged'
@@ -90,6 +91,7 @@ const MiningBoxMerged = () => {
       nodeState={nodeState}
       containersState={containersState}
       containersToStopOnPause={containersToStopOnPause}
+      helpMessages={MessagesConfig.mergedMiningHelp}
     >
       {boxContent}
     </MiningBox>
