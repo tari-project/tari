@@ -23,7 +23,6 @@ const MiningBoxMerged = () => {
   let currentStatus: MiningBoxStatus | undefined
 
   const nodeState = useAppSelector(selectMergedMiningState)
-  console.log('NODE_STATE: ', nodeState)
   const containersState = useAppSelector(selectMergedContainers)
   const mergedSetupRequired = useAppSelector(selectMergedSetupRequired)
 
@@ -91,7 +90,7 @@ const MiningBoxMerged = () => {
       nodeState={nodeState}
       containersState={containersState}
       containersToStopOnPause={containersToStopOnPause}
-      helpMessages={MessagesConfig.mergedMiningHelp}
+      helpMessages={MessagesConfig.MergedMiningHelp}
     >
       {boxContent}
     </MiningBox>

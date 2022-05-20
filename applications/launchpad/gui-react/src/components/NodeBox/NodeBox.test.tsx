@@ -54,12 +54,12 @@ describe('NodeBox', () => {
       <ThemeProvider theme={themes.light}>
         <NodeBox
           tag={{ type: 'running', text: 'test' }}
-          helpPromptOnClick={mock}
+          onHelpPromptClick={mock}
         />
       </ThemeProvider>,
     )
 
-    const textColour = lightTheme.inverted.secondary
+    const textColour = themes.light.inverted.secondary
 
     const el = screen.getByTestId('help-icon-cmp')
     expect(el).toHaveStyle(`color: ${textColour}`)

@@ -63,7 +63,7 @@ const parseLastSessionToCoins = (lastSession: MiningSession | undefined) => {
  * @param {MiningContainersState} [containersState] - the containers from Redux's mining
  * @param {{ id: string; type: Container }[]} [containersToStopOnPause] - list of containers that need to be stopped when user clicks on pause button.
  * @param {ReactNode} [children] - component overriding the generic one composed by this container for a given status.
- * @param {string[]} [helpMessages] - object containing help prompt messages
+ * @param {string[]} [helpMessages] - help prompt messages
  */
 
 const MiningBox = ({
@@ -267,7 +267,7 @@ const MiningBox = ({
       style={{ position: 'relative', ...currentState.boxStyle }}
       titleStyle={currentState.titleStyle}
       contentStyle={currentState.contentStyle}
-      helpPromptOnClick={helpPromptClick}
+      onHelpPromptClick={helpPromptClick}
       testId={testId}
     >
       {icons && icons.length > 0 ? (

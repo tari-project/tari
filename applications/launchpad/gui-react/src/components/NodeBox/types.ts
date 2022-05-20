@@ -12,7 +12,7 @@ export interface NodeBoxProps {
   titleStyle?: CSSWithSpring
   contentStyle?: CSSWithSpring
   children?: ReactNode
-  helpPromptOnClick?: () => void
+  onHelpPromptClick?: () => void
   testId?: string
 }
 

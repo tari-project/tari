@@ -6,7 +6,6 @@ export const BoxHeader = styled.div`
 
 export const TitleRow = styled.div`
   display: flex;
-  flex-direction: row;
   align-items: center;
 `
 

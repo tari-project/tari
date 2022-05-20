@@ -25,8 +25,9 @@ import { NodeBoxContentPlaceholderProps, NodeBoxProps } from './types'
  * @param {CSSWithSpring} [style] - the box style
  * @param {CSSWithSpring} [titleStyle] - the title style
  * @param {CSSWithSpring} [contentStyle] - the content style
- * @param {boolean} [helpPrompt] - renders help prompt button
+ * @param {() => void} [onHelpPromptClick] - onClick handler for help icon
  * @param {ReactNode} [children] - the box heading
+ * @param {string} [testId] - react test id
  */
 
 const NodeBox = ({
@@ -35,7 +36,7 @@ const NodeBox = ({
   style,
   titleStyle,
   contentStyle,
-  helpPromptOnClick,
+  onHelpPromptClick,
   children,
   testId = 'node-box-cmp',
 }: NodeBoxProps) => {
@@ -54,13 +55,13 @@ const NodeBox = ({
             {title}
           </Text>
         ) : null}
-        {helpPromptOnClick && (
+        {onHelpPromptClick && (
           <SvgContainer
             running={tag?.type === 'running'}
             data-testid='help-icon-cmp'
           >
             <SvgQuestion
-              onClick={helpPromptOnClick}
+              onClick={onHelpPromptClick}
               useGradient={tag?.type !== 'running'}
             />
           </SvgContainer>
