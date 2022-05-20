@@ -210,10 +210,3 @@ impl ProtobufCompiler {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    
-}
