@@ -282,7 +282,9 @@ class InterfaceFFI {
       covenant_create_from_bytes: [this.ptr, [this.ptr, this.intPtr]],
       covenant_destroy:[this.void, [this.ptr]],
       output_features_create_from_bytes: [this.ptr, [this.uchar, this.ushort, this.ulonglong, this.uchar, this.ptr, this.ptr, this.ptr, this.intPtr]],
-      output_features_destroy:[this.void, [this.ptr]],
+      output_features_destroy: [this.void, [this.ptr]],
+      commitment_signature_create_from_bytes: [this.ptr, [this.ptr, this.ptr, this.ptr, this.intPtr]],
+      commitment_signature_destroy: [this.void, [this.ptr]],
       wallet_create: [
         this.ptr,
         [
@@ -1191,6 +1193,30 @@ class InterfaceFFI {
   }
 
   static outputFeaturesDestroy(ptr) {
+    this.fn.output_features_destroy(ptr);
+  }
+
+  //endregion
+
+  //region OutputFeatures
+  static commitmentSignatureCreateFromBytes(
+    public_nonce_bytes,
+    u_bytes,
+    v_bytes
+  ) {
+    let error = this.initError();
+
+    let result = this.fn.commitment_signature_create_from_bytes(
+      public_nonce_bytes,
+      u_bytes,
+      v_bytes,
+      error,
+    )
+    this.checkErrorResult(error, `commitmentSignatureCreateFromBytes`);
+    return result;
+  }
+
+  static commitmentSignatureDestroy(ptr) {
     this.fn.output_features_destroy(ptr);
   }
 

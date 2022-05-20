@@ -211,17 +211,35 @@ Feature: Wallet FFI
 
     @critical
     Scenario: As a client I want to import faucet UTXOs
+        # Initialization of participants
         Given I have a seed node SEED
-        And I have a base node BASE1 connected to all seed nodes
-        And I have a base node BASE2 connected to all seed nodes
-        And I have wallet SENDER connected to base node BASE1
-        And I have a ffi wallet FFI_WALLET connected to base node BASE2
-        And I have wallet RECEIVER connected to base node BASE2
-        And I have mining node MINER connected to base node BASE1 and wallet SENDER
+        And I have a base node NODE connected to all seed nodes
+        And I have wallet WALLET_A connected to base node NODE
+        And I have wallet WALLET_B connected to base node NODE
+        And I have a ffi wallet WALLET_FFI connected to base node NODE
+        And I have mining node MINER connected to base node NODE and wallet WALLET_A
+
+        # Wait for the miner wallet (WALLET_A) to have funds from mining 
         And mining node MINER mines 5 blocks
         Then all nodes are at height 5
-        Then I wait for wallet SENDER to have at least 10000000000 uT
-        Then I import unspent outputs from SENDER as faucet outputs to ffi wallet FFI_WALLET
+        Then I wait for wallet WALLET_A to have at least 10000000000 uT
+
+        # Send from the miner wallet to another wallet before exporting the utxos,
+        # as the utxo export operation stops the wallet doing it
+        And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+        When mining node MINER mines 6 blocks
+        Then all nodes are at height 11
+        Then I wait for wallet WALLET_B to have at least 1000000 uT
+        Then I stop wallet WALLET_B
+
+        # Now we export the unspent utxos from WALLET_B into the WALLET_FFI
+        Then I import unspent outputs from WALLET_B as faucet outputs to ffi wallet WALLET_FFI
+        Then I wait for ffi wallet WALLET_FFI to have at least 1000000 uT
+        And I send 500000 uT from ffi wallet WALLET_FFI to wallet WALLET_A at fee 20
+        When mining node MINER mines 6 blocks
+        Then all nodes are at height 17
+        Then I wait for wallet WALLET_A to have at least 1000000 uT
+        And I stop ffi wallet WALLET_FFI
     
     # Scenario: As a client I want to get my balance
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"

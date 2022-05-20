@@ -14,7 +14,7 @@ const Contacts = require("./contacts");
 const Balance = require("./balance");
 const Covenant = require("./covenant");
 const OutputFeatures = require("./outputFeatures");
-const ByteVector = require("./byteVector");
+const CommitmentSignature = require("./commitmentSignature");
 
 const utf8 = require("utf8");
 const LivenessData = require("./livenessData");
@@ -566,9 +566,21 @@ class Wallet {
     covenant,
     message
   ) {
+    console.log({
+      amount,
+      spending_key_hex,
+      source_public_key_hex,
+      metadata_signature,
+      sender_offset_public_key_hex,
+      output_features_object,
+      covenant,
+      script_private_key_hex,
+      message
+    });
+
     let spending_key_ptr = PrivateKey.fromHexString(utf8.encode(spending_key_hex)).getPtr();
     let source_public_key_ptr = PublicKey.fromHexString(utf8.encode(source_public_key_hex)).getPtr();
-    let metadata_signature_ptr = ByteVector.fromBytes(metadata_signature).getPtr();
+    let metadata_signature_ptr = CommitmentSignature.createFromObject(metadata_signature).getPtr();
     let sender_offset_public_key_ptr = PublicKey.fromHexString(utf8.encode(sender_offset_public_key_hex)).getPtr();
     let features_ptr = OutputFeatures.createFromObject(output_features_object).getPtr();
     let covenant_ptr = Covenant.createFromBytes(covenant).getPtr();

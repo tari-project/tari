@@ -739,27 +739,31 @@ Then(
   async function (walletName, ffiWalletName) {
     const wallet = this.getWallet(walletName);
     const ffiWallet = this.getWallet(ffiWalletName);
-
+    
     await wallet.exportUnspentOutputs();
     let outputs = await wallet.readExportedOutputsAsFaucetOutputs();
-   
+    const tx_ids = [];
+
     outputs.forEach(output => {
-      console.log({output});
       const source_public_key = output.sender_offset_public_key;
       const covenant = output.covenant || "0";
       const message = output.covenant || "default message";
 
-      ffiWallet.importUtxo(
+      const tx_id = ffiWallet.importUtxo(
         output.value,
         output.spending_key.toString("hex"),
         source_public_key.toString("hex"),
         output.features,
-        output.metadata_signature.toString("hex"),
+        output.metadata_signature,
         output.sender_offset_public_key.toString("hex"),
         output.script_private_key.toString("hex"),
         covenant,
         message
       );
+
+      tx_ids.push(tx_id);
     });
+
+    this.lastResult = tx_ids;
   }
 );
