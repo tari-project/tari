@@ -83,7 +83,7 @@ mod test {
         assert_eq!(subject.samples.len(), 0);
 
         // re-test logic after adding sample
-        subject.add_sample(Duration::new(0, 999_999_999 as u32));
+        subject.add_sample(Duration::new(0, 999_999_999_u32));
         assert_eq!(subject.calculate_average(), None);
         assert_eq!(subject.calculate_average_with_min_samples(0), None);
         assert_eq!(subject.samples.len(), 0);
