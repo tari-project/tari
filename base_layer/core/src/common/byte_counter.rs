@@ -51,8 +51,9 @@ impl io::Write for ByteCounter {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::io::Write;
+
+    use super::*;
 
     #[test]
     fn write_test() {
@@ -65,6 +66,8 @@ mod test {
     #[test]
     fn flush_test() {
         let mut byte_counter = ByteCounter::new();
+        let buf = [0u8, 1u8, 2u8, 3u8];
+        byte_counter.write(&buf).unwrap();
         let flushed = byte_counter.flush().unwrap();
         assert_eq!(flushed, ());
     }
