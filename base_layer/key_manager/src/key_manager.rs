@@ -80,8 +80,8 @@ where
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
         let concatenated = format!(
             "{}{}{}",
-            self.seed.entropy().to_vec().to_hex(),
-            self.branch_seed,
+            (*self.seed).entropy().to_vec().to_hex(),
+            *self.branch_seed,
             key_index
         );
         match K::from_bytes(D::digest(&concatenated.into_bytes()).as_slice()) {

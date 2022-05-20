@@ -190,7 +190,7 @@ mod test {
         let js = key_manager_from(seed, "asdf".into(), 0);
         let mut response = parse::<KeyManagerResponse>(&js).unwrap();
 
-        assert_eq!(response.key_manager.branch_seed, Hidden::from("asdf".to_string()));
+        assert_eq!(*response.key_manager.branch_seed, "asdf");
         let next_key = response.key_manager.next_key().unwrap();
         assert_eq!(
             next_key.k.to_hex(),
