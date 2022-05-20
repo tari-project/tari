@@ -495,8 +495,8 @@ where TBackend: WalletBackend + 'static
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(UnblindedOutput, String, TxId)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(UnblindedOutput, String, TxId)> = Vec::new();
+    ) -> Result<Vec<(UnblindedOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(UnblindedOutput, String, ImportStatus, TxId)> = Vec::new();
         if self.mode == UtxoScannerMode::Recovery {
             found_outputs.append(
                 &mut self
@@ -505,7 +505,14 @@ where TBackend: WalletBackend + 'static
                     .scan_for_recoverable_outputs(outputs.clone())
                     .await?
                     .into_iter()
-                    .map(|ro| (ro.output, self.resources.recovery_message.clone(), ro.tx_id))
+                    .map(|ro| {
+                        (
+                            ro.output,
+                            self.resources.recovery_message.clone(),
+                            ImportStatus::Imported,
+                            ro.tx_id,
+                        )
+                    })
                     .collect(),
             );
         };
@@ -516,7 +523,14 @@ where TBackend: WalletBackend + 'static
                 .scan_outputs_for_one_sided_payments(outputs.clone())
                 .await?
                 .into_iter()
-                .map(|ro| (ro.output, self.resources.one_sided_payment_message.clone(), ro.tx_id))
+                .map(|ro| {
+                    (
+                        ro.output,
+                        self.resources.one_sided_payment_message.clone(),
+                        ImportStatus::FauxUnconfirmed,
+                        ro.tx_id,
+                    )
+                })
                 .collect(),
         );
         Ok(found_outputs)
@@ -524,7 +538,7 @@ where TBackend: WalletBackend + 'static
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(UnblindedOutput, String, TxId)>,
+        utxos: Vec<(UnblindedOutput, String, ImportStatus, TxId)>,
         current_height: u64,
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
@@ -533,12 +547,13 @@ where TBackend: WalletBackend + 'static
         // value is a placeholder.
         let source_public_key = CommsPublicKey::default();
 
-        for (uo, message, tx_id) in utxos {
+        for (uo, message, import_status, tx_id) in utxos {
             match self
                 .import_unblinded_utxo_to_transaction_service(
                     uo.clone(),
                     &source_public_key,
                     message,
+                    import_status,
                     tx_id,
                     current_height,
                 )
@@ -597,6 +612,7 @@ where TBackend: WalletBackend + 'static
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
         message: String,
+        import_status: ImportStatus,
         tx_id: TxId,
         current_height: u64,
     ) -> Result<TxId, WalletError> {
@@ -608,7 +624,7 @@ where TBackend: WalletBackend + 'static
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
-                ImportStatus::FauxUnconfirmed,
+                import_status,
                 Some(tx_id),
                 Some(current_height),
             )
