@@ -96,7 +96,6 @@ impl Display for ApplicationType {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -141,7 +140,7 @@ mod test {
         let stratum_transcoder = ApplicationType::from_str("stratum-proxy").unwrap();
         let validator = ApplicationType::from_str("validator-node").unwrap();
 
-        // asserts 
+        // asserts
         assert!(matches!(node, ApplicationType::BaseNode));
         assert!(matches!(wallet, ApplicationType::ConsoleWallet));
         assert!(matches!(mm_proxy, ApplicationType::MergeMiningProxy));
