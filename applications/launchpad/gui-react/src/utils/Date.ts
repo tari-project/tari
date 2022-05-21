@@ -38,10 +38,15 @@ export const isCurrentMonth = (d: Date) => {
 export const clearTime = (d: Date) => {
   const copy = new Date(d)
 
-  copy.setHours(0)
-  copy.setMinutes(0)
-  copy.setSeconds(0)
-  copy.setMilliseconds(0)
+  copy.setUTCHours(0)
+  copy.setUTCMinutes(0)
+  copy.setUTCSeconds(0)
+  copy.setUTCMilliseconds(0)
 
   return copy
 }
+
+export const dateInside = (
+  date: Date,
+  { from, to }: { from: Date; to: Date },
+) => date.getTime() >= from.getTime() && date.getTime() <= to.getTime()
