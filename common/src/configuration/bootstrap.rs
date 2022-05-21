@@ -147,5 +147,8 @@ mod test {
         assert!(matches!(miner, ApplicationType::Miner));
         assert!(matches!(stratum_transcoder, ApplicationType::StratumTranscoder));
         assert!(matches!(validator, ApplicationType::ValidatorNode));
+
+        // in case of a non-specific message we should throw an error
+        assert!(ApplicationType::from_str("random message").is_err());
     }
 }

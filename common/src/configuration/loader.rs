@@ -348,12 +348,15 @@ impl From<serde_json::error::Error> for ConfigurationError {
 
 #[cfg(test)]
 mod test {
-    use crate::ConfigurationError;
+    use config::ConfigError;
 
     #[test]
     fn configuration_error() {
         let e = ConfigurationError::new("test", None, "is a string");
         assert_eq!(e.to_string(), "Invalid value for `test`: is a string");
+
+        let frozen_e = ConfigurationError::from(ConfigError::Frozen);
+        assert_eq!(frozen_e.to_string(), "Invalid value for ``: configuration is frozen");
     }
 
     use serde::{Deserialize, Serialize};
