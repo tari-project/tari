@@ -62,3 +62,26 @@ impl FromStr for DnsNameServer {
         })
     }
 }
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::net::{ SocketAddr, IpAddr, Ipv4Addr };
+
+    #[test]
+    fn dns_name_server_test() {
+        // create dns name server
+        let ipv4 = Ipv4Addr::new(127, 0, 0, 1);
+        let ip = IpAddr::V4(ipv4);
+        let socket = SocketAddr::new(ip, 8080);
+        let dns = DnsNameServer::new(socket, String::from("my_dns"));
+
+        // test formatting
+        assert_eq!(format!("{}", dns), "127.0.0.1:8080/my_dns");
+
+        // from str 
+        let new_dns = DnsNameServer::from_str("127.0.0.1:8080/my_dns").unwrap();
+        assert_eq!(new_dns, dns);
+    }
+}
