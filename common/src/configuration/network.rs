@@ -113,3 +113,67 @@ impl Display for Network {
         f.write_str(self.as_key_str())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn network_bytes() { 
+        // get networks
+        let mainnet = Network::MainNet;
+        let localnet = Network::LocalNet;
+        let ridcully = Network::Ridcully;
+        let stibbons = Network::Stibbons;
+        let weatherwas = Network::Weatherwax;
+        let igor = Network::Igor;
+        let dibbler = Network::Dibbler;
+
+        // test .as_byte()
+        assert_eq!(mainnet.as_byte(), 0x00 as u8);
+        assert_eq!(localnet.as_byte(), 0x10 as u8);
+        assert_eq!(ridcully.as_byte(), 0x21 as u8);
+        assert_eq!(stibbons.as_byte(), 0x22 as u8);
+        assert_eq!(weatherwas.as_byte(), 0xa3 as u8);
+        assert_eq!(igor.as_byte(), 0x24 as u8);
+        assert_eq!(dibbler.as_byte(), 0x25 as u8);
+
+        // test .as_key_str() 
+        assert_eq!(mainnet.as_key_str(), "mainnet");
+        assert_eq!(localnet.as_key_str(), "localnet");
+        assert_eq!(ridcully.as_key_str(), "ridcully");
+        assert_eq!(stibbons.as_key_str(), "stibbons");
+        assert_eq!(weatherwas.as_key_str(), "weatherwax");
+        assert_eq!(igor.as_key_str(), "igor");
+        assert_eq!(dibbler.as_key_str(), "dibbler");
+    }
+
+    #[test]
+    fn network_default() {
+        let network = Network::default();
+        assert_eq!(network, Network::MainNet);
+    }
+
+    #[test]
+    fn network_from_str() {
+        let mainnet_str = "mainnet";
+        let localnet_str = "localnet";
+        let ridcully_str = "ridcully";
+        let stibbons_str = "stibbons";
+        let weatherwas_str = "weatherwax";
+        let igor_str = "igor";
+        let dibbler_str = "dibbler";
+
+        // test .from_str()
+        assert_eq!(Network::from_str(mainnet_str).unwrap(), Network::MainNet);
+        assert_eq!(Network::from_str(localnet_str).unwrap(), Network::LocalNet);
+        assert_eq!(Network::from_str(ridcully_str).unwrap(), Network::Ridcully);
+        assert_eq!(Network::from_str(stibbons_str).unwrap(), Network::Stibbons);
+        assert_eq!(Network::from_str(weatherwas_str).unwrap(), Network::Weatherwax);
+        assert_eq!(Network::from_str(igor_str).unwrap(), Network::Igor);
+        assert_eq!(Network::from_str(dibbler_str).unwrap(), Network::Dibbler);
+        // catch error case  
+        let err_network = Network::from_str("invalid network");
+        assert!(err_network.is_err());
+    }
+}
