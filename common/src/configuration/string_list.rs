@@ -148,6 +148,39 @@ mod tests {
     }
 
     #[test]
+    fn with_capacity_test() {
+        let new_str_lst = StringList::with_capacity(3);
+        assert_eq!(new_str_lst.into_vec().capacity(), 3);
+    }
+
+    #[test]
+    fn from_vec_string_list() {
+        let vec_string = vec![String::from("random")];
+        let string_lst = StringList::from(vec_string);
+        assert_eq!(string_lst.into_vec(), vec![String::from("new")]);
+    }
+
+    #[test]
+    fn as_ref_string_list() {
+        let vec_string = vec![String::from("Tari")];
+        let vec_as_ref: &[String] = vec_string.as_ref();
+        let string_lst = StringList::from(vec![String::from("Tari")]);
+        assert_eq!(string_lst.as_ref(), vec_as_ref);
+    }
+
+    #[test]
+    fn into_iter_string_list() {
+        let vec_string = vec![String::from("Tari"), String::from("Project"), String::from("let's mine it!")];
+        let string_lst = StringList::from(vec_string);
+        let mut res_iter = string_lst.into_iter();
+
+        assert_eq!(Some(String::from("Tari")), res_iter.next());
+        assert_eq!(Some(String::from("Project")), res_iter.next());
+        assert_eq!(Some(String::from("let's mine it!")), res_iter.next());
+        assert_eq!(None, res_iter.into_iter().next());
+    }
+
+    #[test]
     fn it_deserializes_from_toml() {
         let config_str = r#"something = ["a","b","c"]"#;
         let test = toml::from_str::<Test>(config_str).unwrap();

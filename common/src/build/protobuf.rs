@@ -215,5 +215,8 @@ impl ProtobufCompiler {
 mod test {
     use super::*;
 
-    
+    fn rustfmt_test() {
+        let bytes_array = &[0u8, 1u8, 2u8, 3u8];
+        let path = Path::from_u8_slice(bytes_array);
+    }
 }
