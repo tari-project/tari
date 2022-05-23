@@ -31,7 +31,7 @@ use tari_common_types::{
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec};
 
-const MAX_FUNCTIONS: usize = 1024;
+const MAX_FUNCTIONS: usize = u16::MAX as usize;
 
 // TODO: define a constant for each dynamic sized field
 const FIELD_LEN: usize = 32;
@@ -97,7 +97,12 @@ impl ConsensusEncoding for ContractSpecification {
 
 impl ConsensusEncodingSized for ContractSpecification {
     fn consensus_encode_exact_size(&self) -> usize {
-        FIELD_LEN + self.public_functions.len().required_space() + self.public_functions.len() * FIELD_LEN
+        let public_function_size = match self.public_functions.first() {
+            None => 0,
+            Some(function) => function.consensus_encode_exact_size(),
+        };
+
+        FIELD_LEN + self.public_functions.len().required_space() + self.public_functions.len() * public_function_size
     }
 }
 
@@ -116,11 +121,13 @@ impl ConsensusDecoding for ContractSpecification {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct PublicFunction {
     pub name: Vec<u8>, // TODO: make it String size 32
+    pub function: FunctionRef,
 }
 
 impl ConsensusEncoding for PublicFunction {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         copy_into_fixed_array_lossy::<_, FIELD_LEN>(&self.name).consensus_encode(writer)?;
+        self.function.consensus_encode(writer)?;
 
         Ok(())
     }
@@ -128,49 +135,51 @@ impl ConsensusEncoding for PublicFunction {
 
 impl ConsensusEncodingSized for PublicFunction {
     fn consensus_encode_exact_size(&self) -> usize {
-        FIELD_LEN
+        FIELD_LEN + self.function.consensus_encode_exact_size()
     }
 }
 
 impl ConsensusDecoding for PublicFunction {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let name: Vec<u8> = <[u8; FIELD_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        let function = FunctionRef::consensus_decode(reader)?;
 
-        Ok(Self { name })
+        Ok(Self { name, function })
     }
 }
 
-// #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-// pub struct ContractSpecification {
-// pub runtime: String,
-// pub public_functions: Vec<PublicFunction>,
-// pub initialization: Vec<FunctionCall>,
-// }
-//
-// #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-// pub struct PublicFunction {
-// pub name: String, // TODO: limit it to 32 chars
-// pub function: FunctionRef,
-// pub argument_def: HashMap<String, ArgType>,
-// }
-//
-// #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-// pub struct FunctionCall {
-// pub function: FunctionRef,
-// pub arguments: HashMap<String, ArgType>,
-// }
-//
-// #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-// pub struct FunctionRef {
-// pub template_func: String, // TODO: limit to 32 chars
-// pub template_id: String,   // TODO: make it a hash
-// }
-//
-// #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-// pub enum ArgType {
-// String,
-// UInt64,
-// }
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct FunctionRef {
+    pub template_id: FixedHash,
+    pub function_id: u16,
+}
+
+impl ConsensusEncoding for FunctionRef {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.template_id.consensus_encode(writer)?;
+        self.function_id.consensus_encode(writer)?;
+
+        Ok(())
+    }
+}
+
+impl ConsensusEncodingSized for FunctionRef {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.template_id.consensus_encode_exact_size() + self.function_id.consensus_encode_exact_size()
+    }
+}
+
+impl ConsensusDecoding for FunctionRef {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let template_id = FixedHash::consensus_decode(reader)?;
+        let function_id = u16::consensus_decode(reader)?;
+
+        Ok(Self {
+            template_id,
+            function_id,
+        })
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -188,9 +197,17 @@ mod test {
                 public_functions: vec![
                     PublicFunction {
                         name: str_to_padded_vec("foo"),
+                        function: FunctionRef {
+                            template_id: [1u8; 32],
+                            function_id: 0_u16,
+                        },
                     },
                     PublicFunction {
                         name: str_to_padded_vec("bar"),
+                        function: FunctionRef {
+                            template_id: [1u8; 32],
+                            function_id: 1_u16,
+                        },
                     },
                 ],
             },

@@ -1,52 +1,22 @@
 {
     "contract_id": "dcba46de8c34824280a95f7f9e1e25684bc544aa911223106288c60d97518b7e",
     "contract_name": "contract_name value",
-    "contract_issuer": "70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a",
+    "contract_issuer": "dcba46de8c34824280a95f7f9e1e25684bc544aa911223106288c60d97518b7e",
     "contract_spec": {
         "runtime": "runtime value",
         "public_functions": [
             {
-                "name": "function1",
+                "name": "foo",
                 "function": {
-                    "template_func": "template_func1",
-                    "template_id": "template_id1"
-                },
-                "argument_def": {
-                    "arg1": "String",
-                    "arg2": "UInt64"
+                    "template_id": "dcba46de8c34824280a95f7f9e1e25684bc544aa911223106288c60d97518b7e",
+                    "function_id": 1
                 }
             },
             {
-                "name": "function2",
+                "name": "bar",
                 "function": {
-                    "template_func": "template_func2",
-                    "template_id": "template_id2"
-                },
-                "argument_def": {
-                    "arg1": "String",
-                    "arg2": "UInt64"
-                }
-            }
-        ],
-        "initialization": [
-            {
-                "function": {
-                    "template_func": "template_func1",
-                    "template_id": "template_id1"
-                },
-                "arguments": {
-                    "arg1": "String",
-                    "arg2": "UInt64"
-                }
-            },
-            {
-                "function": {
-                    "template_func": "template_func2",
-                    "template_id": "template_id2"
-                },
-                "arguments": {
-                    "arg1": "String",
-                    "arg2": "UInt64"
+                    "template_id": "dcba46de8c34824280a95f7f9e1e25684bc544aa911223106288c60d97518b7e",
+                    "function_id": 2
                 }
             }
         ]

@@ -148,6 +148,12 @@ message ContractSpecification {
 
 message PublicFunction {
     bytes name = 1;
+    FunctionRef function = 2;
+}
+
+message FunctionRef {
+    bytes template_id = 1;
+    uint32 function_id = 2;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

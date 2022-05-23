@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,30 +34,16 @@ pub struct ContractDefinition {
 pub struct ContractSpecification {
     pub runtime: String,
     pub public_functions: Vec<PublicFunction>,
-    pub initialization: Vec<FunctionCall>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicFunction {
-    pub name: String, // TODO: limit it to 32 chars
+    pub name: String,
     pub function: FunctionRef,
-    pub argument_def: HashMap<String, ArgType>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FunctionCall {
-    pub function: FunctionRef,
-    pub arguments: HashMap<String, ArgType>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionRef {
-    pub template_func: String, // TODO: limit to 32 chars
-    pub template_id: String,   // TODO: make it a hash
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ArgType {
-    String,
-    UInt64,
+    pub template_id: String,
+    pub function_id: u16,
 }

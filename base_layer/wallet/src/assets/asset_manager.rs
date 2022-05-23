@@ -28,6 +28,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     ContractDefinitionFeatures,
     ContractSpecification,
+    FunctionRef,
     OutputFeatures,
     OutputFlags,
     PublicFunction,
@@ -299,6 +300,10 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                     .into_iter()
                     .map(|f| PublicFunction {
                         name: f.name.into_bytes(),
+                        function: FunctionRef {
+                            template_id: FixedHash::from_hex(&f.function.template_id).unwrap(),
+                            function_id: f.function.function_id,
+                        },
                     })
                     .collect(),
             },

@@ -43,6 +43,7 @@ use crate::{
             CommitteeDefinitionFeatures,
             ContractDefinitionFeatures,
             ContractSpecification,
+            FunctionRef,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
@@ -533,13 +534,52 @@ impl TryFrom<proto::types::PublicFunction> for PublicFunction {
     type Error = String;
 
     fn try_from(value: proto::types::PublicFunction) -> Result<Self, Self::Error> {
-        Ok(Self { name: value.name })
+        let function = value
+            .function
+            .map(FunctionRef::try_from)
+            .ok_or_else(|| "function is missing".to_string())?
+            .map_err(|err| err)?;
+
+        Ok(Self {
+            name: value.name,
+            function,
+        })
     }
 }
 
 impl From<PublicFunction> for proto::types::PublicFunction {
     fn from(value: PublicFunction) -> Self {
-        Self { name: value.name }
+        Self {
+            name: value.name,
+            function: Some(value.function.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::FunctionRef> for FunctionRef {
+    type Error = String;
+
+    fn try_from(value: proto::types::FunctionRef) -> Result<Self, Self::Error> {
+        let mut template_id = [0u8; BLOCK_HASH_LENGTH];
+        template_id.copy_from_slice(&value.template_id[0..BLOCK_HASH_LENGTH]);
+
+        let function_id = u16::try_from(value.function_id).map_err(|_| "Invalid function_id: overflowed u16")?;
+
+        Ok(Self {
+            template_id,
+            function_id,
+        })
+    }
+}
+
+impl From<FunctionRef> for proto::types::FunctionRef {
+    fn from(value: FunctionRef) -> Self {
+        let template_id = value.template_id.as_bytes().to_vec();
+
+        Self {
+            template_id,
+            function_id: value.function_id.into(),
+        }
     }
 }
 
