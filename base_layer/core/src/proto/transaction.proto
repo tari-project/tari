@@ -138,6 +138,11 @@ message ContractDefinitionFeatures {
     bytes contract_id = 1;
     bytes contract_name = 2;
     bytes contract_issuer = 3;
+    ContractSpecification contract_spec = 4;
+}
+
+message ContractSpecification {
+    bytes runtime = 1;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

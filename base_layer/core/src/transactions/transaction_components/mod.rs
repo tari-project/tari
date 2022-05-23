@@ -25,7 +25,7 @@
 
 pub use asset_output_features::AssetOutputFeatures;
 pub use committee_definition_features::CommitteeDefinitionFeatures;
-pub use contract_definition_features::ContractDefinitionFeatures;
+pub use contract_definition_features::{ContractDefinitionFeatures, ContractSpecification};
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;

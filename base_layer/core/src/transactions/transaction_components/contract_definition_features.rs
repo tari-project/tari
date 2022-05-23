@@ -32,10 +32,10 @@ const FIELD_LEN: usize = 32;
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct ContractDefinitionFeatures {
-    pub contract_id: Vec<u8>,   // TODO: make it a hash
-    pub contract_name: Vec<u8>, // TODO: check length
-    pub contract_issuer: Vec<u8>, /* TODO: make it a pubkey
-                                 *  pub contract_spec: ContractSpecification, */
+    pub contract_id: Vec<u8>,     // TODO: make it a hash
+    pub contract_name: Vec<u8>,   // TODO: check length
+    pub contract_issuer: Vec<u8>, // TODO: make it a pubkey
+    pub contract_spec: ContractSpecification,
 }
 
 impl ConsensusEncoding for ContractDefinitionFeatures {
@@ -43,6 +43,7 @@ impl ConsensusEncoding for ContractDefinitionFeatures {
         copy_into_fixed_array_lossy::<_, 32>(&self.contract_id).consensus_encode(writer)?;
         copy_into_fixed_array_lossy::<_, 32>(&self.contract_name).consensus_encode(writer)?;
         copy_into_fixed_array_lossy::<_, 32>(&self.contract_issuer).consensus_encode(writer)?;
+        self.contract_spec.consensus_encode(writer)?;
 
         Ok(())
     }
@@ -50,7 +51,7 @@ impl ConsensusEncoding for ContractDefinitionFeatures {
 
 impl ConsensusEncodingSized for ContractDefinitionFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
-        32 * 3
+        32 * 4
     }
 }
 
@@ -59,12 +60,41 @@ impl ConsensusDecoding for ContractDefinitionFeatures {
         let contract_id: Vec<u8> = <[u8; FIELD_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
         let contract_name: Vec<u8> = <[u8; FIELD_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
         let contract_issuer = <[u8; FIELD_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        let contract_spec = ContractSpecification::consensus_decode(reader)?;
 
         Ok(Self {
             contract_id,
             contract_name,
             contract_issuer,
+            contract_spec,
         })
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct ContractSpecification {
+    pub runtime: Vec<u8>, // TODO: make it String size 32
+}
+
+impl ConsensusEncoding for ContractSpecification {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        copy_into_fixed_array_lossy::<_, 32>(&self.runtime).consensus_encode(writer)?;
+
+        Ok(())
+    }
+}
+
+impl ConsensusEncodingSized for ContractSpecification {
+    fn consensus_encode_exact_size(&self) -> usize {
+        32
+    }
+}
+
+impl ConsensusDecoding for ContractSpecification {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let runtime: Vec<u8> = <[u8; FIELD_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+
+        Ok(Self { runtime })
     }
 }
 
@@ -111,6 +141,9 @@ mod test {
             contract_id: str_to_padded_vec("contract_id"),
             contract_name: str_to_padded_vec("contract_name"),
             contract_issuer: str_to_padded_vec("contract_issuer"),
+            contract_spec: ContractSpecification {
+                runtime: str_to_padded_vec("runtime"),
+            },
         };
 
         check_consensus_encoding_correctness(subject).unwrap();

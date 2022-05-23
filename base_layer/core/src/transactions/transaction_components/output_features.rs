@@ -276,20 +276,10 @@ impl OutputFeatures {
         }
     }
 
-    // TODO: pass the contract definition as parameters, use the features?
-    pub fn for_contract_definition(
-        contract_id: Vec<u8>,
-        contract_name: Vec<u8>,
-        contract_issuer: Vec<u8>,
-    ) -> OutputFeatures {
+    pub fn for_contract_definition(contract_definition: ContractDefinitionFeatures) -> OutputFeatures {
         Self {
-            // TODO: create an output flag for contract definition
             flags: OutputFlags::CONTRACT_DEFINITION,
-            contract_definition: Some(ContractDefinitionFeatures {
-                contract_id,
-                contract_name,
-                contract_issuer,
-            }),
+            contract_definition: Some(contract_definition),
             ..Default::default()
         }
     }
@@ -446,7 +436,10 @@ mod test {
     use tari_common_types::types::BLOCK_HASH_LENGTH;
 
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
+    use crate::{
+        consensus::check_consensus_encoding_correctness,
+        transactions::transaction_components::ContractSpecification,
+    };
 
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
         OutputFeatures {
@@ -491,6 +484,9 @@ mod test {
                     contract_id: Default::default(),
                     contract_name: Default::default(),
                     contract_issuer: Default::default(),
+                    contract_spec: ContractSpecification {
+                        runtime: Default::default(),
+                    },
                 }),
                 _ => None,
             },

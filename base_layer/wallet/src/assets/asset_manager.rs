@@ -25,7 +25,14 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    ContractDefinitionFeatures,
+    ContractSpecification,
+    OutputFeatures,
+    OutputFlags,
+    TemplateParameter,
+    Transaction,
+};
 
 use super::ContractDefinition;
 use crate::{
@@ -277,16 +284,19 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         contract_definition: ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
+        // TODO: use the features from the very beginning, whithout additional structs
+        let features = ContractDefinitionFeatures {
+            contract_id: contract_definition.contract_id.into_bytes(),
+            contract_name: contract_definition.contract_name.into_bytes(),
+            contract_issuer: contract_definition.contract_issuer.into_bytes(),
+            contract_spec: ContractSpecification {
+                runtime: contract_definition.contract_spec.runtime.into_bytes(),
+            },
+        };
+
         let output = self
             .output_manager
-            .create_output_with_features(
-                0.into(),
-                OutputFeatures::for_contract_definition(
-                    contract_definition.contract_id.into_bytes(),
-                    contract_definition.contract_name.into_bytes(),
-                    contract_definition.contract_issuer.into_bytes(),
-                ),
-            )
+            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition(features))
             .await?;
 
         let (tx_id, transaction) = self

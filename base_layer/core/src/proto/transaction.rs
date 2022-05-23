@@ -42,6 +42,7 @@ use crate::{
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
             ContractDefinitionFeatures,
+            ContractSpecification,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
@@ -465,10 +466,17 @@ impl TryFrom<proto::types::ContractDefinitionFeatures> for ContractDefinitionFea
     type Error = String;
 
     fn try_from(value: proto::types::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
+        let contract_spec = value
+            .contract_spec
+            .map(ContractSpecification::try_from)
+            .ok_or_else(|| "contract_spec is missing".to_string())?
+            .map_err(|err| err)?;
+
         Ok(Self {
             contract_id: value.contract_id,
             contract_name: value.contract_name,
             contract_issuer: value.contract_issuer,
+            contract_spec,
         })
     }
 }
@@ -479,7 +487,22 @@ impl From<ContractDefinitionFeatures> for proto::types::ContractDefinitionFeatur
             contract_id: value.contract_id,
             contract_name: value.contract_name,
             contract_issuer: value.contract_issuer,
+            contract_spec: Some(value.contract_spec.into()),
         }
+    }
+}
+
+impl TryFrom<proto::types::ContractSpecification> for ContractSpecification {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractSpecification) -> Result<Self, Self::Error> {
+        Ok(Self { runtime: value.runtime })
+    }
+}
+
+impl From<ContractSpecification> for proto::types::ContractSpecification {
+    fn from(value: ContractSpecification) -> Self {
+        Self { runtime: value.runtime }
     }
 }
 

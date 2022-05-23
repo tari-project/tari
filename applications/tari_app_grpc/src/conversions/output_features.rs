@@ -30,6 +30,7 @@ use tari_core::transactions::transaction_components::{
     AssetOutputFeatures,
     CommitteeDefinitionFeatures,
     ContractDefinitionFeatures,
+    ContractSpecification,
     MintNonFungibleFeatures,
     OutputFeatures,
     OutputFeaturesVersion,
@@ -226,10 +227,17 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
     type Error = String;
 
     fn try_from(value: grpc::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
+        let contract_spec = value
+            .contract_spec
+            .map(ContractSpecification::try_from)
+            .ok_or_else(|| "contract_spec is missing".to_string())?
+            .map_err(|err| err)?;
+
         Ok(Self {
             contract_id: value.contract_id,
             contract_name: value.contract_name,
             contract_issuer: value.contract_issuer,
+            contract_spec,
         })
     }
 }
@@ -240,6 +248,21 @@ impl From<ContractDefinitionFeatures> for grpc::ContractDefinitionFeatures {
             contract_id: value.contract_id,
             contract_name: value.contract_name,
             contract_issuer: value.contract_issuer,
+            contract_spec: Some(value.contract_spec.into()),
         }
+    }
+}
+
+impl TryFrom<grpc::ContractSpecification> for ContractSpecification {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractSpecification) -> Result<Self, Self::Error> {
+        Ok(Self { runtime: value.runtime })
+    }
+}
+
+impl From<ContractSpecification> for grpc::ContractSpecification {
+    fn from(value: ContractSpecification) -> Self {
+        Self { runtime: value.runtime }
     }
 }
