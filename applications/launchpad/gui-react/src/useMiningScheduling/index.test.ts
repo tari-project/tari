@@ -8,9 +8,12 @@ import useMiningScheduling from './'
 const createPeriodicalGetNow = (start: Date, period: number) => {
   let from = new Date(start)
   let counter = 0
+  const returnedDates = [] as Date[]
 
   const getNow = jest.fn(() => {
     const newNow = new Date(from.getTime() + counter++ * period)
+
+    returnedDates.push(newNow)
 
     return newNow
   })
@@ -20,7 +23,7 @@ const createPeriodicalGetNow = (start: Date, period: number) => {
     counter = 0
   }
 
-  return { getNow, reset }
+  return { getNow, reset, returnedDates }
 }
 
 const A_MINUTE = 60 * 1000
@@ -28,7 +31,7 @@ const A_MINUTE = 60 * 1000
 describe('useMiningScheduling', () => {
   it('should run mining according to schedule', () => {
     // given
-    const now = new Date('2022-05-23T09:21:00.000Z')
+    const now = new Date('2022-05-23T09:20:00.000Z')
     jest.useFakeTimers().setSystemTime(now)
 
     const { getNow } = createPeriodicalGetNow(now, A_MINUTE)
@@ -82,7 +85,7 @@ describe('useMiningScheduling', () => {
     jest.useFakeTimers().setSystemTime(now)
     jest.spyOn(global, 'setTimeout')
 
-    const { getNow, reset: resetGetNow } = createPeriodicalGetNow(now, A_MINUTE)
+    const { getNow } = createPeriodicalGetNow(now, A_MINUTE)
     const startMining = jest.fn()
     const stopMining = jest.fn()
     const schedules = [
@@ -93,11 +96,11 @@ describe('useMiningScheduling', () => {
         interval: {
           from: {
             hours: 9,
-            minutes: 22,
+            minutes: 24,
           },
           to: {
             hours: 9,
-            minutes: 23,
+            minutes: 25,
           },
         },
         type: ['tari', 'merged'],
@@ -120,16 +123,16 @@ describe('useMiningScheduling', () => {
       24 * 60 * 60 * 1000,
     )
     act(() => {
-      jest.advanceTimersByTime(24 * 60 * A_MINUTE + 1)
-      resetGetNow(dayFromNow)
+      jest.advanceTimersByTime(24 * 60 * A_MINUTE)
     })
     act(() => {
-      jest.advanceTimersByTime(A_MINUTE + 1)
+      jest.advanceTimersByTime(A_MINUTE)
       expect(startMining).toHaveBeenCalledTimes(2)
       expect(startMining).toHaveBeenCalledWith('tari')
       expect(startMining).toHaveBeenCalledWith('merged')
-
-      jest.advanceTimersByTime(A_MINUTE + 1)
+    })
+    act(() => {
+      jest.advanceTimersByTime(A_MINUTE)
       expect(stopMining).toHaveBeenCalledTimes(2)
       expect(stopMining).toHaveBeenCalledWith('tari')
       expect(stopMining).toHaveBeenCalledWith('merged')

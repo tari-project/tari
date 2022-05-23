@@ -21,17 +21,16 @@ const useScheduling = ({
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
 
   useEffect(() => {
-    callback(getNow())
-  }, [callback])
+    clearTimeout(timerRef.current!)
+    clearInterval(intervalRef.current!)
 
-  useEffect(() => {
     const now = getNow()
+    callback(now)
 
     const millisecondsTillNextFullMinute =
       getNextFullMinute(now).getTime() - now.getTime()
 
     timerRef.current = setTimeout(() => {
-      clearInterval(intervalRef.current!)
       callback(getNow())
       intervalRef.current = setInterval(() => {
         callback(getNow())

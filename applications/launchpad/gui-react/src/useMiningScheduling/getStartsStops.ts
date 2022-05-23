@@ -50,11 +50,11 @@ export const getStartsStops = ({
 
   return [...enabledSchedulesWithDates, ...schedulesGeneratedFromDays]
     .filter(schedule => {
-      const scheduleStart = new Date(schedule.date!)
+      const scheduleStart = clearTime(schedule.date!)
       scheduleStart.setUTCHours(schedule.interval.from.hours)
       scheduleStart.setUTCMinutes(schedule.interval.from.minutes)
 
-      const scheduleStop = new Date(schedule.date!)
+      const scheduleStop = clearTime(schedule.date!)
       scheduleStop.setUTCHours(schedule.interval.to.hours)
       scheduleStop.setUTCMinutes(schedule.interval.to.minutes)
 
@@ -67,12 +67,12 @@ export const getStartsStops = ({
       schedule.type.map(miningType => {
         const scheduleDate = schedule.date || new Date()
         const startTime = clearTime(scheduleDate)
-        startTime.setHours(schedule.interval.from.hours)
-        startTime.setMinutes(schedule.interval.from.minutes)
+        startTime.setUTCHours(schedule.interval.from.hours)
+        startTime.setUTCMinutes(schedule.interval.from.minutes)
 
         const stopTime = clearTime(scheduleDate)
-        stopTime.setHours(schedule.interval.to.hours)
-        stopTime.setMinutes(schedule.interval.to.minutes)
+        stopTime.setUTCHours(schedule.interval.to.hours)
+        stopTime.setUTCMinutes(schedule.interval.to.minutes)
 
         return {
           start: startTime.getTime() < from.getTime() ? from : startTime,

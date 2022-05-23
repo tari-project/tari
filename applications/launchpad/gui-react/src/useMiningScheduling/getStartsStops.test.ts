@@ -8,8 +8,8 @@ describe('getStartsStops', () => {
   it('should generate single start stop from single tari mining date Schedule', () => {
     // given
     const today = new Date('2022-05-21T00:00:00.000Z')
-    const from = new Date(today)
-    const to = new Date(today.setUTCHours(23))
+    const from = new Date('2022-05-21T00:00:00.000Z')
+    const to = new Date('2022-05-21T23:00:00.000Z')
 
     const singleSchedule: Schedule[] = [
       {

@@ -2,6 +2,22 @@ import { renderHook } from '@testing-library/react-hooks'
 
 import useScheduling from './useScheduling'
 
+const createPeriodicalGetNow = (start: Date, period: number) => {
+  const from = new Date(start)
+  let counter = 0
+  const returnedDates = [] as Date[]
+
+  const getNow = jest.fn(() => {
+    const newNow = new Date(from.getTime() + counter++ * period)
+
+    returnedDates.push(newNow)
+
+    return newNow
+  })
+
+  return { getNow, returnedDates }
+}
+
 describe('useScheduling', () => {
   it('should call the callback immediately with current time then schedule it for next full minute', async () => {
     const now = new Date('2021-05-21T13:23:11.020Z')
@@ -94,15 +110,10 @@ describe('useScheduling', () => {
     jest.spyOn(global, 'setInterval')
 
     const callback = jest.fn()
-    let counter = 0
-    const returnedMockedDates: Date[] = []
-    const getNextMinuteAfterNowOnEveryCall = jest.fn(() => {
-      const newNow = new Date(now)
-      newNow.setUTCMinutes(now.getUTCMinutes() + counter++ * 60 * 1000)
-      returnedMockedDates.push(newNow)
-
-      return newNow
-    })
+    const {
+      getNow: getNextMinuteAfterNowOnEveryCall,
+      returnedDates: returnedMockedDates,
+    } = createPeriodicalGetNow(now, 60 * 1000)
 
     renderHook(() =>
       useScheduling({
@@ -110,15 +121,15 @@ describe('useScheduling', () => {
         getNow: getNextMinuteAfterNowOnEveryCall,
       }),
     )
-    expect(getNextMinuteAfterNowOnEveryCall).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenCalledTimes(1)
     expect(callback).toHaveBeenLastCalledWith(returnedMockedDates[0])
 
     jest.advanceTimersByTime(60 * 1000)
-    expect(getNextMinuteAfterNowOnEveryCall).toHaveBeenCalledTimes(2)
+    expect(callback).toHaveBeenCalledTimes(2)
     expect(callback).toHaveBeenLastCalledWith(returnedMockedDates[1])
 
     jest.advanceTimersByTime(60 * 1000)
-    expect(getNextMinuteAfterNowOnEveryCall).toHaveBeenCalledTimes(3)
+    expect(callback).toHaveBeenCalledTimes(3)
     expect(callback).toHaveBeenLastCalledWith(returnedMockedDates[2])
   })
 })
