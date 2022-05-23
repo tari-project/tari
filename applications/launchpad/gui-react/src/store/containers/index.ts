@@ -8,7 +8,7 @@ import {
   Container,
   SystemEventAction,
 } from './types'
-import { start, stop } from './thunks'
+import { start, stop, stopByType } from './thunks'
 
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
@@ -129,6 +129,6 @@ const servicesSlice = createSlice({
 })
 
 const { actions: syncActions } = servicesSlice
-export const actions = { start, stop, ...syncActions }
+export const actions = { start, stop, stopByType, ...syncActions }
 
 export default servicesSlice.reducer

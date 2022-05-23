@@ -17,7 +17,7 @@ export const selectState = (rootState: RootState) => rootState.containers
 export const selectPendingContainers = (rootState: RootState) =>
   rootState.containers.pending
 
-const selectContainerByType = (c: Container) => (r: RootState) => {
+export const selectContainerByType = (c: Container) => (r: RootState) => {
   const containers = Object.entries(r.containers.containers).filter(
     ([, value]) => value.type === c,
   )

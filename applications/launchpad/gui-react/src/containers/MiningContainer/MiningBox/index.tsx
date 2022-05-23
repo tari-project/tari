@@ -74,7 +74,6 @@ const parseLastSessionToCoins = (
  * @param {string} [testId] - custom test id
  * @param {MiningNodeState} [nodeState] - the node state from Redux's mining
  * @param {MiningContainersState} [containersState] - the containers from Redux's mining
- * @param {{ id: string; type: Container }[]} [containersToStopOnPause] - list of containers that need to be stopped when user clicks on pause button.
  * @param {ReactNode} [children] - component overriding the generic one composed by this container for a given status.
  */
 const MiningBox = ({
@@ -86,7 +85,6 @@ const MiningBox = ({
   testId = 'mining-box-cmp',
   nodeState,
   containersState,
-  containersToStopOnPause,
 }: MiningBoxProps) => {
   const dispatch = useAppDispatch()
   const theme = useTheme()
@@ -268,8 +266,6 @@ const MiningBox = ({
                 dispatch(
                   actions.stopMiningNode({
                     node,
-                    containers: containersToStopOnPause,
-                    sessionId: lastSession?.id,
                   }),
                 )
               }

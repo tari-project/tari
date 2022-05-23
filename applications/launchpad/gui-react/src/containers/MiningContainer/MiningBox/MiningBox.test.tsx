@@ -36,7 +36,6 @@ describe('MiningBox', () => {
             node='tari'
             nodeState={emptyNodeState}
             containersState={pausedContainersState}
-            containersToStopOnPause={[]}
           >
             <p>{testText}</p>
           </MiningBox>
@@ -75,7 +74,6 @@ describe('MiningBox', () => {
             node='tari'
             nodeState={emptyNodeState}
             containersState={containersState}
-            containersToStopOnPause={[]}
           />
         </ThemeProvider>
       </Provider>,
@@ -97,7 +95,6 @@ describe('MiningBox', () => {
             node='tari'
             nodeState={emptyNodeState}
             containersState={pausedContainersState}
-            containersToStopOnPause={[]}
           />
         </ThemeProvider>
       </Provider>,
@@ -124,7 +121,6 @@ describe('MiningBox', () => {
             node='tari'
             nodeState={emptyNodeState}
             containersState={containersState}
-            containersToStopOnPause={[]}
           />
         </ThemeProvider>
       </Provider>,
