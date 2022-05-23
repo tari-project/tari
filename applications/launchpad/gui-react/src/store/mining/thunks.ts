@@ -41,13 +41,17 @@ export const startMiningNode = createAsyncThunk<
         .unwrap()
     }
 
-    switch (node) {
-      case 'tari':
+    if (node === 'tari') {
+      const minerStatus = selectContainerStatus(Container.SHA3Miner)(rootState)
+      if (!minerStatus.running && !minerStatus.pending) {
         await thunkApi
           .dispatch(containersActions.start(Container.SHA3Miner))
           .unwrap()
-        await thunkApi.dispatch(miningActions.startNewSession({ node }))
-        break
+        thunkApi.dispatch(miningActions.startNewSession({ node }))
+      }
+    }
+
+    switch (node) {
       case 'merged':
         await thunkApi
           .dispatch(containersActions.start(Container.MMProxy))
@@ -55,7 +59,7 @@ export const startMiningNode = createAsyncThunk<
         await thunkApi
           .dispatch(containersActions.start(Container.XMrig))
           .unwrap()
-        await thunkApi.dispatch(miningActions.startNewSession({ node }))
+        thunkApi.dispatch(miningActions.startNewSession({ node }))
         break
       default:
         break

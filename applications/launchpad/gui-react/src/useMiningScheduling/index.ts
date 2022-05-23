@@ -7,23 +7,24 @@ import useScheduling from './useScheduling'
 import { getStartsStops } from './getStartsStops'
 import { StartStop } from './types'
 
-//   TODO if user started mining manually, but then we come to a schedule edge that says this type of mining should be stopped - do we stop?
-//   TODO and the other way round, if the user stopped mining during schedule, but time passes and another schedule says it should be started - do we start?
+const defaultGetNow = () => new Date()
 const useMiningScheduling = ({
   schedules,
   startMining,
   stopMining,
-  getNow = () => new Date(),
+  getNow = defaultGetNow,
+  singleSchedulingPeriod = 24 * 60 * 60 * 1000,
 }: {
   schedules: Schedule[]
   startMining: (miningType: MiningNodeType) => void
   stopMining: (miningType: MiningNodeType) => void
   getNow?: () => Date
+  singleSchedulingPeriod?: number
 }) => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>()
   const [startStops, setStartStops] = useState<StartStop[]>(() => {
     const from = getNow()
-    const to = new Date(from.getTime() + 24 * 60 * 60 * 1000)
+    const to = new Date(from.getTime() + singleSchedulingPeriod)
     return getStartsStops({
       from,
       to,
@@ -32,22 +33,34 @@ const useMiningScheduling = ({
   })
 
   useEffect(() => {
+    const from = getNow()
+    const to = new Date(from.getTime() + singleSchedulingPeriod)
+    const ss = getStartsStops({
+      from,
+      to,
+      schedules,
+    })
+    setStartStops(ss)
+  }, [schedules, getNow])
+
+  useEffect(() => {
     timerRef.current = setTimeout(() => {
-      clearTimeout(timerRef.current!)
       const from = getNow()
-      const to = new Date(from.getTime() + 24 * 60 * 60 * 1000)
-      const startStops = getStartsStops({
+      const to = new Date(from.getTime() + singleSchedulingPeriod)
+      const ss = getStartsStops({
         from,
         to,
         schedules,
       })
-      setStartStops(startStops)
-    }, 24 * 60 * 60 * 1000)
+      setStartStops(ss)
+    }, singleSchedulingPeriod)
+  }, [startStops, getNow])
 
+  useEffect(() => {
     return () => {
       clearTimeout(timerRef.current!)
     }
-  }, [startStops, getNow])
+  }, [])
 
   const scheduledCallback = useCallback(
     (now: Date) => {

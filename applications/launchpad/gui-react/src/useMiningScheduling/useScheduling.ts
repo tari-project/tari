@@ -9,9 +9,10 @@ const getNextFullMinute = (now: Date): Date => {
   return nextFullMinute
 }
 
+const defaultGetNow = () => new Date()
 const useScheduling = ({
   callback,
-  getNow = () => new Date(),
+  getNow = defaultGetNow,
 }: {
   callback: (d: Date) => void
   getNow?: () => Date
@@ -20,26 +21,30 @@ const useScheduling = ({
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
 
   useEffect(() => {
+    callback(getNow())
+  }, [callback])
+
+  useEffect(() => {
     const now = getNow()
-    callback(now)
 
     const millisecondsTillNextFullMinute =
       getNextFullMinute(now).getTime() - now.getTime()
 
     timerRef.current = setTimeout(() => {
-      clearTimeout(timerRef.current!)
+      clearInterval(intervalRef.current!)
       callback(getNow())
       intervalRef.current = setInterval(() => {
-        clearInterval(intervalRef.current!)
         callback(getNow())
       }, 60 * 1000)
     }, millisecondsTillNextFullMinute)
+  }, [callback])
 
+  useEffect(() => {
     return () => {
       clearTimeout(timerRef.current!)
       clearInterval(intervalRef.current!)
     }
-  }, [callback])
+  }, [])
 }
 
 export default useScheduling

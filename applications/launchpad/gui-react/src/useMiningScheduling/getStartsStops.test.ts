@@ -132,6 +132,42 @@ describe('getStartsStops', () => {
     expect(actual).toEqual(expected)
   })
 
+  it('should ignore schedules from the past', () => {
+    // given
+    const from = new Date('2022-05-21T09:00:00.000Z')
+    const to = new Date('2022-05-21T13:00:00.000Z')
+
+    const singleSchedule: Schedule[] = [
+      {
+        id: 'scheduleId',
+        enabled: true,
+        date: clearTime(from),
+        interval: {
+          from: {
+            hours: 7,
+            minutes: 0,
+          },
+          to: {
+            hours: 8,
+            minutes: 0,
+          },
+        },
+        type: ['tari'],
+      },
+    ]
+    const expected: StartStop[] = []
+
+    // when
+    const actual = getStartsStops({
+      from,
+      to,
+      schedules: singleSchedule,
+    })
+
+    // then
+    expect(actual).toEqual(expected)
+  })
+
   it('should generate two start stop from date Schedule with two mining types', () => {
     // given
     const today = new Date('2022-05-21T00:00:00.000Z')

@@ -33,8 +33,8 @@ const composeNodeTabs = ({
   const baseNodeContent = (
     <TabContent
       text={t.common.nouns.baseNode}
-      pending={baseNodeState?.pending}
-      running={baseNodeState?.running}
+      pending={baseNodeState.pending}
+      running={baseNodeState.running}
     />
   )
 

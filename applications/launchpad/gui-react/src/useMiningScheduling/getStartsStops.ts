@@ -28,24 +28,10 @@ export const getStartsStops = ({
   to: Date
   schedules: Schedule[]
 }): StartStop[] => {
-  const schedulesWithDatesInsideFromTo = schedules.filter(schedule => {
-    if (!schedule.date || !schedule.enabled) {
-      return false
-    }
+  const enabledSchedulesWithDates = schedules.filter(
+    schedule => schedule.date && schedule.enabled,
+  )
 
-    const scheduleStart = new Date(schedule.date)
-    scheduleStart.setUTCHours(schedule.interval.from.hours)
-    scheduleStart.setUTCMinutes(schedule.interval.from.minutes)
-
-    const scheduleStop = new Date(schedule.date)
-    scheduleStop.setUTCHours(schedule.interval.to.hours)
-    scheduleStop.setUTCMinutes(schedule.interval.to.minutes)
-
-    return (
-      dateInside(scheduleStart, { from, to }) ||
-      dateInside(scheduleStop, { from, to })
-    )
-  })
   const days = getDaysBetween(from, to)
   const recurringSchedules = schedules.filter(
     schedule => schedule.enabled && !schedule.date && schedule.days,
@@ -62,17 +48,31 @@ export const getStartsStops = ({
     }))
   })
 
-  return [...schedulesWithDatesInsideFromTo, ...schedulesGeneratedFromDays]
+  return [...enabledSchedulesWithDates, ...schedulesGeneratedFromDays]
+    .filter(schedule => {
+      const scheduleStart = new Date(schedule.date!)
+      scheduleStart.setUTCHours(schedule.interval.from.hours)
+      scheduleStart.setUTCMinutes(schedule.interval.from.minutes)
+
+      const scheduleStop = new Date(schedule.date!)
+      scheduleStop.setUTCHours(schedule.interval.to.hours)
+      scheduleStop.setUTCMinutes(schedule.interval.to.minutes)
+
+      return (
+        dateInside(scheduleStart, { from, to }) ||
+        dateInside(scheduleStop, { from, to })
+      )
+    })
     .flatMap(schedule =>
       schedule.type.map(miningType => {
         const scheduleDate = schedule.date || new Date()
         const startTime = clearTime(scheduleDate)
-        startTime.setUTCHours(schedule.interval.from.hours)
-        startTime.setUTCMinutes(schedule.interval.from.minutes)
+        startTime.setHours(schedule.interval.from.hours)
+        startTime.setMinutes(schedule.interval.from.minutes)
 
         const stopTime = clearTime(scheduleDate)
-        stopTime.setUTCHours(schedule.interval.to.hours)
-        stopTime.setUTCMinutes(schedule.interval.to.minutes)
+        stopTime.setHours(schedule.interval.to.hours)
+        stopTime.setMinutes(schedule.interval.to.minutes)
 
         return {
           start: startTime.getTime() < from.getTime() ? from : startTime,
