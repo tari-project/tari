@@ -287,7 +287,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
     ) -> Result<(TxId, Transaction), WalletError> {
         // TODO: use the features from the very beginning, whithout additional structs
         let features = ContractDefinitionFeatures {
-            contract_id: contract_definition.contract_id.into_bytes(),
+            contract_id: FixedHash::from_hex(&contract_definition.contract_id).unwrap(),
             contract_name: contract_definition.contract_name.into_bytes(),
             contract_issuer: PublicKey::from_hex(&contract_definition.contract_issuer).unwrap(),
             contract_spec: ContractSpecification {

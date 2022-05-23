@@ -24,7 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::{
     array::copy_into_fixed_array,
-    types::{Commitment, PublicKey},
+    types::{Commitment, PublicKey, BLOCK_HASH_LENGTH},
 };
 use tari_core::transactions::transaction_components::{
     AssetOutputFeatures,
@@ -227,6 +227,9 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
     type Error = String;
 
     fn try_from(value: grpc::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
+        let mut contract_id = [0u8; BLOCK_HASH_LENGTH];
+        contract_id.copy_from_slice(&value.contract_id[0..BLOCK_HASH_LENGTH]);
+
         let contract_issuer =
             PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
@@ -237,7 +240,7 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
             .map_err(|err| err)?;
 
         Ok(Self {
-            contract_id: value.contract_id,
+            contract_id,
             contract_name: value.contract_name,
             contract_issuer,
             contract_spec,
@@ -247,10 +250,11 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
 
 impl From<ContractDefinitionFeatures> for grpc::ContractDefinitionFeatures {
     fn from(value: ContractDefinitionFeatures) -> Self {
+        let contract_id = value.contract_id.as_bytes().to_vec();
         let contract_issuer = value.contract_issuer.as_bytes().to_vec();
 
         Self {
-            contract_id: value.contract_id,
+            contract_id,
             contract_name: value.contract_name,
             contract_issuer,
             contract_spec: Some(value.contract_spec.into()),

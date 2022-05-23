@@ -466,6 +466,9 @@ impl TryFrom<proto::types::ContractDefinitionFeatures> for ContractDefinitionFea
     type Error = String;
 
     fn try_from(value: proto::types::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
+        let mut contract_id = [0u8; BLOCK_HASH_LENGTH];
+        contract_id.copy_from_slice(&value.contract_id[0..BLOCK_HASH_LENGTH]);
+
         let contract_issuer =
             PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
@@ -476,7 +479,7 @@ impl TryFrom<proto::types::ContractDefinitionFeatures> for ContractDefinitionFea
             .map_err(|err| err)?;
 
         Ok(Self {
-            contract_id: value.contract_id,
+            contract_id,
             contract_name: value.contract_name,
             contract_issuer,
             contract_spec,
@@ -486,10 +489,11 @@ impl TryFrom<proto::types::ContractDefinitionFeatures> for ContractDefinitionFea
 
 impl From<ContractDefinitionFeatures> for proto::types::ContractDefinitionFeatures {
     fn from(value: ContractDefinitionFeatures) -> Self {
+        let contract_id = value.contract_id.as_bytes().to_vec();
         let contract_issuer = value.contract_issuer.as_bytes().to_vec();
 
         Self {
-            contract_id: value.contract_id,
+            contract_id,
             contract_name: value.contract_name,
             contract_issuer,
             contract_spec: Some(value.contract_spec.into()),
