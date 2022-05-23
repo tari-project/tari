@@ -12,8 +12,8 @@ const useMiningSimulator = () => {
 
   useEffect(() => {
     const timer = setInterval(async () => {
-      const sessions = store.getState().mining.tari.sessions
-      if (!sessions || sessions[sessions.length - 1].finishedAt) {
+      const session = store.getState().mining.tari.session
+      if (!session || session.finishedAt) {
         return
       }
       dispatch(miningActions.addAmount({ amount: '1000.1232', node: 'tari' }))
@@ -23,8 +23,8 @@ const useMiningSimulator = () => {
 
   useEffect(() => {
     const timer = setInterval(async () => {
-      const sessions = store.getState().mining.merged.sessions
-      if (!sessions || sessions[sessions.length - 1].finishedAt) {
+      const session = store.getState().mining.merged.session
+      if (!session || session.finishedAt) {
         return
       }
       dispatch(miningActions.addAmount({ amount: '50', node: 'merged' }))

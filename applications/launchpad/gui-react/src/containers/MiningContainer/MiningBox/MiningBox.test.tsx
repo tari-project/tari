@@ -10,7 +10,7 @@ import themes from '../../../styles/themes'
 import { Container } from '../../../store/containers/types'
 
 const emptyNodeState = {
-  sessions: [],
+  session: undefined,
 }
 
 const pausedContainersState = {

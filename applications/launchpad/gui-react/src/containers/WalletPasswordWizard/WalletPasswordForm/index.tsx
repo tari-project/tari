@@ -52,6 +52,7 @@ const WalletPasswordForm = ({
           render={({ field }) => (
             <PasswordInput
               placeholder={t.walletPasswordWizard.passwordPlaceholder}
+              autoFocus
               testId='password-input'
               useStrengthMeter
               {...field}

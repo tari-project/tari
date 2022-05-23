@@ -11,6 +11,7 @@ export enum MiningBoxStatus {
   Custom = 'custom',
   SetupRequired = 'setup_required',
   Paused = 'paused',
+  PausedNoSession = 'paused_no_session',
   Running = 'running',
   Error = 'error',
 }
@@ -18,7 +19,7 @@ export enum MiningBoxStatus {
 export interface NodeBoxStatusConfig {
   title?: string
   tag?: {
-    text: string
+    content: string | ReactNode
     type?: TagType
   }
   boxStyle?: CSSProperties

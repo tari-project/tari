@@ -13,6 +13,7 @@ import { tbotactions } from '../../../store/tbot'
 import {
   selectTariContainers,
   selectTariMiningState,
+  selectTariSetupRequired,
 } from '../../../store/mining/selectors'
 
 import MessagesConfig from '../../../config/helpMessagesConfig'
@@ -25,6 +26,7 @@ import { useAppSelector } from '../../../store/hooks'
 const MiningHeaderTip = () => {
   const dispatch = useAppDispatch()
 
+  const tariSetupRequired = useAppSelector(selectTariSetupRequired)
   const tariMiningState = useAppSelector(selectTariMiningState)
   const tariContainers = useAppSelector(selectTariContainers)
 
@@ -32,7 +34,11 @@ const MiningHeaderTip = () => {
 
   if (tariContainers.running) {
     text = t.mining.headerTips.runningOn
-  } else if (tariMiningState.sessions && tariMiningState.sessions.length > 0) {
+  } else if (tariSetupRequired) {
+    text = t.mining.headerTips.oneStepAway
+  } else if (!tariMiningState.session) {
+    text = t.mining.headerTips.oneClickAway
+  } else if (tariMiningState.session && tariMiningState.session.startedAt) {
     text = t.mining.headerTips.continueMining
   }
 

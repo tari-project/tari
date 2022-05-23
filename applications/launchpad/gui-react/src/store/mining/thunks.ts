@@ -78,12 +78,12 @@ export const stopMiningNode = createAsyncThunk<
     sessionId?: string
   },
   { state: RootState }
->('mining/stopNode', async ({ containers, node, sessionId }, thunkApi) => {
+>('mining/stopNode', async ({ containers, node }, thunkApi) => {
   try {
     const promises = containers.map(async c => {
       await thunkApi.dispatch(containersActions.stop(c.id)).unwrap()
     })
-    thunkApi.dispatch(miningActions.stopSession({ node, sessionId }))
+    thunkApi.dispatch(miningActions.stopSession({ node }))
     await Promise.all(promises)
   } catch (e) {
     return thunkApi.rejectWithValue(e)

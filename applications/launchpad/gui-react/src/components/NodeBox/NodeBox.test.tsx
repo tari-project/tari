@@ -11,7 +11,7 @@ describe('NodeBox', () => {
       <ThemeProvider theme={themes.light}>
         <NodeBox
           tag={{
-            text: 'Test text',
+            content: 'Test text',
             type: 'warning',
           }}
         />

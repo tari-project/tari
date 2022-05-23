@@ -17,8 +17,11 @@ import {
 } from '../../../store/mining/selectors'
 import { TariMiningSetupRequired } from '../../../store/mining/types'
 import { Container } from '../../../store/containers/types'
+import { useTheme } from 'styled-components'
 
 const MiningBoxTari = () => {
+  const theme = useTheme()
+
   const nodeState = useAppSelector(selectTariMiningState)
   const containersState = useAppSelector(selectTariContainers)
   const tariSetupRequired = useAppSelector(selectTariSetupRequired)
@@ -50,6 +53,15 @@ const MiningBoxTari = () => {
     }
   }, [containersState])
 
+  const statuses = {
+    [MiningBoxStatus.SetupRequired]: {
+      boxStyle: {
+        boxShadow: theme.shadow40,
+        borderColor: 'transparent',
+      },
+    },
+  }
+
   let boxContent: ReactNode | undefined
   let currentStatus: MiningBoxStatus | undefined
 
@@ -65,6 +77,7 @@ const MiningBoxTari = () => {
       node='tari'
       icons={[{ coin: 'xtr', component: <SvgTariSignet key='tari-icon' /> }]}
       testId='tari-mining-box'
+      statuses={statuses}
       currentStatus={currentStatus}
       nodeState={nodeState}
       containersState={containersState}

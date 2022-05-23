@@ -12,11 +12,30 @@ import MiningBox from '../MiningBox'
 import { MiningBoxStatus } from '../MiningBox/types'
 
 import { Container } from '../../../store/containers/types'
+
+import t from '../../../locales'
+
 // import SetupMerged from './SetupMerged'
 import SetupMergedWithForm from './SetupMergedWithForm'
+import {
+  BestChoiceTagIcon,
+  BestChoiceTagText,
+  StyledBestChoiceTag,
+} from './styles'
+
+const BestChoiceTag = () => {
+  return (
+    <StyledBestChoiceTag>
+      <BestChoiceTagText>{t.common.phrases.bestChoice} </BestChoiceTagText>
+      <BestChoiceTagIcon>💪</BestChoiceTagIcon>
+    </StyledBestChoiceTag>
+  )
+}
 
 const MiningBoxMerged = () => {
   const theme = useTheme()
+
+  const [bestChoiceTag, setBestChoiceTag] = useState(false)
 
   let boxContent: ReactNode | undefined
   let currentStatus: MiningBoxStatus | undefined
@@ -56,6 +75,20 @@ const MiningBoxMerged = () => {
   }, [containersState])
 
   const statuses = {
+    [MiningBoxStatus.SetupRequired]: {
+      tag: {
+        content: bestChoiceTag ? (
+          <BestChoiceTag />
+        ) : (
+          t.common.phrases.readyToSet
+        ),
+      },
+    },
+    [MiningBoxStatus.PausedNoSession]: {
+      tag: {
+        content: t.common.phrases.readyToGo,
+      },
+    },
     [MiningBoxStatus.Running]: {
       boxStyle: {
         background: theme.mergedGradient,
@@ -73,7 +106,10 @@ const MiningBoxMerged = () => {
      */
     // boxContent = <SetupMerged mergedSetupRequired={mergedSetupRequired} />
     boxContent = (
-      <SetupMergedWithForm mergedSetupRequired={mergedSetupRequired} />
+      <SetupMergedWithForm
+        mergedSetupRequired={mergedSetupRequired}
+        changeTag={() => setBestChoiceTag(true)}
+      />
     )
   }
 
@@ -81,8 +117,8 @@ const MiningBoxMerged = () => {
     <MiningBox
       node='merged'
       icons={[
-        { coin: 'xtr', component: <SvgMoneroSignet key='monero-icon' /> },
-        { coin: 'xmr', component: <SvgTariSignet key='tari-icon' /> },
+        { coin: 'xmr', component: <SvgMoneroSignet key='monero-icon' /> },
+        { coin: 'xtr', component: <SvgTariSignet key='tari-icon' /> },
       ]}
       testId='merged-mining-box'
       statuses={statuses}

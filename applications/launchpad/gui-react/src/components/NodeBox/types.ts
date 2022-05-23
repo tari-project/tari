@@ -5,7 +5,7 @@ import { TagType } from '../Tag/types'
 export interface NodeBoxProps {
   title?: string
   tag?: {
-    text: string
+    content: string | ReactNode
     type?: TagType
   }
   style?: CSSWithSpring
