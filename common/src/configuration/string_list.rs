@@ -155,9 +155,9 @@ mod tests {
 
     #[test]
     fn from_vec_string_list() {
-        let vec_string = vec![String::from("random")];
+        let vec_string = vec![String::from("Tari is cool!")];
         let string_lst = StringList::from(vec_string);
-        assert_eq!(string_lst.into_vec(), vec![String::from("new")]);
+        assert_eq!(string_lst.into_vec(), vec![String::from("Tari is cool!")]);
     }
 
     #[test]
@@ -170,7 +170,11 @@ mod tests {
 
     #[test]
     fn into_iter_string_list() {
-        let vec_string = vec![String::from("Tari"), String::from("Project"), String::from("let's mine it!")];
+        let vec_string = vec![
+            String::from("Tari"),
+            String::from("Project"),
+            String::from("let's mine it!"),
+        ];
         let string_lst = StringList::from(vec_string);
         let mut res_iter = string_lst.into_iter();
 

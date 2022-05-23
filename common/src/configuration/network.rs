@@ -119,7 +119,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn network_bytes() { 
+    fn network_bytes() {
         // get networks
         let mainnet = Network::MainNet;
         let localnet = Network::LocalNet;
@@ -138,7 +138,7 @@ mod test {
         assert_eq!(igor.as_byte(), 0x24 as u8);
         assert_eq!(dibbler.as_byte(), 0x25 as u8);
 
-        // test .as_key_str() 
+        // test .as_key_str()
         assert_eq!(mainnet.as_key_str(), "mainnet");
         assert_eq!(localnet.as_key_str(), "localnet");
         assert_eq!(ridcully.as_key_str(), "ridcully");
@@ -172,7 +172,7 @@ mod test {
         assert_eq!(Network::from_str(weatherwas_str).unwrap(), Network::Weatherwax);
         assert_eq!(Network::from_str(igor_str).unwrap(), Network::Igor);
         assert_eq!(Network::from_str(dibbler_str).unwrap(), Network::Dibbler);
-        // catch error case  
+        // catch error case
         let err_network = Network::from_str("invalid network");
         assert!(err_network.is_err());
     }

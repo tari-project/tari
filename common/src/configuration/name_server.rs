@@ -63,11 +63,11 @@ impl FromStr for DnsNameServer {
     }
 }
 
-
 #[cfg(test)]
 mod test {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
     use super::*;
-    use std::net::{ SocketAddr, IpAddr, Ipv4Addr };
 
     #[test]
     fn dns_name_server_test() {
@@ -80,7 +80,7 @@ mod test {
         // test formatting
         assert_eq!(format!("{}", dns), "127.0.0.1:8080/my_dns");
 
-        // from str 
+        // from str
         let new_dns = DnsNameServer::from_str("127.0.0.1:8080/my_dns").unwrap();
         assert_eq!(new_dns, dns);
     }

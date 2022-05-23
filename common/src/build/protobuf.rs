@@ -210,4 +210,3 @@ impl ProtobufCompiler {
         Ok(())
     }
 }
-

@@ -84,6 +84,7 @@ impl FromStr for ApplicationType {
             "miner" => Ok(Miner),
             "validator-node" => Ok(ValidatorNode),
             "stratum-proxy" => Ok(StratumTranscoder),
+            "collectibles" => Ok(Collectibles),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
     }
@@ -139,6 +140,7 @@ mod test {
         let miner = ApplicationType::from_str("miner").unwrap();
         let stratum_transcoder = ApplicationType::from_str("stratum-proxy").unwrap();
         let validator = ApplicationType::from_str("validator-node").unwrap();
+        let collectibles = ApplicationType::from_str("collectibles").unwrap();
 
         // asserts
         assert!(matches!(node, ApplicationType::BaseNode));
@@ -147,6 +149,7 @@ mod test {
         assert!(matches!(miner, ApplicationType::Miner));
         assert!(matches!(stratum_transcoder, ApplicationType::StratumTranscoder));
         assert!(matches!(validator, ApplicationType::ValidatorNode));
+        assert!(matches!(collectibles, ApplicationType::Collectibles));
 
         // in case of a non-specific message we should throw an error
         assert!(ApplicationType::from_str("random message").is_err());
