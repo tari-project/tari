@@ -68,7 +68,7 @@ export const stopByType = createAsyncThunk<
   void,
   Container,
   { state: RootState }
->('containers/stop', async (containerType, thunkApi) => {
+>('containers/stopByType', async (containerType, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
     const container = selectContainerByType(containerType)(rootState)
