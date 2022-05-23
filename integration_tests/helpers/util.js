@@ -253,7 +253,7 @@ const getTransactionOutputHash = function (output) {
     // features.maturity
     Buffer.from([parseInt(output.features.maturity)]),
     // features.flags
-    Buffer.from([output.features.flags]),
+    Buffer.from(toLittleEndian(output.features.flags, 16)),
   ]);
   // features.parent_public_key
   features = Buffer.concat([
