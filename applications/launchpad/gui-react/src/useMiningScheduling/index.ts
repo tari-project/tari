@@ -31,6 +31,24 @@ const useMiningScheduling = ({
     })
   })
 
+  useEffect(() => {
+    timerRef.current = setTimeout(() => {
+      clearTimeout(timerRef.current!)
+      const from = getNow()
+      const to = new Date(from.getTime() + 24 * 60 * 60 * 1000)
+      const startStops = getStartsStops({
+        from,
+        to,
+        schedules,
+      })
+      setStartStops(startStops)
+    }, 24 * 60 * 60 * 1000)
+
+    return () => {
+      clearTimeout(timerRef.current!)
+    }
+  }, [startStops, getNow])
+
   const scheduledCallback = useCallback(
     (now: Date) => {
       const starts = startStops.filter(
