@@ -733,7 +733,7 @@ Then(
   }
 );
 
-Then(
+When(
   "I import unspent outputs from {word} as faucet outputs to ffi wallet {word}",
   { timeout: 125 * 1000 },
   async function (walletName, ffiWalletName) {

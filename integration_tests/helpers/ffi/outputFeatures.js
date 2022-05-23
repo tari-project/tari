@@ -32,8 +32,7 @@ class OutputFeatures {
       parent_public_key: null
     };
     let f = { ...default_features, ...features_object };
-
-    let metadata = ByteVector.fromBytes(f.metadata).getPtr()
+    let metadata = ByteVector.fromBytes(f.metadata).getPtr();
 
     let result = new OutputFeatures();
     result.pointerAssign(InterfaceFFI.outputFeaturesCreateFromBytes(

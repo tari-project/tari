@@ -566,18 +566,6 @@ class Wallet {
     covenant,
     message
   ) {
-    console.log({
-      amount,
-      spending_key_hex,
-      source_public_key_hex,
-      metadata_signature,
-      sender_offset_public_key_hex,
-      output_features_object,
-      covenant,
-      script_private_key_hex,
-      message
-    });
-
     let spending_key_ptr = PrivateKey.fromHexString(utf8.encode(spending_key_hex)).getPtr();
     let source_public_key_ptr = PublicKey.fromHexString(utf8.encode(source_public_key_hex)).getPtr();
     let metadata_signature_ptr = CommitmentSignature.createFromObject(metadata_signature).getPtr();

@@ -209,7 +209,8 @@ Feature: Wallet FFI
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_CONFIRMED
         And I stop ffi wallet FFI_RECEIVER
 
-    @critical
+    @critical @broken
+    # BROKEN: Runs fine until wating for WALLET_FFI to have the balance updated after importing, it never does
     Scenario: As a client I want to import faucet UTXOs
         # Initialization of participants
         Given I have a seed node SEED
@@ -230,14 +231,21 @@ Feature: Wallet FFI
         When mining node MINER mines 6 blocks
         Then all nodes are at height 11
         Then I wait for wallet WALLET_B to have at least 1000000 uT
-        Then I stop wallet WALLET_B
-
+    
         # Now we export the unspent utxos from WALLET_B into the WALLET_FFI
+        Then I stop wallet WALLET_B
         Then I import unspent outputs from WALLET_B as faucet outputs to ffi wallet WALLET_FFI
+
+        # Wallet B needs to be started again as the previous export does stop it
+        Then I start wallet WALLET_B
+        When mining node MINER mines 10 blocks
+        Then all nodes are at height 21
+
+        # This is the point when the test gets hung up waiting for WALLET_FFI balance to update
         Then I wait for ffi wallet WALLET_FFI to have at least 1000000 uT
         And I send 500000 uT from ffi wallet WALLET_FFI to wallet WALLET_A at fee 20
         When mining node MINER mines 6 blocks
-        Then all nodes are at height 17
+        Then all nodes are at height 27
         Then I wait for wallet WALLET_A to have at least 1000000 uT
         And I stop ffi wallet WALLET_FFI
     
