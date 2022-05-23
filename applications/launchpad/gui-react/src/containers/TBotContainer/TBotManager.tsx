@@ -1,7 +1,9 @@
 /* eslint-disable react/jsx-key */
+import { useState } from 'react'
 import TBotPrompt from '../../components/TBot/TBotPrompt'
-import { StyledMessage } from './styles'
+import ChatDots from '../../components/TBot/DotsComponent'
 import { HelpMessagesMap } from '../../config/helpMessagesConfig'
+import { StyledMessage } from './styles'
 
 /**
  * @name TBotManager
@@ -10,6 +12,8 @@ import { HelpMessagesMap } from '../../config/helpMessagesConfig'
  */
 
 const TBotManager = ({ messages }: { messages: string[] }) => {
+  const [messageLoading, setMessageLoading] = useState<boolean>(true)
+
   const renderMessages = messages.map(msg => {
     if (HelpMessagesMap[msg] === undefined) {
       return <StyledMessage>{msg}</StyledMessage>
@@ -22,7 +26,12 @@ const TBotManager = ({ messages }: { messages: string[] }) => {
     )
   })
 
-  return <TBotPrompt open={messages.length > 0}>{renderMessages}</TBotPrompt>
+  return (
+    <TBotPrompt open={messages.length > 0}>
+      {renderMessages}
+      {messageLoading && <ChatDots />}
+    </TBotPrompt>
+  )
 }
 
 export default TBotManager
