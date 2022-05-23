@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.3](https://github.com/tari-project/tari/compare/v0.32.1...v0.32.2) (2022-05-23)
+
+
+### Features
+
+* loosen ffi import utxo requirements ([#4126](https://github.com/tari-project/tari/issues/4126)) ([83a6fd9](https://github.com/tari-project/tari/commit/83a6fd97fbb137d9d8a1eb21466c3dbdcc16aec2))
+
 ### [0.32.1](https://github.com/tari-project/tari/compare/v0.32.0...v0.32.1) (2022-05-20)
 
 
