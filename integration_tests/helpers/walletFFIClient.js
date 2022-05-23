@@ -223,6 +223,10 @@ class WalletFFIClient {
     return this.wallet.cancelPendingTransaction(tx_id);
   }
 
+  getFeePerGramStats(count) {
+    return this.wallet.getFeePerGramStats(count);
+  }
+
   async stop() {
     if (this.comms_config) {
       //      console.log("walletFFI destroy comms_config ...");

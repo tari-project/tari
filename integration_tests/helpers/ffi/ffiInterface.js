@@ -482,6 +482,27 @@ class InterfaceFFI {
       emoji_set_destroy: [this.void, [this.ptr]],
       emoji_set_get_at: [this.ptr, [this.ptr, this.uint, this.intPtr]],
       emoji_set_get_length: [this.uint, [this.ptr, this.intPtr]],
+      wallet_get_fee_per_gram_stats: [
+        this.ptr,
+        [this.ptr, this.uint, this.intPtr],
+      ],
+      fee_per_gram_stats_get_length: [this.uint, [this.ptr, this.intPtr]],
+      fee_per_gram_stats_get_at: [this.ptr, [this.ptr, this.uint, this.intPtr]],
+      fee_per_gram_stats_destroy: [this.void, [this.ptr]],
+      fee_per_gram_stat_get_order: [this.ulonglong, [this.ptr, this.intPtr]],
+      fee_per_gram_stat_get_min_fee_per_gram: [
+        this.ulonglong,
+        [this.ptr, this.intPtr],
+      ],
+      fee_per_gram_stat_get_avg_fee_per_gram: [
+        this.ulonglong,
+        [this.ptr, this.intPtr],
+      ],
+      fee_per_gram_stat_get_max_fee_per_gram: [
+        this.ulonglong,
+        [this.ptr, this.intPtr],
+      ],
+      fee_per_gram_stat_destroy: [this.void, [this.ptr]],
     });
 
     this.loaded = true;
@@ -712,10 +733,7 @@ class InterfaceFFI {
       language,
       error
     );
-    this.checkErrorResult(
-      error,
-      `seed_words_get_mnemonic_word_list_for_language`
-    );
+    this.checkErrorResult(error, `seedWordsGetMnemonicWordListForLanguage`);
     return result;
   }
 
@@ -934,7 +952,7 @@ class InterfaceFFI {
   static transactionKernelGetExcess(ptr) {
     let error = this.initError();
     let result = this.fn.transaction_kernel_get_excess_hex(ptr, error);
-    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    this.checkErrorResult(error, `transactionKernelGetExcess`);
     return result;
   }
 
@@ -944,7 +962,7 @@ class InterfaceFFI {
       ptr,
       error
     );
-    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    this.checkErrorResult(error, `transactionKernelGetExcessPublicNonce`);
     return result;
   }
 
@@ -954,7 +972,7 @@ class InterfaceFFI {
       ptr,
       error
     );
-    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    this.checkErrorResult(error, `transactionKernelGetExcessSigntature`);
     return result;
   }
 
@@ -967,14 +985,14 @@ class InterfaceFFI {
   static completedTransactionsGetLength(ptr) {
     let error = this.initError();
     let result = this.fn.completed_transactions_get_length(ptr, error);
-    this.checkErrorResult(error, `contactsGetAt`);
+    this.checkErrorResult(error, `completedTransactionsGetLength`);
     return result;
   }
 
   static completedTransactionsGetAt(ptr, position) {
     let error = this.initError();
     let result = this.fn.completed_transactions_get_at(ptr, position, error);
-    this.checkErrorResult(error, `contactsGetAt`);
+    this.checkErrorResult(error, `completedTransactionsGetAt`);
     return result;
   }
 
@@ -1659,6 +1677,65 @@ class InterfaceFFI {
     let result = this.fn.wallet_start_transaction_validation(ptr, error);
     this.checkErrorResult(error, `walletStartTransactionValidation`);
     return result;
+  }
+
+  static walletGetFeePerGramStats(ptr, count) {
+    let error = this.initError();
+    let result = this.fn.wallet_get_fee_per_gram_stats(ptr, count, error);
+    this.checkErrorResult(error, `walletGetFeePerGramStats`);
+    return result;
+  }
+
+  //region FeePerGramStats (List)
+  static feePerGramStatsGetLength(ptr) {
+    let error = this.initError();
+    let result = this.fn.fee_per_gram_stats_get_length(ptr, error);
+    this.checkErrorResult(error, "feePerGramStatsGetLength");
+    return result;
+  }
+
+  static feePerGramStatsGetAt(ptr, position) {
+    let error = this.initError();
+    let result = this.fn.fee_per_gram_stats_get_at(ptr, position, error);
+    this.checkErrorResult(error, "feePerGramStatsGetAt");
+    return result;
+  }
+
+  static feePerGramStatsDestroy(ptr) {
+    this.fn.fee_per_gram_stats_destroy(ptr);
+  }
+  //endregion
+
+  static feePerGramStatGetOrder(ptr) {
+    let error = this.initError();
+    let result = this.fn.fee_per_gram_stat_get_order(ptr, error);
+    this.checkErrorResult(error, "feePerGramStatGetOrder");
+    return result;
+  }
+
+  static feePerGramStatGetMinFeePerGram(ptr) {
+    let error = this.initError();
+    let result = this.fn.fee_per_gram_stat_get_min_fee_per_gram(ptr, error);
+    this.checkErrorResult(error, "feePerGramStatGetMinFeePerGram");
+    return result;
+  }
+
+  static feePerGramStatGetAvgFeePerGram(ptr) {
+    let error = this.initError();
+    let result = this.fn.fee_per_gram_stat_get_avg_fee_per_gram(ptr, error);
+    this.checkErrorResult(error, "feePerGramStatGetAvgFeePerGram");
+    return result;
+  }
+
+  static feePerGramStatGetMaxFeePerGram(ptr) {
+    let error = this.initError();
+    let result = this.fn.fee_per_gram_stat_get_max_fee_per_gram(ptr, error);
+    this.checkErrorResult(error, "feePerGramStatGetMaxFeePerGram");
+    return result;
+  }
+
+  static feePerGramStatDestroy(ptr) {
+    this.fn.fee_per_gram_stat_destroy(ptr);
   }
 
   static walletRestartTransactionBroadcast(ptr) {

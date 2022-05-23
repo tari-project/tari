@@ -62,6 +62,8 @@ jobs:
           grcov . -s . --binary-path ./target/debug -t coveralls --branch --ignore-not-existing \
              -o ./target/coveralls_coverage.json \
              --token $COVERALLS_REPO_TOKEN \
+             --ignore target/**/*.rs \
+             --ignore **/.cargo/**/*.rs \
              --vcs-branch $GITHUB_REF_NAME \
              --service-name github \
              --service-job-id ${GITHUB_RUN_ID}

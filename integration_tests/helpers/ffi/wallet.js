@@ -19,6 +19,7 @@ const CommitmentSignature = require("./commitmentSignature");
 const utf8 = require("utf8");
 const LivenessData = require("./livenessData");
 const TransactionSendStatus = require("./transactionSendStatus");
+const FeePerGramStats = require("./feePerGramStats");
 
 class WalletBalance {
   available = 0;
@@ -597,6 +598,12 @@ class Wallet {
       script_private_key_ptr,
       covenant_ptr,
       message_ptr
+    );
+  }
+
+  getFeePerGramStats(count) {
+    return new FeePerGramStats(
+      InterfaceFFI.walletGetFeePerGramStats(this.ptr, count)
     );
   }
 

@@ -42,11 +42,11 @@ pub struct AssetOutputFeatures {
 }
 
 impl ConsensusEncoding for AssetOutputFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.public_key.consensus_encode(writer)?;
-        written += self.template_ids_implemented.consensus_encode(writer)?;
-        written += self.template_parameters.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.public_key.consensus_encode(writer)?;
+        self.template_ids_implemented.consensus_encode(writer)?;
+        self.template_parameters.consensus_encode(writer)?;
+        Ok(())
     }
 }
 
