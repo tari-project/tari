@@ -486,6 +486,7 @@ mod test {
                     contract_issuer: Default::default(),
                     contract_spec: ContractSpecification {
                         runtime: Default::default(),
+                        public_functions: Default::default(),
                     },
                 }),
                 _ => None,

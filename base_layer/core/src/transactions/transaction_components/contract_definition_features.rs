@@ -22,13 +22,16 @@
 
 use std::io::{Error, Read, Write};
 
+use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     array::copy_into_fixed_array_lossy,
     types::{FixedHash, PublicKey},
 };
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec};
+
+const MAX_FUNCTIONS: usize = 1024;
 
 // TODO: define a constant for each dynamic sized field
 const FIELD_LEN: usize = 32;
@@ -44,7 +47,7 @@ pub struct ContractDefinitionFeatures {
 impl ConsensusEncoding for ContractDefinitionFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.contract_id.consensus_encode(writer)?;
-        copy_into_fixed_array_lossy::<_, 32>(&self.contract_name).consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, FIELD_LEN>(&self.contract_name).consensus_encode(writer)?;
         self.contract_issuer.consensus_encode(writer)?;
         self.contract_spec.consensus_encode(writer)?;
 
@@ -80,11 +83,13 @@ impl ConsensusDecoding for ContractDefinitionFeatures {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct ContractSpecification {
     pub runtime: Vec<u8>, // TODO: make it String size 32
+    pub public_functions: Vec<PublicFunction>,
 }
 
 impl ConsensusEncoding for ContractSpecification {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        copy_into_fixed_array_lossy::<_, 32>(&self.runtime).consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, FIELD_LEN>(&self.runtime).consensus_encode(writer)?;
+        self.public_functions.consensus_encode(writer)?;
 
         Ok(())
     }
@@ -92,15 +97,46 @@ impl ConsensusEncoding for ContractSpecification {
 
 impl ConsensusEncodingSized for ContractSpecification {
     fn consensus_encode_exact_size(&self) -> usize {
-        32
+        FIELD_LEN + self.public_functions.len().required_space() + self.public_functions.len() * FIELD_LEN
     }
 }
 
 impl ConsensusDecoding for ContractSpecification {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let runtime: Vec<u8> = <[u8; FIELD_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        let public_functions = MaxSizeVec::<PublicFunction, MAX_FUNCTIONS>::consensus_decode(reader)?.into_vec();
 
-        Ok(Self { runtime })
+        Ok(Self {
+            runtime,
+            public_functions,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct PublicFunction {
+    pub name: Vec<u8>, // TODO: make it String size 32
+}
+
+impl ConsensusEncoding for PublicFunction {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        copy_into_fixed_array_lossy::<_, FIELD_LEN>(&self.name).consensus_encode(writer)?;
+
+        Ok(())
+    }
+}
+
+impl ConsensusEncodingSized for PublicFunction {
+    fn consensus_encode_exact_size(&self) -> usize {
+        FIELD_LEN
+    }
+}
+
+impl ConsensusDecoding for PublicFunction {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let name: Vec<u8> = <[u8; FIELD_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+
+        Ok(Self { name })
     }
 }
 
@@ -149,6 +185,14 @@ mod test {
             contract_issuer: PublicKey::default(),
             contract_spec: ContractSpecification {
                 runtime: str_to_padded_vec("runtime"),
+                public_functions: vec![
+                    PublicFunction {
+                        name: str_to_padded_vec("foo"),
+                    },
+                    PublicFunction {
+                        name: str_to_padded_vec("bar"),
+                    },
+                ],
             },
         };
 

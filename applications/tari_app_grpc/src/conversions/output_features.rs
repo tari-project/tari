@@ -35,6 +35,7 @@ use tari_core::transactions::transaction_components::{
     OutputFeatures,
     OutputFeaturesVersion,
     OutputFlags,
+    PublicFunction,
     SideChainCheckpointFeatures,
     TemplateParameter,
 };
@@ -266,12 +267,39 @@ impl TryFrom<grpc::ContractSpecification> for ContractSpecification {
     type Error = String;
 
     fn try_from(value: grpc::ContractSpecification) -> Result<Self, Self::Error> {
-        Ok(Self { runtime: value.runtime })
+        let public_functions = value
+            .public_functions
+            .into_iter()
+            .map(PublicFunction::try_from)
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            runtime: value.runtime,
+            public_functions,
+        })
     }
 }
 
 impl From<ContractSpecification> for grpc::ContractSpecification {
     fn from(value: ContractSpecification) -> Self {
-        Self { runtime: value.runtime }
+        let public_functions = value.public_functions.into_iter().map(|f| f.into()).collect();
+        Self {
+            runtime: value.runtime,
+            public_functions,
+        }
+    }
+}
+
+impl TryFrom<grpc::PublicFunction> for PublicFunction {
+    type Error = String;
+
+    fn try_from(value: grpc::PublicFunction) -> Result<Self, Self::Error> {
+        Ok(Self { name: value.name })
+    }
+}
+
+impl From<PublicFunction> for grpc::PublicFunction {
+    fn from(value: PublicFunction) -> Self {
+        Self { name: value.name }
     }
 }

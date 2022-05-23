@@ -30,6 +30,7 @@ use tari_core::transactions::transaction_components::{
     ContractSpecification,
     OutputFeatures,
     OutputFlags,
+    PublicFunction,
     TemplateParameter,
     Transaction,
 };
@@ -292,6 +293,14 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             contract_issuer: PublicKey::from_hex(&contract_definition.contract_issuer).unwrap(),
             contract_spec: ContractSpecification {
                 runtime: contract_definition.contract_spec.runtime.into_bytes(),
+                public_functions: contract_definition
+                    .contract_spec
+                    .public_functions
+                    .into_iter()
+                    .map(|f| PublicFunction {
+                        name: f.name.into_bytes(),
+                    })
+                    .collect(),
             },
         };
 

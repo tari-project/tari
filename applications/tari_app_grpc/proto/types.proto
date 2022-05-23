@@ -270,6 +270,11 @@ message ContractDefinitionFeatures {
 
 message ContractSpecification {
     bytes runtime = 1;
+    repeated PublicFunction public_functions = 2;
+}
+
+message PublicFunction {
+    bytes name = 1;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

@@ -48,6 +48,7 @@ use crate::{
             OutputFeatures,
             OutputFeaturesVersion,
             OutputFlags,
+            PublicFunction,
             SideChainCheckpointFeatures,
             TemplateParameter,
             Transaction,
@@ -505,13 +506,40 @@ impl TryFrom<proto::types::ContractSpecification> for ContractSpecification {
     type Error = String;
 
     fn try_from(value: proto::types::ContractSpecification) -> Result<Self, Self::Error> {
-        Ok(Self { runtime: value.runtime })
+        let public_functions = value
+            .public_functions
+            .into_iter()
+            .map(PublicFunction::try_from)
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            runtime: value.runtime,
+            public_functions,
+        })
     }
 }
 
 impl From<ContractSpecification> for proto::types::ContractSpecification {
     fn from(value: ContractSpecification) -> Self {
-        Self { runtime: value.runtime }
+        let public_functions = value.public_functions.into_iter().map(|f| f.into()).collect();
+        Self {
+            runtime: value.runtime,
+            public_functions,
+        }
+    }
+}
+
+impl TryFrom<proto::types::PublicFunction> for PublicFunction {
+    type Error = String;
+
+    fn try_from(value: proto::types::PublicFunction) -> Result<Self, Self::Error> {
+        Ok(Self { name: value.name })
+    }
+}
+
+impl From<PublicFunction> for proto::types::PublicFunction {
+    fn from(value: PublicFunction) -> Self {
+        Self { name: value.name }
     }
 }
 
