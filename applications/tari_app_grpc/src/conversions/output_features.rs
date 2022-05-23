@@ -227,6 +227,9 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
     type Error = String;
 
     fn try_from(value: grpc::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
+        let contract_issuer =
+            PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
         let contract_spec = value
             .contract_spec
             .map(ContractSpecification::try_from)
@@ -236,7 +239,7 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
         Ok(Self {
             contract_id: value.contract_id,
             contract_name: value.contract_name,
-            contract_issuer: value.contract_issuer,
+            contract_issuer,
             contract_spec,
         })
     }
@@ -244,10 +247,12 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
 
 impl From<ContractDefinitionFeatures> for grpc::ContractDefinitionFeatures {
     fn from(value: ContractDefinitionFeatures) -> Self {
+        let contract_issuer = value.contract_issuer.as_bytes().to_vec();
+
         Self {
             contract_id: value.contract_id,
             contract_name: value.contract_name,
-            contract_issuer: value.contract_issuer,
+            contract_issuer,
             contract_spec: Some(value.contract_spec.into()),
         }
     }

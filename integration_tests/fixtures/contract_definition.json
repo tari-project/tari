@@ -1,7 +1,7 @@
 {
     "contract_id": "contract_id value",
     "contract_name": "contract_name value",
-    "contract_issuer": "contract_issuer value",
+    "contract_issuer": "70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a",
     "contract_spec": {
         "runtime": "runtime value",
         "public_functions": [

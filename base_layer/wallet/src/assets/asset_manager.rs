@@ -33,6 +33,7 @@ use tari_core::transactions::transaction_components::{
     TemplateParameter,
     Transaction,
 };
+use tari_utilities::hex::Hex;
 
 use super::ContractDefinition;
 use crate::{
@@ -288,7 +289,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         let features = ContractDefinitionFeatures {
             contract_id: contract_definition.contract_id.into_bytes(),
             contract_name: contract_definition.contract_name.into_bytes(),
-            contract_issuer: contract_definition.contract_issuer.into_bytes(),
+            contract_issuer: PublicKey::from_hex(&contract_definition.contract_issuer).unwrap(),
             contract_spec: ContractSpecification {
                 runtime: contract_definition.contract_spec.runtime.into_bytes(),
             },
