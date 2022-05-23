@@ -566,13 +566,24 @@ class Wallet {
     covenant,
     message
   ) {
-    let spending_key_ptr = PrivateKey.fromHexString(utf8.encode(spending_key_hex)).getPtr();
-    let source_public_key_ptr = PublicKey.fromHexString(utf8.encode(source_public_key_hex)).getPtr();
-    let metadata_signature_ptr = CommitmentSignature.createFromObject(metadata_signature).getPtr();
-    let sender_offset_public_key_ptr = PublicKey.fromHexString(utf8.encode(sender_offset_public_key_hex)).getPtr();
-    let features_ptr = OutputFeatures.createFromObject(output_features_object).getPtr();
+    let spending_key_ptr = PrivateKey.fromHexString(
+      utf8.encode(spending_key_hex)
+    ).getPtr();
+    let source_public_key_ptr = PublicKey.fromHexString(
+      utf8.encode(source_public_key_hex)
+    ).getPtr();
+    let metadata_signature_ptr =
+      CommitmentSignature.createFromObject(metadata_signature).getPtr();
+    let sender_offset_public_key_ptr = PublicKey.fromHexString(
+      utf8.encode(sender_offset_public_key_hex)
+    ).getPtr();
+    let features_ptr = OutputFeatures.createFromObject(
+      output_features_object
+    ).getPtr();
     let covenant_ptr = Covenant.createFromBytes(covenant).getPtr();
-    let script_private_key_ptr = PrivateKey.fromHexString(utf8.encode(script_private_key_hex)).getPtr();;
+    let script_private_key_ptr = PrivateKey.fromHexString(
+      utf8.encode(script_private_key_hex)
+    ).getPtr();
     let message_ptr = utf8.encode(message);
 
     return InterfaceFFI.walletImportUtxo(

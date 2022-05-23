@@ -739,12 +739,12 @@ When(
   async function (walletName, ffiWalletName) {
     const wallet = this.getWallet(walletName);
     const ffiWallet = this.getWallet(ffiWalletName);
-    
+
     await wallet.exportUnspentOutputs();
     let outputs = await wallet.readExportedOutputsAsFaucetOutputs();
     const tx_ids = [];
 
-    outputs.forEach(output => {
+    outputs.forEach((output) => {
       const source_public_key = output.sender_offset_public_key;
       const covenant = output.covenant || "0";
       const message = output.covenant || "default message";
