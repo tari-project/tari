@@ -28,12 +28,24 @@ export const getStartsStops = ({
   to: Date
   schedules: Schedule[]
 }): StartStop[] => {
-  const schedulesWithDatesInsideFromTo = schedules.filter(
-    schedule =>
-      schedule.enabled &&
-      schedule.date &&
-      dateInside(schedule.date, { from, to }),
-  )
+  const schedulesWithDatesInsideFromTo = schedules.filter(schedule => {
+    if (!schedule.date || !schedule.enabled) {
+      return false
+    }
+
+    const scheduleStart = new Date(schedule.date)
+    scheduleStart.setUTCHours(schedule.interval.from.hours)
+    scheduleStart.setUTCMinutes(schedule.interval.from.minutes)
+
+    const scheduleStop = new Date(schedule.date)
+    scheduleStop.setUTCHours(schedule.interval.to.hours)
+    scheduleStop.setUTCMinutes(schedule.interval.to.minutes)
+
+    return (
+      dateInside(scheduleStart, { from, to }) ||
+      dateInside(scheduleStop, { from, to })
+    )
+  })
   const days = getDaysBetween(from, to)
   const recurringSchedules = schedules.filter(
     schedule => schedule.enabled && !schedule.date && schedule.days,
@@ -63,7 +75,7 @@ export const getStartsStops = ({
         stopTime.setUTCMinutes(schedule.interval.to.minutes)
 
         return {
-          start: startTime,
+          start: startTime.getTime() < from.getTime() ? from : startTime,
           stop: stopTime,
           toMine: miningType,
         }

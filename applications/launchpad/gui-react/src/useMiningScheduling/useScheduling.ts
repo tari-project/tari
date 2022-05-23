@@ -27,8 +27,12 @@ const useScheduling = ({
       getNextFullMinute(now).getTime() - now.getTime()
 
     timerRef.current = setTimeout(() => {
+      clearTimeout(timerRef.current!)
       callback(getNow())
-      intervalRef.current = setInterval(() => callback(getNow()), 60 * 1000)
+      intervalRef.current = setInterval(() => {
+        clearInterval(intervalRef.current!)
+        callback(getNow())
+      }, 60 * 1000)
     }, millisecondsTillNextFullMinute)
 
     return () => {

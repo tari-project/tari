@@ -5,7 +5,7 @@ import { Schedule } from '../../types/general'
 
 import { AppState, ExpertViewType, ViewType } from './types'
 
-const appInitialState: AppState = {
+export const appInitialState: AppState = {
   expertView: 'hidden',
   view: 'MINING',
   theme: 'light',

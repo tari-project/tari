@@ -1,4 +1,5 @@
 import { Schedule } from '../types/general'
+import { clearTime } from '../utils/Date'
 
 import { StartStop } from './types'
 import { getStartsStops } from './getStartsStops'
@@ -32,6 +33,90 @@ describe('getStartsStops', () => {
       {
         start: new Date('2022-05-21T17:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
+        toMine: 'tari',
+      },
+    ]
+
+    // when
+    const actual = getStartsStops({
+      from,
+      to,
+      schedules: singleSchedule,
+    })
+
+    // then
+    expect(actual).toEqual(expected)
+  })
+
+  it('should generate startStop if only start is inside from-to', () => {
+    // given
+    const from = new Date('2022-05-21T09:00:00.000Z')
+    const to = new Date('2022-05-21T13:00:00.000Z')
+
+    const singleSchedule: Schedule[] = [
+      {
+        id: 'scheduleId',
+        enabled: true,
+        date: clearTime(from),
+        interval: {
+          from: {
+            hours: 12,
+            minutes: 0,
+          },
+          to: {
+            hours: 18,
+            minutes: 0,
+          },
+        },
+        type: ['tari'],
+      },
+    ]
+    const expected: StartStop[] = [
+      {
+        start: new Date('2022-05-21T12:00:00.000Z'),
+        stop: new Date('2022-05-21T18:00:00.000Z'),
+        toMine: 'tari',
+      },
+    ]
+
+    // when
+    const actual = getStartsStops({
+      from,
+      to,
+      schedules: singleSchedule,
+    })
+
+    // then
+    expect(actual).toEqual(expected)
+  })
+
+  it('should generate startStop if only stop is inside from-to', () => {
+    // given
+    const from = new Date('2022-05-21T09:00:00.000Z')
+    const to = new Date('2022-05-21T13:00:00.000Z')
+
+    const singleSchedule: Schedule[] = [
+      {
+        id: 'scheduleId',
+        enabled: true,
+        date: clearTime(from),
+        interval: {
+          from: {
+            hours: 7,
+            minutes: 0,
+          },
+          to: {
+            hours: 12,
+            minutes: 0,
+          },
+        },
+        type: ['tari'],
+      },
+    ]
+    const expected: StartStop[] = [
+      {
+        start: new Date('2022-05-21T09:00:00.000Z'),
+        stop: new Date('2022-05-21T12:00:00.000Z'),
         toMine: 'tari',
       },
     ]

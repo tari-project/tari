@@ -50,3 +50,12 @@ export const dateInside = (
   date: Date,
   { from, to }: { from: Date; to: Date },
 ) => date.getTime() >= from.getTime() && date.getTime() <= to.getTime()
+
+export const startOfMinute = (d: Date) => {
+  const copy = new Date(d)
+
+  copy.setUTCSeconds(0)
+  copy.setUTCMilliseconds(0)
+
+  return copy
+}
