@@ -3037,7 +3037,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 
 /// ----------------------------------- Transport Send Status -----------------------------------///
 
-/// Encode the transaction send status of a TariTransactionSendStatus
+/// Decode the transaction send status of a TariTransactionSendStatus
 ///
 /// ## Arguments
 /// `status` - The pointer to a TariTransactionSendStatus
@@ -5480,11 +5480,11 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         return 0;
     }
 
-    if source_public_key.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("source_public_key".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
+    let source_public_key = if source_public_key.is_null() {
+        TariPublicKey::default()
+    } else {
+        (*source_public_key).clone()
+    };
 
     if metadata_signature.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("metadata_signature".to_string())).code;
@@ -5504,16 +5504,16 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         return 0;
     }
 
-    if features.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("features".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
+    let features = if features.is_null() {
+        TariOutputFeatures::default()
+    } else {
+        (*features).clone()
+    };
 
-    if covenant.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("covenant".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
+    let covenant = if covenant.is_null() {
+        TariCovenant::default()
+    } else {
+        (*covenant).clone()
     };
 
     let message_string;
@@ -5552,14 +5552,14 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
             &(*spending_key).clone(),
             script!(Nop),
             inputs!(public_script_key),
-            &(*source_public_key).clone(),
-            (*features).clone(),
+            &source_public_key,
+            features,
             message_string,
             (*metadata_signature).clone(),
             &(*script_private_key).clone(),
             &(*sender_offset_public_key).clone(),
             0,
-            (*covenant).clone(),
+            covenant,
         )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)

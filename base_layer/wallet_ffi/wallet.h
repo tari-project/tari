@@ -468,6 +468,19 @@ int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction 
 // Frees memory for a TariPendingInboundTransaction
 void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *transaction);
 
+/// -------------------------------- Transport Send Status ------------------------------------------------------ ///
+
+// Decode the transaction send status of a TariTransactionSendStatus
+//     !direct_send & !saf_send &  queued   = 0
+//      direct_send &  saf_send & !queued   = 1
+//      direct_send & !saf_send & !queued   = 2
+//     !direct_send &  saf_send & !queued   = 3
+//     any other combination (is not valid) = 4
+unsigned int fn transaction_send_status_decode(struct TariTransactionSendStatus *status, int *error_out);
+
+// Frees memory for a TariTransactionSendStatus
+void transaction_send_status_destroy(struct TariTransactionSendStatus *status);
+
 /// -------------------------------- InboundTransactions ------------------------------------------------------ ///
 
 // Gets the number of elements in a TariPendingInboundTransactions
