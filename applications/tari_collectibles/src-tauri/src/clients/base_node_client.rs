@@ -102,7 +102,7 @@ impl BaseNodeClient {
     let client = self.client_mut();
     let request = grpc::GetTokensRequest {
       asset_public_key: Vec::from(asset_public_key.as_bytes()),
-      unique_ids: vec![COMMITTEE_DEFINITION_ID.into()],
+      contract_ids: vec![COMMITTEE_DEFINITION_ID.into()],
     };
 
     debug!(target: LOG_TARGET, "get sidechain request {:?}", request);

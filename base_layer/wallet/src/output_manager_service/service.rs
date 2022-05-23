@@ -29,7 +29,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, FixedHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -298,7 +298,7 @@ where
             OutputManagerRequest::PrepareToSendTransaction {
                 tx_id,
                 amount,
-                unique_id,
+                contract_id,
                 parent_public_key,
                 fee_per_gram,
                 lock_height,
@@ -309,7 +309,7 @@ where
                 .prepare_transaction_to_send(
                     tx_id,
                     amount,
-                    unique_id,
+                    contract_id,
                     parent_public_key,
                     fee_per_gram,
                     lock_height,
@@ -322,7 +322,7 @@ where
             OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
-                unique_id,
+                contract_id,
                 parent_public_key,
                 fee_per_gram,
                 lock_height,
@@ -331,7 +331,7 @@ where
                 .create_pay_to_self_transaction(
                     tx_id,
                     amount,
-                    unique_id,
+                    contract_id,
                     parent_public_key,
                     fee_per_gram,
                     lock_height,
@@ -428,14 +428,14 @@ where
             OutputManagerRequest::CreatePayToSelfWithOutputs {
                 outputs,
                 fee_per_gram,
-                spending_unique_id,
+                spending_contract_id,
                 spending_parent_public_key,
             } => {
                 let (tx_id, transaction) = self
                     .create_pay_to_self_containing_outputs(
                         outputs,
                         fee_per_gram,
-                        spending_unique_id.as_ref(),
+                        spending_contract_id,
                         spending_parent_public_key.as_ref(),
                     )
                     .await?;
@@ -857,7 +857,7 @@ where
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -869,7 +869,7 @@ where
             target: LOG_TARGET,
             "Preparing to send transaction. Amount: {}. Unique id : {:?}. Fee per gram: {}. ",
             amount,
-            unique_id,
+            contract_id,
             fee_per_gram,
         );
         let output_features_estimate = OutputFeatures::default();
@@ -890,17 +890,17 @@ where
                 1,
                 metadata_byte_size,
                 None,
-                unique_id.as_ref(),
+                contract_id,
                 parent_public_key.as_ref(),
             )
             .await?;
 
         // TODO: improve this logic #LOGGED
-        let recipient_output_features = match unique_id {
+        let recipient_output_features = match contract_id {
             Some(ref _unique_id) => match input_selection
                 .utxos
                 .iter()
-                .find(|output| output.unblinded_output.features.unique_id.is_some())
+                .find(|output| output.unblinded_output.features.contract_id.is_some())
             {
                 Some(output) => output.unblinded_output.features.clone(),
                 _ => OutputFeatures::default(),
@@ -1079,7 +1079,7 @@ where
         &mut self,
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
-        spending_unique_id: Option<&Vec<u8>>,
+        spending_contract_id: Option<FixedHash>,
         spending_parent_public_key: Option<&PublicKey>,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = MicroTari(outputs.iter().fold(0u64, |running, out| running + out.value.as_u64()));
@@ -1103,7 +1103,7 @@ where
                 outputs.len(),
                 metadata_byte_size,
                 None,
-                spending_unique_id,
+                spending_contract_id,
                 spending_parent_public_key,
             )
             .await?;
@@ -1239,7 +1239,7 @@ where
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -1248,7 +1248,7 @@ where
         let script = script!(Nop);
         let covenant = Covenant::default();
         let output_features_estimate = OutputFeatures {
-            unique_id: unique_id.clone(),
+            contract_id,
             ..Default::default()
         };
         let metadata_byte_size = self
@@ -1268,7 +1268,7 @@ where
                 1,
                 metadata_byte_size,
                 None,
-                unique_id.as_ref(),
+                contract_id,
                 parent_public_key.as_ref(),
             )
             .await?;
@@ -1301,7 +1301,7 @@ where
         let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
         let output_features = OutputFeatures {
             recovery_byte,
-            unique_id: unique_id.clone(),
+            contract_id,
             ..Default::default()
         };
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
@@ -1430,18 +1430,18 @@ where
         num_outputs: usize,
         output_metadata_byte_size: usize,
         strategy: Option<UTXOSelectionStrategy>,
-        unique_id: Option<&Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<&PublicKey>,
     ) -> Result<UtxoSelection, OutputManagerError> {
-        let token = match unique_id {
-            Some(unique_id) => {
-                debug!(target: LOG_TARGET, "Looking for {:?}", unique_id);
+        let token = match contract_id {
+            Some(contract_id) => {
+                debug!(target: LOG_TARGET, "Looking for {:?}", contract_id);
                 // todo: new method to fetch by unique asset id
                 let uo = self.resources.db.fetch_all_unspent_outputs()?;
-                if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
+                if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.contract_id {
                     Some(token_unique_id) => {
                         debug!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
-                        token_unique_id == unique_id &&
+                        *token_unique_id == contract_id &&
                             x.unblinded_output.features.parent_public_key.as_ref() == parent_public_key
                     },
                     _ => false,

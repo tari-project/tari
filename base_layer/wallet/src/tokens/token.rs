@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 
 #[derive(Clone)]
 pub struct Token {
@@ -28,7 +28,7 @@ pub struct Token {
     output_status: String,
     asset_public_key: PublicKey,
     owner_commitment: Commitment,
-    unique_id: Vec<u8>,
+    contract_id: FixedHash,
 }
 
 impl Token {
@@ -37,14 +37,14 @@ impl Token {
         output_status: String,
         asset_public_key: PublicKey,
         owner_commitment: Commitment,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
     ) -> Self {
         Self {
             name,
             output_status,
             asset_public_key,
             owner_commitment,
-            unique_id,
+            contract_id,
         }
     }
 
@@ -64,7 +64,7 @@ impl Token {
         &self.owner_commitment
     }
 
-    pub fn unique_id(&self) -> &[u8] {
-        self.unique_id.as_slice()
+    pub fn contract_id(&self) -> &FixedHash {
+        &self.contract_id
     }
 }

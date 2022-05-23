@@ -193,7 +193,7 @@ impl BaseNodeClient for MockBaseNodeClient {
         &mut self,
         _height: u64,
         _asset_public_key: PublicKey,
-        _checkpoint_unique_id: Vec<u8>,
+        _checkpoint_unique_id: FixedHash,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
         todo!();
     }

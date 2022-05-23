@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
@@ -59,7 +59,7 @@ pub enum NodeCommsRequest {
     FetchKernelByExcessSig(Signature),
     FetchTokens {
         asset_public_key: PublicKey,
-        unique_ids: Vec<Vec<u8>>,
+        contract_ids: Vec<FixedHash>,
     },
     FetchAssetRegistrations {
         range: RangeInclusive<usize>,

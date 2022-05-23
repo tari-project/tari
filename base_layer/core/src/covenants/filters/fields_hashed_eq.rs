@@ -33,7 +33,7 @@ impl Filter for FieldsHashedEqFilter {
         let hash = context.next_arg()?.require_hash()?;
         output_set.retain(|output| {
             let challenge = fields.construct_challenge_from(output);
-            Ok(challenge.finalize()[..] == hash)
+            Ok(challenge.finalize()[..] == *hash)
         })?;
         Ok(())
     }
@@ -41,7 +41,7 @@ impl Filter for FieldsHashedEqFilter {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::Challenge;
+    use tari_common_types::types::{Challenge, FixedHash};
 
     use super::*;
     use crate::{
@@ -55,13 +55,13 @@ mod test {
     fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
         let features = OutputFeatures {
             maturity: 42,
-            unique_id: Some(vec![0xab, 0xcd, 0xef]),
+            contract_id: Some(FixedHash::hash_bytes("A")),
             ..Default::default()
         };
         let hashed = Challenge::new().chain(features.to_consensus_bytes()).finalize();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(hashed.as_slice());
-        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash)));
+        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features = features.clone();

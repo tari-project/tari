@@ -24,7 +24,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -276,13 +276,13 @@ impl LocalNodeCommsInterface {
     pub async fn get_tokens(
         &mut self,
         asset_public_key: PublicKey,
-        unique_ids: Vec<Vec<u8>>,
+        contract_ids: Vec<FixedHash>,
     ) -> Result<Vec<(TransactionOutput, u64)>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchTokens {
                 asset_public_key,
-                unique_ids,
+                contract_ids,
             })
             .await??
         {

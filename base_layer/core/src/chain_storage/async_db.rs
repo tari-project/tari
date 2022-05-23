@@ -31,7 +31,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -168,7 +168,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Option<Arc<Bitmap>>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
 
-    make_async_fn!(fetch_utxo_by_unique_id(parent_public_key: Option<PublicKey>,unique_id: HashOutput, deleted_at: Option<u64>) -> Option<UtxoMinedInfo>, "fetch_utxo_by_unique_id");
+    make_async_fn!(fetch_utxo_by_contract_id(parent_public_key: Option<PublicKey>, contract_id: FixedHash, deleted_at: Option<u64>) -> Option<UtxoMinedInfo>, "fetch_utxo_by_contract_id");
 
     make_async_fn!(fetch_all_unspent_by_parent_public_key(
         parent_public_key: PublicKey,

@@ -64,7 +64,7 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
             .get_current_checkpoint(
                 tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
                 asset_definition.public_key.clone(),
-                asset_definition.checkpoint_unique_id.clone(),
+                asset_definition.checkpoint_contract_id,
             )
             .await?;
 

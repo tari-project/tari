@@ -52,7 +52,7 @@ pub enum OutputField {
     Features = byte_codes::FIELD_FEATURES,
     FeaturesFlags = byte_codes::FIELD_FEATURES_FLAGS,
     FeaturesMaturity = byte_codes::FIELD_FEATURES_MATURITY,
-    FeaturesUniqueId = byte_codes::FIELD_FEATURES_UNIQUE_ID,
+    FeaturesContractId = byte_codes::FIELD_FEATURES_CONTRACT_ID,
     FeaturesParentPublicKey = byte_codes::FIELD_FEATURES_PARENT_PUBLIC_KEY,
     FeaturesMetadata = byte_codes::FIELD_FEATURES_METADATA,
 }
@@ -70,7 +70,7 @@ impl OutputField {
             FIELD_FEATURES => Ok(Features),
             FIELD_FEATURES_FLAGS => Ok(FeaturesFlags),
             FIELD_FEATURES_MATURITY => Ok(FeaturesMaturity),
-            FIELD_FEATURES_UNIQUE_ID => Ok(FeaturesUniqueId),
+            FIELD_FEATURES_CONTRACT_ID => Ok(FeaturesContractId),
             FIELD_FEATURES_PARENT_PUBLIC_KEY => Ok(FeaturesParentPublicKey),
             FIELD_FEATURES_METADATA => Ok(FeaturesMetadata),
 
@@ -93,7 +93,7 @@ impl OutputField {
             Features => &output.features as &dyn Any,
             FeaturesFlags => &output.features.flags as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
-            FeaturesUniqueId => &output.features.unique_id as &dyn Any,
+            FeaturesContractId => &output.features.contract_id as &dyn Any,
             FeaturesParentPublicKey => &output.features.parent_public_key as &dyn Any,
             FeaturesMetadata => &output.features.metadata as &dyn Any,
         };
@@ -111,7 +111,7 @@ impl OutputField {
             Features => output.features.to_consensus_bytes(),
             FeaturesFlags => output.features.flags.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
-            FeaturesUniqueId => output.features.unique_id.to_consensus_bytes(),
+            FeaturesContractId => output.features.contract_id.to_consensus_bytes(),
             FeaturesParentPublicKey => output.features.parent_public_key.to_consensus_bytes(),
             FeaturesMetadata => output.features.metadata.to_consensus_bytes(),
         }
@@ -146,9 +146,9 @@ impl OutputField {
                 .features()
                 .map(|features| features.maturity == output.features.maturity)
                 .unwrap_or(false),
-            FeaturesUniqueId => input
+            FeaturesContractId => input
                 .features()
-                .map(|features| features.unique_id == output.features.unique_id)
+                .map(|features| features.contract_id == output.features.contract_id)
                 .unwrap_or(false),
             FeaturesParentPublicKey => input
                 .features()
@@ -162,10 +162,10 @@ impl OutputField {
     }
 
     pub fn is_eq<T: PartialEq + 'static>(self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
-        use OutputField::{FeaturesParentPublicKey, FeaturesUniqueId};
+        use OutputField::{FeaturesContractId, FeaturesParentPublicKey};
         match self {
             // Handle edge cases
-            FeaturesParentPublicKey | FeaturesUniqueId => match self.get_field_value_ref::<Option<T>>(output) {
+            FeaturesParentPublicKey | FeaturesContractId => match self.get_field_value_ref::<Option<T>>(output) {
                 Some(Some(field_val)) => Ok(field_val == val),
                 Some(None) => Ok(false),
                 None => Err(CovenantError::InvalidArgument {
@@ -220,8 +220,8 @@ impl OutputField {
     }
 
     #[allow(dead_code)]
-    pub fn features_unique_id() -> Self {
-        OutputField::FeaturesUniqueId
+    pub fn features_contract_id() -> Self {
+        OutputField::FeaturesContractId
     }
 
     #[allow(dead_code)]
@@ -246,7 +246,7 @@ impl Display for OutputField {
             Covenant => write!(f, "field::covenant"),
             Features => write!(f, "field::features"),
             FeaturesFlags => write!(f, "field::features_flags"),
-            FeaturesUniqueId => write!(f, "field::features_unique_id"),
+            FeaturesContractId => write!(f, "field::features_contract_id"),
             FeaturesMetadata => write!(f, "field::features_metadata"),
             FeaturesParentPublicKey => write!(f, "field::features_parent_public_key"),
             FeaturesMaturity => write!(f, "field::features_maturity"),
@@ -333,7 +333,7 @@ impl FromIterator<OutputField> for OutputFields {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
-    use tari_common_types::types::{Commitment, PublicKey};
+    use tari_common_types::types::{Commitment, FixedHash, PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
     use tari_script::script;
 
@@ -352,7 +352,6 @@ mod test {
         use super::*;
 
         mod is_eq {
-
             use super::*;
 
             #[test]
@@ -360,7 +359,7 @@ mod test {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
                         parent_public_key: Some(Default::default()),
-                        unique_id: Some(b"1234".to_vec()),
+                        contract_id: Some(FixedHash::zero()),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -384,8 +383,8 @@ mod test {
                 assert!(OutputField::FeaturesMetadata
                     .is_eq(&output, &output.features.metadata)
                     .unwrap());
-                assert!(OutputField::FeaturesUniqueId
-                    .is_eq(&output, output.features.unique_id.as_ref().unwrap())
+                assert!(OutputField::FeaturesContractId
+                    .is_eq(&output, output.features.contract_id.as_ref().unwrap())
                     .unwrap());
                 assert!(OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &output.sender_offset_public_key)
@@ -398,7 +397,7 @@ mod test {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
                         parent_public_key: Some(parent_pk),
-                        unique_id: Some(b"1234".to_vec()),
+                        contract_id: Some(FixedHash::hash_bytes(b"A")),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -422,7 +421,9 @@ mod test {
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
                 assert!(!OutputField::FeaturesMetadata.is_eq(&output, &vec![123u8]).unwrap());
-                assert!(!OutputField::FeaturesUniqueId.is_eq(&output, &vec![123u8]).unwrap());
+                assert!(!OutputField::FeaturesContractId
+                    .is_eq(&output, &FixedHash::hash_bytes(b"B"))
+                    .unwrap());
                 assert!(!OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
@@ -468,7 +469,7 @@ mod test {
                 assert!(OutputField::FeaturesFlags.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesParentPublicKey.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMetadata.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesUniqueId.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesContractId.is_eq_input(&input, &output));
                 assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
             }
         }
@@ -479,7 +480,7 @@ mod test {
                 OutputField::Commitment,
                 OutputField::Features,
                 OutputField::FeaturesFlags,
-                OutputField::FeaturesUniqueId,
+                OutputField::FeaturesContractId,
                 OutputField::FeaturesMetadata,
                 OutputField::FeaturesMaturity,
                 OutputField::FeaturesParentPublicKey,

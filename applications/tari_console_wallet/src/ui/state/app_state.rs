@@ -34,7 +34,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PublicKey,
+    types::{FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -283,7 +283,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: u64,
         message: String,
@@ -300,7 +300,7 @@ impl AppState {
         tokio::spawn(send_transaction_task(
             public_key,
             MicroTari::from(amount),
-            unique_id,
+            contract_id,
             parent_public_key,
             message,
             fee_per_gram,
@@ -315,7 +315,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: u64,
         message: String,
@@ -332,7 +332,7 @@ impl AppState {
         tokio::spawn(send_one_sided_transaction_task(
             public_key,
             MicroTari::from(amount),
-            unique_id,
+            contract_id,
             parent_public_key,
             message,
             fee_per_gram,
@@ -1025,21 +1025,21 @@ pub struct CompletedTransactionInfo {
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
-    pub unique_id: String,
+    pub contract_id: String,
 }
 
-fn first_unique_id(tx: &CompletedTransaction) -> String {
+fn first_contract_id(tx: &CompletedTransaction) -> String {
     let body = tx.transaction.body();
     for input in body.inputs() {
         if let Ok(features) = input.features() {
-            if let Some(ref unique_id) = features.unique_id {
-                return unique_id.to_hex();
+            if let Some(ref contract_id) = features.contract_id {
+                return contract_id.to_hex();
             }
         }
     }
     for output in body.outputs() {
-        if let Some(ref unique_id) = output.features.unique_id {
-            return unique_id.to_hex();
+        if let Some(ref contract_id) = output.features.contract_id {
+            return contract_id.to_hex();
         }
     }
 
@@ -1057,7 +1057,7 @@ impl CompletedTransactionInfo {
         let weight = tx.transaction.calculate_weight(transaction_weighting);
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
-        let unique_id = first_unique_id(&tx);
+        let contract_id = first_contract_id(&tx);
 
         Self {
             tx_id: tx.tx_id,
@@ -1083,7 +1083,7 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
-            unique_id,
+            contract_id,
         }
     }
 }

@@ -23,8 +23,12 @@
 use std::sync::Arc;
 
 use rand::rngs::OsRng;
-use tari_common_types::types::PublicKey;
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_common_types::types::{CommitmentFactory, FixedHash, PublicKey};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::RistrettoPublicKey,
+};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -463,18 +467,18 @@ mod add_block {
     }
 
     #[test]
-    fn it_allows_distinct_unique_ids_belonging_to_same_parent() {
+    fn it_allows_distinct_contract_ids_belonging_to_same_parent() {
         let db = setup();
         let (blocks, outputs) = add_many_chained_blocks(2, &db);
 
         let prev_block = blocks.last().unwrap();
 
         let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
-        let unique_id = vec![1; 3];
+        let contract_id = FixedHash::hash_bytes("A");
         let features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(asset_pk.clone()),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
         let (mut transactions, _) = schema_to_transaction(&[txn_schema!(
@@ -483,11 +487,11 @@ mod add_block {
             features: features
         )]);
 
-        let unique_id = vec![2; 3];
+        let contract_id = FixedHash::hash_bytes("B");
         let features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(asset_pk),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
         let (txns, _) = schema_to_transaction(&[txn_schema!(
@@ -709,25 +713,23 @@ mod clear_all_pending_headers {
     }
 }
 
-mod fetch_utxo_by_unique_id {
-    use tari_common_types::types::CommitmentFactory;
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoPublicKey};
-
+mod fetch_utxo_by_contract_id {
     use super::*;
-    use crate::transactions::transaction_components::OutputFlags;
 
     #[test]
     fn it_returns_none_if_empty() {
         let db = setup();
         let asset_pk = RistrettoPublicKey::default();
-        let result = db.fetch_utxo_by_unique_id(Some(asset_pk), vec![1, 2, 3], None).unwrap();
+        let result = db
+            .fetch_utxo_by_contract_id(Some(asset_pk), FixedHash::zero(), None)
+            .unwrap();
         assert!(result.is_none());
     }
 
     #[test]
-    fn it_finds_the_utxo_by_unique_id_at_deleted_height() {
+    fn it_finds_the_utxo_by_contract_id_at_deleted_height() {
         let db = setup();
-        let unique_id = vec![1u8; 3];
+        let contract_id = FixedHash::hash_bytes("A");
         let (_, asset_pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
 
         // Height 1
@@ -736,7 +738,7 @@ mod fetch_utxo_by_unique_id {
         let mut features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(asset_pk.clone()),
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
         let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
@@ -758,7 +760,7 @@ mod fetch_utxo_by_unique_id {
         let (blocks, _) = add_many_chained_blocks(2, &db);
 
         let info = db
-            .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), None)
+            .fetch_utxo_by_contract_id(Some(asset_pk.clone()), contract_id, None)
             .unwrap()
             .unwrap();
         assert_eq!(info.output.as_transaction_output().unwrap().features, features);
@@ -772,7 +774,7 @@ mod fetch_utxo_by_unique_id {
         let mut features = OutputFeatures {
             flags: OutputFlags::empty(),
             parent_public_key: Some(asset_pk.clone()),
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
         let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
@@ -795,7 +797,7 @@ mod fetch_utxo_by_unique_id {
 
         // Current UTXO
         let info = db
-            .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), None)
+            .fetch_utxo_by_contract_id(Some(asset_pk.clone()), contract_id, None)
             .unwrap()
             .unwrap();
         let expected_commitment =
@@ -807,14 +809,14 @@ mod fetch_utxo_by_unique_id {
 
         let assert_utxo_not_found = |deleted_height: Option<u64>| {
             let info = db
-                .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), deleted_height)
+                .fetch_utxo_by_contract_id(Some(asset_pk.clone()), contract_id, deleted_height)
                 .unwrap();
             assert!(info.is_none());
         };
 
         let assert_utxo_found = |utxo: &UnblindedOutput, deleted_height: Option<u64>| {
             let info = db
-                .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), deleted_height)
+                .fetch_utxo_by_contract_id(Some(asset_pk.clone()), contract_id, deleted_height)
                 .unwrap()
                 .ok_or_else(|| format!("was none at deleted height {:?}", deleted_height))
                 .unwrap();

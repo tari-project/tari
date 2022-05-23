@@ -23,7 +23,7 @@
 use std::{fmt, marker::PhantomData};
 
 use serde::{self, de, Deserialize, Deserializer, Serialize};
-use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
+use tari_common_types::types::{FixedHash, PublicKey, ASSET_CHECKPOINT_ID};
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_utilities::hex::Hex;
 
@@ -37,7 +37,7 @@ pub struct AssetDefinition {
     pub phase_timeout: u64,
     // TODO: Better name? lock time/peg time? (in number of blocks)
     pub base_layer_confirmation_time: u64,
-    pub checkpoint_unique_id: Vec<u8>,
+    pub checkpoint_contract_id: FixedHash,
     pub initial_state: InitialState,
     pub template_parameters: Vec<TemplateParameter>,
 }
@@ -46,7 +46,7 @@ impl Default for AssetDefinition {
     fn default() -> Self {
         Self {
             base_layer_confirmation_time: 5,
-            checkpoint_unique_id: ASSET_CHECKPOINT_ID.into(),
+            checkpoint_contract_id: FixedHash::hash_bytes(&ASSET_CHECKPOINT_ID),
             public_key: Default::default(),
             committee: vec![],
             phase_timeout: 30,

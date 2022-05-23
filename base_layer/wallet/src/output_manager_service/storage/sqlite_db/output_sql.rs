@@ -512,7 +512,14 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         })?;
         features.maturity = o.maturity as u64;
         features.metadata = o.metadata.unwrap_or_default();
-        features.unique_id = o.features_unique_id.clone();
+        features.contract_id = o
+            .features_unique_id
+            .as_ref()
+            .map(|v| v.as_slice().try_into())
+            .transpose()
+            .map_err(|_| OutputManagerStorageError::ConversionError {
+                reason: "Invalid contract ID '{}'".to_string(),
+            })?;
         features.parent_public_key = o
             .features_parent_public_key
             .map(|p| PublicKey::from_bytes(&p))

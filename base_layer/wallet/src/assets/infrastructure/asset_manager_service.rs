@@ -82,6 +82,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&mut self, request: AssetManagerRequest) -> Result<AssetManagerResponse, WalletError> {
         trace!(target: LOG_TARGET, "Handling Service API Request {:?}", request);
         match request {
@@ -146,13 +147,18 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             },
             AssetManagerRequest::CreateFollowOnCheckpoint {
                 asset_public_key,
-                unique_id,
+                contract_id,
                 merkle_root,
                 committee_public_keys,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_follow_on_asset_checkpoint(*asset_public_key, unique_id, merkle_root, committee_public_keys)
+                    .create_follow_on_asset_checkpoint(
+                        *asset_public_key,
+                        contract_id,
+                        merkle_root,
+                        committee_public_keys,
+                    )
                     .await?;
                 Ok(AssetManagerResponse::CreateFollowOnCheckpoint {
                     transaction: Box::new(transaction),

@@ -24,7 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::{
     array::copy_into_fixed_array,
-    types::{Commitment, PublicKey},
+    types::{Commitment, FixedHash, PublicKey},
 };
 use tari_core::transactions::transaction_components::{
     AssetOutputFeatures,
@@ -44,10 +44,10 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
-        let unique_id = if features.unique_id.is_empty() {
+        let contract_id = if features.contract_id.is_empty() {
             None
         } else {
-            Some(features.unique_id.clone())
+            Some(FixedHash::try_from(features.contract_id).map_err(|e| e.to_string())?)
         };
         let parent_public_key = if features.parent_public_key.is_empty() {
             None
@@ -64,7 +64,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             features.maturity,
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
-            unique_id,
+            contract_id,
             parent_public_key,
             features.asset.map(|a| a.try_into()).transpose()?,
             features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
@@ -80,7 +80,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             flags: u32::from(features.flags.bits()),
             maturity: features.maturity,
             metadata: features.metadata,
-            unique_id: features.unique_id.unwrap_or_default(),
+            contract_id: features.contract_id.map(|id| id.to_vec()).unwrap_or_default(),
             parent_public_key: features
                 .parent_public_key
                 .map(|a| a.as_bytes().to_vec())

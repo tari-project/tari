@@ -121,11 +121,11 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         asset_public_key: PublicKey,
         asset_owner_commitment: Commitment,
-        features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
+        features: Vec<(FixedHash, Option<OutputFeatures>)>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let mut outputs = Vec::with_capacity(features.len());
         // TODO: generate proof of ownership
-        for (unique_id, token_features) in features {
+        for (contract_id, token_features) in features {
             let output = self
                 .output_manager
                 .create_output_with_features(
@@ -133,7 +133,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                     OutputFeatures::for_minting(
                         asset_public_key.clone(),
                         asset_owner_commitment.clone(),
-                        unique_id,
+                        contract_id,
                         token_features,
                     ),
                 )
@@ -198,7 +198,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
     pub async fn create_follow_on_asset_checkpoint(
         &mut self,
         asset_pub_key: PublicKey,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
         committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
@@ -208,7 +208,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 0.into(),
                 OutputFeatures::for_checkpoint(
                     asset_pub_key.clone(),
-                    unique_id.clone(),
+                    contract_id,
                     merkle_root,
                     committee_pub_keys.clone(),
                     false,
@@ -238,7 +238,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), Some(unique_id), Some(asset_pub_key))
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), Some(contract_id), Some(asset_pub_key))
             .await?;
         Ok((tx_id, transaction))
     }

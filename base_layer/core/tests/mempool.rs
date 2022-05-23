@@ -36,7 +36,7 @@ use helpers::{
 };
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
@@ -1216,11 +1216,12 @@ async fn consensus_validation_unique_id() {
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
 
     // mint new NFT
+    let contract_id = FixedHash::hash_bytes("A");
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset.clone()),
-        unique_id: Some(vec![1, 2, 3]),
+        contract_id: Some(contract_id),
         ..Default::default()
     };
     let txs = vec![txn_schema!(
@@ -1229,7 +1230,7 @@ async fn consensus_validation_unique_id() {
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
 
-    // trying to publish a transaction with the same unique id should fail
+    // trying to publish a transaction with the same contract id should fail
     let tx = txn_schema!(
         from: vec![outputs[1][1].clone()],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
@@ -1239,7 +1240,7 @@ async fn consensus_validation_unique_id() {
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
 
-    // publishing a transaction that spends a unique id to a new output should succeed
+    // publishing a transaction that spends a contract id to a new output should succeed
     let nft = outputs[2][0].clone();
     let features = nft.features.clone();
     let tx = txn_schema!(
@@ -1252,10 +1253,11 @@ async fn consensus_validation_unique_id() {
     assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
 
     // a different unique_id should be fine
+    let contract_id = FixedHash::hash_bytes("B");
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset),
-        unique_id: Some(vec![4, 5, 6]),
+        contract_id: Some(contract_id),
         ..Default::default()
     };
     let tx = txn_schema!(
@@ -1272,7 +1274,7 @@ async fn consensus_validation_unique_id() {
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset),
-        unique_id: Some(vec![4, 5, 6]),
+        contract_id: Some(FixedHash::hash_bytes("A")),
         ..Default::default()
     };
     let tx = txn_schema!(
@@ -1289,7 +1291,7 @@ async fn consensus_validation_unique_id() {
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset),
-        unique_id: Some(vec![7, 8, 9]),
+        contract_id: Some(FixedHash::hash_bytes("B")),
         ..Default::default()
     };
     let tx = txn_schema!(

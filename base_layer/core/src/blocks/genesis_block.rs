@@ -242,7 +242,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
                 maturity:60,
                 recovery_byte: 0,
                 metadata: Vec::new(),
-                unique_id: None,
+                contract_id: None,
                 parent_public_key: None,
                 asset: None,
                 mint_non_fungible: None,

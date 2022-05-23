@@ -114,7 +114,7 @@ message ListAssetRegistrationsRequest {
 
 message ListAssetRegistrationsResponse {
     bytes asset_public_key = 1;
-    bytes unique_id = 2;
+    bytes contract_id = 2;
     bytes owner_commitment = 3;
     uint64 mined_height = 4;
     bytes mined_in_block = 5;
@@ -124,12 +124,12 @@ message ListAssetRegistrationsResponse {
 
 message GetTokensRequest {
     bytes asset_public_key = 1;
-    // Optionally get a set of specific unique_ids
-    repeated bytes unique_ids = 2;
+    // Optionally get a set of specific contract_ids
+    repeated bytes contract_ids = 2;
 }
 
 message GetTokensResponse {
-    bytes unique_id = 1;
+    bytes contract_id = 1;
     bytes asset_public_key = 2;
     bytes owner_commitment = 3;
     bytes mined_in_block = 4;

@@ -96,7 +96,7 @@ impl AssetManagerHandle {
     pub async fn create_follow_on_asset_checkpoint(
         &mut self,
         public_key: &PublicKey,
-        unique_id: &[u8],
+        contract_id: FixedHash,
         merkle_root: FixedHash,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
@@ -104,7 +104,7 @@ impl AssetManagerHandle {
             .call(AssetManagerRequest::CreateFollowOnCheckpoint {
                 asset_public_key: Box::new(public_key.clone()),
                 merkle_root,
-                unique_id: unique_id.to_vec(),
+                contract_id,
                 committee_public_keys: Vec::new(),
             })
             .await??
@@ -175,7 +175,7 @@ impl AssetManagerHandle {
         &mut self,
         asset_public_key: &PublicKey,
         asset_owner_commitment: &Commitment,
-        features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
+        features: Vec<(FixedHash, Option<OutputFeatures>)>,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle

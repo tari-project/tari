@@ -22,13 +22,13 @@
 
 use crate::models::OutputFeatures;
 use serde::Serialize;
-use tari_common_types::types::{BlockHash, Commitment, PublicKey};
+use tari_common_types::types::{BlockHash, Commitment, FixedHash, PublicKey};
 
 #[derive(Serialize)]
 pub struct RegisteredAssetInfo {
   pub owner_commitment: Option<Commitment>,
   pub asset_public_key: Option<PublicKey>,
-  pub unique_id: Vec<u8>,
+  pub contract_id: FixedHash,
   pub mined_height: u64,
   pub mined_in_block: BlockHash,
   pub features: OutputFeatures,

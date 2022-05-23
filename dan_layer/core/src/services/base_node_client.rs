@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -36,7 +36,7 @@ pub trait BaseNodeClient: Send + Sync {
         &mut self,
         height: u64,
         asset_public_key: PublicKey,
-        checkpoint_unique_id: Vec<u8>,
+        checkpoint_contract_id: FixedHash,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
 
     async fn check_if_in_committee(

@@ -36,6 +36,7 @@ use crate::{
 };
 
 use log::debug;
+use std::convert::TryInto;
 use tari_app_grpc::tari_rpc::{self};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoPublicKey};
@@ -269,7 +270,7 @@ pub(crate) async fn inner_assets_list_registered_assets(
         Some(Ok(RegisteredAssetInfo {
           owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
           asset_public_key: RistrettoPublicKey::from_bytes(&asset.asset_public_key).ok(),
-          unique_id: asset.unique_id,
+          contract_id: asset.contract_id.try_into().unwrap_or_default(),
           mined_height: asset.mined_height,
           mined_in_block: asset.mined_in_block,
           features: features.clone().into(),
@@ -353,8 +354,15 @@ pub(crate) async fn inner_assets_get_registration(
 
   Ok(RegisteredAssetInfo {
     owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
-    asset_public_key: RistrettoPublicKey::from_bytes(&features.unique_id).ok(),
-    unique_id: features.unique_id.clone(),
+    asset_public_key: RistrettoPublicKey::from_bytes(features.contract_id.as_slice()).ok(),
+    contract_id: features
+      .contract_id
+      .clone()
+      .try_into()
+      .map_err(|_| Status::BadRequest {
+        code: 400,
+        message: "Invalid contract_id".to_string(),
+      })?,
     mined_height: asset.mined_height,
     mined_in_block: asset.mined_in_block,
     features: features.into(),

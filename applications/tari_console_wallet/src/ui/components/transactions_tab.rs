@@ -114,10 +114,10 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                let amount = if t.unique_id.is_empty() {
+                let amount = if t.contract_id.is_empty() {
                     format!("{}", t.amount)
                 } else {
-                    format!("Token: {}", t.unique_id)
+                    format!("Token: {}", t.contract_id)
                 };
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
@@ -130,10 +130,10 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Green)
                 };
-                let amount = if t.unique_id.is_empty() {
+                let amount = if t.contract_id.is_empty() {
                     format!("{}", t.amount)
                 } else {
-                    format!("Token: {}", t.unique_id)
+                    format!("Token: {}", t.contract_id)
                 };
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
@@ -216,10 +216,10 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                let amount = if t.unique_id.is_empty() {
+                let amount = if t.contract_id.is_empty() {
                     format!("{}", t.amount)
                 } else {
-                    format!("Token: {}", t.unique_id)
+                    format!("Token: {}", t.contract_id)
                 };
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
@@ -236,10 +236,10 @@ impl TransactionsTab {
                     _ => Color::Green,
                 };
                 let amount_style = Style::default().fg(color);
-                let amount = if t.unique_id.is_empty() {
+                let amount = if t.contract_id.is_empty() {
                     format!("{}", t.amount)
                 } else {
-                    format!("Token: {}", t.unique_id)
+                    format!("Token: {}", t.contract_id)
                 };
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
@@ -298,7 +298,7 @@ impl TransactionsTab {
         let amount = Span::styled(
             match self.detailed_transaction.as_ref() {
                 Some(tx) => {
-                    if tx.unique_id.is_empty() {
+                    if tx.contract_id.is_empty() {
                         "Amount:"
                     } else {
                         "Token:"
@@ -369,10 +369,10 @@ impl TransactionsTab {
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = tx.amount.to_string();
-            let content = if tx.unique_id.is_empty() {
+            let content = if tx.contract_id.is_empty() {
                 &amount
             } else {
-                &tx.unique_id
+                &tx.contract_id
             };
             let amount = Span::styled(content, Style::default().fg(Color::White));
             let fee_details = if tx.is_coinbase {

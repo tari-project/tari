@@ -806,28 +806,28 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
 
-                let unique_ids = parsed.args[1..]
+                let contract_ids = parsed.args[1..]
                     .iter()
                     .map(|arg| {
                         let s = arg.to_string();
                         if let Some(s) = s.strip_prefix("0x") {
-                            Hex::from_hex(s).map_err(|_| CommandError::Argument)
+                            FixedHash::from_hex(s).map_err(|_| CommandError::Argument)
                         } else {
-                            Ok(s.into_bytes())
+                            FixedHash::from_hex(&s).map_err(|_| CommandError::Argument)
                         }
                     })
-                    .collect::<Result<Vec<Vec<u8>>, _>>()?;
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
                 println!("Asset name: {}", asset.name());
 
-                let message = format!("Minting {} tokens for asset {}", unique_ids.len(), asset.name());
+                let message = format!("Minting {} tokens for asset {}", contract_ids.len(), asset.name());
                 let (tx_id, transaction) = asset_manager
                     .create_minting_transaction(
                         &public_key,
                         asset.owner_commitment(),
-                        unique_ids.into_iter().map(|id| (id, None)).collect(),
+                        contract_ids.into_iter().map(|id| (id, None)).collect(),
                     )
                     .await?;
                 transaction_service

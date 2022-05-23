@@ -36,6 +36,7 @@ impl Filter for FieldsPreservedFilter {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::FixedHash;
 
     use super::*;
     use crate::{
@@ -46,21 +47,21 @@ mod test {
 
     #[test]
     fn it_filters_outputs_that_match_input_fields() {
-        let bytes = vec![0xab, 0xcd, 0xef];
-        let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_unique_id, @field::features_flags)));
+        let hash = FixedHash::hash_bytes("A");
+        let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_contract_id, @field::features_flags)));
         let mut input = create_input();
         input.set_maturity(42).unwrap();
-        input.features_mut().unwrap().unique_id = Some(bytes.clone());
+        input.features_mut().unwrap().contract_id = Some(hash);
         input.features_mut().unwrap().flags = OutputFlags::SIDECHAIN_CHECKPOINT;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features.maturity = 42;
-            outputs[5].features.unique_id = Some(bytes.clone());
+            outputs[5].features.contract_id = Some(hash);
             outputs[5].features.flags = OutputFlags::SIDECHAIN_CHECKPOINT;
             outputs[7].features.maturity = 42;
             outputs[7].features.flags = OutputFlags::SIDECHAIN_CHECKPOINT;
-            outputs[7].features.unique_id = Some(vec![0x01, 0x02]);
+            outputs[7].features.contract_id = Some(FixedHash::hash_bytes("B"));
             outputs[8].features.maturity = 42;
-            outputs[8].features.unique_id = Some(bytes.clone());
+            outputs[8].features.contract_id = Some(hash);
             outputs[8].features.flags = OutputFlags::SIDECHAIN_CHECKPOINT | OutputFlags::COINBASE_OUTPUT;
         });
         let mut output_set = OutputSet::new(&outputs);

@@ -32,7 +32,7 @@ use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -302,16 +302,16 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
-    fn fetch_utxo_by_unique_id(
+    fn fetch_utxo_by_contract_id(
         &self,
         parent_public_key: Option<&PublicKey>,
-        unique_id: &[u8],
+        contract_id: FixedHash,
         deleted_at: Option<u64>,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()
-            .fetch_utxo_by_unique_id(parent_public_key, unique_id, deleted_at)
+            .fetch_utxo_by_contract_id(parent_public_key, contract_id, deleted_at)
     }
 
     fn fetch_all_unspent_by_parent_public_key(

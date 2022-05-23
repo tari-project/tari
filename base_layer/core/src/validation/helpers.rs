@@ -325,19 +325,20 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
         .filter_map(|output| {
             output
                 .features
-                .unique_id
+                .contract_id
                 .as_ref()
                 .map(|ui| (output.features.parent_public_key.as_ref(), ui))
         })
         .collect::<Vec<_>>();
     for input in body.inputs() {
-        // If spending a unique_id, a new output must contain the unique id
-        if let Some(ref unique_id) = input.features()?.unique_id {
+        // If spending a contract_id, a new output must contain the unique id
+        if let Some(ref contract_id) = input.features()?.contract_id {
             let exactly_one = output_unique_ids
                 .iter()
                 .filter_map(|(parent_public_key, output_unique_id)| match input.features() {
                     Ok(features) => {
-                        if features.parent_public_key.as_ref() == *parent_public_key && unique_id == *output_unique_id {
+                        if features.parent_public_key.as_ref() == *parent_public_key && contract_id == *output_unique_id
+                        {
                             Some(Ok((parent_public_key, output_unique_id)))
                         } else {
                             None
@@ -350,14 +351,14 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
             // Unless a burn flag is present
             if input.features()?.flags.contains(OutputFlags::BURN_NON_FUNGIBLE) {
                 if !exactly_one.is_empty() {
-                    return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
+                    return Err(ValidationError::ContractIdBurnedButPresentInOutputs);
                 }
             } else {
                 if exactly_one.is_empty() {
-                    return Err(ValidationError::UniqueIdInInputNotPresentInOutputs);
+                    return Err(ValidationError::ContractIdInInputNotPresentInOutputs);
                 }
                 if exactly_one.len() > 1 {
-                    return Err(ValidationError::DuplicateUniqueIdInOutputs);
+                    return Err(ValidationError::DuplicateContractIdInOutputs);
                 }
             }
         }
@@ -456,18 +457,18 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
     }
 
-    if let Some(unique_id) = &input.features()?.unique_id {
+    if let Some(contract_id) = input.features()?.contract_id {
         if let Some(utxo_hash) =
-            db.fetch_utxo_by_unique_id(input.features()?.parent_public_key.as_ref(), unique_id, None)?
+            db.fetch_utxo_by_contract_id(input.features()?.parent_public_key.as_ref(), contract_id, None)?
         {
-            // Check that it is the same utxo in which the unique_id was created
+            // Check that it is the same utxo in which the contract_id was created
             if utxo_hash.output.hash() == output_hash {
                 return Ok(());
             }
 
             warn!(
                 target: LOG_TARGET,
-                "Input spends a UTXO but has a duplicate unique_id:
+                "Input spends a UTXO but has a duplicate contract_id:
             {}",
                 input
             );
@@ -507,12 +508,12 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_tari_script_byte_size(&output.script, max_script_size)?;
         // Check outputs for duplicate asset ids
         if output.features.is_non_fungible_mint() || output.features.is_non_fungible_burn() {
-            if let Some(unique_id) = output.features.unique_asset_id() {
+            if let Some(contract_id) = output.features.unique_asset_id() {
                 let parent_pk = output.features.parent_public_key.as_ref();
 
-                let asset_tuple = (parent_pk, unique_id);
+                let asset_tuple = (parent_pk, contract_id);
                 if unique_ids.contains(&asset_tuple) {
-                    return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+                    return Err(ValidationError::ContainsDuplicateUtxoContractId);
                 }
                 unique_ids.push(asset_tuple)
             }
@@ -557,16 +558,16 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
     }
 
-    if let Some(unique_id) = &output.features.unique_id {
+    if let Some(contract_id) = output.features.contract_id {
         // Needs to have a mint flag
         if output.features.is_non_fungible_mint() &&
-            db.fetch_utxo_by_unique_id(output.features.parent_public_key.as_ref(), unique_id, None)?
+            db.fetch_utxo_by_contract_id(output.features.parent_public_key.as_ref(), contract_id, None)?
                 .is_some()
         {
             warn!(
                 target: LOG_TARGET,
-                "A UTXO with unique_id {} and parent public key {} already exists for output: {}",
-                unique_id.to_hex(),
+                "A UTXO with contract_id {} and parent public key {} already exists for output: {}",
+                contract_id.to_hex(),
                 output
                     .features
                     .parent_public_key
@@ -575,7 +576,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
                     .unwrap_or_else(|| "<None>".to_string()),
                 output
             );
-            return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+            return Err(ValidationError::ContainsDuplicateUtxoContractId);
         }
     }
 

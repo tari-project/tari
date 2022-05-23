@@ -34,6 +34,7 @@ mod benches {
     use criterion::{criterion_group, BatchSize, Criterion};
     use futures::future::try_join_all;
     use tari_common::configuration::Network;
+    use tari_common_types::types::FixedHash;
     use tari_core::{
         consensus::ConsensusManager,
         mempool::{Mempool, MempoolConfig},
@@ -100,7 +101,7 @@ mod benches {
             NUM_TXNS,
             1000,
             MAX_TRANSACTION_OUTPUTS,
-            OutputFeatures::for_minting(Default::default(), Default::default(), vec![1, 2, 3], None),
+            OutputFeatures::for_minting(Default::default(), Default::default(), FixedHash::hash_bytes("A"), None),
         ));
         c.bench_function("Mempool Insert", move |b| {
             let mut offset = 0;

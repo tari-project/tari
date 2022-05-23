@@ -54,6 +54,7 @@ impl<W: io::Write> CovenentWriteExt for W {
 
 #[cfg(test)]
 mod tests {
+    use tari_common_types::types::FixedHash;
 
     use super::*;
     use crate::{
@@ -83,7 +84,7 @@ mod tests {
 
     #[test]
     fn it_encodes_args_correctly() {
-        let dummy = [0u8; 32];
+        let dummy = FixedHash::zero();
         let covenant = covenant!(field_eq(@field::features, @hash(dummy)));
         let encoder = CovenantTokenEncoder::new(covenant.tokens());
         let mut buf = Vec::<u8>::new();

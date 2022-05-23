@@ -56,7 +56,7 @@ impl<B: Backend> Component<B> for TokensComponent {
                     r.name().to_string(),
                     r.output_status().to_string(),
                     r.asset_public_key().to_hex(),
-                    Vec::from(r.unique_id()).to_hex(),
+                    r.contract_id().to_hex(),
                     r.owner_commitment().to_hex(),
                 )
             })

@@ -27,7 +27,7 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{HashOutput, PublicKey},
+    types::{FixedHash, HashOutput, PublicKey},
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
@@ -87,7 +87,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
-    unique_id: Option<Vec<u8>>,
+    contract_id: Option<FixedHash>,
     parent_public_key: Option<PublicKey>,
     fee_per_gram: MicroTari,
     message: String,
@@ -113,7 +113,7 @@ where
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
@@ -132,7 +132,7 @@ where
             cancellation_receiver: Some(cancellation_receiver),
             dest_pubkey,
             amount,
-            unique_id,
+            contract_id,
             parent_public_key,
             fee_per_gram,
             message,
@@ -223,7 +223,7 @@ where
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
-                self.unique_id.clone(),
+                self.contract_id,
                 self.parent_public_key.clone(),
                 self.fee_per_gram,
                 None,

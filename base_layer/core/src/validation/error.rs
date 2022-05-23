@@ -61,14 +61,14 @@ pub enum ValidationError {
     ContainsTxO,
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
-    #[error("Transaction contains an output unique_id that already exists")]
-    ContainsDuplicateUtxoUniqueID,
-    #[error("Unique ID in input is not present in outputs")]
-    UniqueIdInInputNotPresentInOutputs,
-    #[error("Unique ID was present in more than one output")]
-    DuplicateUniqueIdInOutputs,
-    #[error("Unique ID was marked as burned, but was present in a new output")]
-    UniqueIdBurnedButPresentInOutputs,
+    #[error("Transaction contains an output contract_id that already exists")]
+    ContainsDuplicateUtxoContractId,
+    #[error("Contract ID in input is not present in outputs")]
+    ContractIdInInputNotPresentInOutputs,
+    #[error("Contract ID was present in more than one output")]
+    DuplicateContractIdInOutputs,
+    #[error("Contract ID was marked as burned, but was present in a new output")]
+    ContractIdBurnedButPresentInOutputs,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
     #[error("Proof of work error: {0}")]

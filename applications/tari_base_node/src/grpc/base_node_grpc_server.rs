@@ -456,10 +456,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "Incoming GRPC request for GetTokens: asset_pub_key: {}, unique_ids: [{}]",
+            "Incoming GRPC request for GetTokens: asset_pub_key: {}, contract_ids: [{}]",
             request.asset_public_key.to_hex(),
             request
-                .unique_ids
+                .contract_ids
                 .iter()
                 .map(|s| s.to_hex())
                 .collect::<Vec<_>>()
@@ -472,6 +472,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::invalid_argument(format!("Asset public Key is not a valid public key:{}", err)),
             )
         })?;
+        let contract_ids = request
+            .contract_ids
+            .iter()
+            .map(|v| v.as_slice().try_into())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| Status::invalid_argument("Invalid contract_ids"))?;
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(50);
@@ -481,7 +487,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 target: LOG_TARGET,
                 "Starting thread to process GetTokens: asset_pub_key: {}", asset_pub_key_hex,
             );
-            let tokens = match handler.get_tokens(pub_key, request.unique_ids).await {
+            let tokens = match handler.get_tokens(pub_key, contract_ids).await {
                 Ok(tokens) => tokens,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
@@ -517,7 +523,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             .parent_public_key
                             .map(|pk| pk.to_vec())
                             .unwrap_or_default(),
-                        unique_id: token.features.unique_id.unwrap_or_default(),
+                        contract_id: token.features.contract_id.map(|id| id.to_vec()).unwrap_or_default(),
                         owner_commitment: token.commitment.to_vec(),
                         mined_in_block: vec![],
                         mined_height,
@@ -670,7 +676,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let features = match output.features.clone().try_into() {
                     Ok(f) => f,
                     Err(err) => {
-                        warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
+                        warn!(target: LOG_TARGET, "Could not convert features: {}", err);
                         let _list_assest_registrations_response = tx.send(Err(report_error(
                             report_error_flag,
                             Status::internal(format!("Could not convert features:{}", err)),
@@ -684,7 +690,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         .asset
                         .map(|asset| asset.public_key.to_vec())
                         .unwrap_or_default(),
-                    unique_id: output.features.unique_id.unwrap_or_default(),
+                    contract_id: output.features.contract_id.map(|id| id.to_vec()).unwrap_or_default(),
                     owner_commitment: output.commitment.to_vec(),
                     mined_in_block: header_hash,
                     mined_height,

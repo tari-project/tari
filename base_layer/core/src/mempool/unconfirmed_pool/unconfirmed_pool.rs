@@ -29,7 +29,7 @@ use std::{
 use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashDigest, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{FixedHash, HashDigest, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 use crate::{
@@ -85,7 +85,7 @@ pub struct UnconfirmedPool {
     txs_by_signature: HashMap<PrivateKey, Vec<TransactionKey>>,
     tx_by_priority: BTreeMap<FeePriority, TransactionKey>,
     txs_by_output: HashMap<HashOutput, Vec<TransactionKey>>,
-    txs_by_unique_id: HashMap<[u8; 32], Vec<TransactionKey>>,
+    txs_by_contract_id: HashMap<FixedHash, Vec<TransactionKey>>,
 }
 
 // helper class to reduce type complexity
@@ -104,7 +104,7 @@ impl UnconfirmedPool {
             txs_by_signature: HashMap::new(),
             tx_by_priority: BTreeMap::new(),
             txs_by_output: HashMap::new(),
-            txs_by_unique_id: HashMap::new(),
+            txs_by_contract_id: HashMap::new(),
         }
     }
 
@@ -140,7 +140,7 @@ impl UnconfirmedPool {
             self.txs_by_output.entry(output.hash()).or_default().push(new_key);
 
             if let Some(hash) = get_output_token_id(output) {
-                self.txs_by_unique_id.entry(hash).or_default().push(new_key);
+                self.txs_by_contract_id.entry(hash).or_default().push(new_key);
             }
         }
         for kernel in prioritized_tx.transaction.body.kernels() {
@@ -187,7 +187,7 @@ impl UnconfirmedPool {
         let mut curr_skip_count = 0;
         let mut transactions_to_remove_and_recheck = Vec::new();
         let mut potential_transactions_to_remove_and_recheck = Vec::new();
-        let mut unique_ids = HashSet::new();
+        let mut contract_ids = HashSet::new();
         for (_, tx_key) in self.tx_by_priority.iter().rev() {
             if selected_txs.contains_key(tx_key) {
                 continue;
@@ -206,7 +206,7 @@ impl UnconfirmedPool {
                 &mut potential_transactions_to_remove_and_recheck,
                 &selected_txs,
                 &mut total_transaction_weight,
-                &mut unique_ids,
+                &mut contract_ids,
             )?;
             let total_weight_after_candidates = curr_weight + total_transaction_weight;
             if total_weight_after_candidates <= total_weight && potential_transactions_to_remove_and_recheck.is_empty()
@@ -278,7 +278,7 @@ impl UnconfirmedPool {
         transactions_to_recheck: &mut Vec<(TransactionKey, Arc<Transaction>)>,
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         total_weight: &mut u64,
-        unique_ids: &mut HashSet<[u8; 32]>,
+        contract_ids: &mut HashSet<FixedHash>,
     ) -> Result<(), UnconfirmedPoolError> {
         for dependent_output in &transaction.dependent_output_hashes {
             match self.txs_by_output.get(dependent_output) {
@@ -291,7 +291,7 @@ impl UnconfirmedPool {
                             transactions_to_recheck,
                             selected_txs,
                             total_weight,
-                            unique_ids,
+                            contract_ids,
                         )?;
 
                         if !transactions_to_recheck.is_empty() {
@@ -313,7 +313,7 @@ impl UnconfirmedPool {
         for output in transaction.transaction.body.outputs() {
             match get_output_token_id(output) {
                 Some(hash) => {
-                    if !unique_ids.insert(hash) {
+                    if !contract_ids.insert(hash) {
                         // This transaction has a unique id of another transaction that has already been selected,
                         // Skip adding it.
                         return Ok(());
@@ -493,12 +493,12 @@ impl UnconfirmedPool {
             }
 
             if let Some(hash) = get_output_token_id(output) {
-                if let Some(keys) = self.txs_by_unique_id.get_mut(&hash) {
+                if let Some(keys) = self.txs_by_contract_id.get_mut(&hash) {
                     if let Some(pos) = keys.iter().position(|k| *k == tx_key) {
                         keys.remove(pos);
                     }
                     if keys.is_empty() {
-                        self.txs_by_unique_id.remove(&hash);
+                        self.txs_by_contract_id.remove(&hash);
                     }
                 }
             }
@@ -608,7 +608,7 @@ impl UnconfirmedPool {
             self.txs_by_output
                 .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
-            self.txs_by_unique_id
+            self.txs_by_contract_id
                 .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key)))
     }
@@ -635,7 +635,7 @@ impl UnconfirmedPool {
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_output);
-        shrink_hashmap(&mut self.txs_by_unique_id);
+        shrink_hashmap(&mut self.txs_by_contract_id);
 
         if old - new > 0 {
             debug!(
@@ -649,8 +649,8 @@ impl UnconfirmedPool {
     }
 }
 
-fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
-    output.features.unique_id.as_ref().map(|unique_id| {
+fn get_output_token_id(output: &TransactionOutput) -> Option<FixedHash> {
+    output.features.contract_id.as_ref().map(|contract_id| {
         // "root" token public key
         let root_pk = PublicKey::default();
         let parent_pk_bytes = output
@@ -661,7 +661,7 @@ fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
             .unwrap_or_else(|| root_pk.as_bytes());
         HashDigest::new()
             .chain(parent_pk_bytes)
-            .chain(unique_id)
+            .chain(contract_id)
             .finalize()
             .into()
     })
@@ -671,7 +671,7 @@ fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
 mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_common_types::types::HashDigest;
+    use tari_common_types::types::{FixedHash, HashDigest};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;
@@ -1002,10 +1002,10 @@ mod test {
 
     #[test]
     fn test_multiple_transactions_with_same_unique_id() {
-        let unique_id = vec![1, 2, 3];
+        let contract_id = FixedHash::hash_bytes("A");
         let (_, parent_pk) = PublicKey::random_keypair(&mut OsRng);
         let nft_features = OutputFeatures {
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             parent_public_key: Some(parent_pk.clone()),
             ..Default::default()
         };
@@ -1029,12 +1029,12 @@ mod test {
         unconfirmed_pool
             .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
             .unwrap();
-        let expected_hash: [u8; 32] = HashDigest::new()
+        let expected_hash = HashDigest::new()
             .chain(parent_pk.as_bytes())
-            .chain(&unique_id)
+            .chain(&contract_id)
             .finalize()
             .into();
-        let entry = unconfirmed_pool.txs_by_unique_id.get(&expected_hash).unwrap();
+        let entry = unconfirmed_pool.txs_by_contract_id.get(&expected_hash).unwrap();
         let tx_id1 = unconfirmed_pool
             .txs_by_signature
             .get(tx1.first_kernel_excess_sig().unwrap().get_signature())

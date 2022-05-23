@@ -22,7 +22,7 @@
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{BlockHash, PublicKey};
+use tari_common_types::types::{BlockHash, FixedHash, PublicKey};
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -1024,14 +1024,14 @@ fn asset_unique_id() {
     );
 
     generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    let unique_id1 = vec![1u8; 3];
+    let contract_id1 = FixedHash::hash_bytes("A");
 
     // create a new NFT
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset.clone()),
-        unique_id: Some(unique_id1.clone()),
+        contract_id: Some(contract_id1),
         ..Default::default()
     };
 
@@ -1039,7 +1039,7 @@ fn asset_unique_id() {
     let output_info = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
+        .fetch_utxo_by_contract_id(Some(&asset), contract_id1, None)
         .unwrap();
     assert!(output_info.is_none());
 
@@ -1056,7 +1056,7 @@ fn asset_unique_id() {
     let output_info = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
+        .fetch_utxo_by_contract_id(Some(&asset), contract_id1, None)
         .unwrap()
         .unwrap();
     features.set_recovery_byte(
@@ -1077,21 +1077,21 @@ fn asset_unique_id() {
 
     let err = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap_err();
     assert!(matches!(err, ChainStorageError::ValidationError {
-        source: ValidationError::ContainsDuplicateUtxoUniqueID
+        source: ValidationError::ContainsDuplicateUtxoContractId
     }));
 
     // new unique id, does not exist yet
-    let unique_id2 = vec![2u8; 3];
+    let unique_id2 = FixedHash::hash_bytes("B");
     let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset.clone()),
-        unique_id: Some(unique_id2.clone()),
+        contract_id: Some(unique_id2),
         ..Default::default()
     };
     let output_info = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
+        .fetch_utxo_by_contract_id(Some(&asset), unique_id2, None)
         .unwrap();
     assert!(output_info.is_none());
 
@@ -1107,7 +1107,7 @@ fn asset_unique_id() {
     let output_info = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
+        .fetch_utxo_by_contract_id(Some(&asset), unique_id2, None)
         .unwrap()
         .unwrap();
     features.set_recovery_byte(
@@ -1125,13 +1125,13 @@ fn asset_unique_id() {
     let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset2.clone()),
-        unique_id: Some(unique_id1.clone()),
+        contract_id: Some(contract_id1),
         ..Default::default()
     };
     let output_info = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
+        .fetch_utxo_by_contract_id(Some(&asset2), contract_id1, None)
         .unwrap();
     assert!(output_info.is_none());
 
@@ -1147,7 +1147,7 @@ fn asset_unique_id() {
     let output_info = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
+        .fetch_utxo_by_contract_id(Some(&asset2), contract_id1, None)
         .unwrap()
         .unwrap();
     features.set_recovery_byte(

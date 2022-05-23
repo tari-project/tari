@@ -121,8 +121,9 @@ impl<R: io::Read> CovenantReadExt for R {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::FixedHash;
     use tari_test_utils::unpack_enum;
-    use tari_utilities::hex::{from_hex, to_hex};
+    use tari_utilities::hex::{to_hex, Hex};
 
     use super::*;
     use crate::{
@@ -165,13 +166,11 @@ mod test {
 
     #[test]
     fn it_decodes_from_well_formed_bytes() {
-        let hash = from_hex("53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd").unwrap();
-        let mut hash_buf = [0u8; 32];
-        hash_buf.copy_from_slice(hash.as_slice());
+        let hash = FixedHash::from_hex("53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd").unwrap();
         let mut bytes = Vec::new();
         covenant!(fields_hashed_eq(
             @fields(@field::commitment, @field::features_metadata),
-            @hash(hash_buf),
+            @hash(hash),
         ))
         .write_to(&mut bytes)
         .unwrap();

@@ -46,7 +46,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
+    types::{BlockHash, Commitment, FixedHash, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
 };
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
@@ -511,16 +511,16 @@ impl LMDBDatabase {
             "utxo_commitment_index",
         )?;
 
-        if let Some(ref unique_id) = output.features.unique_id {
+        if let Some(ref contract_id) = output.features.contract_id {
             let parent_public_key = output.features.parent_public_key.as_ref();
-            let key = UniqueIdIndexKey::new(parent_public_key, unique_id.as_slice());
+            let key = ContractIdIndexKey::new(parent_public_key, contract_id.as_slice());
             debug!(
                 target: LOG_TARGET,
-                "inserting index for unique_id <{}, {}> in output {}. Key is {}",
+                "inserting index for contract_id <{}, {}> in output {}. Key is {}",
                 parent_public_key
                     .map(|p| p.to_hex())
                     .unwrap_or_else(|| "<none>".to_string()),
-                unique_id.to_hex(),
+                contract_id.to_hex(),
                 output_hash.to_hex(),
                 key,
             );
@@ -667,10 +667,10 @@ impl LMDBDatabase {
             "deleted_txo_mmr_position_to_height_index",
         )?;
 
-        if let Some(ref unique_id) = input.features()?.unique_id {
+        if let Some(ref contract_id) = input.features()?.contract_id {
             let parent_public_key = input.features()?.parent_public_key.as_ref();
             // Move the "current" UTXO entry to a key containing the spend height
-            let mut key = UniqueIdIndexKey::new(parent_public_key, unique_id.as_slice());
+            let mut key = ContractIdIndexKey::new(parent_public_key, contract_id.as_slice());
             let expected_output_hash = lmdb_get::<_, HashOutput>(txn, &self.unique_id_index, key.as_bytes())?
                 .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
                     function: "insert_input",
@@ -692,16 +692,16 @@ impl LMDBDatabase {
                 });
             }
 
-            // TODO: 0-conf is not currently supported for transactions with unique_id set
+            // TODO: 0-conf is not currently supported for transactions with contract_id set
             lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
             key.set_deleted_height(height);
             debug!(
                 target: LOG_TARGET,
-                "moving index for unique_id <{}, {}> in output {} to key {}",
+                "moving index for contract_id <{}, {}> in output {} to key {}",
                 parent_public_key
                     .map(|p| p.to_hex())
                     .unwrap_or_else(|| "<none>".to_string()),
-                unique_id.to_hex(),
+                contract_id.to_hex(),
                 output_hash.to_hex(),
                 key,
             );
@@ -987,8 +987,8 @@ impl LMDBDatabase {
                     output.commitment.as_bytes(),
                     "utxo_commitment_index",
                 )?;
-                if let Some(unique_id) = output.features.unique_asset_id() {
-                    let key = UniqueIdIndexKey::new(output.features.parent_public_key.as_ref(), unique_id);
+                if let Some(contract_id) = output.features.unique_asset_id() {
+                    let key = ContractIdIndexKey::new(output.features.parent_public_key.as_ref(), contract_id);
                     lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
                 }
             }
@@ -1045,8 +1045,8 @@ impl LMDBDatabase {
                 "deleted_txo_mmr_position_to_height_index",
             )?;
 
-            if let Some(unique_id) = input.features()?.unique_asset_id() {
-                let mut key = UniqueIdIndexKey::new(input.features()?.parent_public_key.as_ref(), unique_id);
+            if let Some(contract_id) = input.features()?.unique_asset_id() {
+                let mut key = ContractIdIndexKey::new(input.features()?.parent_public_key.as_ref(), contract_id);
                 // The output that made this input that is being unspent is now at the head
                 lmdb_replace(txn, &self.unique_id_index, key.as_bytes(), &output_hash)?;
 
@@ -1961,15 +1961,15 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_get::<_, HashOutput>(&*txn, &*self.utxo_commitment_index, commitment.as_bytes())
     }
 
-    fn fetch_utxo_by_unique_id(
+    fn fetch_utxo_by_contract_id(
         &self,
         parent_public_key: Option<&PublicKey>,
-        unique_id: &[u8],
+        contract_id: FixedHash,
         deleted_height: Option<u64>,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
 
-        let mut key = UniqueIdIndexKey::new(parent_public_key, unique_id);
+        let mut key = ContractIdIndexKey::new(parent_public_key, &*contract_id);
         if let Some(height) = deleted_height {
             key.set_deleted_height(height);
         }
@@ -1983,7 +1983,7 @@ impl BlockchainBackend for LMDBDatabase {
                 _ => {
                     // Either return the output hash that matches the key exactly, or the key before the given key.
                     // Since a key without a deleted height is `0xFF x 8 (u64::MAX)` that key will always return the
-                    // output in the UTxO set or the last TxO matching the <parent_pk, unique_id>
+                    // output in the UTxO set or the last TxO matching the <parent_pk, contract_id>
                     // tuple
                     cursor.prev()?.map(|(_, v)| v)
                 },
@@ -2524,19 +2524,19 @@ impl fmt::Display for MetadataValue {
 }
 
 #[derive(Debug, Clone)]
-struct UniqueIdIndexKey {
+struct ContractIdIndexKey {
     inner: Vec<u8>,
     prefix_len: usize,
 }
 
-impl UniqueIdIndexKey {
+impl ContractIdIndexKey {
     /// Construct a key for the unique_id_index db.
     ///
     /// # Arguments
     /// `parent_public_key` - the parent asset public key to which the token is assigned
-    /// `unique_id` - a series of bytes representing the token uniquely for the asset
-    pub fn new(parent_public_key: Option<&PublicKey>, unique_id: &[u8]) -> Self {
-        let unique_id_hash = HashDigest::default().chain(unique_id).finalize();
+    /// `contract_id` - a series of bytes representing the token uniquely for the asset
+    pub fn new(parent_public_key: Option<&PublicKey>, contract_id: &[u8]) -> Self {
+        let unique_id_hash = HashDigest::default().chain(contract_id).finalize();
         Self::from_raw_parts(
             parent_public_key.map(|p| p.as_bytes()).unwrap_or(&[0; 32][..]),
             &unique_id_hash,
@@ -2577,7 +2577,7 @@ impl UniqueIdIndexKey {
     }
 }
 
-impl fmt::Display for UniqueIdIndexKey {
+impl fmt::Display for ContractIdIndexKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_hex())
     }

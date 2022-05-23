@@ -22,6 +22,7 @@
 
 use std::{
     cmp::Ordering,
+    convert::TryInto,
     fmt,
     fmt::{Display, Formatter},
     io,
@@ -67,7 +68,9 @@ pub struct OutputFeatures {
     #[serde(default)]
     pub recovery_byte: u8,
     pub metadata: Vec<u8>,
-    pub unique_id: Option<Vec<u8>>,
+    pub contract_id: Option<FixedHash>,
+
+    // Deprecated fields
     pub parent_public_key: Option<PublicKey>,
     pub asset: Option<AssetOutputFeatures>,
     pub mint_non_fungible: Option<MintNonFungibleFeatures>,
@@ -82,7 +85,7 @@ impl OutputFeatures {
         maturity: u64,
         recovery_byte: u8,
         metadata: Vec<u8>,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         asset: Option<AssetOutputFeatures>,
         mint_non_fungible: Option<MintNonFungibleFeatures>,
@@ -95,7 +98,7 @@ impl OutputFeatures {
             maturity,
             recovery_byte,
             metadata,
-            unique_id,
+            contract_id,
             parent_public_key,
             asset,
             mint_non_fungible,
@@ -109,7 +112,7 @@ impl OutputFeatures {
         maturity: u64,
         recovery_byte: u8,
         metadata: Vec<u8>,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         asset: Option<AssetOutputFeatures>,
         mint_non_fungible: Option<MintNonFungibleFeatures>,
@@ -122,7 +125,7 @@ impl OutputFeatures {
             maturity,
             recovery_byte,
             metadata,
-            unique_id,
+            contract_id,
             parent_public_key,
             asset,
             mint_non_fungible,
@@ -190,7 +193,7 @@ impl OutputFeatures {
         template_ids_implemented: Vec<u32>,
         template_parameters: Vec<TemplateParameter>,
     ) -> OutputFeatures {
-        let unique_id = Some(public_key.as_bytes().to_vec());
+        let contract_id = Some(public_key.as_bytes().try_into().expect("PublicKey is 32-bytes"));
         Self {
             flags: OutputFlags::ASSET_REGISTRATION,
             maturity: 0,
@@ -200,7 +203,7 @@ impl OutputFeatures {
                 template_ids_implemented,
                 template_parameters,
             }),
-            unique_id,
+            contract_id,
             ..Default::default()
         }
     }
@@ -208,7 +211,7 @@ impl OutputFeatures {
     pub fn for_minting(
         asset_public_key: PublicKey,
         asset_owner_commitment: Commitment,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         other_features: Option<OutputFeatures>,
     ) -> OutputFeatures {
         Self {
@@ -222,14 +225,14 @@ impl OutputFeatures {
                 asset_owner_commitment,
             }),
             parent_public_key: Some(asset_public_key),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..other_features.unwrap_or_default()
         }
     }
 
     pub fn for_checkpoint(
         parent_public_key: PublicKey,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
         committee: Vec<PublicKey>,
         is_initial: bool,
@@ -242,14 +245,14 @@ impl OutputFeatures {
             },
             sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
             parent_public_key: Some(parent_public_key),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..Default::default()
         }
     }
 
     pub fn for_committee(
         parent_public_key: PublicKey,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         committee: Vec<PublicKey>,
         effective_sidechain_height: u64,
         is_initial: bool,
@@ -265,13 +268,13 @@ impl OutputFeatures {
                 effective_sidechain_height,
             }),
             parent_public_key: Some(parent_public_key),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..Default::default()
         }
     }
 
     pub fn unique_asset_id(&self) -> Option<&[u8]> {
-        self.unique_id.as_deref()
+        self.contract_id.as_ref().map(|h| h.as_slice())
     }
 
     pub fn is_non_fungible_mint(&self) -> bool {
@@ -311,7 +314,7 @@ impl ConsensusEncoding for OutputFeatures {
             },
         }
         self.parent_public_key.consensus_encode(writer)?;
-        self.unique_id.consensus_encode(writer)?;
+        self.contract_id.consensus_encode(writer)?;
         self.asset.consensus_encode(writer)?;
         self.mint_non_fungible.consensus_encode(writer)?;
         self.sidechain_checkpoint.consensus_encode(writer)?;
@@ -340,8 +343,7 @@ impl ConsensusDecoding for OutputFeatures {
             OutputFeaturesVersion::V1 => OutputFeatures::consensus_decode_recovery_byte(reader)?,
         };
         let parent_public_key = <Option<PublicKey> as ConsensusDecoding>::consensus_decode(reader)?;
-        const MAX_UNIQUE_ID_SIZE: usize = 256;
-        let unique_id = <Option<MaxSizeBytes<MAX_UNIQUE_ID_SIZE>> as ConsensusDecoding>::consensus_decode(reader)?;
+        let contract_id = <Option<FixedHash> as ConsensusDecoding>::consensus_decode(reader)?;
         let asset = <Option<AssetOutputFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         let mint_non_fungible = <Option<MintNonFungibleFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         let sidechain_checkpoint =
@@ -360,7 +362,7 @@ impl ConsensusDecoding for OutputFeatures {
             maturity,
             recovery_byte,
             parent_public_key,
-            unique_id: unique_id.map(Into::into),
+            contract_id: contract_id.map(Into::into),
             asset,
             mint_non_fungible,
             sidechain_checkpoint,
@@ -415,7 +417,7 @@ mod test {
                 OutputFeaturesVersion::V1 => u8::MAX,
             },
             metadata: vec![1; 1024],
-            unique_id: Some(vec![0u8; 256]),
+            contract_id: Some(FixedHash::zero()),
             parent_public_key: Some(PublicKey::default()),
             asset: Some(AssetOutputFeatures {
                 public_key: Default::default(),
@@ -458,7 +460,7 @@ mod test {
     #[test]
     fn it_encodes_and_decodes_correctly_in_none_case() {
         let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
-        subject.unique_id = None;
+        subject.contract_id = None;
         subject.asset = None;
         subject.mint_non_fungible = None;
         subject.sidechain_checkpoint = None;
@@ -470,15 +472,6 @@ mod test {
     fn it_fails_for_large_metadata() {
         let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
         subject.metadata = vec![1u8; 1025];
-        let err = check_consensus_encoding_correctness(subject).unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::InvalidInput);
-    }
-
-    #[test]
-    fn it_fails_for_large_unique_id() {
-        let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
-        subject.unique_id = Some(vec![0u8; 257]);
-
         let err = check_consensus_encoding_correctness(subject).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
@@ -502,7 +495,7 @@ mod test {
                     template_ids_implemented: template_ids_implemented.clone(),
                     template_parameters: vec![tp.clone()]
                 }),
-                unique_id: Some(PublicKey::default().as_bytes().to_vec()),
+                contract_id: Some(FixedHash::zero()),
                 ..Default::default()
             },
             OutputFeatures::for_asset_registration(metadata, PublicKey::default(), template_ids_implemented, vec![tp])
@@ -520,7 +513,7 @@ mod test {
         };
         let other_features =
             OutputFeatures::for_asset_registration(metadata, PublicKey::default(), template_ids_implemented, vec![tp]);
-        let unique_id = vec![7, 2, 3, 4];
+        let contract_id = FixedHash::hash_bytes("A");
         assert_eq!(
             OutputFeatures {
                 flags: OutputFlags::MINT_NON_FUNGIBLE | other_features.flags,
@@ -529,13 +522,13 @@ mod test {
                     asset_owner_commitment: Commitment::from_public_key(&PublicKey::default())
                 }),
                 parent_public_key: Some(PublicKey::default()),
-                unique_id: Some(unique_id.clone()),
+                contract_id: Some(contract_id),
                 ..other_features.clone()
             },
             OutputFeatures::for_minting(
                 PublicKey::default(),
                 Commitment::from_public_key(&PublicKey::default()),
-                unique_id,
+                contract_id,
                 Some(other_features)
             )
         );
@@ -543,7 +536,7 @@ mod test {
 
     #[test]
     fn test_for_checkpoint() {
-        let unique_id = vec![7, 2, 3, 4];
+        let contract_id = FixedHash::hash_bytes("A");
         let hash = [13; 32].into();
         let committee = vec![PublicKey::default()];
         // Initial
@@ -555,10 +548,10 @@ mod test {
                     committee: committee.clone()
                 }),
                 parent_public_key: Some(PublicKey::default()),
-                unique_id: Some(unique_id.clone()),
+                contract_id: Some(contract_id),
                 ..Default::default()
             },
-            OutputFeatures::for_checkpoint(PublicKey::default(), unique_id.clone(), hash, committee.clone(), true)
+            OutputFeatures::for_checkpoint(PublicKey::default(), contract_id, hash, committee.clone(), true)
         );
 
         // Not initial
@@ -570,16 +563,16 @@ mod test {
                     committee: committee.clone()
                 }),
                 parent_public_key: Some(PublicKey::default()),
-                unique_id: Some(unique_id.clone()),
+                contract_id: Some(contract_id),
                 ..Default::default()
             },
-            OutputFeatures::for_checkpoint(PublicKey::default(), unique_id, hash, committee, false)
+            OutputFeatures::for_checkpoint(PublicKey::default(), contract_id, hash, committee, false)
         );
     }
 
     #[test]
     fn test_for_committee() {
-        let unique_id = vec![7, 2, 3, 4];
+        let contract_id = FixedHash::hash_bytes("A");
         let committee = vec![PublicKey::default()];
         let effective_sidechain_height = 123;
         assert_eq!(
@@ -590,12 +583,12 @@ mod test {
                     effective_sidechain_height
                 }),
                 parent_public_key: Some(PublicKey::default()),
-                unique_id: Some(unique_id.clone()),
+                contract_id: Some(contract_id),
                 ..Default::default()
             },
             OutputFeatures::for_committee(
                 PublicKey::default(),
-                unique_id.clone(),
+                contract_id,
                 committee.clone(),
                 effective_sidechain_height,
                 true
@@ -609,12 +602,12 @@ mod test {
                     effective_sidechain_height
                 }),
                 parent_public_key: Some(PublicKey::default()),
-                unique_id: Some(unique_id.clone()),
+                contract_id: Some(contract_id),
                 ..Default::default()
             },
             OutputFeatures::for_committee(
                 PublicKey::default(),
-                unique_id,
+                contract_id,
                 committee,
                 effective_sidechain_height,
                 false

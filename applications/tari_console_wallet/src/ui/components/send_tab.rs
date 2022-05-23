@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use log::*;
+use tari_common_types::types::FixedHash;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::hex::Hex;
 use tari_wallet::tokens::Token;
@@ -38,7 +39,7 @@ pub struct SendTab {
     contacts_list_state: WindowedListState,
     send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
     confirmation_dialog: Option<ConfirmationDialogType>,
-    selected_unique_id: Option<Vec<u8>>,
+    selected_contract_id: Option<FixedHash>,
     table_state: TableState,
 }
 
@@ -58,7 +59,7 @@ impl SendTab {
             contacts_list_state: WindowedListState::new(),
             send_result_watch: None,
             confirmation_dialog: None,
-            selected_unique_id: None,
+            selected_contract_id: None,
             table_state: TableState::default(),
         }
     }
@@ -130,7 +131,7 @@ impl SendTab {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .split(vert_chunks[2]);
 
-        let amount_input = Paragraph::new(match &self.selected_unique_id {
+        let amount_input = Paragraph::new(match &self.selected_contract_id {
             Some(token) => format!("Token selected : {}", token.to_hex()),
             None => self.amount_field.to_string(),
         })
@@ -170,7 +171,7 @@ impl SendTab {
                 vert_chunks[1].y + 1,
             ),
             SendInputMode::Amount => {
-                if self.selected_unique_id.is_none() {
+                if self.selected_contract_id.is_none() {
                     f.set_cursor(
                         // Put cursor past the end of the input text
                         amount_fee_layout[0].x + self.amount_field.width() as u16 + 1,
@@ -238,7 +239,7 @@ impl SendTab {
                     r.name().to_string(),
                     r.output_status().to_string(),
                     r.asset_public_key().to_hex(),
-                    Vec::from(r.unique_id()).to_hex(),
+                    r.contract_id().to_hex(),
                     r.owner_commitment().to_hex(),
                 )
             })
@@ -285,7 +286,7 @@ impl SendTab {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroTari>() {
                                 v
                             } else {
-                                if self.selected_unique_id.is_none() {
+                                if self.selected_contract_id.is_none() {
                                     self.error_message =
                                         Some("Amount should be an integer\nPress Enter to continue.".to_string());
                                     return KeyHandled::Handled;
@@ -308,7 +309,7 @@ impl SendTab {
                                 match Handle::current().block_on(app_state.send_one_sided_transaction(
                                     self.to_field.clone(),
                                     amount.into(),
-                                    self.selected_unique_id.clone(),
+                                    self.selected_contract_id,
                                     None,
                                     fee_per_gram,
                                     self.message_field.clone(),
@@ -326,7 +327,7 @@ impl SendTab {
                                 match Handle::current().block_on(app_state.send_transaction(
                                     self.to_field.clone(),
                                     amount.into(),
-                                    self.selected_unique_id.clone(),
+                                    self.selected_contract_id,
                                     None,
                                     fee_per_gram,
                                     self.message_field.clone(),
@@ -344,7 +345,7 @@ impl SendTab {
                             if reset_fields {
                                 self.to_field = "".to_string();
                                 self.amount_field = "".to_string();
-                                self.selected_unique_id = None;
+                                self.selected_contract_id = None;
                                 self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
                                 self.message_field = "".to_string();
                                 self.send_input_mode = SendInputMode::None;
@@ -375,13 +376,13 @@ impl SendTab {
                 },
                 SendInputMode::Amount => match c {
                     '\n' => {
-                        if self.selected_unique_id.is_some() {
+                        if self.selected_contract_id.is_some() {
                             self.amount_field = "".to_string();
                         }
                         self.send_input_mode = SendInputMode::Message
                     },
                     c => {
-                        if self.selected_unique_id.is_none() {
+                        if self.selected_contract_id.is_none() {
                             let symbols = &['t', 'T', 'u', 'U'];
                             if c.is_numeric() || symbols.contains(&c) {
                                 self.amount_field.push(c);
@@ -589,11 +590,11 @@ impl<B: Backend> Component<B> for SendTab {
                     self.error_message = Some("Destination Public Key/Emoji ID\nPress Enter to continue.".to_string());
                     return;
                 }
-                if self.amount_field.is_empty() && self.selected_unique_id.is_none() {
+                if self.amount_field.is_empty() && self.selected_contract_id.is_none() {
                     self.error_message = Some("Amount or token required\nPress Enter to continue.".to_string());
                     return;
                 }
-                if self.amount_field.parse::<MicroTari>().is_err() && self.selected_unique_id.is_none() {
+                if self.amount_field.parse::<MicroTari>().is_err() && self.selected_contract_id.is_none() {
                     self.error_message =
                         Some("Amount should be a valid amount of Tari\nPress Enter to continue.".to_string());
                     return;
@@ -617,14 +618,14 @@ impl<B: Backend> Component<B> for SendTab {
             let index = self.table_state.selected().unwrap_or_default();
             if index == 0 {
                 self.table_state.select(None);
-                self.selected_unique_id = None;
+                self.selected_contract_id = None;
             } else {
                 let tokens: Vec<&Token> = app_state
                     .get_owned_tokens()
                     .iter()
                     .filter(|&token| token.output_status() == "Unspent")
                     .collect();
-                self.selected_unique_id = Some(Vec::from(tokens[index - 1].unique_id()));
+                self.selected_contract_id = Some(*tokens[index - 1].contract_id());
                 self.table_state.select(Some(index - 1));
             }
         } else {
@@ -644,9 +645,9 @@ impl<B: Backend> Component<B> for SendTab {
                 .collect();
             if index > tokens.len().saturating_sub(1) {
                 self.table_state.select(None);
-                self.selected_unique_id = None;
+                self.selected_contract_id = None;
             } else {
-                self.selected_unique_id = Some(Vec::from(tokens[index].unique_id()));
+                self.selected_contract_id = Some(*tokens[index].contract_id());
                 self.table_state.select(Some(index));
             }
         } else {
@@ -664,7 +665,7 @@ impl<B: Backend> Component<B> for SendTab {
                 let _ = self.to_field.pop();
             },
             SendInputMode::Amount => {
-                if self.selected_unique_id.is_none() {
+                if self.selected_contract_id.is_none() {
                     let _ = self.amount_field.pop();
                 }
             },

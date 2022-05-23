@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{FixedHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -75,7 +75,7 @@ pub enum OutputManagerRequest {
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -86,7 +86,7 @@ pub enum OutputManagerRequest {
     CreatePayToSelfTransaction {
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -95,7 +95,7 @@ pub enum OutputManagerRequest {
     CreatePayToSelfWithOutputs {
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
-        spending_unique_id: Option<Vec<u8>>,
+        spending_contract_id: Option<FixedHash>,
         spending_parent_public_key: Option<PublicKey>,
     },
     CancelTransaction(TxId),
@@ -515,7 +515,7 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -528,7 +528,7 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::PrepareToSendTransaction {
                 tx_id,
                 amount,
-                unique_id,
+                contract_id,
                 parent_public_key,
                 fee_per_gram,
                 lock_height,
@@ -762,7 +762,7 @@ impl OutputManagerHandle {
         &mut self,
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
-        spending_unique_id: Option<Vec<u8>>,
+        spending_contract_id: Option<FixedHash>,
         spending_parent_public_key: Option<PublicKey>,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         match self
@@ -770,7 +770,7 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::CreatePayToSelfWithOutputs {
                 outputs,
                 fee_per_gram,
-                spending_unique_id,
+                spending_contract_id,
                 spending_parent_public_key,
             })
             .await??
@@ -784,7 +784,7 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
@@ -798,7 +798,7 @@ impl OutputManagerHandle {
                 fee_per_gram,
                 lock_height,
                 message,
-                unique_id,
+                contract_id,
                 parent_public_key,
             })
             .await??

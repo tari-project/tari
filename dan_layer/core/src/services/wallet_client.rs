@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_comms::types::CommsPublicKey;
 
 use crate::{models::StateRoot, DigitalAssetError};
@@ -31,7 +31,7 @@ pub trait WalletClient {
     async fn create_new_checkpoint(
         &mut self,
         asset_public_key: &PublicKey,
-        checkpoint_unique_id: &[u8],
+        checkpoint_contract_id: FixedHash,
         state_root: &StateRoot,
         next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError>;

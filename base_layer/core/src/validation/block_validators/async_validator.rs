@@ -105,17 +105,17 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             return Err(ValidationError::UnsortedOrDuplicateOutput);
         }
 
-        // Check that unique_ids are unique in this block
-        let mut unique_ids = Vec::new();
+        // Check that contract_ids are unique in this block
+        let mut contract_ids = Vec::new();
         for output in &outputs {
             if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) {
                 if let Some(unique_id) = output.features.unique_asset_id() {
                     let parent_public_key = output.features.parent_public_key.as_ref();
                     let asset_tuple = (parent_public_key, unique_id);
-                    if unique_ids.contains(&asset_tuple) {
-                        return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+                    if contract_ids.contains(&asset_tuple) {
+                        return Err(ValidationError::ContainsDuplicateUtxoContractId);
                     }
-                    unique_ids.push(asset_tuple);
+                    contract_ids.push(asset_tuple);
                 }
             }
         }

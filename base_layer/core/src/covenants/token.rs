@@ -22,11 +22,11 @@
 
 use std::{collections::VecDeque, io, iter::FromIterator};
 
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
 
 use crate::covenants::{
-    arguments::{CovenantArg, Hash},
+    arguments::CovenantArg,
     decoder::{CovenantDecodeError, CovenantReadExt},
     fields::OutputField,
     filters::{
@@ -145,7 +145,7 @@ impl CovenantToken {
     }
 
     #[allow(dead_code)]
-    pub fn hash(hash: Hash) -> Self {
+    pub fn hash(hash: FixedHash) -> Self {
         CovenantArg::Hash(hash).into()
     }
 

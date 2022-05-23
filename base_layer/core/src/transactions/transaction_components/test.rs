@@ -22,7 +22,7 @@
 
 use digest::Digest;
 use rand::{self, rngs::OsRng, Rng};
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::types::{BlindingFactor, ComSignature, FixedHash, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::Challenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -291,7 +291,7 @@ fn check_timelocks() {
 #[test]
 fn test_validate_internal_consistency() {
     let features = OutputFeatures {
-        unique_id: Some(b"abc".to_vec()),
+        contract_id: Some(FixedHash::hash_bytes("A")),
         ..Default::default()
     };
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features);
@@ -556,6 +556,8 @@ mod output_features {
 }
 
 mod validate_internal_consistency {
+    use tari_common_types::types::FixedHash;
+
     use super::*;
     use crate::consensus::ToConsensusBytes;
 
@@ -588,10 +590,10 @@ mod validate_internal_consistency {
     #[test]
     fn it_validates_that_the_covenant_is_honoured() {
         //---------------------------------- Case1 - PASS --------------------------------------------//
-        let covenant = covenant!(fields_preserved(@fields(@field::features_unique_id, @field::covenant)));
-        let unique_id = b"dank-meme-nft".to_vec();
+        let covenant = covenant!(fields_preserved(@fields(@field::features_contract_id, @field::covenant)));
+        let contract_id = FixedHash::hash_bytes("A");
         let mut features = OutputFeatures {
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
         test_case(
@@ -613,10 +615,10 @@ mod validate_internal_consistency {
         features.parent_public_key = Some(PublicKey::default());
         let hash = Challenge::new()
             .chain(Some(PublicKey::default()).to_consensus_bytes())
-            .chain(Some(unique_id.clone()).to_consensus_bytes())
+            .chain(Some(contract_id).to_consensus_bytes())
             .finalize();
 
-        let covenant = covenant!(fields_hashed_eq(@fields(@field::features_parent_public_key, @field::features_unique_id), @hash(hash.into())));
+        let covenant = covenant!(fields_hashed_eq(@fields(@field::features_parent_public_key, @field::features_contract_id), @hash(hash.into())));
 
         test_case(
             &UtxoTestParams {
@@ -632,7 +634,8 @@ mod validate_internal_consistency {
         .unwrap();
 
         //---------------------------------- Case3 - FAIL --------------------------------------------//
-        let covenant = covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_unique_id, @bytes(unique_id.clone()))));
+        let covenant =
+            covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_contract_id, @hash(contract_id))));
 
         let err = test_case(
             &UtxoTestParams {
@@ -648,7 +651,7 @@ mod validate_internal_consistency {
         unpack_enum!(TransactionError::CovenantError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
-        // Pass because unique_id is set
+        // Pass because contract_id is set
         test_case(
             &UtxoTestParams {
                 covenant: covenant.clone(),
@@ -656,7 +659,7 @@ mod validate_internal_consistency {
             },
             &UtxoTestParams {
                 features: OutputFeatures {
-                    unique_id: Some(unique_id),
+                    contract_id: Some(contract_id),
                     ..Default::default()
                 },
                 ..Default::default()

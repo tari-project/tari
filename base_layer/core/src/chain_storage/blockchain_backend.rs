@@ -6,7 +6,7 @@ use std::ops::Range;
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::Hash;
 
@@ -122,12 +122,12 @@ pub trait BlockchainBackend: Send + Sync {
         commitment: &Commitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
 
-    /// Returns the unspent TransactionOutput output that matches the given unique_id if it exists, otherwise None is
+    /// Returns the unspent TransactionOutput output that matches the given contract_id if it exists, otherwise None is
     /// returned.
-    fn fetch_utxo_by_unique_id(
+    fn fetch_utxo_by_contract_id(
         &self,
         parent_public_key: Option<&PublicKey>,
-        unique_id: &[u8],
+        contract_id: FixedHash,
         deleted_at: Option<u64>,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
 

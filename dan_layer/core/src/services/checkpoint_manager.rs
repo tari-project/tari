@@ -69,7 +69,7 @@ impl<TWallet: WalletClient + Sync + Send> CheckpointManager<CommsPublicKey> for 
             self.wallet
                 .create_new_checkpoint(
                     &self.asset_definition.public_key,
-                    &self.asset_definition.checkpoint_unique_id,
+                    self.asset_definition.checkpoint_contract_id,
                     &state_root,
                     next_committee,
                 )

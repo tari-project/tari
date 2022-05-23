@@ -25,7 +25,7 @@ use std::{convert::TryInto, net::SocketAddr};
 use async_trait::async_trait;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common_types::types::{PublicKey, COMMITTEE_DEFINITION_ID};
+use tari_common_types::types::{FixedHash, PublicKey, COMMITTEE_DEFINITION_ID};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
@@ -74,12 +74,12 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         &mut self,
         _height: u64,
         asset_public_key: PublicKey,
-        checkpoint_unique_id: Vec<u8>,
+        checkpoint_contract_id: FixedHash,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
         let inner = self.connection().await?;
         let request = grpc::GetTokensRequest {
             asset_public_key: asset_public_key.as_bytes().to_vec(),
-            unique_ids: vec![checkpoint_unique_id],
+            contract_ids: vec![checkpoint_contract_id.to_vec()],
         };
         let mut result = inner.get_tokens(request).await?.into_inner();
         let mut outputs = vec![];

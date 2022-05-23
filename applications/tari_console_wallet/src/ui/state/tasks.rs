@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_wallet::transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle};
@@ -33,7 +33,7 @@ const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 pub async fn send_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,
-    unique_id: Option<Vec<u8>>,
+    contract_id: Option<FixedHash>,
     parent_public_key: Option<PublicKey>,
     message: String,
     fee_per_gram: MicroTari,
@@ -44,7 +44,14 @@ pub async fn send_transaction_task(
     let mut event_stream = transaction_service_handle.get_event_stream();
     let mut send_status = TransactionSendStatus::default();
     match transaction_service_handle
-        .send_transaction_or_token(public_key, amount, unique_id, parent_public_key, fee_per_gram, message)
+        .send_transaction_or_token(
+            public_key,
+            amount,
+            contract_id,
+            parent_public_key,
+            fee_per_gram,
+            message,
+        )
         .await
     {
         Err(e) => {
@@ -102,7 +109,7 @@ pub async fn send_transaction_task(
 pub async fn send_one_sided_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,
-    unique_id: Option<Vec<u8>>,
+    contract_id: Option<FixedHash>,
     parent_public_key: Option<PublicKey>,
     message: String,
     fee_per_gram: MicroTari,
@@ -112,7 +119,14 @@ pub async fn send_one_sided_transaction_task(
     let _result = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
-        .send_one_sided_transaction_or_token(public_key, amount, unique_id, parent_public_key, fee_per_gram, message)
+        .send_one_sided_transaction_or_token(
+            public_key,
+            amount,
+            contract_id,
+            parent_public_key,
+            fee_per_gram,
+            message,
+        )
         .await
     {
         Err(e) => {

@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey},
+    types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -562,7 +562,7 @@ where
             TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
-                unique_id,
+                contract_id,
                 parent_public_key,
                 fee_per_gram,
                 message,
@@ -571,7 +571,7 @@ where
                 self.send_transaction(
                     dest_pubkey,
                     amount,
-                    unique_id,
+                    contract_id,
                     parent_public_key,
                     fee_per_gram,
                     message,
@@ -585,7 +585,7 @@ where
             TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
-                unique_id,
+                contract_id,
                 parent_public_key,
                 fee_per_gram,
                 message,
@@ -593,7 +593,7 @@ where
                 .send_one_sided_transaction(
                     dest_pubkey,
                     amount,
-                    unique_id,
+                    contract_id,
                     parent_public_key,
                     fee_per_gram,
                     message,
@@ -848,7 +848,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
@@ -874,7 +874,7 @@ where
                 .create_pay_to_self_transaction(
                     tx_id,
                     amount,
-                    unique_id.clone(),
+                    contract_id,
                     parent_public_key.clone(),
                     fee_per_gram,
                     None,
@@ -929,7 +929,7 @@ where
             cancellation_receiver,
             dest_pubkey,
             amount,
-            unique_id,
+            contract_id,
             parent_public_key,
             fee_per_gram,
             message,
@@ -1130,7 +1130,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
@@ -1153,7 +1153,7 @@ where
             .prepare_transaction_to_send(
                 tx_id,
                 amount,
-                unique_id.clone(),
+                contract_id,
                 parent_public_key.clone(),
                 fee_per_gram,
                 None,

@@ -759,8 +759,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let merkle_root = copy_into_fixed_array(&message.merkle_root)
             .map_err(|_| Status::invalid_argument("Incorrect merkle root length"))?;
 
+        let contract_id = message
+            .contract_id
+            .try_into()
+            .map_err(|_| Status::invalid_argument("Incorrect contract_id length"))?;
         let (tx_id, transaction) = asset_manager
-            .create_follow_on_asset_checkpoint(&asset_public_key, message.unique_id.as_slice(), merkle_root.into())
+            .create_follow_on_asset_checkpoint(&asset_public_key, contract_id, merkle_root.into())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -834,12 +838,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         let mut token_features = vec![];
-        for tari_rpc::MintTokenInfo { unique_id, features } in message.tokens {
+        for tari_rpc::MintTokenInfo { contract_id, features } in message.tokens {
+            let contract_id = contract_id
+                .try_into()
+                .map_err(|_| Status::invalid_argument("Invalid contract ID"))?;
             let f: Option<OutputFeatures> = features
                 .map(|f| f.try_into())
                 .transpose()
                 .map_err(Status::invalid_argument)?;
-            token_features.push((unique_id, f));
+            token_features.push((contract_id, f));
         }
 
         let (tx_id, transaction) = asset_manager
@@ -851,7 +858,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .body
             .outputs()
             .iter()
-            .filter_map(|o| o.features.unique_id.as_ref().map(|_| o.commitment.to_vec()))
+            .filter_map(|o| o.features.contract_id.as_ref().map(|_| o.commitment.to_vec()))
             .collect();
 
         let message = format!(
@@ -887,7 +894,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         name: t.name().to_string(),
                         output_status: t.output_status().to_string(),
                         asset_public_key: Vec::from(t.asset_public_key().as_bytes()),
-                        unique_id: Vec::from(t.unique_id()),
+                        contract_id: t.contract_id().to_vec(),
                         commitment: Vec::from(t.owner_commitment().as_bytes()),
                     })
                 } else {

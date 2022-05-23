@@ -36,7 +36,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashDigest, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
@@ -374,14 +374,14 @@ where B: BlockchainBackend
         db.fetch_unspent_output_hash_by_commitment(commitment)
     }
 
-    pub fn fetch_utxo_by_unique_id(
+    pub fn fetch_utxo_by_contract_id(
         &self,
         parent_public_key: Option<PublicKey>,
-        unique_id: HashOutput,
+        contract_id: FixedHash,
         deleted_at: Option<u64>,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_utxo_by_unique_id(parent_public_key.as_ref(), &unique_id, deleted_at)
+        db.fetch_utxo_by_contract_id(parent_public_key.as_ref(), contract_id, deleted_at)
     }
 
     pub fn fetch_all_unspent_by_parent_public_key(

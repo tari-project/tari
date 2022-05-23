@@ -105,7 +105,7 @@ use tari_common::configuration::StringList;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{Commitment, PublicKey},
+    types::{Commitment, FixedHash, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -1078,7 +1078,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     maturity: c_ulonglong,
     recovery_byte: c_uchar,
     metadata: *const ByteVector,
-    unique_id: *const ByteVector,
+    contract_id: *const ByteVector,
     parent_public_key: *const ByteVector,
     error_out: *mut c_int,
 ) -> *mut TariOutputFeatures {
@@ -1118,9 +1118,19 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 
     let decoded_metadata = (*metadata).0.clone();
 
-    let mut decoded_unique_id = None;
-    if !unique_id.is_null() {
-        decoded_unique_id = Some((*unique_id).0.clone());
+    let mut decoded_contract_id = None;
+    if !contract_id.is_null() {
+        match FixedHash::try_from((*contract_id).0.as_slice()) {
+            Ok(id) => {
+                decoded_contract_id = Some(id);
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Error creating a FixedHash from bytes: {}", e);
+                error = LibWalletError::from(InterfaceError::InvalidArgument("contract_id".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
     }
 
     let mut decoded_parent_public_key: Option<PublicKey> = None;
@@ -1152,7 +1162,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         maturity,
         recovery_byte,
         decoded_metadata,
-        decoded_unique_id,
+        decoded_contract_id,
         decoded_parent_public_key,
         asset,
         mint_non_fungible,
@@ -7493,7 +7503,7 @@ mod test {
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).recovery_byte, recovery_byte);
             assert!((*output_features).metadata.is_empty());
-            assert!((*output_features).unique_id.is_none());
+            assert!((*output_features).contract_id.is_none());
             assert!((*output_features).parent_public_key.is_none());
 
             // These are DAN layer fields, we omit them
@@ -7521,8 +7531,8 @@ mod test {
             let expected_metadata = vec![1; 1024];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
 
-            let expected_unique_id = vec![0u8; 256];
-            let unique_id = Box::into_raw(Box::new(ByteVector(expected_unique_id.clone())));
+            let expected_unique_id = FixedHash::hash_bytes("A");
+            let unique_id = Box::into_raw(Box::new(ByteVector(expected_unique_id.to_vec())));
 
             let (_, public_key) = PublicKey::random_keypair(&mut OsRng);
             let parent_public_key = Box::into_raw(Box::new(ByteVector(public_key.to_vec())));
@@ -7543,7 +7553,7 @@ mod test {
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).recovery_byte, recovery_byte);
             assert_eq!((*output_features).metadata, expected_metadata);
-            assert_eq!((*output_features).unique_id, Some(expected_unique_id));
+            assert_eq!((*output_features).contract_id, Some(expected_unique_id));
             assert_eq!((*output_features).parent_public_key, Some(public_key));
 
             // These are DAN layer fields, we omit them

@@ -49,7 +49,7 @@ pub enum AssetManagerRequest {
     CreateMintingTransaction {
         asset_public_key: Box<PublicKey>,
         asset_owner_commitment: Box<Commitment>,
-        features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
+        features: Vec<(FixedHash, Option<OutputFeatures>)>,
     },
     CreateInitialCheckpoint {
         asset_public_key: Box<PublicKey>,
@@ -58,7 +58,7 @@ pub enum AssetManagerRequest {
     },
     CreateFollowOnCheckpoint {
         asset_public_key: Box<PublicKey>,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },

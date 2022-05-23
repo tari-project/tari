@@ -30,7 +30,7 @@ use std::{
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{FixedHash, PublicKey},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -75,7 +75,7 @@ pub enum TransactionServiceRequest {
     SendTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
@@ -83,7 +83,7 @@ pub enum TransactionServiceRequest {
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
@@ -406,7 +406,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
-                unique_id: None,
+                contract_id: None,
                 parent_public_key: None,
                 fee_per_gram,
                 message,
@@ -422,7 +422,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
@@ -432,7 +432,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
-                unique_id,
+                contract_id,
                 parent_public_key,
                 fee_per_gram,
                 message,
@@ -456,7 +456,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
-                unique_id: None,
+                contract_id: None,
                 parent_public_key: None,
                 fee_per_gram,
                 message,
@@ -472,7 +472,7 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
+        contract_id: Option<FixedHash>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
@@ -482,7 +482,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
-                unique_id,
+                contract_id,
                 parent_public_key,
                 fee_per_gram,
                 message,

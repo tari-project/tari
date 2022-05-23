@@ -181,20 +181,20 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
         // the output's unique asset id should not already be in the chain
         // unless it's being spent as an input as well
         for output in outputs {
-            if let Some(ref unique_id) = output.features.unique_id {
+            if let Some(ref contract_id) = output.features.contract_id {
                 let parent_public_key = output.features.parent_public_key.clone();
                 let parent_pubkey_hex = parent_public_key.as_ref().map(|p| p.to_hex());
-                let unique_id_hex = unique_id.to_hex();
+                let contract_id_hex = contract_id.to_hex();
                 debug!(
                     target: LOG_TARGET,
                     "Validating asset rules for output with parent public key {:?} and unique ID {}.",
                     parent_pubkey_hex,
-                    unique_id_hex
+                    contract_id_hex
                 );
                 debug!(target: LOG_TARGET, "Output features: {:?}", output.features);
                 if let Some(info) = self
                     .db
-                    .fetch_utxo_by_unique_id(parent_public_key, unique_id.clone(), None)?
+                    .fetch_utxo_by_contract_id(parent_public_key, *contract_id, None)?
                 {
                     // if it's already on chain then check it's being spent as an input
                     debug!(
@@ -216,7 +216,7 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
                             let msg = format!(
                                 "Output already exists in blockchain database. Output hash: {}. Parent public key: \
                                  {:?}. Unique ID: {}",
-                                output_hex, parent_pubkey_hex, unique_id_hex,
+                                output_hex, parent_pubkey_hex, contract_id_hex,
                             );
                             return Err(ValidationError::ConsensusError(msg));
                         }

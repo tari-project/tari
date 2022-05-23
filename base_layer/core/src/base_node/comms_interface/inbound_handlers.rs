@@ -28,7 +28,7 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PublicKey};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tokio::sync::Semaphore;
@@ -426,11 +426,11 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchTokens {
                 asset_public_key,
-                unique_ids,
+                contract_ids,
             } => {
                 debug!(target: LOG_TARGET, "Starting fetch tokens");
                 let mut outputs = vec![];
-                if unique_ids.is_empty() {
+                if contract_ids.is_empty() {
                     // TODO: replace [0..1000] with parameters to allow paging
                     for output in self
                         .blockchain_db
@@ -446,10 +446,10 @@ where B: BlockchainBackend + 'static
                         }
                     }
                 } else {
-                    for id in unique_ids {
+                    for id in contract_ids {
                         let output = self
                             .blockchain_db
-                            .fetch_utxo_by_unique_id(Some(asset_public_key.clone()), id, None)
+                            .fetch_utxo_by_contract_id(Some(asset_public_key.clone()), id, None)
                             .await?;
                         if let Some(out) = output {
                             match out.output {
@@ -478,10 +478,13 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::FetchAssetRegistrationsResponse { outputs })
             },
             NodeCommsRequest::FetchAssetMetadata { asset_public_key } => {
-                let output = self
-                    .blockchain_db
-                    .fetch_utxo_by_unique_id(None, Vec::from(asset_public_key.as_bytes()), None)
-                    .await?;
+                let hash = FixedHash::try_from(asset_public_key.as_bytes()).map_err(|_| {
+                    CommsInterfaceError::InvalidRequest {
+                        request: "FetchAssetMetadata",
+                        details: "Public key isn't 32-bytes apparently".to_string(),
+                    }
+                })?;
+                let output = self.blockchain_db.fetch_utxo_by_contract_id(None, hash, None).await?;
                 Ok(NodeCommsResponse::FetchAssetMetadataResponse {
                     output: Box::new(output),
                 })

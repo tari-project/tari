@@ -22,6 +22,7 @@
 use std::sync::Arc;
 
 use tari_common::configuration::Network;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_script::script;
 use tari_test_utils::unpack_enum;
 
@@ -42,9 +43,14 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
-    validation::{block_validators::BlockValidator, BlockSyncBodyValidation, ValidationError},
+    validation::{
+        block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
+        BlockSyncBodyValidation,
+        OrphanValidation,
+        PostOrphanBodyValidation,
+        ValidationError,
+    },
 };
-
 fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockValidator<TempDatabase>) {
     let blockchain = TestBlockchain::create(rules.clone());
     let validator = BlockValidator::new(
@@ -258,8 +264,7 @@ async fn it_rejects_zero_conf_double_spends() {
     assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
 }
 
-mod unique_id {
-    use tari_common_types::types::PublicKey;
+mod contract_id {
 
     use super::*;
 
@@ -283,13 +288,13 @@ mod unique_id {
         let (mut blockchain, validator) = setup();
 
         let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
-        let unique_id = vec![1; 3];
+        let contract_id = FixedHash::hash_bytes("A");
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
 
@@ -300,7 +305,7 @@ mod unique_id {
         let (block, _) = create_block(&blockchain, "1", schema);
 
         let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
-        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoUniqueID))
+        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoContractId))
     }
 
     #[tokio::test]
@@ -308,13 +313,13 @@ mod unique_id {
         let (mut blockchain, validator) = setup();
 
         let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
-        let unique_id = vec![1; 3];
+        let contract_id = FixedHash::hash_bytes("A");
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
 
@@ -328,7 +333,7 @@ mod unique_id {
         let features = OutputFeatures {
             flags: OutputFlags::empty(),
             parent_public_key: Some(parent_pk),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
 
@@ -343,13 +348,13 @@ mod unique_id {
         let (mut blockchain, validator) = setup();
 
         let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
-        let unique_id = vec![1; 3];
+        let contract_id = FixedHash::hash_bytes("A");
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
 
@@ -363,14 +368,14 @@ mod unique_id {
         let features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(parent_pk),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
 
         let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
         let (block, _) = create_block(&blockchain, "2", schema);
         let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
-        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoUniqueID))
+        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoContractId))
     }
 
     #[tokio::test]
@@ -378,13 +383,13 @@ mod unique_id {
         let (mut blockchain, validator) = setup();
 
         let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
-        let unique_id = vec![1; 3];
+        let contract_id = FixedHash::hash_bytes("A");
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
 
@@ -398,7 +403,7 @@ mod unique_id {
         let features = OutputFeatures {
             flags: OutputFlags::BURN_NON_FUNGIBLE,
             parent_public_key: Some(parent_pk),
-            unique_id: Some(unique_id),
+            contract_id: Some(contract_id),
             ..Default::default()
         };
 
@@ -411,7 +416,6 @@ mod unique_id {
 mod body_only {
 
     use super::*;
-    use crate::validation::{block_validators::BodyOnlyValidator, PostOrphanBodyValidation};
 
     #[test]
     fn it_rejects_invalid_input_metadata() {
@@ -445,7 +449,6 @@ mod body_only {
 
 mod orphan_validator {
     use super::*;
-    use crate::validation::{block_validators::OrphanBlockValidator, OrphanValidation};
 
     #[test]
     fn it_rejects_zero_conf_double_spends() {

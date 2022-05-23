@@ -89,7 +89,7 @@ message OutputFeatures {
 
     AssetOutputFeatures asset = 4;
 
-    bytes unique_id = 5;
+    bytes contract_id = 5;
 
     bytes parent_public_key = 6;
 

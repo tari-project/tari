@@ -194,13 +194,13 @@ impl CompletedTransaction {
         let body = self.transaction.body();
         for tx_input in body.inputs() {
             if let Ok(features) = tx_input.features() {
-                if let Some(ref unique_id) = features.unique_id {
+                if let Some(ref unique_id) = features.contract_id {
                     return Some(unique_id.to_hex());
                 }
             }
         }
         for tx_output in body.outputs() {
-            if let Some(ref unique_id) = tx_output.features.unique_id {
+            if let Some(ref unique_id) = tx_output.features.contract_id {
                 return Some(unique_id.to_hex());
             }
         }

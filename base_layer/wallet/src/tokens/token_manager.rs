@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
+use tari_common_types::types::FixedHash;
 use tari_core::transactions::transaction_components::OutputFlags;
 
 use crate::{
@@ -89,7 +90,11 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
                 .cloned()
                 .unwrap(),
             unblinded_output.commitment,
-            unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),
+            unblinded_output
+                .unblinded_output
+                .features
+                .contract_id
+                .unwrap_or_else(FixedHash::zero),
         ));
     }
     let version = unblinded_output.unblinded_output.features.metadata[0];
@@ -108,7 +113,11 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
             .cloned()
             .unwrap(),
         unblinded_output.commitment,
-        unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),
+        unblinded_output
+            .unblinded_output
+            .features
+            .contract_id
+            .unwrap_or_else(FixedHash::zero),
     ))
 }
 
