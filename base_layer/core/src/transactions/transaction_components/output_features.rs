@@ -284,7 +284,7 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         Self {
             // TODO: create an output flag for contract definition
-            flags: OutputFlags::ASSET_REGISTRATION,
+            flags: OutputFlags::CONTRACT_DEFINITION,
             contract_definition: Some(ContractDefinitionFeatures {
                 contract_id,
                 contract_name,
