@@ -765,7 +765,8 @@ When(
     });
 
     this.lastResult = tx_ids;
-});
+  }
+);
 
 Then(
   "The fee per gram stats for {word} are {int}, {int}, {int}",
