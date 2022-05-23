@@ -36,11 +36,10 @@ pub struct SideChainCheckpointFeatures {
 }
 
 impl ConsensusEncoding for SideChainCheckpointFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.merkle_root.consensus_encode(writer)?;
-        let mut written = 32;
-        written += self.committee.consensus_encode(writer)?;
-        Ok(written)
+        self.committee.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

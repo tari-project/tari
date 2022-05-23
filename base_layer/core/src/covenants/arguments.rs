@@ -117,54 +117,53 @@ impl CovenantArg {
         }
     }
 
-    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         use byte_codes::*;
         use CovenantArg::{Bytes, Commitment, Covenant, Hash, OutputField, OutputFields, PublicKey, TariScript, Uint};
 
-        let mut written = 0;
         match self {
             Hash(hash) => {
-                written += writer.write_u8_fixed(ARG_HASH)?;
-                written += hash.len();
+                writer.write_u8_fixed(ARG_HASH)?;
+                hash.len();
                 writer.write_all(&hash[..])?;
             },
             PublicKey(pk) => {
-                written += writer.write_u8_fixed(ARG_PUBLIC_KEY)?;
-                written += pk.consensus_encode(writer)?;
+                writer.write_u8_fixed(ARG_PUBLIC_KEY)?;
+                pk.consensus_encode(writer)?;
             },
             Commitment(commitment) => {
-                written += writer.write_u8_fixed(ARG_COMMITMENT)?;
-                written += commitment.consensus_encode(writer)?;
+                writer.write_u8_fixed(ARG_COMMITMENT)?;
+                commitment.consensus_encode(writer)?;
             },
             TariScript(script) => {
-                written += writer.write_u8_fixed(ARG_TARI_SCRIPT)?;
-                written += script.consensus_encode(writer)?;
+                writer.write_u8_fixed(ARG_TARI_SCRIPT)?;
+                script.consensus_encode(writer)?;
             },
             Covenant(covenant) => {
-                written += writer.write_u8_fixed(ARG_COVENANT)?;
+                writer.write_u8_fixed(ARG_COVENANT)?;
                 let len = covenant.get_byte_length();
-                written += writer.write_varint(len)?;
-                written += covenant.write_to(writer)?;
+                writer.write_varint(len)?;
+                covenant.write_to(writer)?;
             },
             Uint(int) => {
-                written += writer.write_u8_fixed(ARG_UINT)?;
-                written += int.consensus_encode(writer)?;
+                writer.write_u8_fixed(ARG_UINT)?;
+                int.consensus_encode(writer)?;
             },
             OutputField(field) => {
-                written += writer.write_u8_fixed(ARG_OUTPUT_FIELD)?;
-                written += writer.write_u8_fixed(field.as_byte())?;
+                writer.write_u8_fixed(ARG_OUTPUT_FIELD)?;
+                writer.write_u8_fixed(field.as_byte())?;
             },
             OutputFields(fields) => {
-                written += writer.write_u8_fixed(ARG_OUTPUT_FIELDS)?;
-                written += fields.write_to(writer)?;
+                writer.write_u8_fixed(ARG_OUTPUT_FIELDS)?;
+                fields.write_to(writer)?;
             },
             Bytes(bytes) => {
-                written += writer.write_u8_fixed(ARG_BYTES)?;
-                written += bytes.consensus_encode(writer)?;
+                writer.write_u8_fixed(ARG_BYTES)?;
+                bytes.consensus_encode(writer)?;
             },
         }
 
-        Ok(written)
+        Ok(())
     }
 }
 

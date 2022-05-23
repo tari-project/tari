@@ -261,6 +261,8 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
             .collect())
     }
 
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_wrap)]
     fn get_state_op_logs_by_height(
         &self,
         height: u64,

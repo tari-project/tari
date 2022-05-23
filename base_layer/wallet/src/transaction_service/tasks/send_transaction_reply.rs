@@ -78,6 +78,7 @@ pub async fn send_transaction_reply(
 }
 
 /// A task to resend a transaction reply message if a repeated Send Transaction is received from a Sender
+#[allow(clippy::too_many_lines)]
 pub async fn send_transaction_reply_direct(
     inbound_transaction: InboundTransaction,
     mut outbound_message_service: OutboundMessageRequester,

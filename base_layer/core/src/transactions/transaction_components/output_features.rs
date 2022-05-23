@@ -190,33 +190,6 @@ impl OutputFeatures {
         self.recovery_byte = recovery_byte;
     }
 
-    /// Provides the ability to add the recovery byte to an older version of serialized json output features. We need
-    /// to add the non-optional 'recovery_byte' field to a persisted protocol that contains serialized json output
-    /// features, typically when reading it from the database, if it was created with 'OutputFeaturesVersion::V0'
-    pub fn add_recovery_byte_to_serialized_data_if_needed(protocol: String) -> String {
-        // If the serialized data can be verified to contain output features, replace
-        // '\"metadata\":[' with '\"recovery_byte\":0,\"metadata\":[' throughout
-        let version_v0_identifier = format!("\"version\":\"{}\"", OutputFeaturesVersion::V0);
-        let flag_identifier = String::from("\"flags\":{\"bits\":");
-        let recovery_byte_identifier = String::from("\"recovery_byte\":");
-        let metadata_identifier = String::from("\"metadata\":[");
-        let unique_id_identifier = String::from("\"unique_id\":");
-        let mint_non_fungible_identifier = String::from("\"mint_non_fungible\":");
-        let sidechain_checkpoint_identifier = String::from("\"sidechain_checkpoint\":");
-        if protocol.contains(version_v0_identifier.as_str()) &&
-            protocol.contains(flag_identifier.as_str()) &&
-            !protocol.contains(recovery_byte_identifier.as_str()) &&
-            protocol.contains(unique_id_identifier.as_str()) &&
-            protocol.contains(mint_non_fungible_identifier.as_str()) &&
-            protocol.contains(sidechain_checkpoint_identifier.as_str())
-        {
-            let replace_string = recovery_byte_identifier + format!("{},", 0).as_str() + metadata_identifier.as_str();
-            protocol.replace(metadata_identifier.as_str(), replace_string.as_str())
-        } else {
-            protocol
-        }
-    }
-
     pub fn for_asset_registration(
         metadata: Vec<u8>,
         public_key: PublicKey,
@@ -351,29 +324,29 @@ impl OutputFeatures {
 }
 
 impl ConsensusEncoding for OutputFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.maturity.consensus_encode(writer)?;
-        written += self.flags.consensus_encode(writer)?;
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.maturity.consensus_encode(writer)?;
+        self.flags.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
-            _=> {
-                written += OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
+            _ => {
+                OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
             },
         }
-        written += self.parent_public_key.consensus_encode(writer)?;
-        written += self.unique_id.consensus_encode(writer)?;
-        written += self.asset.consensus_encode(writer)?;
-        written += self.mint_non_fungible.consensus_encode(writer)?;
-        written += self.sidechain_checkpoint.consensus_encode(writer)?;
-        written += self.metadata.consensus_encode(writer)?;
+        self.parent_public_key.consensus_encode(writer)?;
+        self.unique_id.consensus_encode(writer)?;
+        self.asset.consensus_encode(writer)?;
+        self.mint_non_fungible.consensus_encode(writer)?;
+        self.sidechain_checkpoint.consensus_encode(writer)?;
+        self.metadata.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
-            _=> {
-                written += self.committee_definition.consensus_encode(writer)?;
+            _ => {
+                self.committee_definition.consensus_encode(writer)?;
             },
         }
-        Ok(written)
+        Ok(())
     }
 }
 
@@ -401,12 +374,12 @@ impl ConsensusDecoding for OutputFeatures {
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
         let committee_definition = match version {
             OutputFeaturesVersion::V0 => None,
-            _ => {
-                <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?
-            },
+            _ => <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?,
         };
-        let contract_definition =  match version {
-            OutputFeaturesVersion::V2 => <Option<ContractDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?,
+        let contract_definition = match version {
+            OutputFeaturesVersion::V2 => {
+                <Option<ContractDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?
+            },
             _ => None,
         };
         Ok(Self {
@@ -559,28 +532,6 @@ mod test {
 
         let err = check_consensus_encoding_correctness(subject).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
-    }
-
-    #[test]
-    fn test_add_recovery_byte_to_serialized_data_if_needed() {
-        assert_eq!(
-            OutputFeatures::add_recovery_byte_to_serialized_data_if_needed("N/A".to_string()),
-            "N/A"
-        );
-        let version_v0_identifier = format!("\"version\":\"{}\"", OutputFeaturesVersion::V0);
-        let flag_identifier = String::from("\"flags\":{\"bits\":");
-        let metadata_identifier = String::from("\"metadata\":[");
-        let unique_id_identifier = String::from("\"unique_id\":");
-        let mint_non_fungible_identifier = String::from("\"mint_non_fungible\":");
-        let sidechain_checkpoint_identifier = String::from("\"sidechain_checkpoint\":");
-        let protocol = version_v0_identifier +
-            flag_identifier.as_str() +
-            metadata_identifier.as_str() +
-            unique_id_identifier.as_str() +
-            mint_non_fungible_identifier.as_str() +
-            sidechain_checkpoint_identifier.as_str();
-        assert!(!protocol.contains("\"recovery_byte\""));
-        assert!(OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(protocol).contains("\"recovery_byte\""));
     }
 
     #[test]

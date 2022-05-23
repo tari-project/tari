@@ -41,7 +41,7 @@ use crate::common::byte_counter::ByteCounter;
 pub trait ConsensusEncoding {
     /// Encode to the given writer returning the number of bytes written.
     /// If writing to this Writer is infallible, this implementation MUST always succeed.
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error>;
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error>;
 }
 
 pub trait ConsensusEncodingSized: ConsensusEncoding {

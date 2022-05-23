@@ -732,3 +732,17 @@ Then(
     );
   }
 );
+
+Then(
+  "The fee per gram stats for {word} are {int}, {int}, {int}",
+  { timeout: 125 * 1000 },
+  async function (walletName, min_fee, avg_fee, max_fee) {
+    const wallet = this.getWallet(walletName);
+    const feePerGramStats = await wallet.getFeePerGramStats(5);
+    expect(feePerGramStats.getLength()).to.be.greaterThanOrEqual(1);
+    const feePerGramStat = feePerGramStats.getAt(0);
+    expect(feePerGramStat.getMinFeePerGram()).to.be.equal(min_fee);
+    expect(feePerGramStat.getAvgFeePerGram()).to.be.equal(avg_fee);
+    expect(feePerGramStat.getMaxFeePerGram()).to.be.equal(max_fee);
+  }
+);

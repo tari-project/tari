@@ -39,11 +39,12 @@ pub struct ContractDefinitionFeatures {
 }
 
 impl ConsensusEncoding for ContractDefinitionFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        let mut written = copy_into_fixed_array_lossy::<_, FIELD_LEN>(&self.contract_id).consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, FIELD_LEN>(&self.contract_name).consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, FIELD_LEN>(&self.contract_issuer).consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        copy_into_fixed_array_lossy::<_, 32>(&self.contract_id).consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.contract_name).consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.contract_issuer).consensus_encode(writer)?;
+
+        Ok(())
     }
 }
 

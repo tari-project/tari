@@ -23,7 +23,6 @@
 use std::{
     fs::File,
     io::{BufReader, LineWriter, Write},
-    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -52,6 +51,7 @@ use tari_wallet::{
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
+    TransactionStage,
     WalletConfig,
     WalletSqlite,
 };
@@ -94,17 +94,6 @@ pub enum WalletCommand {
     CreateCommitteeDefinition,
     RevalidateWalletDb,
     PublishContractDefinition,
-}
-
-#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
-pub enum TransactionStage {
-    Initiated,
-    DirectSendOrSaf,
-    Negotiated,
-    Broadcast,
-    MinedUnconfirmed,
-    Mined,
-    TimedOut,
 }
 
 #[derive(Debug)]
@@ -346,6 +335,7 @@ pub async fn discover_peer(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
@@ -624,13 +614,13 @@ pub async fn monitor_transactions(
     results
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
 ) -> Result<(), CommandError> {
-    let wait_stage =
-        TransactionStage::from_str(&config.command_send_wait_stage).map_err(|e| CommandError::Config(e.to_string()))?;
+    let wait_stage = config.command_send_wait_stage;
 
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();

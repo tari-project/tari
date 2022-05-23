@@ -434,7 +434,6 @@ impl P2pInitializer {
     }
 
     // Following are inlined due to Rust ICE: https://github.com/rust-lang/rust/issues/73537
-    #[inline(always)]
     fn try_parse_seed_peers(peer_seeds_str: &[String]) -> Result<Vec<Peer>, ServiceInitializationError> {
         peer_seeds_str
             .iter()

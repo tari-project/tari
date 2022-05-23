@@ -33,9 +33,9 @@ use crate::{
 const U64_SIZE: usize = mem::size_of::<u64>();
 
 impl ConsensusEncoding for MicroTari {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         writer.write_all(&self.0.to_le_bytes()[..])?;
-        Ok(U64_SIZE)
+        Ok(())
     }
 }
 

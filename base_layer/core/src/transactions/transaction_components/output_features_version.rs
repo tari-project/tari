@@ -44,9 +44,9 @@ impl TryFrom<u8> for OutputFeaturesVersion {
 }
 
 impl ConsensusEncoding for OutputFeaturesVersion {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         writer.write_all(&[self.as_u8()])?;
-        Ok(1)
+        Ok(())
     }
 }
 
