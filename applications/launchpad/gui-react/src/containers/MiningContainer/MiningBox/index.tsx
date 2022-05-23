@@ -12,21 +12,33 @@ import { MiningSession } from '../../../store/mining/types'
 
 import t from '../../../locales'
 
-import { MiningBoxProps, MiningBoxStatus, NodeBoxStatusConfig } from './types'
+import {
+  MiningBoxProps,
+  MiningBoxStatus,
+  MiningCoinIconProp,
+  NodeBoxStatusConfig,
+} from './types'
 import { MiningBoxContent, NodeIcons } from './styles'
 import { useMemo } from 'react'
 import RunningButton from '../../../components/RunningButton'
 
-const parseLastSessionToCoins = (lastSession: MiningSession | undefined) => {
+const parseLastSessionToCoins = (
+  lastSession: MiningSession | undefined,
+  icons?: MiningCoinIconProp[],
+) => {
   if (lastSession && lastSession.total) {
+    const anyNonZeroCoin = Object.entries(lastSession.total).some(
+      c => Number(c[1]) !== 0,
+    )
     return Object.keys(lastSession.total).map(coin => ({
       unit: coin,
       amount:
         lastSession.total && lastSession.total[coin]
           ? lastSession.total[coin]
           : '0',
-      loading: lastSession.pending,
+      loading: !anyNonZeroCoin,
       suffixText: lastSession.finishedAt ? t.mining.minedInLastSession : '',
+      icon: icons?.find(i => i.coin === coin)?.component,
     }))
   }
 
@@ -96,7 +108,7 @@ const MiningBox = ({
     ? nodeState.sessions[nodeState.sessions.length - 1]
     : undefined
 
-  const coins = parseLastSessionToCoins(lastSession)
+  const coins = parseLastSessionToCoins(lastSession, icons)
 
   // Is there any outgoing action, so the buttons should be disabled?
   const disableActions = containersState.pending
@@ -227,7 +239,11 @@ const MiningBox = ({
         return (
           <MiningBoxContent data-testid='mining-box-running-content'>
             {coins ? (
-              <CoinsList coins={coins} color={theme.inverted.primary} />
+              <CoinsList
+                coins={coins}
+                color={theme.inverted.primary}
+                showSymbols
+              />
             ) : null}
             <RunningButton
               onClick={() =>
@@ -262,7 +278,7 @@ const MiningBox = ({
         <NodeIcons
           $color={currentState.icon?.color || theme.backgroundSecondary}
         >
-          {icons.map(icon => icon)}
+          {icons.map(icon => icon.component)}
         </NodeIcons>
       ) : null}
       {content}

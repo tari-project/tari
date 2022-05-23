@@ -81,8 +81,8 @@ const MiningBoxMerged = () => {
     <MiningBox
       node='merged'
       icons={[
-        <SvgMoneroSignet key='monero-icon' />,
-        <SvgTariSignet key='tari-icon' />,
+        { coin: 'xtr', component: <SvgMoneroSignet key='monero-icon' /> },
+        { coin: 'xmr', component: <SvgTariSignet key='tari-icon' /> },
       ]}
       testId='merged-mining-box'
       statuses={statuses}

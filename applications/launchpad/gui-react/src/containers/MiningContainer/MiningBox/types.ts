@@ -29,13 +29,18 @@ export interface NodeBoxStatusConfig {
   }
 }
 
+export interface MiningCoinIconProp {
+  coin: string
+  component: ReactNode
+}
+
 export interface MiningBoxProps {
   node: MiningNodeType
   statuses?: Partial<{
     [key in MiningBoxStatus]: NodeBoxStatusConfig
   }>
   currentStatus?: MiningBoxStatus
-  icons?: ReactNode[]
+  icons?: MiningCoinIconProp[]
   children?: ReactNode
   testId?: string
   nodeState: MiningNodeState

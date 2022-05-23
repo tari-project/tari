@@ -63,7 +63,7 @@ const MiningBoxTari = () => {
   return (
     <MiningBox
       node='tari'
-      icons={[<SvgTariSignet key='tari-icon' />]}
+      icons={[{ coin: 'xtr', component: <SvgTariSignet key='tari-icon' /> }]}
       testId='tari-mining-box'
       currentStatus={currentStatus}
       nodeState={nodeState}
