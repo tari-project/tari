@@ -209,7 +209,7 @@ Feature: Wallet FFI
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_CONFIRMED
         And I stop ffi wallet FFI_RECEIVER
 
-    @critical @broken
+    @broken
     # BROKEN: Runs fine until wating for WALLET_FFI to have the balance updated after importing, it never does
     Scenario: As a client I want to import faucet UTXOs
         # Initialization of participants
