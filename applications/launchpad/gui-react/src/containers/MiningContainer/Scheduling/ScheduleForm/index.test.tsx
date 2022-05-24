@@ -1,11 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
-import { Schedule } from '../../../../types/general'
+import { Schedule, MiningNodeType } from '../../../../types/general'
 import themes from '../../../../styles/themes'
 import t from '../../../../locales'
 
 import ScheduleForm from './'
+
+const ALL_MINING_ACTIVE = ['tari', 'merged'] as MiningNodeType[]
 
 describe('ScheduleForm', () => {
   it('should not activate save button until mining type and schedule is selected', () => {
@@ -24,6 +26,7 @@ describe('ScheduleForm', () => {
           cancel={() => null}
           remove={() => null}
           onChange={onChange}
+          miningTypesActive={ALL_MINING_ACTIVE}
         />
       </ThemeProvider>,
     )
@@ -53,6 +56,7 @@ describe('ScheduleForm', () => {
           cancel={() => null}
           remove={() => null}
           onChange={() => null}
+          miningTypesActive={ALL_MINING_ACTIVE}
         />
       </ThemeProvider>,
     )
@@ -72,6 +76,7 @@ describe('ScheduleForm', () => {
           cancel={() => null}
           remove={remove}
           onChange={() => null}
+          miningTypesActive={ALL_MINING_ACTIVE}
         />
       </ThemeProvider>,
     )
@@ -100,6 +105,7 @@ describe('ScheduleForm', () => {
           cancel={() => null}
           remove={() => null}
           onChange={() => null}
+          miningTypesActive={ALL_MINING_ACTIVE}
         />
       </ThemeProvider>,
     )
@@ -131,6 +137,7 @@ describe('ScheduleForm', () => {
           cancel={cancel}
           remove={() => null}
           onChange={() => null}
+          miningTypesActive={ALL_MINING_ACTIVE}
         />
       </ThemeProvider>,
     )

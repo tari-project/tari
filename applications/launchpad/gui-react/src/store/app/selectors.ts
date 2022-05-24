@@ -2,7 +2,11 @@ import { createSelector } from '@reduxjs/toolkit'
 
 import { RootState } from '..'
 import themes from '../../styles/themes'
-import { Schedule } from '../../types/general'
+import { Schedule, MiningNodeType } from '../../types/general'
+import {
+  selectTariSetupRequired,
+  selectMergedSetupRequired,
+} from '../mining/selectors'
 
 export const selectExpertView = ({ app }: RootState) => app.expertView
 
@@ -43,3 +47,21 @@ export const selectSchedule =
       date: date && new Date(date),
     } as Schedule
   }
+
+export const selectActiveMiningTypes = createSelector(
+  selectTariSetupRequired,
+  selectMergedSetupRequired,
+  (tariSetupRequired, mergedSetupRequired) => {
+    const active = [] as MiningNodeType[]
+
+    if (!tariSetupRequired) {
+      active.push('tari')
+    }
+
+    if (!mergedSetupRequired) {
+      active.push('merged')
+    }
+
+    return active
+  },
+)
