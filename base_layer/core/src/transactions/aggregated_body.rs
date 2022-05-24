@@ -121,6 +121,11 @@ impl AggregateBody {
         &self.inputs
     }
 
+    /// Should be used for tests only. Get a mutable reference to the inputs
+    pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
+        &mut self.inputs
+    }
+
     /// Provide read-only access to the output list
     pub fn outputs(&self) -> &Vec<TransactionOutput> {
         &self.outputs
@@ -136,9 +141,9 @@ impl AggregateBody {
         &self.kernels
     }
 
-    /// Should be used for tests only. Get a mutable reference to the inputs
-    pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
-        &mut self.inputs
+    /// Should be used for tests only. Get a mutable reference to the kernels
+    pub fn kernels_mut(&mut self) -> &mut Vec<TransactionKernel> {
+        &mut self.kernels
     }
 
     /// Add an input to the existing aggregate body
@@ -566,11 +571,11 @@ impl Display for AggregateBody {
 }
 
 impl ConsensusEncoding for AggregateBody {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.inputs.consensus_encode(writer)?;
-        written += self.outputs.consensus_encode(writer)?;
-        written += self.kernels.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.inputs.consensus_encode(writer)?;
+        self.outputs.consensus_encode(writer)?;
+        self.kernels.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

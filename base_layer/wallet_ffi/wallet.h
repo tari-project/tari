@@ -86,6 +86,10 @@ struct EmojiSet;
 
 struct TariTransactionKernel;
 
+struct TariFeePerGramStats;
+
+struct TariFeePerGramStat;
+
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
@@ -188,6 +192,34 @@ struct TariCommitmentSignature *commitment_signature_create_from_bytes(
 
 // Frees memory for a TariCommitmentSignature
 void commitment_signature_destroy(struct TariCommitmentSignature *com_sig);
+
+/// -------------------------------- Covenant  --------------------------------------------- ///
+
+// Creates a TariCovenant from a ByteVector containing the covenant bytes
+struct TariCovenant *covenant_create_from_bytes(
+    struct ByteVector *covenant_bytes,
+    int *error_out
+);
+
+// Frees memory for a TariCovenant
+void covenant_destroy(struct TariCovenant *covenant);
+
+/// -------------------------------- Output Features  --------------------------------------------- ///
+
+// Creates a TariOutputFeatures from byte values
+struct TariOutputFeatures *output_features_create_from_bytes(
+    unsigned char version,
+    unsigned short flags,
+    unsigned long long maturity,
+    unsigned char recovery_byte,
+    struct ByteVector *metadata,
+    struct ByteVector *unique_id,
+    struct ByteVector *parent_public_key,
+    int *error_out
+);
+
+// Frees memory for a TariOutputFeatures
+void output_features_destroy(struct TariOutputFeatures *output_features);
 
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
@@ -456,7 +488,6 @@ struct TariCommsConfig *comms_config_create(const char *public_address,
                                             const char *datastore_path,
                                             unsigned long long discovery_timeout_in_secs,
                                             unsigned long long saf_message_duration_in_secs,
-                                            const char *network,
                                             int *error_out);
 
 // Frees memory for a TariCommsConfig
@@ -868,6 +899,22 @@ bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base
 /// # Safety
 /// None
 bool wallet_set_one_sided_payment_message(struct TariWallet *wallet, const char *message, int *error_out);
+
+struct TariFeePerGramStats* wallet_get_fee_per_gram_stats(struct TariWallet *wallet, unsigned int count, int *error_out);
+
+unsigned int fee_per_gram_stats_get_length(struct TariFeePerGramStats *fee_per_gram_stats, int *error_out);
+
+struct TariFeePerGramStat* fee_per_gram_stats_get_at(struct TariFeePerGramStats *fee_per_gram_stats, unsigned int position, int *error_out);
+
+void fee_per_gram_stats_destroy(struct TariFeePerGramStats *fee_per_gram_stats);
+
+unsigned long long fee_per_gram_stat_get_order(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
+
+unsigned long long fee_per_gram_stat_get_min_fee_per_gram(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
+
+unsigned long long fee_per_gram_stat_get_avg_fee_per_gram(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
+
+unsigned long long fee_per_gram_stat_get_max_fee_per_gram(struct TariFeePerGramStat *fee_per_gram_stat, int *error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);

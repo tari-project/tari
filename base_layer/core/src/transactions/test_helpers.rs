@@ -45,6 +45,7 @@ use crate::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
+            OutputFlags,
             Transaction,
             TransactionInput,
             TransactionKernel,
@@ -367,19 +368,20 @@ macro_rules! tx {
 ///
 /// The full syntax allows maximum flexibility, but most arguments are optional with sane defaults
 /// ```ignore
-///   txn_schema!(from: inputs, to: outputs, fee: 50*uT, lock: 1250, OutputFeatures {
-///      maturity: 1320,
-///      ..Default::default()
-///   });
-///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features and zero lock height
-///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height and default features
+///   txn_schema!(from: inputs, to: outputs, fee: 50*uT, lock: 1250,
+///     features: OutputFeatures { maturity: 1320, ..Default::default() },
+///     input_version: TransactioInputVersion::get_current_version(),
+///     output_version: TransactionOutputVersion::get_current_version()
+///   );
+///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features, default versions and zero lock height
+///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height, default features and default versions
 ///   // as above, and transaction splits the first input in roughly half, returning remainder as change
 ///   txn_schema!(from: inputs);
 /// ```
 /// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
-    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr) => {{
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {{
         $crate::transactions::test_helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
@@ -390,8 +392,8 @@ macro_rules! txn_schema {
             script: tari_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
-            input_version: None,
-            output_version: None,
+            input_version: $input_version.clone(),
+            output_version: $output_version.clone()
         }
     }};
 
@@ -401,7 +403,9 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
-            features: $features.clone()
+            features: $features.clone(),
+            input_version: None,
+            output_version: None
         )
     }};
 
@@ -411,7 +415,9 @@ macro_rules! txn_schema {
             to:$outputs,
             fee: 5.into(),
             lock: 0,
-            features: $features
+            features: $features,
+            input_version: None,
+            output_version: None
         )
     }};
 
@@ -421,12 +427,26 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            features: $crate::transactions::transaction_components::OutputFeatures::default()
+            features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            input_version: None,
+            output_version: None
         )
     };
 
     (from: $input:expr, to: $outputs:expr) => {
         txn_schema!(from: $input, to:$outputs, fee: 5.into())
+    };
+
+    (from: $input:expr, to: $outputs:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee: 5.into(),
+            lock:0,
+            features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            input_version: Some($input_version),
+            output_version: Some($output_version)
+        )
     };
 
     // Spend inputs to ± half the first input value, with default fee and lock height
@@ -506,7 +526,11 @@ pub fn create_unblinded_txos(
                 amount_for_last_output
             };
             let test_params = TestParams::new();
-            let script_offset_pvt_key = test_params.sender_offset_private_key.clone();
+            let script_offset_pvt_key = if output_features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+                PrivateKey::default()
+            } else {
+                test_params.sender_offset_private_key.clone()
+            };
 
             (
                 test_params.create_unblinded_output(UtxoTestParams {
@@ -606,6 +630,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     (txn, outputs)
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProtocol, Vec<UnblindedOutput>) {
     let factories = CryptoFactories::default();
     let test_params_change_and_txn = TestParams::new();
@@ -648,7 +673,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             script: schema.script.clone(),
             input_data: schema.input_data.clone(),
             covenant: schema.covenant.clone(),
-            output_version: None,
+            output_version: schema.output_version,
         });
         outputs.push(utxo.clone());
         stx_builder

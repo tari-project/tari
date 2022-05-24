@@ -38,6 +38,7 @@ enum RecoveryEvent {
     RecoveryFailed,             // 6
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn recovery_event_monitoring(
     mut event_stream: broadcast::Receiver<UtxoScannerEvent>,
     recovery_join_handle: JoinHandle<Result<(), WalletError>>,

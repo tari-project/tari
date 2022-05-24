@@ -2,7 +2,7 @@
 
 ## Peer to Peer Messaging Protocol
 
-![status: draft](theme/images/status-draft.svg)
+![status: outdated](theme/images/status-outofdate.svg)
 
 **Maintainer(s)**: [Stanley Bondi](https://github.com/sdbondi), [Cayle Sharrock](https://github.com/CjS77) and [Yuko Roodt](https://github.com/neonknight64)
 

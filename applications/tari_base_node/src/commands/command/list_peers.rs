@@ -63,7 +63,9 @@ impl CommandContext {
         for peer in peers {
             let info_str = {
                 let mut s = vec![];
-
+                if peer.is_seed() {
+                    s.push("SEED".to_string());
+                }
                 if peer.is_offline() {
                     if !peer.is_banned() {
                         s.push("OFFLINE".to_string());

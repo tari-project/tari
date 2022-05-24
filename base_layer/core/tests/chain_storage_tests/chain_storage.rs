@@ -46,7 +46,7 @@ use tari_core::{
     },
     transactions::{
         tari_amount::{uT, MicroTari, T},
-        test_helpers::{schema_to_transaction, spend_utxos},
+        test_helpers::spend_utxos,
         transaction_components::{OutputFeatures, OutputFlags},
         CryptoFactories,
     },
@@ -55,7 +55,6 @@ use tari_core::{
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_script::StackItem;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 use tari_utilities::Hashable;
@@ -75,7 +74,6 @@ use crate::helpers::{
     },
     database::create_orphan_block,
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
-    test_blockchain::TestBlockchain,
 };
 
 #[test]
@@ -353,6 +351,7 @@ fn handle_tip_reorg() {
 
 #[test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 fn handle_reorg() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
@@ -525,6 +524,7 @@ fn handle_reorg() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn reorgs_should_update_orphan_tips() {
     // Create a main chain GB -> A1 -> A2
     // Create an orphan chain GB -> B1
@@ -1013,6 +1013,7 @@ fn store_and_retrieve_blocks() {
 
 #[test]
 #[allow(clippy::erasing_op)]
+#[allow(clippy::too_many_lines)]
 fn asset_unique_id() {
     let mut rng = rand::thread_rng();
     let network = Network::LocalNet;
@@ -1161,7 +1162,6 @@ fn asset_unique_id() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
 #[allow(clippy::identity_op)]
 fn store_and_retrieve_blocks_from_contents() {
     let network = Network::LocalNet;
@@ -1180,7 +1180,7 @@ fn store_and_retrieve_blocks_from_contents() {
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     let kernel_sig = blocks[1].block().body.kernels()[0].clone().excess_sig;
-    let utxo_commit = blocks[1].block().body.outputs()[0].clone().commitment;
+    let utxo_commit = blocks.last().unwrap().block().body.outputs()[0].clone().commitment;
     assert_eq!(
         db.fetch_block_with_kernel(kernel_sig)
             .unwrap()
@@ -1196,7 +1196,7 @@ fn store_and_retrieve_blocks_from_contents() {
             .unwrap()
             .try_into_chain_block()
             .unwrap(),
-        blocks[1]
+        blocks[2]
     );
 }
 
@@ -1222,7 +1222,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(rules.clone(), Default::default()),
         )
         .unwrap();
@@ -1245,7 +1245,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(rules.clone(), Default::default()),
         )
         .unwrap();
@@ -1503,6 +1503,7 @@ fn horizon_height_orphan_cleanup() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn orphan_cleanup_on_reorg() {
     // Create Main Chain
     let network = Network::LocalNet;
@@ -1670,7 +1671,7 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
         )
         .unwrap();
@@ -1723,7 +1724,7 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
         )
         .unwrap();
@@ -1841,41 +1842,205 @@ fn pruned_mode_cleanup_and_fetch_block() {
     assert_eq!(metadata.pruning_horizon(), 3);
 }
 
-#[test]
-fn input_malleability() {
-    let mut blockchain = TestBlockchain::with_genesis("GB");
-    let blocks = blockchain.builder();
+mod malleability {
+    use tari_common_types::types::{ComSignature, RangeProof};
+    use tari_core::{
+        blocks::Block,
+        covenant,
+        transactions::{test_helpers::generate_keys, transaction_components::TransactionOutputVersion},
+    };
+    use tari_script::{Opcode, TariScript};
+    use tari_utilities::hex::Hex;
 
-    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+    use crate::helpers::block_malleability::*;
 
-    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![50 * T])]);
-    blockchain.add_block(
-        blocks
-            .new_block("A2")
-            .child_of("A1")
-            .difficulty(1)
-            .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
-    );
-    let block = blockchain.get_block("A2").cloned().unwrap().block;
-    let header = block.header();
-    let block_hash = block.hash();
+    mod input {
+        use tari_core::transactions::transaction_components::TransactionInputVersion;
+        use tari_script::StackItem;
 
-    let mut mod_block = block.block().clone();
-    mod_block.body.inputs_mut()[0]
-        .input_data
-        .push(StackItem::Hash(*b"I can't do whatever I want......"))
-        .unwrap();
+        use super::*;
 
-    blockchain
-        .store()
-        .rewind_to_height(mod_block.header.height - 1)
-        .unwrap();
-    let (mut mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
-    assert_ne!(header.input_mr, modded_root.input_mr);
+        // This test hightlights that the "version" field is not being included in the input hash
+        // so a consensus change is needed for the input to include it
+        #[test]
+        #[ignore]
+        fn version() {
+            check_input_malleability(|block: &mut Block| {
+                let input = &mut block.body.inputs_mut()[0];
+                let mod_version = match input.version {
+                    TransactionInputVersion::V0 => TransactionInputVersion::V1,
+                    _ => TransactionInputVersion::V0,
+                };
+                input.version = mod_version;
+            });
+        }
 
-    mod_block.header.input_mr = modded_root.input_mr;
-    let mod_block_hash = mod_block.hash();
-    assert_ne!(*block_hash, mod_block_hash);
+        #[test]
+        fn spent_output() {
+            check_input_malleability(|block: &mut Block| {
+                // to modify the spent output, we will substitue it for a copy of a different output
+                // we will use one of the outputs of the current transaction
+                // because of how the test blockchain is created, they will never be equal
+                let output = &block.body.outputs()[0].clone();
+                let input = &mut block.body.inputs_mut()[0];
+                input.add_output_data(
+                    output.version,
+                    output.features.clone(),
+                    output.commitment.clone(),
+                    output.script.clone(),
+                    output.sender_offset_public_key.clone(),
+                    output.covenant.clone(),
+                );
+            });
+        }
+
+        #[test]
+        fn input_data() {
+            check_input_malleability(|block: &mut Block| {
+                block.body.inputs_mut()[0]
+                    .input_data
+                    .push(StackItem::Hash(*b"I can't do whatever I want......"))
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn script_signature() {
+            check_input_malleability(|block: &mut Block| {
+                let input = &mut block.body.inputs_mut()[0];
+                input.script_signature = ComSignature::default();
+            });
+        }
+    }
+
+    mod output {
+        use super::*;
+
+        #[test]
+        fn version() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                let mod_version = match output.version {
+                    TransactionOutputVersion::V0 => TransactionOutputVersion::V1,
+                    _ => TransactionOutputVersion::V0,
+                };
+                output.version = mod_version;
+            });
+        }
+
+        #[test]
+        fn features() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                output.features.maturity += 1;
+            });
+        }
+
+        #[test]
+        fn commitment() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                let mod_commitment = &output.commitment + &output.commitment;
+                output.commitment = mod_commitment;
+            });
+        }
+
+        #[test]
+        fn proof() {
+            check_witness_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                let mod_proof = RangeProof::from_hex(&(output.proof.to_hex() + "00")).unwrap();
+                output.proof = mod_proof;
+            });
+        }
+
+        #[test]
+        fn script() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                let mut script_bytes = output.script.as_bytes();
+                Opcode::PushZero.to_bytes(&mut script_bytes);
+                let mod_script = TariScript::from_bytes(&script_bytes).unwrap();
+                output.script = mod_script;
+            });
+        }
+
+        // This test hightlights that the "sender_offset_public_key" field is not being included in the output hash
+        // so a consensus change is needed for the output to include it
+        #[test]
+        #[ignore]
+        fn sender_offset_public_key() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+
+                // "gerate_keys" should return a random, different key than the present one
+                let mod_pk = generate_keys().pk;
+                output.sender_offset_public_key = mod_pk;
+            });
+        }
+
+        #[test]
+        fn metadata_signature() {
+            check_witness_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                output.metadata_signature = ComSignature::default();
+            });
+        }
+
+        #[test]
+        fn covenant() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                let mod_covenant = covenant!(absolute_height(@uint(42)));
+                output.covenant = mod_covenant;
+            });
+        }
+    }
+
+    mod kernel {
+        use tari_common_types::types::Signature;
+        use tari_core::transactions::tari_amount::MicroTari;
+
+        use super::*;
+
+        // the "version" field only has one value (V0) so malleability test is not possible for it
+        // the "features" field has only a constant value at the moment, so no malleability test possible
+
+        #[test]
+        fn fee() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+                kernel.fee += MicroTari::from(1);
+            });
+        }
+
+        #[test]
+        fn lock_height() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+                kernel.lock_height += 1;
+            });
+        }
+
+        #[test]
+        fn excess() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+                let mod_excess = &kernel.excess + &kernel.excess;
+                kernel.excess = mod_excess;
+            });
+        }
+
+        #[test]
+        fn excess_sig() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+                // "gerate_keys" should return a group of random keys, different from the ones in the field
+                let keys = generate_keys();
+                kernel.excess_sig = Signature::new(keys.pk, keys.k);
+            });
+        }
+    }
 }
 
 #[allow(clippy::identity_op)]

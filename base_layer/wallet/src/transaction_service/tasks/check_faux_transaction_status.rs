@@ -39,6 +39,7 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
+#[allow(clippy::too_many_lines)]
 pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
     mut output_manager: OutputManagerHandle,
     db: TransactionDatabase<TBackend>,

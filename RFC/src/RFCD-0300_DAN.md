@@ -2,7 +2,7 @@
 
 ## Digital Assets Network
 
-![status: draft](theme/images/status-draft.svg)
+![status: deprecated](theme/images/status-deprecated.svg)
 
 **Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) and [Philip Robinson](https://github.com/philipr-za)
 
@@ -56,7 +56,7 @@ Digital Assets Network (DAN)
 * [RFC-0100: Base Layer](RFC-0100_BaseLayer.md)
 * [RFC-0311: Digital Assets](RFC-0311_AssetTemplates.md)
 * [RFC-0340: VN Consensus Overview](RFC-0340_VNConsensusOverview.md)
-* [RFC-0302: Validator Nodes](RFC-0302_ValidatorNodes.md)
+* [RFC-0302: Validator Nodes](RFCD-0302_ValidatorNodes.md)
 
 ## Description
 

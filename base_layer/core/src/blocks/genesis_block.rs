@@ -130,6 +130,7 @@ fn get_igor_genesis_block_raw() -> Block {
     body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 06:00:00 +0200").unwrap();
+    #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
@@ -213,7 +214,7 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     // hardcode the Merkle roots once they've been computed above
     block.header.kernel_mr = from_hex("5b91bebd33e18798e03e9c5d831d161ee9c3d12560f50b987e1a8c3ec53146df").unwrap();
     block.header.witness_mr = from_hex("11227f6ce9ff34349d7dcab606b633f55234d5c8a73696a68c6e9ddc7cd3bc40").unwrap();
-    block.header.output_mr = from_hex("8904e47f6a390417d83d531ee12bcaa9dfbb85f64ed83d4665c2ed26092b3599").unwrap();
+    block.header.output_mr = from_hex("5e69274e72f8590e1cf91c189e24368527414aed966de62135d9273a6c14c3ef").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -271,6 +272,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
     body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("25 Jan 2022 16:00:00 +0200").unwrap();
+    #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
@@ -317,7 +319,6 @@ mod test {
     };
 
     #[test]
-    #[allow(clippy::similar_names)]
     fn dibbler_genesis_sanity_check() {
         let block = get_dibbler_genesis_block();
         assert_eq!(block.block().body.outputs().len(), 4001);

@@ -36,20 +36,25 @@ pub enum MempoolRequest {
     GetState,
     GetTxStateByExcessSig(Signature),
     SubmitTransaction(Transaction),
+    GetFeePerGramStats { count: usize, tip_height: u64 },
 }
 
 impl Display for MempoolRequest {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            MempoolRequest::GetStats => f.write_str("GetStats"),
-            MempoolRequest::GetState => f.write_str("GetState"),
+            MempoolRequest::GetStats => write!(f, "GetStats"),
+            MempoolRequest::GetState => write!(f, "GetState"),
             MempoolRequest::GetTxStateByExcessSig(sig) => {
-                f.write_str(&format!("GetTxStateByExcessSig ({})", sig.get_signature().to_hex()))
+                write!(f, "GetTxStateByExcessSig ({})", sig.get_signature().to_hex())
             },
-            MempoolRequest::SubmitTransaction(tx) => f.write_str(&format!(
+            MempoolRequest::SubmitTransaction(tx) => write!(
+                f,
                 "SubmitTransaction ({})",
                 tx.body.kernels()[0].excess_sig.get_signature().to_hex()
-            )),
+            ),
+            MempoolRequest::GetFeePerGramStats { count, tip_height } => {
+                write!(f, "GetFeePerGramStats(count: {}, tip_height: {})", *count, *tip_height)
+            },
         }
     }
 }
