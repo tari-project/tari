@@ -10,13 +10,14 @@ use std::error::Error;
 use tauri::{Menu, MenuItem, Submenu};
 
 use clap::Parser;
-use tari_common::{
-  exit_codes::{ExitCode, ExitError},
-  load_configuration, DefaultConfigLoader,
-};
-use uuid::Uuid;
+use std::path::PathBuf;
+use tari_common::{exit_codes::ExitError, load_configuration, DefaultConfigLoader};
 
-use crate::{app_state::ConcurrentAppState, cli::Cli, config::CollectiblesConfig};
+use crate::{
+  app_state::ConcurrentAppState,
+  cli::{Cli, Commands},
+  config::CollectiblesConfig,
+};
 
 #[macro_use]
 extern crate diesel;
@@ -36,133 +37,23 @@ mod schema;
 mod status;
 mod storage;
 
-#[derive(Debug)]
-pub enum Command {
-  MakeItRain {
-    asset_public_key: String,
-    amount_per_transaction: u64,
-    number_transactions: u32,
-    destination_address: String,
-    source_address: Option<String>,
-  },
-}
-
-fn parse_make_it_rain(src: &[&str]) -> Result<Command, ExitError> {
-  if src.len() < 4 && 5 < src.len() {
-    return Err(ExitError::new(
-      ExitCode::CommandError,
-      &"Invalid arguments for make-it-rain",
-    ));
-  }
-  let asset_public_key = src[0].to_string();
-  let amount_per_transaction = src[1]
-    .to_string()
-    .parse::<u64>()
-    .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
-  let number_transactions = src[2]
-    .to_string()
-    .parse::<u32>()
-    .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
-  let destination_address = src[3].to_string();
-  let source_address = match src.len() {
-    5 => Some(src[4].to_string()),
-    _ => None,
-  };
-  Ok(Command::MakeItRain {
-    asset_public_key,
-    amount_per_transaction,
-    number_transactions,
-    destination_address,
-    source_address,
-  })
-}
-
-fn parse_command(src: &str) -> Result<Command, ExitError> {
-  let args: Vec<_> = src.split(' ').collect();
-  if args.is_empty() {
-    return Err(ExitError::new(ExitCode::CommandError, &"Empty command"));
-  }
-  match args.get(0) {
-    Some(&"make-it-rain") => parse_make_it_rain(&args[1..]),
-    _ => Err(ExitError::new(ExitCode::CommandError, &"Invalid command")),
-  }
-}
-
-// make-it-rain <asset_public_key> <amount_per_transaction> <number_transactions> <destination address> <source address - optional>
-fn make_it_rain(
-  asset_public_key: String,
-  amount: u64,
-  number_transactions: u32,
-  to_address: String,
-  source_address: Option<String>,
-  state: &ConcurrentAppState,
-) -> Result<(), ExitError> {
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .expect("Failed to build a runtime!");
-  let id = match runtime.block_on(commands::wallets::inner_wallets_list(state)) {
-    Ok(rows) => {
-      if rows.is_empty() {
-        return Err(ExitError::new(
-          ExitCode::CommandError,
-          &"There is no wallet!",
-        ));
-      }
-      match source_address {
-        Some(source_address) => {
-          let source_uuid = Uuid::parse_str(&source_address)
-            .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
-          if !rows.iter().any(|wallet| wallet.id == source_uuid) {
-            return Err(ExitError::new(ExitCode::CommandError, &"Wallet not found!"));
-          }
-          source_uuid
-        }
-        None => rows[0].id,
-      }
-    }
-    Err(e) => {
-      return Err(ExitError::new(ExitCode::CommandError, &e.to_string()));
-    }
-  };
-
-  runtime
-    .block_on(commands::wallets::inner_wallets_unlock(id, state))
-    .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
-  println!(
-    "Sending {} of {} to {} {} times.",
-    asset_public_key, amount, to_address, number_transactions
-  );
-  for _ in 0..number_transactions {
-    runtime
-      .block_on(commands::asset_wallets::inner_asset_wallets_send_to(
-        asset_public_key.clone(),
-        amount,
-        to_address.clone(),
-        state,
-      ))
-      .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
-  }
-  Ok(())
-}
-
-pub fn process_command(command: Command, state: &ConcurrentAppState) -> Result<(), ExitError> {
-  println!("command {:?}", command);
+pub fn process_command(command: Commands, state: &ConcurrentAppState) -> Result<(), ExitError> {
   match command {
-    Command::MakeItRain {
+    Commands::MakeItRain {
       asset_public_key,
       amount_per_transaction,
-      number_transactions: number_transaction,
+      number_transactions,
       destination_address,
       source_address,
-    } => make_it_rain(
+    } => cli::make_it_rain(
       asset_public_key,
       amount_per_transaction,
-      number_transaction,
+      number_transactions,
       destination_address,
       source_address,
       state,
     ),
+    Commands::ListAssets { offset, count } => cli::list_assets(offset, count, state),
   }
 }
 
@@ -177,11 +68,12 @@ fn main() -> Result<(), Box<dyn Error>> {
   let config = CollectiblesConfig::load_from(&cfg)?;
   let state = ConcurrentAppState::new(cli.common.get_base_path(), config);
 
-  if let Some(ref command) = cli.command {
-    let command = parse_command(command)?;
+  if let Some(command) = cli.command {
     process_command(command, &state)?;
     return Ok(());
   }
+  //let (bootstrap, config, _) = init_configuration(ApplicationType::Collectibles)?;
+  let state = ConcurrentAppState::new(PathBuf::from("."), CollectiblesConfig::default());
 
   tauri::Builder::default()
     .menu(build_menu())

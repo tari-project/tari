@@ -14,6 +14,7 @@ jobs:
 
       - name: Install 🦀
         run: |
+          curl -L https://github.com/badboy/mdbook-mermaid/releases/download/v0.10.0/mdbook-mermaid-v0.10.0-x86_64-unknown-linux-gnu.tar.gz | tar xvz
           cd RFC
           curl -L https://github.com/rust-lang/mdBook/releases/download/v0.4.8/mdbook-v0.4.8-x86_64-unknown-linux-gnu.tar.gz | tar xvz
 

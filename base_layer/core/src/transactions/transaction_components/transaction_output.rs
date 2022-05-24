@@ -437,16 +437,16 @@ impl Ord for TransactionOutput {
 }
 
 impl ConsensusEncoding for TransactionOutput {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.features.consensus_encode(writer)?;
-        written += self.commitment.consensus_encode(writer)?;
-        written += self.proof.consensus_encode(writer)?;
-        written += self.script.consensus_encode(writer)?;
-        written += self.sender_offset_public_key.consensus_encode(writer)?;
-        written += self.metadata_signature.consensus_encode(writer)?;
-        written += self.covenant.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.features.consensus_encode(writer)?;
+        self.commitment.consensus_encode(writer)?;
+        self.proof.consensus_encode(writer)?;
+        self.script.consensus_encode(writer)?;
+        self.sender_offset_public_key.consensus_encode(writer)?;
+        self.metadata_signature.consensus_encode(writer)?;
+        self.covenant.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

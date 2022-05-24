@@ -49,7 +49,6 @@ pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
 }
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
-#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc>> {
     let naive =
         NaiveDateTime::from_timestamp_opt(timestamp.seconds, u32::try_from(cmp::max(0, timestamp.nanos)).unwrap())?;
@@ -58,6 +57,7 @@ pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc
 
 /// Utility function that converts a `chrono::DateTime` to a `EpochTime`
 pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
+    #[allow(clippy::cast_sign_loss)]
     EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
 }
 

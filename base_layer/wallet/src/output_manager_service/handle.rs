@@ -120,6 +120,7 @@ pub enum OutputManagerRequest {
         num_kernels: usize,
         num_outputs: usize,
     },
+
     ScanForRecoverableOutputs(Vec<TransactionOutput>),
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),

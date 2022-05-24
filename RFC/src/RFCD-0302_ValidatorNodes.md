@@ -2,7 +2,7 @@
 
 ## Validator Nodes
 
-![status: draft](theme/images/status-draft.svg)
+![status: deprecated](theme/images/status-deprecated.svg)
 
 **Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) and [Philip Robinson](https://github.com/philipr-za)
 
@@ -53,7 +53,7 @@ Asset Network (DAN).
 
 ## Related Requests for Comment
 * [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
-* [RFC-0304: Validator Node Committee Selection](RFC-0304_VNCommittees.md)
+* [RFC-0304: Validator Node Committee Selection](RFCD-0304_VNCommittees.md)
 * [RFC-0340: VN Consensus Overview](RFC-0340_VNConsensusOverview.md)
 
 ## Description

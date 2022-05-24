@@ -30,6 +30,7 @@ const DEFAULT_NETWORK: &str = "dibbler";
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
@@ -39,7 +40,7 @@ pub(crate) struct Cli {
     /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
     /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
     /// possible.
-    #[clap(long)] // , env = "TARI_WALLET_PASSWORD")]
+    #[clap(long, env = "TARI_WALLET_PASSWORD", hide_env_values = true)]
     pub password: Option<String>,
     /// Change the password for the console wallet
     #[clap(long, alias = "update-password")]
@@ -69,7 +70,7 @@ pub(crate) struct Cli {
     #[clap(long, alias = "auto-exit")]
     pub command_mode_auto_exit: bool,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, alias = "network", default_value = DEFAULT_NETWORK)]
+    #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
     pub network: String,
 }
 

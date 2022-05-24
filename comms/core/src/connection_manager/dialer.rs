@@ -31,6 +31,7 @@ use futures::{
 };
 use log::*;
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_utilities::hex::Hex;
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt},
     sync::{mpsc, oneshot},
@@ -355,7 +356,10 @@ where
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
 
         if &authenticated_public_key != expected_public_key {
-            return Err(ConnectionManagerError::DialedPublicKeyMismatch);
+            return Err(ConnectionManagerError::DialedPublicKeyMismatch {
+                authenticated_pk: authenticated_public_key.to_hex(),
+                expected_pk: expected_public_key.to_hex(),
+            });
         }
 
         Ok(authenticated_public_key)

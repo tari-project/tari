@@ -1,5 +1,32 @@
-# Config for launchpad v0.0.2
-[common]
+# Config for launchpad v1.0.0
+[base_node]
+network = "dibbler"
+grpc_address = "/ip4/0.0.0.0/tcp/18142"
+override_from = "dibbler"
+
+[base_node.storage]
+track_reorgs = true
+
+[dibbler.base_node]
+identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
+
+[igor.base_node]
+network = "igor"
+base_node_identity_file = "/var/tari/base_node/config/igor/base_node_id.json"
+
+[base_node.p2p]
+auxiliary_tcp_listener_address = "/dns4/base_node/tcp/18189"
+
+[base_node.p2p.transport]
+type = "tor"
+
+[base_node.p2p.transport.tor]
+control_auth = "password=tari"
+socks_address_override = "/dns4/tor/tcp/9050"
+control_address = "/dns4/tor/tcp/9051"
+
+[base_node.p2p.transport.tcp]
+listener_address = "/dns4/base_node/tcp/18189"
 
 [dibbler.p2p.seeds]
 dns_seeds = ["seeds.dibbler.tari.com"]
@@ -24,58 +51,39 @@ peer_seeds = [
     "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189"
 ]
 
-[base_node]
-network = "dibbler"
-grpc_address = "/ip4/0.0.0.0/tcp/18142"
-
-[base_node.storage]
-track_reorgs = true
-
-[dibbler.base_node]
-identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
-
-[igor.base_node]
-network = "igor"
-base_node_identity_file = "/var/tari/base_node/config/igor/base_node_id.json"
-
-[base_node.p2p.transport]
-tor.control_auth = "password=tari"
-#tcp.listener_address = "/dns4/base_node/tcp/18189"
-tor.socks_address_override = "/dns4/tor/tcp/9050"
-tor.control_address = "/dns4/tor/tcp/9051"
-
-
 [wallet]
 override_from = "dibbler"
 db_file = "wallet/wallet.dat"
 grpc_address = "/ip4/0.0.0.0/tcp/18143"
 password = "tari"
+use_libtor = false
 
 [wallet.p2p]
 
 [wallet.p2p.transport]
 type = "tor"
-tor.control_auth = "password=tari"
-tor.control_address = "/dns4/tor/tcp/9051"
-tor.socks_address_override = "/dns4/tor/tcp/9050"
+
+[wallet.p2p.transport.tor]
+control_auth = "password=tari"
+socks_address_override = "/dns4/tor/tcp/9050"
+control_address = "/dns4/tor/tcp/9051"
+
+[wallet.p2p.transport.tcp]
+listener_address = "/dns4/wallet/tcp/18188"
 
 [dibbler.wallet]
 network = "dibbler"
-#use_libtor = false
-#tor_onion_port = 18141
 
 [igor.wallet]
 network = "igor"
-#use_libtor = false
-#tor_onion_port = 18141
 
 [miner]
-base_node_grpc_address = "/dns4/base_node/tcp/18142"
-wallet_grpc_address = "/dns4/wallet/tcp/18143"
+base_node_addr = "/dns4/base_node/tcp/18142"
+wallet_addr = "/dns4/wallet/tcp/18143"
 mine_on_tip_only = true
+num_mining_threads = 1
 
 [merge_mining_proxy]
-#config = "dibbler"
 monerod_url = [ # stagenet
     "http://stagenet.xmr-tw.org:38081",
     "http://stagenet.community.xmr.to:38081",
@@ -90,5 +98,3 @@ submit_to_origin = true
 monerod_username = ""
 monerod_password = ""
 monerod_use_auth = false
-
-

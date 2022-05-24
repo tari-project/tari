@@ -39,10 +39,10 @@ pub struct MintNonFungibleFeatures {
 }
 
 impl ConsensusEncoding for MintNonFungibleFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.asset_public_key.consensus_encode(writer)?;
-        written += self.asset_owner_commitment.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.asset_public_key.consensus_encode(writer)?;
+        self.asset_owner_commitment.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

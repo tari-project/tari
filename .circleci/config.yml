@@ -129,8 +129,13 @@ workflows:
       - run-integration-tests:
           filters:
             branches:
-              ignore: gh-pages
+              ignore:
+                gh-pages
+                launchpad_such_wow # TODO: Remove this filter once the branch is merged into development
       - run-ffi-integration-tests:
           filters:
             branches:
-              ignore: gh-pages
+              ignore:
+                gh-pages
+                launchpad_such_wow # TODO: Remove this filter once the branch is merged into development
+

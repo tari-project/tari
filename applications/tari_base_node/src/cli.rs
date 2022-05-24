@@ -28,6 +28,7 @@ const DEFAULT_NETWORK: &str = "dibbler";
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
@@ -42,13 +43,13 @@ pub(crate) struct Cli {
     #[clap(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
     /// Run in non-interactive mode, with no UI.
-    #[clap(short, long, alias = "non-interactive")]
+    #[clap(short, long, alias = "non-interactive", env = "TARI_NON_INTERACTIVE")]
     pub non_interactive_mode: bool,
     /// Watch a command in the non-interactive mode.
     #[clap(long)]
     pub watch: Option<String>,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, alias = "network", default_value = DEFAULT_NETWORK)]
+    #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
     pub network: String,
 }
 

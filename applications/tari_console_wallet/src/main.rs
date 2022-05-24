@@ -100,8 +100,8 @@ fn main_inner() -> Result<(), ExitError> {
         include_str!("../log4rs_sample.yml"),
     )?;
 
-    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
+    config.wallet.network = cli.network.parse()?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -122,7 +122,7 @@ fn main_inner() -> Result<(), ExitError> {
     let password = cli
         .password
         .as_ref()
-        .or(config.wallet.password.as_ref())
+        .or_else(|| config.wallet.password.as_ref())
         .map(|s| s.to_owned());
 
     if password.is_none() {
@@ -198,7 +198,7 @@ fn main_inner() -> Result<(), ExitError> {
         },
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
-            &"Invalid wallet mode - are you trying too many command options at once?",
+            "Invalid wallet mode - are you trying too many command options at once?",
         )),
     };
 

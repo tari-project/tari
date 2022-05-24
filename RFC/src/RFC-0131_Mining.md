@@ -1,4 +1,4 @@
-# RFC-0130/Mining
+# RFC-0131/Mining
 
 ## Full-node Mining on Tari Base Layer
 
@@ -54,7 +54,8 @@ This document describes the final proof-of-work strategy proposal for Tari main 
 
 * [RFC-0100: Base Layer](RFC-0100_BaseLayer.md)
 * [RFC-0110: Base Nodes](RFC-0110_BaseNodes.md)
-* [RFC-0130: Mining](RFC-0130_Mining.md)
+
+This RFC replaces and deprecates [RFC-0130: Mining](RFCD-0130_Mining.md)
 
 ## Description
 

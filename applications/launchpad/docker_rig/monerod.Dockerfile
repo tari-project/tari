@@ -1,5 +1,5 @@
 # Usage: docker run --restart=always -v /var/data/blockchain-xmr:/root/.bitmonero -p 18080:18080 -p 18081:18081 --name=monerod -td kannix/monero-full-node
-FROM quay.io/bitnami/minideb:bullseye AS build
+FROM bitnami/minideb:bullseye AS build
 ENV MONERO_VERSION=0.17.2.3 MONERO_SHA256=8069012ad5e7b35f79e35e6ca71c2424efc54b61f6f93238b182981ba83f2311
 
 
@@ -14,7 +14,7 @@ RUN curl https://dlsrc.getmonero.org/cli/monero-linux-x64-v$MONERO_VERSION.tar.b
   cp ./monero-x86_64-linux-gnu-v$MONERO_VERSION/monerod . &&\
   rm -r monero-*
 
-FROM quay.io/bitnami/minideb:bullseye
+FROM bitnami/minideb:bullseye
 ARG VERSION=1.0.1
 
 RUN groupadd -g 1000 tari && useradd -ms /bin/bash -u 1000 -g 1000 tari \

@@ -32,7 +32,7 @@ pub(crate) struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, alias = "network", default_value = DEFAULT_NETWORK)]
+    #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
     pub network: String,
 }
 

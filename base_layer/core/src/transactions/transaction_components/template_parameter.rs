@@ -38,11 +38,11 @@ pub struct TemplateParameter {
 }
 
 impl ConsensusEncoding for TemplateParameter {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = writer.write_varint(self.template_id)?;
-        written += writer.write_varint(self.template_data_version)?;
-        written += self.template_data.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_varint(self.template_id)?;
+        writer.write_varint(self.template_data_version)?;
+        self.template_data.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

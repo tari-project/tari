@@ -16,6 +16,7 @@ grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
 # This requires that the base node was built with the optional "libtor" feature flag.
+# This requires that the base node was built with the optional "libtor" feature flag.
 #use_libtor = true
 
 [dibbler.base_node]

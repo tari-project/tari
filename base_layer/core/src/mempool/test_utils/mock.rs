@@ -125,7 +125,7 @@ impl MempoolServiceMock {
     }
 
     async fn handle_request(&self, req: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
-        use MempoolRequest::{GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
+        use MempoolRequest::{GetFeePerGramStats, GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
 
         self.state.inc_call_count();
         match req {
@@ -137,6 +137,9 @@ impl MempoolServiceMock {
             SubmitTransaction(_) => Ok(MempoolResponse::TxStorage(
                 self.state.submit_transaction.lock().await.clone(),
             )),
+            GetFeePerGramStats { .. } => {
+                unimplemented!()
+            },
         }
     }
 }

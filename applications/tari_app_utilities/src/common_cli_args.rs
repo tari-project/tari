@@ -31,7 +31,8 @@ pub struct CommonCliArgs {
         short,
         long,
         aliases = &["base_path", "base_dir", "base-dir"],
-        default_value_t= defaults::base_path()
+        default_value_t= defaults::base_path(),
+        env = "TARI_BASE_DIR"
     )]
     base_path: String,
     /// A path to the configuration file to use (config.toml)
