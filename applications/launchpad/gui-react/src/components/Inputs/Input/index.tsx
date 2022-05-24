@@ -7,7 +7,7 @@ import {
   UnitsText,
   IconWrapper,
 } from './styles'
-import { ChangeEvent, forwardRef } from 'react'
+import { ChangeEvent, forwardRef, useEffect, useRef, useState } from 'react'
 
 /**
  * @name Input component
@@ -43,11 +43,21 @@ const Input = (
   }: InputProps,
   ref?: React.ForwardedRef<HTMLInputElement>,
 ) => {
+  const iconsRef = useRef<HTMLDivElement>(null)
+  const [iconWrapperWidth, setIconWrapperWidth] = useState(22)
+
+  useEffect(() => {
+    if (iconsRef.current) {
+      setIconWrapperWidth((iconsRef.current as HTMLDivElement).offsetWidth)
+    }
+  }, [inputIcon])
+
   const onChangeTextLocal = (event: ChangeEvent<HTMLInputElement>) => {
     if (onChange) {
       onChange(event.target.value)
     }
   }
+
   return (
     <InputContainer disabled={disabled} style={containerStyle}>
       <StyledInput
@@ -62,11 +72,12 @@ const Input = (
         style={style}
         ref={ref}
       />
-      <IconUnitsContainer>
+      <IconUnitsContainer $iconWrapperWidth={iconWrapperWidth}>
         {inputIcon && (
           <IconWrapper
             onClick={disabled ? undefined : onIconClick}
             data-testid='icon-test'
+            ref={iconsRef}
           >
             {inputIcon}
           </IconWrapper>

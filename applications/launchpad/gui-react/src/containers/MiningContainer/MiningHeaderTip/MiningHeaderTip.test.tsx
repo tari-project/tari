@@ -39,6 +39,26 @@ describe('MiningHeaderTip', () => {
     expect(el).toBeInTheDocument()
   })
 
+  it('should render "one click away" when mining node status is PAUSED and tokens were not mined yet', () => {
+    render(
+      <Provider
+        store={configureStore({
+          reducer: rootReducer,
+          preloadedState: {
+            wallet: unlockedWallet,
+            mining: initialMining,
+          },
+        })}
+      >
+        <ThemeProvider theme={themes.light}>
+          <MiningHeaderTip />
+        </ThemeProvider>
+      </Provider>,
+    )
+    const el = screen.getByText(t.mining.headerTips.oneClickAway)
+    expect(el).toBeInTheDocument()
+  })
+
   it('should render "continue mining" when mining node status is PAUSED and tokens were already mined', () => {
     render(
       <Provider

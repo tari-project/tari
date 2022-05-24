@@ -1,4 +1,5 @@
 import { Schedule, Interval } from '../../../../types/general'
+import { clearTime } from '../../../../utils/Date'
 import t from '../../../../locales'
 
 const validateInterval = (interval: Interval): string | undefined => {
@@ -17,8 +18,19 @@ const validateInterval = (interval: Interval): string | undefined => {
   }
 }
 
+const validateDate = (date?: Date): string | undefined => {
+  if (!date) {
+    return
+  }
+
+  if (clearTime(date) < clearTime(new Date())) {
+    return t.mining.scheduling.error_miningInThePast
+  }
+}
+
 export const validate = (schedule: Schedule): string | undefined => {
   const intervalError = validateInterval(schedule.interval)
+  const dateError = validateDate(schedule.date)
 
-  return intervalError
+  return intervalError || dateError
 }

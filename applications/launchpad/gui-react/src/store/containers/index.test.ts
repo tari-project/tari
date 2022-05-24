@@ -10,11 +10,13 @@ describe('updateStatus action', () => {
       containers: {
         someContainerId: {
           status: SystemEventAction.Create,
-          stats: {
-            cpu: 2,
-            memory: 1,
-            unsubscribe,
-          },
+        },
+      },
+      stats: {
+        someContainerId: {
+          cpu: 2,
+          memory: 1,
+          unsubscribe,
         },
       },
     } as unknown as ServicesState
@@ -23,11 +25,13 @@ describe('updateStatus action', () => {
       containers: {
         someContainerId: {
           status: SystemEventAction.Start,
-          stats: {
-            cpu: 2,
-            memory: 1,
-            unsubscribe,
-          },
+        },
+      },
+      stats: {
+        someContainerId: {
+          cpu: 2,
+          memory: 1,
+          unsubscribe,
         },
       },
     }
@@ -50,6 +54,7 @@ describe('updateStatus action', () => {
     const state = {
       pending: [],
       containers: {},
+      stats: {},
     } as unknown as ServicesState
 
     // when
@@ -65,10 +70,6 @@ describe('updateStatus action', () => {
     const newContainer = nextState.containers.newContainerId
     expect(newContainer).toMatchObject({
       status: SystemEventAction.Create,
-      stats: {
-        cpu: 0,
-        memory: 0,
-      },
     })
   })
 
@@ -102,11 +103,13 @@ describe('updateStatus action', () => {
         someContainerId: {
           timestamp: 123123,
           status: SystemEventAction.Create,
-          stats: {
-            cpu: 2,
-            memory: 1,
-            unsubscribe,
-          },
+        },
+      },
+      stats: {
+        someContainerId: {
+          cpu: 2,
+          memory: 1,
+          unsubscribe,
         },
       },
     } as unknown as ServicesState
@@ -137,11 +140,13 @@ describe('updateStatus action', () => {
           containers: {
             someContainerId: {
               status: SystemEventAction.Create,
-              stats: {
-                cpu: 2,
-                memory: 1,
-                unsubscribe,
-              },
+            },
+          },
+          stats: {
+            someContainerId: {
+              cpu: 2,
+              memory: 1,
+              unsubscribe,
             },
           },
         } as unknown as ServicesState
@@ -166,11 +171,13 @@ describe('updateStatus action', () => {
           containers: {
             someContainerId: {
               status: SystemEventAction.Create,
-              stats: {
-                cpu: 2,
-                memory: 1,
-                unsubscribe: jest.fn(),
-              },
+            },
+          },
+          stats: {
+            someContainerId: {
+              cpu: 2,
+              memory: 1,
+              unsubscribe: jest.fn(),
             },
           },
         } as unknown as ServicesState
@@ -186,8 +193,8 @@ describe('updateStatus action', () => {
 
         // then
         expect(nextState.containers.someContainerId).toBeDefined()
-        expect(nextState.containers.someContainerId.stats.cpu).toBe(0)
-        expect(nextState.containers.someContainerId.stats.memory).toBe(0)
+        expect(nextState.stats.someContainerId.cpu).toBe(0)
+        expect(nextState.stats.someContainerId.memory).toBe(0)
       })
     })
   })

@@ -1,5 +1,7 @@
 import styled, { ThemeProvider } from 'styled-components'
+import { PersistGate } from 'redux-persist/integration/react'
 
+import { persistor } from './store'
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import { selectThemeConfig } from './store/app/selectors'
 
@@ -29,12 +31,14 @@ const App = () => {
   useMiningSimulator()
 
   return (
-    <ThemeProvider theme={themeConfig}>
-      <AppContainer>
-        <HomePage />
-        <TBotContainer />
-      </AppContainer>
-    </ThemeProvider>
+    <PersistGate loading={null} persistor={persistor}>
+      <ThemeProvider theme={themeConfig}>
+        <AppContainer>
+          <HomePage />
+          <TBotContainer />
+        </AppContainer>
+      </ThemeProvider>
+    </PersistGate>
   )
 }
 

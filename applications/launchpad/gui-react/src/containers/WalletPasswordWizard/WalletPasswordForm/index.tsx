@@ -3,13 +3,13 @@ import { useForm, Controller, SubmitHandler } from 'react-hook-form'
 
 import Button from '../../../components/Button'
 import Callout from '../../../components/Callout'
-import Input from '../../../components/Inputs/Input'
 import Text from '../../../components/Text'
 
 import t from '../../../locales'
 
 import { CalloutWrapper, FormButtons, WizardContainer } from './styles'
 import { WalletPasswordInputs, WalletPasswordFormProps } from './types'
+import PasswordInput from '../../../components/Inputs/PasswordInput'
 
 /**
  * Render the Wallet password form with text warnings.
@@ -50,10 +50,11 @@ const WalletPasswordForm = ({
           defaultValue=''
           rules={{ required: true, minLength: 4 }}
           render={({ field }) => (
-            <Input
+            <PasswordInput
               placeholder={t.walletPasswordWizard.passwordPlaceholder}
-              type='password'
+              autoFocus
               testId='password-input'
+              useStrengthMeter
               {...field}
             />
           )}

@@ -54,7 +54,10 @@ const translations: { [key: string]: { [key: string]: string } } = {
   },
   phrases: {
     actionRequired: 'Action required',
+    bestChoice: 'Best choice',
     startHere: 'Start here',
+    readyToGo: 'Ready to go',
+    readyToSet: 'Ready to set',
   },
   containers: {
     [Container.Tor]: 'Tor',

@@ -45,7 +45,7 @@ const NodeBox = ({
       <BoxHeader>
         {tag ? (
           <Tag type={tag.type} variant='large'>
-            {tag.text}
+            {tag.content}
           </Tag>
         ) : null}
       </BoxHeader>

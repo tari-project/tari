@@ -5,24 +5,26 @@ import Checkbox from './'
 
 import themes from '../../styles/themes'
 
+const TEST_LABEL = 'test label'
+
 describe('Checkbox', () => {
   it('should render label', () => {
     render(
       <ThemeProvider theme={themes.light}>
         <Checkbox checked={false} onChange={() => null}>
-          test label
+          {TEST_LABEL}
         </Checkbox>
       </ThemeProvider>,
     )
 
-    expect(screen.getByText('test label')).toBeInTheDocument()
+    expect(screen.getByText(TEST_LABEL)).toBeInTheDocument()
   })
 
   it('should render svg icon when checked', () => {
     const { container } = render(
       <ThemeProvider theme={themes.light}>
         <Checkbox checked={true} onChange={() => null}>
-          test
+          {TEST_LABEL}
         </Checkbox>
       </ThemeProvider>,
     )
@@ -36,12 +38,12 @@ describe('Checkbox', () => {
     render(
       <ThemeProvider theme={themes.light}>
         <Checkbox checked={false} onChange={onChange}>
-          test
+          {TEST_LABEL}
         </Checkbox>
       </ThemeProvider>,
     )
 
-    const label = screen.getByText('test')
+    const label = screen.getByText(TEST_LABEL)
     fireEvent.click(label)
     expect(onChange).toHaveBeenCalledWith(true)
   })
@@ -51,7 +53,7 @@ describe('Checkbox', () => {
     const { container } = render(
       <ThemeProvider theme={themes.light}>
         <Checkbox checked={true} onChange={onChange}>
-          test
+          {TEST_LABEL}
         </Checkbox>
       </ThemeProvider>,
     )

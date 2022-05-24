@@ -58,4 +58,43 @@ describe('validate', () => {
       }),
     )
   })
+
+  describe('date', () => {
+    it('should validate undefined date as long as any day is selected', () => {
+      const schedule: Schedule = {
+        id: Date.now().toString(),
+        enabled: true,
+        days: [0],
+        interval: {
+          from: { hours: 7, minutes: 23 },
+          to: { hours: 8, minutes: 12 },
+        },
+        type: ['tari'],
+      }
+
+      const error = validate(schedule)
+
+      expect(error).toBeUndefined()
+    })
+
+    it('should return error for a date in the past', () => {
+      const dateInThePast = new Date()
+      dateInThePast.setDate(-1)
+
+      const schedule: Schedule = {
+        id: Date.now().toString(),
+        enabled: true,
+        date: dateInThePast,
+        interval: {
+          from: { hours: 7, minutes: 23 },
+          to: { hours: 8, minutes: 12 },
+        },
+        type: ['tari'],
+      }
+
+      const error = validate(schedule)
+
+      expect(error).toBe(t.mining.scheduling.error_miningInThePast)
+    })
+  })
 })

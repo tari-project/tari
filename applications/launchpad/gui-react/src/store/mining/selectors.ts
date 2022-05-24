@@ -1,6 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit'
 import { RootState } from '..'
-import { selectContainerWithMemo } from '../containers/selectors'
+import { selectContainerStatusWithStats } from '../containers/selectors'
 import { Container } from '../containers/types'
 import { selectWalletSetupRequired } from '../wallet/selectors'
 import {
@@ -15,10 +15,10 @@ import {
 export const selectTariMiningState = (r: RootState) => r.mining.tari
 
 export const selectTariContainers = createSelector(
-  selectContainerWithMemo(Container.Tor),
-  selectContainerWithMemo(Container.BaseNode),
-  selectContainerWithMemo(Container.Wallet),
-  selectContainerWithMemo(Container.SHA3Miner),
+  selectContainerStatusWithStats(Container.Tor),
+  selectContainerStatusWithStats(Container.BaseNode),
+  selectContainerStatusWithStats(Container.Wallet),
+  selectContainerStatusWithStats(Container.SHA3Miner),
   (tor, baseNode, wallet, sha3) => {
     const containers = [tor, baseNode, wallet, sha3]
     const errors = containers
@@ -35,11 +35,6 @@ export const selectTariContainers = createSelector(
       error: errors.length > 0 ? errors : undefined,
       dependsOn: [tor, baseNode, wallet, sha3],
     } as MiningContainersState
-  },
-  {
-    memoizeOptions: {
-      equalityCheck: (a, b) => JSON.stringify(a) === JSON.stringify(b),
-    },
   },
 )
 
@@ -59,11 +54,11 @@ export const selectMergedMiningAddress = (r: RootState) =>
   r.mining.merged.address
 
 export const selectMergedContainers = createSelector(
-  selectContainerWithMemo(Container.Tor),
-  selectContainerWithMemo(Container.BaseNode),
-  selectContainerWithMemo(Container.Wallet),
-  selectContainerWithMemo(Container.MMProxy),
-  selectContainerWithMemo(Container.XMrig),
+  selectContainerStatusWithStats(Container.Tor),
+  selectContainerStatusWithStats(Container.BaseNode),
+  selectContainerStatusWithStats(Container.Wallet),
+  selectContainerStatusWithStats(Container.MMProxy),
+  selectContainerStatusWithStats(Container.XMrig),
   (tor, baseNode, wallet, mmproxy, xmrig) => {
     const containers = [tor, baseNode, wallet, mmproxy, xmrig]
     const errors = containers
@@ -80,11 +75,6 @@ export const selectMergedContainers = createSelector(
       error: errors.length > 0 ? errors : undefined,
       dependsOn: [tor, baseNode, wallet, xmrig, mmproxy],
     } as MiningContainersState
-  },
-  {
-    memoizeOptions: {
-      equalityCheck: (a, b) => JSON.stringify(a) === JSON.stringify(b),
-    },
   },
 )
 

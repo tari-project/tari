@@ -8,18 +8,13 @@ import {
   Container,
   SystemEventAction,
 } from './types'
-import { start, stop } from './thunks'
+import { start, stop, stopByType } from './thunks'
 
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
 ): ContainerStatus => ({
   timestamp: Date.now(),
   status: lastAction,
-  stats: {
-    cpu: 0,
-    memory: 0,
-    unsubscribe: () => null,
-  },
 })
 
 export const initialState: ServicesState = {
@@ -35,6 +30,7 @@ export const initialState: ServicesState = {
   },
   pending: [],
   containers: {},
+  stats: {},
 }
 
 const servicesSlice = createSlice({
@@ -57,12 +53,16 @@ const servicesSlice = createSlice({
       const numCpu = cs.online_cpus
       const cpu = (cpu_delta / system_cpu_delta) * numCpu * 100.0
 
-      state.containers[containerId].stats.cpu = cpu
+      if (!state.stats || !state.stats[containerId]) {
+        return
+      }
+
+      state.stats[containerId].cpu = cpu
 
       const ms = stats.memory_stats
       const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
 
-      state.containers[containerId].stats.memory = memory
+      state.stats[containerId].memory = memory
     },
     updateStatus: (
       state,
@@ -77,12 +77,26 @@ const servicesSlice = createSlice({
           action.payload.action
       }
 
+      if (!state.stats) {
+        state.stats = {}
+      }
+
+      if (!state.stats[action.payload.containerId]) {
+        state.stats[action.payload.containerId] = {
+          cpu: 0,
+          memory: 0,
+          unsubscribe: () => {
+            return
+          },
+        }
+      }
+
       switch (action.payload.action) {
         case SystemEventAction.Destroy:
         case SystemEventAction.Die:
-          state.containers[action.payload.containerId].stats.unsubscribe()
-          state.containers[action.payload.containerId].stats.cpu = 0
-          state.containers[action.payload.containerId].stats.memory = 0
+          state.stats[action.payload.containerId].unsubscribe()
+          state.stats[action.payload.containerId].cpu = 0
+          state.stats[action.payload.containerId].memory = 0
           break
       }
     },
@@ -101,7 +115,7 @@ const servicesSlice = createSlice({
 
       state.pending = state.pending.filter(p => p !== action.meta.arg)
       state.containers[action.payload.id].type = action.meta.arg
-      state.containers[action.payload.id].stats.unsubscribe =
+      state.stats[action.payload.id].unsubscribe =
         action.payload.unsubscribeStats
     })
     builder.addCase(start.rejected, (state, action) => {
@@ -129,6 +143,6 @@ const servicesSlice = createSlice({
 })
 
 const { actions: syncActions } = servicesSlice
-export const actions = { start, stop, ...syncActions }
+export const actions = { start, stop, stopByType, ...syncActions }
 
 export default servicesSlice.reducer
