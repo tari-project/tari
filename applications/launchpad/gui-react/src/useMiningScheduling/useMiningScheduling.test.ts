@@ -1,8 +1,8 @@
 import { renderHook } from '@testing-library/react-hooks'
 
 import { Schedule } from '../types/general'
-import { clearTime } from '../utils/Date'
 import { createPeriodicalGetNow } from '../utils/testUtils'
+import { startOfUTCDay } from '../utils/Date'
 
 import useMiningScheduling from './useMiningScheduling'
 
@@ -21,7 +21,7 @@ describe('useMiningScheduling', () => {
       {
         id: 'shortSchedule',
         enabled: true,
-        date: clearTime(now),
+        date: startOfUTCDay(now),
         interval: {
           from: {
             hours: 9,
@@ -70,7 +70,7 @@ describe('useMiningScheduling', () => {
       {
         id: 'shortSchedule',
         enabled: true,
-        date: clearTime(dayFromNow),
+        date: startOfUTCDay(dayFromNow),
         interval: {
           from: {
             hours: 9,

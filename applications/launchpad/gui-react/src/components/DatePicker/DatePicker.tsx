@@ -7,7 +7,7 @@ import ArrowRight from '../../styles/Icons/ArrowRight2'
 import t from '../../locales'
 import { month } from '../../utils/Format'
 import {
-  clearTime,
+  startOfDay,
   endOfMonth,
   startOfMonth,
   isCurrentMonth,
@@ -36,7 +36,7 @@ const DatePickerComponent = ({
   style,
 }: Omit<DatePickerProps, 'open'>) => {
   const theme = useTheme()
-  const valueWithoutTime = value && clearTime(value)
+  const valueWithoutTime = value && startOfDay(value)
 
   const {
     calendar,
@@ -94,8 +94,8 @@ const DatePickerComponent = ({
           {week.map(day => {
             const isInMonth = inRange(
               day,
-              startOfMonth(clearTime(viewing)),
-              endOfMonth(clearTime(viewing)),
+              startOfMonth(viewing),
+              endOfMonth(viewing),
             )
             const labelColor = isInMonth
               ? isSelected(day)
@@ -103,7 +103,16 @@ const DatePickerComponent = ({
                 : undefined
               : theme.placeholderText
             const disabled =
-              !allowPast && clearTime(day) < clearTime(new Date())
+              !allowPast && startOfDay(day) < startOfDay(new Date())
+            console.log(
+              day,
+              startOfDay(day) < startOfDay(new Date()),
+              isSelected(day),
+              {
+                day: startOfDay(day),
+                date: startOfDay(new Date()),
+              },
+            )
 
             return (
               <Day

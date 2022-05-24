@@ -1,5 +1,5 @@
 import { Schedule, Interval } from '../../../../types/general'
-import { clearTime } from '../../../../utils/Date'
+import { startOfUTCDay } from '../../../../utils/Date'
 import t from '../../../../locales'
 
 const validateInterval = (interval: Interval): string | undefined => {
@@ -23,7 +23,7 @@ const validateDate = (date?: Date): string | undefined => {
     return
   }
 
-  if (clearTime(date) < clearTime(new Date())) {
+  if (startOfUTCDay(date) < startOfUTCDay(new Date())) {
     return t.mining.scheduling.error_miningInThePast
   }
 }

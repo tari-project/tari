@@ -1,5 +1,5 @@
 import { Schedule } from '../types/general'
-import { clearTime } from '../utils/Date'
+import { startOfUTCDay } from '../utils/Date'
 
 import { StartStop } from './types'
 import { getStartsStops } from './getStartsStops'
@@ -57,7 +57,7 @@ describe('getStartsStops', () => {
       {
         id: 'scheduleId',
         enabled: true,
-        date: clearTime(from),
+        date: startOfUTCDay(from),
         interval: {
           from: {
             hours: 12,
@@ -99,7 +99,7 @@ describe('getStartsStops', () => {
       {
         id: 'scheduleId',
         enabled: true,
-        date: clearTime(from),
+        date: startOfUTCDay(from),
         interval: {
           from: {
             hours: 7,
@@ -141,7 +141,7 @@ describe('getStartsStops', () => {
       {
         id: 'scheduleId',
         enabled: true,
-        date: clearTime(from),
+        date: startOfUTCDay(from),
         interval: {
           from: {
             hours: 7,
