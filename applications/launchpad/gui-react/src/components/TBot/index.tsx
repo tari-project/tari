@@ -1,4 +1,4 @@
-import { useSpring, config } from 'react-spring'
+import { useSpring } from 'react-spring'
 import SvgTBotBase from '../../styles/Icons/TBotBase'
 import SvgTBotHearts from '../../styles/Icons/TBotHearts'
 import SvgTBotHeartsMonero from '../../styles/Icons/TBotHeartsMonero'

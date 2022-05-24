@@ -8,8 +8,7 @@ import { MiningNodeType } from '../../types/general'
  */
 export const startMiningNode = createAsyncThunk<void, { node: MiningNodeType }>(
   'mining/startNode',
-  async ({ node }) => {
-    console.log(`starting ${node} node`)
+  async () => {
     return await new Promise(resolve => setTimeout(resolve, 2000))
   },
 )
@@ -21,8 +20,7 @@ export const startMiningNode = createAsyncThunk<void, { node: MiningNodeType }>(
  */
 export const stopMiningNode = createAsyncThunk<void, { node: MiningNodeType }>(
   'mining/stopNode',
-  async ({ node }) => {
-    console.log(`stopping ${node} node`)
+  async () => {
     return await new Promise(resolve => setTimeout(resolve, 2000))
   },
 )

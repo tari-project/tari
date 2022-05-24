@@ -31,6 +31,7 @@ export type ContainerStatus = {
   status: SystemEventAction
   timestamp: number
   type?: Container
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
   stats: {
     cpu: number
@@ -44,6 +45,7 @@ export type ContainerStatusDto = {
   type: Container
   running: boolean
   pending: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
   stats: {
     cpu: number
@@ -53,6 +55,7 @@ export type ContainerStatusDto = {
 }
 
 export type ServicesState = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   errors: Record<Container, any>
   pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>

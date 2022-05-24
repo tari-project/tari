@@ -227,6 +227,7 @@ jobs:
           yarn install
           yarn lint
           cd ..
+          yarn install
           yarn tauri build
       - name: test key manager wasm
         run: |

@@ -18,9 +18,10 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
     let unsubscribe
 
     const listenToSystemEvents = async () => {
-      const systemEvents = new Map<string, number>()
+      // const systemEvents = new Map<string, number>()
       const unlisten = await listen(
         'tari://docker-system-event',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (event: any) => {
           if (event.payload.Type === SystemEventType.Container) {
             const containerId = event.payload.Actor.ID
@@ -30,8 +31,8 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
               return
             }
 
-            console.log(`ACTION ${action} - ${containerId} - ${image}`)
-            console.log(event)
+            // console.log(`ACTION ${action} - ${containerId} - ${image}`)
+            // console.log(event)
 
             dispatch(actions.updateStatus({ containerId, action }))
 
@@ -41,7 +42,7 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
       )
 
       unsubscribe = () => {
-        console.log(JSON.stringify(systemEvents, null, 2))
+        // console.log(JSON.stringify(systemEvents, null, 2))
         unlisten()
       }
     }

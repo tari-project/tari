@@ -2,7 +2,6 @@ import { Schedule } from '../../../types/general'
 
 const ScheduleForm = ({
   value,
-  onChange,
 }: {
   value: Schedule
   onChange: (s: Schedule) => void

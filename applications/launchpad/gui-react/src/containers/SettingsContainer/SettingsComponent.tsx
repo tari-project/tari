@@ -19,7 +19,7 @@ import { SettingsProps, SettingsComponentProps } from './types'
 
 const renderSettings = (
   settings: Settings,
-  props: SettingsProps,
+  _props: SettingsProps,
 ): ReactNode => {
   if (settings === Settings.Wallet) {
     return <WalletSettings />

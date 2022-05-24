@@ -18,7 +18,6 @@ import t from '../../../../../locales'
  * Helper composing all dashboard tabs.
  */
 const composeNodeTabs = ({
-  miningNodeState,
   baseNodeState,
   walletState,
 }: {

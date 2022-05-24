@@ -73,10 +73,10 @@ const appSlice = createSlice({
       delete state.schedules[scheduleId]
     },
     updateSchedule(
-      state,
-      { payload }: { payload: { scheduleId: string; value: Schedule } },
+      _state,
+      _payload: { payload: { scheduleId: string; value: Schedule } },
     ) {
-      console.log('update schedule', payload)
+      // console.log('update schedule', payload)
     },
   },
 })

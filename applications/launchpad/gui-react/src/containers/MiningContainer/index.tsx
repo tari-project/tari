@@ -14,10 +14,6 @@ import { setTheme } from '../../store/app'
 import { selectTheme } from '../../store/app/selectors'
 
 import { actions } from '../../store/wallet'
-import Button from '../../components/Button'
-import SvgArrowLeft1 from '../../styles/Icons/ArrowLeft1'
-import SvgWallet from '../../styles/Icons/Wallet'
-import SvgSetting from '../../styles/Icons/Setting'
 
 import { NodesContainer } from './styles'
 import MiningBoxTari from './MiningBoxTari'
