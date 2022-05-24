@@ -28,7 +28,7 @@ const HomePage = () => {
     }
   }, [])
   const stopMining = useCallback(
-    (node: MiningNodeType) => console.log('stopping mining', node),
+    (node: MiningNodeType) => dispatch(miningActions.stopMiningNode({ node })),
     [],
   )
 
