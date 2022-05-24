@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useState } from 'react'
 import { useTheme } from 'styled-components'
 import { useAppSelector } from '../../../store/hooks'
 import {
@@ -10,8 +10,6 @@ import SvgMoneroSignet from '../../../styles/Icons/MoneroSignet'
 import SvgTariSignet from '../../../styles/Icons/TariSignet'
 import MiningBox from '../MiningBox'
 import { MiningBoxStatus } from '../MiningBox/types'
-
-import { Container } from '../../../store/containers/types'
 
 import t from '../../../locales'
 
@@ -43,36 +41,6 @@ const MiningBoxMerged = () => {
   const nodeState = useAppSelector(selectMergedMiningState)
   const containersState = useAppSelector(selectMergedContainers)
   const mergedSetupRequired = useAppSelector(selectMergedSetupRequired)
-
-  // Stop only Merged related containers on pause/stop action
-  const [containersToStopOnPause, setContainersToStopOnPause] = useState<
-    { id: string; type: Container }[]
-  >([])
-
-  useEffect(() => {
-    if (
-      (!containersState ||
-        !containersState.dependsOn ||
-        containersState.dependsOn.length === 0) &&
-      containersToStopOnPause.length > 0
-    ) {
-      setContainersToStopOnPause([])
-    } else if (containersState && containersState.dependsOn?.length > 0) {
-      const cs = containersState.dependsOn.filter(
-        c =>
-          [Container.XMrig, Container.MMProxy, Container.Monerod].includes(
-            c.type,
-          ) && c.id,
-      )
-
-      setContainersToStopOnPause(
-        cs.map(c => ({
-          id: c.id,
-          type: c.type,
-        })),
-      )
-    }
-  }, [containersState])
 
   const statuses = {
     [MiningBoxStatus.SetupRequired]: {
@@ -125,7 +93,6 @@ const MiningBoxMerged = () => {
       currentStatus={currentStatus}
       nodeState={nodeState}
       containersState={containersState}
-      containersToStopOnPause={containersToStopOnPause}
     >
       {boxContent}
     </MiningBox>
