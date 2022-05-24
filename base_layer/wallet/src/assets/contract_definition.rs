@@ -21,13 +21,26 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{FixedHash, PublicKey};
+use tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContractDefinition {
-    pub contract_id: String,     // TODO: make it a hash
-    pub contract_name: String,   // TODO: limit to 32 chars
-    pub contract_issuer: String, // TODO: make it a pubkey
+    pub contract_id: String,
+    pub contract_name: String,
+    pub contract_issuer: String,
     pub contract_spec: ContractSpecification,
+}
+
+impl From<ContractDefinition> for tari_core::transactions::transaction_components::ContractDefinitionFeatures {
+    fn from(value: ContractDefinition) -> Self {
+        Self {
+            contract_id: FixedHash::from_hex(&value.contract_id).unwrap(),
+            contract_name: value.contract_name.into_bytes(),
+            contract_issuer: PublicKey::from_hex(&value.contract_issuer).unwrap(),
+            contract_spec: value.contract_spec.into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,14 +49,41 @@ pub struct ContractSpecification {
     pub public_functions: Vec<PublicFunction>,
 }
 
+impl From<ContractSpecification> for tari_core::transactions::transaction_components::ContractSpecification {
+    fn from(value: ContractSpecification) -> Self {
+        Self {
+            runtime: value.runtime.into_bytes(),
+            public_functions: value.public_functions.into_iter().map(|f| f.into()).collect(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicFunction {
     pub name: String,
     pub function: FunctionRef,
 }
 
+impl From<PublicFunction> for tari_core::transactions::transaction_components::PublicFunction {
+    fn from(value: PublicFunction) -> Self {
+        Self {
+            name: value.name.into_bytes(),
+            function: value.function.into(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionRef {
     pub template_id: String,
     pub function_id: u16,
+}
+
+impl From<FunctionRef> for tari_core::transactions::transaction_components::FunctionRef {
+    fn from(value: FunctionRef) -> Self {
+        Self {
+            template_id: FixedHash::from_hex(&value.template_id).unwrap(),
+            function_id: value.function_id,
+        }
+    }
 }

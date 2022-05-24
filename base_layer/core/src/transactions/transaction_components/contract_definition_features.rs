@@ -40,7 +40,7 @@ const STR_LEN: usize = 32;
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct ContractDefinitionFeatures {
     pub contract_id: FixedHash,
-    pub contract_name: Vec<u8>, // TODO: check length
+    pub contract_name: Vec<u8>,
     pub contract_issuer: PublicKey,
     pub contract_spec: ContractSpecification,
 }

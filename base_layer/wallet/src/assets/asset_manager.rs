@@ -27,15 +27,11 @@ use tari_common_types::{
 };
 use tari_core::transactions::transaction_components::{
     ContractDefinitionFeatures,
-    ContractSpecification,
-    FunctionRef,
     OutputFeatures,
     OutputFlags,
-    PublicFunction,
     TemplateParameter,
     Transaction,
 };
-use tari_utilities::hex::Hex;
 
 use super::ContractDefinition;
 use crate::{
@@ -287,27 +283,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         contract_definition: ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
-        // TODO: use the features from the very beginning, whithout additional structs
-        let features = ContractDefinitionFeatures {
-            contract_id: FixedHash::from_hex(&contract_definition.contract_id).unwrap(),
-            contract_name: contract_definition.contract_name.into_bytes(),
-            contract_issuer: PublicKey::from_hex(&contract_definition.contract_issuer).unwrap(),
-            contract_spec: ContractSpecification {
-                runtime: contract_definition.contract_spec.runtime.into_bytes(),
-                public_functions: contract_definition
-                    .contract_spec
-                    .public_functions
-                    .into_iter()
-                    .map(|f| PublicFunction {
-                        name: f.name.into_bytes(),
-                        function: FunctionRef {
-                            template_id: FixedHash::from_hex(&f.function.template_id).unwrap(),
-                            function_id: f.function.function_id,
-                        },
-                    })
-                    .collect(),
-            },
-        };
+        let features = ContractDefinitionFeatures::from(contract_definition);
 
         let output = self
             .output_manager

@@ -934,7 +934,10 @@ pub async fn command_runner(
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
 
-                println!("Contract definition transaction submitted with tx_id={} for contract with contract_id={}", tx_id, contract_definition.contract_id);
+                println!(
+                    "Contract definition transaction submitted with tx_id={} for contract with contract_id={}",
+                    tx_id, contract_definition.contract_id
+                );
                 println!("Done!");
             },
         }
