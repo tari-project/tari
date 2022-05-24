@@ -102,6 +102,7 @@ jobs:
           yarn install
           yarn lint
           cd ..
+          yarn install
           yarn tauri build
       - name: cargo check
         uses: actions-rs/cargo@v1
@@ -161,9 +162,9 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: build launchpad_v2
+      - name: build launchpad
         run: |
-          cd applications/launchpad_v2
+          cd applications/launchpad
           npm ci
           npm run build
       - name: build collectibles web-app
