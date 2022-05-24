@@ -92,8 +92,10 @@ const ScheduleForm = ({
           flexDirection: 'column',
           width: '100%',
           padding: `${theme.spacing()} ${theme.spacing(1.5)}`,
-          paddingBottom: 0,
+          paddingBottom: theme.spacing(0.75),
           marginBottom: 0,
+          borderRadius: 0,
+          overflow: 'auto',
         }}
       >
         <MiningTypeSelector value={miningType} onChange={setMiningType} />
