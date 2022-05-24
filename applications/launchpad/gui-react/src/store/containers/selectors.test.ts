@@ -18,11 +18,6 @@ describe('containers/selectors', () => {
       type: Container.Tor,
       running: false,
       pending: false,
-      stats: {
-        cpu: 0,
-        memory: 0,
-        unsubscribe: () => undefined,
-      },
     }
 
     // when
@@ -46,11 +41,6 @@ describe('containers/selectors', () => {
       type: Container.Tor,
       running: false,
       pending: true,
-      stats: {
-        cpu: 0,
-        memory: 0,
-        unsubscribe: () => undefined,
-      },
     }
 
     // when
@@ -62,7 +52,6 @@ describe('containers/selectors', () => {
 
   it('should return container by type', () => {
     // given
-    const unsubscribe = jest.fn()
     const rootState = {
       containers: {
         errors: {},
@@ -71,11 +60,6 @@ describe('containers/selectors', () => {
           containerId: {
             type: Container.Tor,
             status: SystemEventAction.Start,
-            stats: {
-              cpu: 7,
-              memory: 7,
-              unsubscribe,
-            },
           },
         },
       },
@@ -87,11 +71,6 @@ describe('containers/selectors', () => {
       error: undefined,
       running: true,
       pending: false,
-      stats: {
-        cpu: 7,
-        memory: 7,
-        unsubscribe,
-      },
     }
 
     // when
@@ -118,10 +97,6 @@ describe('containers/selectors', () => {
             type: Container.Tor,
             error: containerError,
             status: SystemEventAction.Start,
-            stats: {
-              cpu: 7,
-              memory: 7,
-            },
           },
         },
       },
@@ -149,10 +124,6 @@ describe('containers/selectors', () => {
           containerId: {
             type: Container.Tor,
             status: SystemEventAction.Start,
-            stats: {
-              cpu: 7,
-              memory: 7,
-            },
           },
         },
       },
@@ -176,7 +147,6 @@ describe('containers/selectors', () => {
   runningIndicationTestcases.forEach(([status, expected]) =>
     it(`should return running=${expected} for status "${status}"`, () => {
       // given
-      const unsubscribe = jest.fn()
       const rootState = {
         containers: {
           errors: {},
@@ -185,11 +155,6 @@ describe('containers/selectors', () => {
             containerId: {
               type: Container.Tor,
               status: status,
-              stats: {
-                cpu: 7,
-                memory: 7,
-                unsubscribe,
-              },
             },
           },
         },
@@ -207,7 +172,6 @@ describe('containers/selectors', () => {
 
   it('should return container with biggest timestamp value if multiple containers of the same type are present', () => {
     // given
-    const unsubscribe = jest.fn()
     const rootState = {
       containers: {
         errors: {},
@@ -217,21 +181,11 @@ describe('containers/selectors', () => {
             timestamp: 0,
             type: Container.Tor,
             status: SystemEventAction.Start,
-            stats: {
-              cpu: 7,
-              memory: 7,
-              unsubscribe,
-            },
           },
           anotherContainerId: {
             timestamp: 1,
             type: Container.Tor,
             status: SystemEventAction.Start,
-            stats: {
-              cpu: 8,
-              memory: 8,
-              unsubscribe,
-            },
           },
         },
       },
@@ -244,11 +198,6 @@ describe('containers/selectors', () => {
       error: undefined,
       running: true,
       pending: false,
-      stats: {
-        cpu: 8,
-        memory: 8,
-        unsubscribe,
-      },
     }
 
     // when
@@ -262,7 +211,6 @@ describe('containers/selectors', () => {
 
   it('should return container other than Start or Destroy as pending', () => {
     // given
-    const unsubscribe = jest.fn()
     const rootState = {
       containers: {
         errors: {},
@@ -271,11 +219,6 @@ describe('containers/selectors', () => {
           containerId: {
             type: Container.Tor,
             status: SystemEventAction.Create,
-            stats: {
-              cpu: 7,
-              memory: 7,
-              unsubscribe,
-            },
           },
         },
       },
@@ -287,11 +230,6 @@ describe('containers/selectors', () => {
       error: undefined,
       running: false,
       pending: true,
-      stats: {
-        cpu: 7,
-        memory: 7,
-        unsubscribe,
-      },
     }
 
     // when

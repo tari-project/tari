@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 
 import { useAppSelector, useAppDispatch } from '../../../../store/hooks'
-import { selectContainersStatuses } from '../../../../store/containers/selectors'
+import { selectContainersStatusesWithStats } from '../../../../store/containers/selectors'
 import { Container, ContainerId } from '../../../../store/containers/types'
 import { actions } from '../../../../store/containers'
 import Alert from '../../../../components/Alert'
@@ -12,7 +12,7 @@ const ContainersContainer = () => {
   const [error, setError] = useState('')
 
   const dispatch = useAppDispatch()
-  const containerStatuses = useAppSelector(selectContainersStatuses)
+  const containerStatuses = useAppSelector(selectContainersStatusesWithStats)
   const containers = useMemo(
     () =>
       containerStatuses.map(({ container, status }) => ({

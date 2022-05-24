@@ -53,8 +53,9 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
     try {
       const rootState = thunkApi.getState()
       const containerStatus = rootState.containers.containers[containerId]
+      const containerStats = rootState.containers.stats[containerId]
 
-      containerStatus.stats.unsubscribe()
+      containerStats.unsubscribe()
       await invoke('stop_service', {
         serviceName: (containerStatus.type || '').toString(),
       })
