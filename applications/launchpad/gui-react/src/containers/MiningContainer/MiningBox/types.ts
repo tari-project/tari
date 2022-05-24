@@ -1,6 +1,5 @@
 import { CSSProperties, ReactNode } from 'react'
 import { TagType } from '../../../components/Tag/types'
-import { Container } from '../../../store/containers/types'
 import {
   MiningContainersState,
   MiningNodeState,
@@ -46,5 +45,4 @@ export interface MiningBoxProps {
   testId?: string
   nodeState: MiningNodeState
   containersState: MiningContainersState
-  containersToStopOnPause: { id: string; type: Container }[]
 }

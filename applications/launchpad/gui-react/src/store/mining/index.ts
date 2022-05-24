@@ -1,10 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { v4 as uuidv4 } from 'uuid'
+import { MiningNodeType } from '../../types/general'
 
 import { startMiningNode, stopMiningNode } from './thunks'
 import { MiningState } from './types'
 
-const currencies: Record<'tari' | 'merged', string[]> = {
+const currencies: Record<MiningNodeType, string[]> = {
   tari: ['xtr'],
   merged: ['xtr', 'xmr'],
 }
@@ -31,7 +32,7 @@ const miningSlice = createSlice({
      */
     addAmount(
       state,
-      action: PayloadAction<{ amount: string; node: 'tari' | 'merged' }>,
+      action: PayloadAction<{ amount: string; node: MiningNodeType }>,
     ) {
       const node = action.payload.node
 
@@ -42,7 +43,7 @@ const miningSlice = createSlice({
         ).toString()
       }
     },
-    startNewSession(state, action: PayloadAction<{ node: 'tari' | 'merged' }>) {
+    startNewSession(state, action: PayloadAction<{ node: MiningNodeType }>) {
       const { node } = action.payload
       const total: Record<string, string> = {}
       currencies[node].forEach(c => {
@@ -55,7 +56,7 @@ const miningSlice = createSlice({
         total,
       }
     },
-    stopSession(state, action: PayloadAction<{ node: 'tari' | 'merged' }>) {
+    stopSession(state, action: PayloadAction<{ node: MiningNodeType }>) {
       const { node } = action.payload
 
       const session = state[node].session
