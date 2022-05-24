@@ -83,7 +83,7 @@ impl ConsensusDecoding for ContractDefinitionFeatures {
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct ContractSpecification {
-    pub runtime: Vec<u8>, // TODO: make it String size 32
+    pub runtime: Vec<u8>,
     pub public_functions: Vec<PublicFunction>,
 }
 
