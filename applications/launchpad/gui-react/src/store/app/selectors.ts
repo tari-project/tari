@@ -1,4 +1,5 @@
 import { createSelector } from '@reduxjs/toolkit'
+
 import { RootState } from '..'
 import themes from '../../styles/themes'
 import { Schedule } from '../../types/general'

@@ -14,6 +14,21 @@ import IntervalPicker from './IntervalPicker'
 import ScheduleFormError from './ScheduleFormError'
 import { validate } from './validation'
 
+const getIntervalWithZeros = (): Interval => {
+  const timezoneOffsetInHours = new Date().getTimezoneOffset() / 60
+
+  return {
+    from: {
+      hours: timezoneOffsetInHours,
+      minutes: 0,
+    },
+    to: {
+      hours: timezoneOffsetInHours,
+      minutes: 0,
+    },
+  }
+}
+
 /**
  * @name ScheduleForm
  * @description renders add/edit form for Schedule in mining scheduling
@@ -41,11 +56,7 @@ const ScheduleForm = ({
   const [date, setDate] = useState(value?.date)
   const [miningType, setMiningType] = useState(value?.type || [])
   const [interval, setInterval] = useState(
-    value?.interval ||
-      ({
-        from: { hours: 0, minutes: 0 },
-        to: { hours: 0, minutes: 0 },
-      } as Interval),
+    value?.interval || getIntervalWithZeros(),
   )
 
   const enableSave =

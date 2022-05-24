@@ -22,7 +22,6 @@ const useMiningScheduling = ({
   singleSchedulingPeriod?: number
 }) => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>()
-  const schedulesRef = useRef(schedules)
   const [startStops, setStartStops] = useState<StartStop[]>(() => {
     const from = getNow()
     const to = new Date(from.getTime() + singleSchedulingPeriod)
@@ -34,11 +33,6 @@ const useMiningScheduling = ({
   })
 
   useEffect(() => {
-    // prevent first useEffect when schedules changes from undefined to first prop value
-    if (schedulesRef.current === schedules) {
-      return
-    }
-
     const from = getNow()
     const to = new Date(from.getTime() + singleSchedulingPeriod)
     const ss = getStartsStops({

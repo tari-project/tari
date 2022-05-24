@@ -1,30 +1,10 @@
-import { renderHook, act } from '@testing-library/react-hooks'
+import { renderHook } from '@testing-library/react-hooks'
 
 import { Schedule } from '../types/general'
 import { clearTime } from '../utils/Date'
 
 import useMiningScheduling from './'
-
-const createPeriodicalGetNow = (start: Date, period: number) => {
-  let from = new Date(start)
-  let counter = 0
-  const returnedDates = [] as Date[]
-
-  const getNow = jest.fn(() => {
-    const newNow = new Date(from.getTime() + counter++ * period)
-
-    returnedDates.push(newNow)
-
-    return newNow
-  })
-
-  const reset = (d: Date) => {
-    from = new Date(d)
-    counter = 0
-  }
-
-  return { getNow, reset, returnedDates }
-}
+import { createPeriodicalGetNow } from './testUtils'
 
 const A_MINUTE = 60 * 1000
 
@@ -86,8 +66,6 @@ describe('useMiningScheduling', () => {
     jest.spyOn(global, 'setTimeout')
 
     const { getNow } = createPeriodicalGetNow(now, A_MINUTE)
-    const startMining = jest.fn()
-    const stopMining = jest.fn()
     const schedules = [
       {
         id: 'shortSchedule',
@@ -111,8 +89,8 @@ describe('useMiningScheduling', () => {
     renderHook(() =>
       useMiningScheduling({
         schedules,
-        stopMining,
-        startMining,
+        stopMining: () => null,
+        startMining: () => null,
         getNow,
       }),
     )
@@ -120,22 +98,7 @@ describe('useMiningScheduling', () => {
     // then
     expect(setTimeout).toHaveBeenCalledWith(
       expect.any(Function),
-      24 * 60 * 60 * 1000,
+      24 * 60 * A_MINUTE,
     )
-    act(() => {
-      jest.advanceTimersByTime(24 * 60 * A_MINUTE)
-    })
-    act(() => {
-      jest.advanceTimersByTime(A_MINUTE)
-      expect(startMining).toHaveBeenCalledTimes(2)
-      expect(startMining).toHaveBeenCalledWith('tari')
-      expect(startMining).toHaveBeenCalledWith('merged')
-    })
-    act(() => {
-      jest.advanceTimersByTime(A_MINUTE)
-      expect(stopMining).toHaveBeenCalledTimes(2)
-      expect(stopMining).toHaveBeenCalledWith('tari')
-      expect(stopMining).toHaveBeenCalledWith('merged')
-    })
   })
 })

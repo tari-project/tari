@@ -7,10 +7,7 @@ const getDaysBetween = (from: Date, to: Date) => {
   const days: Date[] = []
   let currentDay = clearTime(from)
 
-  while (
-    clearTime(currentDay).getTime() <
-    new Date(clearTime(to).setUTCMilliseconds(1)).getTime()
-  ) {
+  while (clearTime(currentDay).getTime() < clearTime(to).getTime() + 1) {
     days.push(new Date(currentDay))
 
     currentDay = new Date(currentDay.setUTCDate(currentDay.getUTCDate() + 1))
@@ -50,11 +47,11 @@ export const getStartsStops = ({
 
   return [...enabledSchedulesWithDates, ...schedulesGeneratedFromDays]
     .filter(schedule => {
-      const scheduleStart = clearTime(schedule.date!)
+      const scheduleStart = clearTime(new Date(schedule.date!))
       scheduleStart.setUTCHours(schedule.interval.from.hours)
       scheduleStart.setUTCMinutes(schedule.interval.from.minutes)
 
-      const scheduleStop = clearTime(schedule.date!)
+      const scheduleStop = clearTime(new Date(schedule.date!))
       scheduleStop.setUTCHours(schedule.interval.to.hours)
       scheduleStop.setUTCMinutes(schedule.interval.to.minutes)
 
@@ -65,12 +62,11 @@ export const getStartsStops = ({
     })
     .flatMap(schedule =>
       schedule.type.map(miningType => {
-        const scheduleDate = schedule.date || new Date()
-        const startTime = clearTime(scheduleDate)
+        const startTime = clearTime(new Date(schedule.date!))
         startTime.setUTCHours(schedule.interval.from.hours)
         startTime.setUTCMinutes(schedule.interval.from.minutes)
 
-        const stopTime = clearTime(scheduleDate)
+        const stopTime = clearTime(new Date(schedule.date!))
         stopTime.setUTCHours(schedule.interval.to.hours)
         stopTime.setUTCMinutes(schedule.interval.to.minutes)
 
