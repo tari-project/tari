@@ -6,7 +6,7 @@ on:
       - ci-*
   pull_request:
     branches-ignore:
-      - 'launchpad_such_wow' # TODO: Remove this filter once the branch is merged into development
+      - "launchpad_such_wow" # TODO: Remove this filter once the branch is merged into development
     types:
       - opened
       - reopened
@@ -77,6 +77,10 @@ jobs:
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v1
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -92,6 +96,14 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
+      - name: build launchpad
+        with:
+          command: |
+            cd applications/launchpad/gui-react
+            yarn install
+            yarn lint
+            cd ..
+            yarn tauri build
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:
@@ -189,6 +201,10 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
       - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
@@ -205,6 +221,14 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
+      - name: build launchpad
+        with:
+          command: |
+            cd applications/launchpad/gui-react
+            yarn install
+            yarn lint
+            cd ..
+            yarn tauri build
       - name: test key manager wasm
         run: |
           npm install -g wasm-pack
