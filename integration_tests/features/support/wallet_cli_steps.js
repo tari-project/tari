@@ -23,7 +23,7 @@
 const { Given, Then, When } = require("@cucumber/cucumber");
 const { expect } = require("chai");
 const { waitFor, sleep, byteArrayToHex } = require("../../helpers/util");
-const  path = require("path");
+const path = require("path");
 
 Given(
   /I change the password of wallet (.*) to (.*) via command line/,
