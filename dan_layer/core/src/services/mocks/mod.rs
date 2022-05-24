@@ -231,15 +231,20 @@ pub struct MockCommitteeManager {
     pub committee: Committee<&'static str>,
 }
 
-impl<TAddr: NodeAddressable> CommitteeManager<TAddr> for MockCommitteeManager {
-    fn current_committee(&self) -> Result<&Committee<TAddr>, DigitalAssetError> {
-        todo!();
-    }
-
-    fn read_from_checkpoint(&mut self, _output: BaseLayerOutput) -> Result<(), DigitalAssetError> {
-        todo!();
-    }
-}
+// #[async_trait]
+// impl<TAddr: NodeAddressable> CommitteeManager<TAddr> for MockCommitteeManager {
+//     async fn current_committee(&self, asset_public_key: PublicKey) -> Result<&Committee<TAddr>, DigitalAssetError> {
+//         todo!();
+//     }
+//
+//     async fn check_for_changes(&mut self, asset_public_key: PublicKey) -> Result<(), DigitalAssetError> {
+//         todo!()
+//     }
+//
+//     // fn read_from_checkpoint(&mut self, _output: BaseLayerOutpu) -> Result<(), DigitalAssetError> {
+//     //     todo!();
+//     // }
+// }
 
 // pub fn _mock_template_service() -> MockTemplateService {
 //     MockTemplateService {}

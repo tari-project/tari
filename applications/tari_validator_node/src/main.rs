@@ -27,13 +27,17 @@ mod cmd_args;
 mod comms;
 mod config;
 mod dan_node;
+mod debug;
 mod default_service_specification;
 mod grpc;
 mod monitoring;
 mod p2p;
 
 use std::{
+    fs::File,
+    io::BufReader,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::Path,
     process,
     sync::Arc,
 };
@@ -49,7 +53,17 @@ use tari_common::{
 };
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
+use tari_dan_core::{
+    models::AssetDefinition,
+    services::{
+        BaseLayerCommitteeManager,
+        ConcreteAssetProcessor,
+        ConcreteAssetProxy,
+        MempoolServiceHandle,
+        ServiceSpecification,
+        StaticListCommitteeManager,
+    },
+};
 use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_p2p::comms_connector::SubscriptionFactory;
 use tari_service_framework::ServiceHandles;
@@ -60,7 +74,8 @@ use tonic::transport::Server;
 use crate::{
     cli::Cli,
     config::{ApplicationConfig, ValidatorNodeConfig},
-    dan_node::DanNode,
+    dan_node::{DanNode, RunningServiceSpecification},
+    debug::{debug_definition::DebugDefinition, debug_service_specification::DebugServiceSpecification},
     default_service_specification::DefaultServiceSpecification,
     grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
     p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
@@ -90,12 +105,12 @@ fn main_inner() -> Result<(), ExitError> {
 
     let config = ApplicationConfig::load_from(&cfg)?;
     let runtime = build_runtime()?;
-    runtime.block_on(run_node(&config))?;
+    runtime.block_on(run_node(&config, cli))?;
 
     Ok(())
 }
 
-async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
+async fn run_node(config: &ApplicationConfig, cli: Cli) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
 
     let node_identity = setup_node_identity(
@@ -107,13 +122,95 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     let db_factory = SqliteDbFactory::new(config.validator_node.data_dir.clone());
     let mempool_service = MempoolServiceHandle::default();
 
+    if let Some(debug_file) = cli.debug_file.as_ref().map(|dd| dd.as_path()) {
+        start_debug_mode(debug_file, node_identity, shutdown, db_factory, mempool_service, config).await?;
+    } else {
+        start_non_debug_mode(node_identity, shutdown, db_factory, mempool_service, config).await?;
+    }
+
+    Ok(())
+}
+
+async fn start_debug_mode(
+    debug_file: &Path,
+    node_identity: Arc<NodeIdentity>,
+    shutdown: Shutdown,
+    db_factory: SqliteDbFactory,
+    mempool_service: MempoolServiceHandle,
+    config: &ApplicationConfig,
+) -> Result<(), ExitError> {
+    info!(target: LOG_TARGET, "Debugging file definition");
+    let file = File::open(debug_file).expect("File does not exist");
+    let reader = BufReader::new(file);
+    let definition: DebugDefinition = serde_json::from_reader(reader).expect("Not a valid definition");
+
+    let (handles, subscription_factory) = comms::build_service_and_comms_stack(
+        config,
+        shutdown.to_signal(),
+        node_identity.clone(),
+        mempool_service.clone(),
+        db_factory.clone(),
+        ConcreteAssetProcessor::default(),
+    )
+    .await?;
+
+    let committee_manager = StaticListCommitteeManager::new(definition.committee.clone(), AssetDefinition {
+        public_key: definition.public_key,
+        phase_timeout: 30,
+        base_layer_confirmation_time: 1,
+        checkpoint_unique_id: vec![],
+        initial_state: Default::default(),
+        template_parameters: vec![],
+    });
+    let asset_processor = ConcreteAssetProcessor::default();
+    let validator_node_client_factory =
+        TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
+    let asset_proxy: ConcreteAssetProxy<DebugServiceSpecification> = ConcreteAssetProxy::new(
+        committee_manager.clone(),
+        validator_node_client_factory,
+        5,
+        mempool_service.clone(),
+        db_factory.clone(),
+    );
+
+    let grpc_server: ValidatorNodeGrpcServer<DebugServiceSpecification> = ValidatorNodeGrpcServer::new(
+        node_identity.as_ref().clone(),
+        db_factory.clone(),
+        asset_processor,
+        asset_proxy,
+    );
+    let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 18144);
+
+    task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
+    println!("🚀 Validator node started!");
+    println!("{}", node_identity);
+    run_dan_node::<DebugServiceSpecification>(
+        shutdown.to_signal(),
+        config.validator_node.clone(),
+        mempool_service,
+        committee_manager,
+        db_factory,
+        handles,
+        subscription_factory,
+        node_identity,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn start_non_debug_mode(
+    node_identity: Arc<NodeIdentity>,
+    shutdown: Shutdown,
+    db_factory: SqliteDbFactory,
+    mempool_service: MempoolServiceHandle,
+    config: &ApplicationConfig,
+) -> Result<(), ExitError> {
     info!(
         target: LOG_TARGET,
         "Node starting with pub key: {}, node_id: {}",
         node_identity.public_key(),
         node_identity.node_id()
     );
-    // fs::create_dir_all(&global.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let (handles, subscription_factory) = comms::build_service_and_comms_stack(
         config,
         shutdown.to_signal(),
@@ -128,7 +225,7 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     let validator_node_client_factory =
         TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
     let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
-        GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address),
+        BaseLayerCommitteeManager::new(GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address)),
         validator_node_client_factory,
         5,
         mempool_service.clone(),
@@ -146,10 +243,13 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
     println!("🚀 Validator node started!");
     println!("{}", node_identity);
-    run_dan_node(
+
+    let mut base_node_client = GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address);
+    run_dan_node::<DefaultServiceSpecification>(
         shutdown.to_signal(),
         config.validator_node.clone(),
         mempool_service,
+        BaseLayerCommitteeManager::new(base_node_client),
         db_factory,
         handles,
         subscription_factory,
@@ -167,20 +267,22 @@ fn build_runtime() -> Result<Runtime, ExitError> {
         .map_err(|e| ExitError::new(ExitCode::UnknownError, e))
 }
 
-async fn run_dan_node(
+async fn run_dan_node<TSpecification: RunningServiceSpecification>(
     shutdown_signal: ShutdownSignal,
     config: ValidatorNodeConfig,
     mempool_service: MempoolServiceHandle,
+    committee_manager: TSpecification::CommitteeManager,
     db_factory: SqliteDbFactory,
     handles: ServiceHandles,
     subscription_factory: SubscriptionFactory,
     node_identity: Arc<NodeIdentity>,
 ) -> Result<(), ExitError> {
     let node = DanNode::new(config);
-    node.start(
+    node.start::<TSpecification>(
         shutdown_signal,
         node_identity,
         mempool_service,
+        committee_manager,
         db_factory,
         handles,
         subscription_factory,

@@ -33,7 +33,7 @@ mod signing_service;
 pub use asset_processor::{AssetProcessor, ConcreteAssetProcessor, MemoryInstructionLog};
 pub use asset_proxy::{AssetProxy, ConcreteAssetProxy};
 pub use base_node_client::BaseNodeClient;
-pub use committee_manager::{CommitteeManager, ConcreteCommitteeManager};
+pub use committee_manager::{BaseLayerCommitteeManager, CommitteeManager, StaticListCommitteeManager};
 pub use events_publisher::{EventsPublisher, LoggingEventsPublisher};
 pub use mempool_service::{ConcreteMempoolService, MempoolService, MempoolServiceHandle};
 pub use payload_processor::{PayloadProcessor, TariDanPayloadProcessor};

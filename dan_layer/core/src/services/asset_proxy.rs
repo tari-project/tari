@@ -32,6 +32,7 @@ use crate::{
     services::{
         validator_node_rpc_client::ValidatorNodeRpcClient,
         BaseNodeClient,
+        CommitteeManager,
         MempoolService,
         ServiceSpecification,
         ValidatorNodeClientFactory,
@@ -68,7 +69,7 @@ enum InvokeType {
 
 #[derive(Clone)]
 pub struct ConcreteAssetProxy<TServiceSpecification: ServiceSpecification> {
-    base_node_client: TServiceSpecification::BaseNodeClient,
+    committee_manager: TServiceSpecification::CommitteeManager,
     validator_node_client_factory: TServiceSpecification::ValidatorNodeClientFactory,
     max_clients_to_ask: usize,
     mempool: TServiceSpecification::MempoolService,
@@ -77,14 +78,14 @@ pub struct ConcreteAssetProxy<TServiceSpecification: ServiceSpecification> {
 
 impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAssetProxy<TServiceSpecification> {
     pub fn new(
-        base_node_client: TServiceSpecification::BaseNodeClient,
+        committee_manager: TServiceSpecification::CommitteeManager,
         validator_node_client_factory: TServiceSpecification::ValidatorNodeClientFactory,
         max_clients_to_ask: usize,
         mempool: TServiceSpecification::MempoolService,
         db_factory: TServiceSpecification::DbFactory,
     ) -> Self {
         Self {
-            base_node_client,
+            committee_manager,
             validator_node_client_factory,
             max_clients_to_ask,
             mempool,
@@ -132,42 +133,11 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        let mut base_node_client = self.base_node_client.clone();
-        let tip = base_node_client.get_tip_info().await?;
-        let last_checkpoint = base_node_client
-            .get_current_checkpoint(
-                tip.height_of_longest_chain,
-                asset_public_key.clone(),
-                // TODO: read this from the chain maybe?
-                ASSET_CHECKPOINT_ID.into(),
-            )
-            .await?;
-
-        let last_checkpoint = match last_checkpoint {
-            None => {
-                return Err(DigitalAssetError::NotFound {
-                    entity: "checkpoint",
-                    id: asset_public_key.to_hex(),
-                })
-            },
-            Some(chk) => chk,
-        };
-
-        let committee = last_checkpoint
-            .get_side_chain_committee()
-            .ok_or(DigitalAssetError::NoCommitteeForAsset)?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Found {} committee member(s): {}",
-            committee.len(),
-            committee.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
-        );
-
+        let committee = self.committee_manager.current_committee(asset_public_key)?;
         match invoke_type {
             InvokeType::InvokeReadMethod => {
                 let mut tasks = FuturesUnordered::new();
-                for member in committee.iter().take(self.max_clients_to_ask) {
+                for member in committee.members.iter().take(self.max_clients_to_ask) {
                     tasks.push(self.forward_invoke_read_to_node(
                         member,
                         asset_public_key,
@@ -188,7 +158,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
             },
             InvokeType::InvokeMethod => {
                 let mut tasks = FuturesUnordered::new();
-                for member in committee.iter().take(self.max_clients_to_ask) {
+                for member in committee.members.iter().take(self.max_clients_to_ask) {
                     tasks.push(self.forward_invoke_to_node(
                         member,
                         asset_public_key,

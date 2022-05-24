@@ -48,7 +48,7 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
 
     pub async fn next_event(
         &self,
-        base_node_client: &mut TSpecification::BaseNodeClient,
+        _base_node_client: &mut TSpecification::BaseNodeClient,
         asset_definition: &AssetDefinition,
         committee_manager: &mut TSpecification::CommitteeManager,
         db_factory: &TSpecification::DbFactory,
@@ -61,24 +61,29 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
             target: LOG_TARGET,
             "Checking base layer to see if we are part of the committee"
         );
-        let tip = base_node_client.get_tip_info().await?;
+        // let tip = base_node_client.get_tip_info().await?;
         // get latest checkpoint on the base layer
-        let last_committee_definition = base_node_client
-            .get_current_checkpoint(
-                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
-                asset_definition.public_key.clone(),
-                COMMITTEE_DEFINITION_ID.into(),
-            )
+        // let last_committee_definition = base_node_client
+        //     .get_current_checkpoint(
+        //         tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+        //         asset_definition.public_key.clone(),
+        //         COMMITTEE_DEFINITION_ID.into(),
+        //     )
+        //     .await?;
+        //
+        // let output = match last_committee_definition {
+        //     None => return Ok(ConsensusWorkerStateEvent::BaseLayerCommitteeDefinitionNotFound),
+        //     Some(chk) => chk,
+        // };
+
+        committee_manager
+            .check_for_changes(&asset_definition.public_key)
             .await?;
 
-        let output = match last_committee_definition {
-            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCommitteeDefinitionNotFound),
-            Some(chk) => chk,
-        };
-
-        committee_manager.read_from_checkpoint(output)?;
-
-        if !committee_manager.current_committee()?.contains(node_id) {
+        if !committee_manager
+            .current_committee(&asset_definition.public_key)?
+            .contains(node_id)
+        {
             info!(
                 target: LOG_TARGET,
                 "Validator node not part of committee for asset public key '{}'",

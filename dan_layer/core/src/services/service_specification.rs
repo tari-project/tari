@@ -51,7 +51,7 @@ pub trait ServiceSpecification: Default + Clone {
     type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type ChainStorageService: ChainStorageService<Self::Payload>;
     type CheckpointManager: CheckpointManager<Self::Addr>;
-    type CommitteeManager: CommitteeManager<Self::Addr>;
+    type CommitteeManager: CommitteeManager<Self::Addr> + Clone;
     type DbFactory: DbFactory<
             StateDbBackendAdapter = Self::StateDbBackendAdapter,
             ChainDbBackendAdapter = Self::ChainDbBackendAdapter,

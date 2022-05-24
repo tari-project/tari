@@ -33,7 +33,7 @@ pub struct AssetDefinition {
     #[serde(deserialize_with = "AssetDefinition::deserialize_pub_key_from_hex")]
     pub public_key: PublicKey,
     // TODO: remove and read from base layer
-    pub committee: Vec<String>,
+    // pub committee: Vec<String>,
     pub phase_timeout: u64,
     // TODO: Better name? lock time/peg time? (in number of blocks)
     pub base_layer_confirmation_time: u64,
@@ -48,7 +48,7 @@ impl Default for AssetDefinition {
             base_layer_confirmation_time: 5,
             checkpoint_unique_id: ASSET_CHECKPOINT_ID.into(),
             public_key: Default::default(),
-            committee: vec![],
+            // committee: vec![],
             phase_timeout: 30,
             initial_state: Default::default(),
             template_parameters: vec![],

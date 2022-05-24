@@ -32,15 +32,18 @@ use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_dan_core::{
-    models::{AssetDefinition, Committee},
+    models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, Committee, TariDanPayload},
     services::{
+        infrastructure_services::NodeAddressable,
+        BaseLayerCommitteeManager,
         BaseNodeClient,
+        CommitteeManager,
         ConcreteAssetProcessor,
         ConcreteCheckpointManager,
-        ConcreteCommitteeManager,
         LoggingEventsPublisher,
         MempoolServiceHandle,
         NodeIdentitySigningService,
+        ServiceSpecification,
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
@@ -58,13 +61,31 @@ use crate::{
     grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
     monitoring::Monitoring,
     p2p::services::{
-        inbound_connection_service::TariCommsInboundConnectionService,
+        inbound_connection_service::{TariCommsInboundConnectionService, TariCommsInboundReceiverHandle},
         outbound_connection_service::TariCommsOutboundService,
     },
     TariCommsValidatorNodeClientFactory,
 };
 
 const LOG_TARGET: &str = "tari::validator_node::app";
+
+pub trait RunningServiceSpecification:
+    ServiceSpecification<
+    Addr = PublicKey,
+    EventsPublisher = LoggingEventsPublisher<ConsensusWorkerDomainEvent>,
+    InboundConnectionService = TariCommsInboundReceiverHandle,
+    OutboundService = TariCommsOutboundService<TariDanPayload>,
+    PayloadProvider = TariDanPayloadProvider<MempoolServiceHandle>,
+    SigningService = NodeIdentitySigningService,
+    PayloadProcessor = TariDanPayloadProcessor<ConcreteAssetProcessor>,
+    BaseNodeClient = GrpcBaseNodeClient,
+    DbFactory = SqliteDbFactory,
+    ChainStorageService = SqliteStorageService,
+    CheckpointManager = ConcreteCheckpointManager<GrpcWalletClient>,
+    ValidatorNodeClientFactory = TariCommsValidatorNodeClientFactory,
+>
+{
+}
 
 pub struct DanNode {
     config: ValidatorNodeConfig,
@@ -75,104 +96,54 @@ impl DanNode {
         Self { config }
     }
 
-    pub async fn start(
+    pub async fn start<TSpecification: RunningServiceSpecification>(
         &self,
         shutdown: ShutdownSignal,
         node_identity: Arc<NodeIdentity>,
         mempool_service: MempoolServiceHandle,
+        committee_manager: TSpecification::CommitteeManager,
         db_factory: SqliteDbFactory,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
     ) -> Result<(), ExitError> {
-        let mut base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
-        let mut next_scanned_height = 0u64;
-        let mut last_tip = 0u64;
-        let mut monitoring = Monitoring::new(self.config.committee_management_confirmation_time);
-        loop {
-            let tip = base_node_client
-                .get_tip_info()
-                .await
-                .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
-            if tip.height_of_longest_chain >= next_scanned_height {
-                info!(
-                    target: LOG_TARGET,
-                    "Scanning base layer (tip : {}) for new assets", tip.height_of_longest_chain
-                );
-                if self.config.scan_for_assets {
-                    next_scanned_height =
-                        tip.height_of_longest_chain + self.config.committee_management_polling_interval;
-                    info!(target: LOG_TARGET, "Next scanning height {}", next_scanned_height);
-                } else {
-                    next_scanned_height = u64::MAX; // Never run again.
-                }
-                let mut assets = base_node_client
-                    .get_assets_for_dan_node(node_identity.public_key().clone())
-                    .await
-                    .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
-                info!(
-                    target: LOG_TARGET,
-                    "Base node returned {} asset(s) to process",
-                    assets.len()
-                );
-                if let Some(allow_list) = &self.config.assets_allow_list {
-                    assets.retain(|(asset, _)| allow_list.contains(&asset.public_key.to_hex()));
-                }
-                for (asset, mined_height) in assets.clone() {
-                    monitoring.add_if_unmonitored(asset.clone());
-                    monitoring.add_state(asset.public_key, mined_height, true);
-                }
-                let mut known_active_public_keys = assets.into_iter().map(|(asset, _)| asset.public_key);
-                let active_public_keys = monitoring
-                    .get_active_public_keys()
-                    .into_iter()
-                    .cloned()
-                    .collect::<Vec<PublicKey>>();
-                for public_key in active_public_keys {
-                    if !known_active_public_keys.any(|pk| pk == public_key) {
-                        // Active asset is not part of the newly known active assets, maybe there were no checkpoint for
-                        // the asset. Are we still part of the committee?
-                        if let (false, height) = base_node_client
-                            .check_if_in_committee(public_key.clone(), node_identity.public_key().clone())
-                            .await
-                            .unwrap()
-                        {
-                            // We are not part of the latest committee, set the state to false
-                            monitoring.add_state(public_key.clone(), height, false)
-                        }
-                    }
-                }
-            }
-            if tip.height_of_longest_chain > last_tip {
-                last_tip = tip.height_of_longest_chain;
-                monitoring.update_height(last_tip, |asset| {
-                    let node_identity = node_identity.as_ref().clone();
-                    let mempool = mempool_service.clone();
-                    let handles = handles.clone();
-                    let subscription_factory = subscription_factory.clone();
-                    let shutdown = shutdown.clone();
-                    // Create a kill signal for each asset
-                    let kill = Arc::new(AtomicBool::new(false));
-                    let dan_config = self.config.clone();
-                    let db_factory = db_factory.clone();
-                    task::spawn(DanNode::start_asset_worker(
-                        asset,
-                        node_identity,
-                        mempool,
-                        handles,
-                        subscription_factory,
-                        shutdown,
-                        dan_config,
-                        db_factory,
-                        kill.clone(),
-                    ));
-                    kill
-                });
-            }
-            time::sleep(Duration::from_secs(120)).await;
+        for asset in committee_manager
+            .get_all_committees()
+            .await
+            .map_err(|de| ExitCode::DigitalAssetError)?
+        {
+            let node_identity = node_identity.as_ref().clone();
+            let mempool = mempool_service.clone();
+            let handles = handles.clone();
+            let subscription_factory = subscription_factory.clone();
+            let shutdown = shutdown.clone();
+            // Create a kill signal for each asset
+            let kill = Arc::new(AtomicBool::new(false));
+            let dan_config = self.config.clone();
+            let db_factory = db_factory.clone();
+            DanNode::start_asset_worker::<TSpecification>(
+                asset,
+                node_identity,
+                mempool,
+                handles,
+                subscription_factory,
+                shutdown,
+                dan_config,
+                committee_manager.clone(),
+                db_factory,
+                kill.clone(),
+            )
+            .await?;
         }
+
+        // TODO: Loop and look for more committees
+
+        //     }
+        //     time::sleep(Duration::from_secs(120)).await;
+        // }
+        Ok(())
     }
 
-    pub async fn start_asset_worker(
+    pub async fn start_asset_worker<TSpecification: RunningServiceSpecification>(
         asset_definition: AssetDefinition,
         node_identity: NodeIdentity,
         mempool_service: MempoolServiceHandle,
@@ -180,21 +151,11 @@ impl DanNode {
         subscription_factory: SubscriptionFactory,
         shutdown: ShutdownSignal,
         config: ValidatorNodeConfig,
+        committee_service: TSpecification::CommitteeManager,
         db_factory: SqliteDbFactory,
         kill: Arc<AtomicBool>,
     ) -> Result<(), ExitError> {
         let timeout = Duration::from_secs(asset_definition.phase_timeout);
-        let committee = asset_definition
-            .committee
-            .iter()
-            .map(|s| {
-                CommsPublicKey::from_hex(s)
-                    .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("could not convert to hex:{}", e)))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let committee = Committee::new(committee);
-        let committee_service = ConcreteCommitteeManager::new(committee);
 
         let payload_provider = TariDanPayloadProvider::new(mempool_service.clone());
 
@@ -225,7 +186,7 @@ impl DanNode {
         let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);
         let checkpoint_manager = ConcreteCheckpointManager::new(asset_definition.clone(), wallet_client);
         let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(dht.dht_requester());
-        let mut consensus_worker = ConsensusWorker::<DefaultServiceSpecification>::new(
+        let mut consensus_worker = ConsensusWorker::<TSpecification>::new(
             receiver,
             outbound,
             committee_service,

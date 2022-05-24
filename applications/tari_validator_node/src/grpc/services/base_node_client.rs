@@ -161,7 +161,6 @@ impl BaseNodeClient for GrpcBaseNodeClient {
                             let committee = committee.iter().map(Hex::to_hex).collect::<Vec<String>>();
                             assets.push((
                                 AssetDefinition {
-                                    committee,
                                     public_key: asset_public_key,
                                     template_parameters: r
                                         .features

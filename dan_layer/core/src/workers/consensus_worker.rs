@@ -110,7 +110,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             view_id: self.current_view_id,
             is_leader: self
                 .committee_manager
-                .current_committee()?
+                .current_committee(&self.asset_definition.public_key)?
                 .leader_for_view(self.current_view_id) ==
                 &self.node_address,
         })
@@ -231,7 +231,11 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
                 &self.worker.get_current_view()?,
                 self.worker.timeout,
                 &self.worker.asset_definition,
-                self.worker.committee_manager.current_committee()?,
+                // TODO: The committee should stay the same for the full view, so
+                // it can be persisted and read
+                self.worker
+                    .committee_manager
+                    .current_committee(&self.worker.asset_definition.public_key)?,
                 &self.worker.inbound_connections,
                 &mut self.worker.outbound_service,
                 &mut self.worker.payload_provider,
@@ -253,7 +257,10 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         let mut unit_of_work = self.chain_db.new_unit_of_work();
         let mut state = states::PreCommitState::<T>::new(
             self.worker.node_address.clone(),
-            self.worker.committee_manager.current_committee()?.clone(),
+            self.worker
+                .committee_manager
+                .current_committee(&self.worker.asset_definition.public_key)?
+                .clone(),
             self.worker.asset_definition.public_key.clone(),
         );
         let res = state
@@ -275,7 +282,10 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         let mut state = states::CommitState::<T>::new(
             self.worker.node_address.clone(),
             self.worker.asset_definition.public_key.clone(),
-            self.worker.committee_manager.current_committee()?.clone(),
+            self.worker
+                .committee_manager
+                .current_committee(&self.worker.asset_definition.public_key)?
+                .clone(),
         );
         let res = state
             .next_event(
@@ -296,7 +306,10 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         let mut state = states::DecideState::<T>::new(
             self.worker.node_address.clone(),
             self.worker.asset_definition.public_key.clone(),
-            self.worker.committee_manager.current_committee()?.clone(),
+            self.worker
+                .committee_manager
+                .current_committee(&self.worker.asset_definition.public_key)?
+                .clone(),
         );
         let res = state
             .next_event(
@@ -315,7 +328,11 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
                 .checkpoint_manager
                 .create_checkpoint(
                     state_tx.calculate_root()?,
-                    self.worker.committee_manager.current_committee()?.members.clone(),
+                    self.worker
+                        .committee_manager
+                        .current_committee(&self.worker.asset_definition.public_key)?
+                        .members
+                        .clone(),
                 )
                 .await?;
             Ok(res)
@@ -341,7 +358,9 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
                 &self.worker.get_current_view()?,
                 &self.worker.db_factory,
                 &mut self.worker.outbound_service,
-                self.worker.committee_manager.current_committee()?,
+                self.worker
+                    .committee_manager
+                    .current_committee(&self.worker.asset_definition.public_key)?,
                 self.worker.node_address.clone(),
                 &self.worker.asset_definition,
                 &self.worker.payload_provider,

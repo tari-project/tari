@@ -20,35 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::PublicKey;
 
-use clap::Parser;
-use tari_app_utilities::common_cli_args::CommonCliArgs;
-
-const DEFAULT_NETWORK: &str = "dibbler";
-
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-#[clap(propagate_version = true)]
-pub(crate) struct Cli {
-    #[clap(flatten)]
-    pub common: CommonCliArgs,
-    /// Enable tracing
-    #[clap(long, aliases = &["tracing", "enable-tracing"])]
-    pub tracing_enabled: bool,
-    /// Supply a network (overrides existing configuration)
-    #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
-    pub network: String,
-    /// Debug a contract definition file
-    #[clap(long)]
-    pub debug_file: Option<PathBuf>,
-}
-
-impl Cli {
-    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
-        let mut overrides = self.common.config_property_overrides();
-        overrides.push(("validator_node.override_from".to_string(), self.network.clone()));
-        overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
-        overrides
-    }
+#[derive(Serialize, Deserialize)]
+pub struct DebugDefinition {
+    pub contract_name: String,
+    pub committee: Vec<PublicKey>,
+    // TODO: change to contract od
+    pub public_key: PublicKey,
 }
