@@ -30,7 +30,7 @@ use tari_script::{ExecutionStack, TariScript};
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
 
 impl ConsensusEncoding for TariScript {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         self.as_bytes().consensus_encode(writer)
     }
 }
@@ -53,7 +53,7 @@ impl ConsensusDecoding for TariScript {
 }
 
 impl ConsensusEncoding for ExecutionStack {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         self.as_bytes().consensus_encode(writer)
     }
 }

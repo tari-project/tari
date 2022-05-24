@@ -59,8 +59,9 @@ bitflags! {
 }
 
 impl ConsensusEncoding for OutputFlags {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write(&self.bits.to_le_bytes())
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_all(&self.bits.to_le_bytes())?;
+        Ok(())
     }
 }
 

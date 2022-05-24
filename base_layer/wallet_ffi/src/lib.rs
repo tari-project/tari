@@ -204,6 +204,8 @@ pub struct TariContacts(Vec<TariContact>);
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
+pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;
+pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
@@ -6630,6 +6632,278 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
     }
 }
 
+/// ------------------------------------- FeePerGramStats ------------------------------------ ///
+
+/// Get the TariFeePerGramStats from a TariWallet.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `count` - The maximum number of blocks to be checked
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// wallet is null or an error is encountered.
+///
+/// # Safety
+/// The ```fee_per_gram_stats_destroy``` method must be called when finished with a TariFeePerGramStats to prevent
+/// a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
+    wallet: *mut TariWallet,
+    count: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariFeePerGramStats {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_fee_per_gram_stats_per_block(count as usize),
+    ) {
+        Ok(estimates) => Box::into_raw(Box::new(estimates)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error getting the fee estimates: {:?}", e);
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Get length of stats from the TariFeePerGramStats.
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter
+///
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_get_length(
+    fee_per_gram_stats: *mut TariFeePerGramStats,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut len = 0;
+    if fee_per_gram_stats.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stats".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        len = (*fee_per_gram_stats).stats.len();
+    }
+    len as c_uint
+}
+
+/// Get TariFeePerGramStat at position from the TariFeePerGramStats.
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats.
+/// `position` - The integer position.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the TariFeePerGramStat, note that it returns ptr::null_mut() if
+/// fee_per_gram_stats is null or an error is encountered.
+///
+/// # Safety
+/// The ```fee_per_gram_stat_destroy``` method must be called when finished with a TariCompletedTransactions to 4prevent
+/// a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_get_at(
+    fee_per_gram_stats: *mut TariFeePerGramStats,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariFeePerGramStat {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if fee_per_gram_stats.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stats".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let len = fee_per_gram_stats_get_length(fee_per_gram_stats, error_out);
+    if *error_out != 0 {
+        return ptr::null_mut();
+    }
+    if len == 0 || position > len - 1 {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new((*fee_per_gram_stats).stats[position as usize].clone()))
+}
+
+/// Frees memory for a TariFeePerGramStats
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStats pointer
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut TariFeePerGramStats) {
+    if !fee_per_gram_stats.is_null() {
+        Box::from_raw(fee_per_gram_stats);
+    }
+}
+
+/// ------------------------------------------------------------------------------------------ ///
+
+/// ------------------------------------- FeePerGramStat ------------------------------------- ///
+
+/// Get the order of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns order
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_order(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut order = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        order = (*fee_per_gram_stat).order;
+    }
+    order
+}
+
+/// Get the minimum fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns minimum fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_min_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).min_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Get the average fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns average fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_avg_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).avg_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Get the maximum fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns maximum fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).max_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Frees memory for a TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat) {
+    if !fee_per_gram_stat.is_null() {
+        Box::from_raw(fee_per_gram_stat);
+    }
+}
+
+/// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
     use std::{

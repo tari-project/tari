@@ -33,12 +33,11 @@ impl<'a> CovenantTokenEncoder<'a> {
         Self { tokens }
     }
 
-    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = 0;
+    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         for token in self.tokens {
-            written += token.write_to(writer)?;
+            token.write_to(writer)?;
         }
-        Ok(written)
+        Ok(())
     }
 }
 
@@ -69,9 +68,8 @@ mod tests {
     fn it_encodes_empty_tokens() {
         let encoder = CovenantTokenEncoder::new(&[]);
         let mut buf = Vec::<u8>::new();
-        let written = encoder.write_to(&mut buf).unwrap();
+        encoder.write_to(&mut buf).unwrap();
         assert_eq!(buf, [] as [u8; 0]);
-        assert_eq!(written, 0);
     }
 
     #[test]
@@ -79,9 +77,8 @@ mod tests {
         let covenant = covenant!(and(identity(), or(identity())));
         let encoder = CovenantTokenEncoder::new(covenant.tokens());
         let mut buf = Vec::<u8>::new();
-        let written = encoder.write_to(&mut buf).unwrap();
+        encoder.write_to(&mut buf).unwrap();
         assert_eq!(buf, [FILTER_AND, FILTER_IDENTITY, FILTER_OR, FILTER_IDENTITY]);
-        assert_eq!(written, 4);
     }
 
     #[test]
@@ -90,7 +87,7 @@ mod tests {
         let covenant = covenant!(field_eq(@field::features, @hash(dummy)));
         let encoder = CovenantTokenEncoder::new(covenant.tokens());
         let mut buf = Vec::<u8>::new();
-        let written = encoder.write_to(&mut buf).unwrap();
+        encoder.write_to(&mut buf).unwrap();
         assert_eq!(buf[..4], [
             FILTER_FIELD_EQ,
             ARG_OUTPUT_FIELD,
@@ -98,7 +95,6 @@ mod tests {
             ARG_HASH
         ]);
         assert_eq!(buf[4..], [0u8; 32]);
-        assert_eq!(written, 36);
     }
 
     mod covenant_write_ext {

@@ -300,29 +300,29 @@ impl OutputFeatures {
 }
 
 impl ConsensusEncoding for OutputFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.maturity.consensus_encode(writer)?;
-        written += self.flags.consensus_encode(writer)?;
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.maturity.consensus_encode(writer)?;
+        self.flags.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
             OutputFeaturesVersion::V1 => {
-                written += OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
+                OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
             },
         }
-        written += self.parent_public_key.consensus_encode(writer)?;
-        written += self.unique_id.consensus_encode(writer)?;
-        written += self.asset.consensus_encode(writer)?;
-        written += self.mint_non_fungible.consensus_encode(writer)?;
-        written += self.sidechain_checkpoint.consensus_encode(writer)?;
-        written += self.metadata.consensus_encode(writer)?;
+        self.parent_public_key.consensus_encode(writer)?;
+        self.unique_id.consensus_encode(writer)?;
+        self.asset.consensus_encode(writer)?;
+        self.mint_non_fungible.consensus_encode(writer)?;
+        self.sidechain_checkpoint.consensus_encode(writer)?;
+        self.metadata.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
             OutputFeaturesVersion::V1 => {
-                written += self.committee_definition.consensus_encode(writer)?;
+                self.committee_definition.consensus_encode(writer)?;
             },
         }
-        Ok(written)
+        Ok(())
     }
 }
 

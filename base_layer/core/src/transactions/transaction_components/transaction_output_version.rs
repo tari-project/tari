@@ -64,9 +64,9 @@ impl TryFrom<u8> for TransactionOutputVersion {
 }
 
 impl ConsensusEncoding for TransactionOutputVersion {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         writer.write_all(&[self.as_u8()])?;
-        Ok(1)
+        Ok(())
     }
 }
 
@@ -89,9 +89,9 @@ impl ConsensusDecoding for TransactionOutputVersion {
 
 #[cfg(test)]
 mod test {
-    use std::io::Cursor;
 
     use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
 
     #[test]
     fn test_try_from() {
@@ -101,23 +101,7 @@ mod test {
     }
 
     #[test]
-    fn test_consensus() {
-        let mut buffer = Cursor::new(vec![
-            0;
-            TransactionOutputVersion::get_current_version()
-                .consensus_encode_exact_size()
-        ]);
-        assert_eq!(
-            TransactionOutputVersion::get_current_version()
-                .consensus_encode(&mut buffer)
-                .unwrap(),
-            TransactionOutputVersion::get_current_version().consensus_encode_exact_size()
-        );
-        // Reset the buffer to original position, we are going to read.
-        buffer.set_position(0);
-        assert_eq!(
-            TransactionOutputVersion::consensus_decode(&mut buffer).unwrap(),
-            TransactionOutputVersion::get_current_version()
-        );
+    fn test_consensus_encoding() {
+        check_consensus_encoding_correctness(TransactionOutputVersion::get_current_version()).unwrap();
     }
 }

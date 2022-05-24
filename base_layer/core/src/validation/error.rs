@@ -114,6 +114,8 @@ pub enum ValidationError {
     CovenantError(#[from] CovenantError),
     #[error("Invalid or unsupported blockchain version {version}")]
     InvalidBlockchainVersion { version: u16 },
+    #[error("Standard transaction contains coinbase output")]
+    ErroneousCoinbaseOutput,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
