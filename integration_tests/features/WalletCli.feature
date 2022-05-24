@@ -152,7 +152,8 @@ Feature: Wallet CLI
         And mining node MINE mines 1 blocks
         Then WALLET is connected to BASE
 
-     Scenario: As a user I want to publish a contract definition via command line
+    @dan_layer
+    Scenario: As a user I want to publish a contract definition via command line
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
         And I have mining node MINE connected to base node BASE and wallet WALLET
