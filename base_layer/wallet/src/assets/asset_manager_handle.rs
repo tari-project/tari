@@ -24,10 +24,14 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    ContractDefinitionFeatures,
+    OutputFeatures,
+    TemplateParameter,
+    Transaction,
+};
 use tari_service_framework::{reply_channel::SenderService, Service};
 
-use super::ContractDefinition;
 use crate::{
     assets::{
         infrastructure::{AssetManagerRequest, AssetManagerResponse},
@@ -197,7 +201,7 @@ impl AssetManagerHandle {
 
     pub async fn create_contract_definition(
         &mut self,
-        contract_definition: &ContractDefinition,
+        contract_definition: &ContractDefinitionFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle

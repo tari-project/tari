@@ -28,8 +28,9 @@ use tari_common_types::{
     array::copy_into_fixed_array_lossy,
     types::{FixedHash, PublicKey},
 };
+use tari_utilities::Hashable;
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter, MaxSizeVec};
 
 // Maximum number of functions allowed in a contract specification
 const MAX_FUNCTIONS: usize = u16::MAX as usize;
@@ -37,12 +38,34 @@ const MAX_FUNCTIONS: usize = u16::MAX as usize;
 // Fixed lenght of all string fields in the contract definition
 const STR_LEN: usize = 32;
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractDefinitionFeatures {
     pub contract_id: FixedHash,
     pub contract_name: Vec<u8>,
     pub contract_issuer: PublicKey,
     pub contract_spec: ContractSpecification,
+}
+
+impl ContractDefinitionFeatures {
+    pub fn new(contract_name: Vec<u8>, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
+        let contract_id = ConsensusHashWriter::default()
+            .chain(&contract_name)
+            .chain(&contract_spec)
+            .finalize();
+
+        Self {
+            contract_id,
+            contract_name,
+            contract_issuer,
+            contract_spec,
+        }
+    }
+}
+
+impl Hashable for ContractDefinitionFeatures {
+    fn hash(&self) -> Vec<u8> {
+        ConsensusHashWriter::default().chain(self).finalize().to_vec()
+    }
 }
 
 impl ConsensusEncoding for ContractDefinitionFeatures {
@@ -81,10 +104,16 @@ impl ConsensusDecoding for ContractDefinitionFeatures {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractSpecification {
     pub runtime: Vec<u8>,
     pub public_functions: Vec<PublicFunction>,
+}
+
+impl Hashable for ContractSpecification {
+    fn hash(&self) -> Vec<u8> {
+        ConsensusHashWriter::default().chain(self).finalize().to_vec()
+    }
 }
 
 impl ConsensusEncoding for ContractSpecification {
@@ -119,10 +148,16 @@ impl ConsensusDecoding for ContractSpecification {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct PublicFunction {
     pub name: Vec<u8>,
     pub function: FunctionRef,
+}
+
+impl Hashable for PublicFunction {
+    fn hash(&self) -> Vec<u8> {
+        ConsensusHashWriter::default().chain(self).finalize().to_vec()
+    }
 }
 
 impl ConsensusEncoding for PublicFunction {
@@ -149,10 +184,16 @@ impl ConsensusDecoding for PublicFunction {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct FunctionRef {
     pub template_id: FixedHash,
     pub function_id: u16,
+}
+
+impl Hashable for FunctionRef {
+    fn hash(&self) -> Vec<u8> {
+        ConsensusHashWriter::default().chain(self).finalize().to_vec()
+    }
 }
 
 impl ConsensusEncoding for FunctionRef {
@@ -189,32 +230,31 @@ mod test {
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
-        let subject = ContractDefinitionFeatures {
-            contract_id: [1u8; 32],
-            contract_name: str_to_padded_vec("contract_name"),
-            contract_issuer: PublicKey::default(),
-            contract_spec: ContractSpecification {
-                runtime: str_to_padded_vec("runtime"),
-                public_functions: vec![
-                    PublicFunction {
-                        name: str_to_padded_vec("foo"),
-                        function: FunctionRef {
-                            template_id: [1u8; 32],
-                            function_id: 0_u16,
-                        },
+        let contract_name = str_to_padded_vec("contract_name");
+        let contract_issuer = PublicKey::default();
+        let contract_spec = ContractSpecification {
+            runtime: str_to_padded_vec("runtime"),
+            public_functions: vec![
+                PublicFunction {
+                    name: str_to_padded_vec("foo"),
+                    function: FunctionRef {
+                        template_id: [1u8; 32],
+                        function_id: 0_u16,
                     },
-                    PublicFunction {
-                        name: str_to_padded_vec("bar"),
-                        function: FunctionRef {
-                            template_id: [1u8; 32],
-                            function_id: 1_u16,
-                        },
+                },
+                PublicFunction {
+                    name: str_to_padded_vec("bar"),
+                    function: FunctionRef {
+                        template_id: [1u8; 32],
+                        function_id: 1_u16,
                     },
-                ],
-            },
+                },
+            ],
         };
 
-        check_consensus_encoding_correctness(subject).unwrap();
+        let contract_definition = ContractDefinitionFeatures::new(contract_name, contract_issuer, contract_spec);
+
+        check_consensus_encoding_correctness(contract_definition).unwrap();
     }
 
     fn str_to_padded_vec(s: &str) -> Vec<u8> {

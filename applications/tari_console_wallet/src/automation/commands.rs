@@ -41,7 +41,7 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{TransactionOutput, UnblindedOutput},
+    transaction_components::{ContractDefinitionFeatures, TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
@@ -920,23 +920,24 @@ pub async fn command_runner(
                 // parse the JSON file
                 let contract_definition: ContractDefinition =
                     serde_json::from_reader(file_reader).map_err(|e| CommandError::JSONFile(e.to_string()))?;
+                let contract_definition_features = ContractDefinitionFeatures::from(contract_definition);
+                let contract_id_hex = contract_definition_features.contract_id.to_vec().to_hex();
 
                 // create the contract definition transaction
                 let mut asset_manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = asset_manager.create_contract_definition(&contract_definition).await?;
+                let (tx_id, transaction) = asset_manager
+                    .create_contract_definition(&contract_definition_features)
+                    .await?;
 
                 // publish the contract definition transaction
-                let message = format!(
-                    "Contract definition for contract with id={}",
-                    contract_definition.contract_id
-                );
+                let message = format!("Contract definition for contract with id={}", contract_id_hex);
                 transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
 
                 println!(
                     "Contract definition transaction submitted with tx_id={} for contract with contract_id={}",
-                    tx_id, contract_definition.contract_id
+                    tx_id, contract_id_hex
                 );
                 println!("Done!");
             },

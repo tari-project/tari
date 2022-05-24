@@ -33,7 +33,6 @@ use tari_core::transactions::transaction_components::{
     Transaction,
 };
 
-use super::ContractDefinition;
 use crate::{
     assets::Asset,
     error::WalletError,
@@ -281,13 +280,11 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
     pub async fn create_contract_definition(
         &mut self,
-        contract_definition: ContractDefinition,
+        contract_definition: ContractDefinitionFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
-        let features = ContractDefinitionFeatures::from(contract_definition);
-
         let output = self
             .output_manager
-            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition(features))
+            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition(contract_definition))
             .await?;
 
         let (tx_id, transaction) = self

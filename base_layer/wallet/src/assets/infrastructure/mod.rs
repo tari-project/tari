@@ -26,9 +26,13 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    ContractDefinitionFeatures,
+    OutputFeatures,
+    TemplateParameter,
+    Transaction,
+};
 
-use super::ContractDefinition;
 use crate::assets::Asset;
 
 pub mod initializer;
@@ -70,7 +74,7 @@ pub enum AssetManagerRequest {
         is_initial: bool,
     },
     CreateContractDefinition {
-        contract_definition: Box<ContractDefinition>,
+        contract_definition: Box<ContractDefinitionFeatures>,
     },
 }
 
