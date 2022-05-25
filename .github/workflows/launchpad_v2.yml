@@ -61,6 +61,7 @@ jobs:
       - name: yarn tauri build
         run: |
           cd applications/launchpad
+          yarn install
           yarn tauri build
       - name: Upload the test coverage
         uses: actions/upload-artifact@v2
