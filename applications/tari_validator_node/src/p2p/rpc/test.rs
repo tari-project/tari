@@ -22,11 +22,10 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_comms::{protocol::rpc::mock::RpcRequestMock, test_utils};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
-    fixed_hash::FixedHash,
     models::{Node, TreeNodeHash},
     services::mocks::{MockAssetProcessor, MockMempoolService},
     storage::{chain::ChainDbUnitOfWork, mocks::MockDbFactory, DbFactory},
