@@ -24,7 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::{
     array::copy_into_fixed_array,
-    types::{Commitment, PublicKey, BLOCK_HASH_LENGTH},
+    types::{Commitment, FixedHash, PublicKey},
 };
 use tari_core::transactions::transaction_components::{
     vec_into_fixed_string,
@@ -233,8 +233,7 @@ impl TryFrom<grpc::ContractDefinitionFeatures> for ContractDefinitionFeatures {
     type Error = String;
 
     fn try_from(value: grpc::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
-        let mut contract_id = [0u8; BLOCK_HASH_LENGTH];
-        contract_id.copy_from_slice(&value.contract_id[0..BLOCK_HASH_LENGTH]);
+        let contract_id = FixedHash::try_from(value.contract_id).map_err(|err| format!("{:?}", err))?;
 
         let contract_name = vec_into_fixed_string(value.contract_name);
 
@@ -329,8 +328,7 @@ impl TryFrom<grpc::FunctionRef> for FunctionRef {
     type Error = String;
 
     fn try_from(value: grpc::FunctionRef) -> Result<Self, Self::Error> {
-        let mut template_id = [0u8; BLOCK_HASH_LENGTH];
-        template_id.copy_from_slice(&value.template_id[0..BLOCK_HASH_LENGTH]);
+        let template_id = FixedHash::try_from(value.template_id).map_err(|err| format!("{:?}", err))?;
 
         let function_id = u16::try_from(value.function_id).map_err(|_| "Invalid function_id: overflowed u16")?;
 

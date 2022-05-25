@@ -55,10 +55,11 @@ impl ContractDefinitionFeatures {
     pub fn new(contract_name: Vec<u8>, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
         let contract_name = vec_into_fixed_string(contract_name);
 
-        let contract_id = ConsensusHashWriter::default()
+        let contract_id: FixedHash = ConsensusHashWriter::default()
             .chain(&contract_name)
             .chain(&contract_spec)
-            .finalize();
+            .finalize()
+            .into();
 
         Self {
             contract_id,
@@ -249,14 +250,14 @@ mod test {
                 PublicFunction {
                     name: str_to_fixed_string("foo"),
                     function: FunctionRef {
-                        template_id: [1u8; 32],
+                        template_id: FixedHash::zero(),
                         function_id: 0_u16,
                     },
                 },
                 PublicFunction {
                     name: str_to_fixed_string("bar"),
                     function: FunctionRef {
-                        template_id: [1u8; 32],
+                        template_id: FixedHash::zero(),
                         function_id: 1_u16,
                     },
                 },

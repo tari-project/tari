@@ -468,8 +468,7 @@ impl TryFrom<proto::types::ContractDefinitionFeatures> for ContractDefinitionFea
     type Error = String;
 
     fn try_from(value: proto::types::ContractDefinitionFeatures) -> Result<Self, Self::Error> {
-        let mut contract_id = [0u8; BLOCK_HASH_LENGTH];
-        contract_id.copy_from_slice(&value.contract_id[0..BLOCK_HASH_LENGTH]);
+        let contract_id = FixedHash::try_from(value.contract_id).map_err(|err| format!("{:?}", err))?;
 
         let contract_name = vec_into_fixed_string(value.contract_name);
 
@@ -564,9 +563,7 @@ impl TryFrom<proto::types::FunctionRef> for FunctionRef {
     type Error = String;
 
     fn try_from(value: proto::types::FunctionRef) -> Result<Self, Self::Error> {
-        let mut template_id = [0u8; BLOCK_HASH_LENGTH];
-        template_id.copy_from_slice(&value.template_id[0..BLOCK_HASH_LENGTH]);
-
+        let template_id = FixedHash::try_from(value.template_id).map_err(|err| format!("{:?}", err))?;
         let function_id = u16::try_from(value.function_id).map_err(|_| "Invalid function_id: overflowed u16")?;
 
         Ok(Self {
