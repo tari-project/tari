@@ -32,7 +32,11 @@ use futures::FutureExt;
 use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::TxId,
+    types::{FixedHash, PublicKey},
+};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -839,12 +843,9 @@ pub async fn command_runner(
                 }?;
 
                 let merkle_root = match parsed.args.get(1) {
-                    Some(ParsedArgument::Text(ref root)) => {
-                        let bytes = match &root[0..2] {
-                            "0x" => Vec::<u8>::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
-                            _ => Vec::<u8>::from_hex(root).map_err(|_| CommandError::Argument)?,
-                        };
-                        copy_into_fixed_array(&bytes).map_err(|_| CommandError::Argument)?
+                    Some(ParsedArgument::Text(ref root)) => match &root[0..2] {
+                        "0x" => FixedHash::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
+                        _ => FixedHash::from_hex(root).map_err(|_| CommandError::Argument)?,
                     },
                     _ => return Err(CommandError::Argument),
                 };

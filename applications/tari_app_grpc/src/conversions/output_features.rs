@@ -193,7 +193,10 @@ impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures 
             .collect::<Result<_, _>>()?;
         let merkle_root = copy_into_fixed_array(&value.merkle_root).map_err(|_| "Invalid merkle_root length")?;
 
-        Ok(Self { merkle_root, committee })
+        Ok(Self {
+            merkle_root: merkle_root.into(),
+            committee,
+        })
     }
 }
 

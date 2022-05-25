@@ -23,12 +23,10 @@
 use std::fmt::Debug;
 
 use digest::Digest;
+use tari_common_types::types::FixedHash;
 use tari_crypto::common::Blake256;
 
-use crate::{
-    fixed_hash::FixedHash,
-    models::{ConsensusHash, Instruction, InstructionSet, Payload},
-};
+use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload};
 
 #[derive(Debug, Clone)]
 pub struct TariDanPayload {
