@@ -28,14 +28,14 @@ use tari_utilities::hex::Hex;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ContractDefinition {
     pub contract_name: String,
-    pub contract_issuer: String,
+    pub contract_issuer: PublicKey,
     pub contract_spec: ContractSpecification,
 }
 
 impl From<ContractDefinition> for tari_core::transactions::transaction_components::ContractDefinitionFeatures {
     fn from(value: ContractDefinition) -> Self {
         let contract_name = value.contract_name.into_bytes();
-        let contract_issuer = PublicKey::from_hex(&value.contract_issuer).unwrap();
+        let contract_issuer = value.contract_issuer;
         let contract_spec = value.contract_spec.into();
 
         Self::new(contract_name, contract_issuer, contract_spec)
