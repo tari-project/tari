@@ -36,18 +36,21 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 const MAX_FUNCTIONS: usize = u16::MAX as usize;
 
 // Fixed length of all string fields in the contract definition
-const STR_LEN: usize = 32;
+pub const STR_LEN: usize = 32;
+type FixedString = [u8; STR_LEN];
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractDefinitionFeatures {
     pub contract_id: FixedHash,
-    pub contract_name: Vec<u8>,
+    pub contract_name: FixedString,
     pub contract_issuer: PublicKey,
     pub contract_spec: ContractSpecification,
 }
 
 impl ContractDefinitionFeatures {
     pub fn new(contract_name: Vec<u8>, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
+        let contract_name = copy_into_fixed_array_lossy::<_, STR_LEN>(&contract_name);
+
         let contract_id = ConsensusHashWriter::default()
             .chain(&contract_name)
             .chain(&contract_spec)
@@ -60,6 +63,10 @@ impl ContractDefinitionFeatures {
             contract_spec,
         }
     }
+
+    pub const fn str_byte_size() -> usize {
+        STR_LEN
+    }
 }
 
 impl Hashable for ContractDefinitionFeatures {
@@ -71,7 +78,7 @@ impl Hashable for ContractDefinitionFeatures {
 impl ConsensusEncoding for ContractDefinitionFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.contract_id.consensus_encode(writer)?;
-        copy_into_fixed_array_lossy::<_, STR_LEN>(&self.contract_name).consensus_encode(writer)?;
+        self.contract_name.consensus_encode(writer)?;
         self.contract_issuer.consensus_encode(writer)?;
         self.contract_spec.consensus_encode(writer)?;
 
@@ -91,7 +98,7 @@ impl ConsensusEncodingSized for ContractDefinitionFeatures {
 impl ConsensusDecoding for ContractDefinitionFeatures {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let contract_id = FixedHash::consensus_decode(reader)?;
-        let contract_name: Vec<u8> = <[u8; STR_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        let contract_name = FixedString::consensus_decode(reader)?;
         let contract_issuer = PublicKey::consensus_decode(reader)?;
         let contract_spec = ContractSpecification::consensus_decode(reader)?;
 
