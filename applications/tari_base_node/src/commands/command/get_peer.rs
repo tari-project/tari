@@ -90,6 +90,7 @@ impl CommandContext {
         });
         println!("User agent: {}", peer.user_agent);
         println!("Features: {:?}", peer.features);
+        println!("Flags: {:?}", peer.flags);
         println!("Supported protocols:");
         peer.supported_protocols.iter().for_each(|p| {
             println!("- {}", String::from_utf8_lossy(p));

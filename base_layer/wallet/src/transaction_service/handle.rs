@@ -33,9 +33,13 @@ use tari_common_types::{
     types::PublicKey,
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction_components::{Transaction, TransactionOutput},
+use tari_core::{
+    mempool::FeePerGramStat,
+    proto,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{Transaction, TransactionOutput},
+    },
 };
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -107,6 +111,10 @@ pub enum TransactionServiceRequest {
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
     ReValidateTransactions,
+    /// Returns the fee per gram estimates for the next {count} blocks.
+    GetFeePerGramStatsPerBlock {
+        count: usize,
+    },
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -176,8 +184,11 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetNumConfirmationsRequired => f.write_str("GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
-            TransactionServiceRequest::ValidateTransactions => f.write_str("ValidateTransactions"),
-            TransactionServiceRequest::ReValidateTransactions => f.write_str("ReValidateTransactions"),
+            Self::ValidateTransactions => f.write_str("ValidateTransactions"),
+            Self::ReValidateTransactions => f.write_str("ReValidateTransactions"),
+            Self::GetFeePerGramStatsPerBlock { count } => {
+                write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
+            },
         }
     }
 }
@@ -206,6 +217,7 @@ pub enum TransactionServiceResponse {
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
+    FeePerGramStatsPerBlock(FeePerGramStatsResponse),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -345,6 +357,20 @@ impl fmt::Display for TransactionEvent {
 
 pub type TransactionEventSender = broadcast::Sender<Arc<TransactionEvent>>;
 pub type TransactionEventReceiver = broadcast::Receiver<Arc<TransactionEvent>>;
+
+#[derive(Debug, Clone, Default)]
+pub struct FeePerGramStatsResponse {
+    pub stats: Vec<FeePerGramStat>,
+}
+
+impl From<proto::base_node::GetMempoolFeePerGramStatsResponse> for FeePerGramStatsResponse {
+    fn from(value: proto::base_node::GetMempoolFeePerGramStatsResponse) -> Self {
+        Self {
+            stats: value.stats.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 /// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running
 /// Transaction Service
 #[derive(Clone)]
@@ -776,6 +802,21 @@ impl TransactionServiceHandle {
                 let (tx_id, pre_image, output) = *boxed;
                 Ok((tx_id, pre_image, output))
             },
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Query the base node for the fee per gram stats of the next {count} blocks.
+    pub async fn get_fee_per_gram_stats_per_block(
+        &mut self,
+        count: usize,
+    ) -> Result<FeePerGramStatsResponse, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetFeePerGramStatsPerBlock { count })
+            .await??
+        {
+            TransactionServiceResponse::FeePerGramStatsPerBlock(resp) => Ok(resp),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

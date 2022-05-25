@@ -218,15 +218,16 @@ impl DhtConnectivity {
                 matches!(ip, Some(multiaddr::Protocol::Ip4(_))) && matches!(tcp, Some(multiaddr::Protocol::Tcp(_)))
             })
             .count();
+
         let current_ratio = num_tcp_nodes as f32 / conns.len() as f32;
         if current_ratio < desired_ratio {
             warn!(
                 target: LOG_TARGET,
-                "{}% of this node's {} connections are using TCPv4. This node requires at least {}% of nodes to be \
-                 TCP nodes.",
-                (current_ratio * 100.0).round() as i64,
+                "{:.1?}% of this node's {} connections are using TCPv4. This node requires at least {:.1?}% of nodes \
+                 to be TCP nodes.",
+                (current_ratio * 100.0).round(),
                 conns.len(),
-                (desired_ratio * 100.0).round() as i64,
+                (desired_ratio * 100.0).round(),
             );
         }
 

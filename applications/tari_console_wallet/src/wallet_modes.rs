@@ -92,14 +92,14 @@ impl PeerConfig {
             Ok(self
                 .base_node_peers
                 .first()
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"Configured base node peer has no address!"))?
+                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node peer has no address!"))?
                 .clone())
         } else if !self.peer_seeds.is_empty() {
             // pick a random peer seed
             Ok(self
                 .peer_seeds
                 .choose(&mut OsRng)
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"Peer seeds was empty."))?
+                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Peer seeds was empty."))?
                 .clone())
         } else {
             Err(ExitError::new(
@@ -166,10 +166,10 @@ pub(crate) fn script_mode(
 ) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting wallet script mode");
     println!("Starting wallet script mode");
-    let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, &e))?;
+    let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
 
     if script.is_empty() {
-        return Err(ExitError::new(ExitCode::InputError, &"Input file is empty!"));
+        return Err(ExitError::new(ExitCode::InputError, "Input file is empty!"));
     };
 
     let mut commands = Vec::new();
@@ -222,7 +222,7 @@ fn wallet_or_exit(
         let mut buf = String::new();
         std::io::stdin()
             .read_line(&mut buf)
-            .map_err(|e| ExitError::new(ExitCode::IOError, &e))?;
+            .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
 
         match buf.as_str().trim() {
             "quit" | "q" | "exit" => {
@@ -258,7 +258,7 @@ pub fn tui_mode(
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
     } else {
-        return Err(ExitError::new(ExitCode::WalletError, &"Could not select a base node"));
+        return Err(ExitError::new(ExitCode::WalletError, "Could not select a base node"));
     }
 
     let app = App::<CrosstermBackend<Stdout>>::new(
@@ -341,7 +341,7 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
         let grpc = WalletGrpcServer::new(wallet);
         handle
             .block_on(run_grpc(grpc, grpc_address.clone()))
-            .map_err(|e| ExitError::new(ExitCode::GrpcError, &e))?;
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
         println!("No grpc address specified");
     }

@@ -1,5 +1,77 @@
 # Changelog
 
+All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+### [0.32.3](https://github.com/tari-project/tari/compare/v0.32.1...v0.32.2) (2022-05-23)
+
+
+### Features
+
+* loosen ffi import utxo requirements ([#4126](https://github.com/tari-project/tari/issues/4126)) ([83a6fd9](https://github.com/tari-project/tari/commit/83a6fd97fbb137d9d8a1eb21466c3dbdcc16aec2))
+
+### [0.32.1](https://github.com/tari-project/tari/compare/v0.32.0...v0.32.1) (2022-05-20)
+
+
+### Features
+
+* add FeePerGramStats to ffi library ([#4114](https://github.com/tari-project/tari/issues/4114)) ([6f14034](https://github.com/tari-project/tari/commit/6f14034d89356a2b634e89a7e61c63332c206feb))
+* add mempool fee per gram stats to transaction service ([#4105](https://github.com/tari-project/tari/issues/4105)) ([34fd58a](https://github.com/tari-project/tari/commit/34fd58a2ae1399b19956828bf71bab7469662977))
+* **dht:** add feature to optionally bundle sqlite ([#4104](https://github.com/tari-project/tari/issues/4104)) ([498248e](https://github.com/tari-project/tari/commit/498248e2603fc3105bdb1c1233de522a82cf74a5))
+* **wallet_ffi:** new ffi method to create covenant ([#4115](https://github.com/tari-project/tari/issues/4115)) ([121149a](https://github.com/tari-project/tari/commit/121149a72f33fae4853fa6dab746eae8485c161c))
+* **wallet_ffi:** new ffi method to create output features (fixed flag size for dibbler) ([#4118](https://github.com/tari-project/tari/issues/4118)) ([cf3a1e6](https://github.com/tari-project/tari/commit/cf3a1e6e16ba3acf65d09e497a93091697130c46))
+
+
+### Bug Fixes
+
+* **core:** set reorg metrics on header sync rewind ([#4087](https://github.com/tari-project/tari/issues/4087)) ([354bae2](https://github.com/tari-project/tari/commit/354bae285630bc503abd856d27f87a6275f1f6e0))
+* possible overflow in difficulty calculation (fixes [#3923](https://github.com/tari-project/tari/issues/3923)) ([#4090](https://github.com/tari-project/tari/issues/4090)) ([e8d1091](https://github.com/tari-project/tari/commit/e8d1091bc3200a304d5527eb47f97a7cf6b561c4))
+* single allocation for block header consensus encoding ([#4101](https://github.com/tari-project/tari/issues/4101)) ([aa85738](https://github.com/tari-project/tari/commit/aa857383c5a32be84c269fde1703070e074ef2de))
+* tx importing status to correctly reflect the origin ([#4119](https://github.com/tari-project/tari/issues/4119)) ([63a0df6](https://github.com/tari-project/tari/commit/63a0df62a2d4ed5edf910b039443cd697e6c03ab))
+* **wallet header:** remove function argument ([#4092](https://github.com/tari-project/tari/issues/4092)) ([cf91e91](https://github.com/tari-project/tari/commit/cf91e915fafd6dd7319d0981b07832ef3cc58d35))
+* **wallet:** add default value for wait stage ([#4089](https://github.com/tari-project/tari/issues/4089)) ([810d9ff](https://github.com/tari-project/tari/commit/810d9ff60ccc512419f5d42030ac13d6fe9af405))
+* **wallet:** use network specified by cli/envvar in console wallet ([#4096](https://github.com/tari-project/tari/issues/4096)) ([7f2252a](https://github.com/tari-project/tari/commit/7f2252a453c86914e04afa836b0d1597fb453db8))
+
+## [0.32.0](https://github.com/tari-project/tari/compare/v0.31.1...v0.32.0) (2022-05-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* major config rework. Config files should be recreated  (#4006)
+
+### Features
+
+* allow network to be set by TARI_NETWORK env var ([#4073](https://github.com/tari-project/tari/issues/4073)) ([c27be5c](https://github.com/tari-project/tari/commit/c27be5cdf132c9c4f3a2806c070be1765b41fa61))
+* **collectibles:** add list assets command ([#3908](https://github.com/tari-project/tari/issues/3908)) ([5b726a6](https://github.com/tari-project/tari/commit/5b726a6bc47bc2024ae743a772b67c17dee4f988))
+* **merge mining proxy:** check achieved Monero difficulty before submitting to Tari basenode ([#4019](https://github.com/tari-project/tari/issues/4019)) ([b09fa76](https://github.com/tari-project/tari/commit/b09fa768e2538c2dfdaaee73cb31353b78c03ba3))
+* **p2p:** adds tor.forward_address setting ([#4070](https://github.com/tari-project/tari/issues/4070)) ([8c78717](https://github.com/tari-project/tari/commit/8c7871761e8fb604092f462a4e8e76fa2a103b7a))
+* **tari_explorer:** add total hashrate chart ([#4054](https://github.com/tari-project/tari/issues/4054)) ([9e0ec36](https://github.com/tari-project/tari/commit/9e0ec361f5da8b9fff3a95c1a8ec162dfef6601a))
+
+
+### Bug Fixes
+
+* add Environment cfg source and remove --create-id ([#4018](https://github.com/tari-project/tari/issues/4018)) ([e59e657](https://github.com/tari-project/tari/commit/e59e6577a98e927d6123b704077425e7807d2b60))
+* **base-node:** assign correct base dir to tor identity ([#4081](https://github.com/tari-project/tari/issues/4081)) ([1464f8b](https://github.com/tari-project/tari/commit/1464f8b43fe3fd76faebfc556cec82e574e79deb))
+* **dht:** saf storage uses constructs correct msg hash ([#4003](https://github.com/tari-project/tari/issues/4003)) ([e1e7669](https://github.com/tari-project/tari/commit/e1e7669f629ad8dd1c5a65106dff4de96d60fdab))
+* **dht:** sets file default for DHT db ([#4030](https://github.com/tari-project/tari/issues/4030)) ([5b125e7](https://github.com/tari-project/tari/commit/5b125e702b9f6da79b0a4f8922dc002078470e46))
+* **dns-seeds:** use correct cloudflare resolver default ([#4029](https://github.com/tari-project/tari/issues/4029)) ([c95e589](https://github.com/tari-project/tari/commit/c95e58963aa5bdd123d83e373dd0197adfda38e5))
+* fix github integration tests ([#4008](https://github.com/tari-project/tari/issues/4008)) ([aa143c6](https://github.com/tari-project/tari/commit/aa143c6ae4b2b5e16924e353aafb1d3f75339228))
+* github actions ([#4014](https://github.com/tari-project/tari/issues/4014)) ([a03392e](https://github.com/tari-project/tari/commit/a03392e4d79475a2602a8e3e64a68d34cf6327a5))
+* ignore test that timeout in github action ([#4010](https://github.com/tari-project/tari/issues/4010)) ([6c5471e](https://github.com/tari-project/tari/commit/6c5471ed1a05b89bd451ff52007a07958ecd781a))
+* **key-manager:** remove floating point math from mnemonic code ([#4064](https://github.com/tari-project/tari/issues/4064)) ([c2d60b3](https://github.com/tari-project/tari/commit/c2d60b363e87a244ade83b29359d88c6a56c377d))
+* launchpad build docker images ([#4042](https://github.com/tari-project/tari/issues/4042)) ([50e2812](https://github.com/tari-project/tari/commit/50e281287f3456f50f64b10d0d6c4979f3cd472b))
+* **launchpad:** fix config presets ([#4028](https://github.com/tari-project/tari/issues/4028)) ([1b8b274](https://github.com/tari-project/tari/commit/1b8b274786bdf759fca70b8293860c2c41cd5e31))
+* long running and non critical github action ([#4009](https://github.com/tari-project/tari/issues/4009)) ([3b8cb8b](https://github.com/tari-project/tari/commit/3b8cb8ba237028fe848b7ee3771f91f729c26cd6))
+* makes header consensus encoding infallible ([#4045](https://github.com/tari-project/tari/issues/4045)) ([5ebf129](https://github.com/tari-project/tari/commit/5ebf129119761484a8aac323c5b6d8e32649beac))
+* only count base nodes in peers count in base node status ([#4039](https://github.com/tari-project/tari/issues/4039)) ([190d75a](https://github.com/tari-project/tari/commit/190d75ae4f4db65aa0d4622e21daa2cfc85b378d))
+* prevent seed peer address from being overwritten unless newer ([#4085](https://github.com/tari-project/tari/issues/4085)) ([59b76c3](https://github.com/tari-project/tari/commit/59b76c32b225d74d59817521c2c8c18bdca926bb))
+* support safe non-interactive mode ([#4072](https://github.com/tari-project/tari/issues/4072)) ([b34f79d](https://github.com/tari-project/tari/commit/b34f79d4ff4e73ab2574658eedea082573803330))
+* test_output_manager_sqlite_db(_encrypted) ([#4025](https://github.com/tari-project/tari/issues/4025)) ([7a6f980](https://github.com/tari-project/tari/commit/7a6f9809ac59151c4b7c170dc43d46e7a8c68331))
+* update daily test configuration ([#4049](https://github.com/tari-project/tari/issues/4049)) ([b15d682](https://github.com/tari-project/tari/commit/b15d682cd6675527e49aefdbbf6f0f0137571d76))
+* **wallet:** do not prompt for password if given in config ([#4040](https://github.com/tari-project/tari/issues/4040)) ([fc1aa65](https://github.com/tari-project/tari/commit/fc1aa650e985bce4166ceb226fa2880d48ec5021))
+* **wallet:** ensure block hash exists ([#4083](https://github.com/tari-project/tari/issues/4083)) ([a258984](https://github.com/tari-project/tari/commit/a258984154e5e84ffaf9f61b73a59e263650443a))
+* weird behaviour of dates in base node banned peers ([#4037](https://github.com/tari-project/tari/issues/4037)) ([7097185](https://github.com/tari-project/tari/commit/7097185c7f52161edd6aa7ddec7f4ab47449795f))
+
+
 
 ### [0.31.1](https://github.com/tari-project/tari/compare/v0.31.0...v0.31.1) (2022-04-06)
 
