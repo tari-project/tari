@@ -35,7 +35,7 @@ const persistedReducer = persistReducer(persistConfig, reducer)
 export const store =
   process.env.NODE_ENV === 'test'
     ? configureStore({
-        reducer: persistedReducer,
+        reducer,
         enhancers: [
           devToolsEnhancer({
             name: 'Tari Launchpad',
