@@ -53,7 +53,7 @@ describe('NodeBox', () => {
     render(
       <ThemeProvider theme={themes.light}>
         <NodeBox
-          tag={{ type: 'running', text: 'test' }}
+          tag={{ type: 'running', content: 'test' }}
           onHelpPromptClick={mock}
         />
       </ThemeProvider>,
