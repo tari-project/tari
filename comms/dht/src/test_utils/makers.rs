@@ -27,14 +27,10 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     transports::MemoryTransport,
-    types::{Challenge, CommsDatabase, CommsPublicKey, CommsSecretKey},
-    utils::signature,
+    types::{CommsDatabase, CommsPublicKey, CommsSecretKey},
     Bytes,
 };
-use tari_crypto::{
-    keys::PublicKey,
-    tari_utilities::{message_format::MessageFormat, ByteArray},
-};
+use tari_crypto::keys::PublicKey;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 use tari_test_utils::{paths::create_temporary_data_path, random};
 
@@ -42,8 +38,9 @@ use crate::{
     crypt,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
+    origin_mac::OriginMac,
     outbound::message::DhtOutboundMessage,
-    proto::envelope::{DhtEnvelope, DhtMessageType, OriginMac},
+    proto::envelope::{DhtEnvelope, DhtMessageType},
     version::DhtProtocolVersion,
 };
 
@@ -88,7 +85,7 @@ pub fn make_dht_header(
     let mut origin_mac = Vec::new();
 
     if include_origin {
-        let challenge = crypt::create_origin_mac_challenge_parts(
+        let challenge = crypt::create_message_challenge_parts(
             DhtProtocolVersion::latest(),
             &destination,
             DhtMessageType::None,
@@ -97,7 +94,7 @@ pub fn make_dht_header(
             Some(e_public_key),
             message,
         );
-        origin_mac = make_valid_origin_mac(node_identity, challenge);
+        origin_mac = make_valid_origin_mac(node_identity, &challenge);
         if flags.is_encrypted() {
             let shared_secret = crypt::generate_ecdh_secret(e_secret_key, node_identity.public_key());
             origin_mac = crypt::encrypt(&shared_secret, &origin_mac);
@@ -119,15 +116,10 @@ pub fn make_dht_header(
     }
 }
 
-pub fn make_valid_origin_mac(node_identity: &NodeIdentity, challenge: Challenge) -> Vec<u8> {
-    let mac = OriginMac {
-        public_key: node_identity.public_key().to_vec(),
-        signature: signature::sign_challenge(&mut OsRng, node_identity.secret_key().clone(), challenge)
-            .unwrap()
-            .to_binary()
-            .unwrap(),
-    };
-    mac.to_encoded_bytes()
+pub fn make_valid_origin_mac(node_identity: &NodeIdentity, message: &[u8]) -> Vec<u8> {
+    OriginMac::new_signed(node_identity.secret_key().clone(), message)
+        .to_proto()
+        .to_encoded_bytes()
 }
 
 pub fn make_dht_inbound_message(

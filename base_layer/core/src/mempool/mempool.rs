@@ -31,6 +31,7 @@ use crate::{
     mempool::{
         error::MempoolError,
         mempool_storage::MempoolStorage,
+        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
@@ -133,6 +134,15 @@ impl Mempool {
     /// Gathers and returns a breakdown of all the transaction in the Mempool.
     pub async fn state(&self) -> Result<StateResponse, MempoolError> {
         self.with_read_access(|storage| Ok(storage.state())).await
+    }
+
+    pub async fn get_fee_per_gram_stats(
+        &self,
+        count: usize,
+        tip_height: u64,
+    ) -> Result<Vec<FeePerGramStat>, MempoolError> {
+        self.with_read_access(move |storage| storage.get_fee_per_gram_stats(count, tip_height))
+            .await
     }
 
     async fn with_read_access<F, T>(&self, callback: F) -> Result<T, MempoolError>

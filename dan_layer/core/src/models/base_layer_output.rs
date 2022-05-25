@@ -23,10 +23,10 @@
 //! A trait to allow abstraction from a specific base layer output
 use std::convert::TryFrom;
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags};
 
-use crate::{fixed_hash::FixedHash, models::ModelError};
+use crate::models::ModelError;
 
 #[derive(Debug)]
 pub struct BaseLayerOutput {
@@ -43,10 +43,7 @@ impl BaseLayerOutput {
     }
 
     pub fn get_checkpoint_merkle_root(&self) -> Option<FixedHash> {
-        self.features
-            .sidechain_checkpoint
-            .as_ref()
-            .map(|cp| cp.merkle_root.into())
+        self.features.sidechain_checkpoint.as_ref().map(|cp| cp.merkle_root)
     }
 
     pub fn get_parent_public_key(&self) -> Option<&PublicKey> {

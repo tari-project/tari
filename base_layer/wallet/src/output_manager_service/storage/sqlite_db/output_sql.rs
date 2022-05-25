@@ -501,11 +501,15 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
 
-        features.flags = OutputFlags::from_bits(u8::try_from(o.flags).unwrap()).ok_or(
-            OutputManagerStorageError::ConversionError {
-                reason: "Flags could not be converted from bits".to_string(),
-            },
-        )?;
+        let flags = o
+            .flags
+            .try_into()
+            .map_err(|_| OutputManagerStorageError::ConversionError {
+                reason: format!("Unable to convert flag bits with value {} to OutputFlags", o.flags),
+            })?;
+        features.flags = OutputFlags::from_bits(flags).ok_or(OutputManagerStorageError::ConversionError {
+            reason: "Flags could not be converted from bits".to_string(),
+        })?;
         features.maturity = o.maturity as u64;
         features.metadata = o.metadata.unwrap_or_default();
         features.unique_id = o.features_unique_id.clone();

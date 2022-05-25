@@ -54,7 +54,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
         } else {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
-        let flags = u8::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
+        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
@@ -186,7 +186,10 @@ impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures 
             .collect::<Result<_, _>>()?;
         let merkle_root = copy_into_fixed_array(&value.merkle_root).map_err(|_| "Invalid merkle_root length")?;
 
-        Ok(Self { merkle_root, committee })
+        Ok(Self {
+            merkle_root: merkle_root.into(),
+            committee,
+        })
     }
 }
 

@@ -27,7 +27,7 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 impl ConsensusEncoding for EpochTime {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.as_u64().consensus_encode(writer)
     }
 }

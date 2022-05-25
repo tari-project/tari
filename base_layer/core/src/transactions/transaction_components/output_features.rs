@@ -67,6 +67,11 @@ pub struct OutputFeatures {
     #[serde(default)]
     pub recovery_byte: u8,
     pub metadata: Vec<u8>,
+    // TODO: Add these fields
+    // pub contract_id: Option<FixedHash>,
+    // pub constitution: Option<ContractConstitution>,
+
+    // Deprecated fields
     pub unique_id: Option<Vec<u8>>,
     pub parent_public_key: Option<PublicKey>,
     pub asset: Option<AssetOutputFeatures>,
@@ -300,29 +305,29 @@ impl OutputFeatures {
 }
 
 impl ConsensusEncoding for OutputFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.maturity.consensus_encode(writer)?;
-        written += self.flags.consensus_encode(writer)?;
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.maturity.consensus_encode(writer)?;
+        self.flags.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
             OutputFeaturesVersion::V1 => {
-                written += OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
+                OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
             },
         }
-        written += self.parent_public_key.consensus_encode(writer)?;
-        written += self.unique_id.consensus_encode(writer)?;
-        written += self.asset.consensus_encode(writer)?;
-        written += self.mint_non_fungible.consensus_encode(writer)?;
-        written += self.sidechain_checkpoint.consensus_encode(writer)?;
-        written += self.metadata.consensus_encode(writer)?;
+        self.parent_public_key.consensus_encode(writer)?;
+        self.unique_id.consensus_encode(writer)?;
+        self.asset.consensus_encode(writer)?;
+        self.mint_non_fungible.consensus_encode(writer)?;
+        self.sidechain_checkpoint.consensus_encode(writer)?;
+        self.metadata.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
             OutputFeaturesVersion::V1 => {
-                written += self.committee_definition.consensus_encode(writer)?;
+                self.committee_definition.consensus_encode(writer)?;
             },
         }
-        Ok(written)
+        Ok(())
     }
 }
 
@@ -402,8 +407,6 @@ impl Display for OutputFeatures {
 mod test {
     use std::{io::ErrorKind, iter};
 
-    use tari_common_types::types::BLOCK_HASH_LENGTH;
-
     use super::*;
     use crate::consensus::check_consensus_encoding_correctness;
 
@@ -435,7 +438,7 @@ mod test {
                 asset_owner_commitment: Default::default(),
             }),
             sidechain_checkpoint: Some(SideChainCheckpointFeatures {
-                merkle_root: [1u8; 32],
+                merkle_root: [1u8; 32].into(),
                 committee: iter::repeat_with(PublicKey::default).take(50).collect(),
             }),
             committee_definition: match version {
@@ -546,7 +549,7 @@ mod test {
     #[test]
     fn test_for_checkpoint() {
         let unique_id = vec![7, 2, 3, 4];
-        let hash = [13; BLOCK_HASH_LENGTH];
+        let hash = [13; 32].into();
         let committee = vec![PublicKey::default()];
         // Initial
         assert_eq!(

@@ -23,10 +23,11 @@
 use std::fmt::{Display, Formatter};
 
 use digest::Digest;
+use tari_common_types::types::FixedHash;
 use tari_crypto::common::Blake256;
 use tari_utilities::hex::Hex;
 
-use crate::{fixed_hash::FixedHash, models::TemplateId};
+use crate::models::TemplateId;
 
 #[derive(Clone, Debug)]
 pub struct Instruction {

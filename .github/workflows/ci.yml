@@ -1,4 +1,5 @@
 on:
+  workflow_dispatch:
   push:
     branches:
       - development
@@ -19,11 +20,12 @@ env:
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   PROTOC: protoc
-
+  TERM: unkown
+  
 jobs:
   clippy:
     name: clippy
-    runs-on: ubuntu-18.04
+    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -33,7 +35,6 @@ jobs:
           toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
           override: true
-      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -66,7 +67,7 @@ jobs:
           args: clippy --all-targets
   build:
     name: check nightly
-    runs-on: ubuntu-18.04
+    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -76,7 +77,6 @@ jobs:
           toolchain: ${{ env.toolchain }}
           profile: minimal
           override: true
-      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -105,7 +105,7 @@ jobs:
 
   build-stable:
     name: check stable
-    runs-on: ubuntu-18.04
+    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -146,10 +146,13 @@ jobs:
           args: --release --package tari_wallet_ffi
   javascript:
     name: npm packages
-    runs-on: ubuntu-18.04
+    runs-on: [ ubuntu-20.04 ]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
       - name: build launchpad gui-vue
         run: |
           cd applications/launchpad/gui-vue
@@ -168,7 +171,7 @@ jobs:
           npm run check-fmt
   licenses:
     name: file licenses
-    runs-on: ubuntu-20.04
+    runs-on: [ ubuntu-20.04 ]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -181,7 +184,7 @@ jobs:
         run: ./scripts/file_license_check.sh
   test:
     name: test
-    runs-on: ubuntu-18.04
+    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -189,7 +192,6 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
-      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -224,7 +226,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: test
-    runs-on: ubuntu-18.04
+    runs-on: [ ubuntu-20.04 ]
     steps:
       - name: Save the PR number in an artifact
         shell: bash

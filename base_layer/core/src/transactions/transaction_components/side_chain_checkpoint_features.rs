@@ -36,11 +36,10 @@ pub struct SideChainCheckpointFeatures {
 }
 
 impl ConsensusEncoding for SideChainCheckpointFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.merkle_root.consensus_encode(writer)?;
-        let mut written = 32;
-        written += self.committee.consensus_encode(writer)?;
-        Ok(written)
+        self.committee.consensus_encode(writer)?;
+        Ok(())
     }
 }
 
@@ -74,7 +73,7 @@ mod test {
     #[test]
     fn it_encodes_and_decodes_correctly() {
         let subject = SideChainCheckpointFeatures {
-            merkle_root: [1u8; 32],
+            merkle_root: [1u8; 32].into(),
             committee: iter::repeat_with(PublicKey::default).take(50).collect(),
         };
 
@@ -84,7 +83,7 @@ mod test {
     #[test]
     fn it_fails_for_too_many_committee_pks() {
         let subject = SideChainCheckpointFeatures {
-            merkle_root: [1u8; 32],
+            merkle_root: [1u8; 32].into(),
             committee: iter::repeat_with(PublicKey::default).take(51).collect(),
         };
 
