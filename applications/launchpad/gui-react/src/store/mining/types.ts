@@ -43,5 +43,6 @@ export interface MiningState {
 }
 
 export interface MiningContainersState extends ContainerStateFields {
+  miningPending?: boolean
   dependsOn: ContainerStateFieldsWithIdAndType[]
 }

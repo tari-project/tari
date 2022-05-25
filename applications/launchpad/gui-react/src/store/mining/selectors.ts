@@ -32,6 +32,7 @@ export const selectTariContainers = createSelector(
     return {
       running: !containers.some(c => !c.running),
       pending: containers.some(c => c.pending),
+      miningPending: sha3.pending,
       error: errors.length > 0 ? errors : undefined,
       dependsOn: [tor, baseNode, wallet, sha3],
     } as MiningContainersState
@@ -72,6 +73,7 @@ export const selectMergedContainers = createSelector(
     return {
       running: !containers.some(c => !c.running),
       pending: containers.some(c => c.pending),
+      miningPending: mmproxy.pending || xmrig.pending,
       error: errors.length > 0 ? errors : undefined,
       dependsOn: [tor, baseNode, wallet, xmrig, mmproxy],
     } as MiningContainersState
@@ -111,4 +113,25 @@ export const selectCanAnyMiningNodeRun = (state: RootState) => {
     (!tari.error && !tariSetupRequired) ||
     (!merged.error && !mergedSetupRequired)
   )
+}
+
+/**
+ * Is any mining node running?
+ * @returns {boolean}
+ */
+export const selectIsMiningRunning = (state: RootState): boolean => {
+  const tari = selectTariContainers(state)
+  const merged = selectMergedContainers(state)
+
+  return tari.running || merged.running
+}
+
+/**
+ * Is any mining node pending?
+ */
+export const selectIsMiningPending = (state: RootState): boolean => {
+  const tari = selectTariContainers(state)
+  const merged = selectMergedContainers(state)
+
+  return !!(tari?.miningPending || merged?.miningPending)
 }
