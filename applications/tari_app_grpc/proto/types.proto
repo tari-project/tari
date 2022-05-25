@@ -419,6 +419,8 @@ message UnblindedOutput {
     uint64 script_lock_height = 10;
     // Covenant
     bytes covenant = 11;
+    // Encrypted Value
+    bytes encrypted_value = 12;
 }
 
 // ----------------------------- Network Types ----------------------------- //
