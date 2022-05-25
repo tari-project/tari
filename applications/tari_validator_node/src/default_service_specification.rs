@@ -24,10 +24,10 @@ use tari_common_types::types::PublicKey;
 use tari_dan_core::{
     models::{domain_events::ConsensusWorkerDomainEvent, TariDanPayload},
     services::{
+        BaseLayerCheckpointManager,
         BaseLayerCommitteeManager,
         ConcreteAssetProcessor,
         ConcreteAssetProxy,
-        ConcreteCheckpointManager,
         LoggingEventsPublisher,
         MempoolServiceHandle,
         NodeIdentitySigningService,
@@ -63,7 +63,7 @@ impl ServiceSpecification for DefaultServiceSpecification {
     type BaseNodeClient = GrpcBaseNodeClient;
     type ChainDbBackendAdapter = SqliteChainBackendAdapter;
     type ChainStorageService = SqliteStorageService;
-    type CheckpointManager = ConcreteCheckpointManager<Self::WalletClient>;
+    type CheckpointManager = BaseLayerCheckpointManager<Self::WalletClient>;
     type CommitteeManager = BaseLayerCommitteeManager<Self::BaseNodeClient>;
     type DbFactory = SqliteDbFactory;
     type EventsPublisher = LoggingEventsPublisher<ConsensusWorkerDomainEvent>;

@@ -56,9 +56,11 @@ use tari_comms_dht::Dht;
 use tari_dan_core::{
     models::AssetDefinition,
     services::{
+        BaseLayerCheckpointManager,
         BaseLayerCommitteeManager,
         ConcreteAssetProcessor,
         ConcreteAssetProxy,
+        MemoryCheckpointManager,
         MempoolServiceHandle,
         ServiceSpecification,
         StaticListCommitteeManager,
@@ -77,7 +79,10 @@ use crate::{
     dan_node::{DanNode, RunningServiceSpecification},
     debug::{debug_definition::DebugDefinition, debug_service_specification::DebugServiceSpecification},
     default_service_specification::DefaultServiceSpecification,
-    grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
+    grpc::{
+        services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
+        validator_node_grpc_server::ValidatorNodeGrpcServer,
+    },
     p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
 };
 
@@ -181,6 +186,7 @@ async fn start_debug_mode(
     );
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 18144);
 
+    let checkpoint_manager = MemoryCheckpointManager {};
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
     println!("🚀 Validator node started!");
     println!("{}", node_identity);
@@ -189,6 +195,7 @@ async fn start_debug_mode(
         config.validator_node.clone(),
         mempool_service,
         committee_manager,
+        checkpoint_manager,
         db_factory,
         handles,
         subscription_factory,
@@ -245,11 +252,14 @@ async fn start_non_debug_mode(
     println!("{}", node_identity);
 
     let mut base_node_client = GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address);
+    let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
+    let checkpoint_manager = BaseLayerCheckpointManager::new(wallet_client);
     run_dan_node::<DefaultServiceSpecification>(
         shutdown.to_signal(),
         config.validator_node.clone(),
         mempool_service,
         BaseLayerCommitteeManager::new(base_node_client),
+        checkpoint_manager,
         db_factory,
         handles,
         subscription_factory,
@@ -272,6 +282,7 @@ async fn run_dan_node<TSpecification: RunningServiceSpecification>(
     config: ValidatorNodeConfig,
     mempool_service: MempoolServiceHandle,
     committee_manager: TSpecification::CommitteeManager,
+    checkpoint_manager: TSpecification::CheckpointManager,
     db_factory: SqliteDbFactory,
     handles: ServiceHandles,
     subscription_factory: SubscriptionFactory,
@@ -283,6 +294,7 @@ async fn run_dan_node<TSpecification: RunningServiceSpecification>(
         node_identity,
         mempool_service,
         committee_manager,
+        checkpoint_manager,
         db_factory,
         handles,
         subscription_factory,

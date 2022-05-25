@@ -35,11 +35,11 @@ use tari_dan_core::{
     models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, Committee, TariDanPayload},
     services::{
         infrastructure_services::NodeAddressable,
+        BaseLayerCheckpointManager,
         BaseLayerCommitteeManager,
         BaseNodeClient,
         CommitteeManager,
         ConcreteAssetProcessor,
-        ConcreteCheckpointManager,
         LoggingEventsPublisher,
         MempoolServiceHandle,
         NodeIdentitySigningService,
@@ -81,7 +81,6 @@ pub trait RunningServiceSpecification:
     BaseNodeClient = GrpcBaseNodeClient,
     DbFactory = SqliteDbFactory,
     ChainStorageService = SqliteStorageService,
-    CheckpointManager = ConcreteCheckpointManager<GrpcWalletClient>,
     ValidatorNodeClientFactory = TariCommsValidatorNodeClientFactory,
 >
 {
@@ -102,6 +101,7 @@ impl DanNode {
         node_identity: Arc<NodeIdentity>,
         mempool_service: MempoolServiceHandle,
         committee_manager: TSpecification::CommitteeManager,
+        checkpoint_manager: TSpecification::CheckpointManager,
         db_factory: SqliteDbFactory,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
@@ -111,6 +111,7 @@ impl DanNode {
             .await
             .map_err(|de| ExitCode::DigitalAssetError)?
         {
+            println!("Starting committee for asset:{}", asset.public_key);
             let node_identity = node_identity.as_ref().clone();
             let mempool = mempool_service.clone();
             let handles = handles.clone();
@@ -129,6 +130,7 @@ impl DanNode {
                 shutdown,
                 dan_config,
                 committee_manager.clone(),
+                checkpoint_manager.clone(),
                 db_factory,
                 kill.clone(),
             )
@@ -152,6 +154,7 @@ impl DanNode {
         shutdown: ShutdownSignal,
         config: ValidatorNodeConfig,
         committee_service: TSpecification::CommitteeManager,
+        checkpoint_manager: TSpecification::CheckpointManager,
         db_factory: SqliteDbFactory,
         kill: Arc<AtomicBool>,
     ) -> Result<(), ExitError> {
@@ -181,10 +184,7 @@ impl DanNode {
         let dht = handles.expect_handle::<Dht>();
         let outbound =
             TariCommsOutboundService::new(dht.outbound_requester(), loopback, asset_definition.public_key.clone());
-        let base_node_client = GrpcBaseNodeClient::new(config.base_node_grpc_address);
         let chain_storage = SqliteStorageService {};
-        let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);
-        let checkpoint_manager = ConcreteCheckpointManager::new(asset_definition.clone(), wallet_client);
         let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(dht.dht_requester());
         let mut consensus_worker = ConsensusWorker::<TSpecification>::new(
             receiver,
@@ -196,7 +196,6 @@ impl DanNode {
             signing_service,
             payload_processor,
             asset_definition,
-            base_node_client,
             timeout,
             db_factory,
             chain_storage,

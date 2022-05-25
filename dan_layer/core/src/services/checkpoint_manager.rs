@@ -38,18 +38,30 @@ pub trait CheckpointManager<TAddr: NodeAddressable> {
     ) -> Result<(), DigitalAssetError>;
 }
 
-#[derive(Default)]
-pub struct ConcreteCheckpointManager<TWallet: WalletClient> {
-    asset_definition: AssetDefinition,
+#[derive(Clone)]
+pub struct MemoryCheckpointManager {}
+
+#[async_trait]
+impl CheckpointManager<CommsPublicKey> for MemoryCheckpointManager {
+    async fn create_checkpoint(
+        &mut self,
+        state_root: StateRoot,
+        next_committee: Vec<CommsPublicKey>,
+    ) -> Result<(), DigitalAssetError> {
+        Ok(())
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct BaseLayerCheckpointManager<TWallet: WalletClient> {
     wallet: TWallet,
     num_calls: u32,
     checkpoint_interval: u32,
 }
 
-impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
-    pub fn new(asset_definition: AssetDefinition, wallet: TWallet) -> Self {
+impl<TWallet: WalletClient> BaseLayerCheckpointManager<TWallet> {
+    pub fn new(wallet: TWallet) -> Self {
         Self {
-            asset_definition,
             wallet,
             num_calls: 0,
             checkpoint_interval: 100,
@@ -58,24 +70,25 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
 }
 
 #[async_trait]
-impl<TWallet: WalletClient + Sync + Send> CheckpointManager<CommsPublicKey> for ConcreteCheckpointManager<TWallet> {
+impl<TWallet: WalletClient + Sync + Send> CheckpointManager<CommsPublicKey> for BaseLayerCheckpointManager<TWallet> {
     async fn create_checkpoint(
         &mut self,
         state_root: StateRoot,
         next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError> {
-        self.num_calls += 1;
-        if self.num_calls > self.checkpoint_interval {
-            self.wallet
-                .create_new_checkpoint(
-                    &self.asset_definition.public_key,
-                    &self.asset_definition.checkpoint_unique_id,
-                    &state_root,
-                    next_committee,
-                )
-                .await?;
-            self.num_calls = 0;
-        }
-        Ok(())
+        todo!("Need to get asset fields from committee manager")
+        // self.num_calls += 1;
+        // if self.num_calls > self.checkpoint_interval {
+        //     self.wallet
+        //         .create_new_checkpoint(
+        //             &self.asset_definition.public_key,
+        //             &self.asset_definition.checkpoint_unique_id,
+        //             &state_root,
+        //             next_committee,
+        //         )
+        //         .await?;
+        //     self.num_calls = 0;
+        // }
+        // Ok(())
     }
 }

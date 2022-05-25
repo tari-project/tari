@@ -48,7 +48,6 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
 
     pub async fn next_event(
         &self,
-        _base_node_client: &mut TSpecification::BaseNodeClient,
         asset_definition: &AssetDefinition,
         committee_manager: &mut TSpecification::CommitteeManager,
         db_factory: &TSpecification::DbFactory,

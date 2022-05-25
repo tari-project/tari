@@ -57,7 +57,6 @@ pub struct ConsensusWorker<TSpecification: ServiceSpecification> {
     signing_service: TSpecification::SigningService,
     payload_processor: TSpecification::PayloadProcessor,
     asset_definition: AssetDefinition,
-    base_node_client: TSpecification::BaseNodeClient,
     db_factory: TSpecification::DbFactory,
     chain_storage_service: TSpecification::ChainStorageService,
     state_db_unit_of_work: Option<StateDbUnitOfWorkImpl<TSpecification::StateDbBackendAdapter>>,
@@ -76,7 +75,6 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         signing_service: TSpecification::SigningService,
         payload_processor: TSpecification::PayloadProcessor,
         asset_definition: AssetDefinition,
-        base_node_client: TSpecification::BaseNodeClient,
         timeout: Duration,
         db_factory: TSpecification::DbFactory,
         chain_storage_service: TSpecification::ChainStorageService,
@@ -96,7 +94,6 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             signing_service,
             payload_processor,
             asset_definition,
-            base_node_client,
             db_factory,
             chain_storage_service,
             state_db_unit_of_work: None,
@@ -192,7 +189,6 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
     async fn starting(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         states::Starting::<T>::new()
             .next_event(
-                &mut self.worker.base_node_client,
                 &self.worker.asset_definition,
                 &mut self.worker.committee_manager,
                 &self.worker.db_factory,
@@ -204,7 +200,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
     async fn synchronizing(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         states::Synchronizing::<T>::new()
             .next_event(
-                &mut self.worker.base_node_client,
+                &self.worker.committee_manager,
                 &self.worker.asset_definition,
                 &self.worker.db_factory,
                 &self.worker.validator_node_client_factory,

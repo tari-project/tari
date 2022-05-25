@@ -46,7 +46,7 @@ pub mod mocks;
 mod service_specification;
 mod validator_node_rpc_client;
 mod wallet_client;
-pub use checkpoint_manager::{CheckpointManager, ConcreteCheckpointManager};
+pub use checkpoint_manager::{BaseLayerCheckpointManager, CheckpointManager, MemoryCheckpointManager};
 pub use service_specification::ServiceSpecification;
 pub use validator_node_rpc_client::{ValidatorNodeClientError, ValidatorNodeClientFactory, ValidatorNodeRpcClient};
 pub use wallet_client::WalletClient;
