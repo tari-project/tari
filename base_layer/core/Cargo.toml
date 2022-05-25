@@ -55,6 +55,8 @@ log = "0.4"
 log-mdc = "0.1.0"
 monero = { version = "^0.13.0", features = ["serde_support"], optional = true }
 newtype-ops = "0.1.4"
+num-traits = "0.2.15"
+num-derive = "0.3.3"
 num-format = "0.4.0"
 once_cell = "1.8.0"
 prost = "0.9"

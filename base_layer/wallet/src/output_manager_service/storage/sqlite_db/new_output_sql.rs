@@ -94,7 +94,7 @@ impl NewOutputSql {
                 .parent_public_key
                 .clone()
                 .map(|a| a.to_vec()),
-            features_unique_id: output.unblinded_output.features.unique_id.clone(),
+            features_unique_id: output.unblinded_output.features.unique_asset_id().map(|id| id.to_vec()),
             sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
             metadata_signature_nonce: output.unblinded_output.metadata_signature.public_nonce().to_vec(),
             metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),

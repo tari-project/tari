@@ -65,6 +65,8 @@ class TransactionBuilder {
         : Buffer.from([features.recovery_byte]),
       bufFromOpt(features.parent_public_key, "hex"),
       bufFromOpt(unique_id, false),
+      // TODO: SideChainFeatures
+      bufFromOpt(null),
       // TODO: AssetOutputFeatures
       bufFromOpt(null),
       // TODO: MintNonFungibleFeatures
@@ -271,6 +273,7 @@ class TransactionBuilder {
       unique_id: features.unique_id
         ? Buffer.from(features.unique_id, "utf8")
         : null,
+      sidechain_features: null,
       parent_public_key: null,
       asset: null,
       mint_non_fungible: null,

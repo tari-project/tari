@@ -40,13 +40,22 @@ use crate::{
         tari_amount::MicroTari,
         transaction_components::{
             AssetOutputFeatures,
+            CheckpointParameters,
             CommitteeDefinitionFeatures,
+            CommitteeMembers,
+            ConstitutionChangeFlags,
+            ConstitutionChangeRules,
+            ContractAcceptanceRequirements,
+            ContractConstitution,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
             OutputFlags,
+            RequirementsForConstitutionChange,
             SideChainCheckpointFeatures,
+            SideChainConsensus,
+            SideChainFeatures,
             TemplateParameter,
             Transaction,
             TransactionInput,
@@ -281,8 +290,12 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
         } else {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
+        let sidechain_features = features
+            .sidechain_features
+            .map(SideChainFeatures::try_from)
+            .transpose()?;
 
-        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
+        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u16")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
@@ -293,17 +306,12 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
+            sidechain_features,
             parent_public_key,
-            match features.asset {
-                Some(a) => Some(a.try_into()?),
-                None => None,
-            },
-            match features.mint_non_fungible {
-                Some(m) => Some(m.try_into()?),
-                None => None,
-            },
-            features.sidechain_checkpoint.map(|s| s.try_into()).transpose()?,
-            features.committee_definition.map(|c| c.try_into()).transpose()?,
+            None,
+            None,
+            None,
+            None,
         ))
     }
 }
@@ -325,9 +333,241 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
             recovery_byte: u32::from(features.recovery_byte),
+            sidechain_features: features.sidechain_features.map(Into::into),
         }
     }
 }
+
+//---------------------------------- SideChainFeatures --------------------------------------------//
+impl From<SideChainFeatures> for proto::types::SideChainFeatures {
+    fn from(value: SideChainFeatures) -> Self {
+        Self {
+            contract_id: value.contract_id.to_vec(),
+            constitution: value.constitution.map(Into::into),
+        }
+    }
+}
+
+impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
+    type Error = String;
+
+    fn try_from(features: proto::types::SideChainFeatures) -> Result<Self, Self::Error> {
+        let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
+
+        Ok(Self {
+            contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            constitution,
+        })
+    }
+}
+
+//---------------------------------- ContractConstitution --------------------------------------------//
+impl From<ContractConstitution> for proto::types::ContractConstitution {
+    fn from(value: ContractConstitution) -> Self {
+        Self {
+            validator_committee: Some(value.validator_committee.into()),
+            acceptance_requirements: Some(value.acceptance_requirements.into()),
+            consensus: value.consensus.into(),
+            checkpoint_params: Some(value.checkpoint_params.into()),
+            constitution_change_rules: Some(value.constitution_change_rules.into()),
+            initial_reward: value.initial_reward.into(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractConstitution> for ContractConstitution {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractConstitution) -> Result<Self, Self::Error> {
+        use num_traits::FromPrimitive;
+        let validator_committee = value
+            .validator_committee
+            .map(TryInto::try_into)
+            .ok_or("validator_committee not provided")??;
+        let acceptance_requirements = value
+            .acceptance_requirements
+            .map(TryInto::try_into)
+            .ok_or("acceptance_requirements not provided")??;
+        let consensus = SideChainConsensus::from_i32(value.consensus).ok_or("Invalid SideChainConsensus")?;
+        let checkpoint_params = value
+            .checkpoint_params
+            .map(TryInto::try_into)
+            .ok_or("checkpoint_params not provided")??;
+        let constitution_change_rules = value
+            .constitution_change_rules
+            .map(TryInto::try_into)
+            .ok_or("constitution_change_rules not provided")??;
+        let initial_reward = value.initial_reward.into();
+
+        Ok(Self {
+            validator_committee,
+            acceptance_requirements,
+            consensus,
+            checkpoint_params,
+            constitution_change_rules,
+            initial_reward,
+        })
+    }
+}
+
+//---------------------------------- ContractAcceptanceRequirements --------------------------------------------//
+impl From<ContractAcceptanceRequirements> for proto::types::ContractAcceptanceRequirements {
+    fn from(value: ContractAcceptanceRequirements) -> Self {
+        Self {
+            acceptance_period_expiry: value.acceptance_period_expiry,
+            minimum_quorum_required: value.minimum_quorum_required,
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractAcceptanceRequirements> for ContractAcceptanceRequirements {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractAcceptanceRequirements) -> Result<Self, Self::Error> {
+        Ok(Self {
+            acceptance_period_expiry: value.acceptance_period_expiry,
+            minimum_quorum_required: value.minimum_quorum_required,
+        })
+    }
+}
+
+//---------------------------------- SideChainConsensus --------------------------------------------//
+impl From<SideChainConsensus> for proto::types::SideChainConsensus {
+    fn from(value: SideChainConsensus) -> Self {
+        #[allow(clippy::enum_glob_use)]
+        use proto::types::SideChainConsensus::*;
+        match value {
+            SideChainConsensus::Bft => Bft,
+            SideChainConsensus::ProofOfWork => ProofOfWork,
+            SideChainConsensus::MerkleRoot => MerkleRoot,
+        }
+    }
+}
+
+impl TryFrom<proto::types::SideChainConsensus> for SideChainConsensus {
+    type Error = String;
+
+    fn try_from(value: proto::types::SideChainConsensus) -> Result<Self, Self::Error> {
+        #[allow(clippy::enum_glob_use)]
+        use proto::types::SideChainConsensus::*;
+        match value {
+            Unspecified => Err("Side chain consensus not specified or invalid".to_string()),
+            Bft => Ok(SideChainConsensus::Bft),
+            ProofOfWork => Ok(SideChainConsensus::ProofOfWork),
+            MerkleRoot => Ok(SideChainConsensus::MerkleRoot),
+        }
+    }
+}
+
+//---------------------------------- CheckpointParameters --------------------------------------------//
+impl From<CheckpointParameters> for proto::types::CheckpointParameters {
+    fn from(value: CheckpointParameters) -> Self {
+        Self {
+            minimum_quorum_required: value.minimum_quorum_required,
+            abandoned_interval: value.abandoned_interval,
+        }
+    }
+}
+
+impl TryFrom<proto::types::CheckpointParameters> for CheckpointParameters {
+    type Error = String;
+
+    fn try_from(value: proto::types::CheckpointParameters) -> Result<Self, Self::Error> {
+        Ok(Self {
+            minimum_quorum_required: value.minimum_quorum_required,
+            abandoned_interval: value.abandoned_interval,
+        })
+    }
+}
+
+//---------------------------------- ConstitutionChangeRules --------------------------------------------//
+impl From<ConstitutionChangeRules> for proto::types::ConstitutionChangeRules {
+    fn from(value: ConstitutionChangeRules) -> Self {
+        Self {
+            change_flags: value.change_flags.bits().into(),
+            requirements_for_constitution_change: value.requirements_for_constitution_change.map(Into::into),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ConstitutionChangeRules> for ConstitutionChangeRules {
+    type Error = String;
+
+    fn try_from(value: proto::types::ConstitutionChangeRules) -> Result<Self, Self::Error> {
+        Ok(Self {
+            change_flags: u8::try_from(value.change_flags)
+                .ok()
+                .and_then(ConstitutionChangeFlags::from_bits)
+                .ok_or("Invalid change_flags")?,
+            requirements_for_constitution_change: value
+                .requirements_for_constitution_change
+                .map(RequirementsForConstitutionChange::try_from)
+                .transpose()?,
+        })
+    }
+}
+
+//---------------------------------- RequirementsForConstitutionChange --------------------------------------------//
+impl From<RequirementsForConstitutionChange> for proto::types::RequirementsForConstitutionChange {
+    fn from(value: RequirementsForConstitutionChange) -> Self {
+        Self {
+            minimum_constitution_committee_signatures: value.minimum_constitution_committee_signatures,
+            constitution_committee: value.constitution_committee.map(Into::into),
+        }
+    }
+}
+
+impl TryFrom<proto::types::RequirementsForConstitutionChange> for RequirementsForConstitutionChange {
+    type Error = String;
+
+    fn try_from(value: proto::types::RequirementsForConstitutionChange) -> Result<Self, Self::Error> {
+        Ok(Self {
+            minimum_constitution_committee_signatures: value.minimum_constitution_committee_signatures,
+            constitution_committee: value
+                .constitution_committee
+                .map(CommitteeMembers::try_from)
+                .transpose()?,
+        })
+    }
+}
+
+//---------------------------------- CommitteeMembers --------------------------------------------//
+impl From<CommitteeMembers> for proto::types::CommitteeMembers {
+    fn from(value: CommitteeMembers) -> Self {
+        Self {
+            members: value.members().iter().map(|pk| pk.to_vec()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::CommitteeMembers> for CommitteeMembers {
+    type Error = String;
+
+    fn try_from(value: proto::types::CommitteeMembers) -> Result<Self, Self::Error> {
+        if value.members.len() > CommitteeMembers::MAX_MEMBERS {
+            return Err(format!(
+                "Too many committee members: expected {} but got {}",
+                CommitteeMembers::MAX_MEMBERS,
+                value.members.len()
+            ));
+        }
+
+        let members = value
+            .members
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                PublicKey::from_bytes(c)
+                    .map_err(|err| format!("committee member #{} was not a valid public key: {}", i + 1, err))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let members = CommitteeMembers::try_from(members).map_err(|e| e.to_string())?;
+        Ok(members)
+    }
+}
+
+// TODO: deprecated
 
 impl TryFrom<proto::types::AssetOutputFeatures> for AssetOutputFeatures {
     type Error = String;

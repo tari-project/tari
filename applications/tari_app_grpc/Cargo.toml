@@ -18,6 +18,7 @@ tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", t
 chrono = { version = "0.4.19", default-features = false }
 prost = "0.9"
 prost-types = "0.9"
+num-traits = "0.2.15"
 tonic = "0.6.2"
 
 [build-dependencies]
