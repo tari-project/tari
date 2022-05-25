@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,25 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::FixedHash;
+mod contract_constitution;
+pub use contract_constitution::ContractConstitution;
 
-#[derive(PartialEq, Debug, Clone)]
-pub struct StateRoot {
-    root: FixedHash,
-}
-
-impl StateRoot {
-    pub fn new(root: FixedHash) -> Self {
-        Self { root }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        self.root.as_slice()
-    }
-
-    pub fn initial() -> Self {
-        Self {
-            root: FixedHash::zero(),
-        }
-    }
-}
+mod committee_members;
+pub use committee_members::CommitteeMembers;

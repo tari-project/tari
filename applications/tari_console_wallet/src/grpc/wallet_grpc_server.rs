@@ -732,7 +732,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("Merkle root has an incorrect length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
+            .create_initial_asset_checkpoint(&asset_public_key, merkle_root.into())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -760,7 +760,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("Incorrect merkle root length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_follow_on_asset_checkpoint(&asset_public_key, message.unique_id.as_slice(), merkle_root)
+            .create_follow_on_asset_checkpoint(&asset_public_key, message.unique_id.as_slice(), merkle_root.into())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
