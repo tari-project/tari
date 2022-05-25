@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,9 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ops::Deref};
+use std::{
+    convert::TryFrom,
+    ops::{Deref, DerefMut},
+};
 
-use digest::consts::U32;
+use digest::{consts::U32, generic_array};
+use serde::{Deserialize, Serialize};
 use tari_utilities::hex::{Hex, HexError};
 
 const ZERO_HASH: [u8; FixedHash::byte_size()] = [0u8; FixedHash::byte_size()];
@@ -31,7 +35,7 @@ const ZERO_HASH: [u8; FixedHash::byte_size()] = [0u8; FixedHash::byte_size()];
 #[error("Invalid size")]
 pub struct FixedHashSizeError;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash, Deserialize, Serialize)]
 pub struct FixedHash([u8; FixedHash::byte_size()]);
 
 impl FixedHash {
@@ -76,7 +80,7 @@ impl TryFrom<&[u8]> for FixedHash {
     }
 }
 
-impl From<digest::generic_array::GenericArray<u8, U32>> for FixedHash {
+impl From<generic_array::GenericArray<u8, U32>> for FixedHash {
     fn from(hash: digest::generic_array::GenericArray<u8, U32>) -> Self {
         Self(hash.into())
     }
@@ -105,5 +109,11 @@ impl Deref for FixedHash {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for FixedHash {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }

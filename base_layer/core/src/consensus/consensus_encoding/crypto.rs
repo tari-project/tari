@@ -34,8 +34,9 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 //---------------------------------- PublicKey --------------------------------------------//
 
 impl ConsensusEncoding for PublicKey {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write(self.as_bytes())
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_all(self.as_bytes())?;
+        Ok(())
     }
 }
 
@@ -57,8 +58,9 @@ impl ConsensusDecoding for PublicKey {
 //---------------------------------- PrivateKey --------------------------------------------//
 
 impl ConsensusEncoding for PrivateKey {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write(self.as_bytes())
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_all(self.as_bytes())?;
+        Ok(())
     }
 }
 
@@ -80,11 +82,10 @@ impl ConsensusDecoding for PrivateKey {
 //---------------------------------- Commitment --------------------------------------------//
 
 impl ConsensusEncoding for Commitment {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         let buf = self.as_bytes();
-        let len = buf.len();
         writer.write_all(buf)?;
-        Ok(len)
+        Ok(())
     }
 }
 
@@ -107,10 +108,10 @@ impl ConsensusDecoding for Commitment {
 //---------------------------------- Signature --------------------------------------------//
 
 impl ConsensusEncoding for Signature {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.get_public_nonce().consensus_encode(writer)?;
-        written += self.get_signature().consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.get_public_nonce().consensus_encode(writer)?;
+        self.get_signature().consensus_encode(writer)?;
+        Ok(())
     }
 }
 
@@ -131,7 +132,7 @@ impl ConsensusDecoding for Signature {
 //---------------------------------- RangeProof --------------------------------------------//
 
 impl ConsensusEncoding for RangeProof {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.0.consensus_encode(writer)
     }
 }
@@ -153,11 +154,11 @@ impl ConsensusDecoding for RangeProof {
 //---------------------------------- Commitment Signature --------------------------------------------//
 
 impl ConsensusEncoding for ComSignature {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        let mut written = self.u().consensus_encode(writer)?;
-        written += self.v().consensus_encode(writer)?;
-        written += self.public_nonce().consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.u().consensus_encode(writer)?;
+        self.v().consensus_encode(writer)?;
+        self.public_nonce().consensus_encode(writer)?;
+        Ok(())
     }
 }
 

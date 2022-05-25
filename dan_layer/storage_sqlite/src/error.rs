@@ -20,7 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use diesel;
-use tari_dan_core::{fixed_hash::FixedHashSizeError, models::ModelError, storage::StorageError};
+use tari_common_types::types::FixedHashSizeError;
+use tari_dan_core::{models::ModelError, storage::StorageError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]

@@ -23,10 +23,10 @@
 macro_rules! consensus_encoding_varint_impl {
     ($ty:ty) => {
         impl $crate::consensus::ConsensusEncoding for $ty {
-            fn consensus_encode<W: std::io::Write>(&self, writer: &mut W) -> Result<usize, std::io::Error> {
+            fn consensus_encode<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
                 use integer_encoding::VarIntWriter;
-                let bytes_written = writer.write_varint(*self)?;
-                Ok(bytes_written)
+                writer.write_varint(*self)?;
+                Ok(())
             }
         }
 

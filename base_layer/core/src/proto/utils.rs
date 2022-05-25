@@ -20,18 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use prost_types::Timestamp;
 use tari_utilities::epoch_time::EpochTime;
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
-pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
-    (timestamp.seconds as u64).into()
+/// Returns None if the timestamp is negative
+pub(super) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<EpochTime> {
+    u64::try_from(timestamp.seconds).ok().map(Into::into)
 }
 
 /// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
-pub(crate) fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
-    Timestamp {
-        seconds: datetime.as_u64() as i64,
-        nanos: 0,
-    }
+pub(super) fn datetime_to_timestamp(datetime: EpochTime) -> Option<Timestamp> {
+    let seconds = i64::try_from(datetime.as_u64()).ok()?;
+    Some(Timestamp { seconds, nanos: 0 })
 }

@@ -195,6 +195,14 @@ A non-exhaustive list of methods the base node module API will expose includes:
 * Block and transaction validation calls
 * Block synchronisation calls
 
+# Change Log
+
+| Date        | Change              | Author    |
+|:------------|:--------------------|:----------|
+| 2 Jul 2019  | First outline       | CjS77     |
+| 11 Aug 2019 | Updates             | CjS77     |
+| 15 Jun 2021 | Significant updates | SimianZa |
+
 [gRPC]: https://grpc.io/
 [RFC-0190]: RFC-0190_Mempool.md
 [RFC-0172]: RFC-0172_PeerToPeerMessagingProtocol.md

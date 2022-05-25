@@ -269,10 +269,10 @@ impl Hashable for Block {
 }
 
 impl ConsensusEncoding for Block {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.header.consensus_encode(writer)?;
-        written += self.body.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.header.consensus_encode(writer)?;
+        self.body.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

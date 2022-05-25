@@ -27,13 +27,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 use tari_crypto::ristretto::RistrettoPublicKey;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    fixed_hash::FixedHash,
     models::{
         AssetDefinition,
         BaseLayerMetadata,

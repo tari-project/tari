@@ -432,12 +432,12 @@ impl Ord for TransactionInput {
 }
 
 impl ConsensusEncoding for TransactionInput {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.spent_output.consensus_encode(writer)?;
-        written += self.input_data.consensus_encode(writer)?;
-        written += self.script_signature.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.spent_output.consensus_encode(writer)?;
+        self.input_data.consensus_encode(writer)?;
+        self.script_signature.consensus_encode(writer)?;
+        Ok(())
     }
 }
 
@@ -477,9 +477,9 @@ impl SpentOutput {
 }
 
 impl ConsensusEncoding for SpentOutput {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         writer.write_all(&[self.get_type()])?;
-        let written = match self {
+        match self {
             SpentOutput::OutputHash(hash) => hash.consensus_encode(writer)?,
             SpentOutput::OutputData {
                 version,
@@ -489,16 +489,15 @@ impl ConsensusEncoding for SpentOutput {
                 sender_offset_public_key,
                 covenant,
             } => {
-                let mut write = version.consensus_encode(writer)?;
-                write += features.consensus_encode(writer)?;
-                write += commitment.consensus_encode(writer)?;
-                write += script.consensus_encode(writer)?;
-                write += sender_offset_public_key.consensus_encode(writer)?;
-                write += covenant.consensus_encode(writer)?;
-                write
+                version.consensus_encode(writer)?;
+                features.consensus_encode(writer)?;
+                commitment.consensus_encode(writer)?;
+                script.consensus_encode(writer)?;
+                sender_offset_public_key.consensus_encode(writer)?;
+                covenant.consensus_encode(writer)?;
             },
         };
-        Ok(written + 1)
+        Ok(())
     }
 }
 

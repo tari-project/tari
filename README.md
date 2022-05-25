@@ -989,7 +989,7 @@ to generate the documentation. The generated html sits in `target/doc/`. Alterna
 
 ## Code organisation
 
-See [RFC-0110/CodeStructure](./RFC/src/RFC-0010_CodeStructure.md) for details on the code structure and layout.
+See [RFC-0110/CodeStructure](RFC/src/RFCD-0010_CodeStructure.md) for details on the code structure and layout.
 
 ## Conversation channels
 

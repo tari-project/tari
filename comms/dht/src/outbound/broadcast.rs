@@ -36,11 +36,10 @@ use tari_comms::{
     message::{MessageExt, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
-    types::{Challenge, CommsPublicKey},
-    utils::signature,
+    types::CommsPublicKey,
 };
-use tari_crypto::keys::PublicKey;
-use tari_utilities::{epoch_time::EpochTime, hex::Hex, message_format::MessageFormat, ByteArray};
+use tari_crypto::{keys::PublicKey, tari_utilities::epoch_time::EpochTime};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::oneshot;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -52,13 +51,14 @@ use crate::{
     dedup,
     discovery::DhtDiscoveryRequester,
     envelope::{datetime_to_epochtime, datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    origin_mac::OriginMac,
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
         message_params::FinalSendMessageParams,
         message_send_state::MessageSendState,
         SendMessageResponse,
     },
-    proto::envelope::{DhtMessageType, OriginMac},
+    proto::envelope::DhtMessageType,
     version::DhtProtocolVersion,
     DhtConfig,
 };
@@ -499,7 +499,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Encrypt the message with the body
                 let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body);
 
-                let mac_challenge = crypt::create_origin_mac_challenge_parts(
+                let mac_challenge = crypt::create_message_challenge_parts(
                     self.protocol_version,
                     destination,
                     message_type,
@@ -509,9 +509,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     &encrypted_body,
                 );
                 // Sign the encrypted message
-                let origin_mac = create_origin_mac(&self.node_identity, mac_challenge)?;
+                let origin_mac =
+                    OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_challenge).to_proto();
                 // Encrypt and set the origin field
-                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac);
+                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac.to_encoded_bytes());
                 Ok((
                     Some(Arc::new(e_public_key)),
                     Some(encrypted_origin_mac.into()),
@@ -522,7 +523,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
-                    let mac_challenge = crypt::create_origin_mac_challenge_parts(
+                    let mac_challenge = crypt::create_message_challenge_parts(
                         self.protocol_version,
                         destination,
                         message_type,
@@ -531,23 +532,15 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         None,
                         &body,
                     );
-                    let origin_mac = create_origin_mac(&self.node_identity, mac_challenge)?;
-                    Ok((None, Some(origin_mac.into()), body))
+                    let origin_mac =
+                        OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_challenge).to_proto();
+                    Ok((None, Some(origin_mac.to_encoded_bytes().into()), body))
                 } else {
                     Ok((None, None, body))
                 }
             },
         }
     }
-}
-
-fn create_origin_mac(node_identity: &NodeIdentity, mac_challenge: Challenge) -> Result<Vec<u8>, DhtOutboundError> {
-    let signature = signature::sign_challenge(&mut OsRng, node_identity.secret_key().clone(), mac_challenge)?;
-    let mac = OriginMac {
-        public_key: node_identity.public_key().to_vec(),
-        signature: signature.to_binary()?,
-    };
-    Ok(mac.to_encoded_bytes())
 }
 
 #[cfg(test)]

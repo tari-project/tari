@@ -2,7 +2,7 @@
 
 ## Tari Code Structure and Organization
 
-![status: draft](theme/images/status-draft.svg)
+![status: deprecated](theme/images/status-deprecated.svg)
 
 **Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77) and [Byron Hambly](https://github.com/delta1)
 
@@ -145,3 +145,10 @@ It includes all cryptographic services, including a Curve25519 implementation.
 [workspace]: https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html
 [crates]: https://doc.rust-lang.org/book/ch07-01-packages-and-crates.html
 [crate]: https://crates.io/crates/tari_crypto
+
+# Change Log
+
+| Date        | Description                    | Author |
+|:------------|:-------------------------------|:-------|
+| 21 Dec 2018 | First draft                    | CjS77  |
+| 14 Jan 2022 | Deprecated in favour of README | CjS77  |

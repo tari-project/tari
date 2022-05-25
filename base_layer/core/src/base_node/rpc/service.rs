@@ -42,6 +42,8 @@ use crate::{
         base_node::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            GetMempoolFeePerGramStatsRequest,
+            GetMempoolFeePerGramStatsResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures as SignaturesProto,
@@ -428,10 +430,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let mut not_deleted_positions = vec![];
 
         for position in message.mmr_positions {
-            if position > u64::from(u32::MAX) {
-                return Err(RpcStatus::bad_request("position must fit into a u32"));
-            }
-            let position = position as u32;
+            let position =
+                u32::try_from(position).map_err(|_| RpcStatus::bad_request("All MMR positions must fit into a u32"))?;
             if deleted_bitmap.bitmap().contains(position) {
                 deleted_positions.push(position);
             } else {
@@ -596,5 +596,31 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         task.run(request.into_message(), tx).await?;
 
         Ok(Streaming::new(rx))
+    }
+
+    async fn get_mempool_fee_per_gram_stats(
+        &self,
+        request: Request<GetMempoolFeePerGramStatsRequest>,
+    ) -> Result<Response<GetMempoolFeePerGramStatsResponse>, RpcStatus> {
+        let req = request.into_message();
+        let count =
+            usize::try_from(req.count).map_err(|_| RpcStatus::bad_request("count must be less than or equal to 20"))?;
+
+        if count > 20 {
+            return Err(RpcStatus::bad_request("count must be less than or equal to 20"));
+        }
+
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+        let stats = self
+            .mempool()
+            .get_fee_per_gram_stats(count, metadata.height_of_longest_chain())
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+
+        Ok(Response::new(stats.into()))
     }
 }
