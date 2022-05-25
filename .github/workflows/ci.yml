@@ -96,14 +96,12 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
-      - name: build launchpad
+      - name: build gui-react
         run: |
           cd applications/launchpad/gui-react
           yarn install
           yarn lint
-          cd ..
-          yarn install
-          yarn tauri build
+          yarn build
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:
@@ -148,14 +146,12 @@ jobs:
           libprotobuf-dev \
           protobuf-compiler
 
-      - name: build launchpad
+      - name: build gui-react
         run: |
           cd applications/launchpad/gui-react
           yarn install
           yarn lint
-          cd ..
-          yarn install
-          yarn tauri build
+          yarn build
       - name: rustup show
         run: |
           rustup show
@@ -240,14 +236,12 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
-      - name: build launchpad
+      - name: build gui-react
         run: |
           cd applications/launchpad/gui-react
           yarn install
           yarn lint
-          cd ..
-          yarn install
-          yarn tauri build
+          yarn build
       - name: test key manager wasm
         run: |
           npm install -g wasm-pack
