@@ -35,7 +35,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 // Maximum number of functions allowed in a contract specification
 const MAX_FUNCTIONS: usize = u16::MAX as usize;
 
-// Fixed lenght of all string fields in the contract definition
+// Fixed length of all string fields in the contract definition
 const STR_LEN: usize = 32;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
