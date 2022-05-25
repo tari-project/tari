@@ -135,7 +135,8 @@ async function main() {
   });
 
   // ------------------------- CRON ------------------------- //
-  new CronJob("0 2 * * *", () => runWalletRecoveryTest(1, "/temp/wallet-recovery", "parade jelly sample worth bind release forest snack job mobile divide ranch fee raccoon begin awful source thank check leaf vibrant stove material field")).start();
+  let seedWords = process.env.WALLET_RECOVERY_SEED_WORDS || "parade jelly sample worth bind release forest snack job mobile divide ranch fee raccoon begin awful source thank check leaf vibrant stove material field";
+  new CronJob("0 2 * * *", () => runWalletRecoveryTest(1, "/temp/wallet-recovery", seedWords)).start();
   new CronJob("0 4 * * *", () => runWalletRecoveryTest(1, "/temp/wallet-recovery2", "divorce toy raw junk analyst giggle little artefact butter gain intact degree upgrade dwarf design right mean model great best swift program mammal curtain")).start();
   //new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
   new CronJob("0 1 * * *", () =>
