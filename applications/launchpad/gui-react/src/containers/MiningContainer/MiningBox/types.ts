@@ -45,4 +45,5 @@ export interface MiningBoxProps {
   testId?: string
   nodeState: MiningNodeState
   containersState: MiningContainersState
+  helpMessages?: string[]
 }
