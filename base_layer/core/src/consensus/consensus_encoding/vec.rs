@@ -20,13 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io, io::Read};
+use std::{
+    convert::TryFrom,
+    io,
+    ops::{Deref, DerefMut},
+};
 
 use integer_encoding::VarIntReader;
+use serde::{Deserialize, Serialize};
 
-use crate::consensus::ConsensusDecoding;
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct MaxSizeVec<T, const MAX: usize> {
     inner: Vec<T>,
 }
@@ -34,6 +39,20 @@ pub struct MaxSizeVec<T, const MAX: usize> {
 impl<T, const MAX: usize> MaxSizeVec<T, MAX> {
     pub fn into_vec(self) -> Vec<T> {
         self.inner
+    }
+}
+
+impl<T, const MAX: usize> Deref for MaxSizeVec<T, MAX> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T, const MAX: usize> DerefMut for MaxSizeVec<T, MAX> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 
@@ -55,8 +74,18 @@ impl<T, const MAX: usize> TryFrom<Vec<T>> for MaxSizeVec<T, MAX> {
     }
 }
 
+impl<T: ConsensusEncoding, const MAX: usize> ConsensusEncoding for MaxSizeVec<T, MAX> {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        // We do not have to check the number of elements is correct, because it is not possible to construct MaxSizeVec
+        // with more than MAX elements.
+        self.inner.consensus_encode(writer)
+    }
+}
+
+impl<T: ConsensusEncoding, const MAX: usize> ConsensusEncodingSized for MaxSizeVec<T, MAX> {}
+
 impl<T: ConsensusDecoding, const MAX: usize> ConsensusDecoding for MaxSizeVec<T, MAX> {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+    fn consensus_decode<R: io::Read>(reader: &mut R) -> Result<Self, io::Error> {
         let len = reader.read_varint()?;
         if len > MAX {
             return Err(io::Error::new(
