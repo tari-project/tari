@@ -6,12 +6,13 @@ import { CoinsListProps } from './types'
 
 const formatAmount = (amount: string) => {
   if (Number(amount) === 0) {
-    return '00 000'
+    return '00,000'
   } else {
-    // Add spaces to number
-    const splitted = amount.toString().split('.')
-    splitted[0] = splitted[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-    return splitted.join('.')
+    try {
+      return Number(amount).toLocaleString([], { maximumFractionDigits: 2 })
+    } catch (err) {
+      return '-'
+    }
   }
 }
 
