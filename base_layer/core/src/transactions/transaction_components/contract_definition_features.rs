@@ -39,6 +39,10 @@ const MAX_FUNCTIONS: usize = u16::MAX as usize;
 pub const STR_LEN: usize = 32;
 type FixedString = [u8; STR_LEN];
 
+pub fn vec_into_fixed_string(value: Vec<u8>) -> FixedString {
+    copy_into_fixed_array_lossy::<_, STR_LEN>(&value)
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractDefinitionFeatures {
     pub contract_id: FixedHash,
@@ -49,7 +53,7 @@ pub struct ContractDefinitionFeatures {
 
 impl ContractDefinitionFeatures {
     pub fn new(contract_name: Vec<u8>, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
-        let contract_name = copy_into_fixed_array_lossy::<_, STR_LEN>(&contract_name);
+        let contract_name = vec_into_fixed_string(contract_name);
 
         let contract_id = ConsensusHashWriter::default()
             .chain(&contract_name)
@@ -113,7 +117,7 @@ impl ConsensusDecoding for ContractDefinitionFeatures {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractSpecification {
-    pub runtime: Vec<u8>,
+    pub runtime: FixedString,
     pub public_functions: Vec<PublicFunction>,
 }
 
@@ -125,7 +129,7 @@ impl Hashable for ContractSpecification {
 
 impl ConsensusEncoding for ContractSpecification {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        copy_into_fixed_array_lossy::<_, STR_LEN>(&self.runtime).consensus_encode(writer)?;
+        self.runtime.consensus_encode(writer)?;
         self.public_functions.consensus_encode(writer)?;
 
         Ok(())
@@ -145,7 +149,7 @@ impl ConsensusEncodingSized for ContractSpecification {
 
 impl ConsensusDecoding for ContractSpecification {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let runtime: Vec<u8> = <[u8; STR_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        let runtime = FixedString::consensus_decode(reader)?;
         let public_functions = MaxSizeVec::<PublicFunction, MAX_FUNCTIONS>::consensus_decode(reader)?.into_vec();
 
         Ok(Self {
@@ -157,7 +161,7 @@ impl ConsensusDecoding for ContractSpecification {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct PublicFunction {
-    pub name: Vec<u8>,
+    pub name: FixedString,
     pub function: FunctionRef,
 }
 
@@ -169,7 +173,7 @@ impl Hashable for PublicFunction {
 
 impl ConsensusEncoding for PublicFunction {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        copy_into_fixed_array_lossy::<_, STR_LEN>(&self.name).consensus_encode(writer)?;
+        self.name.consensus_encode(writer)?;
         self.function.consensus_encode(writer)?;
 
         Ok(())
@@ -184,7 +188,7 @@ impl ConsensusEncodingSized for PublicFunction {
 
 impl ConsensusDecoding for PublicFunction {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let name: Vec<u8> = <[u8; STR_LEN] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        let name = FixedString::consensus_decode(reader)?;
         let function = FunctionRef::consensus_decode(reader)?;
 
         Ok(Self { name, function })
@@ -237,20 +241,20 @@ mod test {
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
-        let contract_name = str_to_padded_vec("contract_name");
+        let contract_name = str_to_fixed_string("contract_name");
         let contract_issuer = PublicKey::default();
         let contract_spec = ContractSpecification {
-            runtime: str_to_padded_vec("runtime"),
+            runtime: str_to_fixed_string("runtime value"),
             public_functions: vec![
                 PublicFunction {
-                    name: str_to_padded_vec("foo"),
+                    name: str_to_fixed_string("foo"),
                     function: FunctionRef {
                         template_id: [1u8; 32],
                         function_id: 0_u16,
                     },
                 },
                 PublicFunction {
-                    name: str_to_padded_vec("bar"),
+                    name: str_to_fixed_string("bar"),
                     function: FunctionRef {
                         template_id: [1u8; 32],
                         function_id: 1_u16,
@@ -259,14 +263,13 @@ mod test {
             ],
         };
 
-        let contract_definition = ContractDefinitionFeatures::new(contract_name, contract_issuer, contract_spec);
+        let contract_definition =
+            ContractDefinitionFeatures::new(contract_name.to_vec(), contract_issuer, contract_spec);
 
         check_consensus_encoding_correctness(contract_definition).unwrap();
     }
 
-    fn str_to_padded_vec(s: &str) -> Vec<u8> {
-        let mut array_tmp = [0u8; 32];
-        array_tmp[..s.len()].copy_from_slice(s.as_bytes());
-        array_tmp.to_vec()
+    fn str_to_fixed_string(s: &str) -> FixedString {
+        vec_into_fixed_string(s.as_bytes().to_vec())
     }
 }

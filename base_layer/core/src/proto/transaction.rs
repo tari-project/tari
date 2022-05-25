@@ -39,6 +39,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
+            vec_into_fixed_string,
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
             ContractDefinitionFeatures,
@@ -471,9 +472,7 @@ impl TryFrom<proto::types::ContractDefinitionFeatures> for ContractDefinitionFea
         let mut contract_id = [0u8; BLOCK_HASH_LENGTH];
         contract_id.copy_from_slice(&value.contract_id[0..BLOCK_HASH_LENGTH]);
 
-        const STR_LEN: usize = ContractDefinitionFeatures::str_byte_size();
-        let mut contract_name = [0u8; STR_LEN];
-        contract_name.copy_from_slice(&value.contract_id[0..STR_LEN]);
+        let contract_name = vec_into_fixed_string(value.contract_name);
 
         let contract_issuer =
             PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
@@ -512,6 +511,7 @@ impl TryFrom<proto::types::ContractSpecification> for ContractSpecification {
     type Error = String;
 
     fn try_from(value: proto::types::ContractSpecification) -> Result<Self, Self::Error> {
+        let runtime = vec_into_fixed_string(value.runtime);
         let public_functions = value
             .public_functions
             .into_iter()
@@ -519,7 +519,7 @@ impl TryFrom<proto::types::ContractSpecification> for ContractSpecification {
             .collect::<Result<_, _>>()?;
 
         Ok(Self {
-            runtime: value.runtime,
+            runtime,
             public_functions,
         })
     }
@@ -529,7 +529,7 @@ impl From<ContractSpecification> for proto::types::ContractSpecification {
     fn from(value: ContractSpecification) -> Self {
         let public_functions = value.public_functions.into_iter().map(|f| f.into()).collect();
         Self {
-            runtime: value.runtime,
+            runtime: value.runtime.as_bytes().to_vec(),
             public_functions,
         }
     }
@@ -546,7 +546,7 @@ impl TryFrom<proto::types::PublicFunction> for PublicFunction {
             .map_err(|err| err)?;
 
         Ok(Self {
-            name: value.name,
+            name: vec_into_fixed_string(value.name),
             function,
         })
     }
@@ -555,7 +555,7 @@ impl TryFrom<proto::types::PublicFunction> for PublicFunction {
 impl From<PublicFunction> for proto::types::PublicFunction {
     fn from(value: PublicFunction) -> Self {
         Self {
-            name: value.name,
+            name: value.name.as_bytes().to_vec(),
             function: Some(value.function.into()),
         }
     }

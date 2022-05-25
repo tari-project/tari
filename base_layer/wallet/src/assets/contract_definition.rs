@@ -22,6 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PublicKey};
+use tari_core::transactions::transaction_components::vec_into_fixed_string;
 use tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -50,7 +51,7 @@ pub struct ContractSpecification {
 impl From<ContractSpecification> for tari_core::transactions::transaction_components::ContractSpecification {
     fn from(value: ContractSpecification) -> Self {
         Self {
-            runtime: value.runtime.into_bytes(),
+            runtime: vec_into_fixed_string(value.runtime.into_bytes()),
             public_functions: value.public_functions.into_iter().map(|f| f.into()).collect(),
         }
     }
@@ -65,7 +66,7 @@ pub struct PublicFunction {
 impl From<PublicFunction> for tari_core::transactions::transaction_components::PublicFunction {
     fn from(value: PublicFunction) -> Self {
         Self {
-            name: value.name.into_bytes(),
+            name: vec_into_fixed_string(value.name.into_bytes()),
             function: value.function.into(),
         }
     }

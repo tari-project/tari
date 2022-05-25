@@ -26,6 +26,7 @@
 pub use asset_output_features::AssetOutputFeatures;
 pub use committee_definition_features::CommitteeDefinitionFeatures;
 pub use contract_definition_features::{
+    vec_into_fixed_string,
     ContractDefinitionFeatures,
     ContractSpecification,
     FunctionRef,
