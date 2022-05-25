@@ -74,6 +74,7 @@ extern crate lazy_static;
 use core::ptr;
 use std::{
     boxed::Box,
+    convert::TryFrom,
     ffi::{CStr, CString},
     num::NonZeroU16,
     path::PathBuf,
@@ -113,7 +114,18 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{
+        AssetOutputFeatures,
+        CommitteeDefinitionFeatures,
+        MintNonFungibleFeatures,
+        OutputFeaturesVersion,
+        OutputFlags,
+        SideChainCheckpointFeatures,
+    },
+    CryptoFactories,
+};
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::ByteArray,
@@ -192,6 +204,8 @@ pub struct TariContacts(Vec<TariContact>);
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
+pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;
+pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
@@ -974,6 +988,194 @@ pub unsafe extern "C" fn commitment_signature_create_from_bytes(
 pub unsafe extern "C" fn commitment_signature_destroy(com_sig: *mut TariCommitmentSignature) {
     if !com_sig.is_null() {
         Box::from_raw(com_sig);
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+/// --------------------------------------- Covenant --------------------------------------------///
+
+/// Creates a TariCovenant from a ByteVector containing the covenant bytes
+///
+/// ## Arguments
+/// `covenant_bytes` - The covenant bytes as a ByteVector
+///
+/// ## Returns
+/// `TariCovenant` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```covenant_destroy``` function must be called when finished with a TariCovenant to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn covenant_create_from_bytes(
+    covenant_bytes: *const ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariCovenant {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if covenant_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("covenant_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let decoded_covenant_bytes = (*covenant_bytes).0.clone();
+
+    match TariCovenant::from_bytes(&decoded_covenant_bytes) {
+        Ok(covenant) => Box::into_raw(Box::new(covenant)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a Covenant: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("covenant_bytes".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Frees memory for a TariCovenant
+///
+/// ## Arguments
+/// `covenant` - The pointer to a TariCovenant
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
+    if !covenant.is_null() {
+        Box::from_raw(covenant);
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+/// ---------------------------------- Output Features ------------------------------------------///
+
+/// Creates a TariOutputFeatures from byte values
+///
+/// ## Arguments
+/// `version` - The encoded value of the version as a byte
+/// `flags` - The encoded value of the flags as a byte
+/// `maturity` - The encoded value maturity as bytes
+/// `recovery_byte` - The encoded value of the recovery byte as a byte
+/// `metadata` - The metadata componenet as a ByteVector. It cannot be null
+/// `unique_id` - The unique id componenet as a ByteVector. It can be null
+/// `mparent_public_key` - The parent public key component as a ByteVector. It can be null
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariOutputFeatures` - Returns an output features object. Note that it will be ptr::null_mut() if any mandatory
+/// arguments are null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```output_features_destroy``` function must be called when finished with a TariOutputFeatures to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn output_features_create_from_bytes(
+    version: c_uchar,
+    flags: c_ushort,
+    maturity: c_ulonglong,
+    recovery_byte: c_uchar,
+    metadata: *const ByteVector,
+    unique_id: *const ByteVector,
+    parent_public_key: *const ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariOutputFeatures {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if metadata.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("metadata".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let decoded_version = match OutputFeaturesVersion::try_from(version) {
+        Ok(v) => v,
+        Err(message) => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a OutputFeaturesVersion: {:?}", message
+            );
+            error = LibWalletError::from(InterfaceError::InvalidArgument("version".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let decoded_flags = match OutputFlags::from_bits(flags) {
+        Some(flags_value) => flags_value,
+        None => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a OutputFlags from bytes: {:?}", flags
+            );
+            error = LibWalletError::from(InterfaceError::InvalidArgument("flags".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let decoded_metadata = (*metadata).0.clone();
+
+    let mut decoded_unique_id = None;
+    if !unique_id.is_null() {
+        decoded_unique_id = Some((*unique_id).0.clone());
+    }
+
+    let mut decoded_parent_public_key: Option<PublicKey> = None;
+    if !parent_public_key.is_null() {
+        decoded_parent_public_key = match TariPublicKey::from_bytes(&(*parent_public_key).0.clone()) {
+            Ok(k) => Some(k),
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Error creating a Private Key (u) from bytes: {:?}", e
+                );
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+    }
+
+    // DAN layer features are still a work in progress
+    // so, for now, we do not expose any of those fields
+    let asset: Option<AssetOutputFeatures> = None;
+    let mint_non_fungible: Option<MintNonFungibleFeatures> = None;
+    let sidechain_checkpoint: Option<SideChainCheckpointFeatures> = None;
+    let committee_definition: Option<CommitteeDefinitionFeatures> = None;
+
+    let output_features = TariOutputFeatures::new(
+        decoded_version,
+        decoded_flags,
+        maturity,
+        recovery_byte,
+        decoded_metadata,
+        decoded_unique_id,
+        decoded_parent_public_key,
+        asset,
+        mint_non_fungible,
+        sidechain_checkpoint,
+        committee_definition,
+    );
+    Box::into_raw(Box::new(output_features))
+}
+
+/// Frees memory for a TariOutputFeatures
+///
+/// ## Arguments
+/// `output_features` - The pointer to a TariOutputFeatures
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutputFeatures) {
+    if !output_features.is_null() {
+        Box::from_raw(output_features);
     }
 }
 
@@ -3219,6 +3421,7 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 /// # Safety
 /// The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
 #[no_mangle]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
     transport: *const TariTransportConfig,
@@ -3580,6 +3783,7 @@ unsafe fn init_logging(
 /// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
 #[no_mangle]
 #[allow(clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
@@ -3736,15 +3940,12 @@ pub unsafe extern "C" fn wallet_create(
         if !node_identity.is_signed() {
             node_identity.sign();
             // unreachable panic: signed above
-            wallet_database
-                .set_comms_identity_signature(
-                    node_identity
-                        .identity_signature_read()
-                        .as_ref()
-                        .expect("unreachable panic")
-                        .clone(),
-                )
-                .await?;
+            let sig = node_identity
+                .identity_signature_read()
+                .as_ref()
+                .expect("unreachable panic")
+                .clone();
+            wallet_database.set_comms_identity_signature(sig).await?;
         }
         Ok((master_seed, node_identity))
     });
@@ -5251,6 +5452,7 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// # Safety
 /// None
 #[no_mangle]
+#[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     wallet: *mut TariWallet,
     amount: c_ulonglong,
@@ -6430,6 +6632,278 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
     }
 }
 
+/// ------------------------------------- FeePerGramStats ------------------------------------ ///
+
+/// Get the TariFeePerGramStats from a TariWallet.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `count` - The maximum number of blocks to be checked
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// wallet is null or an error is encountered.
+///
+/// # Safety
+/// The ```fee_per_gram_stats_destroy``` method must be called when finished with a TariFeePerGramStats to prevent
+/// a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
+    wallet: *mut TariWallet,
+    count: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariFeePerGramStats {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_fee_per_gram_stats_per_block(count as usize),
+    ) {
+        Ok(estimates) => Box::into_raw(Box::new(estimates)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error getting the fee estimates: {:?}", e);
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Get length of stats from the TariFeePerGramStats.
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter
+///
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_get_length(
+    fee_per_gram_stats: *mut TariFeePerGramStats,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut len = 0;
+    if fee_per_gram_stats.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stats".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        len = (*fee_per_gram_stats).stats.len();
+    }
+    len as c_uint
+}
+
+/// Get TariFeePerGramStat at position from the TariFeePerGramStats.
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats.
+/// `position` - The integer position.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the TariFeePerGramStat, note that it returns ptr::null_mut() if
+/// fee_per_gram_stats is null or an error is encountered.
+///
+/// # Safety
+/// The ```fee_per_gram_stat_destroy``` method must be called when finished with a TariCompletedTransactions to 4prevent
+/// a memory leak.
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_get_at(
+    fee_per_gram_stats: *mut TariFeePerGramStats,
+    position: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariFeePerGramStat {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if fee_per_gram_stats.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stats".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let len = fee_per_gram_stats_get_length(fee_per_gram_stats, error_out);
+    if *error_out != 0 {
+        return ptr::null_mut();
+    }
+    if len == 0 || position > len - 1 {
+        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new((*fee_per_gram_stats).stats[position as usize].clone()))
+}
+
+/// Frees memory for a TariFeePerGramStats
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStats pointer
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut TariFeePerGramStats) {
+    if !fee_per_gram_stats.is_null() {
+        Box::from_raw(fee_per_gram_stats);
+    }
+}
+
+/// ------------------------------------------------------------------------------------------ ///
+
+/// ------------------------------------- FeePerGramStat ------------------------------------- ///
+
+/// Get the order of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns order
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_order(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut order = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        order = (*fee_per_gram_stat).order;
+    }
+    order
+}
+
+/// Get the minimum fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns minimum fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_min_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).min_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Get the average fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns average fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_avg_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).avg_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Get the maximum fee per gram of TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns maximum fee per gram
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
+    fee_per_gram_stat: *mut TariFeePerGramStat,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut fee_per_gram = 0;
+    if fee_per_gram_stat.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("fee_per_gram_stat".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        fee_per_gram = (*fee_per_gram_stat).max_fee_per_gram.as_u64();
+    }
+    fee_per_gram
+}
+
+/// Frees memory for a TariFeePerGramStat
+///
+/// ## Arguments
+/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat) {
+    if !fee_per_gram_stat.is_null() {
+        Box::from_raw(fee_per_gram_stat);
+    }
+}
+
+/// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
     use std::{
@@ -6441,7 +6915,10 @@ mod test {
 
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus};
-    use tari_core::transactions::test_helpers::{create_unblinded_output, TestParams};
+    use tari_core::{
+        covenant,
+        transactions::test_helpers::{create_unblinded_output, TestParams},
+    };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::{
@@ -6458,6 +6935,7 @@ mod test {
 
     #[allow(dead_code)]
     #[derive(Debug)]
+    #[allow(clippy::struct_excessive_bools)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
         pub received_tx_reply_callback_called: bool,
@@ -6950,6 +7428,138 @@ mod test {
     }
 
     #[test]
+    fn test_covenant_create_empty() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
+
+            assert_eq!(error, 0);
+            let empty_covenant = covenant!();
+            assert_eq!(*covenant, empty_covenant);
+
+            covenant_destroy(covenant);
+            byte_vector_destroy(covenant_bytes);
+        }
+    }
+
+    #[test]
+    fn test_covenant_create_filled() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let expected_covenant = covenant!(identity());
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(expected_covenant.to_bytes())));
+            let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
+
+            assert_eq!(error, 0);
+            assert_eq!(*covenant, expected_covenant);
+
+            covenant_destroy(covenant);
+            byte_vector_destroy(covenant_bytes);
+        }
+    }
+
+    #[test]
+    fn test_output_features_create_empty() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let version: c_uchar = 0;
+            let flags: c_ushort = 0;
+            let maturity: c_ulonglong = 20;
+            let recovery_byte: c_uchar = 1;
+            let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let unique_id = ptr::null_mut();
+            let parent_public_key = ptr::null_mut();
+
+            let output_features = output_features_create_from_bytes(
+                version,
+                flags,
+                maturity,
+                recovery_byte,
+                metadata,
+                unique_id,
+                parent_public_key,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*output_features).version, OutputFeaturesVersion::V0);
+            assert_eq!((*output_features).flags, OutputFlags::from_bits(flags).unwrap());
+            assert_eq!((*output_features).maturity, maturity);
+            assert_eq!((*output_features).recovery_byte, recovery_byte);
+            assert!((*output_features).metadata.is_empty());
+            assert!((*output_features).unique_id.is_none());
+            assert!((*output_features).parent_public_key.is_none());
+
+            // These are DAN layer fields, we omit them
+            assert!((*output_features).asset.is_none());
+            assert!((*output_features).mint_non_fungible.is_none());
+            assert!((*output_features).sidechain_checkpoint.is_none());
+            assert!((*output_features).committee_definition.is_none());
+
+            output_features_destroy(output_features);
+            byte_vector_destroy(metadata);
+        }
+    }
+
+    #[test]
+    fn test_output_features_create_filled() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let version: c_uchar = OutputFeaturesVersion::V1.as_u8();
+            let flags: c_ushort = OutputFlags::COINBASE_OUTPUT.bits();
+            let maturity: c_ulonglong = 20;
+            let recovery_byte: c_uchar = 1;
+
+            let expected_metadata = vec![1; 1024];
+            let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
+
+            let expected_unique_id = vec![0u8; 256];
+            let unique_id = Box::into_raw(Box::new(ByteVector(expected_unique_id.clone())));
+
+            let (_, public_key) = PublicKey::random_keypair(&mut OsRng);
+            let parent_public_key = Box::into_raw(Box::new(ByteVector(public_key.to_vec())));
+
+            let output_features = output_features_create_from_bytes(
+                version,
+                flags,
+                maturity,
+                recovery_byte,
+                metadata,
+                unique_id,
+                parent_public_key,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
+            assert_eq!((*output_features).flags, OutputFlags::from_bits(flags).unwrap());
+            assert_eq!((*output_features).maturity, maturity);
+            assert_eq!((*output_features).recovery_byte, recovery_byte);
+            assert_eq!((*output_features).metadata, expected_metadata);
+            assert_eq!((*output_features).unique_id, Some(expected_unique_id));
+            assert_eq!((*output_features).parent_public_key, Some(public_key));
+
+            // These are DAN layer fields, we omit them
+            assert!((*output_features).asset.is_none());
+            assert!((*output_features).mint_non_fungible.is_none());
+            assert!((*output_features).sidechain_checkpoint.is_none());
+            assert!((*output_features).committee_definition.is_none());
+
+            output_features_destroy(output_features);
+            byte_vector_destroy(metadata);
+            byte_vector_destroy(unique_id);
+            byte_vector_destroy(parent_public_key);
+        }
+    }
+
+    #[test]
     fn test_keys_dont_panic() {
         unsafe {
             let mut error = 0;
@@ -7069,6 +7679,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_master_private_key_persistence() {
         unsafe {
             let mut error = 0;
@@ -7230,6 +7841,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_wallet_encryption() {
         unsafe {
             let mut error = 0;
@@ -7470,6 +8082,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_wallet_client_key_value_store() {
         unsafe {
             let mut error = 0;
@@ -7650,6 +8263,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     pub fn test_import_external_utxo() {
         unsafe {
             let mut error = 0;
@@ -7846,6 +8460,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     pub fn test_seed_words() {
         unsafe {
             let mut error = 0;

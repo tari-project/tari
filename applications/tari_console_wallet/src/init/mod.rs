@@ -82,7 +82,7 @@ pub fn get_or_prompt_password(
     if let Some(p) = env {
         let env_password = Some(
             p.into_string()
-                .map_err(|_| ExitError::new(ExitCode::IOError, &"Failed to convert OsString into String"))?,
+                .map_err(|_| ExitError::new(ExitCode::IOError, "Failed to convert OsString into String"))?,
         );
         return Ok(env_password);
     }
@@ -98,7 +98,7 @@ pub fn get_or_prompt_password(
 
 fn prompt_password(prompt: &str) -> Result<String, ExitError> {
     let password = loop {
-        let pass = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, &e))?;
+        let pass = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
         if pass.is_empty() {
             println!("Password cannot be empty!");
             continue;
@@ -122,18 +122,18 @@ pub async fn change_password(
     let confirmed = prompt_password("Confirm new password: ")?;
 
     if passphrase != confirmed {
-        return Err(ExitError::new(ExitCode::InputError, &"Passwords don't match!"));
+        return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
     }
 
     wallet
         .remove_encryption()
         .await
-        .map_err(|e| ExitError::new(ExitCode::WalletError, &e))?;
+        .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
 
     wallet
         .apply_encryption(passphrase)
         .await
-        .map_err(|e| ExitError::new(ExitCode::WalletError, &e))?;
+        .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
 
     println!("Wallet password changed successfully.");
 
@@ -173,7 +173,7 @@ pub async fn get_base_node_peer_config(
         .map(|s| SeedPeer::from_str(s))
         .map(|r| r.map(Peer::from))
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| ExitError::new(ExitCode::ConfigError, &format!("Malformed base node peer: {}", err)))?;
+        .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed base node peer: {}", err)))?;
 
     // peer seeds
     let peer_seeds = config
@@ -183,7 +183,7 @@ pub async fn get_base_node_peer_config(
         .map(|s| SeedPeer::from_str(s))
         .map(|r| r.map(Peer::from))
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| ExitError::new(ExitCode::ConfigError, &format!("Malformed seed peer: {}", err)))?;
+        .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed seed peer: {}", err)))?;
 
     let peer_config = PeerConfig::new(base_node_custom, base_node_peers, peer_seeds);
     debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
@@ -217,6 +217,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
 }
 
 /// Set up the app environment and state for use by the UI
+#[allow(clippy::too_many_lines)]
 pub async fn init_wallet(
     config: &ApplicationConfig,
     arg_password: Option<String>,
@@ -231,9 +232,9 @@ pub async fn init_wallet(
             .parent()
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
-    .map_err(|e| ExitError::new(ExitCode::WalletError, &format!("Error creating Wallet folder. {}", e)))?;
+    .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
     fs::create_dir_all(&config.wallet.p2p.datastore_path)
-        .map_err(|e| ExitError::new(ExitCode::WalletError, &format!("Error creating peer db folder. {}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
@@ -316,8 +317,8 @@ pub async fn init_wallet(
     .map_err(|e| match e {
         WalletError::CommsInitializationError(CommsInitializationError::HiddenServiceControllerError(
             HiddenServiceControllerError::TorControlPortOffline,
-        )) => ExitError::new(ExitCode::TorOffline, &e),
-        WalletError::CommsInitializationError(e) => ExitError::new(ExitCode::WalletError, &e),
+        )) => ExitError::new(ExitCode::TorOffline, e),
+        WalletError::CommsInitializationError(e) => ExitError::new(ExitCode::WalletError, e),
         e => ExitError::new(
             ExitCode::WalletError,
             &format!("Error creating Wallet Container: {}", e),
@@ -328,7 +329,7 @@ pub async fn init_wallet(
             .db
             .set_tor_identity(hs.tor_identity().clone())
             .await
-            .map_err(|e| ExitError::new(ExitCode::WalletError, &format!("Problem writing tor identity. {}", e)))?;
+            .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Problem writing tor identity. {}", e)))?;
     }
 
     if !wallet_encrypted {
@@ -345,7 +346,7 @@ pub async fn init_wallet(
             let confirmed = prompt_password("Confirm wallet password: ")?;
 
             if password != confirmed {
-                return Err(ExitError::new(ExitCode::InputError, &"Passwords don't match!"));
+                return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
             }
 
             (password, true)
@@ -410,15 +411,12 @@ async fn setup_identity_from_db<D: WalletBackend + 'static>(
     if !node_identity.is_signed() {
         node_identity.sign();
         // unreachable panic: signed above
-        wallet_db
-            .set_comms_identity_signature(
-                node_identity
-                    .identity_signature_read()
-                    .as_ref()
-                    .expect("unreachable panic")
-                    .clone(),
-            )
-            .await?;
+        let sig = node_identity
+            .identity_signature_read()
+            .as_ref()
+            .expect("unreachable panic")
+            .clone();
+        wallet_db.set_comms_identity_signature(sig).await?;
     }
 
     Ok(node_identity)
@@ -436,7 +434,7 @@ pub async fn start_wallet(
     let net_address = base_node
         .addresses
         .first()
-        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"Configured base node has no address!"))?;
+        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
 
     wallet
         .set_base_node_peer(base_node.public_key.clone(), net_address.address.clone())
@@ -472,7 +470,7 @@ async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
 
     wallet.output_manager_service.validate_txos().await.map_err(|e| {
         error!(target: LOG_TARGET, "Error validating Unspent TXOs: {}", e);
-        ExitError::new(ExitCode::WalletError, &e)
+        ExitError::new(ExitCode::WalletError, e)
     })?;
 
     debug!(target: LOG_TARGET, "TXO validations started.");
@@ -507,7 +505,7 @@ async fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> 
                 _ => continue,
             },
             Err(e) => {
-                return Err(ExitError::new(ExitCode::IOError, &e));
+                return Err(ExitError::new(ExitCode::IOError, e));
             },
         }
     }
@@ -541,7 +539,7 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
         if wallet_exists {
             return Err(ExitError::new(
                 ExitCode::RecoveryError,
-                &format!(
+                format!(
                     "Wallet already exists at {:#?}. Remove it if you really want to run recovery in this directory!",
                     wallet_config.db_file
                 ),
@@ -564,7 +562,7 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
             let msg = "Wallet does not exist and no password was given to create one. Since we're in non-interactive \
                        mode, we need to quit here. Try setting the TARI_WALLET__PASSWORD envar, or setting --password \
                        on the command line";
-            return Err(ExitError::new(ExitCode::WalletError, &msg));
+            return Err(ExitError::new(ExitCode::WalletError, msg));
         }
 
         // prompt for new or recovery
@@ -589,7 +587,7 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
                     }
                 },
                 Err(e) => {
-                    return Err(ExitError::new(ExitCode::IOError, &e));
+                    return Err(ExitError::new(ExitCode::IOError, e));
                 },
             }
         }

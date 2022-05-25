@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, BLOCK_HASH_LENGTH};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -78,12 +78,13 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             .ok_or_else(|| "excess_sig not provided".to_string())?
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
+        let kernel_features = u8::try_from(kernel.features).map_err(|_| "Kernel features must be a single byte")?;
 
         Ok(TransactionKernel::new(
             TransactionKernelVersion::try_from(
                 u8::try_from(kernel.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            KernelFeatures::from_bits(kernel.features as u8)
+            KernelFeatures::from_bits(kernel_features)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
             MicroTari::from(kernel.fee),
             kernel.lock_height,
@@ -281,12 +282,13 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
 
+        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
+
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            OutputFlags::from_bits(features.flags as u8)
-                .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
+            OutputFlags::from_bits(flags).ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
@@ -403,14 +405,13 @@ impl TryFrom<proto::types::SideChainCheckpointFeatures> for SideChainCheckpointF
     type Error = String;
 
     fn try_from(value: proto::types::SideChainCheckpointFeatures) -> Result<Self, Self::Error> {
-        if value.merkle_root.len() != BLOCK_HASH_LENGTH {
+        if value.merkle_root.len() != FixedHash::byte_size() {
             return Err(format!(
                 "Invalid side chain checkpoint merkle length {}",
                 value.merkle_root.len()
             ));
         }
-        let mut merkle_root = [0u8; BLOCK_HASH_LENGTH];
-        merkle_root.copy_from_slice(&value.merkle_root[0..BLOCK_HASH_LENGTH]);
+        let merkle_root = FixedHash::try_from(value.merkle_root).map_err(|e| e.to_string())?;
         let committee = value
             .committee
             .into_iter()

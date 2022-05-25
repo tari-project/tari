@@ -73,6 +73,7 @@ use crate::{
 
 #[tokio::main]
 #[allow(clippy::same_item_push)]
+#[allow(clippy::too_many_lines)]
 async fn main() {
     env_logger::init();
     let matches = App::new("MemoryNet")

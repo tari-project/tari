@@ -30,7 +30,13 @@ use tari_comms::{
 use tari_utilities::byte_array::ByteArrayError;
 use thiserror::Error;
 
-use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
+use crate::{
+    actor::DhtActorError,
+    envelope::DhtMessageError,
+    origin_mac::OriginMacError,
+    outbound::DhtOutboundError,
+    storage::StorageError,
+};
 
 /// Error type for SAF
 #[derive(Debug, Error)]
@@ -45,8 +51,8 @@ pub enum StoreAndForwardError {
     DhtOutboundError(#[from] DhtOutboundError),
     #[error("Received stored message has an invalid destination")]
     InvalidDestination,
-    #[error("Received stored message has an invalid origin signature")]
-    InvalidOriginMac,
+    #[error("Received stored message has an invalid origin signature: {0}")]
+    InvalidOriginMac(#[from] OriginMacError),
     #[error("Invalid envelope body")]
     InvalidEnvelopeBody,
     #[error("DHT header is invalid")]

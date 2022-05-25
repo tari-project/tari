@@ -77,6 +77,7 @@ impl ApplicationConfig {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BaseNodeConfig {
     override_from: Option<String>,
     pub network: Network,
@@ -152,6 +153,9 @@ impl BaseNodeConfig {
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         if !self.identity_file.is_absolute() {
             self.identity_file = base_path.as_ref().join(self.identity_file.as_path());
+        }
+        if !self.tor_identity_file.is_absolute() {
+            self.tor_identity_file = base_path.as_ref().join(self.tor_identity_file.as_path());
         }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());

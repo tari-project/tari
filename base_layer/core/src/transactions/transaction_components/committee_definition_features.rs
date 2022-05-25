@@ -36,10 +36,10 @@ pub struct CommitteeDefinitionFeatures {
 }
 
 impl ConsensusEncoding for CommitteeDefinitionFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        let mut written = self.committee.consensus_encode(writer)?;
-        written += self.effective_sidechain_height.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.committee.consensus_encode(writer)?;
+        self.effective_sidechain_height.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

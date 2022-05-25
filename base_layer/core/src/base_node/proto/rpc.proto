@@ -89,3 +89,18 @@ message SyncUtxosByBlockResponse  {
   uint64 height = 2;
   bytes header_hash = 3;
 }
+
+message GetMempoolFeePerGramStatsRequest {
+  uint64 count = 1;
+}
+
+message GetMempoolFeePerGramStatsResponse {
+  repeated MempoolFeePerGramStat stats = 1;
+}
+
+message MempoolFeePerGramStat {
+  uint64 order = 1;
+  uint64 max_fee_per_gram = 2;
+  uint64 avg_fee_per_gram = 4;
+  uint64 min_fee_per_gram = 5;
+}

@@ -571,11 +571,11 @@ impl Display for AggregateBody {
 }
 
 impl ConsensusEncoding for AggregateBody {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.inputs.consensus_encode(writer)?;
-        written += self.outputs.consensus_encode(writer)?;
-        written += self.kernels.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.inputs.consensus_encode(writer)?;
+        self.outputs.consensus_encode(writer)?;
+        self.kernels.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

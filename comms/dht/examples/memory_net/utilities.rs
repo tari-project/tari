@@ -256,6 +256,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
     );
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_index: Option<usize>) -> (usize, usize) {
     let random_node = match origin_node_index {
         Some(n) if n < nodes.len() => &nodes[n],
@@ -376,6 +377,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
     (num_successes, nodes.len() - 1)
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn do_store_and_forward_message_propagation(
     wallet: TestNode,
     wallets: &[TestNode],

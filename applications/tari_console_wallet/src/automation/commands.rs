@@ -23,7 +23,6 @@
 use std::{
     fs::File,
     io::{LineWriter, Write},
-    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -33,7 +32,11 @@ use futures::FutureExt;
 use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::TxId,
+    types::{FixedHash, PublicKey},
+};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -52,6 +55,7 @@ use tari_wallet::{
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
+    TransactionStage,
     WalletConfig,
     WalletSqlite,
 };
@@ -93,17 +97,6 @@ pub enum WalletCommand {
     CreateInitialCheckpoint,
     CreateCommitteeDefinition,
     RevalidateWalletDb,
-}
-
-#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
-pub enum TransactionStage {
-    Initiated,
-    DirectSendOrSaf,
-    Negotiated,
-    Broadcast,
-    MinedUnconfirmed,
-    Mined,
-    TimedOut,
 }
 
 #[derive(Debug)]
@@ -345,6 +338,7 @@ pub async fn discover_peer(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
@@ -623,13 +617,13 @@ pub async fn monitor_transactions(
     results
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
 ) -> Result<(), CommandError> {
-    let wait_stage =
-        TransactionStage::from_str(&config.command_send_wait_stage).map_err(|e| CommandError::Config(e.to_string()))?;
+    let wait_stage = config.command_send_wait_stage;
 
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
@@ -848,12 +842,9 @@ pub async fn command_runner(
                 }?;
 
                 let merkle_root = match parsed.args.get(1) {
-                    Some(ParsedArgument::Text(ref root)) => {
-                        let bytes = match &root[0..2] {
-                            "0x" => Vec::<u8>::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
-                            _ => Vec::<u8>::from_hex(root).map_err(|_| CommandError::Argument)?,
-                        };
-                        copy_into_fixed_array(&bytes).map_err(|_| CommandError::Argument)?
+                    Some(ParsedArgument::Text(ref root)) => match &root[0..2] {
+                        "0x" => FixedHash::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
+                        _ => FixedHash::from_hex(root).map_err(|_| CommandError::Argument)?,
                     },
                     _ => return Err(CommandError::Argument),
                 };

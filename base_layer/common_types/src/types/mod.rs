@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod bullet_rangeproofs;
+mod fixed_hash;
 
 pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
@@ -38,7 +39,7 @@ use tari_crypto::{
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
-pub type FixedHash = [u8; BLOCK_HASH_LENGTH];
+pub use fixed_hash::{FixedHash, FixedHashSizeError};
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
