@@ -27,4 +27,3 @@ pub mod cidr;
 pub mod datetime;
 pub mod mpsc;
 pub mod multiaddr;
-pub mod signature;
