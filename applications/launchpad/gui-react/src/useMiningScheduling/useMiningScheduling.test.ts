@@ -2,9 +2,9 @@ import { renderHook } from '@testing-library/react-hooks'
 
 import { Schedule } from '../types/general'
 import { clearTime } from '../utils/Date'
+import { createPeriodicalGetNow } from '../utils/testUtils'
 
-import useMiningScheduling from './'
-import { createPeriodicalGetNow } from './testUtils'
+import useMiningScheduling from './useMiningScheduling'
 
 const A_MINUTE = 60 * 1000
 

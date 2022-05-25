@@ -1,103 +1,44 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useCallback, useRef } from 'react'
 
-import { startOfMinute } from '../utils/Date'
-import { MiningNodeType, Schedule } from '../types/general'
+import { MiningNodeType } from '../types/general'
+import { useAppSelector, useAppDispatch } from '../store/hooks'
+import { selectSchedules } from '../store/app/selectors'
+import { actions as miningActions } from '../store/mining'
 
-import useScheduling from './useScheduling'
-import { getStartsStops } from './getStartsStops'
-import { StartStop } from './types'
-
-const defaultGetNow = () => new Date()
-const TWENTY_FOUR_HOURS_IN_MS = 24 * 60 * 60 * 1000
+import useMiningScheduling from './useMiningScheduling'
 
 /**
- * @name useMiningScheduling
- * @description hook that:
- * 1. takes user-defined schedules
- * 2. every time schedules change and periodically calculates when mining should be started or stopped
- * 3. every minute checks the start/stop dates and calls start or stop callback for mining with specific node
- * by default it calculates mining starts/stops for next 24h and will recalculate after that period
+ * @name useMiningSchedulingContainer
+ * @description connects mining scheduling to the store
  *
- * @prop {Schedule[]} schedules - user-defined mining schedules
- * @prop {(miningType: MiningNodeType) => void} startMining - callback for mining start
- * @prop {(miningType: MiningNodeType) => void} stopMining - callback for mining stop
- * @prop {() => Date} [getNow] - time provider that has a default value of () => new Date(), introduced mostly for easier mocking in testing
- * @prop {number} [singleSchedulingPeriod] - length of time that hook should calculate schedules for (default is 24h)
  */
-const useMiningScheduling = ({
-  schedules,
-  startMining,
-  stopMining,
-  getNow = defaultGetNow,
-  singleSchedulingPeriod = TWENTY_FOUR_HOURS_IN_MS,
-}: {
-  schedules: Schedule[]
-  startMining: (miningType: MiningNodeType) => void
-  stopMining: (miningType: MiningNodeType) => void
-  getNow?: () => Date
-  singleSchedulingPeriod?: number
-}) => {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>()
-  const [startStops, setStartStops] = useState<StartStop[]>(() => {
-    const from = getNow()
-    const to = new Date(from.getTime() + singleSchedulingPeriod)
-    return getStartsStops({
-      from,
-      to,
-      schedules,
-    })
-  })
+const useMiningSchedulingContainer = () => {
+  const dispatch = useAppDispatch()
+  const schedules = useAppSelector(selectSchedules)
+  const startPending = useRef<boolean>(false)
+  const startMining = useCallback(async (node: MiningNodeType) => {
+    if (startPending.current) {
+      return
+    }
 
-  useEffect(() => {
-    const from = getNow()
-    const to = new Date(from.getTime() + singleSchedulingPeriod)
-    const ss = getStartsStops({
-      from,
-      to,
-      schedules,
-    })
-    setStartStops(ss)
-  }, [schedules, getNow])
-
-  useEffect(() => {
-    timerRef.current = setTimeout(() => {
-      const from = getNow()
-      const to = new Date(from.getTime() + singleSchedulingPeriod)
-      const ss = getStartsStops({
-        from,
-        to,
-        schedules,
-      })
-      setStartStops(ss)
-    }, singleSchedulingPeriod)
-  }, [startStops, getNow])
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(timerRef.current!)
+    try {
+      startPending.current = true
+      await dispatch(miningActions.startMiningNode({ node })).unwrap()
+      startPending.current = false
+    } finally {
+      startPending.current = false
     }
   }, [])
-
-  const scheduledCallback = useCallback(
-    (now: Date) => {
-      const starts = startStops.filter(
-        ss =>
-          startOfMinute(ss.start).getTime() === startOfMinute(now).getTime(),
-      )
-      const stops = startStops.filter(
-        ss => startOfMinute(ss.stop).getTime() === startOfMinute(now).getTime(),
-      )
-
-      starts.forEach(start => startMining(start.toMine))
-      stops.forEach(stop => stopMining(stop.toMine))
-    },
-    [startStops, startMining, stopMining],
+  const stopMining = useCallback(
+    (node: MiningNodeType) => dispatch(miningActions.stopMiningNode({ node })),
+    [],
   )
 
-  useScheduling({
-    getNow,
-    callback: scheduledCallback,
+  useMiningScheduling({
+    schedules,
+    startMining,
+    stopMining,
   })
 }
 
-export default useMiningScheduling
+export default useMiningSchedulingContainer
