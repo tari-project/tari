@@ -25,9 +25,9 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use digest::{consts::U32, generic_array};
+use tari_common_types::types::{FixedHash, FixedHashSizeError};
 use tari_utilities::hex::{Hex, HexError};
-
-use crate::fixed_hash::{FixedHash, FixedHashSizeError};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TreeNodeHash(FixedHash);
@@ -42,8 +42,14 @@ impl TreeNodeHash {
     }
 }
 
-impl<T: Into<FixedHash>> From<T> for TreeNodeHash {
-    fn from(hash: T) -> Self {
+impl From<[u8; FixedHash::byte_size()]> for TreeNodeHash {
+    fn from(hash: [u8; FixedHash::byte_size()]) -> Self {
+        Self(hash.into())
+    }
+}
+
+impl From<generic_array::GenericArray<u8, U32>> for TreeNodeHash {
+    fn from(hash: digest::generic_array::GenericArray<u8, U32>) -> Self {
         Self(hash.into())
     }
 }

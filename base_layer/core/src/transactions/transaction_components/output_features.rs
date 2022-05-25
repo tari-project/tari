@@ -67,6 +67,11 @@ pub struct OutputFeatures {
     #[serde(default)]
     pub recovery_byte: u8,
     pub metadata: Vec<u8>,
+    // TODO: Add these fields
+    // pub contract_id: Option<FixedHash>,
+    // pub constitution: Option<ContractConstitution>,
+
+    // Deprecated fields
     pub unique_id: Option<Vec<u8>>,
     pub parent_public_key: Option<PublicKey>,
     pub asset: Option<AssetOutputFeatures>,
@@ -402,8 +407,6 @@ impl Display for OutputFeatures {
 mod test {
     use std::{io::ErrorKind, iter};
 
-    use tari_common_types::types::BLOCK_HASH_LENGTH;
-
     use super::*;
     use crate::consensus::check_consensus_encoding_correctness;
 
@@ -435,7 +438,7 @@ mod test {
                 asset_owner_commitment: Default::default(),
             }),
             sidechain_checkpoint: Some(SideChainCheckpointFeatures {
-                merkle_root: [1u8; 32],
+                merkle_root: [1u8; 32].into(),
                 committee: iter::repeat_with(PublicKey::default).take(50).collect(),
             }),
             committee_definition: match version {
@@ -546,7 +549,7 @@ mod test {
     #[test]
     fn test_for_checkpoint() {
         let unique_id = vec![7, 2, 3, 4];
-        let hash = [13; BLOCK_HASH_LENGTH];
+        let hash = [13; 32].into();
         let committee = vec![PublicKey::default()];
         // Initial
         assert_eq!(
