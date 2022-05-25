@@ -139,7 +139,8 @@ Feature: Wallet CLI
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
         Then I run whois BASE on wallet WALLET via command line
-
+    
+    @broken
     Scenario: As a user I want to set sidechain committee via command line
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
