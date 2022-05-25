@@ -15,6 +15,7 @@ import t from '../../../locales'
 
 // import SetupMerged from './SetupMerged'
 import SetupMergedWithForm from './SetupMergedWithForm'
+import MessagesConfig from '../../../config/helpMessagesConfig'
 import {
   BestChoiceTagIcon,
   BestChoiceTagText,
@@ -80,7 +81,6 @@ const MiningBoxMerged = () => {
       />
     )
   }
-
   return (
     <MiningBox
       node='merged'
@@ -93,6 +93,7 @@ const MiningBoxMerged = () => {
       currentStatus={currentStatus}
       nodeState={nodeState}
       containersState={containersState}
+      helpMessages={MessagesConfig.MergedMiningHelp}
     >
       {boxContent}
     </MiningBox>

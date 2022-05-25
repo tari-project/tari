@@ -27,16 +27,17 @@ export type ServiceDescriptor = {
   name: string
 }
 
+export type ContainerStats = {
+  cpu: number
+  memory: number
+  unsubscribe: UnlistenFn
+}
+
 export type ContainerStatus = {
   status: SystemEventAction
   timestamp: number
   type?: Container
   error?: any
-  stats: {
-    cpu: number
-    memory: number
-    unsubscribe: UnlistenFn
-  }
 }
 
 export type ContainerStatusDto = {
@@ -45,11 +46,10 @@ export type ContainerStatusDto = {
   running: boolean
   pending: boolean
   error?: any
-  stats: {
-    cpu: number
-    memory: number
-    unsubscribe: UnlistenFn
-  }
+}
+
+export type ContainerStatusDtoWithStats = ContainerStatusDto & {
+  stats: ContainerStats
 }
 
 export type ContainerStateFields = Pick<
@@ -64,6 +64,7 @@ export type ServicesState = {
   errors: Record<Container, any>
   pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
+  stats: Record<ContainerId, ContainerStats>
 }
 
 export interface StatsEventPayload {

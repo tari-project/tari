@@ -1,8 +1,15 @@
+import SvgQuestion from '../../styles/Icons/Question'
 import Box from '../Box'
 import Tag from '../Tag'
 import Text from '../Text'
 
-import { BoxHeader, BoxContent, NodeBoxPlacholder } from './styles'
+import {
+  BoxHeader,
+  BoxContent,
+  NodeBoxPlacholder,
+  TitleRow,
+  SvgContainer,
+} from './styles'
 import { NodeBoxContentPlaceholderProps, NodeBoxProps } from './types'
 
 /**
@@ -18,14 +25,18 @@ import { NodeBoxContentPlaceholderProps, NodeBoxProps } from './types'
  * @param {CSSWithSpring} [style] - the box style
  * @param {CSSWithSpring} [titleStyle] - the title style
  * @param {CSSWithSpring} [contentStyle] - the content style
+ * @param {() => void} [onHelpPromptClick] - onClick handler for help icon
  * @param {ReactNode} [children] - the box heading
+ * @param {string} [testId] - react test id
  */
+
 const NodeBox = ({
   title,
   tag,
   style,
   titleStyle,
   contentStyle,
+  onHelpPromptClick,
   children,
   testId = 'node-box-cmp',
 }: NodeBoxProps) => {
@@ -38,11 +49,24 @@ const NodeBox = ({
           </Tag>
         ) : null}
       </BoxHeader>
-      {title ? (
-        <Text as='h2' type='header' style={titleStyle}>
-          {title}
-        </Text>
-      ) : null}
+      <TitleRow>
+        {title ? (
+          <Text as='h2' type='header' style={titleStyle}>
+            {title}
+          </Text>
+        ) : null}
+        {onHelpPromptClick && (
+          <SvgContainer
+            running={tag?.type === 'running'}
+            data-testid='help-icon-cmp'
+          >
+            <SvgQuestion
+              onClick={onHelpPromptClick}
+              useGradient={tag?.type !== 'running'}
+            />
+          </SvgContainer>
+        )}
+      </TitleRow>
       <BoxContent style={contentStyle}>{children}</BoxContent>
     </Box>
   )
