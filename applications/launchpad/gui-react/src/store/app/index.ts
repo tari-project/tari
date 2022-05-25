@@ -46,8 +46,6 @@ const appSlice = createSlice({
 
       newSchedule.date = date ? clearTime(date).toISOString() : undefined
 
-      console.log({ newSchedule })
-
       state.schedules[scheduleId] = newSchedule
     },
   },
