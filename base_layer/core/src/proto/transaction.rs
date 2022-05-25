@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, BLOCK_HASH_LENGTH};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -405,14 +405,13 @@ impl TryFrom<proto::types::SideChainCheckpointFeatures> for SideChainCheckpointF
     type Error = String;
 
     fn try_from(value: proto::types::SideChainCheckpointFeatures) -> Result<Self, Self::Error> {
-        if value.merkle_root.len() != BLOCK_HASH_LENGTH {
+        if value.merkle_root.len() != FixedHash::byte_size() {
             return Err(format!(
                 "Invalid side chain checkpoint merkle length {}",
                 value.merkle_root.len()
             ));
         }
-        let mut merkle_root = [0u8; BLOCK_HASH_LENGTH];
-        merkle_root.copy_from_slice(&value.merkle_root[0..BLOCK_HASH_LENGTH]);
+        let merkle_root = FixedHash::try_from(value.merkle_root).map_err(|e| e.to_string())?;
         let committee = value
             .committee
             .into_iter()

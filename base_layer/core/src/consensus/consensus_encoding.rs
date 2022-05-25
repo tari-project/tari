@@ -23,6 +23,7 @@
 mod bytes;
 mod crypto;
 mod epoch_time;
+mod fixed_hash;
 mod generic;
 mod hash_writer;
 mod integers;
