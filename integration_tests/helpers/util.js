@@ -156,15 +156,38 @@ function toLittleEndianInner(n) {
 }
 
 function toLittleEndian(n, numBits) {
-  const s = toLittleEndianInner(n);
-
-  for (let i = s.length; i < numBits / 8; i++) {
-    s.push("00");
+  if (numBits % 8 !== 0) {
+    throw new Error("toLittleEndian: numBits not a multiple of 8");
   }
 
-  const arr = Buffer.from(s.join(""), "hex");
+  switch (numBits) {
+    case 8: {
+      let buf = Buffer.alloc(numBits / 8);
+      buf.writeUint8(n);
+      return buf;
+    }
+    case 16: {
+      let buf = Buffer.alloc(numBits / 8);
+      buf.writeUint16LE(n);
+      return buf;
+    }
+    case 32: {
+      let buf = Buffer.alloc(numBits / 8);
+      buf.writeUInt32LE(n);
+      return buf;
+    }
+    default: {
+      const s = toLittleEndianInner(n);
 
-  return arr;
+      for (let i = s.length; i < numBits / 8; i++) {
+        s.push("00");
+      }
+
+      const arr = Buffer.from(s.join(""), "hex");
+
+      return arr;
+    }
+  }
 }
 
 function littleEndianHexStringToBigEndianHexString(string) {
@@ -230,7 +253,7 @@ const getTransactionOutputHash = function (output) {
     // features.maturity
     Buffer.from([parseInt(output.features.maturity)]),
     // features.flags
-    Buffer.from([output.features.flags]),
+    Buffer.from(toLittleEndian(output.features.flags, 16)),
   ]);
   // features.parent_public_key
   features = Buffer.concat([

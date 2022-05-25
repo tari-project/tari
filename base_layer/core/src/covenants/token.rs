@@ -71,7 +71,7 @@ impl CovenantToken {
         }
     }
 
-    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         match self {
             CovenantToken::Filter(filter) => filter.write_to(writer),
             CovenantToken::Arg(arg) => arg.write_to(writer),

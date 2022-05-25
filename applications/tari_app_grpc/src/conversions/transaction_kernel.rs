@@ -44,11 +44,13 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             .try_into()
             .map_err(|_| "excess_sig could not be converted".to_string())?;
 
+        let kernel_features = u8::try_from(kernel.features).map_err(|_| "kernel features must be a single byte")?;
+
         Ok(Self::new(
             TransactionKernelVersion::try_from(
                 u8::try_from(kernel.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            KernelFeatures::from_bits(kernel.features as u8)
+            KernelFeatures::from_bits(kernel_features)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
             MicroTari::from(kernel.fee),
             kernel.lock_height,

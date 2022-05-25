@@ -215,6 +215,7 @@ impl ContactSql {
 impl TryFrom<ContactSql> for Contact {
     type Error = ContactsServiceStorageError;
 
+    #[allow(clippy::cast_sign_loss)]
     fn try_from(o: ContactSql) -> Result<Self, Self::Error> {
         let public_key =
             PublicKey::from_vec(&o.public_key).map_err(|_| ContactsServiceStorageError::ConversionError)?;
@@ -230,6 +231,7 @@ impl TryFrom<ContactSql> for Contact {
 }
 
 /// Conversion from a Contact to the Sql datatype form
+#[allow(clippy::cast_possible_wrap)]
 impl From<Contact> for ContactSql {
     fn from(o: Contact) -> Self {
         Self {

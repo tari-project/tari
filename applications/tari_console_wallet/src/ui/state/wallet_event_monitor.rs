@@ -57,6 +57,7 @@ impl WalletEventMonitor {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn run(mut self, notifier: Notifier) {
         let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
         let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();

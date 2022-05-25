@@ -71,6 +71,7 @@ impl Controller {
         self.client_tx = Some(client_tx);
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn run(&mut self) -> Result<(), Error> {
         let mut miner: Option<Miner> = None;
         loop {

@@ -23,11 +23,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tari_common_types::types::FixedHash;
 use tokio::sync::Mutex;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    fixed_hash::FixedHash,
     models::{Instruction, TreeNodeHash},
 };
 

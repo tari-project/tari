@@ -161,14 +161,14 @@ impl Ord for TransactionKernel {
 }
 
 impl ConsensusEncoding for TransactionKernel {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.features.consensus_encode(writer)?;
-        written += self.fee.consensus_encode(writer)?;
-        written += self.lock_height.consensus_encode(writer)?;
-        written += self.excess.consensus_encode(writer)?;
-        written += self.excess_sig.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.features.consensus_encode(writer)?;
+        self.fee.consensus_encode(writer)?;
+        self.lock_height.consensus_encode(writer)?;
+        self.excess.consensus_encode(writer)?;
+        self.excess_sig.consensus_encode(writer)?;
+        Ok(())
     }
 }
 

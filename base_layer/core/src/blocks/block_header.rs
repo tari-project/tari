@@ -65,7 +65,7 @@ use thiserror::Error;
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 
@@ -394,24 +394,26 @@ pub(crate) mod hash_serializer {
 }
 
 impl ConsensusEncoding for BlockHeader {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.version.consensus_encode(writer)?;
-        written += self.height.consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
-        written += self.timestamp.as_u64().consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
-        written += self.output_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
-        written += self.kernel_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
-        written += self.total_kernel_offset.consensus_encode(writer)?;
-        written += self.total_script_offset.consensus_encode(writer)?;
-        written += self.nonce.consensus_encode(writer)?;
-        written += self.pow.consensus_encode(writer)?;
-        Ok(written)
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.version.consensus_encode(writer)?;
+        self.height.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
+        self.timestamp.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
+        self.output_mmr_size.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
+        self.kernel_mmr_size.consensus_encode(writer)?;
+        copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
+        self.total_kernel_offset.consensus_encode(writer)?;
+        self.total_script_offset.consensus_encode(writer)?;
+        self.nonce.consensus_encode(writer)?;
+        self.pow.consensus_encode(writer)?;
+        Ok(())
     }
 }
+
+impl ConsensusEncodingSized for BlockHeader {}
 
 impl ConsensusDecoding for BlockHeader {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
@@ -419,7 +421,7 @@ impl ConsensusDecoding for BlockHeader {
         let mut header = BlockHeader::new(version);
         header.height = u64::consensus_decode(reader)?;
         header.prev_hash = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
-        header.timestamp = EpochTime::from(u64::consensus_decode(reader)?);
+        header.timestamp = EpochTime::consensus_decode(reader)?;
         header.output_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
         header.witness_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
         header.output_mmr_size = u64::consensus_decode(reader)?;

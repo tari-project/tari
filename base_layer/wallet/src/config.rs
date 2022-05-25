@@ -27,6 +27,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use strum::EnumString;
 use tari_common::{
     configuration::{serializers, Network, StringList},
     SubConfigPath,
@@ -56,14 +57,14 @@ pub struct WalletConfig {
     pub auto_update: AutoUpdateConfig,
     pub data_dir: PathBuf,
     pub db_file: PathBuf,
-    pub connection_manager_pool_size: usize,
+    pub db_connection_pool_size: usize,
     pub password: Option<String>, // TODO: Make clear on drop
     #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
     pub contacts_online_ping_window: usize,
     #[serde(with = "serializers::seconds")]
     pub command_send_wait_timeout: Duration,
-    pub command_send_wait_stage: String,
+    pub command_send_wait_stage: TransactionStage,
     pub notify_file: Option<PathBuf>,
     pub grpc_address: Option<Multiaddr>,
     pub custom_base_node: Option<String>,
@@ -89,11 +90,11 @@ impl Default for WalletConfig {
             auto_update: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             db_file: PathBuf::from_str("console_wallet").unwrap(),
-            connection_manager_pool_size: 5, // TODO: get actual default
+            db_connection_pool_size: 5, // TODO: get actual default
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,
-            command_send_wait_stage: String::new(),
+            command_send_wait_stage: TransactionStage::Broadcast,
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
             grpc_address: None,
@@ -124,4 +125,15 @@ impl WalletConfig {
         }
         self.p2p.set_base_path(self.data_dir.as_path());
     }
+}
+
+#[derive(Debug, EnumString, PartialEq, Clone, Copy, Serialize, Deserialize)]
+pub enum TransactionStage {
+    Initiated,
+    DirectSendOrSaf,
+    Negotiated,
+    Broadcast,
+    MinedUnconfirmed,
+    Mined,
+    TimedOut,
 }

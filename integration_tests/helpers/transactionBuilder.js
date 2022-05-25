@@ -59,7 +59,7 @@ class TransactionBuilder {
       // version
       Buffer.from([OUTPUT_FEATURES_VERSION]),
       Buffer.from([parseInt(features.maturity || 0)]),
-      Buffer.from([features.flags]),
+      toLittleEndian(features.flags, 16),
       OUTPUT_FEATURES_VERSION === 0x00
         ? Buffer.from([])
         : Buffer.from([features.recovery_byte]),

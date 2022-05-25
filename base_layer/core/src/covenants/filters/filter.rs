@@ -66,8 +66,9 @@ impl CovenantFilter {
         byte_codes::is_valid_filter_code(code)
     }
 
-    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write_u8_fixed(self.as_byte_code())
+    pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_u8_fixed(self.as_byte_code())?;
+        Ok(())
     }
 
     fn as_byte_code(&self) -> u8 {

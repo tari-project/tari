@@ -351,6 +351,7 @@ fn handle_tip_reorg() {
 
 #[test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 fn handle_reorg() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
@@ -523,6 +524,7 @@ fn handle_reorg() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn reorgs_should_update_orphan_tips() {
     // Create a main chain GB -> A1 -> A2
     // Create an orphan chain GB -> B1
@@ -1011,6 +1013,7 @@ fn store_and_retrieve_blocks() {
 
 #[test]
 #[allow(clippy::erasing_op)]
+#[allow(clippy::too_many_lines)]
 fn asset_unique_id() {
     let mut rng = rand::thread_rng();
     let network = Network::LocalNet;
@@ -1219,7 +1222,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(rules.clone(), Default::default()),
         )
         .unwrap();
@@ -1242,7 +1245,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(rules.clone(), Default::default()),
         )
         .unwrap();
@@ -1500,6 +1503,7 @@ fn horizon_height_orphan_cleanup() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn orphan_cleanup_on_reorg() {
     // Create Main Chain
     let network = Network::LocalNet;
@@ -1667,7 +1671,7 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
         )
         .unwrap();
@@ -1720,7 +1724,7 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config.clone(),
+            config,
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
         )
         .unwrap();

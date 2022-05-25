@@ -20,9 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod bool;
 mod bytes;
 mod crypto;
 mod epoch_time;
+mod fixed_hash;
 mod generic;
 mod hash_writer;
 mod integers;
@@ -41,7 +43,7 @@ use crate::common::byte_counter::ByteCounter;
 pub trait ConsensusEncoding {
     /// Encode to the given writer returning the number of bytes written.
     /// If writing to this Writer is infallible, this implementation MUST always succeed.
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error>;
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error>;
 }
 
 pub trait ConsensusEncodingSized: ConsensusEncoding {
@@ -85,8 +87,10 @@ pub mod test {
         let mut buf = Vec::new();
         subject.consensus_encode(&mut buf)?;
         assert_eq!(buf.len(), subject.consensus_encode_exact_size());
-        let decoded = T::consensus_decode(&mut buf.as_slice())?;
+        let mut reader = buf.as_slice();
+        let decoded = T::consensus_decode(&mut reader)?;
         assert_eq!(decoded, subject);
+        assert!(reader.is_empty());
         Ok(())
     }
 }
