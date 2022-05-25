@@ -16,6 +16,24 @@ const getDaysBetween = (from: Date, to: Date) => {
   return days
 }
 
+/**
+ * @name getStartsStops
+ * @description function that calculates mining start and stops in the given period, based on given schedules
+ * if a scheduled period starts before `from` and does not finish before it, the mining is considered to start on `from`
+ * every start/stop pertains to single mining node
+ * if multiple schedules for the same mining node overlap, they are combined and single start/stop period is returned for them
+ * returned start/stops are ordered by `start` properties
+ *
+ * @prop {Date} from - start of calculation
+ * @prop {Date} to - end of calculation
+ * @prop {Schedule[]} schedules - user-defined schedules used for mining start/stop calculation
+ * @returns {StartStop[]}
+ *
+ * @typedef StartStop
+ * @prop {MiningNodeType} toMine - type of mining that should be run
+ * @prop {Date} start - when mining should start
+ * @prop {Date} stop - when mining should stop
+ */
 export const getStartsStops = ({
   from,
   to,

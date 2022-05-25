@@ -10,6 +10,14 @@ const getNextFullMinute = (now: Date): Date => {
 }
 
 const defaultGetNow = () => new Date()
+
+/**
+ * @name useScheduling
+ * @description long living hook that runs specified callback every full minute
+ *
+ * @prop {(d: Date) => void} callback - callback to be run on every minute (with that minute passed)
+ * @prop {() => Date} [getNow] - time provider with default value returning new Date() (mostly for testing)
+ */
 const useScheduling = ({
   callback,
   getNow = defaultGetNow,
