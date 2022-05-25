@@ -21,12 +21,20 @@ module.exports = {
   plugins: ['react', '@typescript-eslint', 'prettier'],
   rules: {
     'prettier/prettier': 'error',
-    indent: ['warn', 2, { SwitchCase: 1 }],
+    indent: ['off', 2, { SwitchCase: 1 }],
     'linebreak-style': ['error', 'unix'],
     'no-console': 1,
     quotes: ['error', 'single'],
     'react/react-in-jsx-scope': 'off',
     semi: ['error', 'never'],
     'object-curly-spacing': ['error', 'always', { objectsInObjects: true }],
+    '@typescript-eslint/no-unused-vars': [
+      'warn',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      },
+    ],
   },
 }

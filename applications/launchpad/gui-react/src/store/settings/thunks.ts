@@ -1,5 +1,5 @@
 import { createAsyncThunk } from '@reduxjs/toolkit'
-import { cacheDir, sep } from '@tauri-apps/api/path'
+import { cacheDir } from '@tauri-apps/api/path'
 
 const getSettings = async () => ({
   walletPassword: 'tari',

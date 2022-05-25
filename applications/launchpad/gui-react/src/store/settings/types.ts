@@ -10,5 +10,6 @@ export enum Settings {
 export type SettingsState = {
   open: boolean
   which: Settings
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   serviceSettings: any
 }
