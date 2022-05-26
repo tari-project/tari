@@ -103,7 +103,7 @@ mod test {
     fn it_filters_sender_offset_public_key() {
         let pk = PublicKey::from_hex("5615a327e1d19da34e5aa8bbd2ecc97addf29b158844b885bfc4efa0dab17052").unwrap();
         let covenant = covenant!(field_eq(
-            @field::features_parent_public_key,
+            @field::sender_offset_public_key,
             @public_key(pk.clone())
         ));
         let input = create_input();
@@ -111,15 +111,12 @@ mod test {
         // Remove `field_eq`
         context.next_filter().unwrap();
         let mut outputs = create_outputs(10, Default::default());
-        outputs[5].features.parent_public_key = Some(pk.clone());
+        outputs[5].sender_offset_public_key = pk.clone();
         let mut output_set = OutputSet::new(&outputs);
         FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
 
         assert_eq!(output_set.len(), 1);
-        assert_eq!(
-            *output_set.get(5).unwrap().features.parent_public_key.as_ref().unwrap(),
-            pk
-        );
+        assert_eq!(output_set.get(5).unwrap().sender_offset_public_key, pk);
     }
 
     #[test]

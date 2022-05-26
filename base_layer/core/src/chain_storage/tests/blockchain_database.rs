@@ -377,7 +377,6 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-
     use super::*;
 
     #[test]

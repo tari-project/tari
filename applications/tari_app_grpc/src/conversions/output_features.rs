@@ -34,6 +34,7 @@ use tari_core::transactions::transaction_components::{
     OutputFeaturesVersion,
     OutputFlags,
     SideChainCheckpointFeatures,
+    SideChainFeatures,
     TemplateParameter,
 };
 use tari_utilities::ByteArray;
@@ -54,7 +55,12 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
         } else {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
-        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u8")?;
+        let sidechain_features = features
+            .sidechain_features
+            .map(SideChainFeatures::try_from)
+            .transpose()?;
+
+        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u16")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
@@ -65,6 +71,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
+            sidechain_features,
             parent_public_key,
             features.asset.map(|a| a.try_into()).transpose()?,
             features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
@@ -77,24 +84,23 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
 impl From<OutputFeatures> for grpc::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
+            version: features.version as u32,
             flags: u32::from(features.flags.bits()),
             maturity: features.maturity,
             metadata: features.metadata,
             unique_id: features.unique_id.unwrap_or_default(),
-            parent_public_key: features
-                .parent_public_key
-                .map(|a| a.as_bytes().to_vec())
-                .unwrap_or_default(),
-            asset: features.asset.map(|a| a.into()),
-            mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
-            version: features.version as u32,
-            committee_definition: features.committee_definition.map(|c| c.into()),
             recovery_byte: u32::from(features.recovery_byte),
+            sidechain_features: features.sidechain_features.map(Into::into),
+
+            // TODO: Deprecated
+            asset: None,
+            parent_public_key: vec![],
+            mint_non_fungible: None,
+            sidechain_checkpoint: None,
+            committee_definition: None,
         }
     }
 }
-
 impl TryFrom<grpc::AssetOutputFeatures> for AssetOutputFeatures {
     type Error = String;
 

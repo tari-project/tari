@@ -71,6 +71,8 @@ pub enum TransactionError {
     CovenantError(String),
     #[error("Consensus encoding error: {0}")]
     ConsensusEncodingError(String),
+    #[error("Committee contains too many members: contains {len} members but maximum is {max}")]
+    InvalidCommitteeLength { len: usize, max: usize },
 }
 
 impl From<CovenantError> for TransactionError {

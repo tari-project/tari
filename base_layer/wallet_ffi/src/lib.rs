@@ -1153,6 +1153,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         recovery_byte,
         decoded_metadata,
         decoded_unique_id,
+        None,
         decoded_parent_public_key,
         asset,
         mint_non_fungible,

@@ -21,7 +21,18 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod contract_constitution;
-pub use contract_constitution::ContractConstitution;
+pub use contract_constitution::{
+    CheckpointParameters,
+    ConstitutionChangeFlags,
+    ConstitutionChangeRules,
+    ContractAcceptanceRequirements,
+    ContractConstitution,
+    RequirementsForConstitutionChange,
+    SideChainConsensus,
+};
 
 mod committee_members;
 pub use committee_members::CommitteeMembers;
+
+mod sidechain_features;
+pub use sidechain_features::SideChainFeatures;

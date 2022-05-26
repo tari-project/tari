@@ -28,13 +28,13 @@ use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, FixedHash, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, OutputFlags, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFlags, SideChainFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -512,7 +512,16 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         })?;
         features.maturity = o.maturity as u64;
         features.metadata = o.metadata.unwrap_or_default();
-        features.unique_id = o.features_unique_id.clone();
+        features.sidechain_features = o
+            .features_unique_id
+            .as_ref()
+            .map(|v| FixedHash::try_from(v.as_slice()))
+            .transpose()
+            .map_err(|_| OutputManagerStorageError::ConversionError {
+                reason: "Invalid contract ID".to_string(),
+            })?
+            // TODO: Add side chain features to wallet db
+            .map(SideChainFeatures::new);
         features.parent_public_key = o
             .features_parent_public_key
             .map(|p| PublicKey::from_bytes(&p))
