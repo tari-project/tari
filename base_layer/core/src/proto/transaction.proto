@@ -103,6 +103,7 @@ message OutputFeatures {
 
 message SideChainFeatures {
     bytes contract_id = 1;
+    ContractDefinition definition = 2;
     ContractConstitution constitution = 3;
 }
 
@@ -176,6 +177,29 @@ message CommitteeDefinitionFeatures {
     repeated bytes committee = 1;
     uint64 effective_sidechain_height = 2;
 }
+
+message ContractDefinition {
+    bytes contract_id = 1;
+    bytes contract_name = 2;
+    bytes contract_issuer = 3;
+    ContractSpecification contract_spec = 4;
+}
+
+message ContractSpecification {
+    bytes runtime = 1;
+    repeated PublicFunction public_functions = 2;
+}
+
+message PublicFunction {
+    bytes name = 1;
+    FunctionRef function = 2;
+}
+
+message FunctionRef {
+    bytes template_id = 1;
+    uint32 function_id = 2;
+}
+
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
 // be sorted by their Blake2b-256bit digest hash

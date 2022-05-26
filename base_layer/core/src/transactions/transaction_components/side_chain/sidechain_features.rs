@@ -25,6 +25,7 @@ use std::io::{Error, Read, Write};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
 
+use super::ContractDefinition;
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     transactions::transaction_components::ContractConstitution,
@@ -33,6 +34,7 @@ use crate::{
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct SideChainFeatures {
     pub contract_id: FixedHash,
+    pub definition: Option<ContractDefinition>,
     pub constitution: Option<ContractConstitution>,
 }
 
@@ -49,6 +51,7 @@ impl SideChainFeatures {
 impl ConsensusEncoding for SideChainFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.contract_id.consensus_encode(writer)?;
+        self.definition.consensus_encode(writer)?;
         self.constitution.consensus_encode(writer)?;
         Ok(())
     }
@@ -60,6 +63,7 @@ impl ConsensusDecoding for SideChainFeatures {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         Ok(Self {
             contract_id: FixedHash::consensus_decode(reader)?,
+            definition: ConsensusDecoding::consensus_decode(reader)?,
             constitution: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
@@ -74,9 +78,15 @@ impl SideChainFeaturesBuilder {
         Self {
             features: SideChainFeatures {
                 contract_id,
+                definition: None,
                 constitution: None,
             },
         }
+    }
+
+    pub fn with_contract_definition(mut self, contract_definition: ContractDefinition) -> Self {
+        self.features.definition = Some(contract_definition);
+        self
     }
 
     pub fn with_contract_constitution(mut self, contract_constitution: ContractConstitution) -> Self {
@@ -99,11 +109,15 @@ mod tests {
     use crate::{
         consensus::check_consensus_encoding_correctness,
         transactions::transaction_components::{
+            vec_into_fixed_string,
             CheckpointParameters,
             CommitteeMembers,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
+            ContractSpecification,
+            FunctionRef,
+            PublicFunction,
             RequirementsForConstitutionChange,
             SideChainConsensus,
         },
@@ -138,6 +152,30 @@ mod tests {
                     }),
                 },
                 initial_reward: 100.into(),
+            }),
+            definition: Some(ContractDefinition {
+                contract_id: FixedHash::zero(),
+                contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
+                contract_issuer: PublicKey::default(),
+                contract_spec: ContractSpecification {
+                    runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
+                    public_functions: vec![
+                        PublicFunction {
+                            name: vec_into_fixed_string("foo".as_bytes().to_vec()),
+                            function: FunctionRef {
+                                template_id: FixedHash::zero(),
+                                function_id: 0_u16,
+                            },
+                        },
+                        PublicFunction {
+                            name: vec_into_fixed_string("bar".as_bytes().to_vec()),
+                            function: FunctionRef {
+                                template_id: FixedHash::zero(),
+                                function_id: 1_u16,
+                            },
+                        },
+                    ],
+                },
             }),
         };
 

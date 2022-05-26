@@ -31,8 +31,17 @@ pub use contract_constitution::{
     SideChainConsensus,
 };
 
+mod contract_definition;
+pub use contract_definition::{
+    vec_into_fixed_string,
+    ContractDefinition,
+    ContractSpecification,
+    FunctionRef,
+    PublicFunction,
+};
+
 mod committee_members;
 pub use committee_members::CommitteeMembers;
 
 mod sidechain_features;
-pub use sidechain_features::SideChainFeatures;
+pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};

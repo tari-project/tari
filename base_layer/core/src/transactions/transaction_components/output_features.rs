@@ -37,7 +37,7 @@ use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_utilities::ByteArray;
 
-use super::OutputFeaturesVersion;
+use super::{ContractDefinition, OutputFeaturesVersion, SideChainFeaturesBuilder};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
     transactions::{
@@ -282,6 +282,18 @@ impl OutputFeatures {
         }
     }
 
+    pub fn for_contract_definition(definition: ContractDefinition) -> OutputFeatures {
+        Self {
+            flags: OutputFlags::CONTRACT_DEFINITION,
+            sidechain_features: Some(
+                SideChainFeaturesBuilder::new(definition.contract_id)
+                    .with_contract_definition(definition)
+                    .finish(),
+            ),
+            ..Default::default()
+        }
+    }
+
     pub fn unique_asset_id(&self) -> Option<&[u8]> {
         self.unique_id.as_deref()
     }
@@ -322,7 +334,7 @@ impl ConsensusEncoding for OutputFeatures {
         self.flags.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
-            OutputFeaturesVersion::V1 => {
+            _ => {
                 OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
             },
         }
@@ -335,7 +347,7 @@ impl ConsensusEncoding for OutputFeatures {
         self.metadata.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
-            OutputFeaturesVersion::V1 => {
+            _ => {
                 self.committee_definition.consensus_encode(writer)?;
             },
         }
@@ -354,7 +366,7 @@ impl ConsensusDecoding for OutputFeatures {
         let flags = OutputFlags::consensus_decode(reader)?;
         let recovery_byte = match version {
             OutputFeaturesVersion::V0 => 0,
-            OutputFeaturesVersion::V1 => OutputFeatures::consensus_decode_recovery_byte(reader)?,
+            _ => OutputFeatures::consensus_decode_recovery_byte(reader)?,
         };
         let parent_public_key = <Option<PublicKey> as ConsensusDecoding>::consensus_decode(reader)?;
         const MAX_UNIQUE_ID_SIZE: usize = 256;
@@ -368,9 +380,7 @@ impl ConsensusDecoding for OutputFeatures {
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
         let committee_definition = match version {
             OutputFeaturesVersion::V0 => None,
-            OutputFeaturesVersion::V1 => {
-                <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?
-            },
+            _ => <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?,
         };
         Ok(Self {
             version,
@@ -446,7 +456,12 @@ mod test {
                 RequirementsForConstitutionChange,
                 SideChainConsensus,
             },
+            vec_into_fixed_string,
             ContractConstitution,
+            ContractDefinition,
+            ContractSpecification,
+            FunctionRef,
+            PublicFunction,
         },
     };
 
@@ -457,7 +472,7 @@ mod test {
             maturity: u64::MAX,
             recovery_byte: match version {
                 OutputFeaturesVersion::V0 => 0,
-                OutputFeaturesVersion::V1 => u8::MAX,
+                _ => u8::MAX,
             },
             metadata: vec![1; 1024],
             unique_id: Some(vec![0u8; 256]),
@@ -489,6 +504,30 @@ mod test {
                     },
                     initial_reward: 100.into(),
                 }),
+                definition: Some(ContractDefinition {
+                    contract_id: FixedHash::zero(),
+                    contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
+                    contract_issuer: PublicKey::default(),
+                    contract_spec: ContractSpecification {
+                        runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
+                        public_functions: vec![
+                            PublicFunction {
+                                name: vec_into_fixed_string("foo".as_bytes().to_vec()),
+                                function: FunctionRef {
+                                    template_id: FixedHash::zero(),
+                                    function_id: 0_u16,
+                                },
+                            },
+                            PublicFunction {
+                                name: vec_into_fixed_string("bar".as_bytes().to_vec()),
+                                function: FunctionRef {
+                                    template_id: FixedHash::zero(),
+                                    function_id: 1_u16,
+                                },
+                            },
+                        ],
+                    },
+                }),
             }),
             // Deprecated
             parent_public_key: Some(PublicKey::default()),
@@ -513,7 +552,7 @@ mod test {
             }),
             committee_definition: match version {
                 OutputFeaturesVersion::V0 => None,
-                OutputFeaturesVersion::V1 => Some(CommitteeDefinitionFeatures {
+                _ => Some(CommitteeDefinitionFeatures {
                     committee: iter::repeat_with(PublicKey::default).take(50).collect(),
                     effective_sidechain_height: u64::MAX,
                 }),

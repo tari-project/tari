@@ -22,14 +22,19 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::{
+    vec_into_fixed_string,
     CheckpointParameters,
     CommitteeMembers,
     ConstitutionChangeFlags,
     ConstitutionChangeRules,
     ContractAcceptanceRequirements,
     ContractConstitution,
+    ContractDefinition,
+    ContractSpecification,
+    FunctionRef,
+    PublicFunction,
     RequirementsForConstitutionChange,
     SideChainConsensus,
     SideChainFeatures,
@@ -42,6 +47,7 @@ impl From<SideChainFeatures> for grpc::SideChainFeatures {
     fn from(value: SideChainFeatures) -> Self {
         Self {
             contract_id: value.contract_id.to_vec(),
+            definition: value.definition.map(Into::into),
             constitution: value.constitution.map(Into::into),
         }
     }
@@ -51,12 +57,136 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
     fn try_from(features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
+        let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
         let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
 
         Ok(Self {
             contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            definition,
             constitution,
         })
+    }
+}
+
+//---------------------------------- ContractDefinition --------------------------------------------//
+
+impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractDefinition) -> Result<Self, Self::Error> {
+        let contract_id = FixedHash::try_from(value.contract_id).map_err(|err| format!("{:?}", err))?;
+
+        let contract_name = vec_into_fixed_string(value.contract_name);
+
+        let contract_issuer =
+            PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let contract_spec = value
+            .contract_spec
+            .map(ContractSpecification::try_from)
+            .ok_or_else(|| "contract_spec is missing".to_string())?
+            .map_err(|err| err)?;
+
+        Ok(Self {
+            contract_id,
+            contract_name,
+            contract_issuer,
+            contract_spec,
+        })
+    }
+}
+
+impl From<ContractDefinition> for grpc::ContractDefinition {
+    fn from(value: ContractDefinition) -> Self {
+        let contract_id = value.contract_id.as_bytes().to_vec();
+        let contract_name = value.contract_name.as_bytes().to_vec();
+        let contract_issuer = value.contract_issuer.as_bytes().to_vec();
+
+        Self {
+            contract_id,
+            contract_name,
+            contract_issuer,
+            contract_spec: Some(value.contract_spec.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractSpecification> for ContractSpecification {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractSpecification) -> Result<Self, Self::Error> {
+        let runtime = vec_into_fixed_string(value.runtime);
+        let public_functions = value
+            .public_functions
+            .into_iter()
+            .map(PublicFunction::try_from)
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            runtime,
+            public_functions,
+        })
+    }
+}
+
+impl From<ContractSpecification> for grpc::ContractSpecification {
+    fn from(value: ContractSpecification) -> Self {
+        let public_functions = value.public_functions.into_iter().map(|f| f.into()).collect();
+        Self {
+            runtime: value.runtime.as_bytes().to_vec(),
+            public_functions,
+        }
+    }
+}
+
+impl TryFrom<grpc::PublicFunction> for PublicFunction {
+    type Error = String;
+
+    fn try_from(value: grpc::PublicFunction) -> Result<Self, Self::Error> {
+        let function = value
+            .function
+            .map(FunctionRef::try_from)
+            .ok_or_else(|| "function is missing".to_string())?
+            .map_err(|err| err)?;
+
+        Ok(Self {
+            name: vec_into_fixed_string(value.name),
+            function,
+        })
+    }
+}
+
+impl From<PublicFunction> for grpc::PublicFunction {
+    fn from(value: PublicFunction) -> Self {
+        Self {
+            name: value.name.as_bytes().to_vec(),
+            function: Some(value.function.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::FunctionRef> for FunctionRef {
+    type Error = String;
+
+    fn try_from(value: grpc::FunctionRef) -> Result<Self, Self::Error> {
+        let template_id = FixedHash::try_from(value.template_id).map_err(|err| format!("{:?}", err))?;
+        let function_id = u16::try_from(value.function_id).map_err(|_| "Invalid function_id: overflowed u16")?;
+
+        Ok(Self {
+            template_id,
+            function_id,
+        })
+    }
+}
+
+impl From<FunctionRef> for grpc::FunctionRef {
+    fn from(value: FunctionRef) -> Self {
+        let template_id = value.template_id.as_bytes().to_vec();
+
+        Self {
+            template_id,
+            function_id: value.function_id.into(),
+        }
     }
 }
 

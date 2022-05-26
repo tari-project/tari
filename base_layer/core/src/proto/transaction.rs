@@ -39,6 +39,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
+            vec_into_fixed_string,
             AssetOutputFeatures,
             CheckpointParameters,
             CommitteeDefinitionFeatures,
@@ -47,11 +48,15 @@ use crate::{
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
             ContractConstitution,
+            ContractDefinition,
+            ContractSpecification,
+            FunctionRef,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
             OutputFlags,
+            PublicFunction,
             RequirementsForConstitutionChange,
             SideChainCheckpointFeatures,
             SideChainConsensus,
@@ -343,6 +348,7 @@ impl From<SideChainFeatures> for proto::types::SideChainFeatures {
     fn from(value: SideChainFeatures) -> Self {
         Self {
             contract_id: value.contract_id.to_vec(),
+            definition: value.definition.map(Into::into),
             constitution: value.constitution.map(Into::into),
         }
     }
@@ -352,10 +358,12 @@ impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::SideChainFeatures) -> Result<Self, Self::Error> {
+        let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
         let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
 
         Ok(Self {
             contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            definition,
             constitution,
         })
     }
@@ -693,6 +701,128 @@ impl From<CommitteeDefinitionFeatures> for proto::types::CommitteeDefinitionFeat
         Self {
             committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
             effective_sidechain_height: value.effective_sidechain_height,
+        }
+    }
+}
+
+//---------------------------------- ContractDefinition --------------------------------------------//
+
+impl TryFrom<proto::types::ContractDefinition> for ContractDefinition {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractDefinition) -> Result<Self, Self::Error> {
+        let contract_id = FixedHash::try_from(value.contract_id).map_err(|err| format!("{:?}", err))?;
+
+        let contract_name = vec_into_fixed_string(value.contract_name);
+
+        let contract_issuer =
+            PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let contract_spec = value
+            .contract_spec
+            .map(ContractSpecification::try_from)
+            .ok_or_else(|| "contract_spec is missing".to_string())?
+            .map_err(|err| err)?;
+
+        Ok(Self {
+            contract_id,
+            contract_name,
+            contract_issuer,
+            contract_spec,
+        })
+    }
+}
+
+impl From<ContractDefinition> for proto::types::ContractDefinition {
+    fn from(value: ContractDefinition) -> Self {
+        let contract_id = value.contract_id.as_bytes().to_vec();
+        let contract_name = value.contract_name.as_bytes().to_vec();
+        let contract_issuer = value.contract_issuer.as_bytes().to_vec();
+
+        Self {
+            contract_id,
+            contract_name,
+            contract_issuer,
+            contract_spec: Some(value.contract_spec.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractSpecification> for ContractSpecification {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractSpecification) -> Result<Self, Self::Error> {
+        let runtime = vec_into_fixed_string(value.runtime);
+        let public_functions = value
+            .public_functions
+            .into_iter()
+            .map(PublicFunction::try_from)
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            runtime,
+            public_functions,
+        })
+    }
+}
+
+impl From<ContractSpecification> for proto::types::ContractSpecification {
+    fn from(value: ContractSpecification) -> Self {
+        let public_functions = value.public_functions.into_iter().map(|f| f.into()).collect();
+        Self {
+            runtime: value.runtime.as_bytes().to_vec(),
+            public_functions,
+        }
+    }
+}
+
+impl TryFrom<proto::types::PublicFunction> for PublicFunction {
+    type Error = String;
+
+    fn try_from(value: proto::types::PublicFunction) -> Result<Self, Self::Error> {
+        let function = value
+            .function
+            .map(FunctionRef::try_from)
+            .ok_or_else(|| "function is missing".to_string())?
+            .map_err(|err| err)?;
+
+        Ok(Self {
+            name: vec_into_fixed_string(value.name),
+            function,
+        })
+    }
+}
+
+impl From<PublicFunction> for proto::types::PublicFunction {
+    fn from(value: PublicFunction) -> Self {
+        Self {
+            name: value.name.as_bytes().to_vec(),
+            function: Some(value.function.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::FunctionRef> for FunctionRef {
+    type Error = String;
+
+    fn try_from(value: proto::types::FunctionRef) -> Result<Self, Self::Error> {
+        let template_id = FixedHash::try_from(value.template_id).map_err(|err| format!("{:?}", err))?;
+        let function_id = u16::try_from(value.function_id).map_err(|_| "Invalid function_id: overflowed u16")?;
+
+        Ok(Self {
+            template_id,
+            function_id,
+        })
+    }
+}
+
+impl From<FunctionRef> for proto::types::FunctionRef {
+    fn from(value: FunctionRef) -> Self {
+        let template_id = value.template_id.as_bytes().to_vec();
+
+        Self {
+            template_id,
+            function_id: value.function_id.into(),
         }
     }
 }
