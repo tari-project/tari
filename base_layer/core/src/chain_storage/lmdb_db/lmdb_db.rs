@@ -2021,14 +2021,17 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.utxos_db, |output: TransactionOutputRowData| {
             match output.output {
                 None => None,
-                Some(output) => match output.features.committee_definition.clone() {
+                Some(output) => match output.features.sidechain_features.clone() {
                     None => None,
-                    Some(committee_definition) => {
-                        if committee_definition.committee.contains(dan_node_public_key) {
-                            Some(output.clone())
-                        } else {
-                            None
-                        }
+                    Some(sidechain_features) => match sidechain_features.constitution {
+                        None => None,
+                        Some(constitution) => {
+                            if constitution.validator_committee.members().contains(dan_node_public_key) {
+                                Some(output)
+                            } else {
+                                None
+                            }
+                        },
                     },
                 },
             }
