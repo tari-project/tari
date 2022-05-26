@@ -929,7 +929,6 @@ pub async fn command_runner(
                 let (tx_id, transaction) = asset_manager
                     .create_contract_definition(&contract_definition_features)
                     .await?;
-                println!("{}", transaction);
 
                 // publish the contract definition transaction
                 let message = format!("Contract definition for contract with id={}", contract_id_hex);
