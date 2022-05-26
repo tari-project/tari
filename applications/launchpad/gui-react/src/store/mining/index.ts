@@ -1,9 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { v4 as uuidv4 } from 'uuid'
-import { MiningNodeType } from '../../types/general'
+import { MiningNodeType, ScheduleId } from '../../types/general'
 
 import { startMiningNode, stopMiningNode } from './thunks'
-import { MiningState } from './types'
+import { MiningState, MiningActionReason } from './types'
 
 const currencies: Record<MiningNodeType, string[]> = {
   tari: ['xtr'],
@@ -43,8 +43,15 @@ const miningSlice = createSlice({
         ).toString()
       }
     },
-    startNewSession(state, action: PayloadAction<{ node: MiningNodeType }>) {
-      const { node } = action.payload
+    startNewSession(
+      state,
+      action: PayloadAction<{
+        node: MiningNodeType
+        reason: MiningActionReason
+        schedule?: ScheduleId
+      }>,
+    ) {
+      const { node, reason, schedule } = action.payload
       const total: Record<string, string> = {}
       currencies[node].forEach(c => {
         total[c] = '0'
@@ -54,14 +61,23 @@ const miningSlice = createSlice({
         id: uuidv4(),
         startedAt: Number(Date.now()).toString(),
         total,
+        reason,
+        schedule,
       }
     },
-    stopSession(state, action: PayloadAction<{ node: MiningNodeType }>) {
-      const { node } = action.payload
+    stopSession(
+      state,
+      action: PayloadAction<{
+        node: MiningNodeType
+        reason: MiningActionReason
+      }>,
+    ) {
+      const { node, reason } = action.payload
 
       const session = state[node].session
       if (session) {
         session.finishedAt = Number(Date.now()).toString()
+        session.reason = reason
       }
     },
     setMergedAddress(state, action: PayloadAction<{ address: string }>) {

@@ -95,6 +95,7 @@ export const getStartsStops = ({
           start: startTime.getTime() < from.getTime() ? from : startTime,
           stop: stopTime,
           toMine: miningType,
+          scheduleId: schedule.id,
         }
       }),
     )

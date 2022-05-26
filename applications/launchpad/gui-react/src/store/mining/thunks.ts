@@ -1,12 +1,13 @@
 import { createAsyncThunk } from '@reduxjs/toolkit'
 
-import { MiningNodeType } from '../../types/general'
+import { MiningNodeType, ScheduleId } from '../../types/general'
 import { selectContainerStatus } from '../containers/selectors'
 import { actions as containersActions } from '../containers'
 import { actions as miningActions } from './index'
 import { Container } from '../containers/types'
-
 import { RootState } from '..'
+
+import { MiningActionReason } from './types'
 
 /**
  * Start given mining node. It spawns all dependencies if needed.
@@ -15,11 +16,23 @@ import { RootState } from '..'
  */
 export const startMiningNode = createAsyncThunk<
   void,
-  { node: MiningNodeType },
+  { node: MiningNodeType; reason: MiningActionReason; schedule?: ScheduleId },
   { state: RootState }
->('mining/startNode', async ({ node }, thunkApi) => {
+>('mining/startNode', async ({ node, reason, schedule }, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
+
+    const miningSession = rootState.mining[node].session
+    const scheduledMiningWasStoppedManually =
+      miningSession?.finishedAt &&
+      miningSession?.reason === MiningActionReason.Manual &&
+      miningSession?.schedule
+    if (
+      scheduledMiningWasStoppedManually &&
+      miningSession.schedule === schedule
+    ) {
+      return
+    }
 
     const torStatus = selectContainerStatus(Container.Tor)(rootState)
     const baseNodeStatus = selectContainerStatus(Container.BaseNode)(rootState)
@@ -47,7 +60,9 @@ export const startMiningNode = createAsyncThunk<
         await thunkApi
           .dispatch(containersActions.start(Container.SHA3Miner))
           .unwrap()
-        thunkApi.dispatch(miningActions.startNewSession({ node }))
+        thunkApi.dispatch(
+          miningActions.startNewSession({ node, reason, schedule }),
+        )
       }
     }
 
@@ -59,7 +74,9 @@ export const startMiningNode = createAsyncThunk<
         await thunkApi
           .dispatch(containersActions.start(Container.XMrig))
           .unwrap()
-        thunkApi.dispatch(miningActions.startNewSession({ node }))
+        thunkApi.dispatch(
+          miningActions.startNewSession({ node, reason, schedule }),
+        )
         break
       default:
         break
@@ -79,11 +96,25 @@ export const stopMiningNode = createAsyncThunk<
   void,
   {
     node: MiningNodeType
+    reason: MiningActionReason
   },
   { state: RootState }
->('mining/stopNode', async ({ node }, thunkApi) => {
+>('mining/stopNode', async ({ node, reason }, thunkApi) => {
   try {
     const promises = []
+
+    const { getState } = thunkApi
+    const state = getState()
+
+    const miningSession = state.mining[node].session
+    if (
+      reason === MiningActionReason.Schedule &&
+      miningSession?.startedAt &&
+      !miningSession?.finishedAt &&
+      miningSession?.reason === MiningActionReason.Manual
+    ) {
+      return
+    }
 
     switch (node) {
       case 'tari':
@@ -104,7 +135,7 @@ export const stopMiningNode = createAsyncThunk<
         break
     }
 
-    thunkApi.dispatch(miningActions.stopSession({ node }))
+    thunkApi.dispatch(miningActions.stopSession({ node, reason }))
 
     await Promise.all(promises)
   } catch (e) {

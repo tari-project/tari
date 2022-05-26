@@ -49,8 +49,8 @@ describe('useMiningScheduling', () => {
     // then
     jest.advanceTimersByTime(A_MINUTE + 1)
     expect(startMining).toHaveBeenCalledTimes(2)
-    expect(startMining).toHaveBeenCalledWith('tari')
-    expect(startMining).toHaveBeenCalledWith('merged')
+    expect(startMining).toHaveBeenCalledWith('tari', 'shortSchedule')
+    expect(startMining).toHaveBeenCalledWith('merged', 'shortSchedule')
 
     jest.advanceTimersByTime(A_MINUTE)
     expect(stopMining).toHaveBeenCalledTimes(2)
