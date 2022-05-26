@@ -51,7 +51,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
     load_configuration,
 };
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{peer_manager::PeerFeatures, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_dan_core::{
     models::AssetDefinition,
@@ -245,7 +245,7 @@ async fn start_non_debug_mode(
         asset_processor,
         asset_proxy,
     );
-    let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 18144);
+    let grpc_addr = multiaddr_to_socketaddr(&config.validator_node.grpc_address)?;
 
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
     println!("🚀 Validator node started!");

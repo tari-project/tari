@@ -23,6 +23,7 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use config::Config;
@@ -58,6 +59,7 @@ pub struct ValidatorNodeConfig {
     pub tor_identity_file: PathBuf,
     pub public_address: Option<Multiaddr>,
     pub phase_timeout: u64,
+    pub grpc_address: Multiaddr,
     pub base_node_grpc_address: SocketAddr,
     pub wallet_grpc_address: SocketAddr,
     pub scan_for_assets: bool,
@@ -89,6 +91,7 @@ impl Default for ValidatorNodeConfig {
             tor_identity_file: PathBuf::from("validator_node_tor_id.json"),
             public_address: None,
             phase_timeout: 30,
+            grpc_address: Multiaddr::from_str("/ip4/0.0.0.0/tcp/18144").unwrap(),
             base_node_grpc_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18142),
             wallet_grpc_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18143),
             scan_for_assets: true,
