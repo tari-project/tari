@@ -27,7 +27,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey},
 };
 use tari_core::transactions::transaction_components::{
-    ContractDefinitionFeatures,
+    ContractDefinition,
     OutputFeatures,
     TemplateParameter,
     Transaction,
@@ -74,7 +74,7 @@ pub enum AssetManagerRequest {
         is_initial: bool,
     },
     CreateContractDefinition {
-        contract_definition: Box<ContractDefinitionFeatures>,
+        contract_definition: Box<ContractDefinition>,
     },
 }
 

@@ -119,7 +119,6 @@ use tari_core::transactions::{
     transaction_components::{
         AssetOutputFeatures,
         CommitteeDefinitionFeatures,
-        ContractDefinitionFeatures,
         MintNonFungibleFeatures,
         OutputFeaturesVersion,
         OutputFlags,
@@ -1146,7 +1145,6 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     let mint_non_fungible: Option<MintNonFungibleFeatures> = None;
     let sidechain_checkpoint: Option<SideChainCheckpointFeatures> = None;
     let committee_definition: Option<CommitteeDefinitionFeatures> = None;
-    let contract_definition: Option<ContractDefinitionFeatures> = None;
 
     let output_features = TariOutputFeatures::new(
         decoded_version,
@@ -1155,12 +1153,12 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         recovery_byte,
         decoded_metadata,
         decoded_unique_id,
+        None,
         decoded_parent_public_key,
         asset,
         mint_non_fungible,
         sidechain_checkpoint,
         committee_definition,
-        contract_definition,
     );
     Box::into_raw(Box::new(output_features))
 }

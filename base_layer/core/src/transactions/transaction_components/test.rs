@@ -476,15 +476,15 @@ mod output_features {
 
         let mut buf = Vec::new();
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 10);
-        assert_eq!(features.consensus_encode_exact_size(), 10);
+        assert_eq!(buf.len(), 11);
+        assert_eq!(features.consensus_encode_exact_size(), 11);
 
         let mut features = OutputFeatures::default();
         features.version = OutputFeaturesVersion::V1;
         let mut buf = Vec::new();
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 12);
-        assert_eq!(features.consensus_encode_exact_size(), 12);
+        assert_eq!(buf.len(), 13);
+        assert_eq!(features.consensus_encode_exact_size(), 13);
     }
 
     #[test]
@@ -497,10 +497,10 @@ mod output_features {
         let known_size_u8_min = features_u8_min.consensus_encode_exact_size();
         assert_eq!(known_size_u8_max, known_size_u8_min);
         let mut buf = Vec::with_capacity(known_size_u8_max);
-        assert_eq!(known_size_u8_max, 19);
+        assert_eq!(known_size_u8_max, 20);
         features_u8_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 19);
-        assert_eq!(features_u8_max.consensus_encode_exact_size(), 19);
+        assert_eq!(buf.len(), 20);
+        assert_eq!(features_u8_max.consensus_encode_exact_size(), 20);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         // Recovery byte is not encoded for OutputFeaturesVersion::V0; the default is returned when decoded
         assert_ne!(features_u8_max, decoded_features);
@@ -512,11 +512,11 @@ mod output_features {
         let known_size_u8_max = features_u8_max.consensus_encode_exact_size();
         let known_size_u8_min = features_u8_min.consensus_encode_exact_size();
         assert_eq!(known_size_u8_max, known_size_u8_min);
-        assert_eq!(known_size_u8_max, 21);
+        assert_eq!(known_size_u8_max, 22);
         let mut buf = Vec::with_capacity(known_size_u8_max);
         features_u8_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 21);
-        assert_eq!(features_u8_max.consensus_encode_exact_size(), 21);
+        assert_eq!(buf.len(), 22);
+        assert_eq!(features_u8_max.consensus_encode_exact_size(), 22);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features_u8_max, decoded_features);
 
@@ -524,17 +524,19 @@ mod output_features {
         features.version = OutputFeaturesVersion::V1;
         let known_size = features.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size);
-        assert_eq!(known_size, 21);
+        assert_eq!(known_size, 22);
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 21);
-        assert_eq!(features.consensus_encode_exact_size(), 21);
+        assert_eq!(buf.len(), 22);
+        assert_eq!(features.consensus_encode_exact_size(), 22);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features, decoded_features);
     }
 
     #[test]
     fn consensus_decode_bad_flags() {
-        let data = [0x00u8, 0x00, 0x02, 0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let data = [
+            0x00u8, 0x00, 0x02, 0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
         let features = OutputFeatures::consensus_decode(&mut &data[..]).unwrap();
         // Assert the flag data is preserved
         assert_eq!(features.flags.bits() & 0x02, 0x02);
@@ -542,7 +544,7 @@ mod output_features {
 
     #[test]
     fn consensus_decode_bad_maturity() {
-        let data = [0x00u8, 0xFF, 0x00u8];
+        let data = [0x00u8, 0xFF, 0x00, 0x00, 0x00];
         let err = OutputFeatures::consensus_decode(&mut &data[..]).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
@@ -556,6 +558,7 @@ mod output_features {
 }
 
 mod validate_internal_consistency {
+
     use super::*;
     use crate::consensus::ToConsensusBytes;
 

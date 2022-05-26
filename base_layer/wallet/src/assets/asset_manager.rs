@@ -26,7 +26,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
 };
 use tari_core::transactions::transaction_components::{
-    ContractDefinitionFeatures,
+    ContractDefinition,
     OutputFeatures,
     OutputFlags,
     TemplateParameter,
@@ -280,7 +280,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
     pub async fn create_contract_definition(
         &mut self,
-        contract_definition: ContractDefinitionFeatures,
+        contract_definition: ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager

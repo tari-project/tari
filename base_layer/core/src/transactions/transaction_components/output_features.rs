@@ -37,14 +37,14 @@ use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_utilities::ByteArray;
 
-use super::OutputFeaturesVersion;
+use super::{ContractDefinition, OutputFeaturesVersion, SideChainFeaturesBuilder};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
     transactions::{
         transaction_components::{
+            side_chain::SideChainFeatures,
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
-            ContractDefinitionFeatures,
             MintNonFungibleFeatures,
             OutputFlags,
             SideChainCheckpointFeatures,
@@ -68,18 +68,15 @@ pub struct OutputFeatures {
     #[serde(default)]
     pub recovery_byte: u8,
     pub metadata: Vec<u8>,
-    // TODO: Add these fields
-    // pub contract_id: Option<FixedHash>,
-    // pub constitution: Option<ContractConstitution>,
-
-    // Deprecated fields
+    pub sidechain_features: Option<SideChainFeatures>,
     pub unique_id: Option<Vec<u8>>,
+
+    // TODO: Deprecated
     pub parent_public_key: Option<PublicKey>,
     pub asset: Option<AssetOutputFeatures>,
     pub mint_non_fungible: Option<MintNonFungibleFeatures>,
     pub sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
     pub committee_definition: Option<CommitteeDefinitionFeatures>,
-    pub contract_definition: Option<ContractDefinitionFeatures>,
 }
 
 impl OutputFeatures {
@@ -90,12 +87,13 @@ impl OutputFeatures {
         recovery_byte: u8,
         metadata: Vec<u8>,
         unique_id: Option<Vec<u8>>,
+        sidechain_features: Option<SideChainFeatures>,
+        // TODO: Deprecated
         parent_public_key: Option<PublicKey>,
         asset: Option<AssetOutputFeatures>,
         mint_non_fungible: Option<MintNonFungibleFeatures>,
         sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
         committee_definition: Option<CommitteeDefinitionFeatures>,
-        contract_definition: Option<ContractDefinitionFeatures>,
     ) -> OutputFeatures {
         OutputFeatures {
             version,
@@ -104,12 +102,13 @@ impl OutputFeatures {
             recovery_byte,
             metadata,
             unique_id,
+            sidechain_features,
+            // Deprecated
             parent_public_key,
             asset,
             mint_non_fungible,
             sidechain_checkpoint,
             committee_definition,
-            contract_definition,
         }
     }
 
@@ -119,12 +118,13 @@ impl OutputFeatures {
         recovery_byte: u8,
         metadata: Vec<u8>,
         unique_id: Option<Vec<u8>>,
+        sidechain_features: Option<SideChainFeatures>,
+        // TODO: Deprecated
         parent_public_key: Option<PublicKey>,
         asset: Option<AssetOutputFeatures>,
         mint_non_fungible: Option<MintNonFungibleFeatures>,
         sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
         committee_definition: Option<CommitteeDefinitionFeatures>,
-        contract_definition: Option<ContractDefinitionFeatures>,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
@@ -133,12 +133,13 @@ impl OutputFeatures {
             recovery_byte,
             metadata,
             unique_id,
+            sidechain_features,
+            // TODO: Deprecated
             parent_public_key,
             asset,
             mint_non_fungible,
             sidechain_checkpoint,
             committee_definition,
-            contract_definition,
         )
     }
 
@@ -281,10 +282,14 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_contract_definition(contract_definition: ContractDefinitionFeatures) -> OutputFeatures {
+    pub fn for_contract_definition(definition: ContractDefinition) -> OutputFeatures {
         Self {
             flags: OutputFlags::CONTRACT_DEFINITION,
-            contract_definition: Some(contract_definition),
+            sidechain_features: Some(
+                SideChainFeaturesBuilder::new(definition.contract_id)
+                    .with_contract_definition(definition)
+                    .finish(),
+            ),
             ..Default::default()
         }
     }
@@ -316,6 +321,10 @@ impl OutputFeatures {
         let recovery_byte = buf[0] as u8;
         Ok(recovery_byte)
     }
+
+    pub fn contract_id(&self) -> Option<FixedHash> {
+        self.sidechain_features.as_ref().map(|f| f.contract_id)
+    }
 }
 
 impl ConsensusEncoding for OutputFeatures {
@@ -331,6 +340,7 @@ impl ConsensusEncoding for OutputFeatures {
         }
         self.parent_public_key.consensus_encode(writer)?;
         self.unique_id.consensus_encode(writer)?;
+        self.sidechain_features.consensus_encode(writer)?;
         self.asset.consensus_encode(writer)?;
         self.mint_non_fungible.consensus_encode(writer)?;
         self.sidechain_checkpoint.consensus_encode(writer)?;
@@ -361,6 +371,7 @@ impl ConsensusDecoding for OutputFeatures {
         let parent_public_key = <Option<PublicKey> as ConsensusDecoding>::consensus_decode(reader)?;
         const MAX_UNIQUE_ID_SIZE: usize = 256;
         let unique_id = <Option<MaxSizeBytes<MAX_UNIQUE_ID_SIZE>> as ConsensusDecoding>::consensus_decode(reader)?;
+        let sidechain_features = <Option<SideChainFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         let asset = <Option<AssetOutputFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         let mint_non_fungible = <Option<MintNonFungibleFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         let sidechain_checkpoint =
@@ -371,12 +382,6 @@ impl ConsensusDecoding for OutputFeatures {
             OutputFeaturesVersion::V0 => None,
             _ => <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?,
         };
-        let contract_definition = match version {
-            OutputFeaturesVersion::V2 => {
-                <Option<ContractDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?
-            },
-            _ => None,
-        };
         Ok(Self {
             version,
             flags,
@@ -384,12 +389,12 @@ impl ConsensusDecoding for OutputFeatures {
             recovery_byte,
             parent_public_key,
             unique_id: unique_id.map(Into::into),
+            sidechain_features,
             asset,
             mint_non_fungible,
             sidechain_checkpoint,
             metadata: metadata.into(),
             committee_definition,
-            contract_definition,
         })
     }
 }
@@ -436,12 +441,28 @@ impl Display for OutputFeatures {
 
 #[cfg(test)]
 mod test {
-    use std::{io::ErrorKind, iter};
+    use std::{convert::TryInto, io::ErrorKind, iter};
 
     use super::*;
     use crate::{
         consensus::check_consensus_encoding_correctness,
-        transactions::transaction_components::ContractSpecification,
+        transactions::transaction_components::{
+            side_chain::{
+                CheckpointParameters,
+                CommitteeMembers,
+                ConstitutionChangeFlags,
+                ConstitutionChangeRules,
+                ContractAcceptanceRequirements,
+                RequirementsForConstitutionChange,
+                SideChainConsensus,
+            },
+            vec_into_fixed_string,
+            ContractConstitution,
+            ContractDefinition,
+            ContractSpecification,
+            FunctionRef,
+            PublicFunction,
+        },
     };
 
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
@@ -455,6 +476,60 @@ mod test {
             },
             metadata: vec![1; 1024],
             unique_id: Some(vec![0u8; 256]),
+            sidechain_features: Some(SideChainFeatures {
+                contract_id: FixedHash::zero(),
+                constitution: Some(ContractConstitution {
+                    validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                        .try_into()
+                        .unwrap(),
+                    acceptance_requirements: ContractAcceptanceRequirements {
+                        acceptance_period_expiry: 100,
+                        minimum_quorum_required: 5,
+                    },
+                    consensus: SideChainConsensus::MerkleRoot,
+                    checkpoint_params: CheckpointParameters {
+                        minimum_quorum_required: 5,
+                        abandoned_interval: 100,
+                    },
+                    constitution_change_rules: ConstitutionChangeRules {
+                        change_flags: ConstitutionChangeFlags::all(),
+                        requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
+                            minimum_constitution_committee_signatures: 5,
+                            constitution_committee: Some(
+                                vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                                    .try_into()
+                                    .unwrap(),
+                            ),
+                        }),
+                    },
+                    initial_reward: 100.into(),
+                }),
+                definition: Some(ContractDefinition {
+                    contract_id: FixedHash::zero(),
+                    contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
+                    contract_issuer: PublicKey::default(),
+                    contract_spec: ContractSpecification {
+                        runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
+                        public_functions: vec![
+                            PublicFunction {
+                                name: vec_into_fixed_string("foo".as_bytes().to_vec()),
+                                function: FunctionRef {
+                                    template_id: FixedHash::zero(),
+                                    function_id: 0_u16,
+                                },
+                            },
+                            PublicFunction {
+                                name: vec_into_fixed_string("bar".as_bytes().to_vec()),
+                                function: FunctionRef {
+                                    template_id: FixedHash::zero(),
+                                    function_id: 1_u16,
+                                },
+                            },
+                        ],
+                    },
+                }),
+            }),
+            // Deprecated
             parent_public_key: Some(PublicKey::default()),
             asset: Some(AssetOutputFeatures {
                 public_key: Default::default(),
@@ -482,18 +557,6 @@ mod test {
                     effective_sidechain_height: u64::MAX,
                 }),
             },
-            contract_definition: match version {
-                OutputFeaturesVersion::V2 => Some(ContractDefinitionFeatures {
-                    contract_id: Default::default(),
-                    contract_name: Default::default(),
-                    contract_issuer: Default::default(),
-                    contract_spec: ContractSpecification {
-                        runtime: Default::default(),
-                        public_functions: Default::default(),
-                    },
-                }),
-                _ => None,
-            },
         }
     }
 
@@ -510,6 +573,7 @@ mod test {
     fn it_encodes_and_decodes_correctly_in_none_case() {
         let mut subject = make_fully_populated_output_features(OutputFeaturesVersion::V1);
         subject.unique_id = None;
+        subject.sidechain_features = None;
         subject.asset = None;
         subject.mint_non_fungible = None;
         subject.sidechain_checkpoint = None;
@@ -595,7 +659,7 @@ mod test {
     #[test]
     fn test_for_checkpoint() {
         let unique_id = vec![7, 2, 3, 4];
-        let hash = [13; 32].into();
+        let hash = FixedHash::hash_bytes("MERKLE");
         let committee = vec![PublicKey::default()];
         // Initial
         assert_eq!(

@@ -25,13 +25,6 @@
 
 pub use asset_output_features::AssetOutputFeatures;
 pub use committee_definition_features::CommitteeDefinitionFeatures;
-pub use contract_definition_features::{
-    vec_into_fixed_string,
-    ContractDefinitionFeatures,
-    ContractSpecification,
-    FunctionRef,
-    PublicFunction,
-};
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;
@@ -42,7 +35,7 @@ pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
-pub use side_chain::ContractConstitution;
+pub use side_chain::{ContractConstitution, *};
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::Commitment;
 use tari_script::TariScript;
@@ -60,7 +53,6 @@ pub use unblinded_output_builder::UnblindedOutputBuilder;
 
 mod asset_output_features;
 mod committee_definition_features;
-mod contract_definition_features;
 mod error;
 mod full_rewind_result;
 mod kernel_builder;

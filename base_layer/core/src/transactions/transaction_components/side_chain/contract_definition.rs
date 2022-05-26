@@ -44,14 +44,14 @@ pub fn vec_into_fixed_string(value: Vec<u8>) -> FixedString {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
-pub struct ContractDefinitionFeatures {
+pub struct ContractDefinition {
     pub contract_id: FixedHash,
     pub contract_name: FixedString,
     pub contract_issuer: PublicKey,
     pub contract_spec: ContractSpecification,
 }
 
-impl ContractDefinitionFeatures {
+impl ContractDefinition {
     pub fn new(contract_name: Vec<u8>, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
         let contract_name = vec_into_fixed_string(contract_name);
 
@@ -74,13 +74,13 @@ impl ContractDefinitionFeatures {
     }
 }
 
-impl Hashable for ContractDefinitionFeatures {
+impl Hashable for ContractDefinition {
     fn hash(&self) -> Vec<u8> {
         ConsensusHashWriter::default().chain(self).finalize().to_vec()
     }
 }
 
-impl ConsensusEncoding for ContractDefinitionFeatures {
+impl ConsensusEncoding for ContractDefinition {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.contract_id.consensus_encode(writer)?;
         self.contract_name.consensus_encode(writer)?;
@@ -91,7 +91,7 @@ impl ConsensusEncoding for ContractDefinitionFeatures {
     }
 }
 
-impl ConsensusEncodingSized for ContractDefinitionFeatures {
+impl ConsensusEncodingSized for ContractDefinition {
     fn consensus_encode_exact_size(&self) -> usize {
         self.contract_id.consensus_encode_exact_size() +
             STR_LEN +
@@ -100,7 +100,7 @@ impl ConsensusEncodingSized for ContractDefinitionFeatures {
     }
 }
 
-impl ConsensusDecoding for ContractDefinitionFeatures {
+impl ConsensusDecoding for ContractDefinition {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let contract_id = FixedHash::consensus_decode(reader)?;
         let contract_name = FixedString::consensus_decode(reader)?;
@@ -264,8 +264,7 @@ mod test {
             ],
         };
 
-        let contract_definition =
-            ContractDefinitionFeatures::new(contract_name.to_vec(), contract_issuer, contract_spec);
+        let contract_definition = ContractDefinition::new(contract_name.to_vec(), contract_issuer, contract_spec);
 
         check_consensus_encoding_correctness(contract_definition).unwrap();
     }

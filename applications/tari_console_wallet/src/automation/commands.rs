@@ -45,12 +45,12 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{ContractDefinitionFeatures, TransactionOutput, UnblindedOutput},
+    transaction_components::{ContractDefinition, TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::{ContractDefinition, KEY_MANAGER_ASSET_BRANCH},
+    assets::{ContractDefinitionFileFormat, KEY_MANAGER_ASSET_BRANCH},
     error::WalletError,
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
@@ -919,9 +919,9 @@ pub async fn command_runner(
                 let file_reader = BufReader::new(file);
 
                 // parse the JSON file
-                let contract_definition: ContractDefinition =
+                let contract_definition: ContractDefinitionFileFormat =
                     serde_json::from_reader(file_reader).map_err(|e| CommandError::JSONFile(e.to_string()))?;
-                let contract_definition_features = ContractDefinitionFeatures::from(contract_definition);
+                let contract_definition_features = ContractDefinition::from(contract_definition);
                 let contract_id_hex = contract_definition_features.contract_id.to_vec().to_hex();
 
                 // create the contract definition transaction
@@ -929,6 +929,7 @@ pub async fn command_runner(
                 let (tx_id, transaction) = asset_manager
                     .create_contract_definition(&contract_definition_features)
                     .await?;
+                println!("{}", transaction);
 
                 // publish the contract definition transaction
                 let message = format!("Contract definition for contract with id={}", contract_id_hex);

@@ -39,7 +39,7 @@ use crate::{
         encoder::CovenentWriteExt,
         error::CovenantError,
     },
-    transactions::transaction_components::{TransactionInput, TransactionOutput},
+    transactions::transaction_components::{SideChainFeatures, TransactionInput, TransactionOutput},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +55,8 @@ pub enum OutputField {
     FeaturesUniqueId = byte_codes::FIELD_FEATURES_UNIQUE_ID,
     FeaturesParentPublicKey = byte_codes::FIELD_FEATURES_PARENT_PUBLIC_KEY,
     FeaturesMetadata = byte_codes::FIELD_FEATURES_METADATA,
+    FeaturesSideChainFeatures = byte_codes::FIELD_FEATURES_SIDE_CHAIN_FEATURES,
+    FeaturesSideChainFeaturesContractId = byte_codes::FIELD_FEATURES_SIDE_CHAIN_FEATURES_CONTRACT_ID,
 }
 
 impl OutputField {
@@ -72,6 +74,8 @@ impl OutputField {
             FIELD_FEATURES_MATURITY => Ok(FeaturesMaturity),
             FIELD_FEATURES_UNIQUE_ID => Ok(FeaturesUniqueId),
             FIELD_FEATURES_PARENT_PUBLIC_KEY => Ok(FeaturesParentPublicKey),
+            FIELD_FEATURES_SIDE_CHAIN_FEATURES => Ok(FeaturesSideChainFeatures),
+            FIELD_FEATURES_SIDE_CHAIN_FEATURES_CONTRACT_ID => Ok(FeaturesSideChainFeaturesContractId),
             FIELD_FEATURES_METADATA => Ok(FeaturesMetadata),
 
             _ => Err(CovenantDecodeError::UnknownByteCode { code: byte }),
@@ -82,7 +86,7 @@ impl OutputField {
         self as u8
     }
 
-    pub fn get_field_value_ref<'a, T: 'static>(self, output: &'a TransactionOutput) -> Option<&'a T> {
+    pub(super) fn get_field_value_ref<'a, T: 'static>(self, output: &'a TransactionOutput) -> Option<&'a T> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         let val = match self {
@@ -95,6 +99,16 @@ impl OutputField {
             FeaturesMaturity => &output.features.maturity as &dyn Any,
             FeaturesUniqueId => &output.features.unique_id as &dyn Any,
             FeaturesParentPublicKey => &output.features.parent_public_key as &dyn Any,
+            FeaturesSideChainFeatures => &output.features.sidechain_features as &dyn Any,
+            FeaturesSideChainFeaturesContractId => {
+                // This is tricky: in the Some case we return &FixedHash and None case we return ref to None from
+                // sidechain_features because there is no reference to Option<FixedHash> for
+                // sidechain_features.contract_id to return.
+                match &output.features.sidechain_features {
+                    Some(SideChainFeatures { ref contract_id, .. }) => contract_id as &dyn Any,
+                    none => none as &dyn Any,
+                }
+            },
             FeaturesMetadata => &output.features.metadata as &dyn Any,
         };
         val.downcast_ref::<T>()
@@ -113,6 +127,8 @@ impl OutputField {
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
             FeaturesUniqueId => output.features.unique_id.to_consensus_bytes(),
             FeaturesParentPublicKey => output.features.parent_public_key.to_consensus_bytes(),
+            FeaturesSideChainFeatures => output.features.sidechain_features.to_consensus_bytes(),
+            FeaturesSideChainFeaturesContractId => output.features.unique_asset_id().to_consensus_bytes(),
             FeaturesMetadata => output.features.metadata.to_consensus_bytes(),
         }
     }
@@ -154,6 +170,14 @@ impl OutputField {
                 .features()
                 .map(|features| features.parent_public_key == output.features.parent_public_key)
                 .unwrap_or(false),
+            FeaturesSideChainFeatures => input
+                .features()
+                .map(|features| features.sidechain_features == output.features.sidechain_features)
+                .unwrap_or(false),
+            FeaturesSideChainFeaturesContractId => input
+                .features()
+                .map(|features| features.contract_id() == output.features.contract_id())
+                .unwrap_or(false),
             FeaturesMetadata => input
                 .features()
                 .map(|features| features.metadata == output.features.metadata)
@@ -162,16 +186,23 @@ impl OutputField {
     }
 
     pub fn is_eq<T: PartialEq + 'static>(self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
-        use OutputField::{FeaturesParentPublicKey, FeaturesUniqueId};
+        #[allow(clippy::enum_glob_use)]
+        use OutputField::*;
         match self {
             // Handle edge cases
-            FeaturesParentPublicKey | FeaturesUniqueId => match self.get_field_value_ref::<Option<T>>(output) {
-                Some(Some(field_val)) => Ok(field_val == val),
-                Some(None) => Ok(false),
-                None => Err(CovenantError::InvalidArgument {
-                    filter: "is_eq",
-                    details: format!("Invalid type for field {}", self),
-                }),
+            FeaturesParentPublicKey | FeaturesUniqueId | FeaturesSideChainFeatures => {
+                match self.get_field_value_ref::<Option<T>>(output) {
+                    Some(Some(field_val)) => Ok(field_val == val),
+                    Some(None) => Ok(false),
+                    None => Err(CovenantError::InvalidArgument {
+                        filter: "is_eq",
+                        details: format!("Invalid type for field {}", self),
+                    }),
+                }
+            },
+            FeaturesSideChainFeaturesContractId => match self.get_field_value_ref::<T>(output) {
+                Some(field_val) => Ok(field_val == val),
+                None => Ok(false),
             },
             _ => match self.get_field_value_ref::<T>(output) {
                 Some(field_val) => Ok(field_val == val),
@@ -230,6 +261,16 @@ impl OutputField {
     }
 
     #[allow(dead_code)]
+    pub fn features_contract_id() -> Self {
+        OutputField::FeaturesSideChainFeaturesContractId
+    }
+
+    #[allow(dead_code)]
+    pub fn features_sidechain_features() -> Self {
+        OutputField::FeaturesSideChainFeatures
+    }
+
+    #[allow(dead_code)]
     pub fn features_metadata() -> Self {
         OutputField::FeaturesMetadata
     }
@@ -247,6 +288,8 @@ impl Display for OutputField {
             Features => write!(f, "field::features"),
             FeaturesFlags => write!(f, "field::features_flags"),
             FeaturesUniqueId => write!(f, "field::features_unique_id"),
+            FeaturesSideChainFeatures => write!(f, "field::features_sidechain_features"),
+            FeaturesSideChainFeaturesContractId => write!(f, "field::features_contract_id"),
             FeaturesMetadata => write!(f, "field::features_metadata"),
             FeaturesParentPublicKey => write!(f, "field::features_parent_public_key"),
             FeaturesMaturity => write!(f, "field::features_maturity"),
@@ -333,7 +376,7 @@ impl FromIterator<OutputField> for OutputFields {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
-    use tari_common_types::types::{Commitment, PublicKey};
+    use tari_common_types::types::{Commitment, FixedHash, PublicKey};
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
     use tari_script::script;
 
@@ -352,15 +395,15 @@ mod test {
         use super::*;
 
         mod is_eq {
-
             use super::*;
+            use crate::transactions::transaction_components::SideChainFeatures;
 
             #[test]
             fn it_returns_true_if_eq() {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
                         parent_public_key: Some(Default::default()),
-                        unique_id: Some(b"1234".to_vec()),
+                        sidechain_features: Some(SideChainFeatures::new(FixedHash::zero())),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -378,14 +421,14 @@ mod test {
                 assert!(OutputField::FeaturesFlags
                     .is_eq(&output, &output.features.flags)
                     .unwrap());
-                assert!(OutputField::FeaturesParentPublicKey
-                    .is_eq(&output, output.features.parent_public_key.as_ref().unwrap())
+                assert!(OutputField::FeaturesSideChainFeatures
+                    .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
                     .unwrap());
                 assert!(OutputField::FeaturesMetadata
                     .is_eq(&output, &output.features.metadata)
                     .unwrap());
-                assert!(OutputField::FeaturesUniqueId
-                    .is_eq(&output, output.features.unique_id.as_ref().unwrap())
+                assert!(OutputField::FeaturesSideChainFeaturesContractId
+                    .is_eq(&output, &output.features.contract_id().unwrap())
                     .unwrap());
                 assert!(OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &output.sender_offset_public_key)
@@ -398,7 +441,7 @@ mod test {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
                         parent_public_key: Some(parent_pk),
-                        unique_id: Some(b"1234".to_vec()),
+                        sidechain_features: Some(SideChainFeatures::new(FixedHash::hash_bytes(b"A"))),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -418,8 +461,11 @@ mod test {
                 assert!(!OutputField::FeaturesFlags
                     .is_eq(&output, &OutputFlags::COINBASE_OUTPUT)
                     .unwrap());
-                assert!(!OutputField::FeaturesParentPublicKey
-                    .is_eq(&output, &PublicKey::default())
+                assert!(!OutputField::FeaturesSideChainFeatures
+                    .is_eq(&output, &SideChainFeatures::new(FixedHash::hash_bytes(b"B")))
+                    .unwrap());
+                assert!(!OutputField::FeaturesSideChainFeaturesContractId
+                    .is_eq(&output, &FixedHash::hash_bytes(b"B"))
                     .unwrap());
                 assert!(!OutputField::FeaturesMetadata.is_eq(&output, &vec![123u8]).unwrap());
                 assert!(!OutputField::FeaturesUniqueId.is_eq(&output, &vec![123u8]).unwrap());
@@ -467,6 +513,8 @@ mod test {
                 assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesFlags.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesParentPublicKey.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesSideChainFeatures.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesSideChainFeaturesContractId.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMetadata.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesUniqueId.is_eq_input(&input, &output));
                 assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
@@ -480,6 +528,8 @@ mod test {
                 OutputField::Features,
                 OutputField::FeaturesFlags,
                 OutputField::FeaturesUniqueId,
+                OutputField::FeaturesSideChainFeatures,
+                OutputField::FeaturesSideChainFeaturesContractId,
                 OutputField::FeaturesMetadata,
                 OutputField::FeaturesMaturity,
                 OutputField::FeaturesParentPublicKey,

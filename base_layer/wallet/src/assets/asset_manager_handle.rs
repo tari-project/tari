@@ -25,7 +25,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey},
 };
 use tari_core::transactions::transaction_components::{
-    ContractDefinitionFeatures,
+    ContractDefinition,
     OutputFeatures,
     TemplateParameter,
     Transaction,
@@ -201,7 +201,7 @@ impl AssetManagerHandle {
 
     pub async fn create_contract_definition(
         &mut self,
-        contract_definition: &ContractDefinitionFeatures,
+        contract_definition: &ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle

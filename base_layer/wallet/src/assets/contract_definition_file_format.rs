@@ -22,18 +22,24 @@
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PublicKey};
-use tari_core::transactions::transaction_components::vec_into_fixed_string;
+use tari_core::transactions::transaction_components::{
+    vec_into_fixed_string,
+    ContractDefinition,
+    ContractSpecification,
+    FunctionRef,
+    PublicFunction,
+};
 use tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ContractDefinition {
+pub struct ContractDefinitionFileFormat {
     pub contract_name: String,
     pub contract_issuer: PublicKey,
-    pub contract_spec: ContractSpecification,
+    pub contract_spec: ContractSpecificationFileFormat,
 }
 
-impl From<ContractDefinition> for tari_core::transactions::transaction_components::ContractDefinitionFeatures {
-    fn from(value: ContractDefinition) -> Self {
+impl From<ContractDefinitionFileFormat> for ContractDefinition {
+    fn from(value: ContractDefinitionFileFormat) -> Self {
         let contract_name = value.contract_name.into_bytes();
         let contract_issuer = value.contract_issuer;
         let contract_spec = value.contract_spec.into();
@@ -43,13 +49,13 @@ impl From<ContractDefinition> for tari_core::transactions::transaction_component
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ContractSpecification {
+pub struct ContractSpecificationFileFormat {
     pub runtime: String,
-    pub public_functions: Vec<PublicFunction>,
+    pub public_functions: Vec<PublicFunctionFileFormat>,
 }
 
-impl From<ContractSpecification> for tari_core::transactions::transaction_components::ContractSpecification {
-    fn from(value: ContractSpecification) -> Self {
+impl From<ContractSpecificationFileFormat> for ContractSpecification {
+    fn from(value: ContractSpecificationFileFormat) -> Self {
         Self {
             runtime: vec_into_fixed_string(value.runtime.into_bytes()),
             public_functions: value.public_functions.into_iter().map(|f| f.into()).collect(),
@@ -58,13 +64,13 @@ impl From<ContractSpecification> for tari_core::transactions::transaction_compon
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PublicFunction {
+pub struct PublicFunctionFileFormat {
     pub name: String,
-    pub function: FunctionRef,
+    pub function: FunctionRefFileFormat,
 }
 
-impl From<PublicFunction> for tari_core::transactions::transaction_components::PublicFunction {
-    fn from(value: PublicFunction) -> Self {
+impl From<PublicFunctionFileFormat> for PublicFunction {
+    fn from(value: PublicFunctionFileFormat) -> Self {
         Self {
             name: vec_into_fixed_string(value.name.into_bytes()),
             function: value.function.into(),
@@ -73,13 +79,13 @@ impl From<PublicFunction> for tari_core::transactions::transaction_components::P
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FunctionRef {
+pub struct FunctionRefFileFormat {
     pub template_id: String,
     pub function_id: u16,
 }
 
-impl From<FunctionRef> for tari_core::transactions::transaction_components::FunctionRef {
-    fn from(value: FunctionRef) -> Self {
+impl From<FunctionRefFileFormat> for FunctionRef {
+    fn from(value: FunctionRefFileFormat) -> Self {
         Self {
             template_id: FixedHash::from_hex(&value.template_id).unwrap(),
             function_id: value.function_id,
