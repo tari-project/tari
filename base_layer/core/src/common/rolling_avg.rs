@@ -67,3 +67,77 @@ impl RollingAverageTime {
         self.calculate_average()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn empty_average_is_none() {
+        // zero capacity RollingAverageTime
+        let mut subject = RollingAverageTime::new(0);
+
+        // average should assert to None (as there are no elements to compute average from)
+        assert_eq!(subject.calculate_average(), None);
+        assert_eq!(subject.calculate_average_with_min_samples(0), None);
+        assert_eq!(subject.samples.len(), 0);
+
+        // re-test logic after adding sample
+        subject.add_sample(Duration::new(0, 999_999_999_u32));
+        assert_eq!(subject.calculate_average(), None);
+        assert_eq!(subject.calculate_average_with_min_samples(0), None);
+        assert_eq!(subject.samples.len(), 0);
+    }
+
+    #[test]
+    fn calculate_correct_average_with_single_duration() {
+        // test case with a single case
+        let mut subject = RollingAverageTime::new(1);
+        subject.add_sample(Duration::new(1, 0));
+
+        assert_eq!(subject.calculate_average(), Some(Duration::new(1, 0)));
+
+        // insert new element pos full capacity and resulting average
+        subject.add_sample(Duration::new(1, 1));
+        assert_eq!(subject.calculate_average(), Some(Duration::new(1, 1)));
+    }
+
+    #[test]
+    fn calculate_correct_average_with_multiple_durations() {
+        // test for average calculation over multiple Duration elements
+        let mut subject = RollingAverageTime::new(3);
+
+        // durations
+        let duration_1 = Duration::new(1, 999_999_999_u32);
+        let duration_2 = Duration::new(1, 0_u32);
+        let duration_3 = Duration::new(0, 999_999_999_u32);
+
+        // add samples
+        subject.add_sample(duration_1);
+        subject.add_sample(duration_2);
+        subject.add_sample(duration_3);
+
+        // compute correct average
+        let correct_avg = (1_999_999_999 + 1_000_000_000 + 999_999_999) / subject.samples.len() as u64;
+        let correct_duration = Some(Duration::from_nanos(correct_avg));
+
+        // assert that calculate_average computes the correct average
+        let output_avg = subject.calculate_average();
+        assert_eq!(output_avg, correct_duration);
+    }
+
+    #[test]
+    fn correct_calc_samples_per_second() {
+        let mut subject = RollingAverageTime::new(3);
+
+        // add samples
+        subject.add_sample(Duration::new(0, 999_999_999));
+        subject.add_sample(Duration::new(1, 0));
+        subject.add_sample(Duration::new(0, 1));
+
+        // assert that samples per second is correctly defined
+        let total_time = 2_000_000_f64;
+        let correct_sample_per_second = 1_000_000.0 * ((subject.samples.len() as f64) / total_time);
+        assert_eq!(subject.calc_samples_per_second(), Some(correct_sample_per_second));
+    }
+}

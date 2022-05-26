@@ -37,3 +37,34 @@ impl From<ClapError> for ConfigError {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use structopt::clap::{Error as ClapError, ErrorKind};
+
+    use super::*;
+
+    #[test]
+    fn config_error_test() {
+        // new config error
+        let config_error = ConfigError::new("testing", Some(String::from("coverage")));
+
+        // test formatting
+        assert_eq!(format!("{}", config_error), "testing: coverage");
+
+        // create new error
+        let clap_error = ClapError {
+            message: String::from("error"),
+            kind: ErrorKind::InvalidValue,
+            info: Some(vec![String::from("for test purposes")]),
+        };
+        // get clap error string
+        let clap_error_str = clap_error.to_string();
+        // create a new config error from clap error
+        let new_config_error = ConfigError::from(clap_error);
+
+        // test specification of config error from clap error
+        assert_eq!(new_config_error.cause, "Failed to process commandline parameters");
+        assert_eq!(new_config_error.source, Some(clap_error_str));
+    }
+}
