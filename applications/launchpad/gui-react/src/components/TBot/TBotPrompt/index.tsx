@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { config, useSpring } from 'react-spring'
 
 import SvgClose from '../../../styles/Icons/Close'
@@ -39,14 +39,19 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
     config: config.wobbly,
   })
 
-  // @TODO: need to assess if this needed, probably isn't
-  // useEffect(() => {
-  //   if (children && children.length > 1) {
-  //     setMultipleMessages(true)
-  //   } else {
-  //     setMultipleMessages(false)
-  //   }
-  // }, [children])
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    if (scrollRef.current !== null) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  }
+  useEffect(() => {
+    scrollToBottom()
+  }, [children])
 
   const close = () => {
     return dispatch(tbotactions.close())
@@ -69,7 +74,7 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
               <SvgClose fontSize={20} onClick={close} />
             </StyledCloseIcon>
           </StyledCloseContainer>
-          <MessageContainer multi={multipleMessages}>
+          <MessageContainer multi={multipleMessages} ref={scrollRef}>
             {children}
           </MessageContainer>
         </ContentContainer>

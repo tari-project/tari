@@ -47,10 +47,20 @@ const MiningHeaderTip = () => {
             rightIcon={<SvgInfo1 width='20px' height='20px' />}
             autosizeIcons={false}
             onClick={() =>
-              dispatch(tbotactions.push(MessagesConfig.cryptoMiningHelp))
+              dispatch(tbotactions.push(MessagesConfig.mergedMiningHelp))
             }
           >
             {t.mining.headerTips.wantToKnowMore}
+          </Button>
+          <Button
+            variant='button-in-text'
+            rightIcon={<SvgInfo1 width='20px' height='20px' />}
+            autosizeIcons={false}
+            onClick={() =>
+              dispatch(tbotactions.push(MessagesConfig.cryptoMiningHelp))
+            }
+          >
+            CryptoHelp
           </Button>
         </Text>
       </Text>

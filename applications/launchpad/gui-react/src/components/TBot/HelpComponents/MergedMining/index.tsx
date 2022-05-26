@@ -35,4 +35,41 @@ const Message2 = () => {
   )
 }
 
-export { Message1, Message2 }
+const Message3 = () => {
+  return (
+    <>
+      <Text type='defaultHeavy' as='span' testId='message1-cmp'>
+        {t.mergedMiningHelp.message3}
+      </Text>
+    </>
+  )
+}
+const Message4 = () => {
+  return (
+    <>
+      <Text type='defaultHeavy' as='span' testId='message1-cmp'>
+        {t.mergedMiningHelp.message4}
+      </Text>
+    </>
+  )
+}
+const Message5 = () => {
+  return (
+    <>
+      <Text type='defaultHeavy' as='span' testId='message1-cmp'>
+        {t.mergedMiningHelp.message5}
+      </Text>
+    </>
+  )
+}
+const Message6 = () => {
+  return (
+    <>
+      <Text type='defaultHeavy' as='span' testId='message1-cmp'>
+        {t.mergedMiningHelp.message6}
+      </Text>
+    </>
+  )
+}
+
+export { Message1, Message2, Message3, Message4, Message5, Message6 }

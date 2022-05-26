@@ -15,7 +15,7 @@ const ChatDots = () => {
         name: 'dotsAnimation',
         container: animation.current,
         renderer: 'svg',
-        loop: false,
+        loop: true,
         autoplay: true,
         animationData: dotsChatLottie,
       })
