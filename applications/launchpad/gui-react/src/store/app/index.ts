@@ -2,10 +2,11 @@ import { createSlice } from '@reduxjs/toolkit'
 
 import { ThemeType } from '../../styles/themes/types'
 import { Schedule } from '../../types/general'
+import { clearTime } from '../../utils/Date'
 
 import { AppState, ExpertViewType, ViewType } from './types'
 
-const appInitialState: AppState = {
+export const appInitialState: AppState = {
   expertView: 'hidden',
   view: 'MINING',
   theme: 'light',
@@ -43,7 +44,7 @@ const appSlice = createSlice({
         ...rest,
       }
 
-      newSchedule.date = date?.toUTCString()
+      newSchedule.date = date ? clearTime(date).toISOString() : undefined
 
       state.schedules[scheduleId] = newSchedule
     },

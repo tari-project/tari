@@ -29,19 +29,33 @@ const persistConfig = {
   storage,
   blacklist: ['containers'],
 }
+
 const persistedReducer = persistReducer(persistConfig, reducer)
 
-export const store = configureStore({
-  reducer: persistedReducer,
-  enhancers: [
-    devToolsEnhancer({
-      name: 'Tari Launchpad',
-      // realtime: true, // enables devtools on production
-      hostname: 'localhost',
-      port: 8000,
-    }),
-  ],
-})
+export const store =
+  process.env.NODE_ENV === 'test'
+    ? configureStore({
+        reducer,
+        enhancers: [
+          devToolsEnhancer({
+            name: 'Tari Launchpad',
+            // realtime: true, // enables devtools on production
+            hostname: 'localhost',
+            port: 8000,
+          }),
+        ],
+      })
+    : configureStore({
+        reducer: persistedReducer,
+        enhancers: [
+          devToolsEnhancer({
+            name: 'Tari Launchpad',
+            // realtime: true, // enables devtools on production
+            hostname: 'localhost',
+            port: 8000,
+          }),
+        ],
+      })
 
 export const persistor = persistStore(store)
 

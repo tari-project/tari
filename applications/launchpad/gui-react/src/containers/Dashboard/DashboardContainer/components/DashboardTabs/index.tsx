@@ -13,7 +13,6 @@ import {
   selectRunning as selectBaseNodeRunning,
 } from '../../../../../store/baseNode/selectors'
 import { selectState as selectWalletState } from '../../../../../store/wallet/selectors'
-
 import t from '../../../../../locales'
 import {
   selectIsMiningPending,
@@ -44,8 +43,8 @@ const composeNodeTabs = ({
   const baseNodeContent = (
     <TabContent
       text={t.common.nouns.baseNode}
-      pending={baseNodeState?.pending}
-      running={baseNodeState?.running}
+      pending={baseNodeState.pending}
+      running={baseNodeState.running}
       tagSubText={
         baseNodeState.running && baseNodeState.network
           ? baseNodeState.network

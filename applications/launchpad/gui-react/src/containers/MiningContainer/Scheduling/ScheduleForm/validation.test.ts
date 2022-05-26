@@ -2,7 +2,7 @@ import { Interval, Schedule } from '../../../../types/general'
 import t from '../../../../locales'
 
 import { validate } from './validation'
-import { timeToString } from './utils'
+import { utcTimeToString } from './utils'
 
 describe('validate', () => {
   describe('interval', () => {
@@ -38,7 +38,7 @@ describe('validate', () => {
     ]
 
     testCases.forEach(([interval, expected]) =>
-      it(`from: ${timeToString(interval.from)} to: ${timeToString(
+      it(`from: ${utcTimeToString(interval.from)} to: ${utcTimeToString(
         interval.to,
       )} expected: ${expected}`, () => {
         const schedule: Schedule = {

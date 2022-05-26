@@ -117,6 +117,7 @@ const servicesSlice = createSlice({
       state.containers[action.payload.id].type = action.meta.arg
       state.stats[action.payload.id].unsubscribe =
         action.payload.unsubscribeStats
+      state.errors[action.meta.arg] = undefined
     })
     builder.addCase(start.rejected, (state, action) => {
       state.errors[action.meta.arg] = action.payload
