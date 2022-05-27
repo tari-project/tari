@@ -25,7 +25,7 @@ use std::io::{Error, Read, Write};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
 
-use super::ContractDefinition;
+use super::{ContractAcceptance, ContractDefinition};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     transactions::transaction_components::ContractConstitution,
@@ -36,6 +36,7 @@ pub struct SideChainFeatures {
     pub contract_id: FixedHash,
     pub definition: Option<ContractDefinition>,
     pub constitution: Option<ContractConstitution>,
+    pub acceptance: Option<ContractAcceptance>,
 }
 
 impl SideChainFeatures {
@@ -53,6 +54,7 @@ impl ConsensusEncoding for SideChainFeatures {
         self.contract_id.consensus_encode(writer)?;
         self.definition.consensus_encode(writer)?;
         self.constitution.consensus_encode(writer)?;
+        self.acceptance.consensus_encode(writer)?;
         Ok(())
     }
 }
@@ -65,6 +67,7 @@ impl ConsensusDecoding for SideChainFeatures {
             contract_id: FixedHash::consensus_decode(reader)?,
             definition: ConsensusDecoding::consensus_decode(reader)?,
             constitution: ConsensusDecoding::consensus_decode(reader)?,
+            acceptance: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
 }
@@ -80,6 +83,7 @@ impl SideChainFeaturesBuilder {
                 contract_id,
                 definition: None,
                 constitution: None,
+                acceptance: None,
             },
         }
     }
@@ -94,6 +98,11 @@ impl SideChainFeaturesBuilder {
         self
     }
 
+    pub fn with_contract_acceptance(mut self, contract_acceptance: ContractAcceptance) -> Self {
+        self.features.acceptance = Some(contract_acceptance);
+        self
+    }
+
     pub fn finish(self) -> SideChainFeatures {
         self.features
     }
@@ -103,7 +112,7 @@ impl SideChainFeaturesBuilder {
 mod tests {
     use std::convert::TryInto;
 
-    use tari_common_types::types::PublicKey;
+    use tari_common_types::types::{PublicKey, Signature};
 
     use super::*;
     use crate::{
@@ -176,6 +185,10 @@ mod tests {
                         },
                     ],
                 },
+            }),
+            acceptance: Some(ContractAcceptance {
+                validator_node_public_key: PublicKey::default(),
+                signature: Signature::default(),
             }),
         };
 

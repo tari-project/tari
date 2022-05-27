@@ -29,8 +29,8 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct ContractAcceptance {
-    validator_node_public_key: PublicKey,
-    signature: Signature,
+    pub validator_node_public_key: PublicKey,
+    pub signature: Signature,
 }
 
 impl ConsensusEncoding for ContractAcceptance {
