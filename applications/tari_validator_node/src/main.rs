@@ -55,7 +55,7 @@ use tari_common::{
 use tari_comms::{peer_manager::PeerFeatures, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_dan_core::{
-    models::AssetDefinition,
+    models::{AssetDefinition, WasmFunctionDef},
     services::{
         BaseLayerCheckpointManager,
         BaseLayerCommitteeManager,
@@ -166,6 +166,16 @@ async fn start_debug_mode(
         checkpoint_unique_id: vec![],
         initial_state: Default::default(),
         template_parameters: definition.get_template_parameters(&config.common).unwrap(),
+        wasm_functions: vec![WasmFunctionDef {
+            name: "add_one".to_string(),
+            wat_file: r#"(module
+      (type $t0 (func (param i32) (result i32)))
+      (func $add_one (export "add_one") (type $t0) (param $p0 i32) (result i32)
+        get_local $p0
+        i32.const 1
+        i32.add))"#
+                .to_string(),
+        }],
     };
     let committee_manager = StaticListCommitteeManager::new(definition.committee.clone(), asset_definition.clone());
     let (handles, subscription_factory) = comms::build_service_and_comms_stack(

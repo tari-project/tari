@@ -24,6 +24,7 @@ use std::{collections::HashMap, convert::TryInto};
 
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_dan_common_types::proto::tips;
+use wasmer::{imports, Instance, Module, Store, Value};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -79,16 +80,41 @@ pub enum InstructionExecutor {
 }
 
 #[derive(Clone)]
-pub struct WasmModuleFactory {}
+pub struct WasmModuleFactory {
+    modules: HashMap<String, Instance>,
+}
 
 impl WasmModuleFactory {
+    pub fn new(asset_definition: &AssetDefinition) -> Self {
+        let mut modules = HashMap::new();
+        for func in &asset_definition.wasm_functions {
+            let store = Store::default();
+            let module = Module::new(&store, func.wat_file.as_str()).expect("Did not compile");
+            let import_object = imports! {};
+            let instance = Instance::new(&module, &import_object).expect("Could not create instance");
+            modules.insert(func.name.clone(), instance);
+        }
+        Self { modules }
+    }
+
     pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         name: String,
         instruction: &Instruction,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        todo!()
+        if let Some(instance) = self.modules.get(&name) {
+            let func_pointer = instance.exports.get_function(&name).expect("Could not find function");
+            let result = func_pointer.call(&[Value::I32(42)]).expect("invokation error");
+            dbg!(&result);
+            Ok(())
+        } else {
+            todo!("No module found")
+        }
+        // let store = Store::default();
+        // let module = Module::new(&store, wat_file.as_str());
+        // let import_object = imports! {};
+        // let instance = Instance::new(&module, &import_object)?;
     }
 }
 
@@ -103,9 +129,9 @@ pub struct ConcreteAssetProcessor {
 impl ConcreteAssetProcessor {
     pub fn new(asset_definition: AssetDefinition) -> Self {
         Self {
+            wasm_factory: WasmModuleFactory::new(&asset_definition),
             asset_definition,
             template_factory: Default::default(),
-            wasm_factory: WasmModuleFactory {},
             function_interface: FunctionInterface {},
         }
     }

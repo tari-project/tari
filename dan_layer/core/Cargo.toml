@@ -38,6 +38,7 @@ thiserror = "^1.0.20"
 tokio = { version="1.10", features = ["macros", "time"]}
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 tonic = "0.6.2"
+wasmer = "2.2.1"
 
 # saving of patricia tree
 patricia_tree = { version = "0.3.0", features = ["binary-format"] }

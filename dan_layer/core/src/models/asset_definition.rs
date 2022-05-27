@@ -40,6 +40,7 @@ pub struct AssetDefinition {
     pub checkpoint_unique_id: Vec<u8>,
     pub initial_state: InitialState,
     pub template_parameters: Vec<TemplateParameter>,
+    pub wasm_functions: Vec<WasmFunctionDef>,
 }
 
 impl Default for AssetDefinition {
@@ -52,6 +53,7 @@ impl Default for AssetDefinition {
             phase_timeout: 30,
             initial_state: Default::default(),
             template_parameters: vec![],
+            wasm_functions: vec![],
         }
     }
 }
@@ -82,6 +84,12 @@ impl AssetDefinition {
     pub fn initial_state(&self) -> &InitialState {
         &self.initial_state
     }
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+pub struct WasmFunctionDef {
+    pub name: String,
+    pub wat_file: String,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]

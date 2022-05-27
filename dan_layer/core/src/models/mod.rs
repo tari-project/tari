@@ -49,7 +49,7 @@ mod tree_node_hash;
 mod view;
 mod view_id;
 
-pub use asset_definition::{AssetDefinition, InitialState, KeyValue, SchemaState};
+pub use asset_definition::{AssetDefinition, InitialState, KeyValue, SchemaState, WasmFunctionDef};
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::{BaseLayerOutput, CheckpointOutput, CommitteeOutput};
 pub use committee::Committee;
