@@ -618,7 +618,7 @@ impl SenderTransactionInitializer {
         // Don't care about the fees when we are sending token.
         if self.amounts.size() > 0 &&
             total_fee > self.calculate_amount_to_others() &&
-            recipient_output_features[0].unique_id.is_none()
+            recipient_output_features[0].unique_asset_id().is_none()
         {
             warn!(
                 target: LOG_TARGET,

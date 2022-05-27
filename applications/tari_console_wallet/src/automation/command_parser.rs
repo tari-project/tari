@@ -68,6 +68,7 @@ impl Display for ParsedCommand {
             CreateInitialCheckpoint => "create-initial-checkpoint",
             CreateCommitteeDefinition => "create-committee-definition",
             RevalidateWalletDb => "revalidate-wallet-db",
+            PublishContractDefinition => "publish-contract-definition",
         };
 
         let args = self
@@ -94,6 +95,7 @@ pub enum ParsedArgument {
     Address(Multiaddr),
     Negotiated(bool),
     Hash(Vec<u8>),
+    JSONFileName(String),
 }
 
 impl Display for ParsedArgument {
@@ -112,6 +114,7 @@ impl Display for ParsedArgument {
             Address(v) => write!(f, "{}", v),
             Negotiated(v) => write!(f, "{}", v),
             Hash(v) => write!(f, "{}", v.to_hex()),
+            JSONFileName(v) => write!(f, "{}", v),
         }
     }
 }
@@ -148,6 +151,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         CreateInitialCheckpoint => parser_builder(args).pub_key().text().build()?,
         CreateCommitteeDefinition => parser_builder(args).pub_key().pub_key_array().build()?,
         RevalidateWalletDb => Vec::new(),
+        PublishContractDefinition => parse_publish_contract_definition(args)?,
     };
 
     Ok(ParsedCommand { command, args })
@@ -480,6 +484,24 @@ fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Pa
     parsed_args.push(ParsedArgument::Int(num_splits));
     let fee_per_gram = MicroTari::from_str(fee_per_gram)?;
     parsed_args.push(ParsedArgument::Amount(fee_per_gram));
+    Ok(parsed_args)
+}
+
+fn parse_publish_contract_definition(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    let usage = "Usage:\n    publish-contract-definition\n    publish-contract-definition --json-file <file name>";
+
+    let arg = args.next().ok_or_else(|| ParseError::Empty("json-file".to_string()))?;
+    if arg != "--json-file" {
+        return Err(ParseError::Empty(format!("'--json-file' qualifier\n  {}", usage)));
+    }
+
+    let file_name = args
+        .next()
+        .ok_or_else(|| ParseError::Empty(format!("file name\n  {}", usage)))?;
+    parsed_args.push(ParsedArgument::JSONFileName(file_name.to_string()));
+
     Ok(parsed_args)
 }
 

@@ -42,7 +42,13 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
-    validation::{block_validators::BlockValidator, BlockSyncBodyValidation, ValidationError},
+    validation::{
+        block_validators::{BlockValidator, BodyOnlyValidator, OrphanBlockValidator},
+        traits::PostOrphanBodyValidation,
+        BlockSyncBodyValidation,
+        OrphanValidation,
+        ValidationError,
+    },
 };
 
 fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockValidator<TempDatabase>) {
@@ -409,9 +415,7 @@ mod unique_id {
 }
 
 mod body_only {
-
     use super::*;
-    use crate::validation::{block_validators::BodyOnlyValidator, PostOrphanBodyValidation};
 
     #[test]
     fn it_rejects_invalid_input_metadata() {
@@ -445,7 +449,6 @@ mod body_only {
 
 mod orphan_validator {
     use super::*;
-    use crate::validation::{block_validators::OrphanBlockValidator, OrphanValidation};
 
     #[test]
     fn it_rejects_zero_conf_double_spends() {

@@ -463,6 +463,12 @@ where B: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::FetchTokensResponse { outputs })
             },
+            NodeCommsRequest::FetchConstitutions { dan_node_public_key } => {
+                debug!(target: LOG_TARGET, "Starting fetch constitutions");
+                Ok(NodeCommsResponse::FetchConstitutionsResponse {
+                    outputs: self.blockchain_db.fetch_all_constitutions(dan_node_public_key).await?,
+                })
+            },
             NodeCommsRequest::FetchAssetRegistrations { range } => {
                 let top_level_pubkey = PublicKey::default();
                 #[allow(clippy::range_plus_one)]

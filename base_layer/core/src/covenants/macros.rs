@@ -125,7 +125,7 @@ macro_rules! __covenant_inner {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use tari_common_types::types::{FixedHash, PublicKey};
     use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::{from_hex, Hex};
@@ -155,14 +155,14 @@ mod test {
         let hash_vec = from_hex(hash_str).unwrap();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(hash_vec.as_slice());
-        let covenant = covenant!(output_hash_eq(@hash(hash)));
+        let covenant = covenant!(output_hash_eq(@hash(hash.into())));
         assert_eq!(covenant.to_bytes().to_hex(), format!("3001{}", hash_str));
 
         let covenant = covenant!(and(
             identity(),
             or(
                 identity(),
-                fields_preserved(@hash(hash),)
+                fields_preserved(@hash(hash.into()),)
             )
         ));
         assert_eq!(
@@ -186,22 +186,25 @@ mod test {
                 identity(),
                 fields_hashed_eq(
                     @fields(@field::commitment, @field::features_metadata),
-                    @hash(hash),
+                    @hash(hash.into()),
                 ),
             ),
             field_eq(@field::features_maturity, @uint(42))
         ));
         assert_eq!(
             covenant.to_bytes().to_hex(),
-            "21222032080200090153563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd330706062a"
+            "21222032080200070153563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd330706062a"
         );
     }
 
     #[test]
     fn covenant() {
-        let bytes = vec![0xba, 0xda, 0x55];
-        let covenant = covenant!(field_eq(@field::covenant, @covenant_lit(and(field_eq(@field::features_unique_id, @bytes(bytes), identity())))));
-        assert_eq!(covenant.to_bytes().to_hex(), "330703050a213307070903bada5520");
+        let hash = FixedHash::zero();
+        let covenant = covenant!(field_eq(@field::covenant, @covenant_lit(and(field_eq(@field::features_contract_id, @hash(hash), identity())))));
+        assert_eq!(
+            covenant.to_bytes().to_hex(),
+            "33070305262133070901000000000000000000000000000000000000000000000000000000000000000020"
+        );
     }
 
     #[test]
