@@ -40,6 +40,24 @@ impl<T, const MAX: usize> MaxSizeVec<T, MAX> {
     pub fn into_vec(self) -> Vec<T> {
         self.inner
     }
+
+    pub fn try_from_iter<I: IntoIterator<Item = T>>(iter: I) -> Option<Self> {
+        let iter = iter.into_iter();
+        let (lower, upper) = iter.size_hint();
+        if lower > MAX {
+            return None;
+        }
+
+        let capacity = upper.filter(|u| *u <= MAX).unwrap_or(lower);
+        let mut inner = Vec::with_capacity(capacity);
+        for item in iter {
+            if inner.len() + 1 > MAX {
+                return None;
+            }
+            inner.push(item);
+        }
+        Some(Self { inner })
+    }
 }
 
 impl<T, const MAX: usize> Deref for MaxSizeVec<T, MAX> {
@@ -105,5 +123,18 @@ impl<T: ConsensusDecoding, const MAX: usize> ConsensusDecoding for MaxSizeVec<T,
 impl<T: PartialEq, const MAX: usize> PartialEq<Vec<T>> for MaxSizeVec<T, MAX> {
     fn eq(&self, other: &Vec<T>) -> bool {
         self.inner.eq(other)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+
+    use super::*;
+
+    #[test]
+    fn try_from_iter() {
+        MaxSizeVec::<_, 5>::try_from_iter(iter::repeat(1).take(5)).unwrap();
+        assert!(MaxSizeVec::<_, 5>::try_from_iter(iter::repeat(1).take(6)).is_none());
     }
 }

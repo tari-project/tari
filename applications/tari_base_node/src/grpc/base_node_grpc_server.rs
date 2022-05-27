@@ -134,6 +134,7 @@ pub async fn get_heights(
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type GetConstitutionsStream = mpsc::Receiver<Result<tari_rpc::TransactionOutput, Status>>;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
@@ -1824,6 +1825,69 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         Ok(Response::new(response))
+    }
+
+    async fn get_constitutions(
+        &self,
+        request: Request<tari_rpc::GetConstitutionsRequest>,
+    ) -> Result<Response<Self::GetConstitutionsStream>, Status> {
+        let report_error_flag = self.report_error_flag();
+        let request = request.into_inner();
+        let dan_node_public_key = PublicKey::from_bytes(&request.dan_node_public_key).map_err(|err| {
+            report_error(
+                report_error_flag,
+                Status::invalid_argument(format!("Dan node public key is not a valid public key:{}", err)),
+            )
+        })?;
+
+        let mut handler = self.node_service.clone();
+        let (mut sender, receiver) = mpsc::channel(50);
+        task::spawn(async move {
+            let dan_node_public_key_hex = dan_node_public_key.to_hex();
+            debug!(
+                target: LOG_TARGET,
+                "Starting thread to process GetConstitutions: dan_node_public_key: {}", dan_node_public_key_hex,
+            );
+            let constitutions = match handler.get_constitutions(dan_node_public_key).await {
+                Ok(constitutions) => constitutions,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
+                    let _get_token_response =
+                        sender.send(Err(report_error(report_error_flag, Status::internal("Internal error"))));
+                    return;
+                },
+            };
+
+            debug!(
+                target: LOG_TARGET,
+                "Found {} constitutions for {}",
+                constitutions.len(),
+                dan_node_public_key_hex
+            );
+
+            for constitution in constitutions {
+                match sender.send(Ok(constitution.into())).await {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending constitution via GRPC:  {}", err);
+                        match sender
+                            .send(Err(report_error(
+                                report_error_flag,
+                                Status::unknown("Error sending data"),
+                            )))
+                            .await
+                        {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+        Ok(Response::new(receiver))
     }
 }
 

@@ -31,8 +31,12 @@ service ValidatorNode {
 //    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
     rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
     rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
+    rpc GetCommitteeRequests(GetCommitteeRequestsRequest) returns (stream TransactionOutput);
 }
 
+message GetCommitteeRequestsRequest {
+    // empty
+}
 
 message GetMetadataRequest {
     // empty

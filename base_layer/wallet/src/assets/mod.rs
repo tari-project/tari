@@ -30,3 +30,6 @@ pub use asset::Asset;
 mod asset_manager_handle;
 pub use asset_manager_handle::AssetManagerHandle;
 pub(crate) mod infrastructure;
+
+mod contract_definition_file_format;
+pub use contract_definition_file_format::ContractDefinitionFileFormat;

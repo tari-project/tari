@@ -265,7 +265,11 @@ const getTransactionOutputHash = function (output) {
     Buffer.from(features),
     encodeOption(output.features.unique_id),
   ]);
-  // features.asset
+  // features.sidechain_features
+  features = Buffer.concat([
+    Buffer.from(features),
+    encodeOption(output.features.sidechain_features),
+  ]); // features.asset
   features = Buffer.concat([
     Buffer.from(features),
     encodeOption(output.features.asset),

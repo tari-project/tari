@@ -64,3 +64,32 @@ pub fn socket_or_multi(addr: &str) -> Result<Multiaddr, Error> {
         })
         .or_else(|_| addr.parse::<Multiaddr>())
 }
+
+#[cfg(test)]
+mod test {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    use super::*;
+
+    #[test]
+    fn socket_or_multi_test() {
+        let v4_addr = "127.0.0.1:8080";
+        let multi_v4_addr = socket_or_multi(v4_addr).unwrap();
+        // ipv4 testing
+        assert_eq!(
+            multi_v4_addr,
+            Multiaddr::from_iter([Protocol::Ip4(Ipv4Addr::new(127, 0, 0, 1)), Protocol::Tcp(8080)])
+        );
+
+        let v6_addr = "[2001:db8::1]:8080";
+        let multi_v6_addr = socket_or_multi(v6_addr).unwrap();
+        // ipv6 testing
+        assert_eq!(
+            multi_v6_addr,
+            Multiaddr::from_iter([
+                Protocol::Ip6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+                Protocol::Tcp(8080)
+            ])
+        );
+    }
+}

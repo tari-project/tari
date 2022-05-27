@@ -26,6 +26,7 @@ use async_trait::async_trait;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common_types::types::{PublicKey, COMMITTEE_DEFINITION_ID};
+use tari_core::transactions::transaction_components::TransactionOutput;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
@@ -97,6 +98,22 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             })
             .transpose()?;
         Ok(output)
+    }
+
+    async fn check_for_constitutions_for_me(
+        &mut self,
+        dan_node_public_key: PublicKey,
+    ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
+        let inner = self.connection().await?;
+        let request = grpc::GetConstitutionsRequest {
+            dan_node_public_key: dan_node_public_key.as_bytes().to_vec(),
+        };
+        let mut result = inner.get_constitutions(request).await?.into_inner();
+        let mut outputs = vec![];
+        while let Some(output) = result.message().await? {
+            outputs.push(output.try_into().map_err(DigitalAssetError::ConversionError)?);
+        }
+        Ok(outputs)
     }
 
     async fn check_if_in_committee(

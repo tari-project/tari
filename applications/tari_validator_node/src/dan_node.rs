@@ -92,7 +92,7 @@ impl DanNode {
             let tip = base_node_client
                 .get_tip_info()
                 .await
-                .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
+                .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
             if tip.height_of_longest_chain >= next_scanned_height {
                 info!(
                     target: LOG_TARGET,
