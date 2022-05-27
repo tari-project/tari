@@ -22,6 +22,7 @@
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
+use tari_core::transactions::transaction_components::TransactionOutput;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -38,6 +39,11 @@ pub trait BaseNodeClient: Send + Sync {
         asset_public_key: PublicKey,
         checkpoint_unique_id: Vec<u8>,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
+
+    async fn check_for_constitutions_for_me(
+        &mut self,
+        dan_node_public_key: PublicKey,
+    ) -> Result<Vec<TransactionOutput>, DigitalAssetError>;
 
     async fn check_if_in_committee(
         &mut self,

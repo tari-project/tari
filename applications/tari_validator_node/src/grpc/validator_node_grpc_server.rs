@@ -19,9 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::convert::TryInto;
+use std::{convert::TryInto, time::Duration};
 
-use tari_app_grpc::tari_rpc as rpc;
+use futures::channel::mpsc;
+use tari_app_grpc::tari_rpc::{self as rpc, TransactionOutput};
 use tari_common_types::types::PublicKey;
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
@@ -30,7 +31,10 @@ use tari_dan_core::{
     services::{AssetProcessor, AssetProxy, ServiceSpecification},
     storage::DbFactory,
 };
+use tokio::{task, time};
 use tonic::{Request, Response, Status};
+
+const _LOG_TARGET: &str = "tari::validator_node::grpc";
 
 pub struct ValidatorNodeGrpcServer<TServiceSpecification: ServiceSpecification> {
     node_identity: NodeIdentity,
@@ -59,6 +63,27 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
 impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_server::ValidatorNode
     for ValidatorNodeGrpcServer<TServiceSpecification>
 {
+    type GetCommitteeRequestsStream = mpsc::Receiver<Result<TransactionOutput, tonic::Status>>;
+
+    async fn get_committee_requests(
+        &self,
+        _request: tonic::Request<rpc::GetCommitteeRequestsRequest>,
+    ) -> Result<Response<Self::GetCommitteeRequestsStream>, tonic::Status> {
+        let (mut _sender, receiver) = mpsc::channel(100);
+        task::spawn(async move {
+            let mut _test = 1u64;
+            loop {
+                let _ = time::sleep(Duration::from_secs(1)).await;
+                // if let Err(err) = sender.send(Ok(ContractConstitution { test })).await {
+                //     info!(target: LOG_TARGET, "The request was aborted, {}", err);
+                //     break;
+                // }
+                _test += 1;
+            }
+        });
+        Ok(Response::new(receiver))
+    }
+
     async fn get_identity(
         &self,
         _request: tonic::Request<rpc::GetIdentityRequest>,
@@ -129,6 +154,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         &self,
         request: Request<rpc::InvokeReadMethodRequest>,
     ) -> Result<Response<rpc::InvokeReadMethodResponse>, Status> {
+        println!("invoke_read_method grpc call");
         println!("{:?}", request);
         let request = request.into_inner();
         let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)

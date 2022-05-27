@@ -70,6 +70,9 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
+    FetchConstitutions {
+        dan_node_public_key: PublicKey,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -118,6 +121,9 @@ impl Display for NodeCommsRequest {
             },
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
+            },
+            FetchConstitutions { .. } => {
+                write!(f, "FetchConstitutions")
             },
         }
     }

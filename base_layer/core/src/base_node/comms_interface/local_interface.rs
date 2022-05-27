@@ -318,4 +318,18 @@ impl LocalNodeCommsInterface {
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
+
+    pub async fn get_constitutions(
+        &mut self,
+        dan_node_public_key: PublicKey,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchConstitutions { dan_node_public_key })
+            .await??
+        {
+            NodeCommsResponse::FetchConstitutionsResponse { outputs } => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
 }

@@ -176,6 +176,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
+    make_async_fn!(fetch_all_constitutions(dan_node_public_key: PublicKey) -> Vec<TransactionOutput>, "fetch_all_constitutions");
+
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
