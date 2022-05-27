@@ -111,7 +111,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         let mut result = inner.get_constitutions(request).await?.into_inner();
         let mut outputs = vec![];
         while let Some(output) = result.message().await? {
-            outputs.push(output.try_into().map_err(|e| DigitalAssetError::ConversionError(e))?);
+            outputs.push(output.try_into().map_err(DigitalAssetError::ConversionError)?);
         }
         Ok(outputs)
     }
