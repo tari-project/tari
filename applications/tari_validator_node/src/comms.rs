@@ -29,7 +29,7 @@ use tari_common::{
 };
 use tari_comms::{protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::Dht;
-use tari_dan_core::services::{ConcreteAssetProcessor, MempoolServiceHandle};
+use tari_dan_core::services::{AssetProcessor, ConcreteAssetProcessor, MempoolServiceHandle};
 use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_p2p::{
     comms_connector::{pubsub_connector, SubscriptionFactory},

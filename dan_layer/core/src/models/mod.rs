@@ -87,7 +87,7 @@ pub enum TemplateId {
     Tip003 = 3,
     Tip004 = 4,
     Tip721 = 721,
-    EditableMetadata = 20,
+    Tip6000 = 6000,
 }
 
 impl FromStr for TemplateId {
@@ -99,7 +99,7 @@ impl FromStr for TemplateId {
             "Tip003" => Ok(TemplateId::Tip003),
             "Tip004" => Ok(TemplateId::Tip004),
             "Tip721" => Ok(TemplateId::Tip721),
-            "EditableMetadata" => Ok(TemplateId::EditableMetadata),
+            "Tip6000" => Ok(TemplateId::Tip6000),
             _ => {
                 println!("Unrecognised template");
                 Err(ModelError::StringParseError {
@@ -119,6 +119,7 @@ impl TryFrom<u32> for TemplateId {
             3 => Ok(TemplateId::Tip003),
             4 => Ok(TemplateId::Tip004),
             721 => Ok(TemplateId::Tip721),
+            6000 => Ok(TemplateId::Tip6000),
             _ => Err(ModelError::InvalidTemplateIdNumber {
                 value: i64::from(value),
             }),

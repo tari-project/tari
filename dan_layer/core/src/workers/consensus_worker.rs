@@ -201,6 +201,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         states::Synchronizing::<T>::new()
             .next_event(
                 &self.worker.committee_manager,
+                &mut self.worker.checkpoint_manager,
                 &self.worker.asset_definition,
                 &self.worker.db_factory,
                 &self.worker.validator_node_client_factory,

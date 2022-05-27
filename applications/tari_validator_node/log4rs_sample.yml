@@ -91,7 +91,7 @@ appenders:
 
 # Set the default logging level to "info"
 root:
-  level: warn
+  level: debug
   appenders:
     - stdout
 

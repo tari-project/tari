@@ -97,7 +97,7 @@ impl Default for ValidatorNodeConfig {
             scan_for_assets: true,
             new_asset_scanning_interval: 10,
             assets_allow_list: None,
-            data_dir: PathBuf::from("/data/validator_node"),
+            data_dir: PathBuf::from("data/validator_node"),
             committee_management_confirmation_time: 10,
             committee_management_polling_interval: 5,
             p2p: P2pConfig::default(),

@@ -49,6 +49,7 @@ use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
+    initialize_logging,
     load_configuration,
 };
 use tari_comms::{peer_manager::PeerFeatures, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
@@ -107,6 +108,10 @@ fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
+    initialize_logging(
+        &cli.common.log_config_path("validator"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
 
     let config = ApplicationConfig::load_from(&cfg)?;
     let runtime = build_runtime()?;
@@ -145,29 +150,35 @@ async fn start_debug_mode(
     config: &ApplicationConfig,
 ) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Debugging file definition");
-    let file = File::open(debug_file).expect("File does not exist");
+    let debug_file = if debug_file.is_absolute() {
+        debug_file.to_path_buf()
+    } else {
+        config.common.base_path().join(debug_file)
+    };
+    dbg!(&debug_file);
+    let file = File::open(&debug_file).expect("File does not exist");
     let reader = BufReader::new(file);
     let definition: DebugDefinition = serde_json::from_reader(reader).expect("Not a valid definition");
-
+    let asset_definition = AssetDefinition {
+        public_key: definition.public_key.clone(),
+        phase_timeout: 30,
+        base_layer_confirmation_time: 1,
+        checkpoint_unique_id: vec![],
+        initial_state: Default::default(),
+        template_parameters: definition.get_template_parameters(&config.common).unwrap(),
+    };
+    let committee_manager = StaticListCommitteeManager::new(definition.committee.clone(), asset_definition.clone());
     let (handles, subscription_factory) = comms::build_service_and_comms_stack(
         config,
         shutdown.to_signal(),
         node_identity.clone(),
         mempool_service.clone(),
         db_factory.clone(),
-        ConcreteAssetProcessor::default(),
+        ConcreteAssetProcessor::new(asset_definition.clone()),
     )
     .await?;
 
-    let committee_manager = StaticListCommitteeManager::new(definition.committee.clone(), AssetDefinition {
-        public_key: definition.public_key,
-        phase_timeout: 30,
-        base_layer_confirmation_time: 1,
-        checkpoint_unique_id: vec![],
-        initial_state: Default::default(),
-        template_parameters: vec![],
-    });
-    let asset_processor = ConcreteAssetProcessor::default();
+    let asset_processor = ConcreteAssetProcessor::new(asset_definition.clone());
     let validator_node_client_factory =
         TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
     let asset_proxy: ConcreteAssetProxy<DebugServiceSpecification> = ConcreteAssetProxy::new(
@@ -212,61 +223,62 @@ async fn start_non_debug_mode(
     mempool_service: MempoolServiceHandle,
     config: &ApplicationConfig,
 ) -> Result<(), ExitError> {
-    info!(
-        target: LOG_TARGET,
-        "Node starting with pub key: {}, node_id: {}",
-        node_identity.public_key(),
-        node_identity.node_id()
-    );
-    let (handles, subscription_factory) = comms::build_service_and_comms_stack(
-        config,
-        shutdown.to_signal(),
-        node_identity.clone(),
-        mempool_service.clone(),
-        db_factory.clone(),
-        ConcreteAssetProcessor::default(),
-    )
-    .await?;
-
-    let asset_processor = ConcreteAssetProcessor::default();
-    let validator_node_client_factory =
-        TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
-    let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
-        BaseLayerCommitteeManager::new(GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address)),
-        validator_node_client_factory,
-        5,
-        mempool_service.clone(),
-        db_factory.clone(),
-    );
-
-    let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
-        node_identity.as_ref().clone(),
-        db_factory.clone(),
-        asset_processor,
-        asset_proxy,
-    );
-    let grpc_addr = multiaddr_to_socketaddr(&config.validator_node.grpc_address)?;
-
-    task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
-    println!("🚀 Validator node started!");
-    println!("{}", node_identity);
-
-    let mut base_node_client = GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address);
-    let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
-    let checkpoint_manager = BaseLayerCheckpointManager::new(wallet_client);
-    run_dan_node::<DefaultServiceSpecification>(
-        shutdown.to_signal(),
-        config.validator_node.clone(),
-        mempool_service,
-        BaseLayerCommitteeManager::new(base_node_client),
-        checkpoint_manager,
-        db_factory,
-        handles,
-        subscription_factory,
-        node_identity,
-    )
-    .await?;
-    Ok(())
+    todo!("fix asset processor")
+    // info!(
+    //     target: LOG_TARGET,
+    //     "Node starting with pub key: {}, node_id: {}",
+    //     node_identity.public_key(),
+    //     node_identity.node_id()
+    // );
+    // let (handles, subscription_factory) = comms::build_service_and_comms_stack(
+    //     config,
+    //     shutdown.to_signal(),
+    //     node_identity.clone(),
+    //     mempool_service.clone(),
+    //     db_factory.clone(),
+    //     todo!("Find a way to create the asset processor up front"),
+    // )
+    // .await?;
+    //
+    // let asset_processor = todo!("Find a way to create the asset processor up front");
+    // let validator_node_client_factory =
+    //     TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
+    // let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
+    //     BaseLayerCommitteeManager::new(GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address)),
+    //     validator_node_client_factory,
+    //     5,
+    //     mempool_service.clone(),
+    //     db_factory.clone(),
+    // );
+    //
+    // let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
+    //     node_identity.as_ref().clone(),
+    //     db_factory.clone(),
+    //     asset_processor,
+    //     asset_proxy,
+    // );
+    // let grpc_addr = multiaddr_to_socketaddr(&config.validator_node.grpc_address)?;
+    //
+    // task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
+    // println!("🚀 Validator node started!");
+    // println!("{}", node_identity);
+    //
+    // let mut base_node_client = GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address);
+    // let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
+    // let checkpoint_manager = BaseLayerCheckpointManager::new(wallet_client);
+    // run_dan_node::<DefaultServiceSpecification>(
+    //     shutdown.to_signal(),
+    //     config.validator_node.clone(),
+    //     mempool_service,
+    //     BaseLayerCommitteeManager::new(base_node_client),
+    //     checkpoint_manager,
+    //     db_factory,
+    //     handles,
+    //     subscription_factory,
+    //     node_identity,
+    // )
+    // .await?;
+    // Ok(())
 }
 
 fn build_runtime() -> Result<Runtime, ExitError> {

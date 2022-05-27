@@ -21,10 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
+use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 
 use crate::{
-    models::{AssetDefinition, StateRoot},
+    models::{AssetDefinition, CheckpointOutput, StateRoot},
     services::{infrastructure_services::NodeAddressable, wallet_client::WalletClient},
     DigitalAssetError,
 };
@@ -36,6 +37,11 @@ pub trait CheckpointManager<TAddr: NodeAddressable> {
         state_root: StateRoot,
         next_committee: Vec<TAddr>,
     ) -> Result<(), DigitalAssetError>;
+
+    async fn get_current_checkpoint(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<CheckpointOutput>, DigitalAssetError>;
 }
 
 #[derive(Clone)]
@@ -49,6 +55,14 @@ impl CheckpointManager<CommsPublicKey> for MemoryCheckpointManager {
         next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError> {
         Ok(())
+    }
+
+    async fn get_current_checkpoint(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<CheckpointOutput>, DigitalAssetError> {
+        // Always return none
+        Ok(None)
     }
 }
 
@@ -90,5 +104,12 @@ impl<TWallet: WalletClient + Sync + Send> CheckpointManager<CommsPublicKey> for 
         //     self.num_calls = 0;
         // }
         // Ok(())
+    }
+
+    async fn get_current_checkpoint(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<CheckpointOutput>, DigitalAssetError> {
+        todo!()
     }
 }

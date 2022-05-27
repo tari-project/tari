@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use std::{collections::HashMap, convert::TryInto};
 
 use tari_core::transactions::transaction_components::TemplateParameter;
+use tari_dan_common_types::proto::tips;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Instruction, InstructionSet, TemplateId},
+    models::{AssetDefinition, Instruction, InstructionSet, TemplateId},
+    services::{infrastructure_services::NodeAddressable, CommitteeManager},
     storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
     template_command::ExecutionResult,
     templates::{tip002_template, tip004_template, tip721_template},
@@ -48,9 +50,65 @@ pub trait AssetProcessor: Sync + Send + 'static {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
-#[derive(Default, Clone)]
+pub struct WasmModule {}
+
+impl WasmModule {}
+
+#[derive(Clone)]
+pub struct FunctionInterface {}
+
+impl FunctionInterface {
+    fn find_executor(&self, instruction: &Instruction) -> Result<InstructionExecutor, DigitalAssetError> {
+        match instruction.template_id() {
+            TemplateId::Tip6000 => {
+                // let req: tips::Tip6000::InvokeWasmRequest::decode(instruction.args())?;
+                Ok(InstructionExecutor::WasmModule {
+                    name: instruction.method().to_string(),
+                })
+            },
+            _ => Ok(InstructionExecutor::Template {
+                template_id: instruction.template_id(),
+            }),
+        }
+    }
+}
+
+pub enum InstructionExecutor {
+    WasmModule { name: String },
+    Template { template_id: TemplateId },
+}
+
+#[derive(Clone)]
+pub struct WasmModuleFactory {}
+
+impl WasmModuleFactory {
+    pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        name: String,
+        instruction: &Instruction,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+}
+
+#[derive(Clone)]
 pub struct ConcreteAssetProcessor {
+    asset_definition: AssetDefinition,
     template_factory: TemplateFactory,
+    wasm_factory: WasmModuleFactory,
+    function_interface: FunctionInterface,
+}
+
+impl ConcreteAssetProcessor {
+    pub fn new(asset_definition: AssetDefinition) -> Self {
+        Self {
+            asset_definition,
+            template_factory: Default::default(),
+            wasm_factory: WasmModuleFactory {},
+            function_interface: FunctionInterface {},
+        }
+    }
 }
 
 impl AssetProcessor for ConcreteAssetProcessor {
@@ -59,7 +117,12 @@ impl AssetProcessor for ConcreteAssetProcessor {
         instruction: &Instruction,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        self.template_factory.invoke_write_method(instruction, state_db)
+        match self.function_interface.find_executor(instruction)? {
+            InstructionExecutor::WasmModule { name } => {
+                self.wasm_factory.invoke_write_method(name, instruction, state_db)
+            },
+            InstructionExecutor::Template { .. } => self.template_factory.invoke_write_method(instruction, state_db),
+        }
     }
 
     fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
@@ -76,7 +139,7 @@ pub struct TemplateFactory {}
 
 impl TemplateFactory {
     pub fn initial_instructions(&self, template_param: &TemplateParameter) -> InstructionSet {
-        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
+        use TemplateId::{Tip002, Tip003, Tip004, Tip721};
         // TODO: We may want to use the TemplateId type, so that we know it is known/valid
         let template_id = template_param.template_id.try_into().unwrap();
         match template_id {
@@ -84,9 +147,8 @@ impl TemplateFactory {
             Tip003 => todo!(),
             Tip004 => tip004_template::initial_instructions(template_param),
             Tip721 => tip721_template::initial_instructions(template_param),
-            EditableMetadata => {
-                todo!()
-            },
+            Tip6000 => InstructionSet::empty(),
+            _ => todo!(),
         }
     }
 
@@ -95,13 +157,13 @@ impl TemplateFactory {
         instruction: &Instruction,
         state_db: &TUnitOfWork,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
+        use TemplateId::{Tip002, Tip003, Tip004, Tip721};
         match instruction.template_id() {
             Tip002 => tip002_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
             Tip003 => todo!(),
             Tip004 => tip004_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
             Tip721 => tip721_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
-            EditableMetadata => {
+            _ => {
                 todo!()
             },
         }
@@ -112,13 +174,13 @@ impl TemplateFactory {
         instruction: &Instruction,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
+        use TemplateId::{Tip002, Tip003, Tip004, Tip721};
         match instruction.template_id() {
             Tip002 => tip002_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
             Tip003 => todo!(),
             Tip004 => tip004_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
             Tip721 => tip721_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
-            EditableMetadata => {
+            _ => {
                 todo!()
             },
         }

@@ -1,0 +1,27 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+package tari.dan.tips.tip6000;
+
+// wasm
+service Tip6000 {
+  rpc Init(InitRequest) returns (Empty);
+  rpc InvokeWasm(InvokeWasmRequest) returns (InvokeWasmResponse);
+}
+
+message InitRequest{
+  string wat = 1;
+}
+
+message Empty {
+
+}
+
+message InvokeWasmRequest {
+    string function_name =1;
+}
+
+message InvokeWasmResponse {
+
+}

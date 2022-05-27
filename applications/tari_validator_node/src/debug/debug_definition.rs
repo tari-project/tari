@@ -20,8 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fs, path::PathBuf};
+
+use prost::Message;
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::CommonConfig;
 use tari_common_types::types::PublicKey;
+use tari_core::transactions::transaction_components::TemplateParameter;
+use tari_dan_common_types::proto::tips::tip6000;
+use tari_dan_core::DigitalAssetError;
 
 #[derive(Serialize, Deserialize)]
 pub struct DebugDefinition {
@@ -29,4 +36,49 @@ pub struct DebugDefinition {
     pub committee: Vec<PublicKey>,
     // TODO: change to contract od
     pub public_key: PublicKey,
+    pub initialization: Vec<InitializationDef>,
+    pub functions: Vec<FunctionDef>,
+}
+
+impl DebugDefinition {
+    pub fn get_template_parameters(&self, config: &CommonConfig) -> Result<Vec<TemplateParameter>, DigitalAssetError> {
+        let mut result = vec![];
+        for def in &self.initialization {
+            match def {
+                InitializationDef::Wasm { wat_path } => {
+                    let wat_path = if wat_path.is_absolute() {
+                        wat_path.to_path_buf()
+                    } else {
+                        config.base_path().join(wat_path)
+                    };
+                    let wat_file = fs::read_to_string(&wat_path).expect("Can't read file");
+                    // let store = Store::default();
+                    // let module = Module::new(&store, wat_file.as_str());
+                    // let import_object = imports! {};
+                    // let instance = Instance::new(&module, &import_object)?;
+
+                    let data = tip6000::InitRequest { wat: wat_file }.encode_to_vec();
+
+                    result.push(TemplateParameter {
+                        template_id: 6000,
+                        template_data_version: 0,
+                        template_data: data,
+                    });
+                },
+            }
+        }
+        Ok(result)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum InitializationDef {
+    Wasm { wat_path: PathBuf },
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FunctionDef {
+    pub template_id: String,
+    pub method: String,
 }

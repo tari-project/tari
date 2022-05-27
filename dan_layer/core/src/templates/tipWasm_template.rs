@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,20 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod tips {
-    pub mod tip002 {
-        include!(concat!(env!("OUT_DIR"), "/tari.dan.tips.tip002.rs"));
-    }
-    pub mod tip003 {
-        include!(concat!(env!("OUT_DIR"), "/tari.dan.tips.tip003.rs"));
-    }
-    pub mod tip004 {
-        include!(concat!(env!("OUT_DIR"), "/tari.dan.tips.tip004.rs"));
-    }
-    pub mod tip721 {
-        include!(concat!(env!("OUT_DIR"), "/tari.dan.tips.tip721.rs"));
-    }
-    pub mod tip6000 {
-        include!(concat!(env!("OUT_DIR"), "/tari.dan.tips.tip6000.rs"));
-    }
+use tari_core::transactions::transaction_components::TemplateParameter;
+
+use crate::models::InstructionSet;
+
+const LOG_TARGET: &str = "tari::dan_layer::core::templates::tipWasm";
+
+pub fn initial_instructions(_: &TemplateParameter) -> InstructionSet {
+    InstructionSet::empty()
 }

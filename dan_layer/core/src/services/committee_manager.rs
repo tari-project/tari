@@ -36,9 +36,10 @@ use crate::{
 const LOG_TARGET: &str = "tari::dan_layer::core::services::committee_manager";
 
 #[async_trait]
-pub trait CommitteeManager<TAddr: NodeAddressable>: Send + Sync {
+pub trait CommitteeManager: Send + Sync + 'static {
+    type Addr: NodeAddressable;
     async fn get_all_committees(&self) -> Result<Vec<AssetDefinition>, DigitalAssetError>;
-    fn current_committee(&self, asset_public_key: &PublicKey) -> Result<&Committee<TAddr>, DigitalAssetError>;
+    fn current_committee(&self, asset_public_key: &PublicKey) -> Result<&Committee<Self::Addr>, DigitalAssetError>;
 
     // fn read_from_checkpoint(&mut self, output: BaseLayerOutput) -> Result<(), DigitalAssetError>;
     async fn check_for_changes(&mut self, asset_public_key: &PublicKey) -> Result<(), DigitalAssetError>;
@@ -60,7 +61,9 @@ impl StaticListCommitteeManager {
 }
 
 #[async_trait]
-impl CommitteeManager<PublicKey> for StaticListCommitteeManager {
+impl CommitteeManager for StaticListCommitteeManager {
+    type Addr = PublicKey;
+
     async fn get_all_committees(&self) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
         Ok(vec![self.asset_definition.clone()])
     }
@@ -91,7 +94,9 @@ impl<TBaseNodeClient: BaseNodeClient> BaseLayerCommitteeManager<TBaseNodeClient>
 }
 
 #[async_trait]
-impl<TBaseNodeClient: BaseNodeClient> CommitteeManager<PublicKey> for BaseLayerCommitteeManager<TBaseNodeClient> {
+impl<TBaseNodeClient: BaseNodeClient + 'static> CommitteeManager for BaseLayerCommitteeManager<TBaseNodeClient> {
+    type Addr = PublicKey;
+
     async fn get_all_committees(&self) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
         todo!()
     }
