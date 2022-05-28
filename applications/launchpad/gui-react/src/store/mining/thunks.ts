@@ -8,6 +8,24 @@ import { Container } from '../containers/types'
 import { RootState } from '..'
 
 import { MiningActionReason } from './types'
+import { selectTariSetupRequired, selectMergedSetupRequired } from './selectors'
+
+const checkSetup: Record<MiningNodeType, (state: RootState) => void> = {
+  tari: state => {
+    const setupRequired = selectTariSetupRequired(state)
+
+    if (setupRequired) {
+      throw setupRequired
+    }
+  },
+  merged: state => {
+    const setupRequired = selectMergedSetupRequired(state)
+
+    if (setupRequired) {
+      throw setupRequired
+    }
+  },
+}
 
 /**
  * Start given mining node. It spawns all dependencies if needed.
@@ -21,6 +39,8 @@ export const startMiningNode = createAsyncThunk<
 >('mining/startNode', async ({ node, reason, schedule }, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
+
+    checkSetup[node](rootState)
 
     const miningSession = rootState.mining[node].session
     const scheduledMiningWasStoppedManually =

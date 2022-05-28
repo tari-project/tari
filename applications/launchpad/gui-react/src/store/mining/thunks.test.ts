@@ -3,7 +3,11 @@ import { RootState } from '..'
 import { allStopped } from '../../../__tests__/mocks/states'
 
 import { stopMiningNode, startMiningNode } from './thunks'
-import { MiningActionReason } from './types'
+import {
+  MiningActionReason,
+  TariMiningSetupRequired,
+  MergedMiningSetupRequired,
+} from './types'
 
 const MINING_NODES = ['tari', 'merged'] as MiningNodeType[]
 const REASONS = [MiningActionReason.Manual, MiningActionReason.Schedule]
@@ -23,16 +27,123 @@ const shouldNotHaveCalledAnyActions = (
   })
 }
 
+describe('starting node', () => {
+  it('should throw an error if tari mining start is attempted with misconfigured wallet', async () => {
+    // given
+    const dispatch = jest.fn()
+    const getState = () =>
+      ({
+        wallet: {
+          unlocked: false,
+        },
+        mining: {
+          tari: {
+            session: undefined,
+          },
+        },
+      } as unknown as RootState)
+
+    // when
+    const action = startMiningNode({
+      node: 'tari',
+      reason: MiningActionReason.Schedule,
+    })
+    await action(dispatch, getState, undefined)
+
+    // then
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    expect(dispatch.mock.calls[0][0]).toMatchObject({
+      payload: undefined,
+      type: 'mining/startNode/pending',
+    })
+    expect(dispatch.mock.calls[1][0]).toMatchObject({
+      payload: TariMiningSetupRequired.MissingWalletAddress,
+      type: 'mining/startNode/rejected',
+    })
+  })
+
+  it('should throw an error if merged mining start is attempted with misconfigured wallet', async () => {
+    // given
+    const dispatch = jest.fn()
+    const getState = () =>
+      ({
+        wallet: {
+          unlocked: false,
+        },
+        mining: {
+          merged: {
+            address: 'moneroAddress',
+            session: undefined,
+          },
+        },
+      } as unknown as RootState)
+
+    // when
+    const action = startMiningNode({
+      node: 'merged',
+      reason: MiningActionReason.Manual,
+    })
+    await action(dispatch, getState, undefined)
+
+    // then
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    expect(dispatch.mock.calls[0][0]).toMatchObject({
+      payload: undefined,
+      type: 'mining/startNode/pending',
+    })
+    expect(dispatch.mock.calls[1][0]).toMatchObject({
+      payload: MergedMiningSetupRequired.MissingWalletAddress,
+      type: 'mining/startNode/rejected',
+    })
+  })
+
+  it('should throw an error if merged mining start is attempted with missing monero address', async () => {
+    // given
+    const dispatch = jest.fn()
+    const getState = () =>
+      ({
+        wallet: {
+          unlocked: true,
+        },
+        mining: {
+          merged: {
+            address: undefined,
+            session: undefined,
+          },
+        },
+      } as unknown as RootState)
+
+    // when
+    const action = startMiningNode({
+      node: 'merged',
+      reason: MiningActionReason.Manual,
+    })
+    await action(dispatch, getState, undefined)
+
+    // then
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    expect(dispatch.mock.calls[0][0]).toMatchObject({
+      payload: undefined,
+      type: 'mining/startNode/pending',
+    })
+    expect(dispatch.mock.calls[1][0]).toMatchObject({
+      payload: MergedMiningSetupRequired.MissingMoneroAddress,
+      type: 'mining/startNode/rejected',
+    })
+  })
+})
+
 describe('start stop mining', () =>
   MINING_NODES.forEach(miningNode =>
     describe(miningNode, () => {
-      it.todo('should be a noop if no session is active')
-      it.todo('should be a noop if all sessions are finished')
       it(`should not stop ${miningNode} mining by scheduled stop if it was started manually`, async () => {
         // given
         const dispatch = jest.fn()
         const getState = () =>
           ({
+            wallet: {
+              unlocked: true,
+            },
             mining: {
               tari: {
                 session: {
@@ -42,6 +153,7 @@ describe('start stop mining', () =>
                 },
               },
               merged: {
+                address: 'moneroAddress',
                 session: {
                   startedAt: new Date('2022-05-23T13:00:00.000Z').getTime(),
                   finishedAt: undefined,
@@ -67,6 +179,9 @@ describe('start stop mining', () =>
         const dispatch = jest.fn()
         const getState = () =>
           ({
+            wallet: {
+              unlocked: true,
+            },
             mining: {
               tari: {
                 session: {
@@ -76,6 +191,7 @@ describe('start stop mining', () =>
                 },
               },
               merged: {
+                address: 'moneroAddress',
                 session: {
                   startedAt: new Date('2022-05-23T13:00:00.000Z').getTime(),
                   finishedAt: undefined,
@@ -107,6 +223,9 @@ describe('start stop mining', () =>
         const dispatch = jest.fn()
         const getState = () =>
           ({
+            wallet: {
+              unlocked: true,
+            },
             mining: {
               tari: {
                 session: {
@@ -117,6 +236,7 @@ describe('start stop mining', () =>
                 },
               },
               merged: {
+                address: 'moneroAddress',
                 session: {
                   startedAt: new Date('2022-05-23T13:00:00.000Z').getTime(),
                   finishedAt: undefined,
@@ -152,6 +272,9 @@ describe('start stop mining', () =>
           })
           const getState = () =>
             ({
+              wallet: {
+                unlocked: true,
+              },
               containers: allStopped,
               mining: {
                 tari: {
@@ -162,6 +285,7 @@ describe('start stop mining', () =>
                   },
                 },
                 merged: {
+                  address: 'moneroAddress',
                   session: {
                     startedAt: new Date('2022-05-23T13:00:00.000Z').getTime(),
                     finishedAt: new Date('2022-05-23T19:00:00.000Z').getTime(),
@@ -199,6 +323,9 @@ describe('start stop mining', () =>
           })
           const getState = () =>
             ({
+              wallet: {
+                unlocked: true,
+              },
               containers: allStopped,
               mining: {
                 tari: {
@@ -213,6 +340,7 @@ describe('start stop mining', () =>
                   },
                 },
                 merged: {
+                  address: 'moneroAddress',
                   session: {
                     startedAt: new Date('2022-05-23T13:00:00.000Z').getTime(),
                     finishedAt: new Date('2022-05-23T19:00:00.000Z').getTime(),
@@ -257,6 +385,9 @@ describe('start stop mining', () =>
         })
         const getState = () =>
           ({
+            wallet: {
+              unlocked: true,
+            },
             containers: allStopped,
             mining: {
               tari: {
@@ -268,6 +399,7 @@ describe('start stop mining', () =>
                 },
               },
               merged: {
+                address: 'moneroAddress',
                 session: {
                   startedAt: new Date('2022-05-23T13:00:00.000Z').getTime(),
                   finishedAt: new Date('2022-05-23T19:00:00.000Z').getTime(),
@@ -299,6 +431,9 @@ describe('start stop mining', () =>
         })
         const getState = () =>
           ({
+            wallet: {
+              unlocked: true,
+            },
             containers: allStopped,
             mining: {
               tari: {
@@ -310,6 +445,7 @@ describe('start stop mining', () =>
                 },
               },
               merged: {
+                address: 'moneroAddress',
                 session: {
                   startedAt: new Date('2022-05-23T13:00:00.000Z').getTime(),
                   finishedAt: new Date('2022-05-23T19:00:00.000Z').getTime(),
