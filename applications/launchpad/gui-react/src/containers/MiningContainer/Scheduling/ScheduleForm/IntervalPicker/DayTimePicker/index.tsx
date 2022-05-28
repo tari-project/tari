@@ -5,7 +5,7 @@ import TimePicker from 'react-time-picker-input'
 import { Time } from '../../../../../../types/general'
 import Text from '../../../../../../components/Text'
 import Button from '../../../../../../components/Button'
-import { timeToString, stringToTime } from '../../utils'
+import { utcTimeToString, stringToUTCTime } from '../../utils'
 
 import { DayTimePickerWrapper } from './styles'
 
@@ -28,11 +28,11 @@ const DayTimePicker = ({
 }) => {
   const theme = useTheme()
 
-  const [time, setTime] = useState(() => timeToString(value))
+  const [time, setTime] = useState(() => utcTimeToString(value))
 
   const onTimeChangeHandler = (value: string) => {
     setTime(value)
-    onChange(stringToTime(value))
+    onChange(stringToUTCTime(value))
   }
 
   const isAm = Number(time.substring(0, 2)) < 12

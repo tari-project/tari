@@ -1,3 +1,5 @@
+import { createSelector } from '@reduxjs/toolkit'
+
 import { RootState } from '..'
 import themes from '../../styles/themes'
 import { Schedule } from '../../types/general'
@@ -12,15 +14,19 @@ export const selectThemeConfig = ({ app }: RootState) => {
   return themes[app.theme]
 }
 
-export const selectSchedules = ({ app }: RootState) =>
-  Object.values(app.schedules).map(schedule => {
-    const { date, ...rest } = schedule
+const selectSchedulesObject = (state: RootState) => state.app.schedules
+export const selectSchedules = createSelector(
+  selectSchedulesObject,
+  schedules =>
+    Object.values(schedules).map(schedule => {
+      const { date, ...rest } = schedule
 
-    return {
-      ...rest,
-      date: date && new Date(date),
-    } as Schedule
-  })
+      return {
+        ...rest,
+        date: date && new Date(date),
+      } as Schedule
+    }),
+)
 
 export const selectSchedule =
   (scheduleId: string) =>

@@ -1,7 +1,4 @@
 import styled, { ThemeProvider } from 'styled-components'
-import { PersistGate } from 'redux-persist/integration/react'
-
-import { persistor } from './store'
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import { selectThemeConfig } from './store/app/selectors'
 
@@ -11,6 +8,7 @@ import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
 
 import useMiningSimulator from './useMiningSimulator'
+import useMiningScheduling from './useMiningScheduling'
 import TBotContainer from './containers/TBotContainer'
 
 const AppContainer = styled.div`
@@ -30,15 +28,15 @@ const App = () => {
 
   useMiningSimulator()
 
+  useMiningScheduling()
+
   return (
-    <PersistGate loading={null} persistor={persistor}>
-      <ThemeProvider theme={themeConfig}>
-        <AppContainer>
-          <HomePage />
-          <TBotContainer />
-        </AppContainer>
-      </ThemeProvider>
-    </PersistGate>
+    <ThemeProvider theme={themeConfig}>
+      <AppContainer>
+        <HomePage />
+        <TBotContainer />
+      </AppContainer>
+    </ThemeProvider>
   )
 }
 
