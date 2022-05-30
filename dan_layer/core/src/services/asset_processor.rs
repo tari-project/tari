@@ -22,9 +22,10 @@
 
 use std::{collections::HashMap, convert::TryInto};
 
+use prost::bytes::Buf;
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_dan_common_types::proto::tips;
-use wasmer::{imports, Instance, Module, Store, Value};
+use wasmer::{imports, Instance, Module, Store, Type, Val, Value};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -105,7 +106,50 @@ impl WasmModuleFactory {
     ) -> Result<(), DigitalAssetError> {
         if let Some(instance) = self.modules.get(&name) {
             let func_pointer = instance.exports.get_function(&name).expect("Could not find function");
-            let result = func_pointer.call(&[Value::I32(42)]).expect("invokation error");
+            let type_params = func_pointer.ty().params();
+            let mut remaining_args = instruction.args().clone();
+            // dbg!(&remaining_args);
+            let args: Vec<Val> = type_params
+                .iter()
+                .enumerate()
+                .map(|(position, param)| {
+                    match param {
+                        Type::I32 => {
+                            if remaining_args.len() < 4 {
+                                return Err(DigitalAssetError::MissingArgument {
+                                    position,
+                                    argument_name: "WASM".to_string(),
+                                });
+                            }
+                            let v = remaining_args.get_i32();
+                            // dbg!(&remaining_args);
+                            // dbg!(v);
+                            Ok(Value::I32(v))
+                        },
+                        Type::I64 => {
+                            if remaining_args.len() < 8 {
+                                return Err(DigitalAssetError::MissingArgument {
+                                    position,
+                                    argument_name: "WASM".to_string(),
+                                });
+                            }
+                            let v = remaining_args.get_i64();
+                            // dbg!(v);
+                            Ok(Value::I64(v))
+                        },
+                        // F32,
+                        // F64,
+                        // V128,
+                        // ExternRef,
+                        // FuncRef,
+                        _ => {
+                            todo!()
+                        },
+                    }
+                })
+                .collect::<Result<_, _>>()?;
+
+            let result = func_pointer.call(args.as_slice()).expect("invokation error");
             dbg!(&result);
             Ok(())
         } else {

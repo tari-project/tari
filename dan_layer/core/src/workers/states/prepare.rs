@@ -330,7 +330,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
         debug!(target: LOG_TARGET, "Creating new proposal for {}", view_id);
 
         // TODO: Artificial delay here to set the block time
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(1)).await;
 
         if view_id.is_genesis() {
             let payload = payload_provider.create_genesis_payload(asset_definition);
