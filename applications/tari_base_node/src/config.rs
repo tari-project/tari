@@ -112,6 +112,10 @@ pub struct BaseNodeConfig {
 
 impl Default for BaseNodeConfig {
     fn default() -> Self {
+        let p2p = P2pConfig {
+            datastore_path: PathBuf::from("peer_db/base_node"),
+            ..Default::default()
+        };
         Self {
             override_from: None,
             network: Network::LocalNet,
@@ -119,7 +123,7 @@ impl Default for BaseNodeConfig {
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
             tor_identity_file: PathBuf::from("config/tor_id.json"),
-            p2p: P2pConfig::default(),
+            p2p,
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
             data_dir: PathBuf::from("data/base_node"),
