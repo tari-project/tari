@@ -23,7 +23,7 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
+    types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID, Signature},
 };
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
@@ -285,6 +285,25 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         let output = self
             .output_manager
             .create_output_with_features(0.into(), OutputFeatures::for_contract_definition(contract_definition))
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn submit_contract_acceptance(
+        &mut self,
+        contract_id: FixedHash,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(0.into(), OutputFeatures::for_contract_acceptance(contract_id, validator_node_public_key, signature))
             .await?;
 
         let (tx_id, transaction) = self

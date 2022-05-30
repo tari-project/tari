@@ -187,6 +187,19 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
+            AssetManagerRequest::SubmitContractAcceptance {
+                contract_id,
+                validator_node_public_key,
+                signature,
+            } => {
+                let (tx_id, transaction) = self.manager
+                    .submit_contract_acceptance(contract_id, *validator_node_public_key, *signature)
+                    .await?;
+                Ok(AssetManagerResponse::SubmitContractAcceptance {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 }
