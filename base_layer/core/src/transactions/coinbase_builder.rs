@@ -40,6 +40,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
         transaction_components::{
+            EncryptedValue,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -205,6 +206,7 @@ impl CoinbaseBuilder {
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(total_reward);
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             total_reward,
@@ -213,6 +215,7 @@ impl CoinbaseBuilder {
             &output_features,
             &sender_offset_private_key,
             &covenant,
+            &encrypted_value,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
@@ -227,6 +230,7 @@ impl CoinbaseBuilder {
             metadata_sig,
             0,
             covenant,
+            encrypted_value,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output

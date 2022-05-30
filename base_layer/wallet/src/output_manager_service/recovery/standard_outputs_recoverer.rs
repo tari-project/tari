@@ -29,7 +29,7 @@ use tari_common_types::{
     types::{BulletRangeProof, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
-    transaction_components::{TransactionOutput, UnblindedOutput},
+    transaction_components::{EncryptedValue, TransactionOutput, UnblindedOutput},
     transaction_protocol::RewindData,
     CryptoFactories,
 };
@@ -105,6 +105,7 @@ where
                     return None;
                 }
                 let script_key = PrivateKey::random(&mut OsRng);
+                let encrypted_value = EncryptedValue::todo_encrypt_from(rewind_result.committed_value);
                 Some((
                     UnblindedOutput::new(
                         output.version,
@@ -118,6 +119,7 @@ where
                         output.metadata_signature,
                         0,
                         output.covenant,
+                        encrypted_value,
                     ),
                     output.proof,
                 ))
