@@ -40,6 +40,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
+            EncryptedValue,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -754,6 +755,7 @@ where
             Some(&self.resources.rewind_data),
             &single_round_sender_data.features.clone(),
         );
+        let encrypted_value = EncryptedValue::todo_encrypt_from(single_round_sender_data.amount);
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
@@ -774,9 +776,11 @@ where
                     &single_round_sender_data.sender_offset_public_key,
                     &single_round_sender_data.public_commitment_nonce,
                     &single_round_sender_data.covenant,
+                    &encrypted_value,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
+                encrypted_value,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -1304,6 +1308,7 @@ where
             unique_id: unique_id.clone(),
             ..Default::default()
         };
+        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             amount,
@@ -1312,6 +1317,7 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
+            &encrypted_value,
         )?;
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
@@ -1325,6 +1331,7 @@ where
                 metadata_signature,
                 0,
                 covenant,
+                encrypted_value,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -1653,6 +1660,7 @@ where
 
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+            let encrypted_value = EncryptedValue::todo_encrypt_from(output_amount);
             let metadata_signature = TransactionOutput::create_final_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 output_amount,
@@ -1661,6 +1669,7 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
+                &encrypted_value,
             )?;
             let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
                 UnblindedOutput::new_current_version(
@@ -1674,6 +1683,7 @@ where
                     metadata_signature,
                     0,
                     covenant.clone(),
+                    encrypted_value,
                 ),
                 &self.resources.factories,
                 &self.resources.rewind_data.clone(),
@@ -1788,6 +1798,7 @@ where
         let rewound =
             output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key)?;
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(rewound.committed_value);
         let rewound_output = UnblindedOutput::new(
             output.version,
             rewound.committed_value,
@@ -1802,6 +1813,7 @@ where
             // as we are claiming the Hashed part which has a 0 time lock
             0,
             output.covenant,
+            encrypted_value,
         );
         let amount = rewound.committed_value;
 
@@ -2007,6 +2019,7 @@ where
                 );
 
                 if let Ok(rewound_result) = rewound {
+                    let encrypted_value = EncryptedValue::todo_encrypt_from(rewound_result.committed_value);
                     let rewound_output = UnblindedOutput::new(
                         output.version,
                         rewound_result.committed_value,
@@ -2019,6 +2032,7 @@ where
                         output.metadata_signature,
                         known_one_sided_payment_scripts[i].script_lock_height,
                         output.covenant,
+                        encrypted_value,
                     );
 
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(

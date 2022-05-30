@@ -135,6 +135,7 @@ table! {
         features_json -> Text,
         spending_priority -> Integer,
         covenant -> Binary,
+        encrypted_value -> Binary,
     }
 }
 

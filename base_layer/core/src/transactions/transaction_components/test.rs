@@ -41,7 +41,7 @@ use crate::{
         tari_amount::{uT, MicroTari, T},
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
-        transaction_components::OutputFeatures,
+        transaction_components::{EncryptedValue, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -148,6 +148,7 @@ fn range_proof_verification() {
         .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
         .unwrap();
 
+    let encrypted_value = EncryptedValue::todo_encrypt_from(value);
     let tx_output3 = TransactionOutput::new_current_version(
         output_features.clone(),
         c,
@@ -162,6 +163,7 @@ fn range_proof_verification() {
             &output_features,
             &test_params_2.sender_offset_private_key,
             &Covenant::default(),
+            &encrypted_value,
         )
         .unwrap(),
         Covenant::default(),
