@@ -46,6 +46,7 @@ use crate::{
         transaction_components,
         transaction_components::{
             transaction_output::TransactionOutput,
+            EncryptedValue,
             OutputFeatures,
             TransactionError,
             UnblindedOutput,
@@ -115,6 +116,7 @@ impl TransactionInput {
         script_signature: ComSignature,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) -> TransactionInput {
         TransactionInput::new(
             version,
@@ -125,6 +127,7 @@ impl TransactionInput {
                 sender_offset_public_key,
                 covenant,
                 version: TransactionOutputVersion::get_current_version(),
+                encrypted_value,
             },
             input_data,
             script_signature,
@@ -140,6 +143,7 @@ impl TransactionInput {
         script: TariScript,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) {
         self.spent_output = SpentOutput::OutputData {
             version,
@@ -148,6 +152,7 @@ impl TransactionInput {
             script,
             sender_offset_public_key,
             covenant,
+            encrypted_value,
         };
     }
 
@@ -212,6 +217,15 @@ impl TransactionInput {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData { ref covenant, .. } => Ok(covenant),
+        }
+    }
+
+    pub fn encrypted_value(&self) -> Result<&EncryptedValue, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref encrypted_value, ..
+            } => Ok(encrypted_value),
         }
     }
 
@@ -306,16 +320,18 @@ impl TransactionInput {
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> Vec<u8> {
-        match self.spent_output {
+        match &self.spent_output {
             SpentOutput::OutputHash(ref h) => h.clone(),
             SpentOutput::OutputData {
                 version,
-                ref commitment,
-                ref script,
-                ref features,
-                ref covenant,
+                commitment,
+                script,
+                features,
+                covenant,
+                encrypted_value,
                 ..
-            } => transaction_components::hash_output(version, features, commitment, script, covenant).to_vec(),
+            } => transaction_components::hash_output(*version, features, commitment, script, covenant, encrypted_value)
+                .to_vec(),
         }
     }
 
@@ -334,6 +350,7 @@ impl TransactionInput {
                 ref script,
                 ref sender_offset_public_key,
                 ref covenant,
+                ref encrypted_value,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
                 let writer = ConsensusHashWriter::default()
@@ -344,7 +361,8 @@ impl TransactionInput {
                     .chain(sender_offset_public_key)
                     .chain(&self.script_signature)
                     .chain(&self.input_data)
-                    .chain(covenant);
+                    .chain(covenant)
+                    .chain(encrypted_value);
 
                 Ok(writer.finalize().to_vec())
             },
@@ -464,6 +482,7 @@ pub enum SpentOutput {
         sender_offset_public_key: PublicKey,
         /// The transaction covenant
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     },
 }
 
@@ -488,6 +507,7 @@ impl ConsensusEncoding for SpentOutput {
                 script,
                 sender_offset_public_key,
                 covenant,
+                encrypted_value,
             } => {
                 version.consensus_encode(writer)?;
                 features.consensus_encode(writer)?;
@@ -495,6 +515,7 @@ impl ConsensusEncoding for SpentOutput {
                 script.consensus_encode(writer)?;
                 sender_offset_public_key.consensus_encode(writer)?;
                 covenant.consensus_encode(writer)?;
+                encrypted_value.consensus_encode(writer)?;
             },
         };
         Ok(())
@@ -518,6 +539,7 @@ impl ConsensusDecoding for SpentOutput {
                 let script = TariScript::consensus_decode(reader)?;
                 let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
                 let covenant = Covenant::consensus_decode(reader)?;
+                let encrypted_value = EncryptedValue::consensus_decode(reader)?;
                 Ok(SpentOutput::OutputData {
                     version,
                     features,
@@ -525,6 +547,7 @@ impl ConsensusDecoding for SpentOutput {
                     script,
                     sender_offset_public_key,
                     covenant,
+                    encrypted_value,
                 })
             },
             _ => Err(io::Error::new(ErrorKind::InvalidInput, "Invalid SpentOutput type")),

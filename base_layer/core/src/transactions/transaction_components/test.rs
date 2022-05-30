@@ -164,6 +164,7 @@ fn range_proof_verification() {
         )
         .unwrap(),
         Covenant::default(),
+        encrypted_value,
     );
     tx_output3.verify_range_proof(&factories.range_proof).unwrap_err();
 }
@@ -248,6 +249,7 @@ fn check_timelocks() {
         script_signature,
         offset_pub_key,
         Covenant::default(),
+        EncryptedValue::default(),
     );
 
     let mut kernel = test_helpers::create_test_kernel(0.into(), 0);

@@ -28,35 +28,27 @@ use std::io::{self, Read, Write};
 use serde::{Deserialize, Serialize};
 use tari_utilities::{ByteArray, ByteArrayError};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 const SIZE: usize = 24;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct EncryptedValue {
-    /// value: u64 + tag: [u8; 16]
-    pub data: [u8; SIZE],
-}
+/// value: u64 + tag: [u8; 16]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+pub struct EncryptedValue(#[serde(with = "tari_utilities::serde::hex")] pub [u8; SIZE]);
 
 impl Default for EncryptedValue {
     fn default() -> Self {
-        Self { data: [0; SIZE] }
+        Self([0; SIZE])
     }
 }
 
 impl ByteArray for EncryptedValue {
     fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        if bytes.len() == SIZE {
-            let mut this = Self::default();
-            this.data.copy_from_slice(bytes);
-            Ok(this)
-        } else {
-            Err(ByteArrayError::IncorrectLength)
-        }
+        ByteArray::from_bytes(bytes).map(Self)
     }
 
     fn as_bytes(&self) -> &[u8] {
-        &self.data
+        self.0.as_bytes()
     }
 }
 
@@ -67,20 +59,46 @@ impl EncryptedValue {
         let mut data: [u8; SIZE] = [0; SIZE];
         let value = amount.into().to_le_bytes();
         data[0..8].copy_from_slice(&value);
-        Self { data }
+        Self(data)
     }
 }
 
 impl ConsensusEncoding for EncryptedValue {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        self.data.consensus_encode(writer)?;
+        self.0.consensus_encode(writer)?;
         Ok(())
+    }
+}
+
+impl ConsensusEncodingSized for EncryptedValue {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.0.len()
     }
 }
 
 impl ConsensusDecoding for EncryptedValue {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let data = <[u8; 24]>::consensus_decode(reader)?;
-        Ok(Self { data })
+        Ok(Self(data))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::consensus::ToConsensusBytes;
+
+    #[test]
+    fn it_encodes_to_bytes() {
+        let bytes = EncryptedValue::todo_encrypt_from(123u64).to_consensus_bytes();
+        assert_eq!(&bytes[0..8], &123u64.to_le_bytes());
+        assert_eq!(bytes.len(), SIZE);
+    }
+
+    #[test]
+    fn it_decodes_from_bytes() {
+        let value = &[0; 24];
+        let encrypted_value = EncryptedValue::consensus_decode(&mut &value[..]).unwrap();
+        assert_eq!(encrypted_value, EncryptedValue::default());
     }
 }

@@ -137,6 +137,7 @@ impl SingleReceiverTransactionProtocol {
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,
             sender_info.covenant.clone(),
+            encrypted_value,
         );
         Ok(output)
     }

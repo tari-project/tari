@@ -704,7 +704,6 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         let commitment = factories
             .commitment
             .commit_value(&utxo.spending_key, utxo.value.as_u64());
-        let encrypted_value = EncryptedValue::todo_encrypt_from(utxo.value.as_u64());
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
         utxo.features.set_recovery_byte(recovery_byte);
         utxo.metadata_signature = TransactionOutput::create_final_metadata_signature(
@@ -715,7 +714,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             &utxo.features,
             &test_params.sender_offset_private_key,
             &utxo.covenant,
-            &encrypted_value,
+            &utxo.encrypted_value,
         )
         .unwrap();
         utxo.sender_offset_public_key = test_params.sender_offset_public_key;
@@ -833,6 +832,7 @@ pub fn create_utxo(
         offset_keys.pk,
         metadata_sig,
         covenant.clone(),
+        encrypted_value,
     );
     (utxo, keys.k, offset_keys.k)
 }

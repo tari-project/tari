@@ -93,6 +93,8 @@ pub struct TransactionOutput {
     /// The covenant that will be executed when spending this output
     #[serde(default)]
     pub covenant: Covenant,
+    /// Encrypted value.
+    pub encrypted_value: EncryptedValue,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -108,6 +110,7 @@ impl TransactionOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) -> TransactionOutput {
         TransactionOutput {
             version,
@@ -118,6 +121,7 @@ impl TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
+            encrypted_value,
         }
     }
 
@@ -129,6 +133,7 @@ impl TransactionOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) -> TransactionOutput {
         TransactionOutput::new(
             TransactionOutputVersion::get_current_version(),
@@ -139,6 +144,7 @@ impl TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
+            encrypted_value,
         )
     }
 
@@ -173,8 +179,7 @@ impl TransactionOutput {
             self.metadata_signature.public_nonce(),
             &self.commitment,
             &self.covenant,
-            // TODO: Use `self.encrypted_value` instead
-            &EncryptedValue::default(),
+            &self.encrypted_value,
         );
         if !self.metadata_signature.verify_challenge(
             &(&self.commitment + &self.sender_offset_public_key),
@@ -243,7 +248,7 @@ impl TransactionOutput {
             &nonce_commitment,
             &self.commitment,
             &self.covenant,
-            &EncryptedValue::default(),
+            &self.encrypted_value,
         )
     }
 
@@ -256,7 +261,7 @@ impl TransactionOutput {
         public_commitment_nonce: &Commitment,
         commitment: &Commitment,
         covenant: &Covenant,
-        _encrypted_value: &EncryptedValue,
+        encrypted_value: &EncryptedValue,
     ) -> Challenge {
         match version {
             TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
@@ -266,7 +271,7 @@ impl TransactionOutput {
                 .chain(sender_offset_public_key)
                 .chain(commitment)
                 .chain(covenant)
-                //.chain(encrypted_value)
+                .chain(encrypted_value)
                 .into_digest(),
         }
     }
@@ -283,7 +288,7 @@ impl TransactionOutput {
         partial_commitment_nonce: Option<&PublicKey>,
         sender_offset_private_key: Option<&PrivateKey>,
         covenant: &Covenant,
-        _encrypted_value: &EncryptedValue,
+        encrypted_value: &EncryptedValue,
     ) -> Result<ComSignature, TransactionError> {
         let nonce_a = PrivateKey::random(&mut OsRng);
         let nonce_b = PrivateKey::random(&mut OsRng);
@@ -294,7 +299,6 @@ impl TransactionOutput {
         };
         let pk_value = PrivateKey::from(value.as_u64());
         let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
-        let encrypted_value = EncryptedValue::todo_encrypt_from(value.as_u64());
         let e = TransactionOutput::build_metadata_signature_challenge(
             version,
             script,
@@ -303,13 +307,12 @@ impl TransactionOutput {
             &nonce_commitment,
             &commitment,
             covenant,
-            &encrypted_value,
+            encrypted_value,
         );
         let secret_x = match sender_offset_private_key {
             None => spending_key.clone(),
             Some(key) => spending_key + key,
         };
-        // TODO: Take `encrypted_value` into account
         Ok(ComSignature::sign(
             &pk_value,
             &secret_x,
@@ -396,6 +399,7 @@ impl Hashable for TransactionOutput {
             &self.commitment,
             &self.script,
             &self.covenant,
+            &self.encrypted_value,
         )
         .to_vec()
     }
@@ -411,6 +415,7 @@ impl Default for TransactionOutput {
             PublicKey::default(),
             ComSignature::default(),
             Covenant::default(),
+            EncryptedValue::default(),
         )
     }
 }
@@ -474,6 +479,7 @@ impl ConsensusDecoding for TransactionOutput {
         let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
         let metadata_signature = ComSignature::consensus_decode(reader)?;
         let covenant = Covenant::consensus_decode(reader)?;
+        let encrypted_value = EncryptedValue::consensus_decode(reader)?;
         let output = TransactionOutput::new(
             version,
             features,
@@ -483,6 +489,7 @@ impl ConsensusDecoding for TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
+            encrypted_value,
         );
         Ok(output)
     }

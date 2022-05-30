@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::{
     covenants::Covenant,
-    transactions::transaction_components::{TransactionInput, TransactionInputVersion},
+    transactions::transaction_components::{EncryptedValue, TransactionInput, TransactionInputVersion},
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
@@ -62,7 +62,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
             let covenant = Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?;
-
+            let encrypted_value = EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?;
             Ok(TransactionInput::new_with_output_data(
                 TransactionInputVersion::try_from(
                     u8::try_from(input.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -74,6 +74,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 script_signature,
                 sender_offset_public_key,
                 covenant,
+                encrypted_value,
             ))
         }
     }
@@ -105,7 +106,6 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                 commitment: input
                     .commitment()
                     .map_err(|_| "Non-compact Transaction input should contain commitment".to_string())?
-                    .as_bytes()
                     .to_vec(),
                 hash: input
                     .canonical_hash()
@@ -120,7 +120,6 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                 sender_offset_public_key: input
                     .sender_offset_public_key()
                     .map_err(|_| "Non-compact Transaction input should contain sender_offset_public_key".to_string())?
-                    .as_bytes()
                     .to_vec(),
                 output_hash: Vec::new(),
                 covenant: input
@@ -128,6 +127,10 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
                     .to_bytes(),
                 version: input.version as u32,
+                encrypted_value: input
+                    .encrypted_value()
+                    .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
+                    .to_vec(),
             })
         }
     }
