@@ -37,9 +37,10 @@ const miningSlice = createSlice({
       const node = action.payload.node
 
       if (state[node].session?.total) {
+        const nodeSessionTotal = state[node].session?.total?.xtr
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         state[node].session!.total!.xtr = (
-          Number(state[node].session!.total!.xtr) +
-          Number(action.payload.amount)
+          Number(nodeSessionTotal) + Number(action.payload.amount)
         ).toString()
       }
     },

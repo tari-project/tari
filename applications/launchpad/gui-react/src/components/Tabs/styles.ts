@@ -1,3 +1,4 @@
+/* eslint-disable indent */
 import { TabProp } from './types'
 import { animated } from 'react-spring'
 import styled from 'styled-components'

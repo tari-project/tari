@@ -30,6 +30,7 @@ const ContainersContainer = () => {
   const start = async (container: Container) => {
     try {
       await dispatch(actions.start(container)).unwrap()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setError(e.toString())
     }
@@ -37,6 +38,7 @@ const ContainersContainer = () => {
   const stop = async (containerId: ContainerId) => {
     try {
       await dispatch(actions.stop(containerId)).unwrap()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setError(e.toString())
     }

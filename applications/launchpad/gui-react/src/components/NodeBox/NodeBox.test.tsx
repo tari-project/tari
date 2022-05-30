@@ -2,7 +2,6 @@ import { render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
 import themes from '../../styles/themes'
-import lightTheme from '../../styles/themes/light'
 
 import NodeBox, { NodeBoxContentPlaceholder } from '.'
 

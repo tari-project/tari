@@ -37,6 +37,7 @@ export type ContainerStatus = {
   status: SystemEventAction
   timestamp: number
   type?: Container
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
 }
 
@@ -45,6 +46,7 @@ export type ContainerStatusDto = {
   type: Container
   running: boolean
   pending: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
 }
 
@@ -61,6 +63,7 @@ export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
   Pick<ContainerStatusDto, 'id' | 'type'>
 
 export type ServicesState = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   errors: Record<Container, any>
   pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>

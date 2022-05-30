@@ -57,6 +57,7 @@ export const getStartsStops = ({
 
   const schedulesGeneratedFromDays = days.flatMap(day => {
     const recurringSchedulesThisDay = recurringSchedules.filter(schedule =>
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       schedule.days!.includes(day.getDay()),
     )
 
@@ -68,10 +69,12 @@ export const getStartsStops = ({
 
   return [...enabledSchedulesWithDates, ...schedulesGeneratedFromDays]
     .filter(schedule => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const scheduleStart = startOfUTCDay(new Date(schedule.date!))
       scheduleStart.setUTCHours(schedule.interval.from.hours)
       scheduleStart.setUTCMinutes(schedule.interval.from.minutes)
 
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const scheduleStop = startOfUTCDay(new Date(schedule.date!))
       scheduleStop.setUTCHours(schedule.interval.to.hours)
       scheduleStop.setUTCMinutes(schedule.interval.to.minutes)
@@ -83,10 +86,12 @@ export const getStartsStops = ({
     })
     .flatMap(schedule =>
       schedule.type.map(miningType => {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const startTime = startOfUTCDay(new Date(schedule.date!))
         startTime.setUTCHours(schedule.interval.from.hours)
         startTime.setUTCMinutes(schedule.interval.from.minutes)
 
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const stopTime = startOfUTCDay(new Date(schedule.date!))
         stopTime.setUTCHours(schedule.interval.to.hours)
         stopTime.setUTCMinutes(schedule.interval.to.minutes)

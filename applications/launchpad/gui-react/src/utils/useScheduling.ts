@@ -29,7 +29,9 @@ const useScheduling = ({
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
 
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     clearTimeout(timerRef.current!)
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     clearInterval(intervalRef.current!)
 
     const now = getNow()
@@ -48,7 +50,9 @@ const useScheduling = ({
 
   useEffect(() => {
     return () => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       clearTimeout(timerRef.current!)
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       clearInterval(intervalRef.current!)
     }
   }, [])
