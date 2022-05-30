@@ -41,6 +41,7 @@ use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     covenants::Covenant,
+    mempool::FeePerGramStat,
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
@@ -79,7 +80,13 @@ use crate::{
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::{TransactionEvent, TransactionEventSender, TransactionServiceRequest, TransactionServiceResponse},
+        handle::{
+            FeePerGramStatsResponse,
+            TransactionEvent,
+            TransactionEventSender,
+            TransactionServiceRequest,
+            TransactionServiceResponse,
+        },
         protocols::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
@@ -254,7 +261,7 @@ where
         }
     }
 
-    #[warn(unreachable_code)]
+    #[allow(clippy::too_many_lines)]
     pub async fn start(mut self) -> Result<(), TransactionServiceError> {
         let request_stream = self
             .request_stream
@@ -530,6 +537,7 @@ where
     }
 
     /// This handler is called when requests arrive from the various streams
+    #[allow(clippy::too_many_lines)]
     async fn handle_request(
         &mut self,
         request: TransactionServiceRequest,
@@ -720,6 +728,11 @@ where
                 .start_transaction_revalidation(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
+                let reply_channel = reply_channel.take().expect("reply_channel is Some");
+                self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
+                return Ok(());
+            },
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -730,6 +743,48 @@ where
             });
         }
         Ok(())
+    }
+
+    fn handle_get_fee_per_gram_stats_per_block_request(
+        &self,
+        count: usize,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) {
+        let mut connectivity = self.resources.connectivity.clone();
+
+        let query_base_node_fut = async move {
+            let mut client = connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .ok_or(TransactionServiceError::Shutdown)?;
+
+            let resp = client
+                .get_mempool_fee_per_gram_stats(base_node_proto::GetMempoolFeePerGramStatsRequest {
+                    count: count as u64,
+                })
+                .await?;
+            let mut resp = FeePerGramStatsResponse::from(resp);
+            // If there are no transactions in the mempool, populate with a minimal fee per gram.
+            if resp.stats.is_empty() {
+                resp.stats = vec![FeePerGramStat {
+                    order: 0,
+                    min_fee_per_gram: 1.into(),
+                    avg_fee_per_gram: 1.into(),
+                    max_fee_per_gram: 1.into(),
+                }]
+            }
+            Ok(TransactionServiceResponse::FeePerGramStatsPerBlock(resp))
+        };
+
+        tokio::spawn(async move {
+            let resp = query_base_node_fut.await;
+            if reply_channel.send(resp).is_err() {
+                warn!(
+                    target: LOG_TARGET,
+                    "handle_get_fee_per_gram_stats_per_block_request: service reply cancelled"
+                );
+            }
+        });
     }
 
     async fn handle_base_node_service_event(
@@ -895,6 +950,7 @@ where
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
         dest_pubkey: CommsPublicKey,
@@ -1212,6 +1268,7 @@ where
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn accept_recipient_reply(
         &mut self,
         source_pubkey: CommsPublicKey,
@@ -1539,6 +1596,7 @@ where
     /// # Arguments
     /// 'source_pubkey' - The pubkey from which the message was sent and to which the reply will be sent.
     /// 'sender_message' - Message from a sender containing the setup of the transaction being sent to you
+    #[allow(clippy::too_many_lines)]
     pub async fn accept_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,

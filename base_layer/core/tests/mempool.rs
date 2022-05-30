@@ -74,6 +74,7 @@ mod helpers;
 
 #[tokio::test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 async fn test_insert_and_process_published_block() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -385,6 +386,7 @@ async fn test_retrieve() {
 
 #[tokio::test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 async fn test_zero_conf() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -782,6 +784,7 @@ async fn test_reorg() {
 
 static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 #[allow(clippy::identity_op)]
 async fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
@@ -1009,6 +1012,7 @@ async fn consensus_validation_large_tx() {
 #[tokio::test]
 #[allow(clippy::erasing_op)]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 async fn consensus_validation_versions() {
     use tari_core::transactions::transaction_components::{
         OutputFeaturesVersion,
@@ -1300,6 +1304,7 @@ async fn consensus_validation_unique_id() {
 
 #[tokio::test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 async fn block_event_and_reorg_event_handling() {
     // This test creates 2 nodes Alice and Bob
     // Then creates 2 chains B1 -> B2A (diff 1) and B1 -> B2B (diff 10)

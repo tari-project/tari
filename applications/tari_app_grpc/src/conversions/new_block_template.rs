@@ -85,7 +85,7 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
             None => return Err("No proof of work provided".into()),
         };
         let header = NewBlockHeaderTemplate {
-            version: header.version as u16,
+            version: u16::try_from(header.version).map_err(|_| "header version too large")?,
             height: header.height,
             prev_hash: header.prev_hash,
             total_kernel_offset,
