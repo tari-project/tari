@@ -74,6 +74,7 @@ const useMiningScheduling = ({
 
   useEffect(() => {
     return () => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       clearTimeout(timerRef.current!)
     }
   }, [])
