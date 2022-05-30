@@ -26,6 +26,7 @@ use tari_service_framework::{reply_channel::TrySenderService, Service};
 use crate::{
     mempool::{
         service::{MempoolRequest, MempoolResponse},
+        FeePerGramStat,
         MempoolServiceError,
         StateResponse,
         StatsResponse,
@@ -78,6 +79,21 @@ impl MempoolHandle {
             .await??
         {
             MempoolResponse::TxStorage(resp) => Ok(resp),
+            _ => panic!("Incorrect response"),
+        }
+    }
+
+    pub async fn get_fee_per_gram_stats(
+        &mut self,
+        count: usize,
+        tip_height: u64,
+    ) -> Result<Vec<FeePerGramStat>, MempoolServiceError> {
+        match self
+            .inner
+            .call(MempoolRequest::GetFeePerGramStats { count, tip_height })
+            .await??
+        {
+            MempoolResponse::FeePerGramStats { response } => Ok(response),
             _ => panic!("Incorrect response"),
         }
     }

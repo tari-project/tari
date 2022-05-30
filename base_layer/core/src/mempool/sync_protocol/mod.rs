@@ -423,6 +423,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         self.write_transactions(transactions).await?;
 
         // Generate an index list of inventory indexes that this node does not have
+        #[allow(clippy::cast_possible_truncation)]
         let missing_items = inventory
             .items
             .into_iter()
@@ -482,9 +483,13 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             }
         }
 
-        let stats = self.mempool.stats().await?;
-        metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
-        metrics::reorg_pool_size().set(stats.reorg_txs as i64);
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_possible_wrap)]
+        {
+            let stats = self.mempool.stats().await?;
+            metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
+            metrics::reorg_pool_size().set(stats.reorg_txs as i64);
+        }
 
         Ok(())
     }

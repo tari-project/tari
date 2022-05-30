@@ -245,14 +245,14 @@ async fn start_service_impl(
         app.clone(),
         log_events_name.as_str(),
         container_name.as_str(),
-        docker.clone(),
+        &docker,
         workspace,
     );
     container_stats(
         app.clone(),
         stats_events_name.as_str(),
         container_name.as_str(),
-        docker.clone(),
+        &docker,
         workspace,
     );
     // Collect data for the return object
@@ -279,7 +279,7 @@ fn container_logs(
     app: AppHandle<Wry>,
     event_name: &str,
     container_name: &str,
-    docker: Docker,
+    docker: &Docker,
     workspace: &mut TariWorkspace,
 ) {
     info!("Setting up log events for {}", container_name);
@@ -311,7 +311,7 @@ fn container_stats(
     app: AppHandle<Wry>,
     event_name: &str,
     container_name: &str,
-    docker: Docker,
+    docker: &Docker,
     workspace: &mut TariWorkspace,
 ) {
     info!("Setting up Resource stats events for {}", container_name);

@@ -15,6 +15,7 @@ const Balance = require("./balance");
 const utf8 = require("utf8");
 const LivenessData = require("./livenessData");
 const TransactionSendStatus = require("./transactionSendStatus");
+const FeePerGramStats = require("./feePerGramStats");
 
 class WalletBalance {
   available = 0;
@@ -549,6 +550,12 @@ class Wallet {
 
   listConnectedPublicKeys() {
     return InterfaceFFI.commsListConnectedPublicKeys(this.ptr);
+  }
+
+  getFeePerGramStats(count) {
+    return new FeePerGramStats(
+      InterfaceFFI.walletGetFeePerGramStats(this.ptr, count)
+    );
   }
 
   destroy() {

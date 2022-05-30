@@ -179,6 +179,7 @@ where
     /// `Ok(true)` => Transaction was successfully submitted to UnconfirmedPool
     /// `Ok(false)` => There was a problem with the RPC call and this should be retried
     /// `Err(_)` => The transaction was rejected by the base node and the protocol should end.
+    #[allow(clippy::too_many_lines)]
     async fn submit_transaction(
         &mut self,
         tx: Transaction,

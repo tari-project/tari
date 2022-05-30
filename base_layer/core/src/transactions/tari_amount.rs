@@ -85,6 +85,10 @@ impl Mul<MicroTari> for u64 {
 }
 
 impl MicroTari {
+    pub const fn zero() -> Self {
+        Self(0)
+    }
+
     pub fn checked_add(self, v: MicroTari) -> Option<MicroTari> {
         self.as_u64().checked_add(v.as_u64()).map(Into::into)
     }

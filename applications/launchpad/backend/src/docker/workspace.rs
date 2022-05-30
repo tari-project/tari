@@ -290,11 +290,11 @@ impl TariWorkspace {
         Ok(ids)
     }
 
-    /// Create and return a [`Stream`] of [`LogMessage`] instances for the `name`d container in the workspace.  
+    /// Create and return a [`Stream`] of [`LogMessage`] instances for the `name`d container in the workspace.
     pub fn logs(
         &self,
         container_name: &str,
-        docker: Docker,
+        docker: &Docker,
     ) -> Option<impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
         let options = LogsOptions::<String> {
             follow: true,
@@ -314,7 +314,7 @@ impl TariWorkspace {
     pub fn resource_stats(
         &self,
         name: &str,
-        docker: Docker,
+        docker: &Docker,
     ) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
         if let Some(container) = CONTAINERS.read().unwrap().get(name) {
             let options = StatsOptions {

@@ -78,7 +78,6 @@ impl ArrayLike for PrunedHashSet {
     type Error = MerkleMountainRangeError;
     type Value = Hash;
 
-    #[inline(always)]
     fn len(&self) -> Result<usize, Self::Error> {
         Ok(self.base_offset + self.hashes.len())
     }

@@ -459,6 +459,7 @@ impl SenderTransactionInitializer {
     /// error (so that you can continue building) along with a string listing the missing fields.
     /// If all the input data is present, but one or more fields are invalid, the function will return a
     /// `SenderTransactionProtocol` instance in the Failed state.
+    #[allow(clippy::too_many_lines)]
     pub fn build<D: Digest>(
         mut self,
         factories: &CryptoFactories,
