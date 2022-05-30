@@ -104,15 +104,6 @@ const DatePickerComponent = ({
               : theme.placeholderText
             const disabled =
               !allowPast && startOfDay(day) < startOfDay(new Date())
-            console.log(
-              day,
-              startOfDay(day) < startOfDay(new Date()),
-              isSelected(day),
-              {
-                day: startOfDay(day),
-                date: startOfDay(new Date()),
-              },
-            )
 
             return (
               <Day
