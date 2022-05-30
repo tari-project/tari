@@ -45,7 +45,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{KernelFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_components::{EncryptedValue, KernelFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -1042,6 +1042,7 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let output = recipient_reply.output.clone();
+        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spend_key,
@@ -1053,6 +1054,7 @@ where
             output.metadata_signature.clone(),
             height,
             covenant,
+            encrypted_value,
         );
 
         // Start finalizing

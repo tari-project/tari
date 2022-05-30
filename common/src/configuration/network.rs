@@ -130,13 +130,13 @@ mod test {
         let dibbler = Network::Dibbler;
 
         // test .as_byte()
-        assert_eq!(mainnet.as_byte(), 0x00 as u8);
-        assert_eq!(localnet.as_byte(), 0x10 as u8);
-        assert_eq!(ridcully.as_byte(), 0x21 as u8);
-        assert_eq!(stibbons.as_byte(), 0x22 as u8);
-        assert_eq!(weatherwas.as_byte(), 0xa3 as u8);
-        assert_eq!(igor.as_byte(), 0x24 as u8);
-        assert_eq!(dibbler.as_byte(), 0x25 as u8);
+        assert_eq!(mainnet.as_byte(), 0x00_u8);
+        assert_eq!(localnet.as_byte(), 0x10_u8);
+        assert_eq!(ridcully.as_byte(), 0x21_u8);
+        assert_eq!(stibbons.as_byte(), 0x22_u8);
+        assert_eq!(weatherwas.as_byte(), 0xa3_u8);
+        assert_eq!(igor.as_byte(), 0x24_u8);
+        assert_eq!(dibbler.as_byte(), 0x25_u8);
 
         // test .as_key_str()
         assert_eq!(mainnet.as_key_str(), "mainnet");

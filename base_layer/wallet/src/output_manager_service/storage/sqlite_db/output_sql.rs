@@ -34,7 +34,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, OutputFlags, SideChainFeatures, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, OutputFlags, SideChainFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -98,6 +98,7 @@ pub struct OutputSql {
     pub features_json: String,
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
+    pub encrypted_value: Vec<u8>,
 }
 
 impl OutputSql {
@@ -527,6 +528,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             .map(|p| PublicKey::from_bytes(&p))
             .transpose()?;
         features.recovery_byte = u8::try_from(o.recovery_byte).unwrap();
+        let encrypted_value = EncryptedValue::from_bytes(&o.encrypted_value)?;
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -598,6 +600,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     reason: "Covenant could not be converted from bytes".to_string(),
                 }
             })?,
+            encrypted_value,
         );
 
         let hash = match o.hash {

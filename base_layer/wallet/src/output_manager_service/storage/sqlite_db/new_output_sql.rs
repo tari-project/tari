@@ -64,6 +64,7 @@ pub struct NewOutputSql {
     pub coinbase_block_height: Option<i64>,
     pub features_json: String,
     pub covenant: Vec<u8>,
+    pub encrypted_value: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -106,6 +107,7 @@ impl NewOutputSql {
                 }
             })?,
             covenant: output.unblinded_output.covenant.to_bytes(),
+            encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
         })
     }
 
@@ -155,6 +157,7 @@ impl From<OutputSql> for NewOutputSql {
             coinbase_block_height: o.coinbase_block_height,
             features_json: o.features_json,
             covenant: o.covenant,
+            encrypted_value: o.encrypted_value,
         }
     }
 }

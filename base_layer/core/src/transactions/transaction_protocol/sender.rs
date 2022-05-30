@@ -784,6 +784,7 @@ mod test {
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
             transaction_components::{
+                EncryptedValue,
                 KernelFeatures,
                 OutputFeatures,
                 TransactionError,
@@ -887,6 +888,7 @@ mod test {
         .unwrap();
         let covenant = Covenant::default();
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(value);
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             value.into(),
@@ -896,6 +898,7 @@ mod test {
             &sender_offset_public_key,
             &sender_public_commitment_nonce,
             &covenant,
+            &encrypted_value,
         )
         .unwrap();
 
