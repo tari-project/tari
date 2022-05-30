@@ -38,3 +38,12 @@ impl TryFrom<grpc::Signature> for Signature {
         Ok(Self::new(public_nonce, signature))
     }
 }
+
+impl From<Signature> for grpc::Signature {
+    fn from(sig: Signature) -> Self {
+        Self {
+            public_nonce: sig.get_public_nonce().to_vec(),
+            signature: sig.get_signature().to_vec(),
+        }
+    }
+}
