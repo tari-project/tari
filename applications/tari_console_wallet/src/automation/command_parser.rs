@@ -498,6 +498,7 @@ mod test {
     };
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_parse_command() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 

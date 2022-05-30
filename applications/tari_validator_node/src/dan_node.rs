@@ -92,7 +92,7 @@ impl DanNode {
             let tip = base_node_client
                 .get_tip_info()
                 .await
-                .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
+                .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
             if tip.height_of_longest_chain >= next_scanned_height {
                 info!(
                     target: LOG_TARGET,
@@ -108,7 +108,7 @@ impl DanNode {
                 let mut assets = base_node_client
                     .get_assets_for_dan_node(node_identity.public_key().clone())
                     .await
-                    .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
+                    .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
                 info!(
                     target: LOG_TARGET,
                     "Base node returned {} asset(s) to process",
@@ -189,7 +189,7 @@ impl DanNode {
             .iter()
             .map(|s| {
                 CommsPublicKey::from_hex(s)
-                    .map_err(|e| ExitError::new(ExitCode::ConfigError, &format!("could not convert to hex:{}", e)))
+                    .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("could not convert to hex:{}", e)))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -245,7 +245,7 @@ impl DanNode {
 
         if let Err(err) = consensus_worker.run(shutdown.clone(), None, kill).await {
             error!(target: LOG_TARGET, "Consensus worker failed with error: {}", err);
-            return Err(ExitError::new(ExitCode::UnknownError, &err));
+            return Err(ExitError::new(ExitCode::UnknownError, err));
         }
 
         Ok(())

@@ -182,6 +182,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         Ok(connection)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn synchronize_blocks(
         &mut self,
         mut sync_peer: SyncPeer,

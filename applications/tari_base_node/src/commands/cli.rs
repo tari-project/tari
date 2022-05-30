@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io::stdout};
+use std::io::stdout;
 
 use chrono::{Datelike, Utc};
 use crossterm::{
@@ -108,6 +108,7 @@ fn multiline_find_display_length(lines: &str) -> usize {
 
 /// Try to resize terminal to make sure the width is enough.
 /// In case of error, just simply print out the error.
+#[allow(clippy::cast_possible_truncation)]
 fn resize_terminal_to_fit_the_box(width: usize, height: usize) {
     if let Err(e) = execute!(stdout(), SetSize(width as u16, height as u16)) {
         println!("Can't resize terminal to fit the box. Error: {}", e)
@@ -115,16 +116,16 @@ fn resize_terminal_to_fit_the_box(width: usize, height: usize) {
 }
 
 /// Prints a pretty banner on the console as well as the list of available commands
-pub fn print_banner(commands: Vec<String>, chunk_size: i32, resize_terminal: bool) {
+pub fn print_banner(commands: Vec<String>, chunk_size: usize, resize_terminal: bool) {
     let terminal_title = format!("Tari Base Node - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }
 
-    let chunks: Vec<Vec<String>> = commands.chunks(chunk_size as usize).map(|x| x.to_vec()).collect();
+    let chunks: Vec<Vec<String>> = commands.chunks(chunk_size).map(|x| x.to_vec()).collect();
     let mut cell_sizes = Vec::new();
 
-    let mut row_cell_count: i32 = 0;
+    let mut row_cell_count: usize = 0;
     let mut command_data: Vec<Vec<String>> = Vec::new();
     for chunk in chunks {
         let mut cells: Vec<String> = Vec::new();
@@ -145,10 +146,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32, resize_terminal: boo
         command_data.push(cells);
     }
 
-    let row_cell_sizes: Vec<Vec<usize>> = cell_sizes
-        .chunks(usize::try_from(chunk_size).unwrap())
-        .map(|x| x.to_vec())
-        .collect();
+    let row_cell_sizes: Vec<Vec<usize>> = cell_sizes.chunks(chunk_size).map(|x| x.to_vec()).collect();
     let mut row_cell_size = Vec::new();
     let mut max_cell_size: usize = 0;
     for sizes in row_cell_sizes {

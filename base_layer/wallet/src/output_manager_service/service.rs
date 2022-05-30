@@ -248,6 +248,7 @@ where
     }
 
     /// This handler is called when the Service executor loops receives an API request
+    #[allow(clippy::too_many_lines)]
     async fn handle_request(
         &mut self,
         request: OutputManagerRequest,
@@ -851,6 +852,7 @@ where
 
     /// Prepare a Sender Transaction Protocol for the amount and fee_per_gram specified. If required a change output
     /// will be produced.
+    #[allow(clippy::too_many_lines)]
     pub async fn prepare_transaction_to_send(
         &mut self,
         tx_id: TxId,
@@ -1232,6 +1234,7 @@ where
         Ok((tx_id, stp.take_transaction()?))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
@@ -1419,6 +1422,7 @@ where
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
     /// selection strategy to choose the outputs. It also determines if a change output is required.
+    #[allow(clippy::too_many_lines)]
     async fn select_utxos(
         &mut self,
         amount: MicroTari,
@@ -1574,6 +1578,7 @@ where
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_coin_split(
         &mut self,
         amount_per_split: MicroTari,
