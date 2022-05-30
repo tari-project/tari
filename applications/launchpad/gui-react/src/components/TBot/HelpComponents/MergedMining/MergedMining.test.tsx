@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
-import themes from '../../../../styles/themes'
 import { Provider } from 'react-redux'
+
+import themes from '../../../../styles/themes'
 import { store } from '../../../../store'
 
 import { Message1, Message2 } from '.'
@@ -13,7 +14,6 @@ describe('MergedMiningMessages', () => {
         <ThemeProvider theme={themes.light}>
           <Message1 />
         </ThemeProvider>
-        ,
       </Provider>,
     )
 
@@ -27,7 +27,6 @@ describe('MergedMiningMessages', () => {
         <ThemeProvider theme={themes.light}>
           <Message2 />
         </ThemeProvider>
-        ,
       </Provider>,
     )
 

@@ -1,3 +1,4 @@
+import { ScheduleId } from '../../types/general'
 import {
   ContainerStateFields,
   Container,
@@ -20,11 +21,18 @@ export interface MiningDependencyState {
   error: boolean
 }
 
+export enum MiningActionReason {
+  Schedule = 'schedule',
+  Manual = 'manual',
+}
+
 export interface MiningSession {
   startedAt?: string // UTC timestamp
   finishedAt?: string
   id?: string // uuid (?)
   total?: Record<string, string> // i,e { xtr: 1000 bignumber (?) }
+  reason: MiningActionReason
+  schedule?: ScheduleId
 }
 
 export interface MiningNodeState {

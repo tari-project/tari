@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 
 import { startOfMinute } from '../utils/Date'
-import { MiningNodeType, Schedule } from '../types/general'
+import { MiningNodeType, Schedule, ScheduleId } from '../types/general'
 import useScheduling from '../utils/useScheduling'
 
 import { getStartsStops } from './getStartsStops'
@@ -19,7 +19,7 @@ const TWENTY_FOUR_HOURS_IN_MS = 24 * 60 * 60 * 1000
  * by default it calculates mining starts/stops for next 24h and will recalculate after that period
  *
  * @prop {Schedule[]} schedules - user-defined mining schedules
- * @prop {(miningType: MiningNodeType) => void} startMining - callback for mining start
+ * @prop {(miningType: MiningNodeType, schedule: ScheduleId) => void} startMining - callback for mining start
  * @prop {(miningType: MiningNodeType) => void} stopMining - callback for mining stop
  * @prop {() => Date} [getNow] - time provider that has a default value of () => new Date(), introduced mostly for easier mocking in testing
  * @prop {number} [singleSchedulingPeriod] - length of time that hook should calculate schedules for (default is 24h)
@@ -32,7 +32,7 @@ const useMiningScheduling = ({
   singleSchedulingPeriod = TWENTY_FOUR_HOURS_IN_MS,
 }: {
   schedules: Schedule[]
-  startMining: (miningType: MiningNodeType) => void
+  startMining: (miningType: MiningNodeType, schedule: ScheduleId) => void
   stopMining: (miningType: MiningNodeType) => void
   getNow?: () => Date
   singleSchedulingPeriod?: number
@@ -89,7 +89,7 @@ const useMiningScheduling = ({
         ss => startOfMinute(ss.stop).getTime() === startOfMinute(now).getTime(),
       )
 
-      starts.forEach(start => startMining(start.toMine))
+      starts.forEach(start => startMining(start.toMine, start.scheduleId))
       stops.forEach(stop => stopMining(stop.toMine))
     },
     [startStops, startMining, stopMining],

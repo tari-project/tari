@@ -1,5 +1,5 @@
 import { Schedule } from '../types/general'
-import { clearTime } from '../utils/Date'
+import { startOfUTCDay } from '../utils/Date'
 
 import { StartStop } from './types'
 import { getStartsStops } from './getStartsStops'
@@ -34,6 +34,7 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T17:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'scheduleId',
       },
     ]
 
@@ -57,7 +58,7 @@ describe('getStartsStops', () => {
       {
         id: 'scheduleId',
         enabled: true,
-        date: clearTime(from),
+        date: startOfUTCDay(from),
         interval: {
           from: {
             hours: 12,
@@ -76,6 +77,7 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T12:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'scheduleId',
       },
     ]
 
@@ -99,7 +101,7 @@ describe('getStartsStops', () => {
       {
         id: 'scheduleId',
         enabled: true,
-        date: clearTime(from),
+        date: startOfUTCDay(from),
         interval: {
           from: {
             hours: 7,
@@ -118,6 +120,7 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T09:00:00.000Z'),
         stop: new Date('2022-05-21T12:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'scheduleId',
       },
     ]
 
@@ -141,7 +144,7 @@ describe('getStartsStops', () => {
       {
         id: 'scheduleId',
         enabled: true,
-        date: clearTime(from),
+        date: startOfUTCDay(from),
         interval: {
           from: {
             hours: 7,
@@ -197,11 +200,13 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T17:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'scheduleId',
       },
       {
         start: new Date('2022-05-21T17:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'merged',
+        scheduleId: 'scheduleId',
       },
     ]
 
@@ -261,6 +266,7 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T17:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'scheduleId',
       },
     ]
 
@@ -321,6 +327,7 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T17:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'scheduleId',
       },
     ]
 
@@ -380,6 +387,7 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T16:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'otherScheduleId',
       },
     ]
 
@@ -439,6 +447,7 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T16:00:00.000Z'),
         stop: new Date('2022-05-21T19:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'otherScheduleId',
       },
     ]
 
@@ -514,16 +523,19 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T13:00:00.000Z'),
         stop: new Date('2022-05-21T14:40:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'otherScheduleId',
       },
       {
         start: new Date('2022-05-21T16:50:00.000Z'),
         stop: new Date('2022-05-21T20:00:00.000Z'),
         toMine: 'merged',
+        scheduleId: 'anotherScheduleId',
       },
       {
         start: new Date('2022-05-21T17:00:00.000Z'),
         stop: new Date('2022-05-21T18:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'scheduleId',
       },
     ]
 
@@ -599,11 +611,13 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T08:00:00.000Z'),
         stop: new Date('2022-05-21T11:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'todayEarly',
       },
       {
         start: new Date('2022-05-21T19:00:00.000Z'),
         stop: new Date('2022-05-21T20:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'onSaturdaysLate',
       },
     ]
 
@@ -664,26 +678,31 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T08:00:00.000Z'),
         stop: new Date('2022-05-21T11:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'early',
       },
       {
         start: new Date('2022-05-21T19:00:00.000Z'),
         stop: new Date('2022-05-21T20:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'onSaturdaysLate',
       },
       {
         start: new Date('2022-05-22T08:00:00.000Z'),
         stop: new Date('2022-05-22T11:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'early',
       },
       {
         start: new Date('2022-05-23T08:00:00.000Z'),
         stop: new Date('2022-05-23T11:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'early',
       },
       {
         start: new Date('2022-05-23T19:00:00.000Z'),
         stop: new Date('2022-05-23T20:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'onSaturdaysLate',
       },
     ]
 
@@ -760,11 +779,13 @@ describe('getStartsStops', () => {
         start: new Date('2022-05-21T08:00:00.000Z'),
         stop: new Date('2022-05-21T12:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'first',
       },
       {
         start: new Date('2022-05-22T08:00:00.000Z'),
         stop: new Date('2022-05-22T13:00:00.000Z'),
         toMine: 'tari',
+        scheduleId: 'first',
       },
     ]
 

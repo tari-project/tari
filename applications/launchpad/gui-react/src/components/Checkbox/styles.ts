@@ -1,19 +1,27 @@
 import styled from 'styled-components'
 
-export const Wrapper = styled.div`
+export const Wrapper = styled.div<{ disabled?: boolean }>`
   display: flex;
-  alignyitems: baseline;
+  pointer-events: ${({ disabled }) => (disabled ? 'none' : 'auto')};
 `
 
-export const CheckWrapper = styled.div<{ checked: boolean }>`
+export const CheckWrapper = styled.div<{
+  checked: boolean
+  disabled?: boolean
+}>`
   display: flex;
   justify-content: center;
   align-items: center;
   width: 1em;
   height: 1em;
   border: 2px solid
-    ${({ checked, theme }) => (checked ? theme.accent : theme.secondary)};
+    ${({ disabled, checked, theme }) => {
+      if (disabled) {
+        return theme.placeholderText
+      }
+      return checked ? theme.accent : theme.secondary
+    }};
   border-radius: 3px;
   margin-right: ${({ theme }) => theme.spacing(0.5)};
-  cursor: pointer;
+  cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
 `

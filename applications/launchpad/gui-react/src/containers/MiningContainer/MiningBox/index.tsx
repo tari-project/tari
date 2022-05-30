@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useTheme } from 'styled-components'
 import deepmerge from 'deepmerge'
 
@@ -9,7 +10,7 @@ import Text from '../../../components/Text'
 import { useAppDispatch } from '../../../store/hooks'
 
 import { actions } from '../../../store/mining'
-import { MiningSession } from '../../../store/mining/types'
+import { MiningActionReason, MiningSession } from '../../../store/mining/types'
 
 import t from '../../../locales'
 
@@ -20,7 +21,6 @@ import {
   NodeBoxStatusConfig,
 } from './types'
 import { MiningBoxContent, NodeIcons } from './styles'
-import { useMemo } from 'react'
 import RunningButton from '../../../components/RunningButton'
 import { tbotactions } from '../../../store/tbot'
 
@@ -215,7 +215,12 @@ const MiningBox = ({
               {coins ? <CoinsList coins={coins} /> : null}
               <Button
                 onClick={() =>
-                  dispatch(actions.startMiningNode({ node: node }))
+                  dispatch(
+                    actions.startMiningNode({
+                      node,
+                      reason: MiningActionReason.Manual,
+                    }),
+                  )
                 }
                 disabled={disableActions}
                 loading={disableActions}
@@ -232,7 +237,14 @@ const MiningBox = ({
           <MiningBoxContent data-testid='mining-box-paused-content'>
             <Text>{t.mining.readyToMiningText}</Text>
             <Button
-              onClick={() => dispatch(actions.startMiningNode({ node: node }))}
+              onClick={() =>
+                dispatch(
+                  actions.startMiningNode({
+                    node,
+                    reason: MiningActionReason.Manual,
+                  }),
+                )
+              }
               disabled={disableActions}
               loading={disableActions}
               testId={`${node}-run-btn`}
@@ -246,7 +258,14 @@ const MiningBox = ({
           <MiningBoxContent data-testid='mining-box-paused-content'>
             {coins ? <CoinsList coins={coins} /> : null}
             <Button
-              onClick={() => dispatch(actions.startMiningNode({ node: node }))}
+              onClick={() =>
+                dispatch(
+                  actions.startMiningNode({
+                    node,
+                    reason: MiningActionReason.Manual,
+                  }),
+                )
+              }
               disabled={disableActions}
               loading={disableActions}
               testId={`${node}-run-btn`}
@@ -270,6 +289,7 @@ const MiningBox = ({
                 dispatch(
                   actions.stopMiningNode({
                     node,
+                    reason: MiningActionReason.Manual,
                   }),
                 )
               }
