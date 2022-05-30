@@ -97,6 +97,7 @@ jobs:
           libprotobuf-dev \
           protobuf-compiler
       - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
         run: |
           cd applications/launchpad/gui-react
           yarn install
@@ -147,6 +148,7 @@ jobs:
           protobuf-compiler
 
       - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
         run: |
           cd applications/launchpad/gui-react
           yarn install
@@ -176,6 +178,7 @@ jobs:
         with:
           node-version: "16"
       - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
         run: |
           cd applications/launchpad/gui-react
           yarn install
@@ -237,6 +240,7 @@ jobs:
           libprotobuf-dev \
           protobuf-compiler
       - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
         run: |
           cd applications/launchpad/gui-react
           yarn install
