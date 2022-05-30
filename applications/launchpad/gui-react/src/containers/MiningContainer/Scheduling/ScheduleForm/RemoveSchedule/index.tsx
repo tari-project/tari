@@ -21,7 +21,10 @@ const RemoveSchedule = ({ remove }: { remove: () => void }) => {
           <TrashIcon width='1em' height='1em' color={theme.secondary} />
         }
         onClick={remove}
-        style={{ paddingLeft: 0, display: 'inline' }}
+        style={{
+          paddingLeft: 0,
+          display: 'inline',
+        }}
       >
         <Text as='label' color={theme.secondary} style={{ cursor: 'pointer' }}>
           {t.mining.scheduling.removeSchedule}

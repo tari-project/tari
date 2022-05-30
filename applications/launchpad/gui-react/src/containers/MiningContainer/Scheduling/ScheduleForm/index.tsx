@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useTheme } from 'styled-components'
 
-import { Schedule, Interval } from '../../../../types/general'
+import { MiningNodeType, Schedule, Interval } from '../../../../types/general'
 import Button from '../../../../components/Button'
 import Box from '../../../../components/Box'
 import t from '../../../../locales'
@@ -37,17 +37,20 @@ const getIntervalWithZeros = (): Interval => {
  * @prop {() => void} cancel - callback for user action of cancelling editing
  * @prop {() => void} remove - callback for user action of removing edited schedule
  * @prop {(s: Schedule) => void} onChange - called with new Schedule after user accepts changes
+ * @prop {MiningNodeType[]} miningTypesActive - which mining types are correctly set up and can be scheduled
  */
 const ScheduleForm = ({
   value,
   cancel,
   onChange,
   remove,
+  miningTypesActive,
 }: {
   value?: Schedule
   cancel: () => void
   remove: () => void
   onChange: (s: Schedule) => void
+  miningTypesActive: MiningNodeType[]
 }) => {
   const editing = Boolean(value)
   const theme = useTheme()
@@ -92,11 +95,17 @@ const ScheduleForm = ({
           flexDirection: 'column',
           width: '100%',
           padding: `${theme.spacing()} ${theme.spacing(1.5)}`,
-          paddingBottom: 0,
+          paddingBottom: theme.spacing(0.75),
           marginBottom: 0,
+          borderRadius: 0,
+          overflow: 'auto',
         }}
       >
-        <MiningTypeSelector value={miningType} onChange={setMiningType} />
+        <MiningTypeSelector
+          miningTypesActive={miningTypesActive}
+          value={miningType}
+          onChange={setMiningType}
+        />
         <DateScheduler
           days={days}
           date={date}

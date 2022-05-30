@@ -1,8 +1,8 @@
 import { renderHook } from '@testing-library/react-hooks'
 
 import { Schedule } from '../types/general'
-import { clearTime } from '../utils/Date'
 import { createPeriodicalGetNow } from '../utils/testUtils'
+import { startOfUTCDay } from '../utils/Date'
 
 import useMiningScheduling from './useMiningScheduling'
 
@@ -21,7 +21,7 @@ describe('useMiningScheduling', () => {
       {
         id: 'shortSchedule',
         enabled: true,
-        date: clearTime(now),
+        date: startOfUTCDay(now),
         interval: {
           from: {
             hours: 9,
@@ -49,8 +49,8 @@ describe('useMiningScheduling', () => {
     // then
     jest.advanceTimersByTime(A_MINUTE + 1)
     expect(startMining).toHaveBeenCalledTimes(2)
-    expect(startMining).toHaveBeenCalledWith('tari')
-    expect(startMining).toHaveBeenCalledWith('merged')
+    expect(startMining).toHaveBeenCalledWith('tari', 'shortSchedule')
+    expect(startMining).toHaveBeenCalledWith('merged', 'shortSchedule')
 
     jest.advanceTimersByTime(A_MINUTE)
     expect(stopMining).toHaveBeenCalledTimes(2)
@@ -70,7 +70,7 @@ describe('useMiningScheduling', () => {
       {
         id: 'shortSchedule',
         enabled: true,
-        date: clearTime(dayFromNow),
+        date: startOfUTCDay(dayFromNow),
         interval: {
           from: {
             hours: 9,

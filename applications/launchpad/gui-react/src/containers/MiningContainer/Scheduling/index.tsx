@@ -2,7 +2,11 @@ import { useState } from 'react'
 
 import Modal from '../../../components/Modal'
 import { useAppSelector, useAppDispatch } from '../../../store/hooks'
-import { selectSchedules, selectSchedule } from '../../../store/app/selectors'
+import {
+  selectSchedules,
+  selectSchedule,
+  selectActiveMiningTypes,
+} from '../../../store/app/selectors'
 import {
   toggleSchedule,
   removeSchedule,
@@ -31,6 +35,7 @@ const SchedulingContainer = ({
   const [editOpen, setEditOpen] = useState(false)
   const schedules = useAppSelector(selectSchedules)
   const scheduleToEdit = useAppSelector(selectSchedule(idToEdit))
+  const miningTypesActive = useAppSelector(selectActiveMiningTypes)
   const dispatch = useAppDispatch()
 
   const stopEditing = () => {
@@ -80,6 +85,7 @@ const SchedulingContainer = ({
               dispatch(updateSchedule({ value, scheduleId: value.id }))
               stopEditing()
             }}
+            miningTypesActive={miningTypesActive}
           />
         )}
       </ScheduleContainer>

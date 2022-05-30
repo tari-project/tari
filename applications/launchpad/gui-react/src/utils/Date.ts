@@ -35,7 +35,18 @@ export const isCurrentMonth = (d: Date) => {
   )
 }
 
-export const clearTime = (d: Date) => {
+export const startOfDay = (d: Date) => {
+  const copy = new Date(d)
+
+  copy.setHours(0)
+  copy.setMinutes(0)
+  copy.setSeconds(0)
+  copy.setMilliseconds(0)
+
+  return copy
+}
+
+export const startOfUTCDay = (d: Date) => {
   const copy = new Date(d)
 
   copy.setUTCHours(0)
