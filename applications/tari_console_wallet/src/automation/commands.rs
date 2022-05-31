@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryInto,
+    convert::TryFrom,
     fs::File,
     io::{BufReader, LineWriter, Write},
     time::{Duration, Instant},
@@ -48,6 +48,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{
         CheckpointParameters,
+        CommitteeMembers,
         ConstitutionChangeFlags,
         ConstitutionChangeRules,
         ContractAcceptanceRequirements,
@@ -60,7 +61,10 @@ use tari_core::transactions::{
         UnblindedOutput,
     },
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::{pedersen::PedersenCommitmentFactory, RistrettoPublicKey},
+};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     assets::{ContractDefinitionFileFormat, KEY_MANAGER_ASSET_BRANCH},
@@ -875,11 +879,9 @@ pub async fn command_runner(
             },
             CreateCommitteeDefinition => {
                 let contract_id = match parsed.args.get(0) {
-                    Some(ParsedArgument::Hash(ref key)) => Ok(key.clone()),
+                    Some(ParsedArgument::Text(ref key)) => FixedHash::from_hex(key).map_err(|_| CommandError::Argument),
                     _ => Err(CommandError::Argument),
                 }?;
-
-                let contract_id: FixedHash = contract_id.try_into()?;
 
                 let acceptance_period_expiry = match parsed.args.get(1) {
                     Some(ParsedArgument::Int(ref int)) => Ok(int.clone()),
@@ -891,19 +893,21 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
 
-                let validator_committee: Vec<PublicKey> = parsed.args[3..]
-                    .iter()
-                    .map(|pk| match pk {
-                        ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
-                        _ => Err(CommandError::Argument),
-                    })
-                    .collect::<Result<_, _>>()?;
+                let validator_committee: CommitteeMembers = CommitteeMembers::try_from(
+                    parsed.args[3..]
+                        .iter()
+                        .map(|pk| match pk {
+                            ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                            _ => Err(CommandError::Argument),
+                        })
+                        .collect::<Result<Vec<RistrettoPublicKey>, _>>()?,
+                )?;
 
                 let side_chain_features = SideChainFeatures {
                     contract_id,
                     definition: None,
                     constitution: Some(ContractConstitution {
-                        validator_committee: validator_committee.into(),
+                        validator_committee: validator_committee.clone(),
                         acceptance_requirements: ContractAcceptanceRequirements {
                             minimum_quorum_required: minimum_quorum_required as u32,
                             acceptance_period_expiry,
@@ -917,7 +921,7 @@ pub async fn command_runner(
                             change_flags: ConstitutionChangeFlags::all(),
                             requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                                 minimum_constitution_committee_signatures: 5,
-                                constitution_committee: Some(validator_committee.into()),
+                                constitution_committee: Some(validator_committee.clone()),
                             }),
                         },
                         initial_reward: 100.into(),
@@ -929,7 +933,7 @@ pub async fn command_runner(
 
                 let message = format!(
                     "Committee definition with {} members for {:?}",
-                    validator_committee.len(),
+                    &validator_committee.members().len(),
                     contract_id
                 );
 
