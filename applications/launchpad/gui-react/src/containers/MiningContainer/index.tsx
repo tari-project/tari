@@ -17,6 +17,7 @@ import { NodesContainer } from './styles'
 import MiningBoxTari from './MiningBoxTari'
 import MiningBoxMerged from './MiningBoxMerged'
 import Scheduling from './Scheduling'
+import Statistics from './Statistics'
 
 /**
  * The Mining dashboard
@@ -25,6 +26,7 @@ const MiningContainer = () => {
   const dispatch = useAppDispatch()
   const currentTheme = useAppSelector(selectTheme)
   const [schedulingOpen, setSchedulingOpen] = useState(false)
+  const [statisticsOpen, setStatisticsOpen] = useState(true)
 
   return (
     <div>
@@ -35,7 +37,18 @@ const MiningContainer = () => {
         <MiningBoxMerged />
       </NodesContainer>
 
-      <MiningViewActions openScheduling={() => setSchedulingOpen(true)} />
+      <MiningViewActions
+        openScheduling={() => setSchedulingOpen(true)}
+        openStatistics={() => setStatisticsOpen(true)}
+      />
+      <Scheduling
+        open={schedulingOpen}
+        onClose={() => setSchedulingOpen(false)}
+      />
+      <Statistics
+        open={statisticsOpen}
+        onClose={() => setStatisticsOpen(false)}
+      />
 
       <div style={{ marginTop: 80 }}>
         <button onClick={() => dispatch(setTheme('light'))}>
@@ -54,10 +67,6 @@ const MiningContainer = () => {
           />
         </div>
       </div>
-      <Scheduling
-        open={schedulingOpen}
-        onClose={() => setSchedulingOpen(false)}
-      />
     </div>
   )
 }
