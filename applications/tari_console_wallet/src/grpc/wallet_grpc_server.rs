@@ -70,6 +70,8 @@ use tari_app_grpc::{
         SendShaAtomicSwapResponse,
         SetBaseNodeRequest,
         SetBaseNodeResponse,
+        SubmitContractAcceptanceRequest,
+        SubmitContractAcceptanceResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -80,7 +82,7 @@ use tari_app_grpc::{
 };
 use tari_common_types::{
     array::copy_into_fixed_array,
-    types::{BlockHash, PublicKey, Signature},
+    types::{BlockHash, PublicKey, Signature, FixedHash},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
@@ -654,6 +656,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
+    }
+
+    async fn submit_contract_acceptance(
+        &self,
+        request: Request<SubmitContractAcceptanceRequest>,
+    ) -> Result<Response<SubmitContractAcceptanceResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let message = request.into_inner();
+
+        let contract_id = FixedHash::try_from(message.contract_id).map_err(|err| Status::invalid_argument(format!("Invalid contract_id:{:?}", err)))?;
+
+        let validator_node_public_key = PublicKey::from_bytes(message.validator_node_public_key.as_slice())
+        .map_err(|e| Status::invalid_argument(format!("Validator node public key was not a valid pub key:{}", e)))?;
+
+        let signature = Signature::try_from(message.signature.unwrap()).map_err(|e| Status::invalid_argument(format!("Invalid signature:{}", e)))?;
+
+        let (tx_id, _) = asset_manager
+            .submit_contract_acceptance(&contract_id, &validator_node_public_key, &signature)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(SubmitContractAcceptanceResponse {tx_id: tx_id.as_u64()}))
     }
 
     async fn register_asset(

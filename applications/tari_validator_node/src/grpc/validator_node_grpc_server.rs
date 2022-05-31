@@ -19,16 +19,16 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{convert::TryInto, time::Duration};
+use std::{convert::{TryInto, TryFrom}, time::Duration};
 
 use futures::channel::mpsc;
 use tari_app_grpc::tari_rpc::{self as rpc, TransactionOutput};
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PublicKey, Signature, FixedHash};
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::Instruction,
-    services::{AssetProcessor, AssetProxy, ServiceSpecification},
+    services::{AssetProcessor, AssetProxy, ServiceSpecification, WalletClient},
     storage::DbFactory,
 };
 use tokio::{task, time};
@@ -41,6 +41,7 @@ pub struct ValidatorNodeGrpcServer<TServiceSpecification: ServiceSpecification> 
     db_factory: TServiceSpecification::DbFactory,
     asset_processor: TServiceSpecification::AssetProcessor,
     asset_proxy: TServiceSpecification::AssetProxy,
+    wallet_client: TServiceSpecification::WalletClient,
 }
 
 impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServiceSpecification> {
@@ -49,12 +50,14 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
         db_factory: TServiceSpecification::DbFactory,
         asset_processor: TServiceSpecification::AssetProcessor,
         asset_proxy: TServiceSpecification::AssetProxy,
+        wallet_client: TServiceSpecification::WalletClient,
     ) -> Self {
         Self {
             node_identity,
             db_factory,
             asset_processor,
             asset_proxy,
+            wallet_client,
         }
     }
 }
@@ -63,6 +66,29 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
 impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_server::ValidatorNode
     for ValidatorNodeGrpcServer<TServiceSpecification>
 {
+    async fn publish_contract_acceptance(
+        &self,
+        request: tonic::Request<rpc::PublishContractAcceptanceRequest>,
+    ) -> Result<Response<rpc::PublishContractAcceptanceResponse>, tonic::Status> {
+        let mut wallet_client = self.wallet_client.clone();
+        let request = request.into_inner();
+        let contract_id = FixedHash::try_from(request.contract_id).unwrap_or_default();
+        let validator_node_public_key = self.node_identity.public_key();
+        let signature = Signature::default();
+
+        match wallet_client.submit_contract_acceptance(
+            &contract_id,
+            validator_node_public_key,
+            &signature,
+        ).await {
+            Ok(tx_id) => Ok(Response::new(rpc::PublishContractAcceptanceResponse { tx_id, status: "Accepted".to_string() })),
+            Err(_) => Ok(Response::new(rpc::PublishContractAcceptanceResponse {
+                status: "Errored".to_string(),
+                tx_id: 0_u64,
+            })),
+        }
+    }
+
     type GetCommitteeRequestsStream = mpsc::Receiver<Result<TransactionOutput, tonic::Status>>;
 
     async fn get_committee_requests(
