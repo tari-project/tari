@@ -40,6 +40,8 @@ use tari_wallet::{
 };
 use tokio::runtime::Handle;
 
+use crate::EVENT_LISTENER;
+
 pub const LOG_TARGET: &str = "wallet::notifier";
 const RECEIVED: &str = "received";
 const SENT: &str = "sent";
@@ -66,11 +68,12 @@ impl Notifier {
 
         if let Some(program) = self.path.clone() {
             let mut transaction_service = self.wallet.transaction_service.clone();
-
             self.handle.spawn(async move {
+                let sender = &EVENT_LISTENER.0.clone();
                 match transaction_service.get_completed_transaction(tx_id).await {
                     Ok(tx) => {
                         let args = args_from_complete(&tx, RECEIVED, None);
+                        let _ = sender.send(args.clone());
                         let result = Command::new(program).args(&args).output();
                         log(result);
                     },
@@ -90,9 +93,11 @@ impl Notifier {
             let mut transaction_service = self.wallet.transaction_service.clone();
 
             self.handle.spawn(async move {
+                let sender = &EVENT_LISTENER.0.clone();
                 match transaction_service.get_completed_transaction(tx_id).await {
                     Ok(tx) => {
                         let args = args_from_complete(&tx, CONFIRMATION, Some(confirmations));
+                        let _ = sender.send(args.clone());
                         let result = Command::new(program).args(&args).output();
                         log(result);
                     },
@@ -112,6 +117,7 @@ impl Notifier {
             let mut transaction_service = self.wallet.transaction_service.clone();
 
             self.handle.spawn(async move {
+                let sender = &EVENT_LISTENER.0.clone();
                 match transaction_service.get_completed_transaction(tx_id).await {
                     Ok(tx) => {
                         let confirmations = match transaction_service.get_num_confirmations_required().await {
@@ -122,6 +128,7 @@ impl Notifier {
                             },
                         };
                         let args = args_from_complete(&tx, MINED, confirmations);
+                        let _ = sender.send(args.clone());
                         let result = Command::new(program).args(&args).output();
                         log(result);
                     },
@@ -150,10 +157,12 @@ impl Notifier {
             let mut transaction_service = self.wallet.transaction_service.clone();
 
             self.handle.spawn(async move {
+                let sender = &EVENT_LISTENER.0.clone();
                 match transaction_service.get_pending_outbound_transactions().await {
                     Ok(txs) => {
                         if let Some(tx) = txs.get(&tx_id) {
                             let args = args_from_outbound(tx, event);
+                            let _ = sender.send(args.clone());
                             let result = Command::new(program).args(&args).output();
                             log(result);
                         } else {
@@ -176,6 +185,7 @@ impl Notifier {
             let mut transaction_service = self.wallet.transaction_service.clone();
 
             self.handle.spawn(async move {
+                let sender = &EVENT_LISTENER.0.clone();
                 match transaction_service.get_any_transaction(tx_id).await {
                     Ok(Some(wallet_tx)) => {
                         let args = match wallet_tx {
@@ -183,6 +193,8 @@ impl Notifier {
                             WalletTransaction::PendingInbound(tx) => args_from_inbound(&tx, CANCELLED),
                             WalletTransaction::PendingOutbound(tx) => args_from_outbound(&tx, CANCELLED),
                         };
+                        let _ = sender.send(args.clone());
+                        // c
                         let result = Command::new(program).args(&args).output();
                         log(result);
                     },

@@ -6819,9 +6819,11 @@ dependencies = [
  "chrono",
  "clap 3.1.8",
  "config",
+ "crossbeam",
  "crossterm 0.17.7",
  "digest 0.9.0",
  "futures 0.3.21",
+ "lazy_static",
  "log",
  "opentelemetry",
  "opentelemetry-jaeger",
@@ -7043,6 +7045,7 @@ dependencies = [
 name = "tari_launchpad"
 version = "0.32.3"
 dependencies = [
+ "async-trait",
  "bollard",
  "config",
  "derivative",
@@ -7056,13 +7059,17 @@ dependencies = [
  "serde_json",
  "strum 0.23.0",
  "strum_macros 0.23.1",
+ "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tauri",
  "tauri-build",
  "thiserror",
  "tokio 1.17.0",
+ "tokio-stream",
+ "tonic",
  "tor-hash-passwd",
 ]
 

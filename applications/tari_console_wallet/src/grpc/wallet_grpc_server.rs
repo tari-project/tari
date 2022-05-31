@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
@@ -71,6 +74,9 @@ use tari_app_grpc::{
         SetBaseNodeRequest,
         SetBaseNodeResponse,
         TransactionDirection,
+        TransactionEvent,
+        TransactionEventRequest,
+        TransactionEventResponse,
         TransactionInfo,
         TransactionStatus,
         TransferRequest,
@@ -97,6 +103,8 @@ use tari_wallet::{
 };
 use tokio::task;
 use tonic::{Request, Response, Status};
+
+use crate::EVENT_LISTENER;
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
 
@@ -125,6 +133,7 @@ impl WalletGrpcServer {
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
+    type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
@@ -540,6 +549,41 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect();
 
         Ok(Response::new(GetTransactionInfoResponse { transactions }))
+    }
+
+    async fn stream_transaction_events(
+        &self,
+        _request: tonic::Request<TransactionEventRequest>,
+    ) -> Result<Response<Self::StreamTransactionEventsStream>, Status> {
+        let (mut sender, receiver) = mpsc::channel(100);
+        task::spawn(async move {
+            let event_listener = &EVENT_LISTENER.1;
+            loop {
+                let transaction_event = match event_listener.recv_timeout(Duration::from_secs(1)) {
+                    Ok(source) => convert_vec_into_transaction_event(source),
+                    Err(_) => continue,
+                };
+                if transaction_event.is_some() {
+                    let response = TransactionEventResponse {
+                        transaction: transaction_event,
+                    };
+                    match sender.send(Ok(response)).await {
+                        Ok(_) => (),
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {}", err);
+                            match sender.send(Err(Status::unknown("Error sending data"))).await {
+                                Ok(_) => (),
+                                Err(send_err) => {
+                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                                },
+                            }
+                            return;
+                        },
+                    }
+                }
+            }
+        });
+        Ok(Response::new(receiver))
     }
 
     async fn get_completed_transactions(
@@ -1030,5 +1074,91 @@ fn convert_wallet_transaction_into_transaction_info(
                 .unwrap_or_default(),
             message: tx.message,
         },
+    }
+}
+
+const EVENT_INDEX: usize = 0;
+const AMOUNT_INDEX: usize = 1;
+const TX_ID_INDEX: usize = 2;
+const MESSAGE_INDEX: usize = 3;
+const PK_INDEX: usize = 4;
+const INCOMPLETED_STATUS_INDEX: usize = 5;
+const INCOMPLETED_DIRECTION_INDEX: usize = 6;
+
+const COMPLETED_PUBLIC_KEY_INDEX: usize = 4;
+const COMPLETED_SOURCE_KEY_INDEX: usize = 5;
+const COMPLETED_STATUS_INDEX: usize = 6;
+const COMPLETED_DIRECTION_INDEX: usize = 11;
+
+fn convert_vec_into_transaction_event(source: Vec<String>) -> Option<TransactionEvent> {
+    if source.len() != 7 || source.len() != 12 {
+        error!(
+            "The source must have exactly 7 or 12 elements. The current len: {}",
+            source.len()
+        );
+        return None;
+    }
+
+    let event = source.iter().nth(EVENT_INDEX).unwrap().clone();
+    let amount = match source.iter().nth(AMOUNT_INDEX).unwrap().clone().parse::<u64>() {
+        Ok(amt) => amt,
+        Err(_) => return None,
+    };
+    let tx_id = match source.iter().nth(TX_ID_INDEX).unwrap().clone().parse::<u64>() {
+        Ok(id) => id,
+        Err(_) => return None,
+    };
+    let message = source.iter().nth(MESSAGE_INDEX).unwrap().clone();
+
+    let mut event = TransactionEvent {
+        event,
+        amount,
+        tx_id,
+        message,
+        ..Default::default()
+    };
+
+    if source.len() == 7 {
+        let pk = source.iter().nth(PK_INDEX).unwrap().clone().into_bytes();
+        let status = source.iter().nth(INCOMPLETED_STATUS_INDEX).unwrap().clone();
+        let direction = source.iter().nth(INCOMPLETED_DIRECTION_INDEX).unwrap().clone();
+
+        event.status = status;
+        event.direction = direction.clone();
+
+        match direction.to_lowercase().as_str() {
+            "inbound" => {
+                event.dest_pk = pk.clone();
+            },
+            "outbound" => {
+                event.source_pk = pk.clone();
+            },
+            _ => (),
+        }
+        Some(event)
+    } else if source.len() == 12 {
+        let source_pk = source
+            .iter()
+            .nth(COMPLETED_SOURCE_KEY_INDEX)
+            .unwrap()
+            .clone()
+            .into_bytes();
+        let dest_pk = source
+            .iter()
+            .nth(COMPLETED_PUBLIC_KEY_INDEX)
+            .unwrap()
+            .clone()
+            .into_bytes();
+        let status = source.iter().nth(COMPLETED_STATUS_INDEX).unwrap().clone();
+        let direction = source.iter().nth(COMPLETED_DIRECTION_INDEX).unwrap().clone();
+
+        event.dest_pk = dest_pk;
+        event.source_pk = source_pk;
+        event.status = status;
+        event.direction = direction;
+
+        Some(event)
+    } else {
+        Option::None
     }
 }

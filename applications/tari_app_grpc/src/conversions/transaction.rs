@@ -30,7 +30,7 @@ use tari_core::transactions::transaction_components::Transaction;
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::ByteArray;
 
-use crate::tari_rpc as grpc;
+use crate::tari_rpc::{self as grpc, TransactionEvent};
 
 impl TryFrom<Transaction> for grpc::Transaction {
     type Error = String;
@@ -82,6 +82,35 @@ impl From<TransactionDirection> for grpc::TransactionDirection {
             Unknown => grpc::TransactionDirection::Unknown,
             Inbound => grpc::TransactionDirection::Inbound,
             Outbound => grpc::TransactionDirection::Outbound,
+        }
+    }
+}
+
+impl From<String> for grpc::TransactionDirection {
+    fn from(status: String) -> Self {
+        match status.to_lowercase().as_str() {
+            "inbound" => grpc::TransactionDirection::Inbound,
+            "outbound" => grpc::TransactionDirection::Outbound,
+            _ => grpc::TransactionDirection::Unknown,
+        }
+    }
+}
+
+impl From<String> for grpc::TransactionStatus {
+    fn from(status: String) -> Self {
+        match status.to_lowercase().as_str() {
+            "completed" => grpc::TransactionStatus::Completed,
+            "broadcast" => grpc::TransactionStatus::Broadcast,
+            "minedUnconfirmed" => grpc::TransactionStatus::MinedUnconfirmed,
+            "minedConfirmed" => grpc::TransactionStatus::MinedConfirmed,
+            "imported" => grpc::TransactionStatus::Imported,
+            "pending" => grpc::TransactionStatus::Pending,
+            "coinbase" => grpc::TransactionStatus::Coinbase,
+            "rejected" => grpc::TransactionStatus::Rejected,
+            "fauxUnconfirmed" => grpc::TransactionStatus::FauxUnconfirmed,
+            "fauxConfirmed" => grpc::TransactionStatus::FauxConfirmed,
+            "queued" => grpc::TransactionStatus::Queued,
+            _ => grpc::TransactionStatus::NotFound,
         }
     }
 }

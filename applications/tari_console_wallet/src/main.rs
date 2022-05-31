@@ -19,11 +19,18 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static! {
+    static ref EVENT_LISTENER: (Sender<Vec<String>>, Receiver<Vec<String>>) = crossbeam::channel::unbounded();
+}
 
 use std::{env, process};
 
 use clap::Parser;
 use cli::Cli;
+use crossbeam::channel::{Receiver, Sender};
 use init::{
     boot,
     change_password,
