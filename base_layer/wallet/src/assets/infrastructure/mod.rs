@@ -29,6 +29,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
     OutputFeatures,
+    SideChainFeatures,
     TemplateParameter,
     Transaction,
 };
@@ -68,10 +69,7 @@ pub enum AssetManagerRequest {
         committee_public_keys: Vec<PublicKey>,
     },
     CreateCommitteeDefinition {
-        asset_public_key: Box<PublicKey>,
-        committee_public_keys: Vec<PublicKey>,
-        effective_sidechain_height: u64,
-        is_initial: bool,
+        constitution_definition: Box<SideChainFeatures>,
     },
     CreateContractDefinition {
         contract_definition: Box<ContractDefinition>,

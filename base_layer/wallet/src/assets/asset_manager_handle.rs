@@ -27,6 +27,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
     OutputFeatures,
+    SideChainFeatures,
     TemplateParameter,
     Transaction,
 };
@@ -124,18 +125,12 @@ impl AssetManagerHandle {
 
     pub async fn create_committee_definition(
         &mut self,
-        public_key: &PublicKey,
-        committee_public_keys: &[PublicKey],
-        effective_sidechain_height: u64,
-        is_initial: bool,
+        constitution_definition: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateCommitteeDefinition {
-                asset_public_key: Box::new(public_key.clone()),
-                committee_public_keys: committee_public_keys.to_vec(),
-                effective_sidechain_height,
-                is_initial,
+                constitution_definition: Box::new(constitution_definition.clone()),
             })
             .await??
         {

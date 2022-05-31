@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryInto,
     fs::File,
     io::{BufReader, LineWriter, Write},
     time::{Duration, Instant},
@@ -45,7 +46,19 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{ContractDefinition, TransactionOutput, UnblindedOutput},
+    transaction_components::{
+        CheckpointParameters,
+        ConstitutionChangeFlags,
+        ConstitutionChangeRules,
+        ContractAcceptanceRequirements,
+        ContractConstitution,
+        ContractDefinition,
+        RequirementsForConstitutionChange,
+        SideChainConsensus,
+        SideChainFeatures,
+        TransactionOutput,
+        UnblindedOutput,
+    },
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
@@ -861,15 +874,24 @@ pub async fn command_runner(
                     .await?;
             },
             CreateCommitteeDefinition => {
-                let asset_public_key = match parsed.args.get(0) {
-                    Some(ParsedArgument::PublicKey(ref key)) => Ok(key.clone()),
+                let contract_id = match parsed.args.get(0) {
+                    Some(ParsedArgument::Hash(ref key)) => Ok(key.clone()),
                     _ => Err(CommandError::Argument),
                 }?;
-                let public_key_hex = asset_public_key.to_hex();
-                println!("Creating Committee Definition for Asset");
-                println!("with public key {public_key_hex}");
 
-                let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
+                let contract_id: FixedHash = contract_id.try_into()?;
+
+                let acceptance_period_expiry = match parsed.args.get(1) {
+                    Some(ParsedArgument::Int(ref int)) => Ok(int.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let minimum_quorum_required = match parsed.args.get(1) {
+                    Some(ParsedArgument::Int(ref int)) => Ok(int.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let validator_committee: Vec<PublicKey> = parsed.args[3..]
                     .iter()
                     .map(|pk| match pk {
                         ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
@@ -877,27 +899,43 @@ pub async fn command_runner(
                     })
                     .collect::<Result<_, _>>()?;
 
-                let num_members = committee_public_keys.len();
-                if num_members < 1 {
-                    return Err(CommandError::Config("Committee has no members!".into()));
-                }
-                let message = format!(
-                    "Committee definition with {} members for {}",
-                    num_members, asset_public_key
-                );
-                println!("with {num_members} committee members");
+                let side_chain_features = SideChainFeatures {
+                    contract_id,
+                    definition: None,
+                    constitution: Some(ContractConstitution {
+                        validator_committee: validator_committee.into(),
+                        acceptance_requirements: ContractAcceptanceRequirements {
+                            minimum_quorum_required: minimum_quorum_required as u32,
+                            acceptance_period_expiry,
+                        },
+                        consensus: SideChainConsensus::MerkleRoot,
+                        checkpoint_params: CheckpointParameters {
+                            minimum_quorum_required: 5,
+                            abandoned_interval: 100,
+                        },
+                        constitution_change_rules: ConstitutionChangeRules {
+                            change_flags: ConstitutionChangeFlags::all(),
+                            requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
+                                minimum_constitution_committee_signatures: 5,
+                                constitution_committee: Some(validator_committee.into()),
+                            }),
+                        },
+                        initial_reward: 100.into(),
+                    }),
+                };
 
                 let mut asset_manager = wallet.asset_manager.clone();
-                // todo: effective sidechain height...
-                // todo: updating
-                let (tx_id, transaction) = asset_manager
-                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
-                    .await?;
+                let (tx_id, transaction) = asset_manager.create_committee_definition(&side_chain_features).await?;
+
+                let message = format!(
+                    "Committee definition with {} members for {:?}",
+                    validator_committee.len(),
+                    contract_id
+                );
 
                 transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
-                println!("Done!");
             },
             RevalidateWalletDb => {
                 output_service
