@@ -17,3 +17,9 @@ export const StyledMessage = styled(animated.div)`
     margin-bottom: 0;
   }
 `
+
+export const StyledMessagesContainer = styled(animated.div)`
+  background: red;
+  padding: 20px;
+  transition: height 1s;
+`

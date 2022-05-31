@@ -1,11 +1,12 @@
 import { Message1 } from '../components/TBot/HelpComponents/CryptoMining'
 import { Message1 as Merged1 } from '../components/TBot/HelpComponents/MergedMining'
 import { Message2 as Merged2 } from '../components/TBot/HelpComponents/MergedMining'
-// @TODO: messages 3 - 6 are for dev purposes only!!
+// @TODO: messages 3 - 7 are for dev purposes only!!
 import { Message3 as Merged3 } from '../components/TBot/HelpComponents/MergedMining'
 import { Message4 as Merged4 } from '../components/TBot/HelpComponents/MergedMining'
 import { Message5 as Merged5 } from '../components/TBot/HelpComponents/MergedMining'
 import { Message6 as Merged6 } from '../components/TBot/HelpComponents/MergedMining'
+import { Message7 as Merged7 } from '../components/TBot/HelpComponents/MergedMining'
 import { TBotMessages } from '../store/tbot/types'
 
 const MessagesConfig = {
@@ -17,6 +18,7 @@ const MessagesConfig = {
     'mergedHelpMessage4',
     'mergedHelpMessage5',
     'mergedHelpMessage6',
+    'mergedHelpMessage7',
   ],
 }
 
@@ -28,6 +30,7 @@ export const HelpMessagesMap: { [key: string]: React.FC } = {
   mergedHelpMessage4: Merged4,
   mergedHelpMessage5: Merged5,
   mergedHelpMessage6: Merged6,
+  mergedHelpMessage7: Merged7,
 }
 
 export default MessagesConfig

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, ReactNode, useMemo } from 'react'
 
 import { config, useSpring } from 'react-spring'
 
@@ -18,7 +18,14 @@ import {
   StyledCloseContainer,
   ContentContainer,
   FadeOutSection,
+  MessageWrapper,
+  MessageWrapperOutter,
+  MessageWrapperOutterOutter,
 } from './styles'
+
+import { HelpMessagesMap } from '../../../config/helpMessagesConfig'
+import ChatDots from '../DotsComponent'
+import MessageBox from './MessageBox'
 
 /**
  * @name TBotPrompt
@@ -28,20 +35,37 @@ import {
  * @prop {ReactNode} [children] - content rendered inside prompt component
  * @prop {string} [testid] - for testing
  */
-
-const TBotPrompt = ({ open, children, animate, testid }: TBotPromptProps) => {
-  const [multipleMessages, setMultipleMessages] = useState(false)
-
+const TBotPrompt = ({
+  open,
+  floating,
+  testid,
+  messages,
+  currentIndex = 1,
+}: TBotPromptProps) => {
   const dispatch = useAppDispatch()
+
+  const lastMsgRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const messageWrapperRef = useRef<HTMLDivElement>(null)
+  const currentIndexRef = useRef<number>(currentIndex)
+
+  const [messageLoading, setMessageLoading] = useState<boolean>(false)
+  const [count, setCount] = useState(currentIndex || 0)
+  const [height, setHeight] = useState(100)
+  const [tickle, setTickle] = useState(true)
+
   const promptAnim = useSpring({
     from: {
-      opacity: 0,
+      opacity: floating ? 1 : 0,
     },
     opacity: 1,
     config: config.wobbly,
   })
 
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const heightAnim = useSpring({
+    maxHeight: height,
+    duration: 50,
+  })
 
   const scrollToBottom = () => {
     if (scrollRef.current !== null) {
@@ -51,13 +75,147 @@ const TBotPrompt = ({ open, children, animate, testid }: TBotPromptProps) => {
       })
     }
   }
-  useEffect(() => {
-    scrollToBottom()
-  }, [children])
 
   const close = () => {
     return dispatch(tbotactions.close())
   }
+
+  useEffect(() => {
+    // Update internal 'count' if parent changes the currentIndex
+    if (currentIndex || currentIndex === 0) {
+      setCount(currentIndex)
+    }
+
+    // If new currentIndex value is different, it means that we need to 'skip' next messages
+    // and scroll to the bottom.
+    if (currentIndexRef?.current && currentIndexRef?.current !== count) {
+      setTimeout(() => scrollToBottom(), 800)
+    }
+  }, [currentIndex])
+
+  // The following timer increases the 'count' - the messages indexer.
+  // This way, tbot goes through the array of messages.
+  useEffect(() => {
+    let counter = count
+    let timeout: NodeJS.Timeout
+
+    if (messages && counter >= messages.length) {
+      setMessageLoading(false)
+    } else if (messages && messages.length > 0) {
+      setMessageLoading(true)
+
+      // use custom waiting time, if previous message has 'wait' field.
+      const lastMsg = counter > 1 ? messages[counter - 1] : undefined
+      let wait = 2000
+      if (
+        lastMsg &&
+        typeof lastMsg !== 'string' &&
+        typeof lastMsg !== 'number' &&
+        typeof lastMsg !== 'boolean' &&
+        'wait' in lastMsg &&
+        lastMsg.wait
+      ) {
+        wait = lastMsg.wait
+      }
+
+      // show loading dots, and then increase count which results in rendering next message.
+      timeout = setTimeout(() => {
+        setMessageLoading(false)
+        setCount(count => count + 1)
+        counter++
+      }, wait)
+    }
+
+    return () => {
+      clearTimeout(timeout)
+      setMessageLoading(false)
+    }
+  }, [messages, count])
+
+  // It will animate the list max-height. The timeout is needed, bc app has to render new content first,
+  // so then we can learn what is the current list height, and animate the max-height of wrapping component.
+  useEffect(() => {
+    setTimeout(
+      () => setHeight(messageWrapperRef?.current?.offsetHeight || 100),
+      200,
+    )
+  }, [messageLoading, count])
+
+  // Tickle tbot whenever the app shows new message
+  useEffect(() => {
+    if (messageLoading) {
+      setTimeout(() => {
+        scrollToBottom()
+      }, 400)
+    } else {
+      setTickle(true)
+      setTimeout(() => {
+        setTickle(false)
+      }, 100)
+    }
+  }, [messageLoading])
+
+  // Automatically scroll to the new message. Timeout is used to allow make some animations meanwhile.
+  useEffect(() => {
+    setTimeout(() => {
+      if (lastMsgRef?.current) {
+        lastMsgRef?.current.scrollIntoView({ block: 'start' })
+      }
+    }, 500)
+  }, [lastMsgRef, lastMsgRef?.current])
+
+  // Build messages list
+  const renderedMessages = useMemo(() => {
+    return messages?.slice(0, count).map((msg, idx) => {
+      if (
+        typeof msg !== 'string' &&
+        typeof msg !== 'number' &&
+        typeof msg !== 'boolean' &&
+        msg
+      ) {
+        return (
+          <MessageBox
+            animate={count === idx + 1}
+            ref={count === idx + 1 ? lastMsgRef : null}
+          >
+            {'content' in msg ? msg.content : msg}
+          </MessageBox>
+        )
+      }
+
+      if (typeof msg !== 'string') {
+        return (
+          <MessageBox
+            animate={count === idx + 1}
+            ref={count === idx + 1 ? lastMsgRef : null}
+          >
+            {msg}
+          </MessageBox>
+        )
+      }
+
+      if (HelpMessagesMap[msg] === undefined) {
+        return (
+          <MessageBox
+            animate={count === idx + 1}
+            ref={count === idx + 1 ? lastMsgRef : null}
+          >
+            {msg}
+          </MessageBox>
+        )
+      }
+      const Message = HelpMessagesMap[msg]
+      return (
+        <MessageBox
+          key={`${idx}-msg`}
+          animate={count === idx + 1}
+          ref={count === idx + 1 ? lastMsgRef : null}
+        >
+          <Message />
+        </MessageBox>
+      )
+    })
+  }, [messages, count]) as ReactNode
 
   if (!open) {
     return null
@@ -66,23 +224,31 @@ const TBotPrompt = ({ open, children, animate, testid }: TBotPromptProps) => {
   return (
     <PromptContainer
       style={promptAnim}
+      $floating={floating}
       data-testid={testid || 'tbotprompt-cmp'}
     >
       <ContentRow>
-        <ContentContainer>
-          <FadeOutSection />
+        <ContentContainer $floating={floating}>
+          <FadeOutSection $floating={floating} />
           <StyledCloseContainer>
             <StyledCloseIcon>
               <SvgClose fontSize={20} onClick={close} />
             </StyledCloseIcon>
           </StyledCloseContainer>
-          <MessageContainer multi={multipleMessages} ref={scrollRef}>
-            {children}
+          <MessageContainer>
+            <MessageWrapperOutterOutter ref={scrollRef}>
+              <MessageWrapperOutter style={heightAnim}>
+                <MessageWrapper ref={messageWrapperRef}>
+                  {renderedMessages}
+                  {messageLoading && <ChatDots />}
+                </MessageWrapper>
+              </MessageWrapperOutter>
+            </MessageWrapperOutterOutter>
           </MessageContainer>
         </ContentContainer>
       </ContentRow>
       <TBotContainer>
-        <TBot animate={animate} />
+        <TBot animate={tickle} />
       </TBotContainer>
     </PromptContainer>
   )

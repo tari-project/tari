@@ -54,7 +54,7 @@ const MiningHeaderTip = () => {
             autosizeIcons={false}
             onClick={() =>
               // TODO: needs to be changed to "MessagesConfig.cryptoMiningHelp"
-              dispatch(tbotactions.push(MessagesConfig.mergedMiningHelp))
+              dispatch(tbotactions.push(MessagesConfig.MergedMiningHelp))
             }
           >
             {t.mining.headerTips.wantToKnowMore}

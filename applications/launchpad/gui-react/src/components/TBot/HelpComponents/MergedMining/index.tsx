@@ -72,4 +72,23 @@ const Message6 = () => {
   )
 }
 
-export { Message1, Message2, Message3, Message4, Message5, Message6 }
+const Message7 = () => {
+  const dispatch = useAppDispatch()
+
+  const close = () => {
+    return dispatch(tbotactions.close())
+  }
+
+  return (
+    <>
+      <StyledTextContainer>
+        <Text type='defaultMedium' as='span' testId='message2-cmp'>
+          {t.mergedMiningHelp.message2}
+        </Text>
+      </StyledTextContainer>
+      <GotItButton onClick={close} />
+    </>
+  )
+}
+
+export { Message1, Message2, Message3, Message4, Message5, Message6, Message7 }

@@ -13,4 +13,5 @@ export type TBotMessage = {
 
 export interface TBotState {
   messageQueue: string[]
+  open: boolean
 }
