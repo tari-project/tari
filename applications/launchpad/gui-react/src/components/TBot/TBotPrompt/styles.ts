@@ -46,7 +46,6 @@ export const FadeOutSection = styled.div`
 `
 
 export const MessageContainer = styled.div<{ multi?: boolean }>`
-  /* height: ${({ multi }) => (multi ? 500 : 300)}; */
   height: 500px;
   min-height: 300px;
   overflow-y: scroll;

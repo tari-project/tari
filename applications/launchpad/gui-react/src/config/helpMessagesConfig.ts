@@ -1,6 +1,7 @@
 import { Message1 } from '../components/TBot/HelpComponents/CryptoMining'
 import { Message1 as Merged1 } from '../components/TBot/HelpComponents/MergedMining'
 import { Message2 as Merged2 } from '../components/TBot/HelpComponents/MergedMining'
+// @TODO: messages 3 - 6 are for dev purposes only!!
 import { Message3 as Merged3 } from '../components/TBot/HelpComponents/MergedMining'
 import { Message4 as Merged4 } from '../components/TBot/HelpComponents/MergedMining'
 import { Message5 as Merged5 } from '../components/TBot/HelpComponents/MergedMining'
