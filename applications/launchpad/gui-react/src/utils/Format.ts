@@ -1,6 +1,6 @@
 export const amount = (a: number): string => new Intl.NumberFormat().format(a)
 
-export const hour = ({
+export const utcHour = ({
   hours,
   minutes,
 }: {
@@ -8,8 +8,8 @@ export const hour = ({
   minutes: number
 }) => {
   const date = new Date()
-  date.setHours(hours)
-  date.setMinutes(minutes)
+  date.setUTCHours(hours)
+  date.setUTCMinutes(minutes)
 
   return date.toLocaleTimeString([], {
     hour: 'numeric',
@@ -24,6 +24,9 @@ export const day = (date: Date) =>
     month: 'long',
     day: 'numeric',
   })
+
+export const month = (date: Date) =>
+  date.toLocaleDateString([], { year: 'numeric', month: 'long' })
 
 /**
  * Convert milliseconds to 0:00:00 {hours:minutes:seconds} format.

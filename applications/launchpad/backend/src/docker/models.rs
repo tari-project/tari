@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use core::fmt;
 use std::{
     convert::TryFrom,
     fmt::{Display, Formatter},
@@ -72,6 +73,7 @@ pub enum ContainerStatus {
 
 //-------------------------------------------     ContainerState      ----------------------------------------------
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContainerState {
     name: String,
     id: ContainerId,
@@ -257,5 +259,17 @@ impl TryFrom<&str> for ImageType {
             "frontail" => Ok(Self::Frontail),
             _ => Err(DockerWrapperError::InvalidImageType),
         }
+    }
+}
+
+impl fmt::Display for TariNetwork {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl fmt::Display for ImageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

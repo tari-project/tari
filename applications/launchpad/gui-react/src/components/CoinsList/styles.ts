@@ -12,3 +12,12 @@ export const CoinsListItem = styled.li<{ $loading?: boolean }>`
   display: flex;
   align-items: center;
 `
+
+export const IconWrapper = styled.span`
+  margin-right: 8px;
+  margin-top: -4px;
+  & > svg {
+    width: 24px;
+    height: 24px;
+  }
+`

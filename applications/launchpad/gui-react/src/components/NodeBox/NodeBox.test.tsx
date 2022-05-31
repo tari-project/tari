@@ -11,7 +11,7 @@ describe('NodeBox', () => {
       <ThemeProvider theme={themes.light}>
         <NodeBox
           tag={{
-            text: 'Test text',
+            content: 'Test text',
             type: 'warning',
           }}
         />
@@ -45,5 +45,22 @@ describe('NodeBox', () => {
 
     const el = screen.getByText(testText)
     expect(el).toBeInTheDocument()
+  })
+
+  it('should render the correct help icon colour', () => {
+    const mock = jest.fn()
+    render(
+      <ThemeProvider theme={themes.light}>
+        <NodeBox
+          tag={{ type: 'running', content: 'test' }}
+          onHelpPromptClick={mock}
+        />
+      </ThemeProvider>,
+    )
+
+    const textColour = themes.light.inverted.secondary
+
+    const el = screen.getByTestId('help-icon-cmp')
+    expect(el).toHaveStyle(`color: ${textColour}`)
   })
 })

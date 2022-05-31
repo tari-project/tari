@@ -130,6 +130,7 @@ fn get_igor_genesis_block_raw() -> Block {
     body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 06:00:00 +0200").unwrap();
+    #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
@@ -271,6 +272,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
     body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("25 Jan 2022 16:00:00 +0200").unwrap();
+    #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {

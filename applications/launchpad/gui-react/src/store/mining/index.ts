@@ -1,59 +1,24 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { v4 as uuidv4 } from 'uuid'
+import { MiningNodeType, ScheduleId } from '../../types/general'
 
 import { startMiningNode, stopMiningNode } from './thunks'
-import { MiningSession, MiningState } from './types'
+import { MiningState, MiningActionReason } from './types'
 
-const currencies: Record<'tari' | 'merged', string[]> = {
+const currencies: Record<MiningNodeType, string[]> = {
   tari: ['xtr'],
   merged: ['xtr', 'xmr'],
 }
 
 export const initialState: MiningState = {
   tari: {
-    sessions: [
-      {
-        startedAt: undefined,
-        finishedAt: Number(Date.now()).toString(),
-        pending: false,
-        total: {
-          xtr: '1000',
-        },
-      },
-      {
-        startedAt: undefined,
-        finishedAt: Number(Date.now()).toString(),
-        pending: false,
-        total: {
-          xtr: '2000',
-        },
-      },
-    ],
+    session: undefined,
   },
   merged: {
     threads: 1,
     address: undefined,
     urls: [],
-    sessions: [
-      {
-        startedAt: undefined,
-        finishedAt: Number(Date.now()).toString(),
-        pending: false,
-        total: {
-          xtr: '1000',
-          xmr: '1001',
-        },
-      },
-      {
-        startedAt: undefined,
-        finishedAt: Number(Date.now()).toString(),
-        pending: false,
-        total: {
-          xtr: '2000',
-          xmr: '2001',
-        },
-      },
-    ],
+    session: undefined,
   },
 }
 
@@ -67,70 +32,53 @@ const miningSlice = createSlice({
      */
     addAmount(
       state,
-      action: PayloadAction<{ amount: string; node: 'tari' | 'merged' }>,
+      action: PayloadAction<{ amount: string; node: MiningNodeType }>,
     ) {
       const node = action.payload.node
 
-      state[node].sessions![state[node].sessions!.length - 1].total!.xtr = (
-        Number(
-          state[node].sessions![state[node].sessions!.length - 1].total!.xtr,
-        ) + Number(action.payload.amount)
-      ).toString()
+      if (state[node].session?.total) {
+        const nodeSessionTotal = state[node].session?.total?.xtr
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        state[node].session!.total!.xtr = (
+          Number(nodeSessionTotal) + Number(action.payload.amount)
+        ).toString()
+      }
     },
-    startNewSession(state, action: PayloadAction<{ node: 'tari' | 'merged' }>) {
-      const { node } = action.payload
+    startNewSession(
+      state,
+      action: PayloadAction<{
+        node: MiningNodeType
+        reason: MiningActionReason
+        schedule?: ScheduleId
+      }>,
+    ) {
+      const { node, reason, schedule } = action.payload
       const total: Record<string, string> = {}
       currencies[node].forEach(c => {
         total[c] = '0'
       })
 
-      const newSession: MiningSession = {
+      state[node].session = {
         id: uuidv4(),
         startedAt: Number(Date.now()).toString(),
         total,
+        reason,
+        schedule,
       }
-
-      if (!state[node].sessions) {
-        state[node].sessions = [newSession]
-        return
-      }
-
-      state[node].sessions!.push(newSession)
     },
     stopSession(
       state,
-      action: PayloadAction<{ node: 'tari' | 'merged'; sessionId?: string }>,
-    ) {
-      const { node, sessionId } = action.payload
-
-      if (!state[node].sessions || !sessionId) {
-        return
-      }
-
-      const session = state[node].sessions?.find(s => s.id === sessionId)
-
-      if (session) {
-        session.finishedAt = Number(Date.now()).toString()
-      }
-    },
-    setPendingInSession(
-      state,
       action: PayloadAction<{
-        node: 'tari' | 'merged'
-        sessionId?: string
-        active: boolean
+        node: MiningNodeType
+        reason: MiningActionReason
       }>,
     ) {
-      const { node, sessionId, active } = action.payload
+      const { node, reason } = action.payload
 
-      if (!state[node].sessions || !sessionId) {
-        return
-      }
-
-      const session = state[node].sessions?.find(s => s.id === sessionId)
-
+      const session = state[node].session
       if (session) {
-        session.pending = active
+        session.finishedAt = Number(Date.now()).toString()
+        session.reason = reason
       }
     },
     setMergedAddress(state, action: PayloadAction<{ address: string }>) {

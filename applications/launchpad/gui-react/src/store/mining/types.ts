@@ -1,3 +1,4 @@
+import { ScheduleId } from '../../types/general'
 import {
   ContainerStateFields,
   Container,
@@ -20,22 +21,22 @@ export interface MiningDependencyState {
   error: boolean
 }
 
+export enum MiningActionReason {
+  Schedule = 'schedule',
+  Manual = 'manual',
+}
+
 export interface MiningSession {
   startedAt?: string // UTC timestamp
   finishedAt?: string
   id?: string // uuid (?)
   total?: Record<string, string> // i,e { xtr: 1000 bignumber (?) }
-  pending?: boolean
-  history?: {
-    timestamp?: string // UTC timestamp
-    amount?: string // bignumber (?)
-    chain?: string // ie. xtr, xmr aka coin/currency?
-    type?: string // to enum, ie. mined, earned, received, sent
-  }[]
+  reason: MiningActionReason
+  schedule?: ScheduleId
 }
 
 export interface MiningNodeState {
-  sessions?: MiningSession[]
+  session?: MiningSession
 }
 
 export interface MergedMiningNodeState extends MiningNodeState {
@@ -50,5 +51,6 @@ export interface MiningState {
 }
 
 export interface MiningContainersState extends ContainerStateFields {
+  miningPending?: boolean
   dependsOn: ContainerStateFieldsWithIdAndType[]
 }

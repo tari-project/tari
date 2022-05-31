@@ -14,6 +14,7 @@ import { Wrapper, CheckWrapper } from './styles'
  * @prop {(v: boolean) => void} onChange - when state changes, this callback is called with new value
  * @prop {string} children - label shown next to the tick box
  * @prop {CSSProperties} [style] - allows to extend main wrapper element styles
+ * @prop {boolean} disabled - indicates whether to render in disabled UI state
  *
  * @example
  * <Checkbox
@@ -28,19 +29,29 @@ const Checkbox = ({
   onChange,
   children,
   style,
+  disabled,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
   children: string
   style?: CSSProperties
+  disabled?: boolean
 }) => {
   const theme = useTheme()
 
-  const color = checked ? theme.primary : theme.secondary
+  const color = disabled
+    ? theme.placeholderText
+    : checked
+    ? theme.primary
+    : theme.secondary
 
   return (
-    <Wrapper style={style} onClick={() => onChange(!checked)}>
-      <CheckWrapper checked={checked}>
+    <Wrapper
+      disabled={disabled}
+      style={style}
+      onClick={() => onChange(!checked)}
+    >
+      <CheckWrapper checked={checked} disabled={disabled}>
         {checked && (
           <TickIcon color={theme.accent} width='0.9em' height='0.9em' />
         )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+
 import { config, useSpring } from 'react-spring'
 
 import SvgClose from '../../../styles/Icons/Close'
@@ -30,6 +31,7 @@ import {
 
 const TBotPrompt = ({ open, children, animate, testid }: TBotPromptProps) => {
   const [multipleMessages, setMultipleMessages] = useState(false)
+
   const dispatch = useAppDispatch()
   const promptAnim = useSpring({
     from: {

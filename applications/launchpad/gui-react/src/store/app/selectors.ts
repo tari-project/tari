@@ -1,5 +1,12 @@
+import { createSelector } from '@reduxjs/toolkit'
+
 import { RootState } from '..'
 import themes from '../../styles/themes'
+import { Schedule, MiningNodeType } from '../../types/general'
+import {
+  selectTariSetupRequired,
+  selectMergedSetupRequired,
+} from '../mining/selectors'
 
 export const selectExpertView = ({ app }: RootState) => app.expertView
 
@@ -11,10 +18,50 @@ export const selectThemeConfig = ({ app }: RootState) => {
   return themes[app.theme]
 }
 
-export const selectSchedules = ({ app }: RootState) =>
-  Object.values(app.schedules)
+const selectSchedulesObject = (state: RootState) => state.app.schedules
+export const selectSchedules = createSelector(
+  selectSchedulesObject,
+  schedules =>
+    Object.values(schedules).map(schedule => {
+      const { date, ...rest } = schedule
+
+      return {
+        ...rest,
+        date: date && new Date(date),
+      } as Schedule
+    }),
+)
 
 export const selectSchedule =
   (scheduleId: string) =>
-  ({ app }: RootState) =>
-    app.schedules[scheduleId]
+  ({ app }: RootState) => {
+    const selectedSchedule = app.schedules[scheduleId]
+    if (!selectedSchedule) {
+      return undefined
+    }
+
+    const { date, ...rest } = selectedSchedule
+
+    return {
+      ...rest,
+      date: date && new Date(date),
+    } as Schedule
+  }
+
+export const selectActiveMiningTypes = createSelector(
+  selectTariSetupRequired,
+  selectMergedSetupRequired,
+  (tariSetupRequired, mergedSetupRequired) => {
+    const active = [] as MiningNodeType[]
+
+    if (!tariSetupRequired) {
+      active.push('tari')
+    }
+
+    if (!mergedSetupRequired) {
+      active.push('merged')
+    }
+
+    return active
+  },
+)

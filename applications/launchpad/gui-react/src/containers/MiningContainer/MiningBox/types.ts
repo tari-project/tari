@@ -1,6 +1,5 @@
 import { CSSProperties, ReactNode } from 'react'
 import { TagType } from '../../../components/Tag/types'
-import { Container } from '../../../store/containers/types'
 import {
   MiningContainersState,
   MiningNodeState,
@@ -11,6 +10,7 @@ export enum MiningBoxStatus {
   Custom = 'custom',
   SetupRequired = 'setup_required',
   Paused = 'paused',
+  PausedNoSession = 'paused_no_session',
   Running = 'running',
   Error = 'error',
 }
@@ -18,7 +18,7 @@ export enum MiningBoxStatus {
 export interface NodeBoxStatusConfig {
   title?: string
   tag?: {
-    text: string
+    content: string | ReactNode
     type?: TagType
   }
   boxStyle?: CSSProperties
@@ -29,16 +29,21 @@ export interface NodeBoxStatusConfig {
   }
 }
 
+export interface MiningCoinIconProp {
+  coin: string
+  component: ReactNode
+}
+
 export interface MiningBoxProps {
   node: MiningNodeType
   statuses?: Partial<{
     [key in MiningBoxStatus]: NodeBoxStatusConfig
   }>
   currentStatus?: MiningBoxStatus
-  icons?: ReactNode[]
+  icons?: MiningCoinIconProp[]
   children?: ReactNode
   testId?: string
   nodeState: MiningNodeState
   containersState: MiningContainersState
-  containersToStopOnPause: { id: string; type: Container }[]
+  helpMessages?: string[]
 }

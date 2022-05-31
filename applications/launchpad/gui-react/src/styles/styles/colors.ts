@@ -35,6 +35,7 @@ const colors = {
     warning: '#FFEED3',
     warningText: '#D18A18',
     warningDark: '#D85240',
+    error: '#E7362A',
     actionBackground: '#76A59D',
     borderLight: '#DBDBDD',
   },

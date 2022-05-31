@@ -2,55 +2,15 @@ import { createSlice } from '@reduxjs/toolkit'
 
 import { ThemeType } from '../../styles/themes/types'
 import { Schedule } from '../../types/general'
+import { startOfUTCDay } from '../../utils/Date'
 
 import { AppState, ExpertViewType, ViewType } from './types'
 
-const appInitialState: AppState = {
+export const appInitialState: AppState = {
   expertView: 'hidden',
   view: 'MINING',
   theme: 'light',
-  schedules: {
-    asdf: {
-      id: 'asdf',
-      enabled: true,
-      days: [0, 1, 2],
-      interval: {
-        from: { hours: 0, minutes: 0 },
-        to: { hours: 19, minutes: 35 },
-      },
-      type: ['merged'],
-    },
-    qwer: {
-      id: 'qwer',
-      enabled: false,
-      days: [4, 5],
-      interval: {
-        from: { hours: 12, minutes: 32 },
-        to: { hours: 15, minutes: 34 },
-      },
-      type: ['merged', 'tari'],
-    },
-    wqer1: {
-      id: 'wqer1',
-      enabled: true,
-      date: new Date('2022-05-14'),
-      interval: {
-        from: { hours: 13, minutes: 7 },
-        to: { hours: 23, minutes: 59 },
-      },
-      type: ['merged', 'tari'],
-    },
-    asdf2: {
-      id: 'asdf2',
-      enabled: false,
-      date: new Date('2022-05-14'),
-      interval: {
-        from: { hours: 7, minutes: 0 },
-        to: { hours: 15, minutes: 0 },
-      },
-      type: ['merged', 'tari'],
-    },
-  },
+  schedules: {},
 }
 
 const appSlice = createSlice({
@@ -74,9 +34,19 @@ const appSlice = createSlice({
     },
     updateSchedule(
       state,
-      { payload }: { payload: { scheduleId: string; value: Schedule } },
+      {
+        payload: { scheduleId, value },
+      }: { payload: { scheduleId: string; value: Schedule } },
     ) {
-      console.log('update schedule', payload)
+      const { date, ...rest } = value
+      const newSchedule = {
+        ...state.schedules[scheduleId],
+        ...rest,
+      }
+
+      newSchedule.date = date ? startOfUTCDay(date).toISOString() : undefined
+
+      state.schedules[scheduleId] = newSchedule
     },
   },
 })

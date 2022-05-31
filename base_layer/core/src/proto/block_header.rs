@@ -46,8 +46,8 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
 
         let timestamp = header
             .timestamp
-            .map(timestamp_to_datetime)
-            .ok_or_else(|| "timestamp not provided".to_string())?;
+            .and_then(timestamp_to_datetime)
+            .ok_or_else(|| "timestamp not provided or is negative".to_string())?;
 
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
@@ -74,11 +74,12 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
 
 impl From<BlockHeader> for proto::BlockHeader {
     fn from(header: BlockHeader) -> Self {
+        let timestamp = datetime_to_timestamp(header.timestamp).unwrap();
         Self {
             version: u32::try_from(header.version).unwrap(),
             height: header.height,
             prev_hash: header.prev_hash,
-            timestamp: Some(datetime_to_timestamp(header.timestamp)),
+            timestamp: Some(timestamp),
             output_mr: header.output_mr,
             witness_mr: header.witness_mr,
             kernel_mr: header.kernel_mr,

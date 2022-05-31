@@ -1,23 +1,18 @@
-import { createSelector } from '@reduxjs/toolkit'
 import { RootState } from '../'
 
-import { ContainerStatusDto, Container, SystemEventAction } from './types'
-
-const noContainerData = (type: Container, error?: string) => ({
-  id: undefined,
-  type,
-  status: undefined,
-  pending: false,
-  running: false,
-  error: error,
-})
+import {
+  ContainerStatusDto,
+  Container,
+  SystemEventAction,
+  ContainerStatusDtoWithStats,
+} from './types'
 
 export const selectState = (rootState: RootState) => rootState.containers
 
 export const selectPendingContainers = (rootState: RootState) =>
   rootState.containers.pending
 
-const selectContainerByType = (c: Container) => (r: RootState) => {
+export const selectContainerByType = (c: Container) => (r: RootState) => {
   const containers = Object.entries(r.containers.containers).filter(
     ([, value]) => value.type === c,
   )
@@ -27,13 +22,8 @@ const selectContainerByType = (c: Container) => (r: RootState) => {
   return { containerId, containerStatus }
 }
 
-const selectContainerError = (c: Container) => (r: RootState) => {
-  if (r.containers.errors && r.containers.errors[c]) {
-    return r.containers.errors[c]
-  }
-
-  return
-}
+export const selectContainerStats = (containerId: string) => (r: RootState) =>
+  r.containers.stats[containerId]
 
 type ContainerStatusSelector = (
   c: Container,
@@ -56,11 +46,6 @@ export const selectContainerStatus: ContainerStatusSelector =
         error: typeError,
         running: false,
         pending,
-        stats: {
-          cpu: 0,
-          memory: 0,
-          unsubscribe: () => undefined,
-        },
       }
     }
 
@@ -74,6 +59,32 @@ export const selectContainerStatus: ContainerStatusSelector =
       running: containerStatus.status === SystemEventAction.Start,
       type: containerType,
       error: containerStatus.error || typeError,
+    }
+  }
+
+type ContainerStatusSelectorWithStats = (
+  c: Container,
+) => (r: RootState) => ContainerStatusDtoWithStats
+export const selectContainerStatusWithStats: ContainerStatusSelectorWithStats =
+  containerType => rootState => {
+    const container = selectContainerStatus(containerType)(rootState)
+
+    if (!container.id) {
+      return {
+        ...container,
+        stats: {
+          cpu: 0,
+          memory: 0,
+          unsubscribe: () => undefined,
+        },
+      }
+    }
+
+    const containerStats = selectContainerStats(container.id)(rootState)
+
+    return {
+      ...container,
+      stats: containerStats,
     }
   }
 
@@ -91,29 +102,8 @@ export const selectContainersStatuses = (rootState: RootState) =>
     status: selectContainerStatus(type as Container)(rootState),
   }))
 
-export const selectContainerWithMemo = (c: Container) =>
-  createSelector(
-    (s: RootState) => selectContainerByType(c)(s),
-    selectPendingContainers,
-    (s: RootState) => selectContainerError(c)(s),
-    (container, pendingState, errorState) => {
-      if (!container.containerId || !container.containerStatus) {
-        return noContainerData(c, errorState)
-      }
-
-      const pending =
-        pendingState.includes(c) || pendingState.includes(container.containerId)
-
-      return {
-        id: container.containerId,
-        type: c,
-        status: container.containerStatus.status,
-        pending:
-          pending ||
-          (container.containerStatus.status !== SystemEventAction.Start &&
-            container.containerStatus.status !== SystemEventAction.Destroy),
-        running: container.containerStatus.status === SystemEventAction.Start,
-        error: container.containerStatus.error || errorState,
-      }
-    },
-  )
+export const selectContainersStatusesWithStats = (rootState: RootState) =>
+  Object.values(Container).map(type => ({
+    container: type,
+    status: selectContainerStatusWithStats(type as Container)(rootState),
+  }))

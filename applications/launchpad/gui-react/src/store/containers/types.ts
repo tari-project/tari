@@ -27,16 +27,18 @@ export type ServiceDescriptor = {
   name: string
 }
 
+export type ContainerStats = {
+  cpu: number
+  memory: number
+  unsubscribe: UnlistenFn
+}
+
 export type ContainerStatus = {
   status: SystemEventAction
   timestamp: number
   type?: Container
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
-  stats: {
-    cpu: number
-    memory: number
-    unsubscribe: UnlistenFn
-  }
 }
 
 export type ContainerStatusDto = {
@@ -44,12 +46,12 @@ export type ContainerStatusDto = {
   type: Container
   running: boolean
   pending: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
-  stats: {
-    cpu: number
-    memory: number
-    unsubscribe: UnlistenFn
-  }
+}
+
+export type ContainerStatusDtoWithStats = ContainerStatusDto & {
+  stats: ContainerStats
 }
 
 export type ContainerStateFields = Pick<
@@ -61,9 +63,11 @@ export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
   Pick<ContainerStatusDto, 'id' | 'type'>
 
 export type ServicesState = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   errors: Record<Container, any>
   pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
+  stats: Record<ContainerId, ContainerStats>
 }
 
 export interface StatsEventPayload {

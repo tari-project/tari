@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 
 import { useAppSelector, useAppDispatch } from '../../../../store/hooks'
-import { selectContainersStatuses } from '../../../../store/containers/selectors'
+import { selectContainersStatusesWithStats } from '../../../../store/containers/selectors'
 import { Container, ContainerId } from '../../../../store/containers/types'
 import { actions } from '../../../../store/containers'
 import Alert from '../../../../components/Alert'
@@ -12,7 +12,7 @@ const ContainersContainer = () => {
   const [error, setError] = useState('')
 
   const dispatch = useAppDispatch()
-  const containerStatuses = useAppSelector(selectContainersStatuses)
+  const containerStatuses = useAppSelector(selectContainersStatusesWithStats)
   const containers = useMemo(
     () =>
       containerStatuses.map(({ container, status }) => ({
@@ -30,6 +30,7 @@ const ContainersContainer = () => {
   const start = async (container: Container) => {
     try {
       await dispatch(actions.start(container)).unwrap()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setError(e.toString())
     }
@@ -37,6 +38,7 @@ const ContainersContainer = () => {
   const stop = async (containerId: ContainerId) => {
     try {
       await dispatch(actions.stop(containerId)).unwrap()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setError(e.toString())
     }

@@ -15,8 +15,9 @@ export type Interval = {
   to: Time
 }
 
+export type ScheduleId = string
 export type Schedule = {
-  id: string
+  id: ScheduleId
   enabled: boolean
   days?: number[]
   date?: Date

@@ -9,7 +9,7 @@ export const unlockWallet = createAsyncThunk<
     tari: { balance: number; available: number }
   },
   WalletPassword
->('wallet/unlock', async password => {
+>('wallet/unlock', async _password => {
   await new Promise(resolve => setTimeout(resolve, 2000))
 
   return {

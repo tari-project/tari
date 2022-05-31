@@ -1,5 +1,4 @@
 import styled, { ThemeProvider } from 'styled-components'
-
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import { selectThemeConfig } from './store/app/selectors'
 
@@ -9,6 +8,7 @@ import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
 
 import useMiningSimulator from './useMiningSimulator'
+import useMiningScheduling from './useMiningScheduling'
 import TBotContainer from './containers/TBotContainer'
 
 const AppContainer = styled.div`
@@ -27,6 +27,8 @@ const App = () => {
   useSystemEvents({ dispatch })
 
   useMiningSimulator()
+
+  useMiningScheduling()
 
   return (
     <ThemeProvider theme={themeConfig}>

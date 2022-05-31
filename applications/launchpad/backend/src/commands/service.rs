@@ -33,6 +33,7 @@ use tauri::{AppHandle, Manager, State, Wry};
 use crate::{
     commands::{create_workspace::copy_config_file, AppState},
     docker::{
+        container_state,
         create_workspace_folders,
         helpers::create_password,
         BaseNodeConfig,
@@ -235,9 +236,7 @@ async fn start_service_impl(
     let tag = workspace.config().tag.clone();
     let image = ImageType::try_from(service_name.as_str())?;
     let container_name = workspace.start_service(image, registry, tag, docker.clone()).await?;
-    let state = workspace
-        .container_mut(container_name.as_str())
-        .ok_or(DockerWrapperError::UnexpectedError)?;
+    let state = container_state(container_name.as_str()).ok_or(DockerWrapperError::UnexpectedError)?;
     let id = state.id().to_string();
     let stats_events_name = stats_event_name(state.id());
     let log_events_name = log_event_name(state.name());
@@ -246,14 +245,14 @@ async fn start_service_impl(
         app.clone(),
         log_events_name.as_str(),
         container_name.as_str(),
-        docker.clone(),
+        &docker,
         workspace,
     );
     container_stats(
         app.clone(),
         stats_events_name.as_str(),
         container_name.as_str(),
-        docker.clone(),
+        &docker,
         workspace,
     );
     // Collect data for the return object
@@ -280,7 +279,7 @@ fn container_logs(
     app: AppHandle<Wry>,
     event_name: &str,
     container_name: &str,
-    docker: Docker,
+    docker: &Docker,
     workspace: &mut TariWorkspace,
 ) {
     info!("Setting up log events for {}", container_name);
@@ -312,7 +311,7 @@ fn container_stats(
     app: AppHandle<Wry>,
     event_name: &str,
     container_name: &str,
-    docker: Docker,
+    docker: &Docker,
     workspace: &mut TariWorkspace,
 ) {
     info!("Setting up Resource stats events for {}", container_name);

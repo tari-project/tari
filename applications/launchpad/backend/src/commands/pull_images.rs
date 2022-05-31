@@ -53,15 +53,6 @@ pub static DEFAULT_IMAGES: [ImageType; 8] = [
     ImageType::Frontail,
 ];
 
-/// Provide a list of image names in the Tari "ecosystem"
-#[tauri::command]
-pub fn image_list() -> Vec<String> {
-    DEFAULT_IMAGES
-        .iter()
-        .map(|&image| image.image_name().to_string())
-        .collect()
-}
-
 /// Pulls all the images concurrently using the docker API.
 #[tauri::command]
 pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {

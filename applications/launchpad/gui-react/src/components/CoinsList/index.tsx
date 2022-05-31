@@ -1,8 +1,20 @@
 import Loading from '../Loading'
 import Text from '../Text'
 
-import { CoinsListItem, StyledCoinsList } from './styles'
+import { CoinsListItem, IconWrapper, StyledCoinsList } from './styles'
 import { CoinsListProps } from './types'
+
+const formatAmount = (amount: string) => {
+  if (Number(amount) === 0) {
+    return '00,000'
+  } else {
+    try {
+      return Number(amount).toLocaleString([], { maximumFractionDigits: 2 })
+    } catch (err) {
+      return '-'
+    }
+  }
+}
 
 /**
  * Render the list of coins with amount.
@@ -15,7 +27,7 @@ import { CoinsListProps } from './types'
  * @param {string} [suffixText] - the latter text after the amount and unit
  * @param {boolean} [loading] - is value being loaded
  */
-const CoinsList = ({ coins, color }: CoinsListProps) => {
+const CoinsList = ({ coins, color, showSymbols }: CoinsListProps) => {
   return (
     <StyledCoinsList color={color}>
       {coins.map((c, idx) => (
@@ -25,8 +37,11 @@ const CoinsList = ({ coins, color }: CoinsListProps) => {
               loading={true}
               style={{ marginRight: 12, marginTop: -4 }}
             />
+          ) : c.icon && showSymbols ? (
+            <IconWrapper>{c.icon}</IconWrapper>
           ) : null}
-          <Text type='subheader'>{c.amount}</Text>
+
+          <Text type='subheader'>{formatAmount(c.amount)}</Text>
           <Text
             as='span'
             type='smallMedium'

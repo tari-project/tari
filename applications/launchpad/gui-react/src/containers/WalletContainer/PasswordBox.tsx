@@ -49,6 +49,7 @@ const PasswordBox = ({
           containerStyle={{
             margin: `${theme.spacing()} 0`,
           }}
+          useReveal
         />
         <Button disabled={disableSubmit} loading={pending} type='submit'>
           {t.common.verbs.continue}

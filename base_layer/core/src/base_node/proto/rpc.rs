@@ -24,7 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_utilities::Hashable;
 
-use crate::{blocks::Block, chain_storage::PrunedOutput, proto::base_node as proto};
+use crate::{blocks::Block, chain_storage::PrunedOutput, mempool::FeePerGramStat, proto::base_node as proto};
 
 impl TryFrom<Block> for proto::BlockBodyResponse {
     type Error = String;
@@ -52,6 +52,25 @@ impl From<PrunedOutput> for proto::SyncUtxo {
             PrunedOutput::NotPruned { output } => proto::SyncUtxo {
                 utxo: Some(proto::sync_utxo::Utxo::Output(output.into())),
             },
+        }
+    }
+}
+
+impl From<Vec<FeePerGramStat>> for proto::GetMempoolFeePerGramStatsResponse {
+    fn from(stats: Vec<FeePerGramStat>) -> Self {
+        Self {
+            stats: stats.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<FeePerGramStat> for proto::MempoolFeePerGramStat {
+    fn from(stat: FeePerGramStat) -> Self {
+        Self {
+            order: stat.order,
+            min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
+            avg_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
+            max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
         }
     }
 }

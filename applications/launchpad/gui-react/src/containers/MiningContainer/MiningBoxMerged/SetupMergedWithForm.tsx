@@ -20,8 +20,10 @@ import { useTheme } from 'styled-components'
 
 const SetupMergedWithForm = ({
   mergedSetupRequired,
+  changeTag,
 }: {
   mergedSetupRequired: MergedMiningSetupRequired
+  changeTag: () => void
 }) => {
   const theme = useTheme()
   const dispatch = useAppDispatch()
@@ -47,7 +49,10 @@ const SetupMergedWithForm = ({
       {!revealForm ? (
         <Button
           variant='primary'
-          onClick={() => setRevealForm(true)}
+          onClick={() => {
+            setRevealForm(true)
+            changeTag()
+          }}
           disabled={
             mergedSetupRequired ===
             MergedMiningSetupRequired.MissingWalletAddress
@@ -69,6 +74,7 @@ const SetupMergedWithForm = ({
                 <Input
                   placeholder={t.mining.setup.addressPlaceholder}
                   testId='address-input'
+                  autoFocus
                   {...field}
                 />
               )}

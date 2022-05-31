@@ -12,6 +12,7 @@ import {
   Container,
   ServiceDescriptor,
 } from './types'
+import { selectContainerByType } from './selectors'
 
 export const start = createAsyncThunk<
   { id: ContainerId; unsubscribeStats: UnlistenFn },
@@ -52,8 +53,9 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
     try {
       const rootState = thunkApi.getState()
       const containerStatus = rootState.containers.containers[containerId]
+      const containerStats = rootState.containers.stats[containerId]
 
-      containerStatus.stats.unsubscribe()
+      containerStats.unsubscribe()
       await invoke('stop_service', {
         serviceName: (containerStatus.type || '').toString(),
       })
@@ -62,3 +64,20 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
     }
   },
 )
+
+export const stopByType = createAsyncThunk<
+  void,
+  Container,
+  { state: RootState }
+>('containers/stopByType', async (containerType, thunkApi) => {
+  try {
+    const rootState = thunkApi.getState()
+    const container = selectContainerByType(containerType)(rootState)
+
+    if (container && container.containerId) {
+      await thunkApi.dispatch(stop(container.containerId))
+    }
+  } catch (error) {
+    return thunkApi.rejectWithValue(error)
+  }
+})

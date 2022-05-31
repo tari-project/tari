@@ -243,6 +243,8 @@ pub fn create_genesis_block_with_utxos(
 }
 
 /// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`.
+// This function is used, unclear why clippy says it isn't.
+#[allow(dead_code)]
 pub fn chain_block(
     prev_block: &Block,
     transactions: Vec<Transaction>,

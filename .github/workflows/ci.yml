@@ -6,7 +6,7 @@ on:
       - ci-*
   pull_request:
     branches-ignore:
-      - 'launchpad_such_wow' # TODO: Remove this filter once the branch is merged into development
+      - "launchpad**" # TODO: Remove this filter once the branch is merged into development
     types:
       - opened
       - reopened
@@ -77,6 +77,10 @@ jobs:
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v1
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -92,6 +96,13 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
+      - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
+        run: |
+          cd applications/launchpad/gui-react
+          yarn install
+          yarn lint
+          yarn build
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:
@@ -116,6 +127,10 @@ jobs:
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v1
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -131,6 +146,14 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
+
+      - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
+        run: |
+          cd applications/launchpad/gui-react
+          yarn install
+          yarn lint
+          yarn build
       - name: rustup show
         run: |
           rustup show
@@ -150,11 +173,18 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: build launchpad_v2
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+      - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
         run: |
-          cd applications/launchpad_v2
-          npm ci
-          npm run build
+          cd applications/launchpad/gui-react
+          yarn install
+          yarn lint:ci
+          yarn test:ci
+          yarn build
       - name: build collectibles web-app
         run: |
           cd applications/tari_collectibles/web-app
@@ -189,6 +219,10 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
       - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
@@ -205,6 +239,13 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
+      - name: build gui-react
+        # Replace 'yarn build' with 'yarn tauri build' to build both, fronted (react) and backend
+        run: |
+          cd applications/launchpad/gui-react
+          yarn install
+          yarn lint
+          yarn build
       - name: test key manager wasm
         run: |
           npm install -g wasm-pack

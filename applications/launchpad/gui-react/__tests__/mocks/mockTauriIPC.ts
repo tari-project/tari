@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import { mockIPC } from '@tauri-apps/api/mocks'
 
 import { ServiceDescriptor } from '../../src/store/containers/types'

@@ -4,6 +4,7 @@ type ContainerDto = {
   id: ContainerId
   container: Container
   cpu: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
   memory: number
   pending: boolean

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 
 import Tabs from '../../../../../components/Tabs'
 import TabContent from '../../../../../components/TabContent'
@@ -8,33 +8,48 @@ import { setPage } from '../../../../../store/app'
 import { ViewType } from '../../../../../store/app/types'
 import { selectView } from '../../../../../store/app/selectors'
 import {
+  selectNetwork,
   selectPending as selectBaseNodePending,
   selectRunning as selectBaseNodeRunning,
 } from '../../../../../store/baseNode/selectors'
 import { selectState as selectWalletState } from '../../../../../store/wallet/selectors'
-import { WalletState } from '../../../../../store/wallet/types'
-
 import t from '../../../../../locales'
+import {
+  selectIsMiningPending,
+  selectIsMiningRunning,
+} from '../../../../../store/mining/selectors'
+import { useAppSelector } from '../../../../../store/hooks'
 
 /**
  * Helper composing all dashboard tabs.
  */
 const composeNodeTabs = ({
-  miningNodeState,
+  miningState,
   baseNodeState,
   walletState,
 }: {
-  miningNodeState?: unknown
-  baseNodeState: { pending: boolean; running: boolean }
-  walletState?: WalletState
+  miningState: { pending: boolean; running: boolean }
+  baseNodeState: { pending: boolean; running: boolean; network?: string }
+  walletState: { pending: boolean; running: boolean }
 }) => {
-  const miningContent = <TabContent text={t.common.nouns.mining} />
+  const miningContent = (
+    <TabContent
+      text={t.common.nouns.mining}
+      pending={miningState.pending}
+      running={miningState.running}
+    />
+  )
 
   const baseNodeContent = (
     <TabContent
       text={t.common.nouns.baseNode}
-      pending={baseNodeState?.pending}
-      running={baseNodeState?.running}
+      pending={baseNodeState.pending}
+      running={baseNodeState.running}
+      tagSubText={
+        baseNodeState.running && baseNodeState.network
+          ? baseNodeState.network
+          : undefined
+      }
     />
   )
 
@@ -68,19 +83,35 @@ const composeNodeTabs = ({
 const DashboardTabs = () => {
   const dispatch = useDispatch()
 
-  const currentPage = useSelector(selectView)
-  const baseNodePending = useSelector(selectBaseNodePending)
-  const baseNodeRunning = useSelector(selectBaseNodeRunning)
-  const walletState = useSelector(selectWalletState)
+  const currentPage = useAppSelector(selectView)
+  const baseNodePending = useAppSelector(selectBaseNodePending)
+  const baseNodeRunning = useAppSelector(selectBaseNodeRunning)
+  const baseNodeNetwork = useAppSelector(selectNetwork)
+  const walletState = useAppSelector(selectWalletState)
+  const miningRunning = useAppSelector(selectIsMiningRunning)
+  const miningPending = useAppSelector(selectIsMiningPending)
 
   const tabs = useMemo(
     () =>
       composeNodeTabs({
-        miningNodeState: undefined,
-        baseNodeState: { pending: baseNodePending, running: baseNodeRunning },
-        walletState,
+        miningState: { pending: miningPending, running: miningRunning },
+        baseNodeState: {
+          pending: baseNodePending,
+          running: baseNodeRunning,
+          network: baseNodeNetwork,
+        },
+        walletState: {
+          pending: walletState.pending,
+          running: walletState.running,
+        },
       }),
-    [walletState, baseNodePending],
+    [
+      walletState,
+      baseNodePending,
+      miningPending,
+      miningRunning,
+      baseNodeNetwork,
+    ],
   )
 
   const setPageTab = (tabId: string) => {
