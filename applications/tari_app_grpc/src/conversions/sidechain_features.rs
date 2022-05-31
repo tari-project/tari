@@ -29,6 +29,7 @@ use tari_core::transactions::transaction_components::{
     CommitteeMembers,
     ConstitutionChangeFlags,
     ConstitutionChangeRules,
+    ContractAcceptance,
     ContractAcceptanceRequirements,
     ContractConstitution,
     ContractDefinition,
@@ -49,6 +50,7 @@ impl From<SideChainFeatures> for grpc::SideChainFeatures {
             contract_id: value.contract_id.to_vec(),
             definition: value.definition.map(Into::into),
             constitution: value.constitution.map(Into::into),
+            acceptance: value.acceptance.map(Into::into),
         }
     }
 }
@@ -59,11 +61,13 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
     fn try_from(features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
         let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
         let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
+        let acceptance = features.acceptance.map(ContractAcceptance::try_from).transpose()?;
 
         Ok(Self {
             contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
             definition,
             constitution,
+            acceptance,
         })
     }
 }
@@ -393,5 +397,36 @@ impl TryFrom<grpc::CommitteeMembers> for CommitteeMembers {
 
         let members = CommitteeMembers::try_from(members).map_err(|e| e.to_string())?;
         Ok(members)
+    }
+}
+
+//---------------------------------- ContractAcceptance --------------------------------------------//
+
+impl From<ContractAcceptance> for grpc::ContractAcceptance {
+    fn from(value: ContractAcceptance) -> Self {
+        Self {
+            validator_node_public_key: value.validator_node_public_key.as_bytes().to_vec(),
+            signature: Some(value.signature.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractAcceptance> for ContractAcceptance {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractAcceptance) -> Result<Self, Self::Error> {
+        let validator_node_public_key =
+            PublicKey::from_bytes(value.validator_node_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "signaturecould not be converted".to_string())?;
+
+        Ok(Self {
+            validator_node_public_key,
+            signature,
+        })
     }
 }

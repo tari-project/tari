@@ -455,6 +455,8 @@ impl Display for OutputFeatures {
 mod test {
     use std::{convert::TryInto, io::ErrorKind, iter};
 
+    use tari_common_types::types::Signature;
+
     use super::*;
     use crate::{
         consensus::check_consensus_encoding_correctness,
@@ -469,6 +471,7 @@ mod test {
                 SideChainConsensus,
             },
             vec_into_fixed_string,
+            ContractAcceptance,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
@@ -539,6 +542,10 @@ mod test {
                             },
                         ],
                     },
+                }),
+                acceptance: Some(ContractAcceptance {
+                    validator_node_public_key: PublicKey::default(),
+                    signature: Signature::default(),
                 }),
             }),
             // Deprecated
