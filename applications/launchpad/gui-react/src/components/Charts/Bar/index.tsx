@@ -43,7 +43,7 @@ const BarChart = ({
           grid: { line: { strokeWidth: 0.5 } },
         }}
         margin={{
-          top: 50,
+          top: 15,
           bottom: 50,
           left: 30,
         }}

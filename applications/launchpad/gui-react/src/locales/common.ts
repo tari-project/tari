@@ -25,6 +25,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     cpu: 'CPU',
     memory: 'Memory',
     error: 'Error',
+    today: 'Today',
   },
   weekdayCapitals: {
     sunday: 'S',

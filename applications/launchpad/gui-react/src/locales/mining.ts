@@ -51,6 +51,18 @@ const translations = {
       /* eslint-disable-next-line quotes */
       "I guess you need to correct the selected date because we can't mine in the past",
   },
+  statistics: {
+    title: 'Mined coins',
+    intervals: {
+      all: 'All',
+      monthly: 'Monthly',
+      yearly: 'Yearly',
+    },
+    deltas: {
+      yearly: 'vs last year',
+      monthly: 'vs last month',
+    } as any,
+  },
 }
 
 export default translations
