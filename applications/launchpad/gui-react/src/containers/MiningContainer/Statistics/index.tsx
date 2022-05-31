@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from 'styled-components'
 
 import Box from '../../../components/Box'
@@ -108,7 +108,7 @@ const Statistics = ({
   const theme = useTheme()
 
   return (
-    <Box style={{ width: 866 }}>
+    <Box style={{ width: 866, maxWidth: '100%' }}>
       <div
         style={{
           display: 'flex',
@@ -124,6 +124,8 @@ const Statistics = ({
       <div
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
+          rowGap: theme.spacing(),
           justifyContent: 'space-between',
           marginBottom: theme.spacing(),
         }}
@@ -154,7 +156,13 @@ const Statistics = ({
   )
 }
 
-const StatisticsContainer = ({ onClose }: { onClose: () => void }) => {
+const StatisticsContainer = ({
+  onClose,
+  onReady,
+}: {
+  onClose: () => void
+  onReady?: () => void
+}) => {
   const data = useMemo(
     () =>
       [...Array(31).keys()].map(day => ({
@@ -166,6 +174,9 @@ const StatisticsContainer = ({ onClose }: { onClose: () => void }) => {
   )
   const [interval, setInterval] = useState('monthly')
   const [intervalToShow, setIntervalToShow] = useState(new Date())
+  useEffect(() => {
+    onReady && onReady()
+  }, [])
 
   const accountData = [
     {
@@ -206,15 +217,17 @@ const StatisticsContainer = ({ onClose }: { onClose: () => void }) => {
 const StatisticsWrapper = ({
   open,
   onClose,
+  onReady,
 }: {
   open: boolean
   onClose: () => void
+  onReady?: () => void
 }) => {
   if (!open) {
     return null
   }
 
-  return <StatisticsContainer onClose={onClose} />
+  return <StatisticsContainer onClose={onClose} onReady={onReady} />
 }
 
 export default StatisticsWrapper

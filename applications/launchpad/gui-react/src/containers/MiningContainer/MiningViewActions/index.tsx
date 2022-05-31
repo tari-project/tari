@@ -12,10 +12,10 @@ import SvgSetting2 from '../../../styles/Icons/Setting2'
  */
 const MiningViewActions = ({
   openScheduling,
-  openStatistics,
+  toggleStatistics,
 }: {
   openScheduling: () => void
-  openStatistics: () => void
+  toggleStatistics: () => void
 }) => {
   const canAnyMiningBeRun = useSelector(selectCanAnyMiningNodeRun)
 
@@ -44,7 +44,7 @@ const MiningViewActions = ({
         autosizeIcons={false}
         variant='text'
         leftIcon={<SvgChart width='1.5rem' height='1.5rem' />}
-        onClick={openStatistics}
+        onClick={toggleStatistics}
         style={{ paddingLeft: 0 }}
       >
         {t.mining.viewActions.statistics}

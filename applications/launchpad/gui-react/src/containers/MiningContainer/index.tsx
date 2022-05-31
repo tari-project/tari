@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 
 import Switch from '../../components/Switch'
 
@@ -26,7 +26,8 @@ const MiningContainer = () => {
   const dispatch = useAppDispatch()
   const currentTheme = useAppSelector(selectTheme)
   const [schedulingOpen, setSchedulingOpen] = useState(false)
-  const [statisticsOpen, setStatisticsOpen] = useState(true)
+  const [statisticsOpen, setStatisticsOpen] = useState(false)
+  const anchorElRef = useRef<HTMLAnchorElement>(null)
 
   return (
     <div>
@@ -39,7 +40,9 @@ const MiningContainer = () => {
 
       <MiningViewActions
         openScheduling={() => setSchedulingOpen(true)}
-        openStatistics={() => setStatisticsOpen(true)}
+        toggleStatistics={() => {
+          setStatisticsOpen(o => !o)
+        }}
       />
       <Scheduling
         open={schedulingOpen}
@@ -48,7 +51,14 @@ const MiningContainer = () => {
       <Statistics
         open={statisticsOpen}
         onClose={() => setStatisticsOpen(false)}
+        onReady={() => {
+          anchorElRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'end',
+          })
+        }}
       />
+      <a id='anchorForScroll' ref={anchorElRef} />
 
       <div style={{ marginTop: 80 }}>
         <button onClick={() => dispatch(setTheme('light'))}>
