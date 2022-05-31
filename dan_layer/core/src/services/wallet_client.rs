@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::{PublicKey, FixedHash, Signature};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::types::CommsPublicKey;
 
 use crate::{models::StateRoot, DigitalAssetError};

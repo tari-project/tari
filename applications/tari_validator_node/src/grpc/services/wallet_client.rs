@@ -23,8 +23,11 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use tari_app_grpc::{tari_rpc as grpc, tari_rpc::{CreateFollowOnAssetCheckpointRequest, SubmitContractAcceptanceRequest}};
-use tari_common_types::types::{PublicKey, FixedHash, Signature};
+use tari_app_grpc::{
+    tari_rpc as grpc,
+    tari_rpc::{CreateFollowOnAssetCheckpointRequest, SubmitContractAcceptanceRequest},
+};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{models::StateRoot, services::WalletClient, DigitalAssetError};

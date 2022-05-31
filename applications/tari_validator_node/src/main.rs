@@ -63,7 +63,10 @@ use crate::{
     config::{ApplicationConfig, ValidatorNodeConfig},
     dan_node::DanNode,
     default_service_specification::DefaultServiceSpecification,
-    grpc::{services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient}, validator_node_grpc_server::ValidatorNodeGrpcServer},
+    grpc::{
+        services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
+        validator_node_grpc_server::ValidatorNodeGrpcServer,
+    },
     p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
 };
 

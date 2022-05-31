@@ -37,7 +37,7 @@ use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_utilities::ByteArray;
 
-use super::{ContractDefinition, OutputFeaturesVersion, SideChainFeaturesBuilder, ContractAcceptance};
+use super::{ContractAcceptance, ContractDefinition, OutputFeaturesVersion, SideChainFeaturesBuilder};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
     transactions::{
@@ -294,7 +294,11 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_contract_acceptance(contract_id: FixedHash, validator_node_public_key: PublicKey, signature: Signature) -> OutputFeatures {
+    pub fn for_contract_acceptance(
+        contract_id: FixedHash,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
+    ) -> OutputFeatures {
         Self {
             flags: OutputFlags::CONTRACT_ACCEPT,
             sidechain_features: Some(

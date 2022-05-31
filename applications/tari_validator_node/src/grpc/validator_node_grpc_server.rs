@@ -19,11 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{convert::{TryInto, TryFrom}, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
 use futures::channel::mpsc;
 use tari_app_grpc::tari_rpc::{self as rpc, TransactionOutput};
-use tari_common_types::types::{PublicKey, Signature, FixedHash};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
@@ -66,6 +69,8 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
 impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_server::ValidatorNode
     for ValidatorNodeGrpcServer<TServiceSpecification>
 {
+    type GetCommitteeRequestsStream = mpsc::Receiver<Result<TransactionOutput, tonic::Status>>;
+
     async fn publish_contract_acceptance(
         &self,
         request: tonic::Request<rpc::PublishContractAcceptanceRequest>,
@@ -76,20 +81,20 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         let validator_node_public_key = self.node_identity.public_key();
         let signature = Signature::default();
 
-        match wallet_client.submit_contract_acceptance(
-            &contract_id,
-            validator_node_public_key,
-            &signature,
-        ).await {
-            Ok(tx_id) => Ok(Response::new(rpc::PublishContractAcceptanceResponse { tx_id, status: "Accepted".to_string() })),
+        match wallet_client
+            .submit_contract_acceptance(&contract_id, validator_node_public_key, &signature)
+            .await
+        {
+            Ok(tx_id) => Ok(Response::new(rpc::PublishContractAcceptanceResponse {
+                tx_id,
+                status: "Accepted".to_string(),
+            })),
             Err(_) => Ok(Response::new(rpc::PublishContractAcceptanceResponse {
                 status: "Errored".to_string(),
                 tx_id: 0_u64,
             })),
         }
     }
-
-    type GetCommitteeRequestsStream = mpsc::Receiver<Result<TransactionOutput, tonic::Status>>;
 
     async fn get_committee_requests(
         &self,
