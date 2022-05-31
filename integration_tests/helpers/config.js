@@ -171,6 +171,9 @@ function createEnv(opts) {
 
     [`miner.base_node_addr`]: baseNodeGrpcAddress,
     [`miner.wallet_addr`]: walletGrpcAddress,
+
+    [`validator_node.base_node_grpc_address`]: baseNodeGrpcAddress,
+    [`validator_node.wallet_grpc_address`]: walletGrpcAddress,
   };
   let finalEnv = { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
   return finalEnv;

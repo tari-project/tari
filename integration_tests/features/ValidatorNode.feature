@@ -19,3 +19,11 @@ Feature: Validator Node
         And I mine 3 blocks
         And I create 40 NFTs
         And I mine 3 blocks
+
+    Scenario: Publish contract acceptance
+        Given I have a seed node NODE1
+        And I have wallet WALLET1 connected to all seed nodes
+        When I mine 9 blocks using wallet WALLET1 on NODE1
+        Then I wait for wallet WALLET1 to have at least 1000000 uT
+        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
+        Then I publish a contract acceptance transaction

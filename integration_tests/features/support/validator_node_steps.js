@@ -23,6 +23,7 @@
 const { When, Given, Then } = require("@cucumber/cucumber");
 const { expect } = require("chai");
 const { sleep } = require("../../helpers/util");
+const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 
 When(
   "I register an NFT asset with committee of {int}",
@@ -118,5 +119,46 @@ Then(
       await sleep(5000);
     }
     expect(success).to.be.true;
+  }
+);
+
+Given(
+  "I have a validator node {word} connected to base node {word} and wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (vn_name, base_node_name, wallet_name) {
+    const baseNode = this.getNode(base_node_name);
+    const walletNode = this.getWallet(wallet_name)
+
+    const baseNodeGrpcAddress = `127.0.0.1:${baseNode.getGrpcPort()}`;
+    const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
+
+    console.log({baseNodeGrpcAddress});
+    console.log({walletGrpcAddress});
+
+    const options = {};
+    const danNode = new ValidatorNodeProcess(
+      vn_name,
+      false,
+      options,
+      this.logFilePathBaseNode,
+      undefined,
+      baseNodeGrpcAddress,
+      walletGrpcAddress
+    );
+    await danNode.init();
+    await this.addDanNode(vn_name, danNode);
+  }
+);
+
+Then(
+  /I publish a contract acceptance transaction/,
+  { timeout: 20 * 1000 },
+  async function () {
+    let dan_node = this.getNode("DanNode0"); // Only the first node has GRPC
+    let grpc_dan_node = await dan_node.createGrpcClient();
+    let response = await grpc_dan_node.publishContractAcceptance(
+      "f665775dbbf4e428e5c8c2bb1c5e7d2e508e93c83250c495ac617a0a1fb2d76d" // contract_id
+    );
+    expect(response.status).to.be.equal("Accepted");
   }
 );

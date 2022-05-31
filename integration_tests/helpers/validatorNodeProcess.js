@@ -13,7 +13,7 @@ const JSON5 = require("json5");
 
 let outputProcess;
 class ValidatorNodeProcess {
-  constructor(name, excludeTestEnvars, options, logFilePath, nodeFile) {
+  constructor(name, excludeTestEnvars, options, logFilePath, nodeFile, baseNodeAddress, walletAddress) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
@@ -24,6 +24,8 @@ class ValidatorNodeProcess {
       options || {}
     );
     this.excludeTestEnvars = excludeTestEnvars;
+    this.baseNodeAddress = baseNodeAddress;
+    this.walletAddress = walletAddress;
   }
 
   async init() {
@@ -47,7 +49,7 @@ class ValidatorNodeProcess {
         break;
       }
     } while (fs.existsSync(this.baseDir));
-    const args = ["--base-path", ".", "--init"];
+    const args = ["--base-path", "."];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
@@ -135,8 +137,16 @@ class ValidatorNodeProcess {
           options: this.options,
           peerSeeds: this.peerSeeds,
           forceSyncPeers: this.forceSyncPeers,
+          walletGrpcAddress: this.walletAddress,
+          baseNodeGrpcAddress: this.baseNodeAddress,
         });
       }
+      
+      args.push("-p");
+      args.push(`validator_node.base_node_grpc_address=${this.baseNodeAddress}`);
+      args.push("-p");
+      args.push(`validator_node.wallet_grpc_address=${this.walletAddress}`);
+
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,

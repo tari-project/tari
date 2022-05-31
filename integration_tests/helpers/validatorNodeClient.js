@@ -61,6 +61,15 @@ class ValidatorNodeClient {
       id,
     });
   }
+
+  publishContractAcceptance(contract_id) {
+    console.log(
+      `Publishin contract acceptance for contract_id = ${contract_id} `
+    );
+    return this.client.publishContractAcceptance().sendMessage({
+      contract_id: convertHexStringToVec(contract_id),
+    });
+  }
 }
 
 module.exports = ValidatorNodeClient;
