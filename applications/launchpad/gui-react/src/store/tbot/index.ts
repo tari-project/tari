@@ -11,7 +11,12 @@ const tbotSlice = createSlice({
   initialState,
   reducers: {
     push(state, action) {
-      state.messageQueue = [...state.messageQueue, ...action.payload]
+      action.payload.map((str: string) => {
+        // prevent duplicate messages
+        if (!state.messageQueue.includes(str)) {
+          state.messageQueue = [...state.messageQueue, str]
+        }
+      })
     },
     close(state) {
       state.messageQueue = []

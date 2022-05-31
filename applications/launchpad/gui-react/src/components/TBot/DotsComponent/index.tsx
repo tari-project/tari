@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import lottie from 'lottie-web'
 import dotsChatLottie from '../../../styles/lotties/tbot-dots-animation.json'
-import { StyledDotsContainer } from './styles'
+import { StyledContainer, StyledDots } from './styles'
 
 /**
  * @name ChatDots
@@ -23,7 +23,11 @@ const ChatDots = () => {
     return () => lottie.destroy()
   }, [animation])
 
-  return <StyledDotsContainer ref={animation} />
+  return (
+    <StyledContainer>
+      <StyledDots ref={animation} />
+    </StyledContainer>
+  )
 }
 
 export default ChatDots

@@ -1,4 +1,4 @@
-import { useSpring, config } from 'react-spring'
+import { useSpring } from 'react-spring'
 import SvgTBotBase from '../../styles/Icons/TBotBase'
 import SvgTBotHearts from '../../styles/Icons/TBotHearts'
 import SvgTBotHeartsMonero from '../../styles/Icons/TBotHeartsMonero'
@@ -44,7 +44,7 @@ const TBot = ({ type = 'base', style, animate }: TBotProps) => {
   const scaleAnim = useSpring({
     from: { transform: 'scale(1)' },
     to: {
-      transform: animate ? 'scale(1.2)' : 'scale(1)',
+      transform: animate ? 'scale(1.5)' : 'scale(1)',
       transition: 'all ease-in-out',
     },
     config: {

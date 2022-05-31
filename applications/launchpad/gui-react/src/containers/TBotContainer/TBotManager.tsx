@@ -1,5 +1,6 @@
 /* eslint-disable react/jsx-key */
 import { useState, useEffect, useMemo, ReactNode } from 'react'
+import { useSpring } from 'react-spring'
 import TBotPrompt from '../../components/TBot/TBotPrompt'
 import ChatDots from '../../components/TBot/DotsComponent'
 import { HelpMessagesMap } from '../../config/helpMessagesConfig'
@@ -14,6 +15,30 @@ import { StyledMessage } from './styles'
 const TBotManager = ({ messages }: { messages: string[] }) => {
   const [messageLoading, setMessageLoading] = useState<boolean>(false)
   const [count, setCount] = useState(0)
+  const [tbotTickle, setTbotTickle] = useState<boolean>(false)
+
+  const testAnim = useSpring({
+    from: {
+      marginTop: '-300px',
+      opacity: 0,
+    },
+    to: [{ marginTop: '0px' }, { opacity: 1 }],
+    config: { duration: 2000 },
+  })
+
+  const renderedMessages = useMemo(() => {
+    return messages.slice(0, count).map(msg => {
+      if (HelpMessagesMap[msg] === undefined) {
+        return <StyledMessage style={testAnim}>{msg}</StyledMessage>
+      }
+      const Message = HelpMessagesMap[msg]
+      return (
+        <StyledMessage style={testAnim}>
+          <Message />
+        </StyledMessage>
+      )
+    })
+  }, [messages, count]) as ReactNode
 
   useEffect(() => {
     let counter = count
@@ -30,7 +55,7 @@ const TBotManager = ({ messages }: { messages: string[] }) => {
           counter++
         }, 3000)
       }
-    }, 6000)
+    }, 4000)
     return () => {
       clearInterval(interval)
       clearTimeout(timeout)
@@ -39,22 +64,16 @@ const TBotManager = ({ messages }: { messages: string[] }) => {
     }
   }, [messages])
 
-  const renderedMessages = useMemo(() => {
-    return messages.slice(0, count).map(msg => {
-      if (HelpMessagesMap[msg] === undefined) {
-        return <StyledMessage>{msg}</StyledMessage>
-      }
-      const Message = HelpMessagesMap[msg]
-      return (
-        <StyledMessage>
-          <Message />
-        </StyledMessage>
-      )
-    })
-  }, [messages, count]) as ReactNode
+  // trigger TBot pop animation for each new message
+  useEffect(() => {
+    setTbotTickle(true)
+    setTimeout(() => {
+      setTbotTickle(false)
+    }, 100)
+  }, [count])
 
   return (
-    <TBotPrompt open={messages.length > 0}>
+    <TBotPrompt open={messages.length > 0} animate={tbotTickle}>
       {renderedMessages}
       {messageLoading && <ChatDots />}
     </TBotPrompt>

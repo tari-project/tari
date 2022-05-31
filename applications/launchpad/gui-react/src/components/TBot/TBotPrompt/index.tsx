@@ -28,7 +28,7 @@ import {
  * @prop {string} [testid] - for testing
  */
 
-const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
+const TBotPrompt = ({ open, children, animate, testid }: TBotPromptProps) => {
   const [multipleMessages, setMultipleMessages] = useState(false)
   const dispatch = useAppDispatch()
   const promptAnim = useSpring({
@@ -80,7 +80,7 @@ const TBotPrompt = ({ open, children, testid }: TBotPromptProps) => {
         </ContentContainer>
       </ContentRow>
       <TBotContainer>
-        <TBot />
+        <TBot animate={animate} />
       </TBotContainer>
     </PromptContainer>
   )

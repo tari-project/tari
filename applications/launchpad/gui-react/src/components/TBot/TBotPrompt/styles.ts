@@ -45,7 +45,7 @@ export const FadeOutSection = styled.div`
   border-radius: ${({ theme }) => theme.borderRadius(2)};
 `
 
-export const MessageContainer = styled(animated.div)<{ multi?: boolean }>`
+export const MessageContainer = styled.div<{ multi?: boolean }>`
   /* height: ${({ multi }) => (multi ? 500 : 300)}; */
   height: 500px;
   min-height: 300px;

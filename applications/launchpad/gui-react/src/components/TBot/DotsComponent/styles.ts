@@ -1,7 +1,13 @@
 import styled from 'styled-components'
 import { animated } from 'react-spring'
 
-export const StyledDotsContainer = styled(animated.div)`
-  height: 100px;
-  width: 200px;
+export const StyledContainer = styled.div`
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+`
+
+export const StyledDots = styled(animated.div)`
+  height: 40px;
+  width: 100px;
 `
