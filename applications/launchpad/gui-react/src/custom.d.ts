@@ -25,6 +25,8 @@ declare module 'styled-components' {
     backgroundImage: string
     accent: string
     accentDark: string
+    accentMonero: string
+    accentMerged: string
     accentMerged: string
     disabledText: string
     tariGradient: string
@@ -67,6 +69,7 @@ declare module 'styled-components' {
       accent: string
       accentSecondary: string
       accentDark: string
+      accentMonero: string
       accentMerged: string
       disabledText: string
       tariGradient: string
