@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTheme } from 'styled-components'
 
 import Box from '../../../components/Box'
+import CoinsList from '../../../components/CoinsList'
 import ButtonSwitch from '../../../components/ButtonSwitch'
 import Text from '../../../components/Text'
 import BarChart from '../../../components/Charts/Bar'
@@ -41,9 +42,11 @@ const Account = ({ data }: { data: AccountData }) => {
 
         return (
           <div key={balance.currency}>
-            <Text>
-              {balance.value} {balance.currency}
-            </Text>
+            <CoinsList
+              coins={[
+                { amount: balance.value.toString(), unit: balance.currency },
+              ]}
+            />
             <div style={{ display: 'flex', alignItems: 'center' }}>
               {delta.percentage <= 0 && (
                 <ArrowDown
