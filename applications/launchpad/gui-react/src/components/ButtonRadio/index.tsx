@@ -21,6 +21,10 @@ const ButtonRadio = ({
 }) => {
   const theme = useTheme()
 
+  if (options.length === 0) {
+    return null
+  }
+
   return (
     <div style={{ display: 'flex', columnGap: theme.spacing(0.5) }}>
       {options.map(({ option, label }) => (
