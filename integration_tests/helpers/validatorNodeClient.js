@@ -19,7 +19,7 @@ class ValidatorNodeClient {
   async connect(port) {
     const PROTO_PATH =
       __dirname +
-      "/../../applications/tari_validator_node/proto/validator_node.proto";
+      "/../../applications/tari_app_grpc/proto/validator_node.proto";
     const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
       keepCase: true,
       longs: String,
@@ -28,7 +28,7 @@ class ValidatorNodeClient {
       oneofs: true,
     });
     const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
-    const tari = protoDescriptor.tari.validator_node.rpc;
+    const tari = protoDescriptor.tari.rpc;
     this.client = await tryConnect(
       () =>
         new tari.ValidatorNode(
@@ -64,7 +64,7 @@ class ValidatorNodeClient {
 
   publishContractAcceptance(contract_id) {
     console.log(
-      `Publishin contract acceptance for contract_id = ${contract_id} `
+      `Publishing contract acceptance for contract_id = ${contract_id} `
     );
     return this.client.publishContractAcceptance().sendMessage({
       contract_id: convertHexStringToVec(contract_id),

@@ -30,7 +30,7 @@ class ValidatorNodeProcess {
 
   async init() {
     this.port = await getFreePort();
-    this.grpcPort = 18080; // Currently it's constant
+    this.grpcPort = await getFreePort();
     this.name = `ValidatorNode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
 
@@ -54,7 +54,8 @@ class ValidatorNodeProcess {
       args.push("--log-config", this.logFilePath);
     }
 
-    await this.run(await this.compile(), args);
+    await this.compile();
+    // await this.run(cmd, args);
   }
 
   async compile() {
@@ -141,11 +142,17 @@ class ValidatorNodeProcess {
           baseNodeGrpcAddress: this.baseNodeAddress,
         });
       }
+      if (this.baseNodeAddress) {
+        args.push("-p");
+        args.push(`validator_node.base_node_grpc_address=${this.baseNodeAddress}`);
+      }
+      if (this.walletAddress) {
+        args.push("-p");
+        args.push(`validator_node.wallet_grpc_address=${this.walletAddress}`);
+      }
       
       args.push("-p");
-      args.push(`validator_node.base_node_grpc_address=${this.baseNodeAddress}`);
-      args.push("-p");
-      args.push(`validator_node.wallet_grpc_address=${this.walletAddress}`);
+      args.push(`validator_node.p2p.transport.type=tcp`);
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
@@ -154,20 +161,18 @@ class ValidatorNodeProcess {
       });
 
       ps.stdout.on("data", (data) => {
-        // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
           data
             .toString()
             .toUpperCase()
-            .match(/STATE CHANGED FROM STARTING TO PREPARE/)
+            .match(/STARTING GRPC/)
         ) {
           resolve(ps);
         }
       });
-
       ps.stderr.on("data", (data) => {
-        // console.error(`stderr: ${data}`);
+        console.error(`stderr: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
       });
 
@@ -227,7 +232,8 @@ class ValidatorNodeProcess {
   }
 
   async createGrpcClient() {
-    return await ValidatorNodeClient.create(this.grpcPort);
+    // return await ValidatorNodeClient.create(this.grpcPort);
+    return await ValidatorNodeClient.create(18144);
   }
 }
 

@@ -174,6 +174,7 @@ function createEnv(opts) {
 
     [`validator_node.base_node_grpc_address`]: baseNodeGrpcAddress,
     [`validator_node.wallet_grpc_address`]: walletGrpcAddress,
+    [`validator_node.p2p.transport.type`]: "tcp",
   };
   let finalEnv = { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
   return finalEnv;

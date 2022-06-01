@@ -26,4 +26,4 @@ Feature: Validator Node
         When I mine 9 blocks using wallet WALLET1 on NODE1
         Then I wait for wallet WALLET1 to have at least 1000000 uT
         And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
-        Then I publish a contract acceptance transaction
+        Then I publish a contract acceptance transaction for the validator node VN1
