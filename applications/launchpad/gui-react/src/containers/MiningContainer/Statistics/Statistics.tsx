@@ -11,8 +11,12 @@ import { MiningStatisticsInterval, AccountData } from './types'
 import MiningIntervalPicker from './MiningIntervalPicker'
 import Account from './Account'
 
-const intervalOptions = [
-  { option: 'all', label: t.mining.statistics.intervals.all },
+const intervalOptions = (disableAllFilter?: boolean) => [
+  {
+    option: 'all',
+    label: t.mining.statistics.intervals.all,
+    disabled: disableAllFilter,
+  },
   { option: 'monthly', label: t.mining.statistics.intervals.monthly },
   { option: 'yearly', label: t.mining.statistics.intervals.yearly },
 ]
@@ -28,6 +32,7 @@ const intervalOptions = [
  * @prop {() => void} onClose - callback when user closes statistics
  * @prop {Record<string, string | number>[]} data - period data
  * @prop {AccountData} accountData - data regarding coin balances and percentage changes period to period
+ * @prop {boolean} [disableAllFilter] - whether 'all' filter should be disabled - happens when there is only data for one year
  */
 const Statistics = ({
   interval,
@@ -37,6 +42,7 @@ const Statistics = ({
   onClose,
   data,
   accountData,
+  disableAllFilter,
 }: {
   interval: MiningStatisticsInterval
   setInterval: (i: MiningStatisticsInterval) => void
@@ -45,6 +51,7 @@ const Statistics = ({
   onClose: () => void
   data: Record<string, string | number>[]
   accountData: AccountData
+  disableAllFilter?: boolean
 }) => {
   const theme = useTheme()
 
@@ -76,7 +83,7 @@ const Statistics = ({
           onChange={intervalString =>
             setInterval(intervalString as MiningStatisticsInterval)
           }
-          options={intervalOptions}
+          options={intervalOptions(disableAllFilter)}
         />
         <MiningIntervalPicker
           value={intervalToShow}
