@@ -7,7 +7,7 @@ import MiningIntervalPicker from '.'
 
 describe('MiningIntervalPicker', () => {
   it('should render current month for monthly interval', () => {
-    const expectedValue = 'June 2022'
+    const expectedValue = 'Jun 2022'
     render(
       <ThemeProvider theme={themes.light}>
         <MiningIntervalPicker

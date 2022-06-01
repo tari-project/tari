@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useTheme } from 'styled-components'
 
-import { month } from '../../../../utils/Format'
+import { shortMonth } from '../../../../utils/Format'
 import { isCurrentMonth } from '../../../../utils/Date'
 import Button from '../../../../components/Button'
 import Iterator from '../../../../components/Iterator'
@@ -48,7 +48,7 @@ const MiningIntervalPicker = ({
     () =>
       ({
         monthly: {
-          getCurrent: month,
+          getCurrent: (d: Date) => shortMonth(d),
           getNext: () => {
             const copy = new Date(value)
             copy.setMonth(value.getMonth() + 1)
