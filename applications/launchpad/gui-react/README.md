@@ -91,10 +91,18 @@ c) click connect
 $ cd .. && yarn tauri dev
 ```
 
-2. Start React Devtools in standalone mode.
+2. Add the following line in the `<head />` section in `public/index.html`
+
+```
+<script src="http://localhost:8097"></script>
+```
+
+_Don't forget to remove this line before deploying on production_
+
+3. Start React Devtools in standalone mode.
 
 ```bash
-$ react-devtools
+$ yarn react-devtools
 ```
 
 ## Development notes
