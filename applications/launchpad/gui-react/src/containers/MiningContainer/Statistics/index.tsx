@@ -143,6 +143,8 @@ const StatisticsContainer = ({
       onClose={onClose}
       data={data}
       accountData={accountData}
+      dataFrom={new Date('2021-07-02')}
+      dataTo={new Date()}
     />
   )
 }

@@ -33,10 +33,14 @@ const MiningIntervalPicker = ({
   value,
   interval,
   onChange,
+  dataFrom,
+  dataTo,
 }: {
   value: Date
   interval: MiningStatisticsInterval
   onChange: (d: Date) => void
+  dataFrom: Date
+  dataTo: Date
 }) => {
   const theme = useTheme()
 
@@ -55,6 +59,12 @@ const MiningIntervalPicker = ({
             copy.setMonth(value.getMonth() - 1)
             onChange(copy)
           },
+          hasNext: () =>
+            value.getFullYear() < dataTo.getFullYear() ||
+            value.getMonth() < dataTo.getMonth(),
+          hasPrevious: () =>
+            value.getFullYear() > dataFrom.getFullYear() ||
+            value.getMonth() > dataFrom.getMonth(),
         },
         yearly: {
           getCurrent: (current: Date) => current.getFullYear().toString(),
@@ -68,6 +78,8 @@ const MiningIntervalPicker = ({
             copy.setFullYear(value.getFullYear() - 1)
             onChange(copy)
           },
+          hasNext: () => value.getFullYear() < dataTo.getFullYear(),
+          hasPrevious: () => value.getFullYear() > dataFrom.getFullYear(),
         },
       } as Record<
         MiningStatisticsInterval,
@@ -75,6 +87,8 @@ const MiningIntervalPicker = ({
           getCurrent: (d: Date) => string
           getNext: () => void
           getPrevious: () => void
+          hasNext: () => boolean
+          hasPrevious: () => boolean
         }
       >),
     [onChange, value],
@@ -98,6 +112,8 @@ const MiningIntervalPicker = ({
         value={iterator.getCurrent(value)}
         next={iterator.getNext}
         previous={iterator.getPrevious}
+        hasNext={iterator.hasNext()}
+        hasPrevious={iterator.hasPrevious()}
       />
       <Button
         variant='text'

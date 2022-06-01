@@ -38,7 +38,7 @@ describe('Iterator', () => {
     expect(previous).toHaveBeenCalledTimes(1)
   })
 
-  it('should disable next/prev buttons if no more values available', () => {
+  it('should not render next/prev buttons if no more values available', () => {
     const next = jest.fn()
     const previous = jest.fn()
 
