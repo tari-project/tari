@@ -27,6 +27,9 @@ import { HelpMessagesMap } from '../../../config/helpMessagesConfig'
 import ChatDots from '../DotsComponent'
 import MessageBox from './MessageBox'
 
+// The default time between rendering messages
+const WAIT_TIME = 2800
+
 /**
  * @name TBotPrompt
  *
@@ -106,7 +109,7 @@ const TBotPrompt = ({
 
       // use custom waiting time, if previous message has 'wait' field.
       const lastMsg = counter > 1 ? messages[counter - 1] : undefined
-      let wait = 2000
+      let wait = WAIT_TIME
       if (
         lastMsg &&
         typeof lastMsg !== 'string' &&

@@ -1,7 +1,16 @@
 import { forwardRef, ReactNode, ForwardedRef } from 'react'
-import { animated, useSpring } from 'react-spring'
-import { StyledMessage } from './styles'
+import { useSpring } from 'react-spring'
+import {
+  MessageSpaceContainer,
+  StyledMessage,
+  StyledMessageBox,
+  MessageSlideIn,
+} from './styles'
 
+/**
+ * Component renders the message wrapped with elements allowing to perform
+ * fade-in animation.
+ */
 const MessageBox = (
   {
     animate,
@@ -12,49 +21,29 @@ const MessageBox = (
   },
   ref?: ForwardedRef<HTMLDivElement>,
 ) => {
-  const anim = useSpring({
+  const useOpacityAnim = useSpring({
     from: { opacity: animate ? 0 : 1 },
     to: { opacity: 1 },
     delay: 900,
   })
 
-  const anim2 = useSpring({
+  const useSlideInAnim = useSpring({
     from: { top: animate ? 40 : 0 },
     to: { top: 0 },
     delay: 800,
   })
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <StyledMessageBox ref={ref}>
       <StyledMessage style={{ opacity: 0 }}>{children}</StyledMessage>
-      <div
-        style={{
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          position: 'absolute',
-          overflow: 'hidden',
-        }}
-      >
-        <animated.div
-          style={{
-            ...anim2,
-            position: 'absolute',
-            left: 0,
-            right: 0,
-          }}
-        >
-          <StyledMessage
-            style={{
-              ...anim,
-            }}
-          >
+      <MessageSpaceContainer>
+        <MessageSlideIn style={{ ...useSlideInAnim }}>
+          <StyledMessage style={{ ...useOpacityAnim }}>
             {children}
           </StyledMessage>
-        </animated.div>
-      </div>
-    </div>
+        </MessageSlideIn>
+      </MessageSpaceContainer>
+    </StyledMessageBox>
   )
 }
 
