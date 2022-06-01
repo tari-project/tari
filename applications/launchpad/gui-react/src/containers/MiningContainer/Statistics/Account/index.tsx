@@ -27,35 +27,37 @@ const Account = ({ data }: { data: AccountData }) => {
             <CoinsList
               coins={[{ amount: balance.value, unit: balance.currency }]}
             />
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              {delta.percentage <= 0 && (
-                <ArrowDown
-                  width='24px'
-                  height='24px'
-                  color={deltaColor}
-                  style={{ marginLeft: '-6px' }}
-                />
-              )}
-              {delta.percentage > 0 && (
-                <ArrowUp
-                  width='24px'
-                  height='24px'
-                  color={deltaColor}
-                  style={{ marginLeft: '-6px' }}
-                />
-              )}
-              <Text as='span' type='smallMedium' color={deltaColor}>
-                {delta.percentage}%
-              </Text>
-              <Text
-                as='span'
-                type='smallMedium'
-                color={theme.secondary}
-                style={{ display: 'inline-block', marginLeft: '4px' }}
-              >
-                {t.mining.statistics.deltas[delta.interval as string]}
-              </Text>
-            </div>
+            {delta.percentage !== 0 && (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {delta.percentage < 0 && (
+                  <ArrowDown
+                    width='24px'
+                    height='24px'
+                    color={deltaColor}
+                    style={{ marginLeft: '-6px' }}
+                  />
+                )}
+                {delta.percentage > 0 && (
+                  <ArrowUp
+                    width='24px'
+                    height='24px'
+                    color={deltaColor}
+                    style={{ marginLeft: '-6px' }}
+                  />
+                )}
+                <Text as='span' type='smallMedium' color={deltaColor}>
+                  {delta.percentage}%
+                </Text>
+                <Text
+                  as='span'
+                  type='smallMedium'
+                  color={theme.secondary}
+                  style={{ display: 'inline-block', marginLeft: '4px' }}
+                >
+                  {t.mining.statistics.deltas[delta.interval as string]}
+                </Text>
+              </div>
+            )}
           </div>
         )
       })}

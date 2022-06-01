@@ -1,7 +1,105 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 
 import { AccountData } from './types'
 import Statistics from './Statistics'
+
+const monthly = {
+  getData: (d: Date) =>
+    [...Array(new Date(d.getFullYear(), d.getMonth(), 0).getDate()).keys()].map(
+      day => ({
+        point: (day + 1).toString().padStart(2, '0'),
+        xtr: (day + 1) * 2000 - 60 * (day + 1),
+        xmr: (day + 1) * 200 - 10 * (day + 1),
+      }),
+    ),
+  getAccountData: () =>
+    [
+      {
+        balance: {
+          value: 45500,
+          currency: 'xtr',
+        },
+        delta: {
+          percentage: 2.1,
+          interval: 'monthly',
+        },
+      },
+      {
+        balance: {
+          value: 430,
+          currency: 'xmr',
+        },
+        delta: {
+          percentage: -3.7,
+          interval: 'monthly',
+        },
+      },
+    ] as AccountData,
+}
+
+const yearly = {
+  getData: () =>
+    [...Array(12).keys()].map(month => ({
+      point: (month + 1).toString().padStart(2, '0'),
+      xtr: (month + 1) * 2000 - 60 * (month + 1),
+      xmr: (month + 1) * 200 - 10 * (month + 1),
+    })),
+  getAccountData: () =>
+    [
+      {
+        balance: {
+          value: 6660000,
+          currency: 'xtr',
+        },
+        delta: {
+          percentage: -22.1,
+          interval: 'yearly',
+        },
+      },
+      {
+        balance: {
+          value: 72000,
+          currency: 'xmr',
+        },
+        delta: {
+          percentage: 0.7,
+          interval: 'yearly',
+        },
+      },
+    ] as AccountData,
+}
+
+const all = {
+  getData: () =>
+    [...Array(2).keys()].map(year => ({
+      point: (year + 2021).toString(),
+      xtr: (year + 1) * 2000 - 60 * (year + 1),
+      xmr: (year + 1) * 200 - 10 * (year + 1),
+    })),
+  getAccountData: () =>
+    [
+      {
+        balance: {
+          value: 6660000,
+          currency: 'xtr',
+        },
+        delta: {
+          percentage: 0,
+          interval: 'yearly',
+        },
+      },
+      {
+        balance: {
+          value: 72000,
+          currency: 'xmr',
+        },
+        delta: {
+          percentage: 0,
+          interval: 'yearly',
+        },
+      },
+    ] as AccountData,
+}
 
 const StatisticsContainer = ({
   onClose,
@@ -10,43 +108,24 @@ const StatisticsContainer = ({
   onClose: () => void
   onReady?: () => void
 }) => {
-  const data = useMemo(
-    () =>
-      [...Array(31).keys()].map(day => ({
-        day: (day + 1).toString().padStart(2, '0'),
-        xtr: (day + 1) * 2000 - 60 * (day + 1),
-        xmr: (day + 1) * 200 - 10 * (day + 1),
-      })),
-    [],
-  )
   const [interval, setInterval] = useState('monthly')
   const [intervalToShow, setIntervalToShow] = useState(new Date())
   useEffect(() => {
     onReady && onReady()
   }, [])
 
-  const accountData = [
-    {
-      balance: {
-        value: 45500,
-        currency: 'xtr',
-      },
-      delta: {
-        percentage: 2.1,
-        interval: 'monthly',
-      },
-    },
-    {
-      balance: {
-        value: 430,
-        currency: 'xmr',
-      },
-      delta: {
-        percentage: -3.7,
-        interval: 'monthly',
-      },
-    },
-  ] as AccountData
+  let data = monthly.getData(intervalToShow)
+  let accountData: AccountData = monthly.getAccountData()
+
+  if (interval === 'yearly') {
+    data = yearly.getData()
+    accountData = yearly.getAccountData()
+  }
+
+  if (interval === 'all') {
+    data = all.getData()
+    accountData = all.getAccountData()
+  }
 
   return (
     <Statistics

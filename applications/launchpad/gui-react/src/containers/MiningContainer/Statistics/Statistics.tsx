@@ -70,14 +70,12 @@ const Statistics = ({
           onChange={setIntervalToShow}
         />
       </div>
-      {interval !== 'all' && (
-        <div>
-          <Account data={accountData} />
-        </div>
-      )}
+      <div>
+        <Account data={accountData} />
+      </div>
       <BarChart
         data={data}
-        indexBy={'day'}
+        indexBy={'point'}
         keys={['xtr', 'xmr']}
         style={{ width: '100%', height: 250 }}
       />
