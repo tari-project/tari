@@ -21,6 +21,14 @@ const viewingToday = (d: Date, interval: MiningStatisticsInterval): boolean => {
   }
 }
 
+/**
+ * @name MiningIntervalPicker
+ * @description controlled component that allows user to change currently picked interval - if it is a month, user iterates over months, if it is a year, years
+ *
+ * @prop {Date} value - value of current interval picked
+ * @prop {MiningStatisticsInterval} interval - what intervals we are showing (month of year)
+ * @prop {(d: Date) => void} onChange - callback called with new values when user iterates over intervals
+ */
 const MiningIntervalPicker = ({
   value,
   interval,
@@ -61,7 +69,14 @@ const MiningIntervalPicker = ({
             onChange(copy)
           },
         },
-      } as Record<MiningStatisticsInterval, any>),
+      } as Record<
+        MiningStatisticsInterval,
+        {
+          getCurrent: (d: Date) => string
+          getNext: () => void
+          getPrevious: () => void
+        }
+      >),
     [onChange, value],
   )
 

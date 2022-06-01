@@ -7,6 +7,12 @@ import ArrowUp from '../../../../styles/Icons/ArrowTop2'
 import t from '../../../../locales'
 import { AccountData } from '../types'
 
+/**
+ * @name Account
+ * @description presentation component showing a row of multiple coin balances together with percentage changes comparing period to period
+ *
+ * @prop {AccountData} data - data of the account
+ */
 const Account = ({ data }: { data: AccountData }) => {
   const theme = useTheme()
 

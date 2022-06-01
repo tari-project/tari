@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-import { AccountData } from './types'
+import { MiningStatisticsInterval, AccountData } from './types'
 import Statistics from './Statistics'
 
 const monthly = {
@@ -101,6 +101,13 @@ const all = {
     ] as AccountData,
 }
 
+/**
+ * @name StatisticsContainer
+ * @description component responsible for getting statistics data from backend and passing them correctly to presentation component
+ *
+ * @prop {() => void} onClose - callback to be called when user wants to close statistics
+ * @prop {() => void} [onReady] - callback to be called when presentation component is mounted and rendered for the first time
+ */
 const StatisticsContainer = ({
   onClose,
   onReady,
@@ -108,7 +115,7 @@ const StatisticsContainer = ({
   onClose: () => void
   onReady?: () => void
 }) => {
-  const [interval, setInterval] = useState('monthly')
+  const [interval, setInterval] = useState<MiningStatisticsInterval>('monthly')
   const [intervalToShow, setIntervalToShow] = useState(new Date())
   useEffect(() => {
     onReady && onReady()

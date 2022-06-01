@@ -2,7 +2,15 @@ import { useTheme } from 'styled-components'
 
 import Button from '../Button'
 
-const ButtonSwitch = ({
+/**
+ * @name ButtonRadio
+ * @description controlled presentation component that shows a row of buttons and allows to select only one of them at a time
+ *
+ * @prop {string} value - currently selected value
+ * @prop {{ option: string; label: string }[]} options - options to be rendered as buttons
+ * @prop {(option: string) => void} onChange - value change callback
+ */
+const ButtonRadio = ({
   value,
   options,
   onChange,
@@ -32,4 +40,4 @@ const ButtonSwitch = ({
   )
 }
 
-export default ButtonSwitch
+export default ButtonRadio

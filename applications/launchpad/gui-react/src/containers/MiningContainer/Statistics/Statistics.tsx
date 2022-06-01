@@ -1,7 +1,7 @@
 import { useTheme } from 'styled-components'
 
 import Box from '../../../components/Box'
-import ButtonSwitch from '../../../components/ButtonSwitch'
+import ButtonRadio from '../../../components/ButtonRadio'
 import Text from '../../../components/Text'
 import BarChart from '../../../components/Charts/Bar'
 import CloseIcon from '../../../styles/Icons/Close'
@@ -17,6 +17,18 @@ const intervalOptions = [
   { option: 'yearly', label: t.mining.statistics.intervals.yearly },
 ]
 
+/**
+ * @name Statistics
+ * @description Presentation component for showing mining statistics data
+ *
+ * @prop {MiningStatisticsInterval} interval - what time period statistics relate to
+ * @prop {(i: MiningStatisticsInterval) => void} setInterval - setter of statistics time period
+ * @prop {Date} intervalToShow - representation of time period (month / year) to allow user to navigate between different periods
+ * @prop {(d: Date) => void} setIntervalToShow - setter for intervalToShow
+ * @prop {() => void} onClose - callback when user closes statistics
+ * @prop {Record<string, string | number>[]} data - period data
+ * @prop {AccountData} accountData - data regarding coin balances and percentage changes period to period
+ */
 const Statistics = ({
   interval,
   setInterval,
@@ -26,8 +38,8 @@ const Statistics = ({
   data,
   accountData,
 }: {
-  interval: string
-  setInterval: (i: string) => void
+  interval: MiningStatisticsInterval
+  setInterval: (i: MiningStatisticsInterval) => void
   intervalToShow: Date
   setIntervalToShow: (d: Date) => void
   onClose: () => void
@@ -59,9 +71,11 @@ const Statistics = ({
           marginBottom: theme.spacing(),
         }}
       >
-        <ButtonSwitch
+        <ButtonRadio
           value={interval}
-          onChange={setInterval}
+          onChange={intervalString =>
+            setInterval(intervalString as MiningStatisticsInterval)
+          }
           options={intervalOptions}
         />
         <MiningIntervalPicker

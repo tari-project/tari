@@ -7,6 +7,14 @@ import ArrowRight from '../../styles/Icons/ArrowRight2'
 
 import { Wrapper } from './styles'
 
+/**
+ * @name Iterator
+ * @description controlled presentation component for iterating over any value with next/previous buttons for the user
+ *
+ * @prop {string} value - current value
+ * @prop {() => void} next - callback for going to next value
+ * @prop {() => void} previous - callback for going to previous value
+ */
 const Iterator = ({
   value,
   next,
