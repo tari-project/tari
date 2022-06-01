@@ -107,6 +107,7 @@ impl TryFrom<grpc::CreateCommitteeDefinitionRequest> for SideChainFeatures {
                 },
                 initial_reward: 100.into(),
             }),
+            acceptance: None,
         })
     }
 }
