@@ -29,6 +29,7 @@ const Iterator = ({
   return (
     <Wrapper>
       <IconButton
+        testId='iterator-btn-prev'
         onClick={previous}
         style={{
           color: theme.secondary,
@@ -42,6 +43,7 @@ const Iterator = ({
         {value}
       </Text>
       <IconButton
+        testId='iterator-btn-next'
         onClick={next}
         style={{
           color: theme.secondary,
