@@ -125,12 +125,12 @@ impl AssetManagerHandle {
 
     pub async fn create_committee_definition(
         &mut self,
-        constitution_definition: &SideChainFeatures,
+        side_chain_features: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateCommitteeDefinition {
-                constitution_definition: Box::new(constitution_definition.clone()),
+                constitution_definition: Box::new(side_chain_features.clone()),
             })
             .await??
         {

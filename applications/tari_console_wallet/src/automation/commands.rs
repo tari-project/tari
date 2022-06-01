@@ -56,7 +56,7 @@ use tari_core::transactions::{
         ContractDefinition,
         RequirementsForConstitutionChange,
         SideChainConsensus,
-        SideChainFeatures,
+        SideChainFeaturesBuilder,
         TransactionOutput,
         UnblindedOutput,
     },
@@ -884,12 +884,12 @@ pub async fn command_runner(
                 }?;
 
                 let acceptance_period_expiry = match parsed.args.get(1) {
-                    Some(ParsedArgument::Int(ref int)) => Ok(int.clone()),
+                    Some(ParsedArgument::Int(ref int)) => Ok(*int),
                     _ => Err(CommandError::Argument),
                 }?;
 
                 let minimum_quorum_required = match parsed.args.get(1) {
-                    Some(ParsedArgument::Int(ref int)) => Ok(int.clone()),
+                    Some(ParsedArgument::Int(ref int)) => Ok(*int),
                     _ => Err(CommandError::Argument),
                 }?;
 
@@ -903,10 +903,8 @@ pub async fn command_runner(
                         .collect::<Result<Vec<RistrettoPublicKey>, _>>()?,
                 )?;
 
-                let side_chain_features = SideChainFeatures {
-                    contract_id,
-                    definition: None,
-                    constitution: Some(ContractConstitution {
+                let side_chain_features = SideChainFeaturesBuilder::new(contract_id)
+                    .with_contract_constitution(ContractConstitution {
                         validator_committee: validator_committee.clone(),
                         acceptance_requirements: ContractAcceptanceRequirements {
                             minimum_quorum_required: minimum_quorum_required as u32,
@@ -925,8 +923,8 @@ pub async fn command_runner(
                             }),
                         },
                         initial_reward: 100.into(),
-                    }),
-                };
+                    })
+                    .finish();
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = asset_manager.create_committee_definition(&side_chain_features).await?;

@@ -287,10 +287,10 @@ message CreateFollowOnAssetCheckpointResponse {
 }
 
 message CreateCommitteeDefinitionRequest {
-    bytes asset_public_key = 1;
-    repeated bytes committee = 2;
-    uint64 effective_sidechain_height = 3;
-    bool is_initial = 4;
+    bytes contract_id = 1;
+    CommitteeMembers validator_committee = 2;
+    uint64 acceptance_period_expiry = 3;
+    uint64 minimum_quorum_required = 4;
 }
 
 message CreateCommitteeDefinitionResponse {

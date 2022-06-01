@@ -23,7 +23,7 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
+    types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID},
 };
 use tari_core::transactions::transaction_components::{
     ContractDefinition,

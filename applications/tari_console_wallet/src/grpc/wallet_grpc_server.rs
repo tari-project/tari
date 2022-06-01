@@ -85,9 +85,8 @@ use tari_common_types::{
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{OutputFeatures, UnblindedOutput},
+    transaction_components::{OutputFeatures, SideChainFeatures, UnblindedOutput},
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
@@ -781,24 +780,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
-            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
-        let committee_public_keys: Vec<RistrettoPublicKey> = message
-            .committee
-            .iter()
-            .map(|c| PublicKey::from_bytes(c.as_slice()))
-            .collect::<Result<_, _>>()
-            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
-        let effective_sidechain_height = message.effective_sidechain_height;
-        let is_initial = message.is_initial;
+        let side_chain_features = SideChainFeatures::try_from(message).map_err(Status::internal)?;
 
         let (tx_id, transaction) = asset_manager
-            .create_committee_definition(
-                &asset_public_key,
-                &committee_public_keys,
-                effective_sidechain_height,
-                is_initial,
-            )
+            .create_committee_definition(&side_chain_features)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -807,12 +792,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "Committee definition transaction: {:?}", transaction
         );
 
+        let committee_size = match side_chain_features.constitution {
+            Some(constitution) => constitution.validator_committee.members().len(),
+            None => 0,
+        };
+
         let message = format!(
-            "{} member committee for asset {}... at sidechain height {}",
-            committee_public_keys.len(),
-            &asset_public_key.to_hex()[..7],
-            effective_sidechain_height
+            "Committee definition for {} members for {:?}",
+            committee_size, side_chain_features.contract_id,
         );
+
         let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
