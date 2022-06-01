@@ -2,85 +2,15 @@ import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from 'styled-components'
 
 import Box from '../../../components/Box'
-import CoinsList from '../../../components/CoinsList'
 import ButtonSwitch from '../../../components/ButtonSwitch'
 import Text from '../../../components/Text'
 import BarChart from '../../../components/Charts/Bar'
 import CloseIcon from '../../../styles/Icons/Close'
-import ArrowDown from '../../../styles/Icons/ArrowBottom2'
-import ArrowUp from '../../../styles/Icons/ArrowTop2'
 import t from '../../../locales'
-import { CoinType } from '../../../types/general'
 
-import { MiningStatisticsInterval } from './types'
+import { MiningStatisticsInterval, AccountData } from './types'
 import MiningIntervalPicker from './MiningIntervalPicker'
-
-type AccountData = {
-  balance: {
-    value: number
-    currency: CoinType
-  }
-  delta: {
-    percentage: number
-    interval: MiningStatisticsInterval
-  }
-}[]
-
-const Account = ({ data }: { data: AccountData }) => {
-  const theme = useTheme()
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        columnGap: theme.spacing(),
-        marginBottom: theme.spacing(),
-      }}
-    >
-      {data.map(({ balance, delta }) => {
-        const deltaColor =
-          delta.percentage <= 0 ? theme.error : theme.onTextLight
-
-        return (
-          <div key={balance.currency}>
-            <CoinsList
-              coins={[{ amount: balance.value, unit: balance.currency }]}
-            />
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              {delta.percentage <= 0 && (
-                <ArrowDown
-                  width='24px'
-                  height='24px'
-                  color={deltaColor}
-                  style={{ marginLeft: '-6px' }}
-                />
-              )}
-              {delta.percentage > 0 && (
-                <ArrowUp
-                  width='24px'
-                  height='24px'
-                  color={deltaColor}
-                  style={{ marginLeft: '-6px' }}
-                />
-              )}
-              <Text as='span' type='smallMedium' color={deltaColor}>
-                {delta.percentage}%
-              </Text>
-              <Text
-                as='span'
-                type='smallMedium'
-                color={theme.secondary}
-                style={{ display: 'inline-block', marginLeft: '4px' }}
-              >
-                {t.mining.statistics.deltas[delta.interval as string]}
-              </Text>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+import Account from './Account'
 
 const intervalOptions = [
   { option: 'all', label: t.mining.statistics.intervals.all },
