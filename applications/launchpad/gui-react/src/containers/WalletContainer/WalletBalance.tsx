@@ -1,8 +1,8 @@
 import { useTheme } from 'styled-components'
 
 import Box from '../../components/Box'
+import CoinsList from '../../components/CoinsList'
 import Text from '../../components/Text'
-import * as FormatUtils from '../../utils/Format'
 import t from '../../locales'
 
 import Chart from './Chart'
@@ -22,7 +22,7 @@ const WalletBalance = ({
     <Box>
       <Text color={theme.secondary}>{t.wallet.balance.title}</Text>
       <TariAmountContainer>
-        <Text type='header'>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <TariSignet
             style={{
               color: theme.accent,
@@ -30,8 +30,8 @@ const WalletBalance = ({
               marginRight: theme.spacingHorizontal(0.5),
             }}
           />
-          {FormatUtils.amount(balance)}
-        </Text>
+          <CoinsList coins={[{ amount: balance, unit: 'xtr' }]} inline />
+        </div>
         <Chart />
       </TariAmountContainer>
       <Text
@@ -41,9 +41,7 @@ const WalletBalance = ({
       >
         {t.wallet.balance.available}
       </Text>{' '}
-      <Text type='defaultHeavy' style={{ display: 'inline-block' }}>
-        {FormatUtils.amount(available)}
-      </Text>
+      <CoinsList coins={[{ amount: available, unit: 'xtr' }]} inline small />
     </Box>
   )
 }

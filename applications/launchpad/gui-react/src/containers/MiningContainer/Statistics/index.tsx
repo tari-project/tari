@@ -10,6 +10,7 @@ import CloseIcon from '../../../styles/Icons/Close'
 import ArrowDown from '../../../styles/Icons/ArrowBottom2'
 import ArrowUp from '../../../styles/Icons/ArrowTop2'
 import t from '../../../locales'
+import { CoinType } from '../../../types/general'
 
 import { MiningStatisticsInterval } from './types'
 import MiningIntervalPicker from './MiningIntervalPicker'
@@ -17,7 +18,7 @@ import MiningIntervalPicker from './MiningIntervalPicker'
 type AccountData = {
   balance: {
     value: number
-    currency: string
+    currency: CoinType
   }
   delta: {
     percentage: number
@@ -43,9 +44,7 @@ const Account = ({ data }: { data: AccountData }) => {
         return (
           <div key={balance.currency}>
             <CoinsList
-              coins={[
-                { amount: balance.value.toString(), unit: balance.currency },
-              ]}
+              coins={[{ amount: balance.value, unit: balance.currency }]}
             />
             <div style={{ display: 'flex', alignItems: 'center' }}>
               {delta.percentage <= 0 && (
