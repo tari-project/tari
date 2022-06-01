@@ -7,7 +7,7 @@ import Button from '../Button'
  * @description controlled presentation component that shows a row of buttons and allows to select only one of them at a time
  *
  * @prop {string} value - currently selected value
- * @prop {{ option: string; label: string }[]} options - options to be rendered as buttons
+ * @prop {{ option: string; label: string; disabled?: boolean }[]} options - options to be rendered as buttons
  * @prop {(option: string) => void} onChange - value change callback
  */
 const ButtonRadio = ({
@@ -16,7 +16,7 @@ const ButtonRadio = ({
   onChange,
 }: {
   value: string
-  options: { option: string; label: string }[]
+  options: { option: string; label: string; disabled?: boolean }[]
   onChange: (option: string) => void
 }) => {
   const theme = useTheme()
@@ -27,8 +27,9 @@ const ButtonRadio = ({
 
   return (
     <div style={{ display: 'flex', columnGap: theme.spacing(0.5) }}>
-      {options.map(({ option, label }) => (
+      {options.map(({ option, label, disabled }) => (
         <Button
+          disabled={disabled}
           key={option}
           variant='secondary'
           style={{

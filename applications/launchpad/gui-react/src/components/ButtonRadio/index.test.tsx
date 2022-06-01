@@ -55,4 +55,24 @@ describe('ButtonRadio', () => {
 
     expect(container.childElementCount).toBe(0)
   })
+
+  it('should not allow clicking disabled option', () => {
+    const onChange = jest.fn()
+    render(
+      <ThemeProvider theme={themes.light}>
+        <ButtonRadio
+          value='option1'
+          options={[
+            { option: 'option1', label: 'Disabled option', disabled: true },
+          ]}
+          onChange={onChange}
+        />
+      </ThemeProvider>,
+    )
+
+    const option2Button = screen.getByText('Disabled option')
+    fireEvent.click(option2Button)
+
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })
