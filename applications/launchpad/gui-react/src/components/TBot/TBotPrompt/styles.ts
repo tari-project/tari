@@ -126,6 +126,10 @@ export const DotsContainer = styled.div`
   margin-bottom: -15px;
 `
 
+export const StyledMessageBox = styled.div`
+  position: relative;
+`
+
 export const StyledMessage = styled(animated.div)<{ $floating?: boolean }>`
   max-width: ${({ $floating }) => ($floating ? '385px' : '100%')};
   height: fit-content;
@@ -140,4 +144,19 @@ export const StyledMessage = styled(animated.div)<{ $floating?: boolean }>`
   &:last-child {
     margin-bottom: 0;
   }
+`
+
+export const MessageSpaceContainer = styled.div`
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  position: absolute;
+  overflow: hidden;
+`
+
+export const MessageSlideIn = styled(animated.div)`
+  position: absolute;
+  left: 0;
+  right: 0;
 `

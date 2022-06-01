@@ -31,7 +31,7 @@ describe('TBot', () => {
         ,
       </Provider>,
     )
-    const el = screen.getByText('testText')
-    expect(el).toBeInTheDocument()
+    const el = screen.getAllByText('testText')
+    expect(el.length).toBeGreaterThanOrEqual(1)
   })
 })

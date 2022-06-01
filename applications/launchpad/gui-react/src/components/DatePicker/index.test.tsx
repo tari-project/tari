@@ -3,9 +3,9 @@ import { ThemeProvider } from 'styled-components'
 
 import themes from '../../styles/themes'
 
-import DatePicker from './'
+import DatePicker from '.'
 
-describe('Modal', () => {
+describe('DatePicker', () => {
   it('should not render the component when open is false', () => {
     const { container } = render(
       <ThemeProvider theme={themes.light}>
