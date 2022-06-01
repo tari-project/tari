@@ -61,6 +61,8 @@ const translations = {
     deltas: {
       yearly: 'vs last year',
       monthly: 'vs last month',
+      // this is required otherwise accessing this through MiningStatisticsInterval union type breaks
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any,
   },
 }
