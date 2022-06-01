@@ -114,6 +114,9 @@ const MiningIntervalPicker = ({
         previous={iterator.getPrevious}
         hasNext={iterator.hasNext()}
         hasPrevious={iterator.hasPrevious()}
+        style={{
+          width: interval === 'monthly' ? '10em' : '7em',
+        }}
       />
       <Button
         variant='text'

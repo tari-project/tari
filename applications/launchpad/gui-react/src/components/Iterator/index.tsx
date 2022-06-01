@@ -1,3 +1,4 @@
+import { CSSProperties } from 'react'
 import { useTheme } from 'styled-components'
 
 import IconButton from '../IconButton'
@@ -14,6 +15,7 @@ import { Wrapper } from './styles'
  * @prop {string} value - current value
  * @prop {() => void} next - callback for going to next value
  * @prop {() => void} previous - callback for going to previous value
+ * @prop {CSSProperties} style - wrapper style overrides
  */
 const Iterator = ({
   value,
@@ -21,12 +23,14 @@ const Iterator = ({
   previous,
   hasNext,
   hasPrevious,
+  style,
 }: {
   value: string
   next: () => void
   previous: () => void
   hasNext?: boolean
   hasPrevious?: boolean
+  style?: CSSProperties
 }) => {
   const theme = useTheme()
 
@@ -34,7 +38,7 @@ const Iterator = ({
   const disablePreviousButton = hasPrevious !== undefined && !hasPrevious
 
   return (
-    <Wrapper>
+    <Wrapper style={style}>
       <IconButton
         disabled={disablePreviousButton}
         testId='iterator-btn-prev'
