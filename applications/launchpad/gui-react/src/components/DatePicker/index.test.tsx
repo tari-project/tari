@@ -5,7 +5,10 @@ import themes from '../../styles/themes'
 
 import DatePicker from '.'
 
-describe('DatePicker', () => {
+describe('Modal', () => {
+  const someDateInMay2022 = new Date('2022-05-14T07:00:10.010Z')
+  jest.useFakeTimers().setSystemTime(someDateInMay2022)
+
   it('should not render the component when open is false', () => {
     const { container } = render(
       <ThemeProvider theme={themes.light}>
