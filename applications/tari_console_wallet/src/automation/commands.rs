@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fs::File,
     io::{BufReader, LineWriter, Write},
     time::{Duration, Instant},
@@ -879,7 +879,9 @@ pub async fn command_runner(
             },
             CreateCommitteeDefinition => {
                 let contract_id = match parsed.args.get(0) {
-                    Some(ParsedArgument::Text(ref key)) => FixedHash::from_hex(key).map_err(|_| CommandError::Argument),
+                    Some(ParsedArgument::PublicKey(ref key)) => {
+                        key.as_bytes().try_into().map_err(|_| CommandError::Argument)
+                    },
                     _ => Err(CommandError::Argument),
                 }?;
 
@@ -888,7 +890,7 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
 
-                let minimum_quorum_required = match parsed.args.get(1) {
+                let minimum_quorum_required = match parsed.args.get(2) {
                     Some(ParsedArgument::Int(ref int)) => Ok(*int),
                     _ => Err(CommandError::Argument),
                 }?;
