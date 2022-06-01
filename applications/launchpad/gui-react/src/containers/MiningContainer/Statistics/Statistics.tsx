@@ -57,7 +57,7 @@ const Statistics = ({
           marginBottom: theme.spacing(),
         }}
       >
-        <Text type='defaultHeavy'>Mined coins</Text>
+        <Text type='defaultHeavy'>{t.mining.statistics.title}</Text>
         <div onClick={onClose} style={{ cursor: 'pointer' }}>
           <CloseIcon height='24px' width='24px' color={theme.secondary} />
         </div>
