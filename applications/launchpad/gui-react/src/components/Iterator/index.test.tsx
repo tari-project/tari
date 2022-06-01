@@ -37,4 +37,27 @@ describe('Iterator', () => {
     expect(next).toHaveBeenCalledTimes(1)
     expect(previous).toHaveBeenCalledTimes(1)
   })
+
+  it('should disable next/prev buttons if no more values available', () => {
+    const next = jest.fn()
+    const previous = jest.fn()
+
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Iterator
+          value='value'
+          next={next}
+          previous={previous}
+          hasNext={false}
+          hasPrevious={false}
+        />
+      </ThemeProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('iterator-btn-prev'))
+    fireEvent.click(screen.getByTestId('iterator-btn-next'))
+
+    expect(next).toHaveBeenCalledTimes(0)
+    expect(previous).toHaveBeenCalledTimes(0)
+  })
 })

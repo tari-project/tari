@@ -19,16 +19,24 @@ const Iterator = ({
   value,
   next,
   previous,
+  hasNext,
+  hasPrevious,
 }: {
   value: string
   next: () => void
   previous: () => void
+  hasNext?: boolean
+  hasPrevious?: boolean
 }) => {
   const theme = useTheme()
+
+  const disableNextButton = hasNext !== undefined && !hasNext
+  const disablePreviousButton = hasPrevious !== undefined && !hasPrevious
 
   return (
     <Wrapper>
       <IconButton
+        disabled={disablePreviousButton}
         testId='iterator-btn-prev'
         onClick={previous}
         style={{
@@ -43,6 +51,7 @@ const Iterator = ({
         {value}
       </Text>
       <IconButton
+        disabled={disableNextButton}
         testId='iterator-btn-next'
         onClick={next}
         style={{
