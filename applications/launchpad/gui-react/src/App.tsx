@@ -1,3 +1,4 @@
+import 'react-devtools' // @TODO: remove this import before final Production deployment!!!
 import styled, { ThemeProvider } from 'styled-components'
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import { selectThemeConfig } from './store/app/selectors'

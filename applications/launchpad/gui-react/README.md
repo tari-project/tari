@@ -83,6 +83,20 @@ a) Select **use local (custom) server**
 b) set **hostname: localhost** and **port: 8000**
 c) click connect
 
+#### React Devtools
+
+1. Run application
+
+```bash
+$ cd .. && yarn tauri dev
+```
+
+2. Start React Devtools in standalone mode.
+
+```bash
+$ react-devtools
+```
+
 ## Development notes
 
 ### Contribution practices
