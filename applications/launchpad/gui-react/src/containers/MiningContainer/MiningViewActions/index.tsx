@@ -12,26 +12,41 @@ import SvgSetting2 from '../../../styles/Icons/Setting2'
  */
 const MiningViewActions = ({
   openScheduling,
+  toggleStatistics,
 }: {
   openScheduling: () => void
+  toggleStatistics: () => void
 }) => {
   const canAnyMiningBeRun = useSelector(selectCanAnyMiningNodeRun)
 
   return (
     <div data-testid='mining-view-actions-cmp'>
       <Button
+        autosizeIcons={false}
         variant='text'
-        leftIcon={<SvgClock />}
+        leftIcon={<SvgClock width='1.5rem' height='1.5rem' />}
         testId='mining-action-setup-mining-hours'
         disabled={!canAnyMiningBeRun}
         onClick={openScheduling}
+        style={{ paddingLeft: 0 }}
       >
         {t.mining.viewActions.setUpMiningHours}
       </Button>
-      <Button variant='text' leftIcon={<SvgSetting2 />}>
+      <Button
+        autosizeIcons={false}
+        variant='text'
+        leftIcon={<SvgSetting2 width='1.5rem' height='1.5rem' />}
+        style={{ paddingLeft: 0 }}
+      >
         {t.mining.viewActions.miningSettings}
       </Button>
-      <Button variant='text' leftIcon={<SvgChart />}>
+      <Button
+        autosizeIcons={false}
+        variant='text'
+        leftIcon={<SvgChart width='1.5rem' height='1.5rem' />}
+        onClick={toggleStatistics}
+        style={{ paddingLeft: 0 }}
+      >
         {t.mining.viewActions.statistics}
       </Button>
     </div>

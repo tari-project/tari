@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 
 import Switch from '../../components/Switch'
 
@@ -17,6 +17,7 @@ import { NodesContainer } from './styles'
 import MiningBoxTari from './MiningBoxTari'
 import MiningBoxMerged from './MiningBoxMerged'
 import Scheduling from './Scheduling'
+import Statistics from './Statistics'
 
 /**
  * The Mining dashboard
@@ -25,6 +26,8 @@ const MiningContainer = () => {
   const dispatch = useAppDispatch()
   const currentTheme = useAppSelector(selectTheme)
   const [schedulingOpen, setSchedulingOpen] = useState(false)
+  const [statisticsOpen, setStatisticsOpen] = useState(false)
+  const anchorElRef = useRef<HTMLAnchorElement>(null)
 
   return (
     <div>
@@ -35,7 +38,27 @@ const MiningContainer = () => {
         <MiningBoxMerged />
       </NodesContainer>
 
-      <MiningViewActions openScheduling={() => setSchedulingOpen(true)} />
+      <MiningViewActions
+        openScheduling={() => setSchedulingOpen(true)}
+        toggleStatistics={() => {
+          setStatisticsOpen(o => !o)
+        }}
+      />
+      <Scheduling
+        open={schedulingOpen}
+        onClose={() => setSchedulingOpen(false)}
+      />
+      <Statistics
+        open={statisticsOpen}
+        onClose={() => setStatisticsOpen(false)}
+        onReady={() => {
+          anchorElRef.current?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'end',
+          })
+        }}
+      />
+      <a id='anchorForScroll' ref={anchorElRef} />
 
       <div style={{ marginTop: 80 }}>
         <button onClick={() => dispatch(setTheme('light'))}>
@@ -54,10 +77,6 @@ const MiningContainer = () => {
           />
         </div>
       </div>
-      <Scheduling
-        open={schedulingOpen}
-        onClose={() => setSchedulingOpen(false)}
-      />
     </div>
   )
 }

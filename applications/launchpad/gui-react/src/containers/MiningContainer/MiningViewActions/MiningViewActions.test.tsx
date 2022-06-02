@@ -26,7 +26,10 @@ describe('MiningViewActions', () => {
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningViewActions openScheduling={() => null} />
+          <MiningViewActions
+            openScheduling={() => null}
+            toggleStatistics={() => null}
+          />
         </ThemeProvider>
       </Provider>,
     )
@@ -47,7 +50,10 @@ describe('MiningViewActions', () => {
         })}
       >
         <ThemeProvider theme={themes.light}>
-          <MiningViewActions openScheduling={() => null} />
+          <MiningViewActions
+            openScheduling={() => null}
+            toggleStatistics={() => null}
+          />
         </ThemeProvider>
       </Provider>,
     )

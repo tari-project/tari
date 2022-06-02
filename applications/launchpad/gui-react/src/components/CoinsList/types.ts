@@ -1,7 +1,7 @@
 import { ReactNode } from 'react'
 
 export interface CoinProps {
-  amount: string
+  amount: string | number
   unit: string
   suffixText?: string
   loading?: boolean
@@ -10,6 +10,8 @@ export interface CoinProps {
 
 export interface CoinsListProps {
   coins: CoinProps[]
+  inline?: boolean
+  small?: boolean
   color?: string
   showSymbols?: boolean
 }
