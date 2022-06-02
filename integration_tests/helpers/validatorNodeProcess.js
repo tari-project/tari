@@ -120,8 +120,8 @@ class ValidatorNodeProcess {
   }
 
   getGrpcAddress() {
-    const address = "127.0.0.1:" + this.grpcPort;
-    // console.log("Base Node GRPC Address:",address);
+    const address = "/ip4/127.0.0.1/tcp/" + this.grpcPort;
+    console.log("Validator Node GRPC Address:",address);
     return address;
   }
 
@@ -133,26 +133,26 @@ class ValidatorNodeProcess {
 
       let envs = [];
       if (!this.excludeTestEnvars) {
-        envs = createEnv({
-          nodeFile: this.nodeFile,
-          options: this.options,
-          peerSeeds: this.peerSeeds,
-          forceSyncPeers: this.forceSyncPeers,
-          walletGrpcAddress: this.walletAddress,
-          baseNodeGrpcAddress: this.baseNodeAddress,
-        });
+        envs = this.getOverrides();
+      }
+
+      let customArgs = {
+        "validator_node.p2p.transport.type" : "tcp"
       }
       if (this.baseNodeAddress) {
-        args.push("-p");
-        args.push(`validator_node.base_node_grpc_address=${this.baseNodeAddress}`);
+        customArgs["validator_node.base_node_grpc_address"] = this.baseNodeAddress;
       }
-      if (this.walletAddress) {
-        args.push("-p");
-        args.push(`validator_node.wallet_grpc_address=${this.walletAddress}`);
+      if (this.baseNodeAddress) {
+        customArgs["validator_node.wallet_grpc_address"] = this.walletAddress;
       }
-      
-      args.push("-p");
-      args.push(`validator_node.p2p.transport.type=tcp`);
+      if (this.baseNodeAddress) {
+        customArgs["validator_node.grpc_address"] = this.getGrpcAddress();
+      }
+
+      Object.keys(customArgs).forEach((k) => {
+        args.push("-p");
+        args.push(`${k}=${customArgs[k]}`);
+      });
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
@@ -232,8 +232,21 @@ class ValidatorNodeProcess {
   }
 
   async createGrpcClient() {
-    // return await ValidatorNodeClient.create(this.grpcPort);
-    return await ValidatorNodeClient.create(18144);
+    return await ValidatorNodeClient.create(this.grpcPort);
+    // return await ValidatorNodeClient.create(18144);
+  }
+
+  getOverrides() {
+    return createEnv({
+      network: "localnet",
+      validatorNodeGrpcAddress: this.getGrpcAddress(),
+      baseNodeGrpcAddress: this.baseNodeAddress,
+      walletGrpcAddress: this.walletAddress,
+      nodeFile: this.nodeFile,
+      options: this.options,
+      peerSeeds: this.peerSeeds,
+      forceSyncPeers: this.forceSyncPeers,
+    });
   }
 }
 

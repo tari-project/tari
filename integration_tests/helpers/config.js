@@ -147,6 +147,7 @@ function createEnv(opts) {
     forceSyncPeers,
     options,
     committee,
+    validatorNodeGrpcAddress,
   } = finalOpts;
 
   const envs = baseEnvs(peerSeeds, forceSyncPeers, committee);
@@ -175,6 +176,7 @@ function createEnv(opts) {
     [`validator_node.base_node_grpc_address`]: baseNodeGrpcAddress,
     [`validator_node.wallet_grpc_address`]: walletGrpcAddress,
     [`validator_node.p2p.transport.type`]: "tcp",
+    [`validator_node.grpc_address`]: validatorNodeGrpcAddress,
   };
   let finalEnv = { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
   return finalEnv;
