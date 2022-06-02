@@ -3,7 +3,7 @@ import { ThemeProvider } from 'styled-components'
 
 import themes from '../../styles/themes'
 
-import DatePicker from './'
+import DatePicker from '.'
 
 describe('Modal', () => {
   const someDateInMay2022 = new Date('2022-05-14T07:00:10.010Z')

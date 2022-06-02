@@ -44,7 +44,7 @@ const TBot = ({ type = 'base', style, animate }: TBotProps) => {
   const scaleAnim = useSpring({
     from: { transform: 'scale(1)' },
     to: {
-      transform: animate ? 'scale(1.2)' : 'scale(1)',
+      transform: animate ? 'scale(1.5)' : 'scale(1)',
       transition: 'all ease-in-out',
     },
     config: {

@@ -7,7 +7,6 @@ export enum TBotMessages {
 
 export type TBotMessage = {
   id: number
-  // type: TBotMessageType
   message: string
 }
 

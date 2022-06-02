@@ -13,6 +13,7 @@
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "deepmerge": "^4.2.2",
+    "lottie-web": "^5.9.4",
     "react": ">=18.0.0",
     "react-css-transition-replace": "^4.0.5",
     "react-dom": ">=18.0.0",
@@ -97,8 +98,10 @@
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.0.0",
     "eslint-plugin-react": "^7.29.4",
+    "jest-canvas-mock": "^2.4.0",
     "jest-junit": "^13.1.0",
     "prettier": "^2.6.2",
+    "react-devtools": "^4.24.6",
     "remote-redux-devtools": "^0.5.16",
     "ts-jest": "^27.1.4"
   },
