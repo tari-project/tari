@@ -12,23 +12,18 @@ import {
   StatsEventPayload,
   ContainerId,
   Container,
-  ContainerStats,
   ServiceDescriptor,
-  StatsRepository,
+  SerializableContainerStats,
 } from './types'
 import { selectContainerByType } from './selectors'
-
-const temporaryStatsRepository = {
-  add: () => null,
-} as unknown as StatsRepository
-const getStatsRepository = () => temporaryStatsRepository
+import getStatsRepository from './statsRepository'
 
 export const persistStats = createAsyncThunk<
   void,
   {
     service: Container
     timestamp: string
-    stats: Omit<ContainerStats, 'unsubscribe'>
+    stats: SerializableContainerStats
   },
   { state: RootState }
 >('containers/persistStats', async (payload, thunkApi) => {
@@ -44,7 +39,7 @@ export const persistStats = createAsyncThunk<
 export const addStats = createAsyncThunk<
   {
     containerId: ContainerId
-    stats: Omit<ContainerStats, 'unsubscribe'>
+    stats: SerializableContainerStats
   },
   {
     containerId: ContainerId

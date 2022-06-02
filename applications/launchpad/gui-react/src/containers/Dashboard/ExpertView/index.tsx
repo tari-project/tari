@@ -14,6 +14,7 @@ import { MainContainer } from '../../../layouts/MainLayout/styles'
 import t from '../../../locales'
 
 import Containers from './Containers'
+import Performance from './Performance'
 import { TabsContainer } from './styles'
 
 const ExpertView = () => {
@@ -42,7 +43,7 @@ const ExpertView = () => {
   const renderPage = () => {
     switch (selectedTab) {
       case 'PERFORMANCE':
-        return <p style={{ color: 'white' }}>performance tab</p>
+        return <Performance />
       case 'CONTAINERS':
         return <Containers />
       case 'LOGS':

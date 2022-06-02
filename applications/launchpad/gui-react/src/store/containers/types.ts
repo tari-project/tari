@@ -32,6 +32,7 @@ export type ContainerStats = {
   memory: number
   unsubscribe: UnlistenFn
 }
+export type SerializableContainerStats = Omit<ContainerStats, 'unsubscribe'>
 
 export type ContainerStatus = {
   status: SystemEventAction
@@ -94,11 +95,16 @@ export interface StatsEventPayload {
   networks: Record<string, { tx_bytes: number; rx_bytes: number }>
 }
 
+export type StatsDbEntry = SerializableContainerStats & { timestamp: string }
 export interface StatsRepository {
   add: (
     network: string,
     service: Container,
     secondTimestamp: string,
-    stats: Omit<ContainerStats, 'unsubscribe'>,
+    stats: SerializableContainerStats,
   ) => Promise<void>
+  getAll: (network: string, service: Container) => Promise<StatsDbEntry[]>
+  getGroupedByContainer: (
+    network: string,
+  ) => Promise<Record<Container, StatsDbEntry[]>>
 }
