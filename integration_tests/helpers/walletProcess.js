@@ -48,7 +48,7 @@ class WalletProcess {
   }
 
   getGrpcPort() {
-    return this.grpcPort; 
+    return this.grpcPort;
   }
 
   async connectClient() {

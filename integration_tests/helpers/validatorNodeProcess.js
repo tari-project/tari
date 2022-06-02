@@ -13,7 +13,15 @@ const JSON5 = require("json5");
 
 let outputProcess;
 class ValidatorNodeProcess {
-  constructor(name, excludeTestEnvars, options, logFilePath, nodeFile, baseNodeAddress, walletAddress) {
+  constructor(
+    name,
+    excludeTestEnvars,
+    options,
+    logFilePath,
+    nodeFile,
+    baseNodeAddress,
+    walletAddress
+  ) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
@@ -121,7 +129,7 @@ class ValidatorNodeProcess {
 
   getGrpcAddress() {
     const address = "/ip4/127.0.0.1/tcp/" + this.grpcPort;
-    console.log("Validator Node GRPC Address:",address);
+    console.log("Validator Node GRPC Address:", address);
     return address;
   }
 
@@ -137,10 +145,11 @@ class ValidatorNodeProcess {
       }
 
       let customArgs = {
-        "validator_node.p2p.transport.type" : "tcp"
-      }
+        "validator_node.p2p.transport.type": "tcp",
+      };
       if (this.baseNodeAddress) {
-        customArgs["validator_node.base_node_grpc_address"] = this.baseNodeAddress;
+        customArgs["validator_node.base_node_grpc_address"] =
+          this.baseNodeAddress;
       }
       if (this.baseNodeAddress) {
         customArgs["validator_node.wallet_grpc_address"] = this.walletAddress;

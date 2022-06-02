@@ -127,7 +127,7 @@ Given(
   { timeout: 20 * 1000 },
   async function (vn_name, base_node_name, wallet_name) {
     const baseNode = this.getNode(base_node_name);
-    const walletNode = this.getWallet(wallet_name)
+    const walletNode = this.getWallet(wallet_name);
 
     const baseNodeGrpcAddress = `127.0.0.1:${baseNode.getGrpcPort()}`;
     const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
@@ -157,6 +157,6 @@ Then(
       "f665775dbbf4e428e5c8c2bb1c5e7d2e508e93c83250c495ac617a0a1fb2d76d" // contract_id
     );
     expect(response.status).to.be.equal("Accepted");
-    console.log({response});
+    console.log({ response });
   }
 );
