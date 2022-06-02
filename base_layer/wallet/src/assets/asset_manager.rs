@@ -250,7 +250,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         Ok((tx_id, transaction))
     }
 
-    pub async fn create_committee_definition(
+    pub async fn create_constitution_definition(
         &mut self,
         constitution_definition: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {

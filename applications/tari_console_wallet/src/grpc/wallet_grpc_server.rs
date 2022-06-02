@@ -37,8 +37,8 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
-        CreateCommitteeDefinitionRequest,
-        CreateCommitteeDefinitionResponse,
+        CreateConstitutionDefinitionRequest,
+        CreateConstitutionDefinitionResponse,
         CreateFollowOnAssetCheckpointRequest,
         CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
@@ -772,10 +772,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(CreateFollowOnAssetCheckpointResponse {}))
     }
 
-    async fn create_committee_definition(
+    async fn create_constitution_definition(
         &self,
-        request: Request<CreateCommitteeDefinitionRequest>,
-    ) -> Result<Response<CreateCommitteeDefinitionResponse>, Status> {
+        request: Request<CreateConstitutionDefinitionRequest>,
+    ) -> Result<Response<CreateConstitutionDefinitionResponse>, Status> {
         let mut asset_manager = self.wallet.asset_manager.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
@@ -783,7 +783,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let side_chain_features = SideChainFeatures::try_from(message).map_err(Status::internal)?;
 
         let (tx_id, transaction) = asset_manager
-            .create_committee_definition(&side_chain_features)
+            .create_constitution_definition(&side_chain_features)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -807,7 +807,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(CreateCommitteeDefinitionResponse {}))
+        Ok(Response::new(CreateConstitutionDefinitionResponse {}))
     }
 
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {

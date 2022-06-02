@@ -72,10 +72,10 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
     }
 }
 
-impl TryFrom<grpc::CreateCommitteeDefinitionRequest> for SideChainFeatures {
+impl TryFrom<grpc::CreateConstitutionDefinitionRequest> for SideChainFeatures {
     type Error = String;
 
-    fn try_from(request: grpc::CreateCommitteeDefinitionRequest) -> Result<Self, Self::Error> {
+    fn try_from(request: grpc::CreateConstitutionDefinitionRequest) -> Result<Self, Self::Error> {
         let acceptance_period_expiry = request.acceptance_period_expiry;
         let minimum_quorum_required = request.minimum_quorum_required;
         let validator_committee = request

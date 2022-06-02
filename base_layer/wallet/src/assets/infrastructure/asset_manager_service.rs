@@ -160,14 +160,14 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
-            AssetManagerRequest::CreateCommitteeDefinition {
+            AssetManagerRequest::CreateConstitutionDefinition {
                 constitution_definition,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_committee_definition(&constitution_definition)
+                    .create_constitution_definition(&constitution_definition)
                     .await?;
-                Ok(AssetManagerResponse::CreateCommitteeDefinition {
+                Ok(AssetManagerResponse::CreateConstitutionDefinition {
                     transaction: Box::new(transaction),
                     tx_id,
                 })

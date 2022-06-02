@@ -68,7 +68,7 @@ pub enum AssetManagerRequest {
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
-    CreateCommitteeDefinition {
+    CreateConstitutionDefinition {
         constitution_definition: Box<SideChainFeatures>,
     },
     CreateContractDefinition {
@@ -83,6 +83,6 @@ pub enum AssetManagerResponse {
     CreateMintingTransaction { transaction: Box<Transaction>, tx_id: TxId },
     CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateFollowOnCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
-    CreateCommitteeDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateConstitutionDefinition { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId },
 }

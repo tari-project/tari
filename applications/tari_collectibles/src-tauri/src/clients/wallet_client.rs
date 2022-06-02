@@ -134,20 +134,20 @@ impl WalletClient {
     Ok(result.into_inner())
   }
 
-  pub async fn create_committee_definition(
+  pub async fn create_constitution_definition(
     &mut self,
     asset_public_key: &str,
     committee: Vec<String>,
     acceptance_period_expiry: u64,
     minimum_quorum_required: u64,
-  ) -> Result<grpc::CreateCommitteeDefinitionResponse, CollectiblesError> {
+  ) -> Result<grpc::CreateConstitutionDefinitionResponse, CollectiblesError> {
     let inner = self.get_inner_mut()?;
 
     let committee = tari_app_grpc::tari_rpc::CommitteeMembers {
       members: committee.into_iter().map(|s| s.into_bytes()).collect(),
     };
 
-    let request = grpc::CreateCommitteeDefinitionRequest {
+    let request = grpc::CreateConstitutionDefinitionRequest {
       contract_id: Vec::from_hex(asset_public_key)?,
       validator_committee: Some(committee),
       acceptance_period_expiry,
@@ -155,10 +155,10 @@ impl WalletClient {
     };
 
     let result = inner
-      .create_committee_definition(request)
+      .create_constitution_definition(request)
       .await
       .map_err(|source| CollectiblesError::ClientRequest {
-        request: "create_committee_definition".to_string(),
+        request: "create_constitution_definition".to_string(),
         source,
       })?;
     debug!(target: LOG_TARGET, "result {:?}", result);

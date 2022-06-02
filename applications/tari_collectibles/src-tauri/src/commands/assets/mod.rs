@@ -307,7 +307,7 @@ pub(crate) async fn inner_assets_create_initial_checkpoint(
 }
 
 #[tauri::command]
-pub(crate) async fn assets_create_committee_definition(
+pub(crate) async fn assets_create_constitution_definition(
   contract_id: String,
   committee: Vec<String>,
   acceptance_period_expiry: u64,
@@ -319,7 +319,7 @@ pub(crate) async fn assets_create_committee_definition(
 
   // TODO: effective sidechain height...
   client
-    .create_committee_definition(
+    .create_constitution_definition(
       &contract_id,
       committee.clone(),
       acceptance_period_expiry,

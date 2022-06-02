@@ -72,7 +72,7 @@ service Wallet {
     rpc CreateInitialAssetCheckpoint(CreateInitialAssetCheckpointRequest) returns (CreateInitialAssetCheckpointResponse);
     // TODO: Needs a better name pls
     rpc CreateFollowOnAssetCheckpoint(CreateFollowOnAssetCheckpointRequest) returns (CreateFollowOnAssetCheckpointResponse);
-    rpc CreateCommitteeDefinition(CreateCommitteeDefinitionRequest) returns (CreateCommitteeDefinitionResponse);
+    rpc CreateConstitutionDefinition(CreateConstitutionDefinitionRequest) returns (CreateConstitutionDefinitionResponse);
 
     rpc GetOwnedAssets(Empty) returns (GetOwnedAssetsResponse);
 
@@ -286,14 +286,14 @@ message CreateFollowOnAssetCheckpointResponse {
 
 }
 
-message CreateCommitteeDefinitionRequest {
+message CreateConstitutionDefinitionRequest {
     bytes contract_id = 1;
     CommitteeMembers validator_committee = 2;
     uint64 acceptance_period_expiry = 3;
     uint64 minimum_quorum_required = 4;
 }
 
-message CreateCommitteeDefinitionResponse {
+message CreateConstitutionDefinitionResponse {
 
 }
 

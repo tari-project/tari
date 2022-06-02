@@ -112,7 +112,7 @@ pub enum WalletCommand {
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
-    CreateCommitteeDefinition,
+    PublishConstitutionDefinition,
     RevalidateWalletDb,
     PublishContractDefinition,
 }
@@ -877,7 +877,7 @@ pub async fn command_runner(
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
-            CreateCommitteeDefinition => {
+            PublishConstitutionDefinition => {
                 let contract_id = match parsed.args.get(0) {
                     Some(ParsedArgument::PublicKey(ref key)) => {
                         key.as_bytes().try_into().map_err(|_| CommandError::Argument)
@@ -929,7 +929,9 @@ pub async fn command_runner(
                     .finish();
 
                 let mut asset_manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = asset_manager.create_committee_definition(&side_chain_features).await?;
+                let (tx_id, transaction) = asset_manager
+                    .create_constitution_definition(&side_chain_features)
+                    .await?;
 
                 let message = format!(
                     "Committee definition with {} members for {:?}",

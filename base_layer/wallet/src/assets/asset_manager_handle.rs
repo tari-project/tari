@@ -123,20 +123,20 @@ impl AssetManagerHandle {
         }
     }
 
-    pub async fn create_committee_definition(
+    pub async fn create_constitution_definition(
         &mut self,
         side_chain_features: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
-            .call(AssetManagerRequest::CreateCommitteeDefinition {
+            .call(AssetManagerRequest::CreateConstitutionDefinition {
                 constitution_definition: Box::new(side_chain_features.clone()),
             })
             .await??
         {
-            AssetManagerResponse::CreateCommitteeDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
+            AssetManagerResponse::CreateConstitutionDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
-                method: "create_committee_definition".to_string(),
+                method: "create_constitution_definition".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

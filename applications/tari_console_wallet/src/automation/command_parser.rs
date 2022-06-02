@@ -66,7 +66,7 @@ impl Display for ParsedCommand {
             RegisterAsset => "register-asset",
             MintTokens => "mint-tokens",
             CreateInitialCheckpoint => "create-initial-checkpoint",
-            CreateCommitteeDefinition => "create-committee-definition",
+            PublishConstitutionDefinition => "publish-constitution-definition",
             RevalidateWalletDb => "revalidate-wallet-db",
             PublishContractDefinition => "publish-contract-definition",
         };
@@ -149,7 +149,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         // mint-tokens pub_key nft_id1 nft_id2
         MintTokens => parser_builder(args).pub_key().text_array().build()?,
         CreateInitialCheckpoint => parser_builder(args).pub_key().text().build()?,
-        CreateCommitteeDefinition => parser_builder(args).pub_key().int().int().pub_key_array().build()?,
+        PublishConstitutionDefinition => parser_builder(args).pub_key().int().int().pub_key_array().build()?,
         RevalidateWalletDb => Vec::new(),
         PublishContractDefinition => parse_publish_contract_definition(args)?,
     };
