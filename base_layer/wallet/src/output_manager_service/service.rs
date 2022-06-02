@@ -358,9 +358,9 @@ where
                 let outputs = self.fetch_spent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
             },
-            OutputManagerRequest::GetUnspentOutputs => {
-                let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
-                Ok(OutputManagerResponse::UnspentOutputs(outputs))
+            OutputManagerRequest::GetUnspentOutputs{ page_no, page_size, sort_descending} => {
+                let outputs = self.fetch_unspent_outputs( page_no, page_size, sort_descending)?.into_iter().map(|v| v.into()).collect();
+                Ok(OutputManagerResponse::UnspentOutputs{outputs})
             },
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
@@ -1437,7 +1437,7 @@ where
             Some(unique_id) => {
                 debug!(target: LOG_TARGET, "Looking for {:?}", unique_id);
                 // todo: new method to fetch by unique asset id
-                let uo = self.resources.db.fetch_all_unspent_outputs()?;
+                let uo = self.resources.db.fetch_all_unspent_outputs(0, 100, true)?;
                 if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
                     Some(token_unique_id) => {
                         debug!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
@@ -1565,8 +1565,8 @@ where
         Ok(self.resources.db.fetch_spent_outputs()?)
     }
 
-    pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_all_unspent_outputs()?)
+    pub fn fetch_unspent_outputs(&self, page_no: u32, page_size: u32, sort_descending: bool) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_all_unspent_outputs(page_no, page_size, sort_descending)?)
     }
 
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {

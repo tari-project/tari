@@ -221,7 +221,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
         let mut output_service = self.get_output_manager_service();
         let unspent_amounts;
-        match output_service.get_unspent_outputs().await {
+        match output_service.get_unspent_outputs(0, 1000, false).await {
             Ok(uo) => unspent_amounts = uo,
             Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
         }

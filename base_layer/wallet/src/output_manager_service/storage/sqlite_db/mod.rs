@@ -216,7 +216,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
-            DbKey::UnspentOutputs => {
+            DbKey::UnspentOutputs{..} => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Unspent, &conn)?;
                 for o in &mut outputs {
                     self.decrypt_if_necessary(o)?;
@@ -337,22 +337,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
         let mut outputs = OutputSql::index_marked_deleted_in_block_is_null(&conn)?;
         for output in &mut outputs {
             self.decrypt_if_necessary(output)?;
         }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - fetch_mined_unspent_outputs: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
+
 
         outputs
             .into_iter()
@@ -420,7 +410,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::SpentOutput(_s) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutputHash(_h) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutput(_k) => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::UnspentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::UnspentOutputs{..} => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),

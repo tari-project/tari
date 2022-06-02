@@ -177,6 +177,7 @@ use crate::{
     error::{InterfaceError, TransactionError},
     tasks::recovery_event_monitoring,
 };
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 mod callback_handler;
 #[cfg(test)]
@@ -236,6 +237,13 @@ pub struct TariWallet {
     runtime: Runtime,
     shutdown: Shutdown,
 }
+
+pub struct TariOutput {
+    pub value: MicroTari,
+    pub commitment: TariPublicKey,
+}
+
+pub struct TariOutputs(Vec<TariOutput>);
 
 /// -------------------------------- Strings ------------------------------------------------ ///
 
@@ -4812,6 +4820,55 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+
+/// Cleans up a TariOutputs pointer
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn tari_outputs_destroy(obj: *mut TariOutputs) {
+    if !obj.is_null() {
+        Box::from_raw(obj);
+    }
+}
+
+/// Returns outputs in the wallet
+///
+/// # Safety
+/// The ```tari_outputs_destroy``` method must be called when finished with a TariCompletedTransactions to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_utxos(
+    wallet: *mut TariWallet,
+    page_no: c_int,
+    page_size: c_int,
+    sort_descending: bool,
+    error_out: *mut c_int
+) -> *mut TariOutputs {
+    let res = (*wallet)
+        .runtime
+        .block_on(
+            (*wallet).wallet.output_manager_service.get_unspent_outputs(page_no as u32, page_size as u32, sort_descending));
+
+    match res {
+        Ok(outputs) => {
+            let mut tari_outputs = vec![];
+            for out in outputs
+        {
+            tari_outputs.push(TariOutput{
+                value: out.value,
+                commitment :(*wallet).wallet.factories.commitment.commit_value(&out.spending_key, out.value.into()).as_public_key().clone()
+            });
+        }
+            Box::into_raw(Box::new(TariOutputs(tari_outputs)))
+        }
+        Err(e) => {
+            let mut error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },

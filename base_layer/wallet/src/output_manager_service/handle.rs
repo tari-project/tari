@@ -100,7 +100,7 @@ pub enum OutputManagerRequest {
     },
     CancelTransaction(TxId),
     GetSpentOutputs,
-    GetUnspentOutputs,
+    GetUnspentOutputs{ page_no: u32,  page_size: u32, sort_descending: bool},
     GetInvalidOutputs,
     ValidateUtxos,
     RevalidateTxos,
@@ -163,7 +163,7 @@ impl fmt::Display for OutputManagerRequest {
             CreatePayToSelfTransaction { message, .. } => write!(f, "CreatePayToSelfTransaction ({})", message),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
-            GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
+            GetUnspentOutputs { .. } => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
@@ -233,7 +233,7 @@ pub enum OutputManagerResponse {
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
     SpentOutputs(Vec<UnblindedOutput>),
-    UnspentOutputs(Vec<UnblindedOutput>),
+    UnspentOutputs{ outputs: Vec<UnblindedOutput>},
     InvalidOutputs(Vec<UnblindedOutput>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
@@ -597,9 +597,13 @@ impl OutputManagerHandle {
     }
 
     /// Sorted from lowest value to highest
-    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
-            OutputManagerResponse::UnspentOutputs(s) => Ok(s),
+    pub async fn get_unspent_outputs(&mut self, page_no: u32, page_size: u32, sort_descending: bool) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetUnspentOutputs{
+            page_no,
+            page_size,
+            sort_descending,
+        }).await?? {
+            OutputManagerResponse::UnspentOutputs{outputs} => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

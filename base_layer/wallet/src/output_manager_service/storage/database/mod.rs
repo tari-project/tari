@@ -57,7 +57,7 @@ pub enum DbKey {
     UnspentOutputHash(HashOutput),
     AnyOutputByCommitment(Commitment),
     TimeLockedUnspentOutputs(u64),
-    UnspentOutputs,
+    UnspentOutputs{ page_no: u32, page_size: u32, sort_descending: bool},
     SpentOutputs,
     InvalidOutputs,
     KnownOneSidedPaymentScripts,
@@ -195,10 +195,15 @@ where T: OutputManagerBackend + 'static
         self.db.clear_pending_coinbase_transaction_at_block_height(block_height)
     }
 
-    pub fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let result = match self.db.fetch(&DbKey::UnspentOutputs)? {
+    pub fn fetch_all_unspent_outputs(&self, page_no: u32, page_size: u32, sort_descending: bool) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let key = DbKey::UnspentOutputs{
+            page_no,
+            page_size,
+            sort_descending
+        };
+        let result = match self.db.fetch(&key)? {
             Some(DbValue::UnspentOutputs(outputs)) => outputs,
-            Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
+            Some(other) => return unexpected_result(key, other),
             None => vec![],
         };
         Ok(result)
@@ -261,14 +266,15 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let uo = match self.db.fetch(&DbKey::TimeLockedUnspentOutputs(tip)) {
+        let key = DbKey::TimeLockedUnspentOutputs(tip);
+        let uo = match self.db.fetch(&key) {
             Ok(None) => log_error(
-                DbKey::UnspentOutputs,
+                key,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve unspent outputs".to_string()),
             ),
             Ok(Some(DbValue::UnspentOutputs(uo))) => Ok(uo),
-            Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
-            Err(e) => log_error(DbKey::UnspentOutputs, e),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
         }?;
         Ok(uo)
     }
@@ -433,7 +439,7 @@ impl Display for DbKey {
             DbKey::SpentOutput(_) => f.write_str(&"Spent Output Key".to_string()),
             DbKey::UnspentOutput(_) => f.write_str(&"Unspent Output Key".to_string()),
             DbKey::UnspentOutputHash(_) => f.write_str(&"Unspent Output Hash Key".to_string()),
-            DbKey::UnspentOutputs => f.write_str(&"Unspent Outputs Key".to_string()),
+            DbKey::UnspentOutputs{..} => f.write_str(&"Unspent Outputs Key".to_string()),
             DbKey::SpentOutputs => f.write_str(&"Spent Outputs Key".to_string()),
             DbKey::InvalidOutputs => f.write_str("Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str("Timelocked Outputs"),

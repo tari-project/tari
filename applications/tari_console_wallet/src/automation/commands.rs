@@ -681,7 +681,7 @@ pub async fn command_runner(
                 println!("Emoji ID  : {}", emoji_id);
             },
             ExportUtxos => {
-                let utxos = output_service.get_unspent_outputs().await?;
+                let utxos = output_service.get_unspent_outputs(0, 10000, false).await?;
                 let count = utxos.len();
                 let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
                 if parsed.args.is_empty() {
@@ -711,7 +711,7 @@ pub async fn command_runner(
                 println!("Total value of UTXOs: {}", sum);
             },
             CountUtxos => {
-                let utxos = output_service.get_unspent_outputs().await?;
+                let utxos = output_service.get_unspent_outputs(0,1000,false).await?;
                 let count = utxos.len();
                 let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
                 let sum: MicroTari = values.iter().sum();
