@@ -82,6 +82,8 @@ service Wallet {
     rpc GetOwnedTokens(GetOwnedTokensRequest) returns (GetOwnedTokensResponse);
 
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
+
+    rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 }
 
 message GetVersionRequest { }
@@ -369,4 +371,23 @@ message CheckConnectivityResponse{
         Offline = 2;
     }
     OnlineStatus status = 1;
+}
+
+message TransactionEventRequest{
+
+}
+
+message TransactionEvent {
+    string event = 1;
+    string tx_id = 2;
+    bytes source_pk = 3;
+    bytes dest_pk = 4;
+    string status = 5;
+    string direction = 6;
+    uint64 amount = 7;
+    string message = 8;
+}
+
+message TransactionEventResponse {
+    TransactionEvent transaction  = 1;
 }

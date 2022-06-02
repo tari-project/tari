@@ -22,7 +22,11 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use futures::{channel::mpsc, future, SinkExt};
+use futures::{
+    channel::mpsc::{self, Sender},
+    future,
+    SinkExt,
+};
 use log::*;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
@@ -71,6 +75,9 @@ use tari_app_grpc::{
         SetBaseNodeRequest,
         SetBaseNodeResponse,
         TransactionDirection,
+        TransactionEvent,
+        TransactionEventRequest,
+        TransactionEventResponse,
         TransactionInfo,
         TransactionStatus,
         TransferRequest,
@@ -92,14 +99,37 @@ use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
-    transaction_service::{handle::TransactionServiceHandle, storage::models},
+    transaction_service::{
+        handle::TransactionServiceHandle,
+        storage::models::{self, WalletTransaction},
+    },
     WalletSqlite,
 };
-use tokio::task;
+use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
+
+use crate::{
+    grpc::{convert_to_transaction_event, TransactionWrapper},
+    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
+};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
 
+async fn send_transaction_event(
+    transaction_event: TransactionEvent,
+    sender: &mut Sender<Result<TransactionEventResponse, Status>>,
+) {
+    let response = TransactionEventResponse {
+        transaction: Some(transaction_event),
+    };
+    if let Err(err) = sender.send(Ok(response)).await {
+        warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {}", err);
+        if let Err(send_err) = sender.send(Err(Status::unknown("Error sending data"))).await {
+            warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+        }
+        return;
+    }
+}
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
 }
@@ -125,6 +155,7 @@ impl WalletGrpcServer {
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
+    type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
@@ -540,6 +571,173 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect();
 
         Ok(Response::new(GetTransactionInfoResponse { transactions }))
+    }
+
+    async fn stream_transaction_events(
+        &self,
+        _request: tonic::Request<TransactionEventRequest>,
+    ) -> Result<Response<Self::StreamTransactionEventsStream>, Status> {
+        let (mut sender, receiver) = mpsc::channel(100);
+
+        // let event_listener = self.events_channel.clone();
+
+        // let mut shutdown_signal = self.wallet;
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let mut transaction_service_events = self.wallet.transaction_service.get_event_stream();
+
+        task::spawn(async move {
+            loop {
+                tokio::select! {
+                        result = transaction_service_events.recv() => {
+                            match result {
+                                Ok(msg) => {
+                                    match (*msg).clone() {
+                                        tari_wallet::transaction_service::handle::TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                                            match transaction_service.get_completed_transaction(tx_id).await{
+                                                Ok(completed) => {
+                                                    let transaction_event = convert_to_transaction_event(RECEIVED.to_string(),
+                                                        TransactionWrapper::Completed(completed));
+                                                     send_transaction_event(transaction_event, &mut sender).await;
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            }
+                                        }
+
+                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _}  |
+                                        tari_wallet::transaction_service::handle::TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> {
+                                            match transaction_service.get_completed_transaction(tx_id).await{
+                                                Ok(completed) => {
+                                                    let transaction_event = convert_to_transaction_event(CONFIRMATION.to_string(),
+                                                        TransactionWrapper::Completed(completed));
+                                                    send_transaction_event(transaction_event, &mut sender).await;
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            }
+                                        },
+                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionMined{tx_id, is_valid: _} |
+                                        tari_wallet::transaction_service::handle::TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _}=> {
+                                            match transaction_service.get_completed_transaction(tx_id).await{
+                                                Ok(completed) => {
+                                                    let transaction_event = convert_to_transaction_event(MINED.to_string(),
+                                                        TransactionWrapper::Completed(completed));
+                                                    send_transaction_event(transaction_event, &mut sender).await;
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            }
+                                        },
+                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionCancelled(tx_id, _) => {
+                                            match transaction_service.get_any_transaction(tx_id).await{
+                                                Ok(Some(wallet_tx)) => {
+                                                    match wallet_tx {
+                                                        WalletTransaction::Completed(tx) => {
+                                                            let transaction_event = convert_to_transaction_event(CANCELLED.to_string(),
+                                                                TransactionWrapper::Completed(tx));
+                                                            send_transaction_event(transaction_event, &mut sender).await;
+                                                        },
+                                                        WalletTransaction::PendingInbound(tx) => {
+                                                            let transaction_event = convert_to_transaction_event(CANCELLED.to_string(),
+                                                                TransactionWrapper::Inbound(tx));
+                                                            send_transaction_event(transaction_event, &mut sender).await;
+                                                        },
+                                                        WalletTransaction::PendingOutbound(tx) => {
+                                                            let transaction_event = convert_to_transaction_event(CANCELLED.to_string(),
+                                                                TransactionWrapper::Outbound(tx));
+                                                            send_transaction_event(transaction_event, &mut sender).await;
+                                                        },
+                                                    }
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                                _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
+                                            }
+                                        },
+                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionCompletedImmediately(tx_id) => {
+
+                                            match transaction_service.get_pending_outbound_transactions().await{
+                                                Ok(txs) => {
+                                                    if let Some(tx) = txs.get(&tx_id) {
+                                                        let transaction_event = convert_to_transaction_event(SENT.to_string(),
+                                                            TransactionWrapper::Outbound(tx.clone())
+                                                        );
+                                                        send_transaction_event(transaction_event, &mut sender).await;
+                                                    } else {
+                                                        error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
+                                                    }
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            }
+                                        },
+                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionSendResult(tx_id, status) => {
+                                            let is_sent = status.direct_send_result || status.store_and_forward_send_result;
+                                            let event = if is_sent {
+                                                debug!(target: LOG_TARGET, "Transaction sent tx_id: {}", tx_id);
+                                                SENT
+                                            } else {
+                                                debug!(
+                                                    target: LOG_TARGET,
+                                                    "Transaction queued for further retry sending tx_id: {}", tx_id
+                                                );
+                                                QUEUED
+                                            };
+
+                                            match transaction_service.get_pending_outbound_transactions().await {
+                                                Ok(txs) => {
+                                                    if let Some(tx) = txs.get(&tx_id) {
+
+                                                        let transaction_event = convert_to_transaction_event(event.to_string(),
+                                                            TransactionWrapper::Outbound(tx.clone())
+                                                        );
+                                                        send_transaction_event(transaction_event, &mut sender).await;
+                                                    } else {
+                                                        error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
+                                                    }
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            }
+                                        },
+                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionValidationStateChanged(_operation_id) => {
+
+                                            let transaction_event = TransactionEvent {
+                                                event: "unknown".to_string(),
+                                                tx_id: String::default(),
+                                                source_pk: vec![],
+                                                dest_pk: vec![],
+                                                status: "unknown".to_string(),
+                                                direction: "unknown".to_string(),
+                                                amount: 0,
+                                                message: String::default() };
+                                                send_transaction_event(transaction_event, &mut sender).await;
+                                        },
+                                        tari_wallet::transaction_service::handle::TransactionEvent::ReceivedTransaction(tx_id) |
+                                            tari_wallet::transaction_service::handle::TransactionEvent::ReceivedTransactionReply(tx_id)  |
+                                            tari_wallet::transaction_service::handle::TransactionEvent::TransactionBroadcast(tx_id) |
+                                            tari_wallet::transaction_service::handle::TransactionEvent::TransactionMinedRequestTimedOut(tx_id) |
+                                            tari_wallet::transaction_service::handle::TransactionEvent::TransactionImported(tx_id) => {
+                                                let unsupported_event = TransactionEvent {
+                                                    event: "not_supported".to_string(),
+                                                    tx_id: tx_id.to_string(),
+                                                    source_pk: vec![],
+                                                    dest_pk: vec![],
+                                                    status: "not_supported".to_string(),
+                                                    direction: "not_supported".to_string(),
+                                                    amount: 0,
+                                                    message: String::default()
+                                                };
+                                                send_transaction_event(unsupported_event, &mut sender).await;
+                                        },
+                                        // Only the above variants trigger state refresh
+                                        _ => (),
+                                    }
+                                },
+                                Err(broadcast::error::RecvError::Lagged(n)) => {
+                                    warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
+                                }
+                                Err(broadcast::error::RecvError::Closed) => {}
+                            }
+                }
+                    }
+            }
+        });
+        Ok(Response::new(receiver))
     }
 
     async fn get_completed_transactions(
