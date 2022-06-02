@@ -116,10 +116,6 @@ const servicesSlice = createSlice({
     builder.addCase(addStats.fulfilled, (state, action) => {
       const { containerId, stats } = action.payload
 
-      if (!state.stats || !state.stats[containerId]) {
-        return
-      }
-
       state.stats[containerId].timestamp = stats.timestamp
       state.stats[containerId].cpu = stats.cpu
       state.stats[containerId].memory = stats.memory

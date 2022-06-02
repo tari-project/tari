@@ -32,6 +32,10 @@ export const addStats = createAsyncThunk<
   const { stats, containerId } = payload
   const rootState = thunkApi.getState()
 
+  if (!rootState.containers.stats || !rootState.containers.stats[containerId]) {
+    throw new Error('stats for this container dont exist yet')
+  }
+
   const cs = stats.cpu_stats
   const pcs = stats.precpu_stats
   const cpu_delta = cs.cpu_usage.total_usage - pcs.cpu_usage.total_usage
