@@ -180,10 +180,9 @@ message CommitteeDefinitionFeatures {
 }
 
 message ContractDefinition {
-    bytes contract_id = 1;
-    bytes contract_name = 2;
-    bytes contract_issuer = 3;
-    ContractSpecification contract_spec = 4;
+    bytes contract_name = 1;
+    bytes contract_issuer = 2;
+    ContractSpecification contract_spec = 3;
 }
 
 message ContractSpecification {

@@ -922,7 +922,7 @@ pub async fn command_runner(
                 let contract_definition: ContractDefinitionFileFormat =
                     serde_json::from_reader(file_reader).map_err(|e| CommandError::JSONFile(e.to_string()))?;
                 let contract_definition_features = ContractDefinition::from(contract_definition);
-                let contract_id_hex = contract_definition_features.contract_id.to_vec().to_hex();
+                let contract_id_hex = contract_definition_features.calculate_contract_id().to_vec().to_hex();
 
                 // create the contract definition transaction
                 let mut asset_manager = wallet.asset_manager.clone();
