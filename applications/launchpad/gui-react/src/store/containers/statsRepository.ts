@@ -1,18 +1,18 @@
 import { StatsDbEntry, StatsRepository, Container } from './types'
 
-const db: Record<string, Record<Container, Map<string, StatsDbEntry>>> = {}
+const db: Record<string, Record<Container, StatsDbEntry[]>> = {}
 
 const ensureDb = (network: string) => {
   if (!db[network]) {
     db[network] = {
-      [Container.Tor]: new Map<string, StatsDbEntry>(),
-      [Container.BaseNode]: new Map<string, StatsDbEntry>(),
-      [Container.Wallet]: new Map<string, StatsDbEntry>(),
-      [Container.SHA3Miner]: new Map<string, StatsDbEntry>(),
-      [Container.MMProxy]: new Map<string, StatsDbEntry>(),
-      [Container.XMrig]: new Map<string, StatsDbEntry>(),
-      [Container.Monerod]: new Map<string, StatsDbEntry>(),
-      [Container.Frontail]: new Map<string, StatsDbEntry>(),
+      [Container.Tor]: [] as StatsDbEntry[],
+      [Container.BaseNode]: [] as StatsDbEntry[],
+      [Container.Wallet]: [] as StatsDbEntry[],
+      [Container.SHA3Miner]: [] as StatsDbEntry[],
+      [Container.MMProxy]: [] as StatsDbEntry[],
+      [Container.XMrig]: [] as StatsDbEntry[],
+      [Container.Monerod]: [] as StatsDbEntry[],
+      [Container.Frontail]: [] as StatsDbEntry[],
     }
   }
 }
@@ -21,12 +21,16 @@ const ensureDb = (network: string) => {
 // THIS IS A TEMPORARY IMPLEMENTATION
 // this is the dumbest implementation I could write
 // future implementation will use Dexie.js
+const MAX_ENTRIES = 1800
 const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, service, secondTimestamp, stats) => {
       ensureDb(network)
 
-      db[network][service].set(secondTimestamp, {
+      if (db[network][service].length >= MAX_ENTRIES) {
+        db[network][service].shift()
+      }
+      db[network][service].push({
         ...stats,
         timestamp: secondTimestamp,
       })
@@ -37,7 +41,7 @@ const repositoryFactory: () => StatsRepository = () => {
       return Object.values(Container).reduce(
         (accu, current) => ({
           ...accu,
-          [current]: Array.from(db[network][current].values()),
+          [current]: [...db[network][current]],
         }),
         {} as Record<Container, StatsDbEntry[]>,
       )

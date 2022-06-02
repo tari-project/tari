@@ -21,7 +21,7 @@ const usePerformanceStats = () => {
       const stats = await repository.getGroupedByContainer(configuredNetwork)
 
       setStats(stats)
-    }, 5000)
+    }, 1000)
 
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return () => clearInterval(interval.current!)
