@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event'
 
 import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
+import { selectNetwork } from '../baseNode/selectors'
 
 import {
   StatsEventPayload,
@@ -33,7 +34,12 @@ export const start = createAsyncThunk<
       (statsEvent: { payload: StatsEventPayload }) => {
         thunkApi.dispatch({
           type: 'containers/stats',
-          payload: { containerId: descriptor.id, stats: statsEvent.payload },
+          payload: {
+            containerId: descriptor.id,
+            stats: statsEvent.payload,
+            service,
+            network: selectNetwork(rootState),
+          },
         })
       },
     )

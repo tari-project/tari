@@ -1,201 +1,324 @@
+import { getEmptyStatsHistory } from '../../../__tests__/mocks/states/containersStateTemplates'
+
 import servicesReducer from './'
-import { SystemEventAction, ServicesState } from './types'
+import { SystemEventAction, ContainersState, Container } from './types'
 
-describe('updateStatus action', () => {
-  it('should update container status state', () => {
-    // given
-    const unsubscribe = jest.fn()
-    const state = {
-      pending: [],
-      containers: {
-        someContainerId: {
-          status: SystemEventAction.Create,
-        },
-      },
-      stats: {
-        someContainerId: {
-          cpu: 2,
-          memory: 1,
-          unsubscribe,
-        },
-      },
-    } as unknown as ServicesState
-    const expected = {
-      pending: [],
-      containers: {
-        someContainerId: {
-          status: SystemEventAction.Start,
-        },
-      },
-      stats: {
-        someContainerId: {
-          cpu: 2,
-          memory: 1,
-          unsubscribe,
-        },
-      },
-    }
-
-    // when
-    const nextState = servicesReducer(state, {
-      type: 'containers/updateStatus',
-      payload: {
-        containerId: 'someContainerId',
-        action: SystemEventAction.Start,
-      },
-    })
-
-    // then
-    expect(nextState).toStrictEqual(expected)
-  })
-
-  it('should add the container to state if not present before', () => {
-    // given
-    const state = {
-      pending: [],
-      containers: {},
-      stats: {},
-    } as unknown as ServicesState
-
-    // when
-    const nextState = servicesReducer(state, {
-      type: 'containers/updateStatus',
-      payload: {
-        containerId: 'newContainerId',
-        action: SystemEventAction.Create,
-      },
-    })
-
-    // then
-    const newContainer = nextState.containers.newContainerId
-    expect(newContainer).toMatchObject({
-      status: SystemEventAction.Create,
-    })
-  })
-
-  it('should add timestamp to the container when adding new', () => {
-    // given
-    const state = {
-      pending: [],
-      containers: {},
-    } as unknown as ServicesState
-
-    // when
-    const nextState = servicesReducer(state, {
-      type: 'containers/updateStatus',
-      payload: {
-        containerId: 'newContainerId',
-        action: SystemEventAction.Create,
-      },
-    })
-
-    // then
-    const newContainer = nextState.containers.newContainerId
-    expect(newContainer.timestamp).toBeDefined()
-  })
-
-  it('should not touch timestamp when updating status', () => {
-    // given
-    const unsubscribe = jest.fn()
-    const state = {
-      pending: [],
-      containers: {
-        someContainerId: {
-          timestamp: 123123,
-          status: SystemEventAction.Create,
-        },
-      },
-      stats: {
-        someContainerId: {
-          cpu: 2,
-          memory: 1,
-          unsubscribe,
-        },
-      },
-    } as unknown as ServicesState
-
-    // when
-    const nextState = servicesReducer(state, {
-      type: 'containers/updateStatus',
-      payload: {
-        containerId: 'someContainerId',
-        action: SystemEventAction.Start,
-      },
-    })
-
-    // then
-    const newContainer = nextState.containers.someContainerId
-    expect(newContainer.timestamp).toBe(123123)
-  })
-
-  describe('when container is reported as destroyed or dead', () => {
-    const actionsCases = [SystemEventAction.Destroy, SystemEventAction.Die]
-
-    actionsCases.forEach(action => {
-      it(`[${action}] should unsubscribe from stats events`, () => {
-        // given
-        const unsubscribe = jest.fn()
-        const state = {
-          pending: [],
-          containers: {
-            someContainerId: {
-              status: SystemEventAction.Create,
-            },
+describe('store containers slice', () => {
+  describe('updateStatus action', () => {
+    it('should update container status state', () => {
+      // given
+      const unsubscribe = jest.fn()
+      const state = {
+        pending: [],
+        containers: {
+          someContainerId: {
+            status: SystemEventAction.Create,
           },
-          stats: {
-            someContainerId: {
-              cpu: 2,
-              memory: 1,
-              unsubscribe,
-            },
+        },
+        stats: {
+          someContainerId: {
+            cpu: 2,
+            memory: 1,
+            unsubscribe,
           },
-        } as unknown as ServicesState
-
-        // when
-        servicesReducer(state, {
-          type: 'containers/updateStatus',
-          payload: {
-            containerId: 'someContainerId',
-            action,
+        },
+      } as unknown as ContainersState
+      const expected = {
+        pending: [],
+        containers: {
+          someContainerId: {
+            status: SystemEventAction.Start,
           },
-        })
+        },
+        stats: {
+          someContainerId: {
+            cpu: 2,
+            memory: 1,
+            unsubscribe,
+          },
+        },
+      }
 
-        // then
-        expect(unsubscribe).toHaveBeenCalledTimes(1)
+      // when
+      const nextState = servicesReducer(state, {
+        type: 'containers/updateStatus',
+        payload: {
+          containerId: 'someContainerId',
+          action: SystemEventAction.Start,
+        },
       })
 
-      it(`[${action}] should NOT remove container from state and 0-out the stats`, () => {
-        // given
-        const state = {
-          pending: [],
-          containers: {
-            someContainerId: {
-              status: SystemEventAction.Create,
-            },
-          },
-          stats: {
-            someContainerId: {
-              cpu: 2,
-              memory: 1,
-              unsubscribe: jest.fn(),
-            },
-          },
-        } as unknown as ServicesState
+      // then
+      expect(nextState).toStrictEqual(expected)
+    })
 
-        // when
-        const nextState = servicesReducer(state, {
-          type: 'containers/updateStatus',
-          payload: {
-            containerId: 'someContainerId',
-            action,
+    it('should add the container to state if not present before', () => {
+      // given
+      const state = {
+        pending: [],
+        containers: {},
+        stats: {},
+      } as unknown as ContainersState
+
+      // when
+      const nextState = servicesReducer(state, {
+        type: 'containers/updateStatus',
+        payload: {
+          containerId: 'newContainerId',
+          action: SystemEventAction.Create,
+        },
+      })
+
+      // then
+      const newContainer = nextState.containers.newContainerId
+      expect(newContainer).toMatchObject({
+        status: SystemEventAction.Create,
+      })
+    })
+
+    it('should add timestamp to the container when adding new', () => {
+      // given
+      const state = {
+        pending: [],
+        containers: {},
+      } as unknown as ContainersState
+
+      // when
+      const nextState = servicesReducer(state, {
+        type: 'containers/updateStatus',
+        payload: {
+          containerId: 'newContainerId',
+          action: SystemEventAction.Create,
+        },
+      })
+
+      // then
+      const newContainer = nextState.containers.newContainerId
+      expect(newContainer.timestamp).toBeDefined()
+    })
+
+    it('should not touch timestamp when updating status', () => {
+      // given
+      const unsubscribe = jest.fn()
+      const state = {
+        pending: [],
+        containers: {
+          someContainerId: {
+            timestamp: 123123,
+            status: SystemEventAction.Create,
           },
+        },
+        stats: {
+          someContainerId: {
+            cpu: 2,
+            memory: 1,
+            unsubscribe,
+          },
+        },
+      } as unknown as ContainersState
+
+      // when
+      const nextState = servicesReducer(state, {
+        type: 'containers/updateStatus',
+        payload: {
+          containerId: 'someContainerId',
+          action: SystemEventAction.Start,
+        },
+      })
+
+      // then
+      const newContainer = nextState.containers.someContainerId
+      expect(newContainer.timestamp).toBe(123123)
+    })
+
+    describe('when container is reported as destroyed or dead', () => {
+      const actionsCases = [SystemEventAction.Destroy, SystemEventAction.Die]
+
+      actionsCases.forEach(action => {
+        it(`[${action}] should unsubscribe from stats events`, () => {
+          // given
+          const unsubscribe = jest.fn()
+          const state = {
+            pending: [],
+            containers: {
+              someContainerId: {
+                status: SystemEventAction.Create,
+              },
+            },
+            stats: {
+              someContainerId: {
+                cpu: 2,
+                memory: 1,
+                unsubscribe,
+              },
+            },
+          } as unknown as ContainersState
+
+          // when
+          servicesReducer(state, {
+            type: 'containers/updateStatus',
+            payload: {
+              containerId: 'someContainerId',
+              action,
+            },
+          })
+
+          // then
+          expect(unsubscribe).toHaveBeenCalledTimes(1)
         })
 
-        // then
-        expect(nextState.containers.someContainerId).toBeDefined()
-        expect(nextState.stats.someContainerId.cpu).toBe(0)
-        expect(nextState.stats.someContainerId.memory).toBe(0)
+        it(`[${action}] should NOT remove container from state and 0-out the stats`, () => {
+          // given
+          const state = {
+            pending: [],
+            containers: {
+              someContainerId: {
+                status: SystemEventAction.Create,
+              },
+            },
+            stats: {
+              someContainerId: {
+                cpu: 2,
+                memory: 1,
+                unsubscribe: jest.fn(),
+              },
+            },
+          } as unknown as ContainersState
+
+          // when
+          const nextState = servicesReducer(state, {
+            type: 'containers/updateStatus',
+            payload: {
+              containerId: 'someContainerId',
+              action,
+            },
+          })
+
+          // then
+          expect(nextState.containers.someContainerId).toBeDefined()
+          expect(nextState.stats.someContainerId.cpu).toBe(0)
+          expect(nextState.stats.someContainerId.memory).toBe(0)
+        })
       })
+    })
+  })
+
+  describe('stats', () => {
+    const standardTimestamp = '2022-05-23T12:13:14.000Z'
+    const standardStats = (read = standardTimestamp) => ({
+      read,
+      precpu_stats: {
+        cpu_usage: {
+          total_usage: 1,
+        },
+        system_cpu_usage: 1,
+      },
+      cpu_stats: {
+        cpu_usage: {
+          total_usage: 3,
+        },
+        system_cpu_usage: 5,
+        online_cpus: 1,
+      },
+      memory_stats: {
+        usage: 1024 * 1024,
+        stats: {},
+      },
+      networks: {},
+    })
+    const expectedFromStandardStats = (read = standardTimestamp) => ({
+      timestamp: read,
+      cpu: 50,
+      memory: 1,
+    })
+
+    it('should add stats under containerId', () => {
+      // given
+      const state = {
+        statsHistory: [],
+        pending: [],
+        containers: {
+          someContainerId: {
+            status: SystemEventAction.Start,
+          },
+        },
+        stats: {
+          someContainerId: {
+            cpu: 0,
+            memory: 0,
+          },
+        },
+      } as unknown as ContainersState
+      const expected = {
+        someContainerId: {
+          ...expectedFromStandardStats(),
+        },
+      }
+
+      // when
+      const nextState = servicesReducer(state, {
+        type: 'containers/stats',
+        payload: {
+          containerId: 'someContainerId',
+          service: Container.Tor,
+          stats: standardStats(),
+        },
+      })
+
+      // then
+      expect(nextState.stats).toStrictEqual(expected)
+    })
+
+    it('should retain stat history for service under current network, creating network state container if not yet available', () => {
+      // given
+      const state = {
+        statsHistory: [],
+        pending: [],
+        containers: {
+          someContainerId: {
+            status: SystemEventAction.Start,
+          },
+        },
+        stats: {
+          someContainerId: {
+            cpu: 0,
+            memory: 0,
+          },
+        },
+      } as unknown as ContainersState
+      const expected = {
+        pending: [],
+        containers: {
+          someContainerId: {
+            status: SystemEventAction.Start,
+          },
+        },
+        stats: {
+          someContainerId: {
+            ...expectedFromStandardStats(),
+          },
+        },
+        statsHistory: {
+          network: {
+            ...getEmptyStatsHistory(),
+            [Container.Tor]: [expectedFromStandardStats()],
+          },
+        },
+      }
+
+      // when
+      const nextState = servicesReducer(state, {
+        type: 'containers/stats',
+        payload: {
+          containerId: 'someContainerId',
+          service: Container.Tor,
+          network: 'network',
+          stats: standardStats(),
+        },
+      })
+
+      // then
+      expect(nextState).toStrictEqual(expected)
     })
   })
 })
