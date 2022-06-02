@@ -20,6 +20,7 @@ const lightTheme = {
   actionBackground: styles.colors.secondary.actionBackground,
   resetBackground: styles.colors.light.overlay,
   resetBackgroundHover: styles.colors.light.overlayDark,
+  moneroDark: styles.colors.monero.dark,
   shadow40: '0 0 40px #00000011',
   shadow24: '0 0 24px #00000006',
 
@@ -76,6 +77,7 @@ const lightTheme = {
     actionBackground: styles.colors.secondary.actionBackground,
     resetBackground: styles.colors.light.overlay,
     resetBackgroundHover: styles.colors.light.overlayDark,
+    moneroDark: styles.colors.monero.dark,
     controlBackground: 'rgba(255,255,255,.2)',
   },
 }

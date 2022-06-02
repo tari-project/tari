@@ -25,18 +25,20 @@ const StrengthMeter = ({ password }: { password?: string }) => {
       setStrength(0)
     } else {
       const { score } = zxcvbn(password)
-      setStrength((score + 1) / 5)
+      setStrength((score + 1) / 4)
     }
   }, [password])
 
   const getColor = () => {
-    if (strength >= 0.7) {
-      return theme.success
-    } else if (strength >= 0.4) {
+    if (strength <= 0.25) {
+      return theme.moneroDark
+    } else if (strength > 0.25 && strength <= 0.5) {
       return theme.warningText
+    } else if (strength > 0.5 && strength <= 0.75) {
+      return theme.infoText
+    } else {
+      return theme.onTextLight
     }
-
-    return theme.error
   }
 
   const { progress, color } = useSpring({

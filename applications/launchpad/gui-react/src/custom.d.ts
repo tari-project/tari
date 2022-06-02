@@ -37,6 +37,7 @@ declare module 'styled-components' {
     actionBackground: string
     resetBackground: string
     resetBackgroundHover: string
+    moneroDark: string
     shadow40: string
     shadow24: string
 
@@ -76,6 +77,7 @@ declare module 'styled-components' {
       warningGradient: string
       resetBackground: string
       resetBackgroundHover: string
+      moneroDark: string
       info: string
       infoText: string
       on: string
