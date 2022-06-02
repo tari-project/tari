@@ -45,7 +45,9 @@ describe('PasswordInput', () => {
     const meter = screen.getByTestId('strength-meter')
     expect(meter).toBeInTheDocument()
 
-    expect(Number(meter.getAttribute('data-strength'))).toBeLessThanOrEqual(0.2)
+    expect(Number(meter.getAttribute('data-strength'))).toBeLessThanOrEqual(
+      0.25,
+    )
   })
 
   it('should render password strength meter for medium passwords', () => {
@@ -59,9 +61,11 @@ describe('PasswordInput', () => {
     expect(meter).toBeInTheDocument()
 
     expect(Number(meter.getAttribute('data-strength'))).toBeGreaterThanOrEqual(
-      0.4,
+      0.5,
     )
-    expect(Number(meter.getAttribute('data-strength'))).toBeLessThanOrEqual(0.8)
+    expect(Number(meter.getAttribute('data-strength'))).toBeLessThanOrEqual(
+      0.75,
+    )
   })
 
   it('should render password strength meter for strong passwords', () => {
@@ -75,7 +79,7 @@ describe('PasswordInput', () => {
     expect(meter).toBeInTheDocument()
 
     expect(Number(meter.getAttribute('data-strength'))).toBeGreaterThanOrEqual(
-      0.8,
+      0.75,
     )
   })
 

@@ -20,6 +20,7 @@ const darkTheme = {
   borderColorLight: styles.colors.secondary.borderLight,
   resetBackground: styles.colors.light.overlay,
   resetBackgroundHover: styles.colors.light.overlayDark,
+  moneroDark: styles.colors.monero.dark,
   controlBackground: 'rgba(255,255,255,.2)',
   info: styles.colors.secondary.info,
   infoText: styles.colors.secondary.infoText,
@@ -70,6 +71,7 @@ const darkTheme = {
     borderColorLight: styles.colors.secondary.borderLight,
     resetBackground: styles.colors.light.overlay,
     resetBackgroundHover: styles.colors.light.overlayDark,
+    moneroDark: styles.colors.monero.dark,
     controlBackground: 'transparent',
   },
 }
