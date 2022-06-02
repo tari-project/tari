@@ -31,6 +31,7 @@ export type ContainerStats = {
   cpu: number
   memory: number
   unsubscribe: UnlistenFn
+  timestamp: string
 }
 
 export type ContainerStatus = {
@@ -62,15 +63,20 @@ export type ContainerStateFields = Pick<
 export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
   Pick<ContainerStatusDto, 'id' | 'type'>
 
-export type ServicesState = {
+export type ContainersState = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   errors: Record<Container, any>
   pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
   stats: Record<ContainerId, ContainerStats>
+  statsHistory: Record<
+    string,
+    Record<ContainerId, Omit<ContainerStats, 'unsubscribe'>[]>
+  >
 }
 
 export interface StatsEventPayload {
+  read: string
   precpu_stats: {
     cpu_usage: {
       total_usage: number
@@ -90,4 +96,5 @@ export interface StatsEventPayload {
       cache?: number
     }
   }
+  networks: Record<string, { tx_bytes: number; rx_bytes: number }>
 }

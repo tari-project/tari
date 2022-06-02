@@ -75,6 +75,7 @@ export const selectContainerStatusWithStats: ContainerStatusSelectorWithStats =
         stats: {
           cpu: 0,
           memory: 0,
+          timestamp: '',
           unsubscribe: () => undefined,
         },
       }
