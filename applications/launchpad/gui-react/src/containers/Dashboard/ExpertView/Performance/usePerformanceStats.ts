@@ -57,12 +57,29 @@ const usePerformanceStats = () => {
     )
   }, [allStats])
 
+  const network = useMemo(() => {
+    return Object.values(Container).reduce(
+      (accu, current) => ({
+        ...accu,
+        [current]: ((allStats && allStats[current]) || []).map(
+          ({ network: { upload, download }, timestamp }) => ({
+            upload,
+            download,
+            timestamp,
+          }),
+        ),
+      }),
+      {},
+    )
+  }, [allStats])
+
   return useMemo(
     () => ({
       cpu,
       memory,
+      network,
     }),
-    [cpu, memory],
+    [cpu, memory, network],
   )
 }
 

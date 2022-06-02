@@ -25,11 +25,24 @@ describe('containers/thunks', () => {
         usage: 1024 * 1024,
         stats: {},
       },
-      networks: {},
+      networks: {
+        eth0: {
+          tx_bytes: 17,
+          rx_bytes: 13,
+        },
+        eth1: {
+          tx_bytes: 17,
+          rx_bytes: 13,
+        },
+      },
     })
     const expectedFromStandardStats = () => ({
       cpu: 50,
       memory: 1,
+      network: {
+        upload: 34,
+        download: 26,
+      },
     })
 
     it('should return stats to be saved in state', async () => {

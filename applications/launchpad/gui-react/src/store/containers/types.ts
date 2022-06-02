@@ -30,6 +30,10 @@ export type ServiceDescriptor = {
 export type ContainerStats = {
   cpu: number
   memory: number
+  network: {
+    upload: number
+    download: number
+  }
   unsubscribe: UnlistenFn
 }
 export type SerializableContainerStats = Omit<ContainerStats, 'unsubscribe'>
