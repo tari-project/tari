@@ -313,3 +313,14 @@ Then(
     console.log(output.buffer);
   }
 );
+
+Then('I create a constitution definition on wallet {word} via command line',  { timeout: 120 * 1000 },
+    async function (wallet_name) {
+        let wallet = this.getWallet(wallet_name);
+        let output = await wallet_run_command(
+            wallet,
+            "create-committee-definition ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44 2 2 ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44 ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44 ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44"
+        );
+        console.log(output.buffer);
+    }
+);
