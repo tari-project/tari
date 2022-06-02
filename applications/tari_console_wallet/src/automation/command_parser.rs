@@ -205,6 +205,7 @@ impl<'a> ArgParser<'a> {
         self
     }
 
+    #[allow(dead_code)]
     fn pub_key_array(self) -> Self {
         let mut me = self;
         while me.args.peek().is_some() {
