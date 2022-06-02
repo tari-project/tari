@@ -56,7 +56,6 @@ const servicesSlice = createSlice({
         state.stats[action.payload.containerId] = {
           cpu: 0,
           memory: 0,
-          timestamp: '',
           unsubscribe: () => {
             return
           },
@@ -116,7 +115,6 @@ const servicesSlice = createSlice({
     builder.addCase(addStats.fulfilled, (state, action) => {
       const { containerId, stats } = action.payload
 
-      state.stats[containerId].timestamp = stats.timestamp
       state.stats[containerId].cpu = stats.cpu
       state.stats[containerId].memory = stats.memory
     })

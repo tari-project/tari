@@ -6,6 +6,7 @@ import { listen } from '@tauri-apps/api/event'
 import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 import { selectNetwork } from '../baseNode/selectors'
+import { startOfSecond } from '../../utils/Date'
 
 import {
   StatsEventPayload,
@@ -13,14 +14,37 @@ import {
   Container,
   ContainerStats,
   ServiceDescriptor,
+  StatsRepository,
 } from './types'
 import { selectContainerByType } from './selectors'
+
+const temporaryStatsRepository = {
+  add: () => null,
+} as unknown as StatsRepository
+const getStatsRepository = () => temporaryStatsRepository
+
+export const persistStats = createAsyncThunk<
+  void,
+  {
+    service: Container
+    timestamp: string
+    stats: Omit<ContainerStats, 'unsubscribe'>
+  },
+  { state: RootState }
+>('containers/persistStats', async (payload, thunkApi) => {
+  const { service, timestamp, stats } = payload
+
+  const rootState = thunkApi.getState()
+  const configuredNetwork = selectNetwork(rootState)
+
+  const repository = getStatsRepository()
+  await repository.add(configuredNetwork, service, timestamp, stats)
+})
 
 export const addStats = createAsyncThunk<
   {
     containerId: ContainerId
     stats: Omit<ContainerStats, 'unsubscribe'>
-    network: string
   },
   {
     containerId: ContainerId
@@ -29,7 +53,7 @@ export const addStats = createAsyncThunk<
   },
   { state: RootState }
 >('containers/stats', async (payload, thunkApi) => {
-  const { stats, containerId } = payload
+  const { stats, containerId, service } = payload
   const rootState = thunkApi.getState()
 
   if (!rootState.containers.stats || !rootState.containers.stats[containerId]) {
@@ -46,14 +70,22 @@ export const addStats = createAsyncThunk<
   const ms = stats.memory_stats
   const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
 
+  const currentStats = {
+    cpu,
+    memory,
+  }
+  const secondTimestamp = startOfSecond(new Date(stats.read)).toISOString()
+  thunkApi.dispatch(
+    persistStats({
+      service,
+      timestamp: secondTimestamp,
+      stats: currentStats,
+    }),
+  )
+
   return {
     containerId,
-    network: selectNetwork(rootState),
-    stats: {
-      cpu,
-      memory,
-      timestamp: stats.read,
-    },
+    stats: currentStats,
   }
 })
 
