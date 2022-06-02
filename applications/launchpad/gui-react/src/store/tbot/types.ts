@@ -7,11 +7,9 @@ export enum TBotMessages {
 
 export type TBotMessage = {
   id: number
-  // type: TBotMessageType
   message: string
 }
 
 export interface TBotState {
   messageQueue: string[]
-  open: boolean
 }

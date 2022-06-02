@@ -4,7 +4,6 @@ import { TBotState } from './types'
 
 export const initialState: TBotState = {
   messageQueue: [],
-  open: false,
 }
 
 const tbotSlice = createSlice({
@@ -17,11 +16,9 @@ const tbotSlice = createSlice({
           state.messageQueue = [...state.messageQueue, str]
         }
       })
-      state.open = true
     },
     close(state) {
       state.messageQueue = []
-      state.open = false
     },
   },
 })

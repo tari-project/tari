@@ -20,7 +20,7 @@ const ChatDots = () => {
         animationData: dotsChatLottie,
       })
     }
-    return () => lottie.destroy()
+    return lottie.destroy
   }, [animation])
 
   return (

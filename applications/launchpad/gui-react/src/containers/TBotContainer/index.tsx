@@ -1,12 +1,13 @@
 import TBotPrompt from '../../components/TBot/TBotPrompt'
 import { useAppSelector } from '../../store/hooks'
-import { selectTBotOpen, selectTBotQueue } from '../../store/tbot/selectors'
+import { selectTBotQueue } from '../../store/tbot/selectors'
 
 const TBotContainer = () => {
   const tbotQueue = useAppSelector(selectTBotQueue)
-  const tbotOpen = useAppSelector(selectTBotOpen)
 
-  return <TBotPrompt open={tbotOpen} messages={tbotQueue} floating />
+  return (
+    <TBotPrompt open={tbotQueue.length > 0} messages={tbotQueue} floating />
+  )
 }
 
 export default TBotContainer

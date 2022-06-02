@@ -33,7 +33,7 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
 `
 
 /**
- * @TODO - wrong behaviour in non-$floating variant
+ * @TODO: - wrong behaviour in non-$floating variant, open issue https://github.com/Altalogy/tari/issues/221
  */
 export const FadeOutSection = styled.div<{ $floating?: boolean }>`
   position: absolute;
@@ -54,7 +54,7 @@ export const MessageContainer = styled(animated.div)`
   padding-right: 10px;
 `
 
-export const MessageWrapperOutterOutter = styled.div`
+export const ScrollWrapper = styled.div`
   max-height: calc(90vh - 250px);
   min-height: 50px;
   overflow-y: scroll;
@@ -88,7 +88,7 @@ export const MessageWrapperOutterOutter = styled.div`
 export const MessageWrapper = styled.div`
   padding-top: 20px;
 `
-export const MessageWrapperOutter = styled(animated.div)`
+export const HeightAnimationWrapper = styled(animated.div)`
   max-height: 200px;
   overflow: hidden;
   min-height: 30px;

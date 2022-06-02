@@ -19,8 +19,8 @@ import {
   ContentContainer,
   FadeOutSection,
   MessageWrapper,
-  MessageWrapperOutter,
-  MessageWrapperOutterOutter,
+  ScrollWrapper,
+  HeightAnimationWrapper,
 } from './styles'
 
 import { HelpMessagesMap } from '../../../config/helpMessagesConfig'
@@ -239,14 +239,14 @@ const TBotPrompt = ({
             </StyledCloseIcon>
           </StyledCloseContainer>
           <MessageContainer>
-            <MessageWrapperOutterOutter ref={scrollRef}>
-              <MessageWrapperOutter style={heightAnim}>
+            <ScrollWrapper ref={scrollRef}>
+              <HeightAnimationWrapper style={heightAnim}>
                 <MessageWrapper ref={messageWrapperRef}>
                   {renderedMessages}
                   {messageLoading && <ChatDots />}
                 </MessageWrapper>
-              </MessageWrapperOutter>
-            </MessageWrapperOutterOutter>
+              </HeightAnimationWrapper>
+            </ScrollWrapper>
           </MessageContainer>
         </ContentContainer>
       </ContentRow>

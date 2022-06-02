@@ -53,8 +53,7 @@ const MiningHeaderTip = () => {
             rightIcon={<SvgInfo1 width='20px' height='20px' />}
             autosizeIcons={false}
             onClick={() =>
-              // TODO: needs to be changed to "MessagesConfig.cryptoMiningHelp"
-              dispatch(tbotactions.push(MessagesConfig.MergedMiningHelp))
+              dispatch(tbotactions.push(MessagesConfig.CryptoMiningHelp))
             }
           >
             {t.mining.headerTips.wantToKnowMore}

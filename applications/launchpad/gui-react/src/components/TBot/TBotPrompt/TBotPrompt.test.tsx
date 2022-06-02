@@ -6,6 +6,8 @@ import { store } from '../../../store'
 import themes from '../../../styles/themes'
 import TBotPrompt from '.'
 
+// @TODO: update test coverage, open issue https://github.com/Altalogy/tari/issues/226
+
 describe('TBot', () => {
   it('should render the TBotPrompt component without crashing when set to open', () => {
     render(
