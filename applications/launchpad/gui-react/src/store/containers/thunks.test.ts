@@ -46,12 +46,12 @@ describe('containers/thunks', () => {
             statsHistory: [],
             pending: [],
             containers: {
-              someContainerId: {
+              [expectedContainerId]: {
                 status: SystemEventAction.Start,
               },
             },
             stats: {
-              someContainerId: {
+              [expectedContainerId]: {
                 cpu: 0,
                 memory: 0,
               },
@@ -61,7 +61,7 @@ describe('containers/thunks', () => {
 
       // when
       const action = addStats({
-        containerId: 'someContainerId',
+        containerId: expectedContainerId,
         service: Container.Tor,
         stats: standardStats(),
       })
@@ -76,6 +76,35 @@ describe('containers/thunks', () => {
       })
     })
 
-    it.todo('should reject if stats for containerId do not exist yet')
+    it('should reject if stats for containerId do not exist yet', async () => {
+      // given
+      const getState = () =>
+        ({
+          baseNode: {
+            network: 'dibbler',
+          },
+          containers: {
+            statsHistory: [],
+            pending: [],
+            containers: {
+              someContainerId: {
+                status: SystemEventAction.Start,
+              },
+            },
+            stats: {},
+          },
+        } as unknown as RootState)
+
+      // when
+      const action = addStats({
+        containerId: 'someContainerId',
+        service: Container.Tor,
+        stats: standardStats(),
+      })
+      const result = await action(() => null, getState, undefined)
+
+      // then
+      expect(result.type.endsWith('/rejected')).toBe(true)
+    })
   })
 })
