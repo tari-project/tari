@@ -27,8 +27,7 @@ describe('containers/thunks', () => {
       },
       networks: {},
     })
-    const expectedFromStandardStats = (read = standardTimestamp) => ({
-      timestamp: read,
+    const expectedFromStandardStats = () => ({
       cpu: 50,
       memory: 1,
     })
@@ -70,7 +69,6 @@ describe('containers/thunks', () => {
       // then
       expect(result.type.endsWith('/fulfilled')).toBe(true)
       expect(result.payload).toStrictEqual({
-        network: expectedNetwork,
         containerId: expectedContainerId,
         stats: expectedFromStandardStats(),
       })

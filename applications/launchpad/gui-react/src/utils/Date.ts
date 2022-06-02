@@ -1,3 +1,11 @@
+export const startOfSecond = (d: Date) => {
+  const copy = new Date(d)
+
+  copy.setMilliseconds(0)
+
+  return copy
+}
+
 export const endOfMonth = (d: Date) => {
   const copy = new Date(d)
 

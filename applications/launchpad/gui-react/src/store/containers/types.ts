@@ -31,7 +31,6 @@ export type ContainerStats = {
   cpu: number
   memory: number
   unsubscribe: UnlistenFn
-  timestamp: string
 }
 
 export type ContainerStatus = {
@@ -93,4 +92,13 @@ export interface StatsEventPayload {
     }
   }
   networks: Record<string, { tx_bytes: number; rx_bytes: number }>
+}
+
+export interface StatsRepository {
+  add: (
+    network: string,
+    service: Container,
+    secondTimestamp: string,
+    stats: Omit<ContainerStats, 'unsubscribe'>,
+  ) => Promise<void>
 }
