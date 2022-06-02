@@ -1,0 +1,21 @@
+{
+  "contract_id": "ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44",
+  "validator_committee": [
+    "ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44",
+    "ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44",
+    "ccac168b8edd67b10d152d1ed2337efc65da9fc0b6256dd49b3c559032553d44"
+  ],
+  "acceptance_parameters": {
+    "acceptance_period_expiry": 50,
+    "minimum_quorum_required": 2
+  },
+  "consensus": "MerkleRoot",
+  "checkpoint_parameters": {
+    "minimum_quorum_required": 2,
+    "abandoned_interval": 100
+  },
+  "constitution_change_rules": {
+    "change_flags": 1
+  },
+  "initial_reward": 5
+}

@@ -149,9 +149,9 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         // mint-tokens pub_key nft_id1 nft_id2
         MintTokens => parser_builder(args).pub_key().text_array().build()?,
         CreateInitialCheckpoint => parser_builder(args).pub_key().text().build()?,
-        PublishConstitutionDefinition => parser_builder(args).pub_key().int().int().pub_key_array().build()?,
+        PublishConstitutionDefinition => parse_publish_definition(command_str, args)?,
         RevalidateWalletDb => Vec::new(),
-        PublishContractDefinition => parse_publish_contract_definition(args)?,
+        PublishContractDefinition => parse_publish_definition(command_str, args)?,
     };
 
     Ok(ParsedCommand { command, args })
@@ -177,16 +177,6 @@ impl<'a> ArgParser<'a> {
             .map(|t| ParsedArgument::Text(t.to_string()))
             .ok_or_else(|| ParseError::Empty("text".to_string()));
         self.result.push(text_result);
-        self
-    }
-
-    fn int(mut self) -> Self {
-        let int_result = self
-            .args
-            .next()
-            .map(|t| ParsedArgument::Int(t.parse().unwrap()))
-            .ok_or_else(|| ParseError::Empty("No int found".to_string()));
-        self.result.push(int_result);
         self
     }
 
@@ -497,10 +487,10 @@ fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Pa
     Ok(parsed_args)
 }
 
-fn parse_publish_contract_definition(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+fn parse_publish_definition(command: &str, mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = Vec::new();
 
-    let usage = "Usage:\n    publish-contract-definition\n    publish-contract-definition --json-file <file name>";
+    let usage = format!("Usage:\n    {command}\n    {command} --json-file <file name>");
 
     let arg = args.next().ok_or_else(|| ParseError::Empty("json-file".to_string()))?;
     if arg != "--json-file" {

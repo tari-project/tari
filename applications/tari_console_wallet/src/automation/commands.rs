@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     fs::File,
     io::{BufReader, LineWriter, Write},
     time::{Duration, Instant},
@@ -46,28 +46,12 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{
-        CheckpointParameters,
-        CommitteeMembers,
-        ConstitutionChangeFlags,
-        ConstitutionChangeRules,
-        ContractAcceptanceRequirements,
-        ContractConstitution,
-        ContractDefinition,
-        RequirementsForConstitutionChange,
-        SideChainConsensus,
-        SideChainFeaturesBuilder,
-        TransactionOutput,
-        UnblindedOutput,
-    },
+    transaction_components::{ContractDefinition, SideChainFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::{pedersen::PedersenCommitmentFactory, RistrettoPublicKey},
-};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::{ContractDefinitionFileFormat, KEY_MANAGER_ASSET_BRANCH},
+    assets::{ConstitutionDefinitionFileFormat, ContractDefinitionFileFormat, KEY_MANAGER_ASSET_BRANCH},
     error::WalletError,
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
@@ -878,66 +862,29 @@ pub async fn command_runner(
                     .await?;
             },
             PublishConstitutionDefinition => {
-                let contract_id = match parsed.args.get(0) {
-                    Some(ParsedArgument::PublicKey(ref key)) => {
-                        key.as_bytes().try_into().map_err(|_| CommandError::Argument)
-                    },
+                let file_path = match parsed.args.get(0) {
+                    Some(ParsedArgument::JSONFileName(ref file_path)) => Ok(file_path),
                     _ => Err(CommandError::Argument),
                 }?;
+                let file = File::open(file_path).map_err(|e| CommandError::JSONFile(e.to_string()))?;
+                let file_reader = BufReader::new(file);
 
-                let acceptance_period_expiry = match parsed.args.get(1) {
-                    Some(ParsedArgument::Int(ref int)) => Ok(*int),
-                    _ => Err(CommandError::Argument),
-                }?;
-
-                let minimum_quorum_required = match parsed.args.get(2) {
-                    Some(ParsedArgument::Int(ref int)) => Ok(*int),
-                    _ => Err(CommandError::Argument),
-                }?;
-
-                let validator_committee: CommitteeMembers = CommitteeMembers::try_from(
-                    parsed.args[3..]
-                        .iter()
-                        .map(|pk| match pk {
-                            ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
-                            _ => Err(CommandError::Argument),
-                        })
-                        .collect::<Result<Vec<RistrettoPublicKey>, _>>()?,
-                )?;
-
-                let side_chain_features = SideChainFeaturesBuilder::new(contract_id)
-                    .with_contract_constitution(ContractConstitution {
-                        validator_committee: validator_committee.clone(),
-                        acceptance_requirements: ContractAcceptanceRequirements {
-                            minimum_quorum_required: minimum_quorum_required as u32,
-                            acceptance_period_expiry,
-                        },
-                        consensus: SideChainConsensus::MerkleRoot,
-                        checkpoint_params: CheckpointParameters {
-                            minimum_quorum_required: 5,
-                            abandoned_interval: 100,
-                        },
-                        constitution_change_rules: ConstitutionChangeRules {
-                            change_flags: ConstitutionChangeFlags::all(),
-                            requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
-                                minimum_constitution_committee_signatures: 5,
-                                constitution_committee: Some(validator_committee.clone()),
-                            }),
-                        },
-                        initial_reward: 100.into(),
-                    })
-                    .finish();
+                // parse the JSON file
+                let constitution_definition: ConstitutionDefinitionFileFormat =
+                    serde_json::from_reader(file_reader).map_err(|e| CommandError::JSONFile(e.to_string()))?;
+                let side_chain_features = SideChainFeatures::try_from(constitution_definition).unwrap();
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = asset_manager
                     .create_constitution_definition(&side_chain_features)
                     .await?;
 
-                let message = format!(
-                    "Committee definition with {} members for {:?}",
-                    &validator_committee.members().len(),
-                    contract_id
-                );
+                // let message = format!(
+                //    "Committee definition with {} members for {:?}",
+                //    &validator_committee.members().len(),
+                //    contract_id
+                //);
+                let message = "hey".to_string();
 
                 transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
