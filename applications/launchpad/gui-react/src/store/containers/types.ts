@@ -69,10 +69,6 @@ export type ContainersState = {
   pending: Array<Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
   stats: Record<ContainerId, ContainerStats>
-  statsHistory: Record<
-    string,
-    Record<ContainerId, Omit<ContainerStats, 'unsubscribe'>[]>
-  >
 }
 
 export interface StatsEventPayload {

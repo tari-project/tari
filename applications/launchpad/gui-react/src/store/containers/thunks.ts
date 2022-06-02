@@ -11,9 +11,47 @@ import {
   StatsEventPayload,
   ContainerId,
   Container,
+  ContainerStats,
   ServiceDescriptor,
 } from './types'
 import { selectContainerByType } from './selectors'
+
+export const addStats = createAsyncThunk<
+  {
+    containerId: ContainerId
+    stats: Omit<ContainerStats, 'unsubscribe'>
+    network: string
+  },
+  {
+    containerId: ContainerId
+    service: Container
+    stats: StatsEventPayload
+  },
+  { state: RootState }
+>('containers/stats', async (payload, thunkApi) => {
+  const { stats, containerId } = payload
+  const rootState = thunkApi.getState()
+
+  const cs = stats.cpu_stats
+  const pcs = stats.precpu_stats
+  const cpu_delta = cs.cpu_usage.total_usage - pcs.cpu_usage.total_usage
+  const system_cpu_delta = cs.system_cpu_usage - pcs.system_cpu_usage
+  const numCpu = cs.online_cpus
+  const cpu = (cpu_delta / system_cpu_delta) * numCpu * 100.0
+
+  const ms = stats.memory_stats
+  const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
+
+  return {
+    containerId,
+    network: selectNetwork(rootState),
+    stats: {
+      cpu,
+      memory,
+      timestamp: stats.read,
+    },
+  }
+})
 
 export const start = createAsyncThunk<
   { id: ContainerId; unsubscribeStats: UnlistenFn },
@@ -32,15 +70,13 @@ export const start = createAsyncThunk<
     const unsubscribe = await listen(
       descriptor.statsEventsName,
       (statsEvent: { payload: StatsEventPayload }) => {
-        thunkApi.dispatch({
-          type: 'containers/stats',
-          payload: {
+        thunkApi.dispatch(
+          addStats({
             containerId: descriptor.id,
-            stats: statsEvent.payload,
             service,
-            network: selectNetwork(rootState),
-          },
-        })
+            stats: statsEvent.payload,
+          }),
+        )
       },
     )
 
