@@ -318,12 +318,12 @@ impl LaunchpadConfig {
     }
 
     fn base_node_cmd(&self) -> Vec<String> {
-        let args = vec!["--non-interactive-mode", "--log-config=/var/tari/config/log4rs.yml"];
+        let args = vec!["--log-config=/var/tari/config/log4rs.yml"];
         args.into_iter().map(String::from).collect()
     }
 
     fn wallet_cmd(&self) -> Vec<String> {
-        let args = vec!["--non-interactive-mode", "--log-config=/var/tari/config/log4rs.yml"];
+        let args = vec!["--log-config=/var/tari/config/log4rs.yml"];
         args.into_iter().map(String::from).collect()
     }
 
