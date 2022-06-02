@@ -65,7 +65,6 @@ export const allStopped: ContainersState = {
   pending: [],
   containers: {},
   stats: {},
-  statsHistory: {},
 }
 
 export const tariContainersRunning: ContainersState = {
@@ -87,8 +86,4 @@ export const tariContainersRunning: ContainersState = {
       Container.SHA3Miner,
     ]),
   },
-  statsHistory: {},
 }
-
-export const getEmptyStatsHistory = () =>
-  Object.values(Container).reduce((accu, curr) => ({ ...accu, [curr]: [] }), {})
