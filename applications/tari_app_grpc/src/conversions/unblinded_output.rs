@@ -27,7 +27,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{TransactionOutputVersion, UnblindedOutput},
+        transaction_components::{EncryptedValue, TransactionOutputVersion, UnblindedOutput},
     },
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -52,6 +52,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             }),
             script_lock_height: output.script_lock_height,
             covenant: output.covenant.to_bytes(),
+            encrypted_value: output.encrypted_value.to_vec(),
         }
     }
 }
@@ -87,6 +88,8 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
         let covenant = Covenant::from_bytes(&output.covenant).map_err(|err| err.to_string())?;
 
+        let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
+
         Ok(Self::new(
             TransactionOutputVersion::try_from(0u8)?,
             MicroTari::from(output.value),
@@ -99,6 +102,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             metadata_signature,
             output.script_lock_height,
             covenant,
+            encrypted_value,
         ))
     }
 }

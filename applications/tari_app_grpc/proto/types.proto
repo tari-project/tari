@@ -232,6 +232,7 @@ message SideChainFeatures {
     bytes contract_id = 1;
     ContractDefinition definition = 2;
     ContractConstitution constitution = 3;
+    ContractAcceptance acceptance = 4;
 }
 
 message ContractConstitution {
@@ -328,6 +329,11 @@ message FunctionRef {
     uint32 function_id = 2;
 }
 
+message ContractAcceptance {
+    bytes validator_node_public_key = 1;
+    Signature signature = 2;
+}
+
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
 // be sorted by their Blake2b-256bit digest hash
@@ -419,6 +425,8 @@ message UnblindedOutput {
     uint64 script_lock_height = 10;
     // Covenant
     bytes covenant = 11;
+    // Encrypted Value
+    bytes encrypted_value = 12;
 }
 
 // ----------------------------- Network Types ----------------------------- //

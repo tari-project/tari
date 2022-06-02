@@ -43,7 +43,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -422,6 +422,7 @@ where
         script_lock_height: u64,
         covenant: Covenant,
     ) -> Result<TxId, WalletError> {
+        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
@@ -433,6 +434,7 @@ where
             metadata_signature,
             script_lock_height,
             covenant,
+            encrypted_value,
         );
 
         let tx_id = self

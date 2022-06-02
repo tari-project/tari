@@ -59,6 +59,7 @@ use crate::{
         transaction_components::{
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
+            EncryptedValue,
             OutputFeatures,
             TransactionError,
             TransactionInputVersion,
@@ -87,6 +88,7 @@ pub struct UnblindedOutput {
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComSignature,
     pub script_lock_height: u64,
+    pub encrypted_value: EncryptedValue,
 }
 
 impl UnblindedOutput {
@@ -104,6 +106,7 @@ impl UnblindedOutput {
         metadata_signature: ComSignature,
         script_lock_height: u64,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) -> Self {
         Self {
             version,
@@ -117,6 +120,7 @@ impl UnblindedOutput {
             metadata_signature,
             script_lock_height,
             covenant,
+            encrypted_value,
         }
     }
 
@@ -131,6 +135,7 @@ impl UnblindedOutput {
         metadata_signature: ComSignature,
         script_lock_height: u64,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) -> Self {
         Self::new(
             TransactionOutputVersion::get_current_version(),
@@ -144,6 +149,7 @@ impl UnblindedOutput {
             metadata_signature,
             script_lock_height,
             covenant,
+            encrypted_value,
         )
     }
 

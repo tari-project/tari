@@ -63,6 +63,7 @@ use crate::{
         transaction_components::{
             full_rewind_result::FullRewindResult,
             rewind_result::RewindResult,
+            EncryptedValue,
             OutputFeatures,
             OutputFlags,
             TransactionError,
@@ -172,6 +173,8 @@ impl TransactionOutput {
             self.metadata_signature.public_nonce(),
             &self.commitment,
             &self.covenant,
+            // TODO: Use `self.encrypted_value` instead
+            &EncryptedValue::default(),
         );
         if !self.metadata_signature.verify_challenge(
             &(&self.commitment + &self.sender_offset_public_key),
@@ -240,6 +243,7 @@ impl TransactionOutput {
             &nonce_commitment,
             &self.commitment,
             &self.covenant,
+            &EncryptedValue::default(),
         )
     }
 
@@ -252,6 +256,7 @@ impl TransactionOutput {
         public_commitment_nonce: &Commitment,
         commitment: &Commitment,
         covenant: &Covenant,
+        _encrypted_value: &EncryptedValue,
     ) -> Challenge {
         match version {
             TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
@@ -261,6 +266,7 @@ impl TransactionOutput {
                 .chain(sender_offset_public_key)
                 .chain(commitment)
                 .chain(covenant)
+                //.chain(encrypted_value)
                 .into_digest(),
         }
     }
@@ -277,6 +283,7 @@ impl TransactionOutput {
         partial_commitment_nonce: Option<&PublicKey>,
         sender_offset_private_key: Option<&PrivateKey>,
         covenant: &Covenant,
+        _encrypted_value: &EncryptedValue,
     ) -> Result<ComSignature, TransactionError> {
         let nonce_a = PrivateKey::random(&mut OsRng);
         let nonce_b = PrivateKey::random(&mut OsRng);
@@ -285,8 +292,9 @@ impl TransactionOutput {
             None => nonce_commitment,
             Some(partial_nonce) => &nonce_commitment + partial_nonce,
         };
-        let value = PrivateKey::from(value.as_u64());
-        let commitment = PedersenCommitmentFactory::default().commit(spending_key, &value);
+        let pk_value = PrivateKey::from(value.as_u64());
+        let commitment = PedersenCommitmentFactory::default().commit(spending_key, &pk_value);
+        let encrypted_value = EncryptedValue::todo_encrypt_from(value.as_u64());
         let e = TransactionOutput::build_metadata_signature_challenge(
             version,
             script,
@@ -295,13 +303,15 @@ impl TransactionOutput {
             &nonce_commitment,
             &commitment,
             covenant,
+            &encrypted_value,
         );
         let secret_x = match sender_offset_private_key {
             None => spending_key.clone(),
             Some(key) => spending_key + key,
         };
+        // TODO: Take `encrypted_value` into account
         Ok(ComSignature::sign(
-            &value,
+            &pk_value,
             &secret_x,
             &nonce_a,
             &nonce_b,
@@ -320,6 +330,7 @@ impl TransactionOutput {
         sender_offset_public_key: &PublicKey,
         partial_commitment_nonce: &PublicKey,
         covenant: &Covenant,
+        encrypted_value: &EncryptedValue,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
             version,
@@ -331,6 +342,7 @@ impl TransactionOutput {
             Some(partial_commitment_nonce),
             None,
             covenant,
+            encrypted_value,
         )
     }
 
@@ -343,6 +355,7 @@ impl TransactionOutput {
         output_features: &OutputFeatures,
         sender_offset_private_key: &PrivateKey,
         covenant: &Covenant,
+        encrypted_value: &EncryptedValue,
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
@@ -355,6 +368,7 @@ impl TransactionOutput {
             None,
             Some(sender_offset_private_key),
             covenant,
+            encrypted_value,
         )
     }
 
