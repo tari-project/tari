@@ -27,3 +27,5 @@ Feature: Validator Node
         Then I wait for wallet WALLET1 to have at least 1000000 uT
         And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
         Then I publish a contract acceptance transaction for the validator node VN1
+        When I mine 4 blocks using wallet WALLET1 on NODE1
+        Then wallet WALLET1 has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
