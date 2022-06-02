@@ -16,6 +16,14 @@ const usePerformanceStats = () => {
   const interval = useRef<ReturnType<typeof setInterval> | undefined>()
 
   useEffect(() => {
+    const initStats = async () => {
+      const stats = await repository.getGroupedByContainer(configuredNetwork)
+      setStats(stats)
+    }
+    initStats()
+  }, [])
+
+  useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     interval.current = setInterval(async () => {
       const stats = await repository.getGroupedByContainer(configuredNetwork)
