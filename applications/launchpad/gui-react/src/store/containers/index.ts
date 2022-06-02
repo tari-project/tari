@@ -56,6 +56,10 @@ const servicesSlice = createSlice({
         state.stats[action.payload.containerId] = {
           cpu: 0,
           memory: 0,
+          network: {
+            upload: 0,
+            download: 0,
+          },
           unsubscribe: () => {
             return
           },
@@ -117,6 +121,7 @@ const servicesSlice = createSlice({
 
       state.stats[containerId].cpu = stats.cpu
       state.stats[containerId].memory = stats.memory
+      state.stats[containerId].network = stats.network
     })
   },
 })

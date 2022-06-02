@@ -64,10 +64,18 @@ export const addStats = createAsyncThunk<
 
   const ms = stats.memory_stats
   const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
+  const network = Object.values(stats.networks).reduce(
+    (accu, current) => ({
+      upload: accu.upload + current.tx_bytes,
+      download: accu.download + current.rx_bytes,
+    }),
+    { upload: 0, download: 0 },
+  )
 
   const currentStats = {
     cpu,
     memory,
+    network,
   }
   const secondTimestamp = startOfSecond(new Date(stats.read)).toISOString()
   thunkApi.dispatch(
