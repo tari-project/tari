@@ -218,7 +218,7 @@ impl AssetManagerHandle {
         }
     }
 
-    pub async fn submit_contract_acceptance(
+    pub async fn create_contract_acceptance(
         &mut self,
         contract_id: &FixedHash,
         validator_node_public_key: &PublicKey,
@@ -226,16 +226,16 @@ impl AssetManagerHandle {
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
-            .call(AssetManagerRequest::SubmitContractAcceptance {
+            .call(AssetManagerRequest::CreateContractAcceptance {
                 contract_id: *contract_id,
                 validator_node_public_key: Box::new(validator_node_public_key.clone()),
                 signature: Box::new(signature.clone()),
             })
             .await??
         {
-            AssetManagerResponse::SubmitContractAcceptance { transaction, tx_id } => Ok((tx_id, *transaction)),
+            AssetManagerResponse::CreateContractAcceptance { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
-                method: "submit_contract_acceptance".to_string(),
+                method: "create_contract_acceptance".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

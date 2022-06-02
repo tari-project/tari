@@ -663,6 +663,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<SubmitContractAcceptanceRequest>,
     ) -> Result<Response<SubmitContractAcceptanceResponse>, Status> {
         let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
         let contract_id = FixedHash::try_from(message.contract_id)
@@ -676,8 +677,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let signature = Signature::try_from(message.signature.unwrap())
             .map_err(|e| Status::invalid_argument(format!("Invalid signature:{}", e)))?;
 
-        let (tx_id, _) = asset_manager
-            .submit_contract_acceptance(&contract_id, &validator_node_public_key, &signature)
+        let (tx_id, transaction) = asset_manager
+            .create_contract_acceptance(&contract_id, &validator_node_public_key, &signature)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let contract_id_hex = contract_id.to_vec().to_hex();
+        let message = format!("Contract acceptance for contract with id={}", contract_id_hex);
+        transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

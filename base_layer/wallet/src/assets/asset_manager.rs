@@ -295,7 +295,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         Ok((tx_id, transaction))
     }
 
-    pub async fn submit_contract_acceptance(
+    pub async fn create_contract_acceptance(
         &mut self,
         contract_id: FixedHash,
         validator_node_public_key: PublicKey,
