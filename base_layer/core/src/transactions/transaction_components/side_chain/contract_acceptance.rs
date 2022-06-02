@@ -20,31 +20,53 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod contract_acceptance;
-pub use contract_acceptance::ContractAcceptance;
+use std::io::{Error, Read, Write};
 
-mod contract_constitution;
-pub use contract_constitution::{
-    CheckpointParameters,
-    ConstitutionChangeFlags,
-    ConstitutionChangeRules,
-    ContractAcceptanceRequirements,
-    ContractConstitution,
-    RequirementsForConstitutionChange,
-    SideChainConsensus,
-};
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{PublicKey, Signature};
 
-mod contract_definition;
-pub use contract_definition::{
-    vec_into_fixed_string,
-    ContractDefinition,
-    ContractSpecification,
-    FunctionRef,
-    PublicFunction,
-};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-mod committee_members;
-pub use committee_members::CommitteeMembers;
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct ContractAcceptance {
+    pub validator_node_public_key: PublicKey,
+    pub signature: Signature,
+}
 
-mod sidechain_features;
-pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};
+impl ConsensusEncoding for ContractAcceptance {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.validator_node_public_key.consensus_encode(writer)?;
+        self.signature.consensus_encode(writer)?;
+
+        Ok(())
+    }
+}
+
+impl ConsensusEncodingSized for ContractAcceptance {}
+
+impl ConsensusDecoding for ContractAcceptance {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        Ok(Self {
+            validator_node_public_key: PublicKey::consensus_decode(reader)?,
+            signature: Signature::consensus_decode(reader)?,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common_types::types::PublicKey;
+
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let subject = ContractAcceptance {
+            validator_node_public_key: PublicKey::default(),
+            signature: Signature::default(),
+        };
+
+        check_consensus_encoding_correctness(subject).unwrap();
+    }
+}
