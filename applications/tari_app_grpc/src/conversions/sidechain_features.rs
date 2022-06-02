@@ -74,8 +74,6 @@ impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
     type Error = String;
 
     fn try_from(value: grpc::ContractDefinition) -> Result<Self, Self::Error> {
-        let contract_id = FixedHash::try_from(value.contract_id).map_err(|err| format!("{:?}", err))?;
-
         let contract_name = vec_into_fixed_string(value.contract_name);
 
         let contract_issuer =
@@ -88,7 +86,6 @@ impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
             .map_err(|err| err)?;
 
         Ok(Self {
-            contract_id,
             contract_name,
             contract_issuer,
             contract_spec,
@@ -98,12 +95,10 @@ impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
 
 impl From<ContractDefinition> for grpc::ContractDefinition {
     fn from(value: ContractDefinition) -> Self {
-        let contract_id = value.contract_id.as_bytes().to_vec();
         let contract_name = value.contract_name.as_bytes().to_vec();
         let contract_issuer = value.contract_issuer.as_bytes().to_vec();
 
         Self {
-            contract_id,
             contract_name,
             contract_issuer,
             contract_spec: Some(value.contract_spec.into()),

@@ -283,10 +283,12 @@ impl OutputFeatures {
     }
 
     pub fn for_contract_definition(definition: ContractDefinition) -> OutputFeatures {
+        let contract_id = definition.calculate_contract_id();
+
         Self {
             flags: OutputFlags::CONTRACT_DEFINITION,
             sidechain_features: Some(
-                SideChainFeaturesBuilder::new(definition.contract_id)
+                SideChainFeaturesBuilder::new(contract_id)
                     .with_contract_definition(definition)
                     .finish(),
             ),
@@ -505,7 +507,6 @@ mod test {
                     initial_reward: 100.into(),
                 }),
                 definition: Some(ContractDefinition {
-                    contract_id: FixedHash::zero(),
                     contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
                     contract_issuer: PublicKey::default(),
                     contract_spec: ContractSpecification {
