@@ -1,17 +1,7 @@
 // db.ts
 import Dexie, { Table } from 'dexie'
 
-import { Container } from './store/containers/types'
-
-export interface StatsEntry {
-  timestamp: string
-  network: string
-  service: Container
-  cpu: number
-  memory: number
-  upload: number
-  download: number
-}
+import { StatsEntry } from './store/containers/statsRepository'
 
 export class TariSubclassedDexie extends Dexie {
   // 'stats' is added by dexie when declaring the stores()

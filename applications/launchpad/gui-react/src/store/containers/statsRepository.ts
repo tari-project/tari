@@ -1,12 +1,34 @@
 import groupBy from 'lodash.groupby'
 
+import { Dictionary } from '../../types/general'
 import { db } from '../../db'
 
-import { StatsRepository } from './types'
+import { Container, SerializableContainerStats } from './types'
+
+export interface StatsEntry {
+  timestamp: string
+  network: string
+  service: Container
+  cpu: number
+  memory: number
+  upload: number
+  download: number
+}
+
+export interface StatsRepository {
+  add: (
+    network: string,
+    service: Container,
+    secondTimestamp: string,
+    stats: SerializableContainerStats,
+  ) => Promise<void>
+  getGroupedByContainer: (network: string) => Promise<Dictionary<StatsEntry[]>>
+}
 
 const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, service, secondTimestamp, stats) => {
+      // overwrites stats entry for specific timestamp and network key
       db.stats.put(
         {
           timestamp: secondTimestamp,
