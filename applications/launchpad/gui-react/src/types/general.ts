@@ -1,6 +1,10 @@
 import { CSSProperties } from 'react'
 import { SpringValue } from 'react-spring'
 
+export interface Dictionary<T> {
+  [index: string]: T
+}
+
 export type CoinType = 'xtr' | ' xmr'
 
 export type MiningNodeType = 'tari' | 'merged'

@@ -1,5 +1,8 @@
 import type { UnlistenFn } from '@tauri-apps/api/event'
 
+import { Dictionary } from '../../types/general'
+import { StatsEntry } from '../../db'
+
 export type ContainerId = string
 
 export enum Container {
@@ -99,7 +102,6 @@ export interface StatsEventPayload {
   networks: Record<string, { tx_bytes: number; rx_bytes: number }>
 }
 
-export type StatsDbEntry = SerializableContainerStats & { timestamp: string }
 export interface StatsRepository {
   add: (
     network: string,
@@ -107,8 +109,5 @@ export interface StatsRepository {
     secondTimestamp: string,
     stats: SerializableContainerStats,
   ) => Promise<void>
-  getAll: (network: string, service: Container) => Promise<StatsDbEntry[]>
-  getGroupedByContainer: (
-    network: string,
-  ) => Promise<Record<Container, StatsDbEntry[]>>
+  getGroupedByContainer: (network: string) => Promise<Dictionary<StatsEntry[]>>
 }
