@@ -202,7 +202,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
         }
     }
 
-    match (cli.non_interactive_mode, cli.input_file.clone(), cli.command.clone()) {
+    match (cli.non_interactive_mode, cli.input_file.clone(), cli.command2.clone()) {
         // TUI mode
         (false, None, None) => WalletMode::Tui,
         // GRPC mode
@@ -210,7 +210,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
         // Script mode
         (_, Some(path), None) => WalletMode::Script(path),
         // Command mode
-        (_, None, Some(command)) => WalletMode::Command(command),
+        (_, None, Some(command)) => WalletMode::Command(Box::new(command)), // WalletMode::Command(command),
         // Invalid combinations
         _ => WalletMode::Invalid,
     }
