@@ -22,7 +22,11 @@ export interface StatsRepository {
     secondTimestamp: string,
     stats: SerializableContainerStats,
   ) => Promise<void>
-  getGroupedByContainer: (network: string) => Promise<Dictionary<StatsEntry[]>>
+  getGroupedByContainer: (
+    network: string,
+    from: Date,
+    to: Date,
+  ) => Promise<Dictionary<StatsEntry[]>>
 }
 
 const repositoryFactory: () => StatsRepository = () => {
@@ -42,10 +46,12 @@ const repositoryFactory: () => StatsRepository = () => {
         [secondTimestamp, network],
       )
     },
-    getGroupedByContainer: async network => {
+    getGroupedByContainer: async (network, from, to) => {
       const results = await db.stats
         ?.where('network')
         .equals(network)
+        .and(item => item.timestamp >= from.toISOString())
+        .and(item => item.timestamp <= to.toISOString())
         .sortBy('timestamp')
 
       return groupBy(results, 'service')

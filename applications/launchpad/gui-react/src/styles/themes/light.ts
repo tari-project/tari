@@ -41,6 +41,7 @@ const lightTheme = {
   lightTag: styles.colors.light.backgroundImage,
   lightTagText: styles.colors.dark.secondary,
   placeholderText: styles.colors.dark.placeholder,
+  textSecondary: styles.colors.light.textSecondary,
 
   inverted: {
     primary: styles.colors.light.primary,

@@ -6,12 +6,20 @@ import { selectNetwork } from '../../../../store/baseNode/selectors'
 import getStatsRepository from '../../../../store/containers/statsRepository'
 import { Container } from '../../../../store/containers/types'
 
-const usePerformanceStats = () => {
+const usePerformanceStats = ({
+  from,
+  to,
+}: {
+  from: Date
+  to: Date
+}): {
+  cpu: Record<Container, { timestamp: string; cpu: number }[]>
+} => {
   const configuredNetwork = useAppSelector(selectNetwork)
   const repository = useMemo(getStatsRepository, [])
   const stats = useLiveQuery(
-    () => repository.getGroupedByContainer(configuredNetwork),
-    [configuredNetwork, repository],
+    () => repository.getGroupedByContainer(configuredNetwork, from, to),
+    [configuredNetwork, repository, from, to],
   )
 
   const cpu = useMemo(() => {
@@ -25,7 +33,7 @@ const usePerformanceStats = () => {
           }),
         ),
       }),
-      {},
+      {} as Record<Container, { timestamp: string; cpu: number }[]>,
     )
   }, [stats])
 
@@ -63,10 +71,8 @@ const usePerformanceStats = () => {
   return useMemo(
     () => ({
       cpu,
-      memory,
-      network,
     }),
-    [cpu, memory, network],
+    [cpu],
   )
 }
 

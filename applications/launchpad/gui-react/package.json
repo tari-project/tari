@@ -6,6 +6,7 @@
     "@headlessui/react": "^1.5.0",
     "@nivo/bar": "^0.79.1",
     "@nivo/core": "^0.79.0",
+    "@nivo/line": "^0.79.1",
     "@reduxjs/toolkit": "^1.8.1",
     "@tauri-apps/api": "^1.0.0-rc.3",
     "@types/jest": "^27.4.1",
