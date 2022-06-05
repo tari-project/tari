@@ -6,7 +6,7 @@ import {
   useMemo,
   CSSProperties,
 } from 'react'
-import { ResponsiveLine } from '@nivo/line'
+import { ResponsiveLineCanvas } from '@nivo/line'
 import { useTheme } from 'styled-components'
 import groupBy from 'lodash.groupby'
 
@@ -123,8 +123,7 @@ const TimeSeriesChart = ({
           {title}
           {unitToUse ? ` [${unitToUse}]` : ''}
         </Text>
-        <ResponsiveLine
-          animate={false}
+        <ResponsiveLineCanvas
           theme={{
             textColor: theme.textSecondary,
             grid: { line: { strokeWidth: 0.5 } },
@@ -157,7 +156,6 @@ const TimeSeriesChart = ({
           }
           enablePoints={false}
           enableCrosshair={true}
-          useMesh={true}
           tooltip={CustomTooltip}
         />
       </div>

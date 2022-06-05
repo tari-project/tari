@@ -12,7 +12,7 @@ export class TariSubclassedDexie extends Dexie {
   constructor() {
     super('tariDatabase')
     this.version(1).stores({
-      stats: '[timestamp+network], network, container',
+      stats: '[timestamp+network], timestamp, network, container',
     })
   }
 }

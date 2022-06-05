@@ -22,6 +22,8 @@ const usePerformanceStats = ({
     [configuredNetwork, repository, from, to],
   )
 
+  console.log({ stats })
+
   const cpu = useMemo(() => {
     return Object.values(Container).reduce(
       (accu, current) => ({

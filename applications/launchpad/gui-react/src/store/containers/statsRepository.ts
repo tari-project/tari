@@ -33,18 +33,23 @@ const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, service, secondTimestamp, stats) => {
       // overwrites stats entry for specific timestamp and network key
-      db.stats.put(
-        {
-          timestamp: secondTimestamp,
-          network,
-          service,
-          cpu: stats.cpu,
-          memory: stats.memory,
-          upload: stats.network.upload,
-          download: stats.network.download,
-        },
-        [secondTimestamp, network],
-      )
+      try {
+        db.stats.put(
+          {
+            timestamp: secondTimestamp,
+            network,
+            service,
+            cpu: stats.cpu,
+            memory: stats.memory,
+            upload: stats.network.upload,
+            download: stats.network.download,
+          },
+          [secondTimestamp, network],
+        )
+      } catch (error) {
+        console.log('DB PUT ERROR')
+        console.log(error)
+      }
     },
     getGroupedByContainer: async (network, from, to) => {
       const results = await db.stats
