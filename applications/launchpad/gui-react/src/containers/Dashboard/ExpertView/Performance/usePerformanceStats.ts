@@ -8,22 +8,26 @@ import getStatsRepository, {
 import { Container } from '../../../../store/containers/types'
 import { Dictionary } from '../../../../types/general'
 
-const usePerformanceStats = ({
-  refreshRate,
+const usePerformanceStats = <T>({
+  enabled,
   from,
   to,
+  extractor,
 }: {
-  refreshRate: number
+  enabled: boolean
   from: Date
   to: Date
-}): {
-  cpu: Record<Container, { timestamp: string; cpu: number }[]>
-} => {
+  extractor: (entry: StatsEntry) => T
+}): Record<Container, T[]> => {
   const configuredNetwork = useAppSelector(selectNetwork)
   const repository = useMemo(getStatsRepository, [])
   const [stats, setStats] = useState<Dictionary<StatsEntry[]>>()
 
   useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
     const thing = async () => {
       const stats = await repository.getGroupedByContainer(
         configuredNetwork,
@@ -35,31 +39,21 @@ const usePerformanceStats = ({
     }
 
     thing()
-  }, [refreshRate, from, to])
+  }, [enabled, from, to])
 
-  const cpu = useMemo(() => {
+  const extracted = useMemo(() => {
     const r = Object.values(Container).reduce(
       (accu, current) => ({
         ...accu,
-        [current]: ((stats && stats[current]) || []).map(
-          ({ cpu, timestamp }: StatsEntry) => ({
-            cpu,
-            timestamp,
-          }),
-        ),
+        [current]: ((stats && stats[current]) || []).map(extractor),
       }),
-      {} as Record<Container, { timestamp: string; cpu: number }[]>,
+      {} as Record<Container, T[]>,
     )
 
     return r
   }, [stats])
 
-  return useMemo(
-    () => ({
-      cpu,
-    }),
-    [cpu],
-  )
+  return extracted
 }
 
 export default usePerformanceStats

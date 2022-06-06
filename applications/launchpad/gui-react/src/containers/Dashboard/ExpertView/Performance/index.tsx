@@ -250,8 +250,12 @@ const PerformanceContainer = () => {
     return () => clearInterval(intervalRef.current!)
   }, [])
 
-  const { cpu } = usePerformanceStats({
-    refreshRate,
+  const cpu = usePerformanceStats<{ timestamp: string; cpu: number }>({
+    extractor: ({ timestamp, cpu }) => ({
+      timestamp,
+      cpu,
+    }),
+    enabled: refreshEnabledRef.current,
     from,
     to: now,
   })
@@ -281,15 +285,12 @@ const PerformanceContainer = () => {
 
   const toggleSeries = useCallback(
     (seriesName: string) => {
-      console.debug(`toggling ${seriesName}`)
       setData(currentData => {
         const index = currentData.findIndex(d => d.name === seriesName)
-        console.debug({ index })
 
         const newData = [...currentData]
         newData[index] = { ...newData[index] }
         newData[index].visible = !currentData[index].visible
-        console.debug(newData[index].visible)
         newData[index].data = newData[index].visible
           ? cpu[seriesName as Container].map(({ timestamp, cpu }) => ({
               x: new Date(timestamp).getTime(),
@@ -304,18 +305,20 @@ const PerformanceContainer = () => {
   )
 
   return (
-    <TimeSeriesChart
-      data={data}
-      percentageValues
-      toggleSeries={toggleSeries}
-      from={from}
-      to={now}
-      title='CPU'
-      onUserInteraction={({ interacting }) => {
-        refreshEnabledRef.current = !interacting
-      }}
-      style={{ marginTop: theme.spacing() }}
-    />
+    <>
+      <TimeSeriesChart
+        data={data}
+        percentageValues
+        toggleSeries={toggleSeries}
+        from={from}
+        to={now}
+        title='CPU'
+        onUserInteraction={({ interacting }) => {
+          refreshEnabledRef.current = !interacting
+        }}
+        style={{ marginTop: theme.spacing() }}
+      />
+    </>
   )
 }
 
