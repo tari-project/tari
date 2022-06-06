@@ -12,17 +12,15 @@ const TimeSeriesChart = ({
   percentageValues,
   title,
   unit,
-  tooltipHint,
   style,
   from,
   to,
   onUserInteraction,
 }: {
-  data: any
+  data: { name: string; data: { x: number; y: number }[] }[]
   percentageValues?: boolean
   title: string
   unit?: string
-  tooltipHint?: string
   style: CSSProperties
   from: Date
   to: Date
@@ -141,6 +139,7 @@ const TimeSeriesChart = ({
         padding: theme.spacing(),
         borderRadius: theme.borderRadius(),
         maxWidth: '100%',
+        ...style,
       }}
     >
       <Text color={theme.textSecondary} style={{ textAlign: 'center' }}>
@@ -216,11 +215,10 @@ const PerformanceContainer = () => {
       from={from}
       to={now}
       title='CPU'
-      tooltipHint='CPU usage'
       onUserInteraction={({ interacting }) => {
         refreshEnabledRef.current = !interacting
       }}
-      style={{ height: 300, marginTop: theme.spacing() }}
+      style={{ marginTop: theme.spacing() }}
     />
   )
 }
