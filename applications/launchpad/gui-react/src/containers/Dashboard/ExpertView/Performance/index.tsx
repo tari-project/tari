@@ -144,7 +144,7 @@ const TimeSeriesChart = ({
             formatter: (seriesName: string) => t.common.containers[seriesName],
           },
           formatter: (val: number) =>
-            unitToUse ? `${val.toFixed(2)} [${unitToUse}]` : val.toFixed(2),
+            unitToUse ? `${val.toFixed(3)}${unitToUse}` : val.toFixed(2),
         },
         x: {
           formatter: (val: number) =>
@@ -219,6 +219,86 @@ const TimeSeriesChart = ({
   )
 }
 
+const PerformanceChart = ({
+  performanceData,
+  percentageValues,
+  title,
+  unit,
+  style,
+  from,
+  to,
+  onUserInteraction,
+}: {
+  performanceData: Record<Container, { timestamp: string; value: number }[]>
+  percentageValues?: boolean
+  title: string
+  unit?: string
+  style: CSSProperties
+  from: Date
+  to: Date
+  onUserInteraction: (options: { interacting: boolean }) => void
+}) => {
+  const [data, setData] = useState<
+    { visible: boolean; name: string; data: { x: number; y: number }[] }[]
+  >([])
+  useEffect(() => {
+    setData(currentData => {
+      return Object.values(Container).map((container, seriesId) => {
+        return {
+          name: container,
+          visible:
+            currentData[seriesId] === undefined
+              ? true
+              : currentData[seriesId].visible,
+          data: currentData[seriesId]?.visible
+            ? performanceData[container].map(({ timestamp, value }) => ({
+                x: new Date(timestamp).getTime(),
+                y: value,
+              }))
+            : [],
+        }
+      })
+    })
+  }, [performanceData])
+
+  const toggleSeries = useCallback(
+    (seriesName: string) => {
+      setData(currentData => {
+        const index = currentData.findIndex(d => d.name === seriesName)
+
+        const newData = [...currentData]
+        newData[index] = { ...newData[index] }
+        newData[index].visible = !currentData[index].visible
+        newData[index].data = newData[index].visible
+          ? performanceData[seriesName as Container].map(
+              ({ timestamp, value }) => ({
+                x: new Date(timestamp).getTime(),
+                y: value,
+              }),
+            )
+          : []
+
+        return newData
+      })
+    },
+    [performanceData],
+  )
+
+  return (
+    <TimeSeriesChart
+      data={data}
+      percentageValues={percentageValues}
+      toggleSeries={toggleSeries}
+      unit={unit}
+      from={from}
+      to={to}
+      title={title}
+      onUserInteraction={onUserInteraction}
+      style={style}
+    />
+  )
+}
+
 const PerformanceContainer = () => {
   const theme = useTheme()
 
@@ -250,66 +330,21 @@ const PerformanceContainer = () => {
     return () => clearInterval(intervalRef.current!)
   }, [])
 
-  const cpu = usePerformanceStats<{ timestamp: string; cpu: number }>({
+  const cpu = usePerformanceStats<{ timestamp: string; value: number }>({
     extractor: ({ timestamp, cpu }) => ({
       timestamp,
-      cpu,
+      value: cpu,
     }),
     enabled: refreshEnabledRef.current,
     from,
     to: now,
   })
 
-  const [data, setData] = useState<
-    { visible: boolean; name: string; data: { x: number; y: number }[] }[]
-  >([])
-  useEffect(() => {
-    setData(currentData => {
-      return Object.values(Container).map((container, seriesId) => {
-        return {
-          name: container,
-          visible:
-            currentData[seriesId] === undefined
-              ? true
-              : currentData[seriesId].visible,
-          data: currentData[seriesId]?.visible
-            ? cpu[container].map(({ timestamp, cpu }) => ({
-                x: new Date(timestamp).getTime(),
-                y: cpu,
-              }))
-            : [],
-        }
-      })
-    })
-  }, [cpu])
-
-  const toggleSeries = useCallback(
-    (seriesName: string) => {
-      setData(currentData => {
-        const index = currentData.findIndex(d => d.name === seriesName)
-
-        const newData = [...currentData]
-        newData[index] = { ...newData[index] }
-        newData[index].visible = !currentData[index].visible
-        newData[index].data = newData[index].visible
-          ? cpu[seriesName as Container].map(({ timestamp, cpu }) => ({
-              x: new Date(timestamp).getTime(),
-              y: cpu,
-            }))
-          : []
-
-        return newData
-      })
-    },
-    [cpu],
-  )
-
   return (
     <>
-      <TimeSeriesChart
-        data={data}
+      <PerformanceChart
+        performanceData={cpu}
         percentageValues
-        toggleSeries={toggleSeries}
         from={from}
         to={now}
         title='CPU'
