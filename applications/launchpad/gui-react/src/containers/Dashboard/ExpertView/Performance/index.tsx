@@ -42,7 +42,12 @@ const TimeSeriesChart = ({
   to,
   onUserInteraction,
 }: {
-  data: { visible: boolean; name: string; data: { x: number; y: number }[] }[]
+  data: {
+    empty: boolean
+    visible: boolean
+    name: string
+    data: { x: number; y: number }[]
+  }[]
   toggleSeries: (seriesName: string) => void
   percentageValues?: boolean
   title: string
@@ -74,7 +79,6 @@ const TimeSeriesChart = ({
         events: {
           mouseMove: () => onUserInteraction({ interacting: true }),
           mouseLeave: () => onUserInteraction({ interacting: false }),
-          legendClick: console.log,
         },
       },
       colors: graphColors,
@@ -166,7 +170,6 @@ const TimeSeriesChart = ({
     }),
     [from, to],
   )
-  const series = data.map(({ name, visible }) => ({ name, visible }))
 
   return (
     <div
@@ -197,31 +200,33 @@ const TimeSeriesChart = ({
           columnGap: theme.spacing(),
         }}
       >
-        {series.map(({ name, visible }, seriesId) => (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              columnGap: theme.spacing(0.5),
-            }}
-            key={name}
-          >
+        {data
+          .filter(s => !s.empty)
+          .map(({ name, visible }, seriesId) => (
             <div
               style={{
-                width: '1em',
-                height: '0.1em',
-                borderRadius: '2px',
-                backgroundColor: graphColors[seriesId],
+                display: 'flex',
+                alignItems: 'center',
+                columnGap: theme.spacing(0.5),
               }}
-            />
-            <Text type='smallMedium' color={theme.textSecondary}>
-              {t.common.containers[name]}
-            </Text>
-            <IconButton onClick={() => toggleSeries(name)}>
-              {visible ? <VisibleIcon /> : <HiddenIcon />}
-            </IconButton>
-          </div>
-        ))}
+              key={name}
+            >
+              <div
+                style={{
+                  width: '1em',
+                  height: '0.1em',
+                  borderRadius: '2px',
+                  backgroundColor: graphColors[seriesId],
+                }}
+              />
+              <Text type='smallMedium' color={theme.textSecondary}>
+                {t.common.containers[name]}
+              </Text>
+              <IconButton onClick={() => toggleSeries(name)}>
+                {visible ? <VisibleIcon /> : <HiddenIcon />}
+              </IconButton>
+            </div>
+          ))}
       </div>
     </div>
   )
@@ -268,49 +273,41 @@ const PerformanceChart = ({
     to: latchedTo,
   })
 
-  const [data, setData] = useState<
-    { visible: boolean; name: string; data: { x: number; y: number }[] }[]
-  >([])
-  useEffect(() => {
-    setData(currentData => {
-      return Object.values(Container).map((container, seriesId) => {
+  const [hiddenSeries, setHiddenSeries] = useState<Container[]>([])
+  const data = useMemo<
+    {
+      visible: boolean
+      empty: boolean
+      name: string
+      data: { x: number; y: number }[]
+    }[]
+  >(
+    () =>
+      Object.entries(performanceData).map(([container, containerData]) => {
+        const data = containerData.map(({ timestamp, value }) => ({
+          x: new Date(timestamp).getTime(),
+          y: value,
+        }))
+        const visible = !hiddenSeries.includes(container as Container)
         return {
           name: container,
-          visible:
-            currentData[seriesId] === undefined
-              ? true
-              : currentData[seriesId].visible,
-          data: currentData[seriesId]?.visible
-            ? performanceData[container].map(({ timestamp, value }) => ({
-                x: new Date(timestamp).getTime(),
-                y: value,
-              }))
-            : [],
+          empty: !data.length,
+          visible,
+          data: visible ? data : [],
         }
-      })
-    })
-  }, [performanceData])
+      }),
+    [performanceData, hiddenSeries],
+  )
 
   const toggleSeries = useCallback(
-    (seriesName: string) => {
-      setData(currentData => {
-        const index = currentData.findIndex(d => d.name === seriesName)
+    (seriesName: string) =>
+      setHiddenSeries(hidden => {
+        if (hidden.includes(seriesName as Container)) {
+          return hidden.filter(h => h !== (seriesName as Container))
+        }
 
-        const newData = [...currentData]
-        newData[index] = { ...newData[index] }
-        newData[index].visible = !currentData[index].visible
-        newData[index].data = newData[index].visible
-          ? performanceData[seriesName as Container].map(
-              ({ timestamp, value }) => ({
-                x: new Date(timestamp).getTime(),
-                y: value,
-              }),
-            )
-          : []
-
-        return newData
-      })
-    },
+        return [...hidden, seriesName as Container]
+      }),
     [performanceData],
   )
 

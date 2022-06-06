@@ -42,13 +42,15 @@ const usePerformanceStats = ({
   }, [enabled, from, to])
 
   const extracted = useMemo(() => {
-    const r = Object.values(Container).reduce(
-      (accu, current) => ({
-        ...accu,
-        [current]: ((stats && stats[current]) || []).map(extractor),
-      }),
-      {} as Record<Container, { timestamp: string; value: number }[]>,
-    )
+    const r = Object.values(Container)
+      .filter(container => Boolean(stats && stats[container]))
+      .reduce(
+        (accu, current) => ({
+          ...accu,
+          [current]: ((stats && stats[current]) || []).map(extractor),
+        }),
+        {} as Record<Container, { timestamp: string; value: number }[]>,
+      )
 
     return r
   }, [stats])
