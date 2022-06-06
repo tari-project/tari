@@ -4,8 +4,20 @@ import ApexChart from 'react-apexcharts'
 
 import { Container } from '../../../../store/containers/types'
 import Text from '../../../../components/Text'
+import colors from '../../../../styles/styles/colors'
 
 import usePerformanceStats from './usePerformanceStats'
+
+const graphColors = [
+  colors.secondary.infoText,
+  colors.secondary.onTextLight,
+  colors.secondary.warningDark,
+  colors.graph.fuchsia,
+  colors.secondary.warning,
+  colors.tari.purple,
+  colors.graph.yellow,
+  colors.graph.lightGreen,
+]
 
 const TimeSeriesChart = ({
   data,
@@ -48,6 +60,7 @@ const TimeSeriesChart = ({
           mouseLeave: () => onUserInteraction({ interacting: false }),
         },
       },
+      colors: graphColors,
       dataLabels: {
         enabled: false,
       },

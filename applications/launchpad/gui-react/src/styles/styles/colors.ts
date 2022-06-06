@@ -50,6 +50,11 @@ const colors = {
     darkLogoCard: '#00000060',
     disabledText: '#47434A',
   },
+  graph: {
+    fuchsia: '#EF5DA8',
+    yellow: '#EEDC3C',
+    lightGreen: '#78E590',
+  },
 }
 
 export default colors
