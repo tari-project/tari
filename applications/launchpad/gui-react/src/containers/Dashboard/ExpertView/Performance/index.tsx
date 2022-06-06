@@ -1,9 +1,19 @@
-import { useEffect, useRef, useState, useMemo, CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  CSSProperties,
+} from 'react'
 import { useTheme } from 'styled-components'
 import ApexChart from 'react-apexcharts'
 
 import { Container } from '../../../../store/containers/types'
 import Text from '../../../../components/Text'
+import VisibleIcon from '../../../../styles/Icons/Eye'
+import HiddenIcon from '../../../../styles/Icons/EyeSlash'
+import IconButton from '../../../../components/IconButton'
 import colors from '../../../../styles/styles/colors'
 import t from '../../../../locales'
 
@@ -22,6 +32,7 @@ const graphColors = [
 
 const TimeSeriesChart = ({
   data,
+  toggleSeries,
   percentageValues,
   title,
   unit,
@@ -30,7 +41,8 @@ const TimeSeriesChart = ({
   to,
   onUserInteraction,
 }: {
-  data: { name: string; data: { x: number; y: number }[] }[]
+  data: { visible: boolean; name: string; data: { x: number; y: number }[] }[]
+  toggleSeries: (seriesName: string) => void
   percentageValues?: boolean
   title: string
   unit?: string
@@ -41,10 +53,12 @@ const TimeSeriesChart = ({
 }) => {
   const theme = useTheme()
   const unitToUse = percentageValues ? '%' : unit
+  const chartId = title
   const options = useMemo(
     () => ({
       chart: {
-        fontFamily: 'AvenirRegular',
+        id: chartId,
+        fontFamily: 'AvenirMedium',
         foreColor: theme.textSecondary,
         animations: {
           enabled: false,
@@ -59,6 +73,7 @@ const TimeSeriesChart = ({
         events: {
           mouseMove: () => onUserInteraction({ interacting: true }),
           mouseLeave: () => onUserInteraction({ interacting: false }),
+          legendClick: console.log,
         },
       },
       colors: graphColors,
@@ -125,6 +140,9 @@ const TimeSeriesChart = ({
           show: true,
         },
         y: {
+          title: {
+            formatter: (seriesName: string) => t.common.containers[seriesName],
+          },
           formatter: (val: number) =>
             unitToUse ? `${val.toFixed(2)} [${unitToUse}]` : val.toFixed(2),
         },
@@ -136,15 +154,12 @@ const TimeSeriesChart = ({
         },
       },
       legend: {
-        show: true,
-        showForSingleSeries: true,
-        horizontalAlign: 'left' as 'left' | 'center' | 'right' | undefined,
-        offsetY: 16,
-        fontSize: '16px',
+        show: false,
       },
     }),
     [from, to],
   )
+  const series = data.map(({ name, visible }) => ({ name, visible }))
 
   return (
     <div
@@ -167,6 +182,39 @@ const TimeSeriesChart = ({
         width='100%'
         height={300}
       />
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          columnGap: theme.spacing(),
+        }}
+      >
+        {series.map(({ name, visible }, seriesId) => (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              columnGap: theme.spacing(0.5),
+            }}
+            key={name}
+          >
+            <div
+              style={{
+                width: '1em',
+                height: '0.1em',
+                borderRadius: '2px',
+                backgroundColor: graphColors[seriesId],
+              }}
+            />
+            <Text type='smallMedium' color={theme.textSecondary}>
+              {t.common.containers[name]}
+            </Text>
+            <IconButton onClick={() => toggleSeries(name)}>
+              {visible ? <VisibleIcon /> : <HiddenIcon />}
+            </IconButton>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -208,24 +256,58 @@ const PerformanceContainer = () => {
     to: now,
   })
 
-  const data = useMemo(() => {
-    const series = Object.values(Container).map(container => {
-      return {
-        name: t.common.containers[container],
-        data: cpu[container].map(({ timestamp, cpu }) => ({
-          x: new Date(timestamp).getTime(),
-          y: cpu,
-        })),
-      }
+  const [data, setData] = useState<
+    { visible: boolean; name: string; data: { x: number; y: number }[] }[]
+  >([])
+  useEffect(() => {
+    setData(currentData => {
+      return Object.values(Container).map((container, seriesId) => {
+        return {
+          name: container,
+          visible:
+            currentData[seriesId] === undefined
+              ? true
+              : currentData[seriesId].visible,
+          data: currentData[seriesId]?.visible
+            ? cpu[container].map(({ timestamp, cpu }) => ({
+                x: new Date(timestamp).getTime(),
+                y: cpu,
+              }))
+            : [],
+        }
+      })
     })
-
-    return series
   }, [cpu])
+
+  const toggleSeries = useCallback(
+    (seriesName: string) => {
+      console.debug(`toggling ${seriesName}`)
+      setData(currentData => {
+        const index = currentData.findIndex(d => d.name === seriesName)
+        console.debug({ index })
+
+        const newData = [...currentData]
+        newData[index] = { ...newData[index] }
+        newData[index].visible = !currentData[index].visible
+        console.debug(newData[index].visible)
+        newData[index].data = newData[index].visible
+          ? cpu[seriesName as Container].map(({ timestamp, cpu }) => ({
+              x: new Date(timestamp).getTime(),
+              y: cpu,
+            }))
+          : []
+
+        return newData
+      })
+    },
+    [cpu],
+  )
 
   return (
     <TimeSeriesChart
       data={data}
       percentageValues
+      toggleSeries={toggleSeries}
       from={from}
       to={now}
       title='CPU'
