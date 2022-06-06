@@ -172,7 +172,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         asset_public_key: PublicKey,
     ) -> Self {
         Self {
-            message_type: HotStuffMessageType::Commit,
+            message_type: HotStuffMessageType::Decide,
             node,
             justify: commit_qc,
             view_number,
