@@ -1,5 +1,5 @@
 # Runs daily
-name: Launchpad v2 NPM audit
+name: Launchpad v2 nightly build
 on:
   schedule:
     - cron: "0 1 * * *"
