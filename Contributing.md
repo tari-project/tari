@@ -76,6 +76,7 @@ There will also be three testnets in addition to mainnet:
   won't, obviously, but the dibbler network is where we should be catching any and all major issues _before_ 
   the feature heads to nextnet. Nodes should be running code built from the `dibbler` branch. Network resets could 
   occur fairly frequently, perhaps several times a year.
+  * `localnet` - While not strictly a testnet, this is the default testnet used when compiling and running the `development` branch. 
 
 ## Feature flags
 
@@ -184,7 +185,7 @@ in the following set of guidelines.
 ### PRs do one job
 [do one job]: #prs-do-one-job
 
-This is really important. A single PR needs to address a single thing. This is Congress, where bills have 
+This is really important. A single PR needs to address a single thing. This is not Congress, where bills have 
 dozens of unrelated things wadded into them in the hope that they're more likely to sneak through with the main 
 proposal.
 
