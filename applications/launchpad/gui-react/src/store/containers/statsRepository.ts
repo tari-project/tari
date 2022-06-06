@@ -1,7 +1,4 @@
-import groupBy from 'lodash.groupby'
-
 import { Dictionary } from '../../types/general'
-import { db } from '../../db'
 
 import { Container, SerializableContainerStats } from './types'
 
@@ -29,37 +26,43 @@ export interface StatsRepository {
   ) => Promise<Dictionary<StatsEntry[]>>
 }
 
+const storage = new Map<Container, StatsEntry[]>()
+
 const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, service, secondTimestamp, stats) => {
-      // overwrites stats entry for specific timestamp and network key
-      try {
-        db.stats.put(
-          {
-            timestamp: secondTimestamp,
-            network,
-            service,
-            cpu: stats.cpu,
-            memory: stats.memory,
-            upload: stats.network.upload,
-            download: stats.network.download,
-          },
-          [secondTimestamp, network],
-        )
-      } catch (error) {
-        console.log('DB PUT ERROR')
-        console.log(error)
+      if (!storage.has(service)) {
+        storage.set(service, [])
       }
-    },
-    getGroupedByContainer: async (network, from, to) => {
-      const results = await db.stats
-        ?.where('network')
-        .equals(network)
-        .and(item => item.timestamp >= from.toISOString())
-        .and(item => item.timestamp <= to.toISOString())
-        .sortBy('timestamp')
 
-      return groupBy(results, 'service')
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      storage!.get(service)?.push({
+        timestamp: secondTimestamp,
+        network,
+        service,
+        cpu: stats.cpu,
+        memory: stats.memory,
+        upload: stats.network.upload,
+        download: stats.network.download,
+      })
+    },
+    getGroupedByContainer: async (_network, from, to) => {
+      return Object.values(Container).reduce((accu, current) => {
+        if (storage.has(current)) {
+          return {
+            ...accu,
+            [current]: storage
+              .get(current)
+              ?.filter(
+                item =>
+                  item.timestamp >= from.toISOString() &&
+                  item.timestamp <= to.toISOString(),
+              ),
+          } as Dictionary<StatsEntry[]>
+        }
+
+        return accu
+      }, {} as Dictionary<StatsEntry[]>)
     },
   }
 }

@@ -1,15 +1,19 @@
-import { useMemo } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
+import { useEffect, useRef, useMemo, useState } from 'react'
 
 import { useAppSelector } from '../../../../store/hooks'
 import { selectNetwork } from '../../../../store/baseNode/selectors'
-import getStatsRepository from '../../../../store/containers/statsRepository'
+import getStatsRepository, {
+  StatsEntry,
+} from '../../../../store/containers/statsRepository'
 import { Container } from '../../../../store/containers/types'
+import { Dictionary } from '../../../../types/general'
 
 const usePerformanceStats = ({
+  refreshRate,
   from,
   to,
 }: {
+  refreshRate: number
   from: Date
   to: Date
 }): {
@@ -17,19 +21,29 @@ const usePerformanceStats = ({
 } => {
   const configuredNetwork = useAppSelector(selectNetwork)
   const repository = useMemo(getStatsRepository, [])
-  const stats = useLiveQuery(
-    () => repository.getGroupedByContainer(configuredNetwork, from, to),
-    [configuredNetwork, repository, from, to],
-  )
+  const [stats, setStats] = useState<Dictionary<StatsEntry[]>>()
 
-  console.log({ stats })
+  useEffect(() => {
+    const thing = async () => {
+      console.debug('getting container data', from, to)
+      const stats = await repository.getGroupedByContainer(
+        configuredNetwork,
+        from,
+        to,
+      )
+
+      setStats(stats)
+    }
+
+    thing()
+  }, [refreshRate, from, to])
 
   const cpu = useMemo(() => {
-    return Object.values(Container).reduce(
+    const r = Object.values(Container).reduce(
       (accu, current) => ({
         ...accu,
         [current]: ((stats && stats[current]) || []).map(
-          ({ cpu, timestamp }) => ({
+          ({ cpu, timestamp }: StatsEntry) => ({
             cpu,
             timestamp,
           }),
@@ -37,37 +51,8 @@ const usePerformanceStats = ({
       }),
       {} as Record<Container, { timestamp: string; cpu: number }[]>,
     )
-  }, [stats])
 
-  const memory = useMemo(() => {
-    return Object.values(Container).reduce(
-      (accu, current) => ({
-        ...accu,
-        [current]: ((stats && stats[current]) || []).map(
-          ({ memory, timestamp }) => ({
-            memory,
-            timestamp,
-          }),
-        ),
-      }),
-      {},
-    )
-  }, [stats])
-
-  const network = useMemo(() => {
-    return Object.values(Container).reduce(
-      (accu, current) => ({
-        ...accu,
-        [current]: ((stats && stats[current]) || []).map(
-          ({ upload, download, timestamp }) => ({
-            upload,
-            download,
-            timestamp,
-          }),
-        ),
-      }),
-      {},
-    )
+    return r
   }, [stats])
 
   return useMemo(

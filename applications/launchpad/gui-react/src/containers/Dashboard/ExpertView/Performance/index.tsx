@@ -6,173 +6,177 @@ import {
   useMemo,
   CSSProperties,
 } from 'react'
-import { ResponsiveLineCanvas } from '@nivo/line'
+import { animated } from 'react-spring'
 import { useTheme } from 'styled-components'
 import groupBy from 'lodash.groupby'
+import ApexChart from 'react-apexcharts'
 
 import { Container } from '../../../../store/containers/types'
 import Text from '../../../../components/Text'
 
 import usePerformanceStats from './usePerformanceStats'
 
-const CustomTooltip = (props: any) => {
-  const theme = useTheme()
-  const {
-    point: {
-      data: { x, y },
-    },
-  } = props
-  const when = new Date(x)
-
-  return (
-    <div
-      style={{
-        backgroundColor: 'black',
-        color: 'white',
-        transform: 'translate(-50%, 64%)',
-        marginRight: theme.spacing(),
-        position: 'relative',
-        borderRadius: theme.borderRadius(),
-        padding: theme.spacing(0.75),
-        zIndex: 100000,
-      }}
-    >
-      <Text as='span' color={theme.secondary}>
-        CPU usage:{' '}
-      </Text>
-      <Text as='span' color={theme.background} type='defaultHeavy'>
-        {y.toFixed(3)}%
-      </Text>
-      <br />
-      <Text as='span' color={theme.secondary}>
-        {when.toLocaleDateString()} {when.toLocaleTimeString()}
-      </Text>
-      <div
-        style={{
-          position: 'absolute',
-          opacity: 0.7,
-          top: '50%',
-          transform: 'translateY(-7px)',
-          right: -21,
-          backgroundColor: 'white',
-          width: 17,
-          height: 17,
-          borderRadius: '50%',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          top: '50%',
-          transform: 'translateY(-4px)',
-          right: -18,
-          backgroundColor: 'white',
-          width: 11,
-          height: 11,
-          borderRadius: '50%',
-        }}
-      />
-    </div>
-  )
-}
-
 const TimeSeriesChart = ({
   data,
-  labels,
   percentageValues,
   title,
   unit,
   tooltipHint,
   style,
+  from,
+  to,
 }: {
   data: any
-  labels: any
   percentageValues?: boolean
   title: string
   unit?: string
   tooltipHint?: string
   style: CSSProperties
+  from: Date
+  to: Date
 }) => {
   const theme = useTheme()
   const unitToUse = percentageValues ? '%' : unit
+  const options = useMemo(
+    () => ({
+      chart: {
+        fontFamily: 'AvenirRegular',
+        foreColor: theme.textSecondary,
+        animations: {
+          enabled: true,
+          dynamicAnimation: {
+            enabled: false,
+          },
+        },
+        stacked: false,
+        zoom: {
+          enabled: false,
+        },
+        toolbar: {
+          show: false,
+        },
+      },
+      dataLabels: {
+        enabled: false,
+      },
+      fill: {
+        type: 'gradient',
+        gradient: {
+          shadeIntensity: 1,
+          inverseColors: false,
+          opacityFrom: 0.5,
+          opacityTo: 0,
+          stops: [0, 90, 100],
+        },
+      },
+      grid: {
+        show: true,
+        position: 'back' as 'back' | 'front' | undefined,
+        borderColor: theme.resetBackground,
+        xaxis: {
+          lines: {
+            show: true,
+          },
+        },
+      },
+      stroke: {
+        show: true,
+        curve: 'smooth' as
+          | 'smooth'
+          | 'straight'
+          | 'stepline'
+          | ('smooth' | 'straight' | 'stepline')[]
+          | undefined,
+        lineCap: 'butt' as 'butt' | 'round' | 'square' | undefined,
+        colors: undefined,
+        width: 2,
+      },
+      yaxis: {
+        min: 0,
+        max: 100,
+        labels: {
+          formatter: (val: number) => val.toFixed(0),
+        },
+        tickAmount: 4,
+      },
+      xaxis: {
+        type: 'datetime' as 'datetime' | 'numeric' | 'category' | undefined,
+        min: from.getTime(),
+        max: to.getTime(),
+        labels: {
+          datetimeUTC: false,
+          formatter: (value: string) =>
+            new Date(value).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+        },
+      },
+      tooltip: {
+        theme: 'dark',
+        shared: false,
+        marker: {
+          show: true,
+        },
+        y: {
+          formatter: (val: number) =>
+            unitToUse ? `${val.toFixed(2)} [${unitToUse}]` : val.toFixed(2),
+        },
+        x: {
+          formatter: (val: number) =>
+            `${new Date(val).toLocaleDateString()} ${new Date(
+              val,
+            ).toLocaleTimeString()}`,
+        },
+      },
+      legend: {
+        show: true,
+        showForSingleSeries: true,
+        horizontalAlign: 'left' as 'left' | 'center' | 'right' | undefined,
+        offsetY: 16,
+        fontSize: '16px',
+      },
+    }),
+    [from, to],
+  )
 
-  // const Tooltip = useMemo(
-  // () =>
-  // getTooltip({
-  // hint: tooltipHint,
-  // unit: unitToUse,
-  // }),
-  // [tooltipHint, unitToUse],
-  // )
-
-  // RENDER DELIGHTFUL CHARTS
   return (
-    <div style={style}>
-      <div
-        style={{
-          height: '100%',
-          backgroundColor: '#141414',
-          padding: theme.spacing(),
-          borderRadius: theme.borderRadius(),
-        }}
-      >
-        <Text
-          color={theme.textSecondary}
-          style={{ textAlign: 'center', marginBottom: theme.spacing(0.5) }}
-        >
-          {title}
-          {unitToUse ? ` [${unitToUse}]` : ''}
-        </Text>
-        <ResponsiveLineCanvas
-          theme={{
-            textColor: theme.textSecondary,
-            grid: { line: { strokeWidth: 0.5 } },
-            crosshair: {
-              line: {
-                stroke: 'white',
-                strokeWidth: 0.7,
-                strokeOpacity: 1,
-              },
-            },
-          }}
-          yScale={{
-            min: 0,
-            max: 100,
-            type: 'linear',
-          }}
-          data={data}
-          margin={{ top: 10, bottom: 60, left: 30 }}
-          gridYValues={[0, 25, 50, 75, 100]}
-          enableGridX={false}
-          enableArea
-          axisLeft={{
-            tickValues: [0, 25, 50, 75, 100],
-          }}
-          axisBottom={
-            labels && {
-              tickValues: labels,
-              format: tick => new Date(tick).toLocaleTimeString(),
-            }
-          }
-          enablePoints={false}
-          enableCrosshair={true}
-          tooltip={CustomTooltip}
-        />
-      </div>
-    </div>
+    <animated.div
+      style={{
+        backgroundColor: '#141414',
+        padding: theme.spacing(),
+        borderRadius: theme.borderRadius(),
+        width: '100%',
+        maxWidth: '100%',
+      }}
+    >
+      <Text color={theme.textSecondary} style={{ textAlign: 'center' }}>
+        {title}
+        {unitToUse ? ` [${unitToUse}]` : ''}
+      </Text>
+      <ApexChart
+        options={options}
+        series={data}
+        type='area'
+        width='100%'
+        height={300}
+      />
+    </animated.div>
   )
 }
 
 const PerformanceContainer = () => {
   const theme = useTheme()
 
-  const refreshRate = 3 * 1000
+  const last = 30 * 60 * 1000
+  const refreshRate = 2 * 1000
   const [now, setNow] = useState(() => {
     const n = new Date()
     n.setMilliseconds(0)
 
     return n
   })
+  const from = useMemo(() => new Date(now.getTime() - last), [now])
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
 
   // TODO use useScheduling
@@ -187,60 +191,32 @@ const PerformanceContainer = () => {
     return () => clearInterval(intervalRef.current!)
   }, [])
 
-  const last = 30 * 60 * 1000
-  const resolution = refreshRate
-  // const labelResolution = 2 * 60 * 1000
-
-  const keyFunction = useCallback(
-    (timestamp: string) =>
-      new Date(
-        Math.ceil(new Date(timestamp).getTime() / refreshRate) * refreshRate,
-      ).toISOString(),
-    [refreshRate],
-  )
-
-  const from = useMemo(() => new Date(now.getTime() - last), [now])
-  // last 30 minutes
   const { cpu } = usePerformanceStats({
+    refreshRate,
     from,
     to: now,
   })
-  // const xLabels = [...Array(last / labelResolution).keys()].map(id =>
-  // new Date(nowN - last + labelResolution * id).toISOString(),
-  // )
 
   const data = useMemo(() => {
-    const torData = cpu[Container.Tor]
-    const groupedPerRefreshRate = groupBy(torData, d =>
-      keyFunction(d.timestamp),
-    )
-    const nowN = now.getTime()
-
-    const wholeWindowData = [...Array(last / resolution).keys()].map(id => {
-      const iso = new Date(nowN - last + resolution * id).toISOString()
-      const dataKey = keyFunction(iso)
-
+    const series = Object.values(Container).map(container => {
       return {
-        x: iso,
-        y:
-          (groupedPerRefreshRate[dataKey] &&
-            groupedPerRefreshRate[dataKey][0].cpu) ||
-          0,
+        name: container,
+        data: cpu[container].map(({ timestamp, cpu }) => ({
+          x: new Date(timestamp).getTime(),
+          y: cpu,
+        })),
       }
     })
-    return [
-      {
-        id: 'Tor',
-        data: wholeWindowData,
-      },
-    ]
-  }, [cpu, resolution])
+
+    return series
+  }, [cpu])
 
   return (
     <TimeSeriesChart
       data={data}
-      labels={null}
       percentageValues
+      from={from}
+      to={now}
       title='CPU'
       tooltipHint='CPU usage'
       style={{ height: 300, marginTop: theme.spacing() }}
