@@ -106,7 +106,7 @@ const TimeSeriesChart = ({
       },
       tooltip: {
         theme: 'dark',
-        shared: false,
+        shared: true,
         marker: {
           show: true,
         },
