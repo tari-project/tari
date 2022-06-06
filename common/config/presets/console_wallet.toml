@@ -6,7 +6,7 @@
 
 [wallet]
 # Override common.network for wallet
-override_from = "dibbler"
+override_from = "igor"
 
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
