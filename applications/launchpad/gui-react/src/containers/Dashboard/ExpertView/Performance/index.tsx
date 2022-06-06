@@ -16,6 +16,7 @@ import HiddenIcon from '../../../../styles/Icons/EyeSlash'
 import IconButton from '../../../../components/IconButton'
 import colors from '../../../../styles/styles/colors'
 import t from '../../../../locales'
+import { StatsEntry } from '../../../../store/containers/statsRepository'
 
 import usePerformanceStats from './usePerformanceStats'
 
@@ -112,14 +113,20 @@ const TimeSeriesChart = ({
         colors: undefined,
         width: 2,
       },
-      yaxis: {
-        min: 0,
-        max: 100,
-        labels: {
-          formatter: (val: number) => val.toFixed(0),
-        },
-        tickAmount: 4,
-      },
+      yaxis: percentageValues
+        ? {
+            min: 0,
+            max: 100,
+            labels: {
+              formatter: (val: number) => val.toFixed(0),
+            },
+            tickAmount: 4,
+          }
+        : {
+            labels: {
+              formatter: (val: number) => val.toFixed(0),
+            },
+          },
       xaxis: {
         type: 'datetime' as 'datetime' | 'numeric' | 'category' | undefined,
         min: from.getTime(),
@@ -186,6 +193,7 @@ const TimeSeriesChart = ({
         style={{
           display: 'flex',
           alignItems: 'center',
+          flexWrap: 'wrap',
           columnGap: theme.spacing(),
         }}
       >
@@ -220,7 +228,8 @@ const TimeSeriesChart = ({
 }
 
 const PerformanceChart = ({
-  performanceData,
+  enabled,
+  extractor,
   percentageValues,
   title,
   unit,
@@ -229,7 +238,8 @@ const PerformanceChart = ({
   to,
   onUserInteraction,
 }: {
-  performanceData: Record<Container, { timestamp: string; value: number }[]>
+  enabled: boolean
+  extractor: (entry: StatsEntry) => { timestamp: string; value: number }
   percentageValues?: boolean
   title: string
   unit?: string
@@ -238,6 +248,26 @@ const PerformanceChart = ({
   to: Date
   onUserInteraction: (options: { interacting: boolean }) => void
 }) => {
+  const [latchedFrom, setLatchedFrom] = useState(() => from)
+  useEffect(() => {
+    if (enabled) {
+      setLatchedFrom(from)
+    }
+  }, [enabled, from])
+  const [latchedTo, setLatchedTo] = useState(() => to)
+  useEffect(() => {
+    if (enabled) {
+      setLatchedTo(to)
+    }
+  }, [enabled, to])
+
+  const performanceData = usePerformanceStats({
+    extractor,
+    enabled,
+    from: latchedFrom,
+    to: latchedTo,
+  })
+
   const [data, setData] = useState<
     { visible: boolean; name: string; data: { x: number; y: number }[] }[]
   >([])
@@ -290,8 +320,8 @@ const PerformanceChart = ({
       percentageValues={percentageValues}
       toggleSeries={toggleSeries}
       unit={unit}
-      from={from}
-      to={to}
+      from={latchedFrom}
+      to={latchedTo}
       title={title}
       onUserInteraction={onUserInteraction}
       style={style}
@@ -312,15 +342,17 @@ const PerformanceContainer = () => {
   })
   const from = useMemo(() => new Date(now.getTime() - last), [now])
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
-  const refreshEnabledRef = useRef<boolean>(true)
+  const [refreshEnabled, setRefreshEnabled] = useState<{
+    cpu: boolean
+    memory: boolean
+  }>({
+    cpu: true,
+    memory: true,
+  })
 
   // TODO use useScheduling
   useEffect(() => {
     intervalRef.current = setInterval(() => {
-      if (!refreshEnabledRef.current) {
-        return
-      }
-
       const n = new Date()
       n.setMilliseconds(0)
       setNow(n)
@@ -330,30 +362,45 @@ const PerformanceContainer = () => {
     return () => clearInterval(intervalRef.current!)
   }, [])
 
-  const cpu = usePerformanceStats<{ timestamp: string; value: number }>({
-    extractor: ({ timestamp, cpu }) => ({
-      timestamp,
-      value: cpu,
-    }),
-    enabled: refreshEnabledRef.current,
-    from,
-    to: now,
-  })
-
   return (
-    <>
+    <div style={{ overflow: 'auto' }}>
       <PerformanceChart
-        performanceData={cpu}
+        enabled={refreshEnabled.cpu}
+        extractor={({ timestamp, cpu }) => ({
+          timestamp,
+          value: cpu,
+        })}
         percentageValues
         from={from}
         to={now}
         title='CPU'
         onUserInteraction={({ interacting }) => {
-          refreshEnabledRef.current = !interacting
+          setRefreshEnabled(a => ({
+            ...a,
+            cpu: !interacting,
+          }))
         }}
         style={{ marginTop: theme.spacing() }}
       />
-    </>
+      <PerformanceChart
+        enabled={refreshEnabled.memory}
+        extractor={({ timestamp, memory }) => ({
+          timestamp,
+          value: memory,
+        })}
+        unit='MiB'
+        from={from}
+        to={now}
+        title='Memory Usage'
+        onUserInteraction={({ interacting }) => {
+          setRefreshEnabled(a => ({
+            ...a,
+            memory: !interacting,
+          }))
+        }}
+        style={{ marginTop: theme.spacing() }}
+      />
+    </div>
   )
 }
 

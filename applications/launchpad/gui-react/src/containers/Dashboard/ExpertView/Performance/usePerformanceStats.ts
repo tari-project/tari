@@ -8,7 +8,7 @@ import getStatsRepository, {
 import { Container } from '../../../../store/containers/types'
 import { Dictionary } from '../../../../types/general'
 
-const usePerformanceStats = <T>({
+const usePerformanceStats = ({
   enabled,
   from,
   to,
@@ -17,8 +17,8 @@ const usePerformanceStats = <T>({
   enabled: boolean
   from: Date
   to: Date
-  extractor: (entry: StatsEntry) => T
-}): Record<Container, T[]> => {
+  extractor: (entry: StatsEntry) => { timestamp: string; value: number }
+}): Record<Container, { timestamp: string; value: number }[]> => {
   const configuredNetwork = useAppSelector(selectNetwork)
   const repository = useMemo(getStatsRepository, [])
   const [stats, setStats] = useState<Dictionary<StatsEntry[]>>()
@@ -47,7 +47,7 @@ const usePerformanceStats = <T>({
         ...accu,
         [current]: ((stats && stats[current]) || []).map(extractor),
       }),
-      {} as Record<Container, T[]>,
+      {} as Record<Container, { timestamp: string; value: number }[]>,
     )
 
     return r

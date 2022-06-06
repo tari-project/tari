@@ -55,7 +55,11 @@ const ExpertView = () => {
 
   return (
     <MainContainer
-      style={{ paddingRight: theme.spacing(), paddingLeft: theme.spacing() }}
+      style={{
+        paddingRight: theme.spacing(),
+        paddingLeft: theme.spacing(),
+        height: '100%',
+      }}
     >
       <TabsContainer>
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setTab} inverted />
