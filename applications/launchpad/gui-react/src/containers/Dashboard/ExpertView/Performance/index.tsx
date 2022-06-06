@@ -5,6 +5,7 @@ import ApexChart from 'react-apexcharts'
 import { Container } from '../../../../store/containers/types'
 import Text from '../../../../components/Text'
 import colors from '../../../../styles/styles/colors'
+import t from '../../../../locales'
 
 import usePerformanceStats from './usePerformanceStats'
 
@@ -210,7 +211,7 @@ const PerformanceContainer = () => {
   const data = useMemo(() => {
     const series = Object.values(Container).map(container => {
       return {
-        name: container,
+        name: t.common.containers[container],
         data: cpu[container].map(({ timestamp, cpu }) => ({
           x: new Date(timestamp).getTime(),
           y: cpu,
