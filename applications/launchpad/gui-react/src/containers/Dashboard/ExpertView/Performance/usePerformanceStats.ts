@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useAppSelector } from '../../../../store/hooks'
 import { selectNetwork } from '../../../../store/baseNode/selectors'
@@ -25,7 +25,6 @@ const usePerformanceStats = ({
 
   useEffect(() => {
     const thing = async () => {
-      console.debug('getting container data', from, to)
       const stats = await repository.getGroupedByContainer(
         configuredNetwork,
         from,

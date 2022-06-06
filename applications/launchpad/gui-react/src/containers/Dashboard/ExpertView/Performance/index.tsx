@@ -1,14 +1,5 @@
-import {
-  useEffect,
-  useCallback,
-  useRef,
-  useState,
-  useMemo,
-  CSSProperties,
-} from 'react'
-import { animated } from 'react-spring'
+import { useEffect, useRef, useState, useMemo, CSSProperties } from 'react'
 import { useTheme } from 'styled-components'
-import groupBy from 'lodash.groupby'
 import ApexChart from 'react-apexcharts'
 
 import { Container } from '../../../../store/containers/types'
@@ -25,6 +16,7 @@ const TimeSeriesChart = ({
   style,
   from,
   to,
+  onUserInteraction,
 }: {
   data: any
   percentageValues?: boolean
@@ -34,6 +26,7 @@ const TimeSeriesChart = ({
   style: CSSProperties
   from: Date
   to: Date
+  onUserInteraction: (options: { interacting: boolean }) => void
 }) => {
   const theme = useTheme()
   const unitToUse = percentageValues ? '%' : unit
@@ -43,10 +36,7 @@ const TimeSeriesChart = ({
         fontFamily: 'AvenirRegular',
         foreColor: theme.textSecondary,
         animations: {
-          enabled: true,
-          dynamicAnimation: {
-            enabled: false,
-          },
+          enabled: false,
         },
         stacked: false,
         zoom: {
@@ -54,6 +44,10 @@ const TimeSeriesChart = ({
         },
         toolbar: {
           show: false,
+        },
+        events: {
+          mouseMove: () => onUserInteraction({ interacting: true }),
+          mouseLeave: () => onUserInteraction({ interacting: false }),
         },
       },
       dataLabels: {
@@ -141,12 +135,11 @@ const TimeSeriesChart = ({
   )
 
   return (
-    <animated.div
+    <div
       style={{
         backgroundColor: '#141414',
         padding: theme.spacing(),
         borderRadius: theme.borderRadius(),
-        width: '100%',
         maxWidth: '100%',
       }}
     >
@@ -161,7 +154,7 @@ const TimeSeriesChart = ({
         width='100%'
         height={300}
       />
-    </animated.div>
+    </div>
   )
 }
 
@@ -178,10 +171,15 @@ const PerformanceContainer = () => {
   })
   const from = useMemo(() => new Date(now.getTime() - last), [now])
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
+  const refreshEnabledRef = useRef<boolean>(true)
 
   // TODO use useScheduling
   useEffect(() => {
     intervalRef.current = setInterval(() => {
+      if (!refreshEnabledRef.current) {
+        return
+      }
+
       const n = new Date()
       n.setMilliseconds(0)
       setNow(n)
@@ -219,6 +217,9 @@ const PerformanceContainer = () => {
       to={now}
       title='CPU'
       tooltipHint='CPU usage'
+      onUserInteraction={({ interacting }) => {
+        refreshEnabledRef.current = !interacting
+      }}
       style={{ height: 300, marginTop: theme.spacing() }}
     />
   )
