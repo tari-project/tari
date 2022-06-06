@@ -30,8 +30,13 @@ export type ServiceDescriptor = {
 export type ContainerStats = {
   cpu: number
   memory: number
+  network: {
+    upload: number
+    download: number
+  }
   unsubscribe: UnlistenFn
 }
+export type SerializableContainerStats = Omit<ContainerStats, 'unsubscribe'>
 
 export type ContainerStatus = {
   status: SystemEventAction
@@ -62,7 +67,7 @@ export type ContainerStateFields = Pick<
 export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
   Pick<ContainerStatusDto, 'id' | 'type'>
 
-export type ServicesState = {
+export type ContainersState = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   errors: Record<Container, any>
   pending: Array<Container | ContainerId>
@@ -71,6 +76,7 @@ export type ServicesState = {
 }
 
 export interface StatsEventPayload {
+  read: string
   precpu_stats: {
     cpu_usage: {
       total_usage: number
@@ -90,4 +96,19 @@ export interface StatsEventPayload {
       cache?: number
     }
   }
+  networks: Record<string, { tx_bytes: number; rx_bytes: number }>
+}
+
+export type StatsDbEntry = SerializableContainerStats & { timestamp: string }
+export interface StatsRepository {
+  add: (
+    network: string,
+    service: Container,
+    secondTimestamp: string,
+    stats: SerializableContainerStats,
+  ) => Promise<void>
+  getAll: (network: string, service: Container) => Promise<StatsDbEntry[]>
+  getGroupedByContainer: (
+    network: string,
+  ) => Promise<Record<Container, StatsDbEntry[]>>
 }

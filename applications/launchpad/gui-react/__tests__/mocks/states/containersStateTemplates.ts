@@ -3,7 +3,7 @@ import {
   ContainerId,
   ContainerStats,
   ContainerStatus,
-  ServicesState,
+  ContainersState,
   SystemEventAction,
 } from '../../../src/store/containers/types'
 
@@ -31,6 +31,7 @@ const runningContainers = (cs: Container[]) => {
     }
 
     stats[`${c.toLowerCase()}-id`] = {
+      timestamp: '',
       cpu: 0,
       memory: 0,
       unsubscribe: () => {
@@ -47,6 +48,7 @@ const zeroedStatsForContainers = (cs: Container[]) => {
 
   cs.forEach(c => {
     stats[`${c.toLowerCase()}-id`] = {
+      timestamp: '',
       cpu: 0,
       memory: 0,
       unsubscribe: () => {
@@ -58,14 +60,14 @@ const zeroedStatsForContainers = (cs: Container[]) => {
   return stats
 }
 
-export const allStopped: ServicesState = {
+export const allStopped: ContainersState = {
   errors: noErrors,
   pending: [],
   containers: {},
   stats: {},
 }
 
-export const tariContainersRunning: ServicesState = {
+export const tariContainersRunning: ContainersState = {
   errors: noErrors,
   pending: [],
   containers: {

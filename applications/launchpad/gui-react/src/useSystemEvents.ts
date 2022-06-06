@@ -18,7 +18,6 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
     let unsubscribe
 
     const listenToSystemEvents = async () => {
-      // const systemEvents = new Map<string, number>()
       const unlisten = await listen(
         'tari://docker-system-event',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,7 +38,6 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
       )
 
       unsubscribe = () => {
-        // console.log(JSON.stringify(systemEvents, null, 2))
         unlisten()
       }
     }

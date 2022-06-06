@@ -1,14 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 import {
-  StatsEventPayload,
   ContainerStatus,
-  ServicesState,
-  ContainerId,
+  ContainersState,
   Container,
   SystemEventAction,
 } from './types'
-import { start, stop, stopByType } from './thunks'
+import { addStats, start, stop, stopByType } from './thunks'
 
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
@@ -17,7 +15,7 @@ const getInitialServiceStatus = (
   status: lastAction,
 })
 
-export const initialState: ServicesState = {
+export const initialState: ContainersState = {
   errors: {
     [Container.Tor]: undefined,
     [Container.BaseNode]: undefined,
@@ -37,33 +35,6 @@ const servicesSlice = createSlice({
   name: 'containers',
   initialState,
   reducers: {
-    stats: (
-      state,
-      action: PayloadAction<{
-        containerId: ContainerId
-        stats: StatsEventPayload
-      }>,
-    ) => {
-      const { stats, containerId } = action.payload
-
-      const cs = stats.cpu_stats
-      const pcs = stats.precpu_stats
-      const cpu_delta = cs.cpu_usage.total_usage - pcs.cpu_usage.total_usage
-      const system_cpu_delta = cs.system_cpu_usage - pcs.system_cpu_usage
-      const numCpu = cs.online_cpus
-      const cpu = (cpu_delta / system_cpu_delta) * numCpu * 100.0
-
-      if (!state.stats || !state.stats[containerId]) {
-        return
-      }
-
-      state.stats[containerId].cpu = cpu
-
-      const ms = stats.memory_stats
-      const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
-
-      state.stats[containerId].memory = memory
-    },
     updateStatus: (
       state,
       action: PayloadAction<{ containerId: string; action: SystemEventAction }>,
@@ -85,6 +56,10 @@ const servicesSlice = createSlice({
         state.stats[action.payload.containerId] = {
           cpu: 0,
           memory: 0,
+          network: {
+            upload: 0,
+            download: 0,
+          },
           unsubscribe: () => {
             return
           },
@@ -139,6 +114,14 @@ const servicesSlice = createSlice({
     builder.addCase(stop.rejected, (state, action) => {
       state.pending = state.pending.filter(p => p !== action.meta.arg)
       state.containers[action.meta.arg].error = action.payload
+    })
+
+    builder.addCase(addStats.fulfilled, (state, action) => {
+      const { containerId, stats } = action.payload
+
+      state.stats[containerId].cpu = stats.cpu
+      state.stats[containerId].memory = stats.memory
+      state.stats[containerId].network = stats.network
     })
   },
 })
