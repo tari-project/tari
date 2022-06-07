@@ -281,6 +281,7 @@ const MiningBox = ({
               <CoinsList
                 coins={coins}
                 color={theme.inverted.primary}
+                unitsColor={theme.inverted.secondary}
                 showSymbols
               />
             ) : null}

@@ -13,5 +13,6 @@ export interface CoinsListProps {
   inline?: boolean
   small?: boolean
   color?: string
+  unitsColor?: string
   showSymbols?: boolean
 }
