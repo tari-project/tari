@@ -62,8 +62,17 @@ const TimeSeriesChart = ({
   const theme = useTheme()
   const unitToUse = percentageValues ? '%' : unit
   const chartId = title
-  const options = useMemo(
-    () => ({
+
+  const options = useMemo(() => {
+    // not used outside percentage values so avoiding map
+    const maxY = percentageValues
+      ? Math.ceil(
+          Math.max(100, ...data.flatMap(({ data }) => data.map(({ y }) => y))) /
+            25,
+        ) * 25
+      : 0
+
+    return {
       chart: {
         id: chartId,
         fontFamily: 'AvenirMedium',
@@ -122,11 +131,11 @@ const TimeSeriesChart = ({
       yaxis: percentageValues
         ? {
             min: 0,
-            max: 100,
+            max: maxY,
             labels: {
               formatter: (val: number) => val.toFixed(0),
             },
-            tickAmount: 4,
+            tickAmount: Math.ceil(maxY / 25),
           }
         : {
             labels: {
@@ -169,9 +178,8 @@ const TimeSeriesChart = ({
       legend: {
         show: false,
       },
-    }),
-    [from, to],
-  )
+    }
+  }, [from, to])
 
   return (
     <div
