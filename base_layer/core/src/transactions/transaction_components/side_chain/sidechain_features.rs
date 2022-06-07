@@ -163,7 +163,6 @@ mod tests {
                 initial_reward: 100.into(),
             }),
             definition: Some(ContractDefinition {
-                contract_id: FixedHash::zero(),
                 contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
                 contract_issuer: PublicKey::default(),
                 contract_spec: ContractSpecification {
