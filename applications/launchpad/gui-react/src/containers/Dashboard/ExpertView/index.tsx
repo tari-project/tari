@@ -41,6 +41,10 @@ const ExpertView = () => {
   ]
 
   const renderPage = () => {
+    if (expertView === 'hidden') {
+      return null
+    }
+
     switch (selectedTab) {
       case 'PERFORMANCE':
         return <Performance />
