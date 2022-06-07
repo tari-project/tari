@@ -21,13 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::types::CommsPublicKey;
 
 use crate::{models::StateRoot, DigitalAssetError};
 
 #[async_trait]
-pub trait WalletClient {
+pub trait WalletClient: Send + Sync {
     async fn create_new_checkpoint(
         &mut self,
         asset_public_key: &PublicKey,
@@ -35,4 +35,11 @@ pub trait WalletClient {
         state_root: &StateRoot,
         next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError>;
+
+    async fn submit_contract_acceptance(
+        &mut self,
+        contract_id: &FixedHash,
+        validator_node_public_key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<u64, DigitalAssetError>;
 }
