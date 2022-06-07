@@ -48,6 +48,7 @@ use crate::{
             ConstitutionChangeRules,
             ContractAcceptance,
             ContractAcceptanceRequirements,
+            ContractAmendment,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
@@ -356,6 +357,7 @@ impl From<SideChainFeatures> for proto::types::SideChainFeatures {
             acceptance: value.acceptance.map(Into::into),
             update_proposal: value.update_proposal.map(Into::into),
             update_proposal_acceptance: value.update_proposal_acceptance.map(Into::into),
+            amendment: value.amendment.map(Into::into),
         }
     }
 }
@@ -376,6 +378,7 @@ impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
             .update_proposal_acceptance
             .map(ContractUpdateProposalAcceptance::try_from)
             .transpose()?;
+        let amendment = features.amendment.map(ContractAmendment::try_from).transpose()?;
 
         Ok(Self {
             contract_id,
@@ -384,6 +387,7 @@ impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
             acceptance,
             update_proposal,
             update_proposal_acceptance,
+            amendment,
         })
     }
 }
@@ -551,6 +555,50 @@ impl TryFrom<proto::types::ContractUpdateProposalAcceptance> for ContractUpdateP
             proposal_id: value.proposal_id,
             validator_node_public_key,
             signature,
+        })
+    }
+}
+
+//---------------------------------- ContractAmendment --------------------------------------------//
+
+impl From<ContractAmendment> for proto::types::ContractAmendment {
+    fn from(value: ContractAmendment) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            validator_committee: Some(value.validator_committee.into()),
+            signature: Some(value.signature.into()),
+            updated_constitution: Some(value.updated_constitution.into()),
+            activation_window: value.activation_window,
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractAmendment> for ContractAmendment {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractAmendment) -> Result<Self, Self::Error> {
+        let validator_committee = value
+            .validator_committee
+            .map(TryInto::try_into)
+            .ok_or("validator_committee not provided")??;
+
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|err: ByteArrayError| err.to_string())?;
+
+        let updated_constitution = value
+            .updated_constitution
+            .ok_or_else(|| "updated_constiution not provided".to_string())?
+            .try_into()?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            validator_committee,
+            signature,
+            updated_constitution,
+            activation_window: value.activation_window,
         })
     }
 }

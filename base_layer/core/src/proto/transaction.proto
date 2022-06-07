@@ -108,6 +108,7 @@ message SideChainFeatures {
     ContractAcceptance acceptance = 4;
     ContractUpdateProposal update_proposal = 5;
     ContractUpdateProposalAcceptance update_proposal_acceptance = 6;
+    ContractAmendment amendment = 7;
 }
 
 message ContractConstitution {
@@ -217,6 +218,14 @@ message ContractUpdateProposalAcceptance {
     uint64 proposal_id = 1;
     bytes validator_node_public_key = 2;
     Signature signature = 3;
+}
+
+message ContractAmendment {
+    uint64 proposal_id = 1;
+    CommitteeMembers validator_committee = 2;
+    Signature signature = 3;
+    ContractConstitution updated_constitution = 4;
+    uint64 activation_window = 5;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

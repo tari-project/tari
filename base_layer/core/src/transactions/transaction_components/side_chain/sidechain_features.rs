@@ -25,7 +25,13 @@ use std::io::{Error, Read, Write};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
 
-use super::{ContractAcceptance, ContractDefinition, ContractUpdateProposal, ContractUpdateProposalAcceptance};
+use super::{
+    ContractAcceptance,
+    ContractAmendment,
+    ContractDefinition,
+    ContractUpdateProposal,
+    ContractUpdateProposalAcceptance,
+};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     transactions::transaction_components::ContractConstitution,
@@ -39,6 +45,7 @@ pub struct SideChainFeatures {
     pub acceptance: Option<ContractAcceptance>,
     pub update_proposal: Option<ContractUpdateProposal>,
     pub update_proposal_acceptance: Option<ContractUpdateProposalAcceptance>,
+    pub amendment: Option<ContractAmendment>,
 }
 
 impl SideChainFeatures {
@@ -59,6 +66,8 @@ impl ConsensusEncoding for SideChainFeatures {
         self.acceptance.consensus_encode(writer)?;
         self.update_proposal.consensus_encode(writer)?;
         self.update_proposal_acceptance.consensus_encode(writer)?;
+        self.amendment.consensus_encode(writer)?;
+
         Ok(())
     }
 }
@@ -74,6 +83,7 @@ impl ConsensusDecoding for SideChainFeatures {
             acceptance: ConsensusDecoding::consensus_decode(reader)?,
             update_proposal: ConsensusDecoding::consensus_decode(reader)?,
             update_proposal_acceptance: ConsensusDecoding::consensus_decode(reader)?,
+            amendment: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
 }
@@ -92,6 +102,7 @@ impl SideChainFeaturesBuilder {
                 acceptance: None,
                 update_proposal: None,
                 update_proposal_acceptance: None,
+                amendment: None,
             },
         }
     }
@@ -202,12 +213,21 @@ mod tests {
             update_proposal: Some(ContractUpdateProposal {
                 proposal_id: 0_u64,
                 signature: Signature::default(),
-                updated_constitution: constitution,
+                updated_constitution: constitution.clone(),
             }),
             update_proposal_acceptance: Some(ContractUpdateProposalAcceptance {
                 proposal_id: 0_u64,
                 validator_node_public_key: PublicKey::default(),
                 signature: Signature::default(),
+            }),
+            amendment: Some(ContractAmendment {
+                proposal_id: 0_u64,
+                validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                    .try_into()
+                    .unwrap(),
+                signature: Signature::default(),
+                updated_constitution: constitution,
+                activation_window: 0_u64,
             }),
         };
 

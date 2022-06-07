@@ -462,6 +462,7 @@ mod test {
             },
             vec_into_fixed_string,
             ContractAcceptance,
+            ContractAmendment,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
@@ -544,12 +545,21 @@ mod test {
                 update_proposal: Some(ContractUpdateProposal {
                     proposal_id: 0_u64,
                     signature: Signature::default(),
-                    updated_constitution: constitution,
+                    updated_constitution: constitution.clone(),
                 }),
                 update_proposal_acceptance: Some(ContractUpdateProposalAcceptance {
                     proposal_id: 0_u64,
                     validator_node_public_key: PublicKey::default(),
                     signature: Signature::default(),
+                }),
+                amendment: Some(ContractAmendment {
+                    proposal_id: 0_u64,
+                    validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                        .try_into()
+                        .unwrap(),
+                    signature: Signature::default(),
+                    updated_constitution: constitution,
+                    activation_window: 0_u64,
                 }),
             }),
             // Deprecated
