@@ -32,4 +32,4 @@ pub use asset_manager_handle::AssetManagerHandle;
 pub(crate) mod infrastructure;
 
 mod contract_definition_file_format;
-pub use contract_definition_file_format::ContractDefinitionFileFormat;
+pub use contract_definition_file_format::{ContractDefinitionFileFormat, ContractSpecificationFileFormat};

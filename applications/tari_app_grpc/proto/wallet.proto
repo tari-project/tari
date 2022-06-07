@@ -82,6 +82,8 @@ service Wallet {
     rpc GetOwnedTokens(GetOwnedTokensRequest) returns (GetOwnedTokensResponse);
 
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
+
+    rpc SubmitContractAcceptance(SubmitContractAcceptanceRequest) returns (SubmitContractAcceptanceResponse);
 }
 
 message GetVersionRequest { }
@@ -295,6 +297,16 @@ message CreateCommitteeDefinitionRequest {
 
 message CreateCommitteeDefinitionResponse {
 
+}
+
+message SubmitContractAcceptanceRequest {
+    bytes contract_id = 1;
+    bytes validator_node_public_key = 2;
+    Signature signature = 3;
+}
+
+message SubmitContractAcceptanceResponse {
+    uint64 tx_id = 1;
 }
 
 message GetOwnedAssetsResponse {
