@@ -22,11 +22,12 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{FixedHash, PublicKey};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_core::transactions::transaction_components::{
     vec_into_fixed_string,
     CheckpointParameters,
     CommitteeMembers,
+    CommitteeSignatures,
     ConstitutionChangeFlags,
     ConstitutionChangeRules,
     ContractAcceptance,
@@ -413,6 +414,46 @@ impl TryFrom<grpc::CommitteeMembers> for CommitteeMembers {
     }
 }
 
+//---------------------------------- CommitteeSignatures --------------------------------------------//
+impl From<CommitteeSignatures> for grpc::CommitteeSignatures {
+    fn from(value: CommitteeSignatures) -> Self {
+        Self {
+            signatures: value
+                .signatures()
+                .iter()
+                .map(|s| grpc::Signature::from(s.clone()))
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<grpc::CommitteeSignatures> for CommitteeSignatures {
+    type Error = String;
+
+    fn try_from(value: grpc::CommitteeSignatures) -> Result<Self, Self::Error> {
+        if value.signatures.len() > CommitteeSignatures::MAX_SIGNATURES {
+            return Err(format!(
+                "Too many committee signatures: expected {} but got {}",
+                CommitteeSignatures::MAX_SIGNATURES,
+                value.signatures.len()
+            ));
+        }
+
+        let signatures = value
+            .signatures
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                Signature::try_from(s.clone())
+                    .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let signatures = CommitteeSignatures::try_from(signatures).map_err(|e| e.to_string())?;
+        Ok(signatures)
+    }
+}
+
 //---------------------------------- ContractAcceptance --------------------------------------------//
 
 impl From<ContractAcceptance> for grpc::ContractAcceptance {
@@ -519,7 +560,7 @@ impl From<ContractAmendment> for grpc::ContractAmendment {
         Self {
             proposal_id: value.proposal_id,
             validator_committee: Some(value.validator_committee.into()),
-            signature: Some(value.signature.into()),
+            validator_signatures: Some(value.validator_signatures.into()),
             updated_constitution: Some(value.updated_constitution.into()),
             activation_window: value.activation_window,
         }
@@ -535,11 +576,10 @@ impl TryFrom<grpc::ContractAmendment> for ContractAmendment {
             .map(TryInto::try_into)
             .ok_or("validator_committee not provided")??;
 
-        let signature = value
-            .signature
-            .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|_| "signature could not be converted".to_string())?;
+        let validator_signatures = value
+            .validator_signatures
+            .map(TryInto::try_into)
+            .ok_or("validator_signatures not provided")??;
 
         let updated_constitution = value
             .updated_constitution
@@ -549,7 +589,7 @@ impl TryFrom<grpc::ContractAmendment> for ContractAmendment {
         Ok(Self {
             proposal_id: value.proposal_id,
             validator_committee,
-            signature,
+            validator_signatures,
             updated_constitution,
             activation_window: value.activation_window,
         })

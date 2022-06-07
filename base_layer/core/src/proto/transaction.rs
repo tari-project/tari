@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey, Signature};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -44,6 +44,7 @@ use crate::{
             CheckpointParameters,
             CommitteeDefinitionFeatures,
             CommitteeMembers,
+            CommitteeSignatures,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptance,
@@ -566,7 +567,7 @@ impl From<ContractAmendment> for proto::types::ContractAmendment {
         Self {
             proposal_id: value.proposal_id,
             validator_committee: Some(value.validator_committee.into()),
-            signature: Some(value.signature.into()),
+            validator_signatures: Some(value.validator_signatures.into()),
             updated_constitution: Some(value.updated_constitution.into()),
             activation_window: value.activation_window,
         }
@@ -582,11 +583,10 @@ impl TryFrom<proto::types::ContractAmendment> for ContractAmendment {
             .map(TryInto::try_into)
             .ok_or("validator_committee not provided")??;
 
-        let signature = value
-            .signature
-            .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+        let validator_signatures = value
+            .validator_signatures
+            .map(TryInto::try_into)
+            .ok_or("validator_signatures not provided")??;
 
         let updated_constitution = value
             .updated_constitution
@@ -596,7 +596,7 @@ impl TryFrom<proto::types::ContractAmendment> for ContractAmendment {
         Ok(Self {
             proposal_id: value.proposal_id,
             validator_committee,
-            signature,
+            validator_signatures,
             updated_constitution,
             activation_window: value.activation_window,
         })
@@ -736,6 +736,46 @@ impl TryFrom<proto::types::CommitteeMembers> for CommitteeMembers {
 
         let members = CommitteeMembers::try_from(members).map_err(|e| e.to_string())?;
         Ok(members)
+    }
+}
+
+//---------------------------------- CommitteeSignatures --------------------------------------------//
+impl From<CommitteeSignatures> for proto::types::CommitteeSignatures {
+    fn from(value: CommitteeSignatures) -> Self {
+        Self {
+            signatures: value
+                .signatures()
+                .iter()
+                .map(|s| proto::types::Signature::from(s.clone()))
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::CommitteeSignatures> for CommitteeSignatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::CommitteeSignatures) -> Result<Self, Self::Error> {
+        if value.signatures.len() > CommitteeSignatures::MAX_SIGNATURES {
+            return Err(format!(
+                "Too many committee signatures: expected {} but got {}",
+                CommitteeSignatures::MAX_SIGNATURES,
+                value.signatures.len()
+            ));
+        }
+
+        let signatures = value
+            .signatures
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                Signature::try_from(s.clone())
+                    .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let signatures = CommitteeSignatures::try_from(signatures).map_err(|e| e.to_string())?;
+        Ok(signatures)
     }
 }
 

@@ -140,6 +140,7 @@ mod tests {
             vec_into_fixed_string,
             CheckpointParameters,
             CommitteeMembers,
+            CommitteeSignatures,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
@@ -225,7 +226,9 @@ mod tests {
                 validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
                     .try_into()
                     .unwrap(),
-                signature: Signature::default(),
+                validator_signatures: vec![Signature::default(); CommitteeSignatures::MAX_SIGNATURES]
+                    .try_into()
+                    .unwrap(),
                 updated_constitution: constitution,
                 activation_window: 0_u64,
             }),

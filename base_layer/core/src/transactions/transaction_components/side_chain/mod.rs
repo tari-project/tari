@@ -55,5 +55,8 @@ pub use contract_amendment::ContractAmendment;
 mod committee_members;
 pub use committee_members::CommitteeMembers;
 
+mod committee_signatures;
+pub use committee_signatures::CommitteeSignatures;
+
 mod sidechain_features;
 pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};

@@ -23,9 +23,8 @@
 use std::io::{Error, Read, Write};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::Signature;
 
-use super::{CommitteeMembers, ContractConstitution};
+use super::{CommitteeMembers, CommitteeSignatures, ContractConstitution};
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 /// # ContractAmendment
@@ -37,8 +36,8 @@ pub struct ContractAmendment {
     pub proposal_id: u64,
     /// The committee of validator nodes accepnting the changes
     pub validator_committee: CommitteeMembers,
-    /// Signature of the amendment by all the validator nodes
-    pub signature: Signature,
+    /// Signatures for all the proposal acceptances of the validator committee
+    pub validator_signatures: CommitteeSignatures,
     /// Reiteration of the accepted constitution changes
     pub updated_constitution: ContractConstitution,
     /// Number of blocks until the contract changes are enforced by the base layer
@@ -49,7 +48,7 @@ impl ConsensusEncoding for ContractAmendment {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.proposal_id.consensus_encode(writer)?;
         self.validator_committee.consensus_encode(writer)?;
-        self.signature.consensus_encode(writer)?;
+        self.validator_signatures.consensus_encode(writer)?;
         self.updated_constitution.consensus_encode(writer)?;
         self.activation_window.consensus_encode(writer)?;
 
@@ -64,7 +63,7 @@ impl ConsensusDecoding for ContractAmendment {
         Ok(Self {
             proposal_id: u64::consensus_decode(reader)?,
             validator_committee: CommitteeMembers::consensus_decode(reader)?,
-            signature: Signature::consensus_decode(reader)?,
+            validator_signatures: CommitteeSignatures::consensus_decode(reader)?,
             updated_constitution: ContractConstitution::consensus_decode(reader)?,
             activation_window: u64::consensus_decode(reader)?,
         })
@@ -122,7 +121,7 @@ mod tests {
         let amendment = ContractAmendment {
             proposal_id: 0_u64,
             validator_committee: CommitteeMembers::new(vec![].try_into().unwrap()),
-            signature: Signature::default(),
+            validator_signatures: CommitteeSignatures::new(vec![].try_into().unwrap()),
             updated_constitution: constitution,
             activation_window: 0_u64,
         };

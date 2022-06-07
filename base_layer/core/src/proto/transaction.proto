@@ -223,9 +223,13 @@ message ContractUpdateProposalAcceptance {
 message ContractAmendment {
     uint64 proposal_id = 1;
     CommitteeMembers validator_committee = 2;
-    Signature signature = 3;
+    CommitteeSignatures validator_signatures = 3;
     ContractConstitution updated_constitution = 4;
     uint64 activation_window = 5;
+}
+
+message CommitteeSignatures {
+    repeated Signature signatures = 1;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
