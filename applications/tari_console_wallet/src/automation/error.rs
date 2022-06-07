@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::num::{ParseFloatError, ParseIntError};
+use std::{
+    io,
+    num::{ParseFloatError, ParseIntError},
+};
 
 use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
@@ -42,6 +45,8 @@ pub const LOG_TARGET: &str = "wallet::automation::error";
 pub enum CommandError {
     #[error("Argument error - were they in the right order?")]
     Argument,
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
     #[error("Tari value error `{0}`")]
     MicroTariError(#[from] MicroTariError),
     #[error("Transaction service error `{0}`")]
@@ -69,7 +74,9 @@ pub enum CommandError {
     #[error("Error `{0}`")]
     ShaError(String),
     #[error("JSON file error `{0}`")]
-    JSONFile(String),
+    JsonFile(String),
+    #[error(transparent)]
+    IoError(#[from] io::Error),
 }
 
 impl From<CommandError> for ExitError {
