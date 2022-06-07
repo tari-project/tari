@@ -19,12 +19,13 @@ const PerformanceContainer = () => {
   const [refreshEnabled, setRefreshEnabled] = useState<{
     cpu: boolean
     memory: boolean
+    network: boolean
   }>({
     cpu: true,
     memory: true,
+    network: true,
   })
 
-  // TODO use useScheduling
   useEffect(() => {
     intervalRef.current = setInterval(() => {
       const n = new Date()
@@ -77,7 +78,7 @@ const PerformanceContainer = () => {
         chartHeight={175}
       />
       <PerformanceChart
-        enabled={refreshEnabled.memory}
+        enabled={refreshEnabled.network}
         extractor={({ timestamp, download }) => ({
           timestamp,
           value: download / (1024 * 1024),
@@ -89,7 +90,7 @@ const PerformanceContainer = () => {
         onUserInteraction={({ interacting }) => {
           setRefreshEnabled(a => ({
             ...a,
-            memory: !interacting,
+            network: !interacting,
           }))
         }}
         style={{ marginTop: theme.spacing() }}
