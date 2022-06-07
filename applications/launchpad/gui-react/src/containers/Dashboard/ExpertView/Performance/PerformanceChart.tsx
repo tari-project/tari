@@ -1,36 +1,39 @@
-import { useCallback, useEffect, useState, useMemo, CSSProperties } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 
 import { Container } from '../../../../store/containers/types'
-import { StatsEntry } from '../../../../store/containers/statsRepository'
-import TimeSeriesChart, {
-  SeriesData,
-} from '../../../../components/Charts/TimeSeries'
+import TimeSeriesChart from '../../../../components/Charts/TimeSeries'
+import { SeriesData } from '../../../../components/Charts/TimeSeries/types'
 
 import usePerformanceStats from './usePerformanceStats'
+import { PerformanceChartProps } from './types'
 
+/**
+ * @name PerformanceChart
+ * @description time series chart rendering performance data on each from/to prop change, but only if the chart is `enabled`
+ *
+ * @prop {number} chartHeight - height of the chart area in px
+ * @prop {boolean} enabled - when this is false, data will not be recalculated and chart wont be rerendered regardless of from/to changes
+ * @prop {StatsExtractorFunction} - function used to extract data from performanceData
+ * @prop {Date} from - start of the time window being rendered, change of this prop recalculates data and rerenders the chart
+ * @prop {Date} to - end of the time window being rendered, change of this prop recalculates data and rerenders the chart
+ * @prop {UserInteractionCallback} onUserInteraction - callback called when user cursor moves over chart
+ * @prop {boolean} [percentageValues] - optional convenience prop to indicate that values in the series are percentages
+ * @prop {CSSProperties} [style] - optional styles applied to main chart container
+ * @prop {string} title - title of the chart
+ * @prop {string} [unit] - optional unit of the data to be used in all instances of value presentation
+ */
 const PerformanceChart = ({
+  chartHeight,
   enabled,
   extractor,
-  percentageValues,
-  title,
-  unit,
-  style,
   from,
   to,
   onUserInteraction,
-  chartHeight,
-}: {
-  enabled: boolean
-  extractor: (entry: StatsEntry) => { timestamp: string; value: number }
-  percentageValues?: boolean
-  title: string
-  unit?: string
-  style: CSSProperties
-  from: Date
-  to: Date
-  chartHeight: number
-  onUserInteraction: (options: { interacting: boolean }) => void
-}) => {
+  percentageValues,
+  style,
+  title,
+  unit,
+}: PerformanceChartProps) => {
   const [latchedFrom, setLatchedFrom] = useState(() => from)
   useEffect(() => {
     if (enabled) {

@@ -8,17 +8,23 @@ import getStatsRepository, {
 import { Container } from '../../../../store/containers/types'
 import { Dictionary } from '../../../../types/general'
 
-const usePerformanceStats = ({
+import { UsePerformanceStatsType } from './types'
+
+/**
+ * @name usePerformanceStats
+ * @description hook hiding call to performance stats repositories and memoizing specific data used by extractor function
+ *
+ * @prop {boolean} enabled - if this is false, new data will not be queried, even if from/to change
+ * @prop {Date} from - start of the time window to query, change of this prop refetches the data
+ * @prop {Date} to - end of the time window to query, change of this prop refetches the data
+ * @prop {StatsExtractorFunction} extractor - function to get specific values as timeseries
+ */
+const usePerformanceStats: UsePerformanceStatsType = ({
   enabled,
   from,
   to,
   extractor,
-}: {
-  enabled: boolean
-  from: Date
-  to: Date
-  extractor: (entry: StatsEntry) => { timestamp: string; value: number }
-}): Record<Container, { timestamp: string; value: number }[]> => {
+}) => {
   const configuredNetwork = useAppSelector(selectNetwork)
   const repository = useMemo(getStatsRepository, [])
   const [stats, setStats] = useState<Dictionary<StatsEntry[]>>()

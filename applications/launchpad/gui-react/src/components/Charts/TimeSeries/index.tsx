@@ -1,4 +1,4 @@
-import { useMemo, CSSProperties } from 'react'
+import { useMemo } from 'react'
 import { useTheme } from 'styled-components'
 import ApexChart from 'react-apexcharts'
 
@@ -10,6 +10,7 @@ import * as Format from '../../../utils/Format'
 import Text from '../../Text'
 import IconButton from '../../IconButton'
 
+import { SeriesData, TimeSeriesChartProps } from './types'
 import {
   ChartContainer,
   Legend,
@@ -27,13 +28,6 @@ const graphColors = [
   colors.graph.yellow,
   colors.graph.lightGreen,
 ]
-
-export type SeriesData = {
-  empty: boolean
-  visible: boolean
-  name: string
-  data: { x: number; y: number }[]
-}
 
 const DEFAULT_PERCENTAGE_TICK_RESOLUTION = 25
 
@@ -58,29 +52,33 @@ const getPercentageYAxisDefinition = (
   }
 }
 
+/**
+ * @name TimeSeriesChart
+ * @description Component rendering TimeSeris with ApexCharts
+ *
+ * @prop {number} chartHeight - height of the chart area in px
+ * @prop {SeriesData[]} data - data of series to plot
+ * @prop {Date} from - start of the time window being rendered
+ * @prop {Date} to - end of the time window being rendered
+ * @prop {UserInteractionCallback} onUserInteraction - callback called when user has their cursor over the chart - used to stop data updating while user is looking at the chart
+ * @prop {boolean} [percentageValues] - optional convenience prop to indicate that values in the series are percentages
+ * @prop {CSSProperties} [style] - optional styles applied to main chart container
+ * @prop {string} title - title of the chart
+ * @prop {DataSeriesToggleCallback} toggleSeries - callback on legend click to toggle series visibility
+ * @prop {string} [unit] - optional unit of the data to be used in all instances of value presentation
+ */
 const TimeSeriesChart = ({
   chartHeight,
   data,
   from,
+  to,
   onUserInteraction,
   percentageValues,
   style,
   title,
-  to,
   toggleSeries,
   unit,
-}: {
-  chartHeight: number
-  data: SeriesData[]
-  from: Date
-  onUserInteraction: (options: { interacting: boolean }) => void
-  percentageValues?: boolean
-  style: CSSProperties
-  title: string
-  to: Date
-  toggleSeries: (seriesName: string) => void
-  unit?: string
-}) => {
+}: TimeSeriesChartProps) => {
   const theme = useTheme()
   const unitToUse = percentageValues ? '%' : unit
   const chartId = title

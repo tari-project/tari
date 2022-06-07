@@ -3,6 +3,13 @@ import { useTheme } from 'styled-components'
 
 import PerformanceChart from './PerformanceChart'
 
+/**
+ * @name PerformanceContainer
+ * @description container component for performance statistics, renders filtering controls and performance charts
+ * manages refresh rate and synchronizes refresh ticks for all charts
+ * delegates chart rendering etc to other components
+ *
+ */
 const PerformanceContainer = () => {
   const theme = useTheme()
 
