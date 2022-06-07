@@ -5,33 +5,33 @@ import Select from '../../../../components/Select'
 import { Option } from '../../../../components/Select/types'
 import FilterIcon from '../../../../styles/Icons/Filter'
 import RefreshRateIcon from '../../../../styles/Icons/RotateRight'
+import t from '../../../../locales'
 
-// "last 30 minutes", "last hour", "last 2h" "last 8h" "last 24h"
 const renderWindowOptions = [
   {
     value: 30 * 60 * 1000,
     key: '30m',
-    label: 'Last 30 minutes',
+    label: t.expertView.performance.renderWindowOptionsLabels.last30m,
   },
   {
     value: 60 * 60 * 1000,
     key: '1h',
-    label: 'Last hour',
+    label: t.expertView.performance.renderWindowOptionsLabels.last1h,
   },
   {
     value: 2 * 60 * 60 * 1000,
     key: '2h',
-    label: 'Last 2 hours',
+    label: t.expertView.performance.renderWindowOptionsLabels.last2h,
   },
   {
     value: 8 * 60 * 60 * 1000,
     key: '8h',
-    label: 'Last 8 hours',
+    label: t.expertView.performance.renderWindowOptionsLabels.last8h,
   },
   {
     value: 24 * 60 * 60 * 1000,
     key: '24h',
-    label: 'Last 24h',
+    label: t.expertView.performance.renderWindowOptionsLabels.last24h,
   },
 ]
 export const defaultRenderWindow = renderWindowOptions[0]
@@ -40,17 +40,17 @@ const refreshRateOptions = [
   {
     value: 1000,
     key: '1s',
-    label: '1 sec',
+    label: t.expertView.performance.refreshRateOptionsLabels.every1s,
   },
   {
     value: 10 * 1000,
     key: '10s',
-    label: '10 sec',
+    label: t.expertView.performance.refreshRateOptionsLabels.every10s,
   },
   {
     value: 60 * 1000,
     key: '60s',
-    label: '60 sec',
+    label: t.expertView.performance.refreshRateOptionsLabels.every60s,
   },
 ]
 export const defaultRefreshRate = refreshRateOptions[0]
