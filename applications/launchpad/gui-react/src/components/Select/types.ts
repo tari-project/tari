@@ -20,6 +20,15 @@ export type Option = {
   key: string
 }
 
+/**
+ * @typedef {Object} SelectStylesOverrideProps
+ *  @property {Object} [icon] - down arrow styles override
+ *    @property {string} [color] - color of the icon
+ *  @property {Object} [value] - overrides of the box showing selected value
+ *    @property {string} [color] - text color of the value
+ *    @property {string} [backgroundColor] - background color
+ *    @property {(open?: boolean) => string} [borderColor] - allows to set different border color for opened and closed state
+ */
 export type SelectStylesOverrideProps = {
   icon?: {
     color?: string

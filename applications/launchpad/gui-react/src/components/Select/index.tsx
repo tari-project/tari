@@ -31,6 +31,8 @@ import { Option as OptionProp, SelectStylesOverrideProps } from './types'
  * @prop {function} onChange - called when selected value changes
  * @prop {boolean?} disabled - disables the the control
  * @prop {ReactNode} [icon] - icon to show left to the selected value
+ * @prop {SelectStylesOverrideProps} [styles] - optional style overrides for Select
+ * @prop {boolean} [fullWidth] - default: true, with this select renders as 100% of container width
  */
 const Select = ({
   value,
