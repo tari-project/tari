@@ -45,7 +45,6 @@ pub fn vec_into_fixed_string(value: Vec<u8>) -> FixedString {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractDefinition {
-    pub contract_id: FixedHash,
     pub contract_name: FixedString,
     pub contract_issuer: PublicKey,
     pub contract_spec: ContractSpecification,
@@ -55,18 +54,19 @@ impl ContractDefinition {
     pub fn new(contract_name: Vec<u8>, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
         let contract_name = vec_into_fixed_string(contract_name);
 
-        let contract_id: FixedHash = ConsensusHashWriter::default()
-            .chain(&contract_name)
-            .chain(&contract_spec)
-            .finalize()
-            .into();
-
         Self {
-            contract_id,
             contract_name,
             contract_issuer,
             contract_spec,
         }
+    }
+
+    pub fn calculate_contract_id(&self) -> FixedHash {
+        ConsensusHashWriter::default()
+            .chain(&self.contract_name)
+            .chain(&self.contract_spec)
+            .finalize()
+            .into()
     }
 
     pub const fn str_byte_size() -> usize {
@@ -82,7 +82,6 @@ impl Hashable for ContractDefinition {
 
 impl ConsensusEncoding for ContractDefinition {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.contract_id.consensus_encode(writer)?;
         self.contract_name.consensus_encode(writer)?;
         self.contract_issuer.consensus_encode(writer)?;
         self.contract_spec.consensus_encode(writer)?;
@@ -93,22 +92,17 @@ impl ConsensusEncoding for ContractDefinition {
 
 impl ConsensusEncodingSized for ContractDefinition {
     fn consensus_encode_exact_size(&self) -> usize {
-        self.contract_id.consensus_encode_exact_size() +
-            STR_LEN +
-            self.contract_issuer.consensus_encode_exact_size() +
-            self.contract_spec.consensus_encode_exact_size()
+        STR_LEN + self.contract_issuer.consensus_encode_exact_size() + self.contract_spec.consensus_encode_exact_size()
     }
 }
 
 impl ConsensusDecoding for ContractDefinition {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let contract_id = FixedHash::consensus_decode(reader)?;
         let contract_name = FixedString::consensus_decode(reader)?;
         let contract_issuer = PublicKey::consensus_decode(reader)?;
         let contract_spec = ContractSpecification::consensus_decode(reader)?;
 
         Ok(Self {
-            contract_id,
             contract_name,
             contract_issuer,
             contract_spec,

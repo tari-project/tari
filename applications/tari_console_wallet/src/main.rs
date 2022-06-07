@@ -190,9 +190,15 @@ fn main_inner() -> Result<(), ExitError> {
         WalletMode::Tui => tui_mode(handle, &config.wallet, &base_node_config, wallet.clone()),
         WalletMode::Grpc => grpc_mode(handle, &config.wallet, wallet.clone()),
         WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, &base_node_config, wallet.clone(), path),
-        WalletMode::Command(command) => {
-            command_mode(handle, &cli, &config.wallet, &base_node_config, wallet.clone(), command)
-        },
+        WalletMode::Command(command) => command_mode(
+            handle,
+            &cli,
+            &config.wallet,
+            &base_node_config,
+            wallet.clone(),
+            *command,
+        ),
+
         WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
             recovery_mode(handle, &base_node_config, &config.wallet, wallet_mode, wallet.clone())
         },
