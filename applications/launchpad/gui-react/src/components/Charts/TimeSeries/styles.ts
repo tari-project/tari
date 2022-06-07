@@ -1,6 +1,7 @@
 import styled from 'styled-components'
 
-export const ChartContainer = styled.div`
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const ChartContainer = styled.div<{ ref?: any }>`
   background-color: ${({ theme }) => theme.inverted.backgroundSecondary};
   padding: ${({ theme }) => theme.spacing()};
   padding-left: ${({ theme }) => theme.spacing(0.5)};

@@ -29,11 +29,11 @@ export type TimeSeriesChartProps = {
   chartHeight: number
   data: SeriesData[]
   from: Date
+  to: Date
   onUserInteraction: UserInteractionCallback
   percentageValues?: boolean
   style?: CSSProperties
   title: string
-  to: Date
   toggleSeries: DataSeriesToggleCallback
   unit?: string
 }
