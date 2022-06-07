@@ -63,7 +63,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: lints
-          args: clippy --all-targets
+          args: clippy --all-targets --all-features
   build:
     name: check nightly
     runs-on: ubuntu-18.04
