@@ -23,12 +23,13 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, Signature, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
+    types::{Commitment, FixedHash, PublicKey, Signature, ASSET_CHECKPOINT_ID},
 };
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
     OutputFeatures,
     OutputFlags,
+    SideChainFeatures,
     TemplateParameter,
     Transaction,
 };
@@ -249,25 +250,16 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         Ok((tx_id, transaction))
     }
 
-    pub async fn create_committee_definition(
+    pub async fn create_constitution_definition(
         &mut self,
-        asset_public_key: PublicKey,
-        committee_pub_keys: Vec<PublicKey>,
-        effective_sidechain_height: u64,
-        is_initial: bool,
+        constitution_definition: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
-            .create_output_with_features(
-                0.into(),
-                OutputFeatures::for_committee(
-                    asset_public_key.clone(),
-                    COMMITTEE_DEFINITION_ID.into(),
-                    committee_pub_keys.clone(),
-                    effective_sidechain_height,
-                    is_initial,
-                ),
-            )
+            .create_output_with_features(0.into(), OutputFeatures {
+                sidechain_features: Some(constitution_definition.clone()),
+                ..Default::default()
+            })
             .await?;
 
         let (tx_id, transaction) = self

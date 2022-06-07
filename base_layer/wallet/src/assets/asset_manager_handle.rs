@@ -27,6 +27,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
     OutputFeatures,
+    SideChainFeatures,
     TemplateParameter,
     Transaction,
 };
@@ -122,26 +123,20 @@ impl AssetManagerHandle {
         }
     }
 
-    pub async fn create_committee_definition(
+    pub async fn create_constitution_definition(
         &mut self,
-        public_key: &PublicKey,
-        committee_public_keys: &[PublicKey],
-        effective_sidechain_height: u64,
-        is_initial: bool,
+        side_chain_features: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
-            .call(AssetManagerRequest::CreateCommitteeDefinition {
-                asset_public_key: Box::new(public_key.clone()),
-                committee_public_keys: committee_public_keys.to_vec(),
-                effective_sidechain_height,
-                is_initial,
+            .call(AssetManagerRequest::CreateConstitutionDefinition {
+                constitution_definition: Box::new(side_chain_features.clone()),
             })
             .await??
         {
-            AssetManagerResponse::CreateCommitteeDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
+            AssetManagerResponse::CreateConstitutionDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
-                method: "create_committee_definition".to_string(),
+                method: "create_constitution_definition".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

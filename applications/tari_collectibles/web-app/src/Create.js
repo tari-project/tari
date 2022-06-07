@@ -175,7 +175,7 @@ class Create extends React.Component {
         console.log("register asset...");
         await binding.command_asset_create_initial_checkpoint(assetPublicKey);
         console.log("define committee...");
-        await binding.command_asset_create_committee_definition(
+        await binding.command_asset_create_constitution_definition(
           assetPublicKey,
           this.state.tip003Data.committee,
           true
