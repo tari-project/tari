@@ -63,7 +63,6 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
-    automation::commands::WalletCommand::PublishConstitutionDefinition,
     cli::CliCommands,
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
