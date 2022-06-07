@@ -18,10 +18,12 @@ export const LegendItem = styled.div`
   display: flex;
   align-items: center;
   column-gap: ${({ theme }) => theme.spacing(0.5)};
+  min-height: 1em;
 `
 
 export const SeriesColorIndicator = styled.div<{ color: string }>`
   width: 1em;
   height: 0.1em;
   border-radius: 2px;
+  background-color: ${({ color }) => color};
 `
