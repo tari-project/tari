@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useTheme } from 'styled-components'
 
+import t from '../../../../locales'
+
 import PerformanceChart from './PerformanceChart'
 
 /**
@@ -55,7 +57,7 @@ const PerformanceContainer = () => {
         percentageValues
         from={from}
         to={now}
-        title='CPU'
+        title={t.common.nouns.cpu}
         onUserInteraction={({ interacting }) => {
           setRefreshEnabled(a => ({
             ...a,
@@ -71,10 +73,10 @@ const PerformanceContainer = () => {
           timestamp,
           value: memory,
         })}
-        unit='MiB'
+        unit={t.common.units.mib}
         from={from}
         to={now}
-        title='Memory Usage'
+        title={t.expertView.performance.memoryChartTitle}
         onUserInteraction={({ interacting }) => {
           setRefreshEnabled(a => ({
             ...a,
@@ -90,10 +92,10 @@ const PerformanceContainer = () => {
           timestamp,
           value: download / (1024 * 1024),
         })}
-        unit='MiB'
+        unit={t.common.units.mib}
         from={from}
         to={now}
-        title='Network download'
+        title={t.expertView.performance.networkChartTitle}
         onUserInteraction={({ interacting }) => {
           setRefreshEnabled(a => ({
             ...a,

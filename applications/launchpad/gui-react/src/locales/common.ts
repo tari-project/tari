@@ -74,6 +74,9 @@ const translations: { [key: string]: { [key: string]: string } } = {
     tari: 'Tari Mining',
     merged: 'Merged Mining',
   },
+  units: {
+    mib: 'MiB',
+  },
 }
 
 export default translations
