@@ -22,3 +22,4 @@
 
 pub mod commands;
 pub mod error;
+mod prompt;

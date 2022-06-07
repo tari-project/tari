@@ -35,4 +35,4 @@ mod constitution_definition_file_format;
 mod contract_definition_file_format;
 
 pub use constitution_definition_file_format::ConstitutionDefinitionFileFormat;
-pub use contract_definition_file_format::ContractDefinitionFileFormat;
+pub use contract_definition_file_format::{ContractDefinitionFileFormat, ContractSpecificationFileFormat};

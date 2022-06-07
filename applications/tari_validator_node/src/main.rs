@@ -63,7 +63,10 @@ use crate::{
     config::{ApplicationConfig, ValidatorNodeConfig},
     dan_node::DanNode,
     default_service_specification::DefaultServiceSpecification,
-    grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
+    grpc::{
+        services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
+        validator_node_grpc_server::ValidatorNodeGrpcServer,
+    },
     p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
 };
 
@@ -135,12 +138,13 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         mempool_service.clone(),
         db_factory.clone(),
     );
-
+    let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
     let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
         node_identity.as_ref().clone(),
         db_factory.clone(),
         asset_processor,
         asset_proxy,
+        wallet_client,
     );
 
     if let Some(address) = config.validator_node.grpc_address.clone() {
