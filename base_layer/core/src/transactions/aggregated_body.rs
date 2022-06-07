@@ -349,7 +349,6 @@ impl AggregateBody {
     /// This function does NOT check that inputs come from the UTXO set
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction
-
     pub fn validate_internal_consistency(
         &self,
         tx_offset: &BlindingFactor,
