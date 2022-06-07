@@ -72,6 +72,46 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
     }
 }
 
+impl TryFrom<grpc::CreateConstitutionDefinitionRequest> for SideChainFeatures {
+    type Error = String;
+
+    fn try_from(request: grpc::CreateConstitutionDefinitionRequest) -> Result<Self, Self::Error> {
+        let acceptance_period_expiry = request.acceptance_period_expiry;
+        let minimum_quorum_required = request.minimum_quorum_required;
+        let validator_committee = request
+            .validator_committee
+            .map(CommitteeMembers::try_from)
+            .transpose()?
+            .unwrap();
+
+        Ok(Self {
+            contract_id: request.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            definition: None,
+            constitution: Some(ContractConstitution {
+                validator_committee: validator_committee.clone(),
+                acceptance_requirements: ContractAcceptanceRequirements {
+                    minimum_quorum_required: minimum_quorum_required as u32,
+                    acceptance_period_expiry,
+                },
+                consensus: SideChainConsensus::MerkleRoot,
+                checkpoint_params: CheckpointParameters {
+                    minimum_quorum_required: 5,
+                    abandoned_interval: 100,
+                },
+                constitution_change_rules: ConstitutionChangeRules {
+                    change_flags: ConstitutionChangeFlags::all(),
+                    requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
+                        minimum_constitution_committee_signatures: 5,
+                        constitution_committee: Some(validator_committee),
+                    }),
+                },
+                initial_reward: 100.into(),
+            }),
+            acceptance: None,
+        })
+    }
+}
+
 //---------------------------------- ContractDefinition --------------------------------------------//
 
 impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
