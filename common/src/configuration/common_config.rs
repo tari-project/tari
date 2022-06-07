@@ -56,3 +56,26 @@ impl CommonConfig {
         &self.base_path
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn default_common_config() {
+        let default_common_config = CommonConfig::default();
+
+        assert!(matches!(default_common_config.override_from, None));
+        assert_eq!(
+            *default_common_config.base_path(),
+            dirs_next::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(PathBuf::from(".tari"))
+        );
+    }
+
+    #[test]
+    fn main_key_prefix_test() {
+        assert_eq!(CommonConfig::main_key_prefix(), "common");
+    }
+}

@@ -79,7 +79,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -421,6 +421,14 @@ where B: BlockchainBackend
             result.push(output);
         }
         Ok(result)
+    }
+
+    pub fn fetch_all_constitutions(
+        &self,
+        dan_node_public_key: PublicKey,
+    ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_all_constitutions(&dan_node_public_key)
     }
 
     pub fn fetch_kernel_by_excess(

@@ -24,9 +24,14 @@ mod asset_manager_service;
 pub use asset_manager_service::AssetManagerService;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    ContractDefinition,
+    OutputFeatures,
+    TemplateParameter,
+    Transaction,
+};
 
 use crate::assets::Asset;
 
@@ -68,6 +73,14 @@ pub enum AssetManagerRequest {
         effective_sidechain_height: u64,
         is_initial: bool,
     },
+    CreateContractDefinition {
+        contract_definition: Box<ContractDefinition>,
+    },
+    CreateContractAcceptance {
+        contract_id: FixedHash,
+        validator_node_public_key: Box<PublicKey>,
+        signature: Box<Signature>,
+    },
 }
 
 pub enum AssetManagerResponse {
@@ -78,4 +91,6 @@ pub enum AssetManagerResponse {
     CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateFollowOnCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateCommitteeDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractAcceptance { transaction: Box<Transaction>, tx_id: TxId },
 }

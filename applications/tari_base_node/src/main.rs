@@ -146,7 +146,9 @@ fn main_inner() -> Result<(), ExitError> {
 
     #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
-    config.base_node.network = Network::from_str(&cli.network)?;
+    if let Some(network) = &cli.network {
+        config.base_node.network = Network::from_str(network)?;
+    }
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity

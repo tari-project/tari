@@ -32,11 +32,7 @@ mod grpc;
 mod monitoring;
 mod p2p;
 
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    process,
-    sync::Arc,
-};
+use std::{process, sync::Arc};
 
 use clap::Parser;
 use futures::FutureExt;
@@ -47,7 +43,12 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
     load_configuration,
 };
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::PeerFeatures,
+    utils::multiaddr::multiaddr_to_socketaddr,
+    NodeIdentity,
+};
 use tari_comms_dht::Dht;
 use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
 use tari_dan_storage_sqlite::SqliteDbFactory;
@@ -62,7 +63,10 @@ use crate::{
     config::{ApplicationConfig, ValidatorNodeConfig},
     dan_node::DanNode,
     default_service_specification::DefaultServiceSpecification,
-    grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
+    grpc::{
+        services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
+        validator_node_grpc_server::ValidatorNodeGrpcServer,
+    },
     p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
 };
 
@@ -134,16 +138,18 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         mempool_service.clone(),
         db_factory.clone(),
     );
-
+    let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
     let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
         node_identity.as_ref().clone(),
         db_factory.clone(),
         asset_processor,
         asset_proxy,
+        wallet_client,
     );
-    let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 18144);
 
-    task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
+    if let Some(address) = config.validator_node.grpc_address.clone() {
+        task::spawn(run_grpc(grpc_server, address, shutdown.to_signal()));
+    }
     println!("🚀 Validator node started!");
     println!("{}", node_identity);
     run_dan_node(
@@ -190,10 +196,13 @@ async fn run_dan_node(
 
 async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
     grpc_server: ValidatorNodeGrpcServer<TServiceSpecification>,
-    grpc_address: SocketAddr,
+    grpc_address: Multiaddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
+    println!("Starting GRPC on {}", grpc_address);
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
+
+    let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
 
     Server::builder()
         .add_service(ValidatorNodeServer::new(grpc_server))
@@ -204,6 +213,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
             err
         })?;
 
+    println!("Stopping GRPC");
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
 }

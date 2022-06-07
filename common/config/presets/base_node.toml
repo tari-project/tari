@@ -10,7 +10,7 @@
 
 [base_node]
 # Selected network
-network = "dibbler"
+network = "igor"
 # The socket to expose for the gRPC base node server
 grpc_address = "/ip4/127.0.0.1/tcp/18142"
 

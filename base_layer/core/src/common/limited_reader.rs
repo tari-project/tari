@@ -50,3 +50,25 @@ impl<R: Read> Read for LimitedBytesReader<R> {
         Ok(read)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::io::Read;
+
+    use super::*;
+
+    #[test]
+    fn read_test() {
+        // read should work fine in the case of a buffer whose length is within byte_limit
+        let inner: &[u8] = &[0u8, 1u8, 2u8, 3u8, 4u8];
+        let mut reader = LimitedBytesReader::new(3, inner);
+        let mut buf = [0u8; 3];
+        let output = reader.read(&mut buf).unwrap();
+        assert_eq!(output, buf.len());
+
+        // in case of buffer with length strictly bigger than reader byte_limit, the code should throw an error
+        let mut new_buf = [0u8; 4];
+        let output = reader.read(&mut new_buf);
+        assert!(output.is_err());
+    }
+}

@@ -1,0 +1,427 @@
+//  Copyright 2022. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::convert::{TryFrom, TryInto};
+
+use tari_common_types::types::{FixedHash, PublicKey};
+use tari_core::transactions::transaction_components::{
+    vec_into_fixed_string,
+    CheckpointParameters,
+    CommitteeMembers,
+    ConstitutionChangeFlags,
+    ConstitutionChangeRules,
+    ContractAcceptance,
+    ContractAcceptanceRequirements,
+    ContractConstitution,
+    ContractDefinition,
+    ContractSpecification,
+    FunctionRef,
+    PublicFunction,
+    RequirementsForConstitutionChange,
+    SideChainConsensus,
+    SideChainFeatures,
+};
+use tari_utilities::ByteArray;
+
+use crate::tari_rpc as grpc;
+
+impl From<SideChainFeatures> for grpc::SideChainFeatures {
+    fn from(value: SideChainFeatures) -> Self {
+        Self {
+            contract_id: value.contract_id.to_vec(),
+            definition: value.definition.map(Into::into),
+            constitution: value.constitution.map(Into::into),
+            acceptance: value.acceptance.map(Into::into),
+        }
+    }
+}
+
+impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
+    type Error = String;
+
+    fn try_from(features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
+        let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
+        let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
+        let acceptance = features.acceptance.map(ContractAcceptance::try_from).transpose()?;
+
+        Ok(Self {
+            contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            definition,
+            constitution,
+            acceptance,
+        })
+    }
+}
+
+//---------------------------------- ContractDefinition --------------------------------------------//
+
+impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractDefinition) -> Result<Self, Self::Error> {
+        let contract_name = vec_into_fixed_string(value.contract_name);
+
+        let contract_issuer =
+            PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let contract_spec = value
+            .contract_spec
+            .map(ContractSpecification::try_from)
+            .ok_or_else(|| "contract_spec is missing".to_string())?
+            .map_err(|err| err)?;
+
+        Ok(Self {
+            contract_name,
+            contract_issuer,
+            contract_spec,
+        })
+    }
+}
+
+impl From<ContractDefinition> for grpc::ContractDefinition {
+    fn from(value: ContractDefinition) -> Self {
+        let contract_name = value.contract_name.as_bytes().to_vec();
+        let contract_issuer = value.contract_issuer.as_bytes().to_vec();
+
+        Self {
+            contract_name,
+            contract_issuer,
+            contract_spec: Some(value.contract_spec.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractSpecification> for ContractSpecification {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractSpecification) -> Result<Self, Self::Error> {
+        let runtime = vec_into_fixed_string(value.runtime);
+        let public_functions = value
+            .public_functions
+            .into_iter()
+            .map(PublicFunction::try_from)
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            runtime,
+            public_functions,
+        })
+    }
+}
+
+impl From<ContractSpecification> for grpc::ContractSpecification {
+    fn from(value: ContractSpecification) -> Self {
+        let public_functions = value.public_functions.into_iter().map(|f| f.into()).collect();
+        Self {
+            runtime: value.runtime.as_bytes().to_vec(),
+            public_functions,
+        }
+    }
+}
+
+impl TryFrom<grpc::PublicFunction> for PublicFunction {
+    type Error = String;
+
+    fn try_from(value: grpc::PublicFunction) -> Result<Self, Self::Error> {
+        let function = value
+            .function
+            .map(FunctionRef::try_from)
+            .ok_or_else(|| "function is missing".to_string())?
+            .map_err(|err| err)?;
+
+        Ok(Self {
+            name: vec_into_fixed_string(value.name),
+            function,
+        })
+    }
+}
+
+impl From<PublicFunction> for grpc::PublicFunction {
+    fn from(value: PublicFunction) -> Self {
+        Self {
+            name: value.name.as_bytes().to_vec(),
+            function: Some(value.function.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::FunctionRef> for FunctionRef {
+    type Error = String;
+
+    fn try_from(value: grpc::FunctionRef) -> Result<Self, Self::Error> {
+        let template_id = FixedHash::try_from(value.template_id).map_err(|err| format!("{:?}", err))?;
+        let function_id = u16::try_from(value.function_id).map_err(|_| "Invalid function_id: overflowed u16")?;
+
+        Ok(Self {
+            template_id,
+            function_id,
+        })
+    }
+}
+
+impl From<FunctionRef> for grpc::FunctionRef {
+    fn from(value: FunctionRef) -> Self {
+        let template_id = value.template_id.as_bytes().to_vec();
+
+        Self {
+            template_id,
+            function_id: value.function_id.into(),
+        }
+    }
+}
+
+//---------------------------------- ContractConstitution --------------------------------------------//
+impl From<ContractConstitution> for grpc::ContractConstitution {
+    fn from(value: ContractConstitution) -> Self {
+        Self {
+            validator_committee: Some(value.validator_committee.into()),
+            acceptance_requirements: Some(value.acceptance_requirements.into()),
+            consensus: value.consensus.into(),
+            checkpoint_params: Some(value.checkpoint_params.into()),
+            constitution_change_rules: Some(value.constitution_change_rules.into()),
+            initial_reward: value.initial_reward.into(),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractConstitution> for ContractConstitution {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractConstitution) -> Result<Self, Self::Error> {
+        use num_traits::FromPrimitive;
+        let validator_committee = value
+            .validator_committee
+            .map(TryInto::try_into)
+            .ok_or("validator_committee not provided")??;
+        let acceptance_requirements = value
+            .acceptance_requirements
+            .map(TryInto::try_into)
+            .ok_or("acceptance_requirements not provided")??;
+        let consensus = SideChainConsensus::from_i32(value.consensus).ok_or("Invalid SideChainConsensus")?;
+        let checkpoint_params = value
+            .checkpoint_params
+            .map(TryInto::try_into)
+            .ok_or("checkpoint_params not provided")??;
+        let constitution_change_rules = value
+            .constitution_change_rules
+            .map(TryInto::try_into)
+            .ok_or("constitution_change_rules not provided")??;
+        let initial_reward = value.initial_reward.into();
+
+        Ok(Self {
+            validator_committee,
+            acceptance_requirements,
+            consensus,
+            checkpoint_params,
+            constitution_change_rules,
+            initial_reward,
+        })
+    }
+}
+
+//---------------------------------- ContractAcceptanceRequirements --------------------------------------------//
+impl From<ContractAcceptanceRequirements> for grpc::ContractAcceptanceRequirements {
+    fn from(value: ContractAcceptanceRequirements) -> Self {
+        Self {
+            acceptance_period_expiry: value.acceptance_period_expiry,
+            minimum_quorum_required: value.minimum_quorum_required,
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractAcceptanceRequirements> for ContractAcceptanceRequirements {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractAcceptanceRequirements) -> Result<Self, Self::Error> {
+        Ok(Self {
+            acceptance_period_expiry: value.acceptance_period_expiry,
+            minimum_quorum_required: value.minimum_quorum_required,
+        })
+    }
+}
+
+//---------------------------------- SideChainConsensus --------------------------------------------//
+impl From<SideChainConsensus> for grpc::SideChainConsensus {
+    fn from(value: SideChainConsensus) -> Self {
+        #[allow(clippy::enum_glob_use)]
+        use grpc::SideChainConsensus::*;
+        match value {
+            SideChainConsensus::Bft => Bft,
+            SideChainConsensus::ProofOfWork => ProofOfWork,
+            SideChainConsensus::MerkleRoot => MerkleRoot,
+        }
+    }
+}
+
+impl TryFrom<grpc::SideChainConsensus> for SideChainConsensus {
+    type Error = String;
+
+    fn try_from(value: grpc::SideChainConsensus) -> Result<Self, Self::Error> {
+        #[allow(clippy::enum_glob_use)]
+        use grpc::SideChainConsensus::*;
+        match value {
+            Unspecified => Err("Side chain consensus not specified or invalid".to_string()),
+            Bft => Ok(SideChainConsensus::Bft),
+            ProofOfWork => Ok(SideChainConsensus::ProofOfWork),
+            MerkleRoot => Ok(SideChainConsensus::MerkleRoot),
+        }
+    }
+}
+
+//---------------------------------- CheckpointParameters --------------------------------------------//
+impl From<CheckpointParameters> for grpc::CheckpointParameters {
+    fn from(value: CheckpointParameters) -> Self {
+        Self {
+            minimum_quorum_required: value.minimum_quorum_required,
+            abandoned_interval: value.abandoned_interval,
+        }
+    }
+}
+
+impl TryFrom<grpc::CheckpointParameters> for CheckpointParameters {
+    type Error = String;
+
+    fn try_from(value: grpc::CheckpointParameters) -> Result<Self, Self::Error> {
+        Ok(Self {
+            minimum_quorum_required: value.minimum_quorum_required,
+            abandoned_interval: value.abandoned_interval,
+        })
+    }
+}
+
+//---------------------------------- ConstitutionChangeRules --------------------------------------------//
+impl From<ConstitutionChangeRules> for grpc::ConstitutionChangeRules {
+    fn from(value: ConstitutionChangeRules) -> Self {
+        Self {
+            change_flags: value.change_flags.bits().into(),
+            requirements_for_constitution_change: value.requirements_for_constitution_change.map(Into::into),
+        }
+    }
+}
+
+impl TryFrom<grpc::ConstitutionChangeRules> for ConstitutionChangeRules {
+    type Error = String;
+
+    fn try_from(value: grpc::ConstitutionChangeRules) -> Result<Self, Self::Error> {
+        Ok(Self {
+            change_flags: u8::try_from(value.change_flags)
+                .ok()
+                .and_then(ConstitutionChangeFlags::from_bits)
+                .ok_or("Invalid change_flags")?,
+            requirements_for_constitution_change: value
+                .requirements_for_constitution_change
+                .map(RequirementsForConstitutionChange::try_from)
+                .transpose()?,
+        })
+    }
+}
+
+//---------------------------------- RequirementsForConstitutionChange --------------------------------------------//
+impl From<RequirementsForConstitutionChange> for grpc::RequirementsForConstitutionChange {
+    fn from(value: RequirementsForConstitutionChange) -> Self {
+        Self {
+            minimum_constitution_committee_signatures: value.minimum_constitution_committee_signatures,
+            constitution_committee: value.constitution_committee.map(Into::into),
+        }
+    }
+}
+
+impl TryFrom<grpc::RequirementsForConstitutionChange> for RequirementsForConstitutionChange {
+    type Error = String;
+
+    fn try_from(value: grpc::RequirementsForConstitutionChange) -> Result<Self, Self::Error> {
+        Ok(Self {
+            minimum_constitution_committee_signatures: value.minimum_constitution_committee_signatures,
+            constitution_committee: value
+                .constitution_committee
+                .map(CommitteeMembers::try_from)
+                .transpose()?,
+        })
+    }
+}
+
+//---------------------------------- CommitteeMembers --------------------------------------------//
+impl From<CommitteeMembers> for grpc::CommitteeMembers {
+    fn from(value: CommitteeMembers) -> Self {
+        Self {
+            members: value.members().iter().map(|pk| pk.to_vec()).collect(),
+        }
+    }
+}
+
+impl TryFrom<grpc::CommitteeMembers> for CommitteeMembers {
+    type Error = String;
+
+    fn try_from(value: grpc::CommitteeMembers) -> Result<Self, Self::Error> {
+        if value.members.len() > CommitteeMembers::MAX_MEMBERS {
+            return Err(format!(
+                "Too many committee members: expected {} but got {}",
+                CommitteeMembers::MAX_MEMBERS,
+                value.members.len()
+            ));
+        }
+
+        let members = value
+            .members
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                PublicKey::from_bytes(c)
+                    .map_err(|err| format!("committee member #{} was not a valid public key: {}", i + 1, err))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let members = CommitteeMembers::try_from(members).map_err(|e| e.to_string())?;
+        Ok(members)
+    }
+}
+
+//---------------------------------- ContractAcceptance --------------------------------------------//
+
+impl From<ContractAcceptance> for grpc::ContractAcceptance {
+    fn from(value: ContractAcceptance) -> Self {
+        Self {
+            validator_node_public_key: value.validator_node_public_key.as_bytes().to_vec(),
+            signature: Some(value.signature.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractAcceptance> for ContractAcceptance {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractAcceptance) -> Result<Self, Self::Error> {
+        let validator_node_public_key =
+            PublicKey::from_bytes(value.validator_node_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "signaturecould not be converted".to_string())?;
+
+        Ok(Self {
+            validator_node_public_key,
+            signature,
+        })
+    }
+}

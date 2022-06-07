@@ -26,6 +26,8 @@ use std::{
 };
 
 use bitflags::bitflags;
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 
 use super::CommitteeMembers;
@@ -86,14 +88,14 @@ impl ConsensusDecoding for ContractConstitution {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct ContractAcceptanceRequirements {
     /// The acceptance expiry period as a relative block height.
-    pub period_expiry: u64,
+    pub acceptance_period_expiry: u64,
     /// The minimum number of acceptance UTXOs required for the contract acceptance period to succeed.
     pub minimum_quorum_required: u32,
 }
 
 impl ConsensusEncoding for ContractAcceptanceRequirements {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.period_expiry.consensus_encode(writer)?;
+        self.acceptance_period_expiry.consensus_encode(writer)?;
         self.minimum_quorum_required.consensus_encode(writer)?;
         Ok(())
     }
@@ -104,7 +106,7 @@ impl ConsensusEncodingSized for ContractAcceptanceRequirements {}
 impl ConsensusDecoding for ContractAcceptanceRequirements {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         Ok(Self {
-            period_expiry: u64::consensus_decode(reader)?,
+            acceptance_period_expiry: u64::consensus_decode(reader)?,
             minimum_quorum_required: u32::consensus_decode(reader)?,
         })
     }
@@ -113,14 +115,14 @@ impl ConsensusDecoding for ContractAcceptanceRequirements {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct CheckpointParameters {
     /// The minimum number of votes (signatures) required on each checkpoint.
-    pub quorum_minimum: u32,
+    pub minimum_quorum_required: u32,
     /// If this number of blocks have passed without a checkpoint, the contract becomes abandoned.
     pub abandoned_interval: u64,
 }
 
 impl ConsensusEncoding for CheckpointParameters {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.quorum_minimum.consensus_encode(writer)?;
+        self.minimum_quorum_required.consensus_encode(writer)?;
         self.abandoned_interval.consensus_encode(writer)?;
         Ok(())
     }
@@ -131,7 +133,7 @@ impl ConsensusEncodingSized for CheckpointParameters {}
 impl ConsensusDecoding for CheckpointParameters {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         Ok(Self {
-            quorum_minimum: u32::consensus_decode(reader)?,
+            minimum_quorum_required: u32::consensus_decode(reader)?,
             abandoned_interval: u64::consensus_decode(reader)?,
         })
     }
@@ -141,8 +143,6 @@ impl ConsensusDecoding for CheckpointParameters {
 pub struct ConstitutionChangeRules {
     /// Bitflag that indicates the constitution changes that are permitted.
     pub change_flags: ConstitutionChangeFlags,
-    /// The rules for changes to the validator committee.
-    pub committee_change_rules: CommitteeChangeRules,
     /// Requirements for amendments to the contract constitution. If None, then the `ContractConstitution` cannot be
     /// changed.
     pub requirements_for_constitution_change: Option<RequirementsForConstitutionChange>,
@@ -151,7 +151,6 @@ pub struct ConstitutionChangeRules {
 impl ConsensusEncoding for ConstitutionChangeRules {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.change_flags.consensus_encode(writer)?;
-        self.committee_change_rules.consensus_encode(writer)?;
         self.requirements_for_constitution_change.consensus_encode(writer)?;
         Ok(())
     }
@@ -163,35 +162,7 @@ impl ConsensusDecoding for ConstitutionChangeRules {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         Ok(Self {
             change_flags: ConstitutionChangeFlags::consensus_decode(reader)?,
-            committee_change_rules: CommitteeChangeRules::consensus_decode(reader)?,
             requirements_for_constitution_change: ConsensusDecoding::consensus_decode(reader)?,
-        })
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct CommitteeChangeRules {
-    /// The maximum number of committee members that can be added.
-    pub max_new_committee_members: u32,
-    /// The maximum number of committee members that can be evicted.
-    pub max_evicted_committee_members: u32,
-}
-
-impl ConsensusEncoding for CommitteeChangeRules {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.max_new_committee_members.consensus_encode(writer)?;
-        self.max_evicted_committee_members.consensus_encode(writer)?;
-        Ok(())
-    }
-}
-
-impl ConsensusEncodingSized for CommitteeChangeRules {}
-
-impl ConsensusDecoding for CommitteeChangeRules {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        Ok(Self {
-            max_new_committee_members: u32::consensus_decode(reader)?,
-            max_evicted_committee_members: u32::consensus_decode(reader)?,
         })
     }
 }
@@ -230,16 +201,16 @@ impl ConsensusDecoding for ConstitutionChangeFlags {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq, FromPrimitive)]
 #[repr(u8)]
 pub enum SideChainConsensus {
     /// BFT consensus e.g. HotStuff
-    Bft = 0,
+    Bft = 1,
     /// Proof of work consensus.
-    ProofOfWork = 1,
+    ProofOfWork = 2,
     /// Custom consensus that uses the base layer as a notary for side-chain state. This mode requires that the
     /// checkpoint provides some merklish commitment to the state.
-    MerkleRoot = 2,
+    MerkleRoot = 3,
 }
 
 impl ConsensusEncoding for SideChainConsensus {
@@ -259,15 +230,18 @@ impl ConsensusDecoding for SideChainConsensus {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let mut buf = [0u8; 1];
         reader.read_exact(&mut buf)?;
-        match buf[0] {
-            0 => Ok(SideChainConsensus::Bft),
-            1 => Ok(SideChainConsensus::ProofOfWork),
-            2 => Ok(SideChainConsensus::MerkleRoot),
-            b => Err(io::Error::new(
+        SideChainConsensus::from_u8(buf[0]).ok_or_else(|| {
+            io::Error::new(
                 ErrorKind::Other,
-                format!("Invalid byte '{}' for SideChainConsensus", b),
-            )),
-        }
+                format!("Invalid byte '{}' for SideChainConsensus", buf[0]),
+            )
+        })
+    }
+}
+
+impl From<SideChainConsensus> for i32 {
+    fn from(value: SideChainConsensus) -> Self {
+        value as i32
     }
 }
 
@@ -314,20 +288,16 @@ mod tests {
         let subject = ContractConstitution {
             validator_committee: CommitteeMembers::new(vec![].try_into().unwrap()),
             acceptance_requirements: ContractAcceptanceRequirements {
-                period_expiry: 123,
+                acceptance_period_expiry: 123,
                 minimum_quorum_required: 321,
             },
             consensus: SideChainConsensus::ProofOfWork,
             checkpoint_params: CheckpointParameters {
-                quorum_minimum: 123,
+                minimum_quorum_required: 123,
                 abandoned_interval: 321,
             },
             constitution_change_rules: ConstitutionChangeRules {
                 change_flags: ConstitutionChangeFlags::all(),
-                committee_change_rules: CommitteeChangeRules {
-                    max_new_committee_members: 0,
-                    max_evicted_committee_members: 0,
-                },
                 requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                     minimum_constitution_committee_signatures: 321,
                     constitution_committee: Some(CommitteeMembers::new(

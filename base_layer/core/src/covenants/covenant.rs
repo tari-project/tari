@@ -187,8 +187,7 @@ mod test {
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_flags,
             @field::features_maturity,
-            @field::features_unique_id,
-            @field::features_parent_public_key,
+            @field::features_contract_id,
             @field::features_metadata))
         );
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();

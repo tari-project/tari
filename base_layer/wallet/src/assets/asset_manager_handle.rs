@@ -22,9 +22,14 @@
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    ContractDefinition,
+    OutputFeatures,
+    TemplateParameter,
+    Transaction,
+};
 use tari_service_framework::{reply_channel::SenderService, Service};
 
 use crate::{
@@ -189,6 +194,48 @@ impl AssetManagerHandle {
             AssetManagerResponse::CreateMintingTransaction { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_minting_transaction".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_definition(
+        &mut self,
+        contract_definition: &ContractDefinition,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractDefinition {
+                contract_definition: Box::new(contract_definition.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_definition".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_acceptance(
+        &mut self,
+        contract_id: &FixedHash,
+        validator_node_public_key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractAcceptance {
+                contract_id: *contract_id,
+                validator_node_public_key: Box::new(validator_node_public_key.clone()),
+                signature: Box::new(signature.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractAcceptance { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_acceptance".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

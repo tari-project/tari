@@ -82,6 +82,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&mut self, request: AssetManagerRequest) -> Result<AssetManagerResponse, WalletError> {
         trace!(target: LOG_TARGET, "Handling Service API Request {:?}", request);
         match request {
@@ -175,6 +176,27 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     )
                     .await?;
                 Ok(AssetManagerResponse::CreateCommitteeDefinition {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractDefinition { contract_definition } => {
+                let (tx_id, transaction) = self.manager.create_contract_definition(*contract_definition).await?;
+                Ok(AssetManagerResponse::CreateContractDefinition {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractAcceptance {
+                contract_id,
+                validator_node_public_key,
+                signature,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_acceptance(contract_id, *validator_node_public_key, *signature)
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractAcceptance {
                     transaction: Box::new(transaction),
                     tx_id,
                 })

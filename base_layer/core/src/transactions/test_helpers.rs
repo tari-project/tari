@@ -33,7 +33,7 @@ use tari_crypto::{
 };
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
-use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
+use super::transaction_components::{EncryptedValue, TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusManager},
     covenants::Covenant,
@@ -178,6 +178,7 @@ impl TestParams {
         let updated_features =
             OutputFeatures::features_with_updated_recovery_byte(&commitment, rewind_data, &params.features);
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(params.value);
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             params.value,
@@ -186,6 +187,7 @@ impl TestParams {
             &updated_features,
             &self.sender_offset_private_key,
             &params.covenant,
+            &encrypted_value,
         )
         .unwrap();
 
@@ -205,6 +207,7 @@ impl TestParams {
             metadata_signature,
             0,
             params.covenant,
+            encrypted_value,
         )
     }
 
@@ -221,6 +224,7 @@ impl TestParams {
             &updated_features,
             &self.sender_offset_private_key,
             &uo.covenant,
+            &uo.encrypted_value,
         )
         .unwrap();
 
@@ -235,6 +239,7 @@ impl TestParams {
             metadata_signature,
             uo.script_lock_height,
             uo.covenant,
+            uo.encrypted_value,
         )
     }
 
@@ -685,6 +690,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         let commitment = factories
             .commitment
             .commit_value(&utxo.spending_key, utxo.value.as_u64());
+        let encrypted_value = EncryptedValue::todo_encrypt_from(utxo.value.as_u64());
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
         utxo.features.set_recovery_byte(recovery_byte);
         utxo.metadata_signature = TransactionOutput::create_final_metadata_signature(
@@ -695,6 +701,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             &utxo.features,
             &test_params.sender_offset_private_key,
             &utxo.covenant,
+            &encrypted_value,
         )
         .unwrap();
         utxo.sender_offset_public_key = test_params.sender_offset_public_key;
@@ -719,6 +726,9 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         recovery_byte,
         ..Default::default()
     };
+
+    // TODO: Get it using `something.encrypt_value(change)`
+    let encrypted_value = EncryptedValue::todo_encrypt_from(change);
     let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
         output_version,
         change,
@@ -727,6 +737,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         &change_features,
         &test_params_change_and_txn.sender_offset_private_key,
         &covenant,
+        &encrypted_value,
     )
     .unwrap();
 
@@ -743,6 +754,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         change_metadata_sig,
         0,
         covenant,
+        encrypted_value,
     );
     outputs.push(change_output);
     (stx_protocol, outputs)
@@ -775,6 +787,7 @@ pub fn create_utxo(
 
     let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, features);
 
+    let encrypted_value = EncryptedValue::todo_encrypt_from(value);
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         value,
@@ -783,6 +796,7 @@ pub fn create_utxo(
         &updated_features,
         &offset_keys.k,
         covenant,
+        &encrypted_value,
     )
     .unwrap();
 

@@ -20,8 +20,31 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod contract_acceptance;
+pub use contract_acceptance::ContractAcceptance;
+
 mod contract_constitution;
-pub use contract_constitution::ContractConstitution;
+pub use contract_constitution::{
+    CheckpointParameters,
+    ConstitutionChangeFlags,
+    ConstitutionChangeRules,
+    ContractAcceptanceRequirements,
+    ContractConstitution,
+    RequirementsForConstitutionChange,
+    SideChainConsensus,
+};
+
+mod contract_definition;
+pub use contract_definition::{
+    vec_into_fixed_string,
+    ContractDefinition,
+    ContractSpecification,
+    FunctionRef,
+    PublicFunction,
+};
 
 mod committee_members;
 pub use committee_members::CommitteeMembers;
+
+mod sidechain_features;
+pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};

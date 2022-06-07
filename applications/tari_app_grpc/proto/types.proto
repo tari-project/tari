@@ -206,31 +206,79 @@ message TransactionOutput {
 
 // Options for UTXOs
 message OutputFeatures {
+    // Version
+    uint32 version = 1;
     // Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
-    uint32 flags = 1;
+    uint32 flags = 2;
     // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
-    uint64 maturity = 2;
-
-    bytes metadata= 3;
-
-    AssetOutputFeatures asset = 4;
-
-    bytes unique_id = 5;
-
-    bytes parent_public_key = 6;
-
-    MintNonFungibleFeatures mint_non_fungible = 7;
-
-    SideChainCheckpointFeatures sidechain_checkpoint = 8;
-    // Version
-    uint32 version = 9;
-    CommitteeDefinitionFeatures committee_definition = 10;
-
+    uint64 maturity = 3;
+    bytes metadata = 4;
     // The recovery byte - not consensus critical - can help reduce the bandwidth with wallet recovery or in other
     // instances when a wallet needs to request the complete UTXO set from a base node.
-    uint32 recovery_byte = 11;
+    uint32 recovery_byte = 5;
+    SideChainFeatures sidechain_features = 6;
+    bytes unique_id = 7;
+
+    // TODO: deprecated
+    AssetOutputFeatures asset = 8;
+    bytes parent_public_key = 9;
+    MintNonFungibleFeatures mint_non_fungible = 10;
+    SideChainCheckpointFeatures sidechain_checkpoint = 11;
+    CommitteeDefinitionFeatures committee_definition = 12;
 }
+
+message SideChainFeatures {
+    bytes contract_id = 1;
+    ContractDefinition definition = 2;
+    ContractConstitution constitution = 3;
+    ContractAcceptance acceptance = 4;
+}
+
+message ContractConstitution {
+    CommitteeMembers validator_committee = 1;
+    ContractAcceptanceRequirements acceptance_requirements = 2;
+    SideChainConsensus consensus = 3;
+    CheckpointParameters checkpoint_params = 4;
+    ConstitutionChangeRules constitution_change_rules = 5;
+    uint64 initial_reward = 6;
+}
+
+message ContractAcceptanceRequirements {
+    uint64 acceptance_period_expiry = 1;
+    uint32 minimum_quorum_required = 2;
+}
+
+message CommitteeMembers {
+    repeated bytes members = 1;
+}
+
+message CheckpointParameters {
+    uint64 abandoned_interval = 1;
+    uint32 minimum_quorum_required = 2;
+}
+
+message ConstitutionChangeRules {
+    uint32 change_flags = 1;
+    RequirementsForConstitutionChange requirements_for_constitution_change = 2;
+}
+
+message RequirementsForConstitutionChange {
+    // The minimum required constitution committee signatures required for a constitution change proposal to pass.
+    uint32 minimum_constitution_committee_signatures = 1;
+    // An allowlist of keys that are able to accept and ratify the initial constitution and its amendments. If this is
+    // None, the constitution cannot be amended.
+    CommitteeMembers constitution_committee = 2;
+}
+
+enum SideChainConsensus {
+    UNSPECIFIED = 0;
+    BFT = 1;
+    PROOF_OF_WORK = 2;
+    MERKLE_ROOT = 3;
+}
+
+// TODO: DEPRECATED
 
 message AssetOutputFeatures {
     bytes public_key = 1;
@@ -257,6 +305,32 @@ message SideChainCheckpointFeatures {
 message CommitteeDefinitionFeatures {
     repeated bytes committee = 1;
     uint64 effective_sidechain_height = 2;
+}
+
+message ContractDefinition {
+    bytes contract_name = 1;
+    bytes contract_issuer = 2;
+    ContractSpecification contract_spec = 3;
+}
+
+message ContractSpecification {
+    bytes runtime = 1;
+    repeated PublicFunction public_functions = 2;
+}
+
+message PublicFunction {
+    bytes name = 1;
+    FunctionRef function = 2;
+}
+
+message FunctionRef {
+    bytes template_id = 1;
+    uint32 function_id = 2;
+}
+
+message ContractAcceptance {
+    bytes validator_node_public_key = 1;
+    Signature signature = 2;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
@@ -350,6 +424,8 @@ message UnblindedOutput {
     uint64 script_lock_height = 10;
     // Covenant
     bytes covenant = 11;
+    // Encrypted Value
+    bytes encrypted_value = 12;
 }
 
 // ----------------------------- Network Types ----------------------------- //

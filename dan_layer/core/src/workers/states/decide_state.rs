@@ -85,7 +85,7 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
                       }
                   }
                 },
-              r = inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
+              r = inbound_services.wait_for_qc(HotStuffMessageType::Commit, current_view.view_id()) => {
                     let (from, message) = r?;
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
                       if let Some(event) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {

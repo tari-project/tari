@@ -195,6 +195,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn validate_and_decrypt_message(
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
@@ -214,6 +215,24 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Check if there is no destination specified and discard
         if dht_header.destination.is_unknown() {
             return Err(DecryptionError::EncryptedMessageNoDestination);
+        }
+
+        if !message.dht_header.destination.is_unknown() &&
+            message
+                .dht_header
+                .destination
+                .public_key()
+                .map(|pk| pk != node_identity.public_key())
+                .unwrap_or(false)
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Encrypted message (source={}, {}) not destined for this peer. Passing to next service (Trace: {})",
+                message.source_peer.node_id,
+                message.dht_header.message_tag,
+                message.tag
+            );
+            return Ok(DecryptedDhtMessage::failed(message));
         }
 
         let e_pk = dht_header

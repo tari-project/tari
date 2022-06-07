@@ -78,9 +78,13 @@ pub struct WalletConfig {
 
 impl Default for WalletConfig {
     fn default() -> Self {
+        let p2p = P2pConfig {
+            datastore_path: PathBuf::from("peer_db/wallet"),
+            ..Default::default()
+        };
         Self {
             override_from: None,
-            p2p: Default::default(),
+            p2p,
             transaction_service_config: Default::default(),
             output_manager_service_config: Default::default(),
             buffer_size: 100,

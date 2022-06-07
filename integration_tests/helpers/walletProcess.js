@@ -47,6 +47,10 @@ class WalletProcess {
     return "/ip4/127.0.0.1/tcp/" + this.grpcPort;
   }
 
+  getGrpcPort() {
+    return this.grpcPort;
+  }
+
   async connectClient() {
     let client = new WalletClient(this.name);
     let addr = this.getGrpcAddress();
@@ -277,6 +281,7 @@ class WalletProcess {
       "--command",
       command,
       "--non-interactive",
+      "--network",
       "localnet",
     ];
     if (this.logFilePath) {

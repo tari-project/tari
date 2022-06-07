@@ -67,6 +67,7 @@ pub struct ValidatorNodeConfig {
     pub p2p: P2pConfig,
     pub committee_management_polling_interval: u64,
     pub committee_management_confirmation_time: u64,
+    pub grpc_address: Option<Multiaddr>,
 }
 
 impl ValidatorNodeConfig {
@@ -83,6 +84,11 @@ impl ValidatorNodeConfig {
 
 impl Default for ValidatorNodeConfig {
     fn default() -> Self {
+        let p2p = P2pConfig {
+            datastore_path: PathBuf::from("peer_db/validator_node"),
+            ..Default::default()
+        };
+
         Self {
             override_from: None,
             identity_file: PathBuf::from("validator_node_id.json"),
@@ -97,7 +103,8 @@ impl Default for ValidatorNodeConfig {
             data_dir: PathBuf::from("/data/validator_node"),
             committee_management_confirmation_time: 10,
             committee_management_polling_interval: 5,
-            p2p: P2pConfig::default(),
+            p2p,
+            grpc_address: Some("/ip4/127.0.0.1/tcp/18144".parse().unwrap()),
         }
     }
 }

@@ -30,6 +30,7 @@ use crate::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
+            EncryptedValue,
             OutputFeatures,
             TransactionError,
             TransactionOutput,
@@ -57,6 +58,7 @@ pub struct UnblindedOutputBuilder {
     metadata_signature: Option<ComSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
+    // TODO: Probably add `encrypted_value` here
 }
 
 impl UnblindedOutputBuilder {
@@ -93,6 +95,7 @@ impl UnblindedOutputBuilder {
     ) -> Result<(), TransactionError> {
         self.sender_offset_public_key = Some(sender_offset_public_key.clone());
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(self.value);
         let metadata_partial = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             self.value,
@@ -104,6 +107,7 @@ impl UnblindedOutputBuilder {
             &sender_offset_public_key,
             &public_nonce_commitment,
             &self.covenant,
+            &encrypted_value,
         )?;
         self.metadata_signature = Some(metadata_partial);
         self.metadata_signed_by_receiver = true;
@@ -111,6 +115,7 @@ impl UnblindedOutputBuilder {
     }
 
     pub fn sign_as_sender(&mut self, sender_offset_private_key: &PrivateKey) -> Result<(), TransactionError> {
+        let encrypted_value = EncryptedValue::todo_encrypt_from(self.value);
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             self.value,
@@ -121,6 +126,7 @@ impl UnblindedOutputBuilder {
             &self.features,
             sender_offset_private_key,
             &self.covenant,
+            &encrypted_value,
         )?;
         self.metadata_signature = Some(metadata_sig);
         self.metadata_signed_by_sender = true;
@@ -138,6 +144,7 @@ impl UnblindedOutputBuilder {
                 "Cannot build output because it has not been signed by the sender".to_string(),
             ));
         }
+        let encrypted_value = EncryptedValue::todo_encrypt_from(self.value);
         let ub = UnblindedOutput::new_current_version(
             self.value,
             self.spending_key,
@@ -154,6 +161,7 @@ impl UnblindedOutputBuilder {
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
             0,
             self.covenant,
+            encrypted_value,
         );
         Ok(ub)
     }

@@ -20,10 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
-use clap::Parser;
-use tari_app_utilities::common_cli_args::CommonCliArgs;
+use chrono::{DateTime, Utc};
+use clap::{Args, Parser, Subcommand};
+use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
+use tari_comms::multiaddr::Multiaddr;
+use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
+use tari_utilities::hex::{Hex, HexError};
 
 const DEFAULT_NETWORK: &str = "dibbler";
 
@@ -72,6 +76,8 @@ pub(crate) struct Cli {
     /// Supply a network (overrides existing configuration)
     #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
     pub network: String,
+    #[clap(subcommand)]
+    pub command2: Option<CliCommands>,
 }
 
 impl Cli {
@@ -81,4 +87,148 @@ impl Cli {
         overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
         overrides
     }
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Subcommand, Clone)]
+pub enum CliCommands {
+    GetBalance,
+    SendTari(SendTariArgs),
+    SendOneSided(SendTariArgs),
+    MakeItRain(MakeItRainArgs),
+    CoinSplit(CoinSplitArgs),
+    DiscoverPeer(DiscoverPeerArgs),
+    Whois(WhoisArgs),
+    ExportUtxos(ExportUtxosArgs),
+    ExportSpentUtxos(ExportUtxosArgs),
+    CountUtxos,
+    SetBaseNode(SetBaseNodeArgs),
+    SetCustomBaseNode(SetBaseNodeArgs),
+    ClearCustomBaseNode,
+    InitShaAtomicSwap(SendTariArgs),
+    FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
+    ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
+    RevalidateWalletDb,
+    ContractDefinition(ContractDefinitionCommand),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct DiscoverPeerArgs {
+    pub dest_public_key: UniPublicKey,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SendTariArgs {
+    pub amount: MicroTari,
+    pub destination: UniPublicKey,
+    #[clap(short, long, default_value = "<No message>")]
+    pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct MakeItRainArgs {
+    pub destination: UniPublicKey,
+    #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
+    pub start_amount: MicroTari,
+    #[clap(short, long, alias = "tps", default_value_t = 25)]
+    pub transactions_per_second: u32,
+    #[clap(short, long, parse(try_from_str = parse_duration), default_value="60")]
+    pub duration: Duration,
+    #[clap(long, default_value_t=tari_amount::T)]
+    pub increase_amount: MicroTari,
+    #[clap(long)]
+    pub start_time: Option<DateTime<Utc>>,
+    #[clap(short, long)]
+    pub one_sided: bool,
+    #[clap(short, long, default_value = "Make it rain")]
+    pub message: String,
+}
+
+fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
+    let seconds = arg.parse()?;
+    Ok(std::time::Duration::from_secs(seconds))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CoinSplitArgs {
+    pub amount_per_split: MicroTari,
+    pub num_splits: usize,
+    #[clap(short, long, default_value = "1")]
+    pub fee_per_gram: MicroTari,
+    #[clap(short, long, default_value = "Coin split")]
+    pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct WhoisArgs {
+    pub public_key: UniPublicKey,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportUtxosArgs {
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SetBaseNodeArgs {
+    pub public_key: UniPublicKey,
+    pub address: Multiaddr,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FinaliseShaAtomicSwapArgs {
+    #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
+    pub output_hash: Vec<Vec<u8>>,
+    #[clap(short, long)]
+    pub pre_image: UniPublicKey,
+    #[clap(short, long, default_value = "Claimed HTLC atomic swap")]
+    pub message: String,
+}
+
+fn parse_hex(s: &str) -> Result<Vec<u8>, HexError> {
+    Vec::<u8>::from_hex(s)
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ClaimShaAtomicSwapRefundArgs {
+    #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
+    pub output_hash: Vec<Vec<u8>>,
+    #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
+    pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ContractDefinitionCommand {
+    #[clap(subcommand)]
+    pub subcommand: ContractDefinitionSubcommand,
+}
+
+#[derive(Debug, Subcommand, Clone)]
+pub enum ContractDefinitionSubcommand {
+    /// Generates a new contract definition JSON spec file that can be edited and passed to other contract definition
+    /// commands.
+    Init(InitContractDefinitionArgs),
+    /// Creates and publishes a contract definition UTXO from the JSON spec file.
+    Publish(PublishContractDefinitionArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct InitContractDefinitionArgs {
+    /// The destination path of the contract definition to create
+    pub dest_path: PathBuf,
+    /// Force overwrite the destination file if it already exists
+    #[clap(short = 'f', long)]
+    pub force: bool,
+    #[clap(long, alias = "name")]
+    pub contract_name: Option<String>,
+    #[clap(long, alias = "issuer")]
+    pub contract_issuer: Option<String>,
+    #[clap(long, alias = "runtime")]
+    pub runtime: Option<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PublishContractDefinitionArgs {
+    pub file_path: PathBuf,
 }

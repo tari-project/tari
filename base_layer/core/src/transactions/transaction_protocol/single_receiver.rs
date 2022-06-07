@@ -30,7 +30,7 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion},
+    transaction_components::{EncryptedValue, OutputFeatures, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -74,7 +74,7 @@ impl SingleReceiverTransactionProtocol {
 
     /// Validates the sender info
     fn validate_sender_data(sender_info: &SD) -> Result<(), TPE> {
-        if sender_info.amount == 0.into() && sender_info.features.unique_id.is_none() {
+        if sender_info.amount == 0.into() && sender_info.features.unique_asset_id().is_none() {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
         Ok(())
@@ -110,6 +110,7 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.features.clone(),
         );
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(sender_info.amount);
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             sender_info.amount,
@@ -119,6 +120,7 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.sender_offset_public_key,
             &sender_info.public_commitment_nonce,
             &sender_info.covenant,
+            &encrypted_value,
         )?;
 
         let output = TransactionOutput::new_current_version(
