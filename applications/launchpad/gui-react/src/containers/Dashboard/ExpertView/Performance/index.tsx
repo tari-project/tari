@@ -41,6 +41,7 @@ const TimeSeriesChart = ({
   from,
   to,
   onUserInteraction,
+  chartHeight,
 }: {
   data: {
     empty: boolean
@@ -56,6 +57,7 @@ const TimeSeriesChart = ({
   from: Date
   to: Date
   onUserInteraction: (options: { interacting: boolean }) => void
+  chartHeight: number
 }) => {
   const theme = useTheme()
   const unitToUse = percentageValues ? '%' : unit
@@ -190,7 +192,7 @@ const TimeSeriesChart = ({
         series={data}
         type='area'
         width='100%'
-        height={300}
+        height={chartHeight}
       />
       <div
         style={{
@@ -242,6 +244,7 @@ const PerformanceChart = ({
   from,
   to,
   onUserInteraction,
+  chartHeight,
 }: {
   enabled: boolean
   extractor: (entry: StatsEntry) => { timestamp: string; value: number }
@@ -251,6 +254,7 @@ const PerformanceChart = ({
   style: CSSProperties
   from: Date
   to: Date
+  chartHeight: number
   onUserInteraction: (options: { interacting: boolean }) => void
 }) => {
   const [latchedFrom, setLatchedFrom] = useState(() => from)
@@ -322,6 +326,7 @@ const PerformanceChart = ({
       title={title}
       onUserInteraction={onUserInteraction}
       style={style}
+      chartHeight={chartHeight}
     />
   )
 }
@@ -330,7 +335,7 @@ const PerformanceContainer = () => {
   const theme = useTheme()
 
   const last = 30 * 60 * 1000
-  const refreshRate = 2 * 1000
+  const refreshRate = 1000
   const [now, setNow] = useState(() => {
     const n = new Date()
     n.setMilliseconds(0)
@@ -378,6 +383,7 @@ const PerformanceContainer = () => {
           }))
         }}
         style={{ marginTop: theme.spacing() }}
+        chartHeight={175}
       />
       <PerformanceChart
         enabled={refreshEnabled.memory}
@@ -396,6 +402,7 @@ const PerformanceContainer = () => {
           }))
         }}
         style={{ marginTop: theme.spacing() }}
+        chartHeight={175}
       />
       <PerformanceChart
         enabled={refreshEnabled.memory}
@@ -414,6 +421,7 @@ const PerformanceContainer = () => {
           }))
         }}
         style={{ marginTop: theme.spacing() }}
+        chartHeight={175}
       />
     </div>
   )
