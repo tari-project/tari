@@ -674,8 +674,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Status::invalid_argument(format!("Validator node public key was not a valid pub key:{}", e))
             })?;
 
-        let signature = Signature::try_from(message.signature.unwrap())
-            .map_err(|e| Status::invalid_argument(format!("Invalid signature:{}", e)))?;
+        let signature = message
+            .signature
+            .ok_or_else(|| Status::invalid_argument("signature not provided"))?;
+        let signature =
+            Signature::try_from(signature).map_err(|e| Status::invalid_argument(format!("Invalid signature:{}", e)))?;
 
         let (tx_id, transaction) = asset_manager
             .create_contract_acceptance(&contract_id, &validator_node_public_key, &signature)

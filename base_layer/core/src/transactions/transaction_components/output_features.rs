@@ -302,7 +302,7 @@ impl OutputFeatures {
         Self {
             flags: OutputFlags::CONTRACT_ACCEPT,
             sidechain_features: Some(
-                SideChainFeaturesBuilder::new(contract_id)
+                SideChainFeatures::builder(contract_id)
                     .with_contract_acceptance(ContractAcceptance {
                         validator_node_public_key,
                         signature,
