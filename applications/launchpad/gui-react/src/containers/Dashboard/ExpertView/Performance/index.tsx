@@ -397,6 +397,24 @@ const PerformanceContainer = () => {
         }}
         style={{ marginTop: theme.spacing() }}
       />
+      <PerformanceChart
+        enabled={refreshEnabled.memory}
+        extractor={({ timestamp, download }) => ({
+          timestamp,
+          value: download / (1024 * 1024),
+        })}
+        unit='MiB'
+        from={from}
+        to={now}
+        title='Network download'
+        onUserInteraction={({ interacting }) => {
+          setRefreshEnabled(a => ({
+            ...a,
+            memory: !interacting,
+          }))
+        }}
+        style={{ marginTop: theme.spacing() }}
+      />
     </div>
   )
 }
