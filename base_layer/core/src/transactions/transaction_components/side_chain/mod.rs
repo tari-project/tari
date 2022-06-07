@@ -46,6 +46,9 @@ pub use contract_definition::{
 mod contract_update_proposal;
 pub use contract_update_proposal::ContractUpdateProposal;
 
+mod contract_update_proposal_acceptance;
+pub use contract_update_proposal_acceptance::ContractUpdateProposalAcceptance;
+
 mod committee_members;
 pub use committee_members::CommitteeMembers;
 

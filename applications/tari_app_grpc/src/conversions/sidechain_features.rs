@@ -34,11 +34,13 @@ use tari_core::transactions::transaction_components::{
     ContractConstitution,
     ContractDefinition,
     ContractSpecification,
+    ContractUpdateProposal,
+    ContractUpdateProposalAcceptance,
     FunctionRef,
     PublicFunction,
     RequirementsForConstitutionChange,
     SideChainConsensus,
-    SideChainFeatures, ContractUpdateProposal,
+    SideChainFeatures,
 };
 use tari_utilities::ByteArray;
 
@@ -52,6 +54,7 @@ impl From<SideChainFeatures> for grpc::SideChainFeatures {
             constitution: value.constitution.map(Into::into),
             acceptance: value.acceptance.map(Into::into),
             update_proposal: value.update_proposal.map(Into::into),
+            update_proposal_acceptance: value.update_proposal_acceptance.map(Into::into),
         }
     }
 }
@@ -63,14 +66,22 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
         let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
         let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
         let acceptance = features.acceptance.map(ContractAcceptance::try_from).transpose()?;
-        let update_proposal = features.update_proposal.map(ContractUpdateProposal::try_from).transpose()?;
+        let update_proposal = features
+            .update_proposal
+            .map(ContractUpdateProposal::try_from)
+            .transpose()?;
+        let update_proposal_acceptance = features
+            .update_proposal_acceptance
+            .map(ContractUpdateProposalAcceptance::try_from)
+            .transpose()?;
 
         Ok(Self {
             contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
             definition,
             constitution,
             acceptance,
-            update_proposal
+            update_proposal,
+            update_proposal_acceptance,
         })
     }
 }
@@ -460,6 +471,39 @@ impl TryFrom<grpc::ContractUpdateProposal> for ContractUpdateProposal {
             proposal_id: value.proposal_id,
             signature,
             updated_constitution,
+        })
+    }
+}
+
+//---------------------------------- ContractUpdateProposalAcceptance --------------------------------------------//
+
+impl From<ContractUpdateProposalAcceptance> for grpc::ContractUpdateProposalAcceptance {
+    fn from(value: ContractUpdateProposalAcceptance) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            validator_node_public_key: value.validator_node_public_key.as_bytes().to_vec(),
+            signature: Some(value.signature.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractUpdateProposalAcceptance> for ContractUpdateProposalAcceptance {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractUpdateProposalAcceptance) -> Result<Self, Self::Error> {
+        let validator_node_public_key =
+            PublicKey::from_bytes(value.validator_node_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "signature could not be converted".to_string())?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            validator_node_public_key,
+            signature,
         })
     }
 }

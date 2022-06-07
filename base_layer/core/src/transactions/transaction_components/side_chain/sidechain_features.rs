@@ -25,7 +25,7 @@ use std::io::{Error, Read, Write};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
 
-use super::{ContractAcceptance, ContractDefinition, ContractUpdateProposal};
+use super::{ContractAcceptance, ContractDefinition, ContractUpdateProposal, ContractUpdateProposalAcceptance};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     transactions::transaction_components::ContractConstitution,
@@ -38,6 +38,7 @@ pub struct SideChainFeatures {
     pub constitution: Option<ContractConstitution>,
     pub acceptance: Option<ContractAcceptance>,
     pub update_proposal: Option<ContractUpdateProposal>,
+    pub update_proposal_acceptance: Option<ContractUpdateProposalAcceptance>,
 }
 
 impl SideChainFeatures {
@@ -57,6 +58,7 @@ impl ConsensusEncoding for SideChainFeatures {
         self.constitution.consensus_encode(writer)?;
         self.acceptance.consensus_encode(writer)?;
         self.update_proposal.consensus_encode(writer)?;
+        self.update_proposal_acceptance.consensus_encode(writer)?;
         Ok(())
     }
 }
@@ -71,6 +73,7 @@ impl ConsensusDecoding for SideChainFeatures {
             constitution: ConsensusDecoding::consensus_decode(reader)?,
             acceptance: ConsensusDecoding::consensus_decode(reader)?,
             update_proposal: ConsensusDecoding::consensus_decode(reader)?,
+            update_proposal_acceptance: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
 }
@@ -88,6 +91,7 @@ impl SideChainFeaturesBuilder {
                 constitution: None,
                 acceptance: None,
                 update_proposal: None,
+                update_proposal_acceptance: None,
             },
         }
     }
@@ -199,6 +203,11 @@ mod tests {
                 proposal_id: 0_u64,
                 signature: Signature::default(),
                 updated_constitution: constitution,
+            }),
+            update_proposal_acceptance: Some(ContractUpdateProposalAcceptance {
+                proposal_id: 0_u64,
+                validator_node_public_key: PublicKey::default(),
+                signature: Signature::default(),
             }),
         };
 

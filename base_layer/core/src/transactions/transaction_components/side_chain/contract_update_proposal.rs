@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error,Read, Write};
+use std::io::{Error, Read, Write};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::Signature;
@@ -77,11 +77,12 @@ mod tests {
             tari_amount::MicroTari,
             transaction_components::{
                 CheckpointParameters,
+                CommitteeMembers,
                 ConstitutionChangeFlags,
                 ConstitutionChangeRules,
                 ContractAcceptanceRequirements,
                 RequirementsForConstitutionChange,
-                SideChainConsensus, CommitteeMembers,
+                SideChainConsensus,
             },
         },
     };

@@ -466,11 +466,13 @@ mod test {
             ContractDefinition,
             ContractSpecification,
             ContractUpdateProposal,
+            ContractUpdateProposalAcceptance,
             FunctionRef,
             PublicFunction,
         },
     };
 
+    #[allow(clippy::too_many_lines)]
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
         let constitution = ContractConstitution {
             validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
@@ -543,6 +545,11 @@ mod test {
                     proposal_id: 0_u64,
                     signature: Signature::default(),
                     updated_constitution: constitution,
+                }),
+                update_proposal_acceptance: Some(ContractUpdateProposalAcceptance {
+                    proposal_id: 0_u64,
+                    validator_node_public_key: PublicKey::default(),
+                    signature: Signature::default(),
                 }),
             }),
             // Deprecated
