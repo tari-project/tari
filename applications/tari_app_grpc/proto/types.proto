@@ -233,6 +233,7 @@ message SideChainFeatures {
     ContractDefinition definition = 2;
     ContractConstitution constitution = 3;
     ContractAcceptance acceptance = 4;
+    ContractUpdateProposal update_proposal = 5;
 }
 
 message ContractConstitution {
@@ -276,6 +277,12 @@ enum SideChainConsensus {
     BFT = 1;
     PROOF_OF_WORK = 2;
     MERKLE_ROOT = 3;
+}
+
+message ContractUpdateProposal {
+    uint64 proposal_id = 1;
+    Signature signature = 2;
+    ContractConstitution updated_constitution = 3;
 }
 
 // TODO: DEPRECATED

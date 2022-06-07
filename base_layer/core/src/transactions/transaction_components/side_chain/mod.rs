@@ -43,6 +43,9 @@ pub use contract_definition::{
     PublicFunction,
 };
 
+mod contract_update_proposal;
+pub use contract_update_proposal::ContractUpdateProposal;
+
 mod committee_members;
 pub use committee_members::CommitteeMembers;
 

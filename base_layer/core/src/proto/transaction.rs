@@ -51,6 +51,7 @@ use crate::{
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
+            ContractUpdateProposal,
             FunctionRef,
             KernelFeatures,
             MintNonFungibleFeatures,
@@ -352,6 +353,7 @@ impl From<SideChainFeatures> for proto::types::SideChainFeatures {
             definition: value.definition.map(Into::into),
             constitution: value.constitution.map(Into::into),
             acceptance: value.acceptance.map(Into::into),
+            update_proposal: value.update_proposal.map(Into::into),
         }
     }
 }
@@ -360,15 +362,21 @@ impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::SideChainFeatures) -> Result<Self, Self::Error> {
+        let contract_id = features.contract_id.try_into().map_err(|_| "Invalid contract_id")?;
         let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
         let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
         let acceptance = features.acceptance.map(ContractAcceptance::try_from).transpose()?;
+        let update_proposal = features
+            .update_proposal
+            .map(ContractUpdateProposal::try_from)
+            .transpose()?;
 
         Ok(Self {
-            contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            contract_id,
             definition,
             constitution,
             acceptance,
+            update_proposal,
         })
     }
 }
@@ -469,6 +477,41 @@ impl TryFrom<proto::types::ContractAcceptance> for ContractAcceptance {
         Ok(Self {
             validator_node_public_key,
             signature,
+        })
+    }
+}
+
+//---------------------------------- ContractUpdateProposal --------------------------------------------//
+
+impl From<ContractUpdateProposal> for proto::types::ContractUpdateProposal {
+    fn from(value: ContractUpdateProposal) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            signature: Some(value.signature.into()),
+            updated_constitution: Some(value.updated_constitution.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractUpdateProposal> for ContractUpdateProposal {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractUpdateProposal) -> Result<Self, Self::Error> {
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|err: ByteArrayError| err.to_string())?;
+
+        let updated_constitution = value
+            .updated_constitution
+            .ok_or_else(|| "updated_constiution not provided".to_string())?
+            .try_into()?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            signature,
+            updated_constitution,
         })
     }
 }

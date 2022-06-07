@@ -106,6 +106,7 @@ message SideChainFeatures {
     ContractDefinition definition = 2;
     ContractConstitution constitution = 3;
     ContractAcceptance acceptance = 4;
+    ContractUpdateProposal update_proposal = 5;
 }
 
 message ContractConstitution {
@@ -203,6 +204,12 @@ message FunctionRef {
 message ContractAcceptance {
     bytes validator_node_public_key = 1;
     Signature signature = 2;
+}
+
+message ContractUpdateProposal {
+    uint64 proposal_id = 1;
+    Signature signature = 2;
+    ContractConstitution updated_constitution = 3;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
