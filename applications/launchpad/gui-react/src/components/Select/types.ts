@@ -19,3 +19,14 @@ export type Option = {
   label: string
   key: string
 }
+
+export type SelectStylesOverrideProps = {
+  icon?: {
+    color?: string
+  }
+  value?: {
+    color?: string
+    backgroundColor?: string
+    borderColor?: (open?: boolean) => string
+  }
+}

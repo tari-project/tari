@@ -21,7 +21,10 @@ export const SelectorIcon = styled.div<SelectInternalProps>`
 
 export const SelectButton = styled(Listbox.Button)<
   SelectInternalProps & {
-    style?: CSSProperties & { borderColor: (open?: boolean) => string }
+    style?: { borderColor?: (open?: boolean) => string } & Omit<
+      CSSProperties,
+      'borderColor'
+    >
   }
 >`
   display: flex;

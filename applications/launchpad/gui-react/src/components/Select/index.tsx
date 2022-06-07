@@ -13,7 +13,7 @@ import {
   OptionsContainer,
   Option,
 } from './styles'
-import { Option as OptionProp } from './types'
+import { Option as OptionProp, SelectStylesOverrideProps } from './types'
 
 /**
  * @TODO go back to import SelectProps from './types' - it was switched, because eslint was giving some react/prop-types error
@@ -49,7 +49,7 @@ const Select = ({
   value?: OptionProp
   options: OptionProp[]
   onChange: (option: OptionProp) => void
-  styles?: any
+  styles?: SelectStylesOverrideProps
   icon?: ReactNode
   fullWidth?: boolean
 }) => {
