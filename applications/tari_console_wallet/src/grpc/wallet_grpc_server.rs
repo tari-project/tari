@@ -792,10 +792,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "Committee definition transaction: {:?}", transaction
         );
 
-        let committee_size = match side_chain_features.constitution {
-            Some(constitution) => constitution.validator_committee.members().len(),
-            None => 0,
-        };
+        let committee_size = side_chain_features
+            .constitution
+            .and_then(|con| Some(con.validator_committee.members().len()))
+            .unwrap_or(0);
 
         let message = format!(
             "Committee definition for {} members for {:?}",
