@@ -34,7 +34,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 pub struct ContractAmendment {
     /// The unique identification of the proposal
     pub proposal_id: u64,
-    /// The committee of validator nodes accepnting the changes
+    /// The committee of validator nodes accepting the changes
     pub validator_committee: CommitteeMembers,
     /// Signatures for all the proposal acceptances of the validator committee
     pub validator_signatures: CommitteeSignatures,

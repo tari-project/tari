@@ -36,7 +36,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 pub struct ContractUpdateProposal {
     /// A unique identification of the proposal, for later reference
     pub proposal_id: u64,
-    /// Signature of the proposal
+    /// Signature of the proposal by the proposer party
     pub signature: Signature,
     /// The new constitution that is proposed
     pub updated_constitution: ContractConstitution,
