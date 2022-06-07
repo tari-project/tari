@@ -20,7 +20,8 @@ const formatAmount = (amount: string | number) => {
 /**
  * Render the list of coins with amount.
  * @param {CoinProps[]} coins - the list of coins
- * @param {string} [color = 'inherit'] - the text color
+ * @param {string} [color = 'inherit'] - the main text color
+ * @param {string} [unitsColor] - color of units text
  * @param {boolean} [inline] - if true, renders as inline block
  * @param {boolean} [small] - if true, renders smaller font sizes
  *
@@ -33,6 +34,7 @@ const formatAmount = (amount: string | number) => {
 const CoinsList = ({
   coins,
   color,
+  unitsColor,
   showSymbols,
   inline,
   small,
@@ -62,6 +64,7 @@ const CoinsList = ({
               paddingLeft: 4,
               paddingRight: 4,
               textTransform: 'uppercase',
+              color: unitsColor,
             }}
           >
             {c.unit}

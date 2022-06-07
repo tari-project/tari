@@ -28,6 +28,7 @@ export interface StatsRepository {
 
 const storage = new Map<Container, StatsEntry[]>()
 
+// TODO implement sqlite
 const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, service, secondTimestamp, stats) => {
