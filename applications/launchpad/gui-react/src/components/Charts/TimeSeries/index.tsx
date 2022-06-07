@@ -6,6 +6,7 @@ import colors from '../../../styles/styles/colors'
 import VisibleIcon from '../../../styles/Icons/Eye'
 import HiddenIcon from '../../../styles/Icons/EyeSlash'
 import t from '../../../locales'
+import * as Format from '../../../utils/Format'
 import Text from '../../Text'
 import IconButton from '../../IconButton'
 
@@ -150,11 +151,7 @@ const TimeSeriesChart = ({
         max: to.getTime(),
         labels: {
           datetimeUTC: false,
-          formatter: (value: string) =>
-            new Date(value).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
+          formatter: (value: string) => Format.localHour(new Date(value)),
         },
       },
       tooltip: {
@@ -171,10 +168,7 @@ const TimeSeriesChart = ({
             unitToUse ? `${val.toFixed(3)}${unitToUse}` : val.toFixed(2),
         },
         x: {
-          formatter: (val: number) =>
-            `${new Date(val).toLocaleDateString()} ${new Date(
-              val,
-            ).toLocaleTimeString()}`,
+          formatter: (val: number) => Format.dateTime(new Date(val)),
         },
       },
       legend: {
