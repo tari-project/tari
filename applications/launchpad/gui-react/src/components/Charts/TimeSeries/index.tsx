@@ -9,6 +9,13 @@ import t from '../../../locales'
 import Text from '../../Text'
 import IconButton from '../../IconButton'
 
+import {
+  ChartContainer,
+  Legend,
+  LegendItem,
+  SeriesColorIndicator,
+} from './styles'
+
 const graphColors = [
   colors.secondary.infoText,
   colors.secondary.onTextLight,
@@ -20,7 +27,7 @@ const graphColors = [
   colors.graph.lightGreen,
 ]
 
-export type ChartData = {
+export type SeriesData = {
   empty: boolean
   visible: boolean
   name: string
@@ -35,7 +42,7 @@ const getDefaultYAxisDefinition = () => ({
   },
 })
 const getPercentageYAxisDefinition = (
-  data: ChartData[],
+  data: SeriesData[],
   tickResolution: number,
 ) => {
   const ys = data.flatMap(({ data }) => data.map(({ y }) => y))
@@ -63,7 +70,7 @@ const TimeSeriesChart = ({
   unit,
 }: {
   chartHeight: number
-  data: ChartData[]
+  data: SeriesData[]
   from: Date
   onUserInteraction: (options: { interacting: boolean }) => void
   percentageValues?: boolean
@@ -178,12 +185,8 @@ const TimeSeriesChart = ({
   )
 
   return (
-    <div
+    <ChartContainer
       style={{
-        backgroundColor: '#141414',
-        padding: theme.spacing(),
-        borderRadius: theme.borderRadius(),
-        maxWidth: '100%',
         ...style,
       }}
     >
@@ -198,43 +201,22 @@ const TimeSeriesChart = ({
         width='100%'
         height={chartHeight}
       />
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          columnGap: theme.spacing(),
-        }}
-      >
+      <Legend>
         {data
           .filter(s => !s.empty)
           .map(({ name, visible }, seriesId) => (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                columnGap: theme.spacing(0.5),
-              }}
-              key={name}
-            >
-              <div
-                style={{
-                  width: '1em',
-                  height: '0.1em',
-                  borderRadius: '2px',
-                  backgroundColor: graphColors[seriesId],
-                }}
-              />
+            <LegendItem key={name}>
+              <SeriesColorIndicator color={graphColors[seriesId]} />
               <Text type='smallMedium' color={theme.textSecondary}>
                 {t.common.containers[name]}
               </Text>
               <IconButton onClick={() => toggleSeries(name)}>
                 {visible ? <VisibleIcon /> : <HiddenIcon />}
               </IconButton>
-            </div>
+            </LegendItem>
           ))}
-      </div>
-    </div>
+      </Legend>
+    </ChartContainer>
   )
 }
 
