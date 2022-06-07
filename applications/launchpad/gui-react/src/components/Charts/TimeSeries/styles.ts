@@ -3,6 +3,7 @@ import styled from 'styled-components'
 export const ChartContainer = styled.div`
   background-color: ${({ theme }) => theme.inverted.backgroundSecondary};
   padding: ${({ theme }) => theme.spacing()};
+  padding-left: ${({ theme }) => theme.spacing(0.5)};
   border-radius: ${({ theme }) => theme.borderRadius()};
   max-width: 100%;
 `
