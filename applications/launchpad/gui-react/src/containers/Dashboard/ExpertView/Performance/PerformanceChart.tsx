@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState, useMemo, CSSProperties } from 'react'
 
 import { Container } from '../../../../store/containers/types'
 import { StatsEntry } from '../../../../store/containers/statsRepository'
-import TimeSeriesChart from '../../../../components/Charts/TimeSeries'
+import TimeSeriesChart, {
+  ChartData,
+} from '../../../../components/Charts/TimeSeries'
 
 import usePerformanceStats from './usePerformanceStats'
 
@@ -50,14 +52,7 @@ const PerformanceChart = ({
   })
 
   const [hiddenSeries, setHiddenSeries] = useState<Container[]>([])
-  const data = useMemo<
-    {
-      visible: boolean
-      empty: boolean
-      name: string
-      data: { x: number; y: number }[]
-    }[]
-  >(
+  const data = useMemo<ChartData[]>(
     () =>
       Object.entries(performanceData).map(([container, containerData]) => {
         const data = containerData.map(({ timestamp, value }) => ({
