@@ -57,3 +57,7 @@ buildtools/Output/
 
 # Ignore local history in Visual Studio Code
 .lh
+
+clients/base_node_grpc_client/package-lock.json
+clients/validator_node_grpc_client/package-lock.json
+clients/wallet_grpc_client/package-lock.json
