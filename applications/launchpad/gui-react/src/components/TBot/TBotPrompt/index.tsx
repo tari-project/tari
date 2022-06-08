@@ -37,6 +37,8 @@ const WAIT_TIME = 2800
  * @prop {() => void} [onClose] - callback on close action of prompt
  * @prop {ReactNode} [children] - content rendered inside prompt component
  * @prop {string} [testid] - for testing
+ * @prop {number} [currentIndex] -
+ * @prop {boolean} [closeIcon] - controls rendering of close button
  */
 const TBotPrompt = ({
   open,
@@ -44,6 +46,7 @@ const TBotPrompt = ({
   testid,
   messages,
   currentIndex = 1,
+  closeIcon = true,
 }: TBotPromptProps) => {
   const dispatch = useAppDispatch()
 
@@ -233,11 +236,13 @@ const TBotPrompt = ({
       <ContentRow>
         <ContentContainer $floating={floating}>
           <FadeOutSection $floating={floating} />
-          <StyledCloseContainer>
-            <StyledCloseIcon>
-              <SvgClose fontSize={20} onClick={close} />
-            </StyledCloseIcon>
-          </StyledCloseContainer>
+          {closeIcon && (
+            <StyledCloseContainer>
+              <StyledCloseIcon>
+                <SvgClose fontSize={20} onClick={close} />
+              </StyledCloseIcon>
+            </StyledCloseContainer>
+          )}
           <MessageContainer>
             <ScrollWrapper ref={scrollRef}>
               <HeightAnimationWrapper style={heightAnim}>

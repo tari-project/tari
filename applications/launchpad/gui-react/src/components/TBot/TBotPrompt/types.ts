@@ -13,4 +13,5 @@ export interface TBotPromptProps {
       }
   )[]
   currentIndex?: number
+  closeIcon?: boolean
 }
