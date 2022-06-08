@@ -65,6 +65,19 @@ const translations = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any,
   },
+  settings: {
+    title: 'Mining Settings',
+    moneroAddressLabel: 'Monero mining address',
+    moneroAddressDesc1:
+      'This is the address to which the Monero coins you earn will be sent.',
+    moneroAddressDesc2:
+      'You need to provide a Monero address to be able to start Merged mining.',
+    threadsLabel: 'SHA3 threads',
+    moneroUrlLabel: 'Monero node URL',
+    addNextUrl: 'Add next URL',
+    wrongUrlFormat: 'Oops! This is not a valid URL',
+    moneroUrlPlaceholder: 'Set URL address',
+  },
 }
 
 export default translations

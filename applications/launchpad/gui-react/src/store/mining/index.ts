@@ -1,9 +1,10 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { v4 as uuidv4 } from 'uuid'
 import { MiningNodeType, ScheduleId } from '../../types/general'
+import MiningConfig from '../../config/mining'
 
 import { startMiningNode, stopMiningNode } from './thunks'
-import { MiningState, MiningActionReason } from './types'
+import { MiningState, MiningActionReason, MoneroUrl } from './types'
 
 const currencies: Record<MiningNodeType, string[]> = {
   tari: ['xtr'],
@@ -17,7 +18,7 @@ export const initialState: MiningState = {
   merged: {
     threads: 1,
     address: undefined,
-    urls: [],
+    urls: MiningConfig.defaultMoneroUrls.map(url => ({ url })),
     session: undefined,
   },
 }
@@ -84,6 +85,16 @@ const miningSlice = createSlice({
     setMergedAddress(state, action: PayloadAction<{ address: string }>) {
       const { address } = action.payload
       state.merged.address = address
+    },
+    setMergedConfig(
+      state,
+      action: PayloadAction<{
+        address?: string
+        threads?: number
+        urls?: MoneroUrl[]
+      }>,
+    ) {
+      state.merged = { ...state.merged, ...action.payload }
     },
   },
 })

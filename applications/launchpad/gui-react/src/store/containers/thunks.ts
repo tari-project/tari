@@ -15,7 +15,7 @@ import {
   ServiceDescriptor,
   SerializableContainerStats,
 } from './types'
-import { selectContainerByType } from './selectors'
+import { selectContainerByType, selectRunningContainers } from './selectors'
 import getStatsRepository from './statsRepository'
 
 export const persistStats = createAsyncThunk<
@@ -162,3 +162,30 @@ export const stopByType = createAsyncThunk<
     return thunkApi.rejectWithValue(error)
   }
 })
+
+export const restart = createAsyncThunk<void, void, { state: RootState }>(
+  'containers/restart',
+  async (_, thunkApi) => {
+    try {
+      const { dispatch } = thunkApi
+      const rootState = thunkApi.getState()
+      const runningContainers = selectRunningContainers(rootState)
+
+      // Stop all containers first:
+      const stopPromises = runningContainers.map(c => {
+        return dispatch(stopByType(c))
+      })
+
+      await Promise.all(stopPromises)
+
+      // Start containers:
+      const startPromises = runningContainers.map(c => {
+        return dispatch(start(c))
+      })
+
+      await Promise.all(startPromises)
+    } catch (error) {
+      return thunkApi.rejectWithValue(error)
+    }
+  },
+)

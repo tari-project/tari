@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react'
+import { ReactNode } from 'react'
 
 import { Settings } from '../../store/settings/types'
 import Modal from '../../components/Modal'
@@ -13,19 +13,27 @@ import {
   MenuItem,
   MainContent,
   Footer,
+  DiscardWarning,
 } from './styles'
+import BaseNodeSettings from './BaseNodeSettings'
+import MiningSettings from './MiningSettings'
 import WalletSettings from './WalletSettings'
 import { SettingsProps, SettingsComponentProps } from './types'
 
 const renderSettings = (
   settings: Settings,
-  _props: SettingsProps,
+  props: SettingsProps,
 ): ReactNode => {
-  if (settings === Settings.Wallet) {
-    return <WalletSettings />
+  switch (settings) {
+    case Settings.Wallet:
+      return <WalletSettings />
+    case Settings.Mining:
+      return <MiningSettings control={props.control} />
+    case Settings.BaseNode:
+      return <BaseNodeSettings control={props.control} />
+    default:
+      return null
   }
-
-  return null
 }
 
 const SettingsComponent = ({
@@ -33,12 +41,16 @@ const SettingsComponent = ({
   onClose,
   activeSettings,
   goToSettings,
+  formState,
+  control,
+  onSubmit,
+  confirmCancel,
+  cancelDiscard,
+  discardChanges,
 }: SettingsComponentProps) => {
-  const [settingsChanged, setSettingsChanged] = useState(false)
-
   return (
     <Modal open={open} onClose={onClose}>
-      <MainContainer>
+      <MainContainer data-testid='settings-modal-container'>
         <MainContentContainer>
           <Sidebar>
             {Object.values(Settings)
@@ -63,16 +75,50 @@ const SettingsComponent = ({
           </Sidebar>
           <MainContent>
             {renderSettings(activeSettings, {
-              onSettingsTouched: setSettingsChanged,
+              control,
             })}
           </MainContent>
         </MainContentContainer>
-        <Footer>
-          <Button variant='secondary' onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={!settingsChanged}>Save changes</Button>
-        </Footer>
+        {confirmCancel && (
+          <Footer>
+            <DiscardWarning>
+              <Text type='smallHeavy'>{t.settings.discardChanges}</Text>
+              <Text type='smallMedium'>{t.settings.discardChangesDesc}.</Text>
+            </DiscardWarning>
+            <Button variant='secondary' onClick={cancelDiscard} size='small'>
+              {t.common.phrases.keepEditing}
+            </Button>
+            <Button
+              disabled={!formState.isDirty || formState.isSubmitting}
+              onClick={discardChanges}
+              loading={formState.isSubmitting}
+              variant='warning'
+              size='small'
+            >
+              {t.settings.closeAndDiscard}
+            </Button>
+          </Footer>
+        )}
+        {!confirmCancel && (
+          <Footer>
+            <Button variant='secondary' onClick={onClose}>
+              {t.common.verbs.cancel}
+            </Button>
+            <Button
+              type='submit'
+              disabled={
+                !formState.isDirty ||
+                formState.isSubmitting ||
+                !formState.isValid
+              }
+              onClick={onSubmit}
+              loading={formState.isSubmitting}
+              testId='settings-submit-btn'
+            >
+              {t.common.phrases.saveChanges}
+            </Button>
+          </Footer>
+        )}
       </MainContainer>
     </Modal>
   )

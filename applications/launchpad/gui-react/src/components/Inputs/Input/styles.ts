@@ -71,3 +71,12 @@ export const UnitsText = styled(Text)`
   color: ${({ theme }) => theme.placeholderText};
   text-transform: uppercase;
 `
+
+export const Label = styled.label<{ $inverted?: boolean }>`
+  font-size: 0.88em;
+  display: inline-block;
+  margin-bottom: ${({ theme }) => theme.spacingVertical()};
+  color: ${({ theme, $inverted }) =>
+    $inverted ? theme.inverted.primary : theme.primary};
+  font-family 'AvenirMedium';
+`
