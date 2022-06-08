@@ -38,6 +38,11 @@ pub const MIN_DIFFICULTY: u64 = 1;
 pub struct Difficulty(u64);
 
 impl Difficulty {
+    /// A const constructor for Difficulty
+    pub const fn from_u64(d: u64) -> Self {
+        Self(d)
+    }
+
     /// Difficulty of MIN_DIFFICULTY
     pub const fn min() -> Difficulty {
         Difficulty(MIN_DIFFICULTY)
