@@ -1,94 +1,67 @@
-import { useMemo, useRef, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useAppSelector } from '../../../../store/hooks'
 import { selectNetwork } from '../../../../store/baseNode/selectors'
-import getStatsRepository from '../../../../store/containers/statsRepository'
-import { Container, StatsDbEntry } from '../../../../store/containers/types'
+import getStatsRepository, {
+  StatsEntry,
+} from '../../../../store/containers/statsRepository'
+import { Container } from '../../../../store/containers/types'
+import { Dictionary } from '../../../../types/general'
 
-// TODO implement against actual db https://github.com/Altalogy/tari/issues/46
-// THIS is a temporary implementation just to show the flow
-// when statsRepository is using Dexie.js, we will be able to use to liveQuery
-// https://dexie.org/docs/dexie-react-hooks/useLiveQuery()
-const usePerformanceStats = () => {
+import { UsePerformanceStatsType } from './types'
+
+/**
+ * @name usePerformanceStats
+ * @description hook hiding call to performance stats repositories and memoizing specific data used by extractor function
+ *
+ * @prop {boolean} enabled - if this is false, new data will not be queried, even if from/to change
+ * @prop {Date} from - start of the time window to query, change of this prop refetches the data
+ * @prop {Date} to - end of the time window to query, change of this prop refetches the data
+ * @prop {StatsExtractorFunction} extractor - function to get specific values as timeseries
+ */
+const usePerformanceStats: UsePerformanceStatsType = ({
+  enabled,
+  from,
+  to,
+  extractor,
+}) => {
   const configuredNetwork = useAppSelector(selectNetwork)
   const repository = useMemo(getStatsRepository, [])
-  const [allStats, setStats] = useState<Record<Container, StatsDbEntry[]>>()
-  const interval = useRef<ReturnType<typeof setInterval> | undefined>()
+  const [stats, setStats] = useState<Dictionary<StatsEntry[]>>()
 
   useEffect(() => {
-    const initStats = async () => {
-      const stats = await repository.getGroupedByContainer(configuredNetwork)
+    if (!enabled) {
+      return
+    }
+
+    const thing = async () => {
+      const stats = await repository.getGroupedByContainer(
+        configuredNetwork,
+        from,
+        to,
+      )
+
       setStats(stats)
     }
-    initStats()
-  }, [])
 
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    interval.current = setInterval(async () => {
-      const stats = await repository.getGroupedByContainer(configuredNetwork)
+    thing()
+  }, [enabled, from, to])
 
-      setStats(stats)
-    }, 1000)
+  const extracted = useMemo(() => {
+    const r = Object.values(Container)
+      .filter(container => Boolean(stats && stats[container]))
+      .reduce(
+        (accu, current) => ({
+          ...accu,
+          [current]: ((stats && stats[current]) || []).map(extractor),
+        }),
+        {} as Record<Container, { timestamp: string; value: number }[]>,
+      )
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return () => clearInterval(interval.current!)
-  }, [repository, configuredNetwork])
+    return r
+  }, [stats])
 
-  const cpu = useMemo(() => {
-    return Object.values(Container).reduce(
-      (accu, current) => ({
-        ...accu,
-        [current]: ((allStats && allStats[current]) || []).map(
-          ({ cpu, timestamp }) => ({
-            cpu,
-            timestamp,
-          }),
-        ),
-      }),
-      {},
-    )
-  }, [allStats])
-
-  const memory = useMemo(() => {
-    return Object.values(Container).reduce(
-      (accu, current) => ({
-        ...accu,
-        [current]: ((allStats && allStats[current]) || []).map(
-          ({ memory, timestamp }) => ({
-            memory,
-            timestamp,
-          }),
-        ),
-      }),
-      {},
-    )
-  }, [allStats])
-
-  const network = useMemo(() => {
-    return Object.values(Container).reduce(
-      (accu, current) => ({
-        ...accu,
-        [current]: ((allStats && allStats[current]) || []).map(
-          ({ network: { upload, download }, timestamp }) => ({
-            upload,
-            download,
-            timestamp,
-          }),
-        ),
-      }),
-      {},
-    )
-  }, [allStats])
-
-  return useMemo(
-    () => ({
-      cpu,
-      memory,
-      network,
-    }),
-    [cpu, memory, network],
-  )
+  return extracted
 }
 
 export default usePerformanceStats

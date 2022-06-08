@@ -41,6 +41,10 @@ const ExpertView = () => {
   ]
 
   const renderPage = () => {
+    if (expertView === 'hidden') {
+      return null
+    }
+
     switch (selectedTab) {
       case 'PERFORMANCE':
         return <Performance />
@@ -55,7 +59,11 @@ const ExpertView = () => {
 
   return (
     <MainContainer
-      style={{ paddingRight: theme.spacing(), paddingLeft: theme.spacing() }}
+      style={{
+        paddingRight: theme.spacing(),
+        paddingLeft: theme.spacing(),
+        height: '100%',
+      }}
     >
       <TabsContainer>
         <Tabs tabs={tabs} selected={selectedTab} onSelect={setTab} inverted />

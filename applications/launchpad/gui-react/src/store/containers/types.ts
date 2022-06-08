@@ -98,17 +98,3 @@ export interface StatsEventPayload {
   }
   networks: Record<string, { tx_bytes: number; rx_bytes: number }>
 }
-
-export type StatsDbEntry = SerializableContainerStats & { timestamp: string }
-export interface StatsRepository {
-  add: (
-    network: string,
-    service: Container,
-    secondTimestamp: string,
-    stats: SerializableContainerStats,
-  ) => Promise<void>
-  getAll: (network: string, service: Container) => Promise<StatsDbEntry[]>
-  getGroupedByContainer: (
-    network: string,
-  ) => Promise<Record<Container, StatsDbEntry[]>>
-}

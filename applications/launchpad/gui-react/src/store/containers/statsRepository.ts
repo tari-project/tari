@@ -1,50 +1,69 @@
-import { StatsDbEntry, StatsRepository, Container } from './types'
+import { Dictionary } from '../../types/general'
 
-const db: Record<string, Record<Container, StatsDbEntry[]>> = {}
+import { Container, SerializableContainerStats } from './types'
 
-const ensureDb = (network: string) => {
-  if (!db[network]) {
-    db[network] = {
-      [Container.Tor]: [] as StatsDbEntry[],
-      [Container.BaseNode]: [] as StatsDbEntry[],
-      [Container.Wallet]: [] as StatsDbEntry[],
-      [Container.SHA3Miner]: [] as StatsDbEntry[],
-      [Container.MMProxy]: [] as StatsDbEntry[],
-      [Container.XMrig]: [] as StatsDbEntry[],
-      [Container.Monerod]: [] as StatsDbEntry[],
-      [Container.Frontail]: [] as StatsDbEntry[],
-    }
-  }
+export interface StatsEntry {
+  timestamp: string
+  network: string
+  service: Container
+  cpu: number
+  memory: number
+  upload: number
+  download: number
 }
 
-// TODO implement actual db https://github.com/Altalogy/tari/issues/46
-// THIS IS A TEMPORARY IMPLEMENTATION
-// this is the dumbest implementation I could write
-// future implementation will use Dexie.js
-const MAX_ENTRIES = 1800
+export interface StatsRepository {
+  add: (
+    network: string,
+    service: Container,
+    secondTimestamp: string,
+    stats: SerializableContainerStats,
+  ) => Promise<void>
+  getGroupedByContainer: (
+    network: string,
+    from: Date,
+    to: Date,
+  ) => Promise<Dictionary<StatsEntry[]>>
+}
+
+const storage = new Map<Container, StatsEntry[]>()
+
+// TODO implement sqlite
 const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, service, secondTimestamp, stats) => {
-      ensureDb(network)
-
-      if (db[network][service].length >= MAX_ENTRIES) {
-        db[network][service].shift()
+      if (!storage.has(service)) {
+        storage.set(service, [])
       }
-      db[network][service].push({
-        ...stats,
+
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      storage!.get(service)?.push({
         timestamp: secondTimestamp,
+        network,
+        service,
+        cpu: stats.cpu,
+        memory: stats.memory,
+        upload: stats.network.upload,
+        download: stats.network.download,
       })
     },
-    getAll: async (network, service) =>
-      Array.from(db[network][service].values()),
-    getGroupedByContainer: async network => {
-      return Object.values(Container).reduce(
-        (accu, current) => ({
-          ...accu,
-          [current]: [...db[network][current]],
-        }),
-        {} as Record<Container, StatsDbEntry[]>,
-      )
+    getGroupedByContainer: async (_network, from, to) => {
+      return Object.values(Container).reduce((accu, current) => {
+        if (storage.has(current)) {
+          return {
+            ...accu,
+            [current]: storage
+              .get(current)
+              ?.filter(
+                item =>
+                  item.timestamp >= from.toISOString() &&
+                  item.timestamp <= to.toISOString(),
+              ),
+          } as Dictionary<StatsEntry[]>
+        }
+
+        return accu
+      }, {} as Dictionary<StatsEntry[]>)
     },
   }
 }
