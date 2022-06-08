@@ -40,7 +40,7 @@ pub trait BaseNodeClient: Send + Sync {
         checkpoint_unique_id: Vec<u8>,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
 
-    async fn check_for_constitutions_for_me(
+    async fn get_constitutions(
         &mut self,
         dan_node_public_key: PublicKey,
     ) -> Result<Vec<TransactionOutput>, DigitalAssetError>;
