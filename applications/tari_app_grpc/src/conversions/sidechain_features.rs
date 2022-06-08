@@ -127,6 +127,9 @@ impl TryFrom<grpc::CreateConstitutionDefinitionRequest> for SideChainFeatures {
                 initial_reward: 100.into(),
             }),
             acceptance: None,
+            update_proposal: None,
+            update_proposal_acceptance: None,
+            amendment: None,
         })
     }
 }
