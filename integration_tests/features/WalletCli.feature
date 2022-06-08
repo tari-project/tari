@@ -152,7 +152,7 @@ Feature: Wallet CLI
         And mining node MINE mines 1 blocks
         Then WALLET is connected to BASE
 
-    @dan_layer
+    @dan
     Scenario: As a user I want to publish a contract definition via command line
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
@@ -164,7 +164,7 @@ Feature: Wallet CLI
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         Then WALLET is connected to BASE
 
-    @dan_layer
+    @dan
     Scenario: As a user I want to publish a constitution definition via command line
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
