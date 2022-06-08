@@ -33,11 +33,11 @@ use blake2::{
     VarBlake2b,
 };
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_utilities::ByteArray;
 
-use super::{ContractDefinition, OutputFeaturesVersion, SideChainFeaturesBuilder};
+use super::{ContractAcceptance, ContractDefinition, OutputFeaturesVersion, SideChainFeaturesBuilder};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
     transactions::{
@@ -290,6 +290,25 @@ impl OutputFeatures {
             sidechain_features: Some(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_contract_definition(definition)
+                    .finish(),
+            ),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_contract_acceptance(
+        contract_id: FixedHash,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
+    ) -> OutputFeatures {
+        Self {
+            flags: OutputFlags::CONTRACT_ACCEPT,
+            sidechain_features: Some(
+                SideChainFeatures::builder(contract_id)
+                    .with_contract_acceptance(ContractAcceptance {
+                        validator_node_public_key,
+                        signature,
+                    })
                     .finish(),
             ),
             ..Default::default()

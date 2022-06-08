@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fs::File,
-    io::{BufReader, LineWriter, Write},
+    io::{BufReader, BufWriter, LineWriter, Write},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -42,12 +43,12 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{ContractDefinition, TransactionOutput, UnblindedOutput},
+    transaction_components::{ContractDefinition, SideChainFeatures, TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::ContractDefinitionFileFormat,
+    assets::{ConstitutionDefinitionFileFormat, ContractDefinitionFileFormat, ContractSpecificationFileFormat},
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
@@ -62,7 +63,14 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
-    cli::CliCommands,
+    automation::prompt::{HexArg, Prompt},
+    cli::{
+        CliCommands,
+        ContractDefinitionCommand,
+        ContractDefinitionSubcommand,
+        InitContractDefinitionArgs,
+        PublishDefinitionArgs,
+    },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
@@ -91,7 +99,7 @@ pub enum WalletCommand {
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
-    CreateCommitteeDefinition,
+    PublishConstitutionDefinition,
     RevalidateWalletDb,
     PublishContractDefinition,
 }
@@ -708,7 +716,30 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
+            PublishConstitutionDefinition(args) => {
+                let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                let file_reader = BufReader::new(file);
 
+                // parse the JSON file
+                let constitution_definition: ConstitutionDefinitionFileFormat =
+                    serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                let side_chain_features = SideChainFeatures::try_from(constitution_definition.clone()).unwrap();
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager
+                    .create_constitution_definition(&side_chain_features)
+                    .await?;
+
+                let message = format!(
+                    "Committee definition with {} members for {:?}",
+                    constitution_definition.validator_committee.len(),
+                    constitution_definition.contract_id
+                );
+
+                transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+            },
             RevalidateWalletDb => {
                 output_service
                     .revalidate_all_outputs()
@@ -719,34 +750,8 @@ pub async fn command_runner(
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
             },
-            PublishContractDefinition(args) => {
-                // open the JSON file with the contract definition values
-                let file = File::open(&args.file_path).map_err(|e| CommandError::JSONFile(e.to_string()))?;
-                let file_reader = BufReader::new(file);
-
-                // parse the JSON file
-                let contract_definition: ContractDefinitionFileFormat =
-                    serde_json::from_reader(file_reader).map_err(|e| CommandError::JSONFile(e.to_string()))?;
-                let contract_definition_features = ContractDefinition::from(contract_definition);
-                let contract_id_hex = contract_definition_features.calculate_contract_id().to_vec().to_hex();
-
-                // create the contract definition transaction
-                let mut asset_manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = asset_manager
-                    .create_contract_definition(&contract_definition_features)
-                    .await?;
-
-                // publish the contract definition transaction
-                let message = format!("Contract definition for contract with id={}", contract_id_hex);
-                transaction_service
-                    .submit_transaction(tx_id, transaction, 0.into(), message)
-                    .await?;
-
-                println!(
-                    "Contract definition transaction submitted with tx_id={} for contract with contract_id={}",
-                    tx_id, contract_id_hex
-                );
-                println!("Done!");
+            ContractDefinition(subcommand) => {
+                handle_contract_definition_command(&wallet, subcommand).await?;
             },
         }
     }
@@ -786,6 +791,89 @@ pub async fn command_runner(
         }
     }
 
+    Ok(())
+}
+
+async fn handle_contract_definition_command(
+    wallet: &WalletSqlite,
+    command: ContractDefinitionCommand,
+) -> Result<(), CommandError> {
+    match command.subcommand {
+        ContractDefinitionSubcommand::Init(args) => init_contract_definition_spec(args),
+        ContractDefinitionSubcommand::Publish(args) => publish_contract_definition(wallet, args).await,
+    }
+}
+
+fn init_contract_definition_spec(args: InitContractDefinitionArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    let contract_name = Prompt::new("Contract name (max 32 characters):")
+        .skip_if_some(args.contract_name)
+        .get_result()?;
+    let contract_issuer = Prompt::new("Issuer public Key (hex):")
+        .skip_if_some(args.contract_issuer)
+        .get_result_parsed::<HexArg<_>>()?;
+    let runtime = Prompt::new("Contract runtime:")
+        .skip_if_some(args.runtime)
+        .with_default("/tari/wasm/v0.1".to_string())
+        .get_result()?;
+
+    let contract_definition = ContractDefinitionFileFormat {
+        contract_name,
+        contract_issuer: contract_issuer.into_inner(),
+        contract_spec: ContractSpecificationFileFormat {
+            runtime,
+            public_functions: vec![],
+        },
+    };
+
+    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(writer, &contract_definition).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishDefinitionArgs) -> Result<(), CommandError> {
+    // open the JSON file with the contract definition values
+    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let file_reader = BufReader::new(file);
+
+    // parse the JSON file
+    let contract_definition: ContractDefinitionFileFormat =
+        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let contract_definition_features = ContractDefinition::from(contract_definition);
+    let contract_id_hex = contract_definition_features.calculate_contract_id().to_vec().to_hex();
+
+    // create the contract definition transaction
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_contract_definition(&contract_definition_features)
+        .await?;
+
+    // publish the contract definition transaction
+    let message = format!("Contract definition for contract with id={}", contract_id_hex);
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
+    println!(
+        "Contract definition transaction submitted with tx_id={} for contract with contract_id={}",
+        tx_id, contract_id_hex
+    );
+    println!("Done!");
     Ok(())
 }
 

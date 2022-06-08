@@ -72,7 +72,7 @@ service Wallet {
     rpc CreateInitialAssetCheckpoint(CreateInitialAssetCheckpointRequest) returns (CreateInitialAssetCheckpointResponse);
     // TODO: Needs a better name pls
     rpc CreateFollowOnAssetCheckpoint(CreateFollowOnAssetCheckpointRequest) returns (CreateFollowOnAssetCheckpointResponse);
-    rpc CreateCommitteeDefinition(CreateCommitteeDefinitionRequest) returns (CreateCommitteeDefinitionResponse);
+    rpc CreateConstitutionDefinition(CreateConstitutionDefinitionRequest) returns (CreateConstitutionDefinitionResponse);
 
     rpc GetOwnedAssets(Empty) returns (GetOwnedAssetsResponse);
 
@@ -82,6 +82,8 @@ service Wallet {
     rpc GetOwnedTokens(GetOwnedTokensRequest) returns (GetOwnedTokensResponse);
 
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
+
+    rpc SubmitContractAcceptance(SubmitContractAcceptanceRequest) returns (SubmitContractAcceptanceResponse);
 }
 
 message GetVersionRequest { }
@@ -286,15 +288,25 @@ message CreateFollowOnAssetCheckpointResponse {
 
 }
 
-message CreateCommitteeDefinitionRequest {
-    bytes asset_public_key = 1;
-    repeated bytes committee = 2;
-    uint64 effective_sidechain_height = 3;
-    bool is_initial = 4;
+message CreateConstitutionDefinitionRequest {
+    bytes contract_id = 1;
+    CommitteeMembers validator_committee = 2;
+    uint64 acceptance_period_expiry = 3;
+    uint64 minimum_quorum_required = 4;
 }
 
-message CreateCommitteeDefinitionResponse {
+message CreateConstitutionDefinitionResponse {
 
+}
+
+message SubmitContractAcceptanceRequest {
+    bytes contract_id = 1;
+    bytes validator_node_public_key = 2;
+    Signature signature = 3;
+}
+
+message SubmitContractAcceptanceResponse {
+    uint64 tx_id = 1;
 }
 
 message GetOwnedAssetsResponse {

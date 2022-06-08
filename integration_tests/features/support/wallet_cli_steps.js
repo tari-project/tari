@@ -301,14 +301,14 @@ Then(
 );
 
 Then(
-  "I create a contract definition from file {string} on wallet {word} via command line",
+  "I create a {string} from file {string} on wallet {word} via command line",
   { timeout: 120 * 1000 },
-  async function (relative_file_path, wallet_name) {
+  async function (definition_type, relative_file_path, wallet_name) {
     let absolute_path = path.resolve(relative_file_path);
     let wallet = this.getWallet(wallet_name);
     let output = await wallet_run_command(
       wallet,
-      `publish-contract-definition --json-file ${absolute_path}`
+      `publish-${definition_type} --json-file ${absolute_path}`
     );
     console.log(output.buffer);
   }

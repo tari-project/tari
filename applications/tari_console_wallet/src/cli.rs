@@ -108,8 +108,9 @@ pub enum CliCommands {
     InitShaAtomicSwap(SendTariArgs),
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
+    PublishConstitutionDefinition(PublishDefinitionArgs),
     RevalidateWalletDb,
-    PublishContractDefinition(PublishContractDefinitionArgs),
+    ContractDefinition(ContractDefinitionCommand),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -192,13 +193,43 @@ fn parse_hex(s: &str) -> Result<Vec<u8>, HexError> {
 
 #[derive(Debug, Args, Clone)]
 pub struct ClaimShaAtomicSwapRefundArgs {
-    #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
+    #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
     pub message: String,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PublishContractDefinitionArgs {
+pub struct ContractDefinitionCommand {
+    #[clap(subcommand)]
+    pub subcommand: ContractDefinitionSubcommand,
+}
+
+#[derive(Debug, Subcommand, Clone)]
+pub enum ContractDefinitionSubcommand {
+    /// Generates a new contract definition JSON spec file that can be edited and passed to other contract definition
+    /// commands.
+    Init(InitContractDefinitionArgs),
+    /// Creates and publishes a contract definition UTXO from the JSON spec file.
+    Publish(PublishDefinitionArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct InitContractDefinitionArgs {
+    /// The destination path of the contract definition to create
+    pub dest_path: PathBuf,
+    /// Force overwrite the destination file if it already exists
+    #[clap(short = 'f', long)]
+    pub force: bool,
+    #[clap(long, alias = "name")]
+    pub contract_name: Option<String>,
+    #[clap(long, alias = "issuer")]
+    pub contract_issuer: Option<String>,
+    #[clap(long, alias = "runtime")]
+    pub runtime: Option<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PublishDefinitionArgs {
     pub file_path: PathBuf,
 }
