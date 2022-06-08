@@ -1,5 +1,8 @@
 import { forwardRef, ReactNode, ForwardedRef } from 'react'
 import { useSpring } from 'react-spring'
+import { useTheme } from 'styled-components'
+import SvgArrowRight from '../../../styles/Icons/ArrowRight'
+import Button from '../../Button'
 import {
   MessageSpaceContainer,
   StyledMessage,
@@ -15,9 +18,11 @@ const MessageBox = (
   {
     animate,
     children,
+    skipButton,
   }: {
     animate: boolean
     children: ReactNode
+    skipButton?: boolean
   },
   ref?: ForwardedRef<HTMLDivElement>,
 ) => {
@@ -33,6 +38,8 @@ const MessageBox = (
     delay: 800,
   })
 
+  const theme = useTheme()
+  console.log('SKIP_BUTTON: ', children)
   return (
     <StyledMessageBox ref={ref}>
       <StyledMessage style={{ opacity: 0 }}>{children}</StyledMessage>
@@ -40,6 +47,19 @@ const MessageBox = (
         <MessageSlideIn style={{ ...useSlideInAnim }}>
           <StyledMessage style={{ ...useOpacityAnim }}>
             {children}
+            {skipButton && (
+              <Button
+                style={{
+                  textDecoration: 'none',
+                  color: theme.secondary,
+                }}
+                variant='button-in-text'
+                rightIcon={<SvgArrowRight fontSize={24} />}
+                autosizeIcons={false}
+              >
+                Skip Chatting
+              </Button>
+            )}
           </StyledMessage>
         </MessageSlideIn>
       </MessageSpaceContainer>
