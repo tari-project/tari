@@ -78,7 +78,12 @@ const Onboarding = ({ close }: { close: () => void }) => {
           justifyContent: 'center',
         }}
       >
-        <TBotPrompt open={true} messages={messages} currentIndex={current} />
+        <TBotPrompt
+          open={true}
+          messages={messages}
+          currentIndex={current}
+          closeIcon={false}
+        />
       </div>
     </div>
   )
