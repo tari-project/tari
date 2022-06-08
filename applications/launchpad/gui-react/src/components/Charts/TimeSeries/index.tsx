@@ -44,7 +44,7 @@ const getPercentageYAxisDefinition = (
   data: SeriesData[],
   tickResolution: number,
 ) => {
-  const ys = data.flatMap(({ data }) => data.map(({ y }) => y))
+  const ys = data.flatMap(({ data }) => data.map(({ y }) => y || 0))
 
   const maxY = Math.ceil(Math.max(100, ...ys) / tickResolution) * tickResolution
 
