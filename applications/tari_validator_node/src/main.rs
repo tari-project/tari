@@ -150,8 +150,8 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     if let Some(address) = config.validator_node.grpc_address.clone() {
         task::spawn(run_grpc(grpc_server, address, shutdown.to_signal()));
     }
-    println!("🚀 Validator node started!");
-    println!("{}", node_identity);
+    info!("🚀 Validator node started!");
+    info!("{}", node_identity);
     run_dan_node(
         shutdown.to_signal(),
         config.validator_node.clone(),
@@ -199,7 +199,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
     grpc_address: Multiaddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    println!("Starting GRPC on {}", grpc_address);
+    info!("Starting GRPC on {}", grpc_address);
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
@@ -213,7 +213,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
             err
         })?;
 
-    println!("Stopping GRPC");
+    info!("Stopping GRPC");
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
 }
