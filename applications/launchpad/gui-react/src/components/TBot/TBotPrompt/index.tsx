@@ -183,6 +183,7 @@ const TBotPrompt = ({
           <MessageBox
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
+            skipButton={count === idx + 1}
           >
             {'content' in msg ? msg.content : msg}
           </MessageBox>
@@ -194,6 +195,7 @@ const TBotPrompt = ({
           <MessageBox
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
+            skipButton={count === idx + 1}
           >
             {msg}
           </MessageBox>
@@ -205,6 +207,7 @@ const TBotPrompt = ({
           <MessageBox
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
+            skipButton={count === idx + 1}
           >
             {msg}
           </MessageBox>
@@ -216,6 +219,7 @@ const TBotPrompt = ({
           key={`${idx}-msg`}
           animate={count === idx + 1}
           ref={count === idx + 1 ? lastMsgRef : null}
+          skipButton={count === idx + 1}
         >
           <Message />
         </MessageBox>
@@ -226,7 +230,8 @@ const TBotPrompt = ({
   if (!open) {
     return null
   }
-
+  // console.log('TESTING STUFF: ', messages?.[count])
+  console.log('COUNT: ', count)
   return (
     <PromptContainer
       style={promptAnim}
