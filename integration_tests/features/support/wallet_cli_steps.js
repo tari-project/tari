@@ -308,7 +308,7 @@ Then(
     let wallet = this.getWallet(wallet_name);
     let output = await wallet_run_command(
       wallet,
-      `publish-${definition_type} --json-file ${absolute_path}`
+      `${definition_type} publish ${absolute_path}`
     );
     console.log(output.buffer);
   }
