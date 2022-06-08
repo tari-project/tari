@@ -165,13 +165,13 @@ Feature: Wallet CLI
         Then WALLET is connected to BASE
 
     @dan
-    Scenario: As a user I want to publish a constitution definition via command line
+    Scenario: As a user I want to publish a contract constitution via command line
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
         And I have mining node MINE connected to base node BASE and wallet WALLET
         And mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
-        And I publish a contract constitution from file "fixtures/constitution_definition.json" on wallet WALLET via command line
+        And I publish a contract constitution from file "fixtures/contract_constitution.json" on wallet WALLET via command line
         And mining node MINE mines 4 blocks
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         Then WALLET is connected to BASE
