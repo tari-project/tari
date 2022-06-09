@@ -294,7 +294,7 @@ class WalletProcess {
       args.push(`${k}=${overrides[k]}`);
     });
 
-    // In the new cli commands are just arguments on the console wallet
+    // Append command arguments 
     args.push(...command.split(" "));
 
     let output = { buffer: "" };
