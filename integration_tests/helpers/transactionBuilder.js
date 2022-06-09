@@ -8,6 +8,7 @@ const {
   littleEndianHexStringToBigEndianHexString,
   combineTwoTariKeys,
 } = require("../helpers/util");
+const { OutputType } = require("./types");
 
 class TransactionBuilder {
   recovery_byte_key;
@@ -59,7 +60,7 @@ class TransactionBuilder {
       // version
       Buffer.from([OUTPUT_FEATURES_VERSION]),
       Buffer.from([parseInt(features.maturity || 0)]),
-      toLittleEndian(features.flags, 16),
+      Buffer.from([features.output_type]),
       OUTPUT_FEATURES_VERSION === 0x00
         ? Buffer.from([])
         : Buffer.from([features.recovery_byte]),
@@ -265,7 +266,7 @@ class TransactionBuilder {
     );
     const recoveryByte = this.create_unique_recovery_byte(commitment);
     const outputFeatures = Object.assign({
-      flags: 0,
+      output_type: OutputType.STANDARD,
       maturity: 0,
       recovery_byte: recoveryByte,
       metadata: [],
@@ -459,7 +460,7 @@ class TransactionBuilder {
     );
     const recoveryByte = this.create_unique_recovery_byte(commitment);
     let outputFeatures = {
-      flags: 1,
+      output_type: OutputType.COINBASE,
       maturity: lockHeight,
       recovery_byte: recoveryByte,
       metadata: [],

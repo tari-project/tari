@@ -34,4 +34,8 @@ const PaymentType = {
   ONE_SIDED: 1,
 };
 
-module.exports = { PowAlgo, ConnectivityStatus, PaymentType };
+const OutputType = {
+  STANDARD: 0,
+  COINBASE: 1,
+};
+module.exports = { PowAlgo, ConnectivityStatus, PaymentType, OutputType };
