@@ -461,11 +461,7 @@ impl TryFrom<grpc::CommitteeMembers> for CommitteeMembers {
 impl From<CommitteeSignatures> for grpc::CommitteeSignatures {
     fn from(value: CommitteeSignatures) -> Self {
         Self {
-            signatures: value
-                .signatures()
-                .iter()
-                .map(|s| grpc::Signature::from(s.clone()))
-                .collect(),
+            signatures: value.signatures().into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -484,10 +480,10 @@ impl TryFrom<grpc::CommitteeSignatures> for CommitteeSignatures {
 
         let signatures = value
             .signatures
-            .iter()
+            .into_iter()
             .enumerate()
             .map(|(i, s)| {
-                Signature::try_from(s.clone())
+                Signature::try_from(s)
                     .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
             })
             .collect::<Result<Vec<_>, _>>()?;

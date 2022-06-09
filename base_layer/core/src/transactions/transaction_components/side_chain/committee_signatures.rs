@@ -45,8 +45,8 @@ impl CommitteeSignatures {
         Self { signatures }
     }
 
-    pub fn signatures(&self) -> &[Signature] {
-        &self.signatures
+    pub fn signatures(&self) -> Vec<Signature> {
+        self.signatures.to_vec()
     }
 }
 
