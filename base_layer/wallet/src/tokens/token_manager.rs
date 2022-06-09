@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_core::transactions::transaction_components::OutputFlags;
+use tari_core::transactions::transaction_components::OutputType;
 
 use crate::{
     error::WalletError,
@@ -53,7 +53,7 @@ impl<T: OutputManagerBackend + 'static> TokenManager<T> {
     pub async fn list_owned(&self) -> Result<Vec<Token>, WalletError> {
         let outputs = self
             .output_database
-            .fetch_with_features(OutputFlags::NON_FUNGIBLE)
+            .fetch_with_features(OutputType::NonFungible)
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
         // These will include assets registrations

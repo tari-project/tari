@@ -24,7 +24,7 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::{FixedHash, PublicKey};
-use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags};
+use tari_core::transactions::transaction_components::{OutputFeatures, OutputType};
 
 use crate::models::ModelError;
 
@@ -53,7 +53,7 @@ impl BaseLayerOutput {
 
 #[derive(Debug, Clone)]
 pub struct CheckpointOutput {
-    pub flags: OutputFlags,
+    pub flags: OutputType,
     pub parent_public_key: PublicKey,
     pub merkle_root: FixedHash,
 }
@@ -62,7 +62,7 @@ impl TryFrom<BaseLayerOutput> for CheckpointOutput {
     type Error = ModelError;
 
     fn try_from(output: BaseLayerOutput) -> Result<Self, Self::Error> {
-        if !output.features.flags.contains(OutputFlags::SIDECHAIN_CHECKPOINT) {
+        if output.features.output_type != OutputType::SidechainCheckpoint {
             return Err(ModelError::NotCheckpointOutput);
         }
 
@@ -76,7 +76,7 @@ impl TryFrom<BaseLayerOutput> for CheckpointOutput {
             .ok_or(ModelError::CheckpointOutputMissingCheckpointMerkleRoot)?;
 
         Ok(Self {
-            flags: output.features.flags,
+            flags: output.features.output_type,
             parent_public_key,
             merkle_root,
         })
@@ -85,7 +85,7 @@ impl TryFrom<BaseLayerOutput> for CheckpointOutput {
 
 #[derive(Debug, Clone)]
 pub struct CommitteeOutput {
-    pub flags: OutputFlags,
+    pub flags: OutputType,
     pub parent_public_key: PublicKey,
     pub committee: Vec<PublicKey>,
 }
@@ -94,7 +94,7 @@ impl TryFrom<BaseLayerOutput> for CommitteeOutput {
     type Error = ModelError;
 
     fn try_from(output: BaseLayerOutput) -> Result<Self, Self::Error> {
-        if !output.features.flags.contains(OutputFlags::COMMITTEE_DEFINITION) {
+        if output.features.output_type != OutputType::CommitteeDefinition {
             return Err(ModelError::NotCommitteeDefinitionOutput);
         }
 
@@ -108,7 +108,7 @@ impl TryFrom<BaseLayerOutput> for CommitteeOutput {
             .ok_or(ModelError::CommitteeOutputMissingDefinition)?;
 
         Ok(Self {
-            flags: output.features.flags,
+            flags: output.features.output_type,
             parent_public_key,
             committee: committee.into(),
         })

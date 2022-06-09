@@ -95,7 +95,7 @@ impl OutputField {
             SenderOffsetPublicKey => &output.sender_offset_public_key as &dyn Any,
             Covenant => &output.covenant as &dyn Any,
             Features => &output.features as &dyn Any,
-            FeaturesFlags => &output.features.flags as &dyn Any,
+            FeaturesFlags => &output.features.output_type as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
             FeaturesUniqueId => &output.features.unique_id as &dyn Any,
             FeaturesParentPublicKey => &output.features.parent_public_key as &dyn Any,
@@ -123,7 +123,7 @@ impl OutputField {
             SenderOffsetPublicKey => output.sender_offset_public_key.to_consensus_bytes(),
             Covenant => output.covenant.to_consensus_bytes(),
             Features => output.features.to_consensus_bytes(),
-            FeaturesFlags => output.features.flags.to_consensus_bytes(),
+            FeaturesFlags => output.features.output_type.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
             FeaturesUniqueId => output.features.unique_id.to_consensus_bytes(),
             FeaturesParentPublicKey => output.features.parent_public_key.to_consensus_bytes(),
@@ -156,7 +156,7 @@ impl OutputField {
                 .unwrap_or(false),
             FeaturesFlags => input
                 .features()
-                .map(|features| features.flags == output.features.flags)
+                .map(|features| features.output_type == output.features.output_type)
                 .unwrap_or(false),
             FeaturesMaturity => input
                 .features()
@@ -387,7 +387,7 @@ mod test {
         covenants::test::{create_input, create_outputs},
         transactions::{
             test_helpers::UtxoTestParams,
-            transaction_components::{OutputFeatures, OutputFlags, SpentOutput},
+            transaction_components::{OutputFeatures, OutputType, SpentOutput},
         },
     };
 
@@ -419,7 +419,7 @@ mod test {
                     .is_eq(&output, &output.features.maturity)
                     .unwrap());
                 assert!(OutputField::FeaturesFlags
-                    .is_eq(&output, &output.features.flags)
+                    .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
@@ -459,7 +459,7 @@ mod test {
                     .unwrap());
                 assert!(!OutputField::FeaturesMaturity.is_eq(&output, &123u64).unwrap());
                 assert!(!OutputField::FeaturesFlags
-                    .is_eq(&output, &OutputFlags::COINBASE_OUTPUT)
+                    .is_eq(&output, &OutputType::Coinbase)
                     .unwrap());
                 assert!(!OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, &SideChainFeatures::new(FixedHash::hash_bytes(b"B")))
@@ -553,7 +553,7 @@ mod test {
             fn it_constructs_challenge_using_consensus_encoding() {
                 let features = OutputFeatures {
                     maturity: 42,
-                    flags: OutputFlags::COINBASE_OUTPUT,
+                    output_type: OutputType::Coinbase,
                     ..Default::default()
                 };
                 let output = create_outputs(1, UtxoTestParams {

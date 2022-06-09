@@ -70,11 +70,10 @@
 #[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
-
 use core::ptr;
 use std::{
     boxed::Box,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     ffi::{CStr, CString},
     num::NonZeroU16,
     path::PathBuf,
@@ -121,7 +120,7 @@ use tari_core::transactions::{
         CommitteeDefinitionFeatures,
         MintNonFungibleFeatures,
         OutputFeaturesVersion,
-        OutputFlags,
+        OutputType,
         SideChainCheckpointFeatures,
     },
     CryptoFactories,
@@ -1055,7 +1054,7 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
 ///
 /// ## Arguments
 /// `version` - The encoded value of the version as a byte
-/// `flags` - The encoded value of the flags as a byte
+/// `output_type` - The encoded value of the output type as a byte
 /// `maturity` - The encoded value maturity as bytes
 /// `recovery_byte` - The encoded value of the recovery byte as a byte
 /// `metadata` - The metadata componenet as a ByteVector. It cannot be null
@@ -1074,7 +1073,7 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
 #[no_mangle]
 pub unsafe extern "C" fn output_features_create_from_bytes(
     version: c_uchar,
-    flags: c_ushort,
+    output_type: c_ushort,
     maturity: c_ulonglong,
     recovery_byte: c_uchar,
     metadata: *const ByteVector,
@@ -1103,14 +1102,11 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         },
     };
 
-    let decoded_flags = match OutputFlags::from_bits(flags) {
-        Some(flags_value) => flags_value,
+    let output_type = match output_type.try_into().ok().and_then(OutputType::from_byte) {
+        Some(output_type) => output_type,
         None => {
-            error!(
-                target: LOG_TARGET,
-                "Error creating a OutputFlags from bytes: {:?}", flags
-            );
-            error = LibWalletError::from(InterfaceError::InvalidArgument("flags".to_string())).code;
+            error!(target: LOG_TARGET, "output_type overflowed",);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("flag".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
@@ -1148,7 +1144,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 
     let output_features = TariOutputFeatures::new(
         decoded_version,
-        decoded_flags,
+        output_type,
         maturity,
         recovery_byte,
         decoded_metadata,
@@ -7471,7 +7467,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let version: c_uchar = 0;
-            let flags: c_ushort = 0;
+            let output_type: c_ushort = 0;
             let maturity: c_ulonglong = 20;
             let recovery_byte: c_uchar = 1;
             let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
@@ -7480,7 +7476,7 @@ mod test {
 
             let output_features = output_features_create_from_bytes(
                 version,
-                flags,
+                output_type,
                 maturity,
                 recovery_byte,
                 metadata,
@@ -7490,7 +7486,10 @@ mod test {
             );
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V0);
-            assert_eq!((*output_features).flags, OutputFlags::from_bits(flags).unwrap());
+            assert_eq!(
+                (*output_features).output_type,
+                OutputType::from_byte(output_type as u8).unwrap()
+            );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).recovery_byte, recovery_byte);
             assert!((*output_features).metadata.is_empty());
@@ -7515,7 +7514,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let version: c_uchar = OutputFeaturesVersion::V1.as_u8();
-            let flags: c_ushort = OutputFlags::COINBASE_OUTPUT.bits();
+            let output_type = OutputType::Coinbase.as_byte();
             let maturity: c_ulonglong = 20;
             let recovery_byte: c_uchar = 1;
 
@@ -7530,7 +7529,7 @@ mod test {
 
             let output_features = output_features_create_from_bytes(
                 version,
-                flags,
+                c_ushort::from(output_type),
                 maturity,
                 recovery_byte,
                 metadata,
@@ -7540,7 +7539,10 @@ mod test {
             );
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
-            assert_eq!((*output_features).flags, OutputFlags::from_bits(flags).unwrap());
+            assert_eq!(
+                (*output_features).output_type,
+                OutputType::from_byte(output_type as u8).unwrap()
+            );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).recovery_byte, recovery_byte);
             assert_eq!((*output_features).metadata, expected_metadata);

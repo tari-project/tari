@@ -52,7 +52,7 @@ use crate::{
         tari_amount::MicroTari,
         transaction_components::{
             KernelSum,
-            OutputFlags,
+            OutputType,
             TransactionError,
             TransactionInput,
             TransactionKernel,
@@ -348,7 +348,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 .take(2)
                 .collect::<Result<Vec<_>, TransactionError>>()?;
             // Unless a burn flag is present
-            if input.features()?.flags.contains(OutputFlags::BURN_NON_FUNGIBLE) {
+            if input.features()?.output_type == OutputType::BurnNonFungible {
                 if !exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
                 }

@@ -79,7 +79,7 @@ impl NewOutputSql {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: output.unblinded_output.value.as_u64() as i64,
-            flags: i32::from(output.unblinded_output.features.flags.bits()),
+            flags: i32::from(output.unblinded_output.features.output_type.as_byte()),
             maturity: output.unblinded_output.features.maturity as i64,
             recovery_byte: i32::from(output.unblinded_output.features.recovery_byte),
             status: status as i32,

@@ -55,7 +55,7 @@ use tari_core::{
             TransactionSchema,
             UtxoTestParams,
         },
-        transaction_components::{KernelBuilder, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
+        transaction_components::{KernelBuilder, OutputFeatures, OutputType, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
         CryptoFactories,
     },
@@ -1066,7 +1066,7 @@ async fn consensus_validation_versions() {
 
     let features = OutputFeatures::new(
         OutputFeaturesVersion::V1,
-        OutputFlags::empty(),
+        OutputType::default(),
         0,
         0,
         Default::default(),
@@ -1219,7 +1219,7 @@ async fn consensus_validation_unique_id() {
     // mint new NFT
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let features = OutputFeatures {
-        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        output_type: OutputType::MintNonFungible,
         parent_public_key: Some(asset.clone()),
         unique_id: Some(vec![1, 2, 3]),
         ..Default::default()
@@ -1254,7 +1254,7 @@ async fn consensus_validation_unique_id() {
 
     // a different unique_id should be fine
     let features = OutputFeatures {
-        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        output_type: OutputType::MintNonFungible,
         parent_public_key: Some(asset),
         unique_id: Some(vec![4, 5, 6]),
         ..Default::default()
@@ -1271,7 +1271,7 @@ async fn consensus_validation_unique_id() {
     // a different asset should also be fine
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let features = OutputFeatures {
-        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        output_type: OutputType::MintNonFungible,
         parent_public_key: Some(asset),
         unique_id: Some(vec![4, 5, 6]),
         ..Default::default()
@@ -1288,7 +1288,7 @@ async fn consensus_validation_unique_id() {
     // a transaction containing duplicates should be rejected
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let features = OutputFeatures {
-        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        output_type: OutputType::MintNonFungible,
         parent_public_key: Some(asset),
         unique_id: Some(vec![7, 8, 9]),
         ..Default::default()
