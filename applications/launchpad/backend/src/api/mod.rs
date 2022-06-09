@@ -23,12 +23,16 @@
 
 use std::{convert::TryFrom, fmt::format};
 
-use log::warn;
-use tauri::http::status;
+use config::Config;
+use futures::StreamExt;
+use log::{debug, info, warn};
+use tari_app_grpc::tari_rpc::wallet_client;
+use tauri::{http::status, AppHandle, Manager, Wry};
 
 use crate::{
-    commands::{status, DEFAULT_IMAGES},
+    commands::{status, AppState, DEFAULT_IMAGES},
     docker::{ContainerState, ImageType, TariNetwork},
+    grpc::{GrpcWalletClient, WalletTransaction},
 };
 
 pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
@@ -54,4 +58,34 @@ pub async fn health_check(image: &str) -> String {
         Ok(img) => status(img).await,
         Err(_err) => format!("image {} not found", image),
     }
+}
+
+#[tauri::command]
+pub async fn wallet_events(app: AppHandle<Wry>) -> Result<(), String> {
+    info!("Setting up event stream");
+    let mut wallet_client = GrpcWalletClient::new();
+    let mut stream = wallet_client.stream().await.map_err(|e| e.chained_message()).unwrap();
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(response) = stream.next().await {
+            if let Some(value) = response.transaction {
+                let wt = WalletTransaction {
+                    event: value.event,
+                    tx_id: value.tx_id,
+                    source_pk: value.source_pk,
+                    dest_pk: value.dest_pk,
+                    status: value.status,
+                    direction: value.direction,
+                    amount: value.amount,
+                    message: value.message,
+                };
+                
+                if let Err(err) = app_clone.emit_all("wallet_event", wt.clone()) {
+                    warn!("Could not emit event to front-end, {:?}", err);
+                }
+            }
+        }
+        info!("Event stream has closed.");
+    });
+    Ok(())
 }

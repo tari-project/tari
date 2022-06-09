@@ -44,8 +44,10 @@ pub use settings::{
     Sha3MinerConfig,
     WalletConfig,
     XmRigConfig,
+    BASE_NODE_GRPC_ADDRESS_URL,
     DEFAULT_MINING_ADDRESS,
     DEFAULT_MONEROD_URL,
+    WALLET_GRPC_ADDRESS_URL,
 };
 pub use workspace::{TariWorkspace, Workspaces};
 pub use wrapper::DockerWrapper;
