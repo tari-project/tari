@@ -166,6 +166,8 @@ where
                             )
                             .await?;
                             state_changed = true;
+
+
                         } else {
                             debug!(
                                 target: LOG_TARGET,
@@ -183,7 +185,7 @@ where
                         );
                         self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
                             .await?;
-                        state_changed = true;
+                        self.publish_event(TransactionEvent::NewBlockMined(unmined_tx.tx_id));                            
                     }
                 }
             }
