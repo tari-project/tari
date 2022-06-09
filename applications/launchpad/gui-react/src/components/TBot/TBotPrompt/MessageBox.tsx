@@ -39,7 +39,7 @@ const MessageBox = (
   })
 
   const theme = useTheme()
-  console.log('SKIP_BUTTON: ', children)
+
   return (
     <StyledMessageBox ref={ref}>
       <StyledMessage style={{ opacity: 0 }}>{children}</StyledMessage>

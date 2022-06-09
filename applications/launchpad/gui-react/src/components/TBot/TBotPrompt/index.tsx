@@ -23,7 +23,6 @@ import {
   HeightAnimationWrapper,
 } from './styles'
 
-import { HelpMessagesMap } from '../../../config/helpMessagesConfig'
 import ChatDots from '../DotsComponent'
 import MessageBox from './MessageBox'
 
@@ -47,6 +46,7 @@ const TBotPrompt = ({
   messages,
   currentIndex = 1,
   closeIcon = true,
+  mode = 'help',
 }: TBotPromptProps) => {
   const dispatch = useAppDispatch()
 
@@ -167,61 +167,51 @@ const TBotPrompt = ({
       if (lastMsgRef?.current) {
         lastMsgRef?.current.scrollIntoView({ block: 'start' })
       }
-    }, 500)
+    }, 3000)
   }, [lastMsgRef, lastMsgRef?.current])
 
   // Build messages list
   const renderedMessages = useMemo(() => {
     return messages?.slice(0, count).map((msg, idx) => {
+      const skipButtonCheck = count === idx + 1
       if (
         typeof msg !== 'string' &&
         typeof msg !== 'number' &&
         typeof msg !== 'boolean' &&
         msg
       ) {
+        // if message is complete functional component
+        if ('content' in msg && typeof msg.content === 'function') {
+          const TempMsg = msg.content
+          return (
+            <MessageBox
+              animate={count === idx + 1}
+              ref={count === idx + 1 ? lastMsgRef : null}
+              skipButton={mode === 'onboarding' && skipButtonCheck}
+            >
+              <TempMsg />
+            </MessageBox>
+          )
+        }
         return (
           <MessageBox
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
-            skipButton={count === idx + 1}
+            skipButton={mode === 'onboarding' && skipButtonCheck}
           >
-            {'content' in msg ? msg.content : msg}
+            {'content' in msg ? (msg.content as ReactNode | string) : msg}
           </MessageBox>
         )
       }
 
-      if (typeof msg !== 'string') {
-        return (
-          <MessageBox
-            animate={count === idx + 1}
-            ref={count === idx + 1 ? lastMsgRef : null}
-            skipButton={count === idx + 1}
-          >
-            {msg}
-          </MessageBox>
-        )
-      }
-
-      if (HelpMessagesMap[msg] === undefined) {
-        return (
-          <MessageBox
-            animate={count === idx + 1}
-            ref={count === idx + 1 ? lastMsgRef : null}
-            skipButton={count === idx + 1}
-          >
-            {msg}
-          </MessageBox>
-        )
-      }
-      const Message = HelpMessagesMap[msg]
       return (
         <MessageBox
-          key={`${idx}-msg`}
+          key={idx}
           animate={count === idx + 1}
           ref={count === idx + 1 ? lastMsgRef : null}
-          skipButton={count === idx + 1}
+          skipButton={mode === 'onboarding' && skipButtonCheck}
         >
-          <Message />
+          {msg}
         </MessageBox>
       )
     })
@@ -230,8 +220,7 @@ const TBotPrompt = ({
   if (!open) {
     return null
   }
-  // console.log('TESTING STUFF: ', messages?.[count])
-  console.log('COUNT: ', count)
+
   return (
     <PromptContainer
       style={promptAnim}
