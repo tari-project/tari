@@ -232,10 +232,8 @@ async fn start_service_impl(
         workspace.create_network(&docker).await?;
     }
     // Launch the container
-    let registry = workspace.config().registry.clone();
-    let tag = workspace.config().tag.clone();
     let image = ImageType::try_from(service_name.as_str())?;
-    let container_name = workspace.start_service(image, registry, tag, docker.clone()).await?;
+    let container_name = workspace.start_service(image, docker.clone()).await?;
     let state = container_state(container_name.as_str()).ok_or(DockerWrapperError::UnexpectedError)?;
     let id = state.id().to_string();
     let stats_events_name = stats_event_name(state.id());

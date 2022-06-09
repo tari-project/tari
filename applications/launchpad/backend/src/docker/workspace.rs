@@ -27,8 +27,10 @@ use bollard::{
     container::{
         Config,
         CreateContainerOptions,
+        ListContainersOptions,
         LogsOptions,
         NetworkingConfig,
+        RemoveContainerOptions,
         Stats,
         StatsOptions,
         StopContainerOptions,
@@ -48,6 +50,8 @@ use super::{add_container, container_state, CONTAINERS};
 use crate::docker::{
     change_container_status,
     models::{ContainerId, ContainerState},
+    try_create_container,
+    try_destroy_container,
     ContainerStatus,
     DockerWrapperError,
     ImageType,
@@ -242,13 +246,9 @@ impl TariWorkspace {
         }
         // Create or restart the volume
 
-        let registry = self.config.registry.clone();
-        let tag = self.config.tag.clone();
         for image in self.images_to_start() {
             // Start each container
-            let name = self
-                .start_service(image, registry.clone(), tag.clone(), docker.clone())
-                .await?;
+            let name = self.start_service(image, docker.clone()).await?;
             info!(
                 "Docker container {} ({}) successfully started",
                 image.image_name(),
@@ -351,64 +351,29 @@ impl TariWorkspace {
     /// * starts the container
     /// * adds the container reference to the current list of containers being managed
     /// * Returns the container name
-    pub async fn start_service(
-        &mut self,
-        image: ImageType,
-        registry: Option<String>,
-        tag: Option<String>,
-        docker: Docker,
-    ) -> Result<String, DockerWrapperError> {
-        let args = self.config.command(image);
-        let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
-        let options = Some(CreateContainerOptions {
-            name: format!("{}_{}", self.name, image.image_name()),
-        });
-        let envars = self.config.environment(image);
-        let volumes = self.config.volumes(image);
-        let ports = self.config.ports(image);
-        let port_map = self.config.port_map(image);
-        let mounts = self.config.mounts(image, self.tari_blockchain_volume_name());
-        let mut endpoints = HashMap::new();
-        let endpoint = EndpointSettings {
-            aliases: Some(vec![image.container_name().to_string()]),
-            ..Default::default()
-        };
-        endpoints.insert(self.network_name(), endpoint);
-        let config = Config::<String> {
-            image: Some(image_name.clone()),
-            attach_stdin: Some(false),
-            attach_stdout: Some(false),
-            attach_stderr: Some(false),
-            exposed_ports: Some(ports),
-            open_stdin: Some(true),
-            stdin_once: Some(false),
-            tty: Some(true),
-            env: Some(envars),
-            volumes: Some(volumes),
-            cmd: Some(args),
-            host_config: Some(HostConfig {
-                binds: Some(vec![]),
-                network_mode: Some("bridge".to_string()),
-                port_bindings: Some(port_map),
-                mounts: Some(mounts),
-                ..Default::default()
-            }),
-            networking_config: Some(NetworkingConfig {
-                endpoints_config: endpoints,
-            }),
-            ..Default::default()
-        };
-        info!("Creating {}", image_name);
-        debug!("Options: {:?}", options);
-        debug!("{} has configuration object: {:#?}", image_name, config);
-        let container = docker.create_container(options, config).await?;
+    pub async fn start_service(&mut self, image: ImageType, docker: Docker) -> Result<String, DockerWrapperError> {
+        let fully_qualified_image_name =
+            TariWorkspace::fully_qualified_image(image, self.config.registry.as_deref(), self.config.tag.as_deref());
+        info!("Creating {}", &fully_qualified_image_name);
+        let workspace_image_name = format!("{}_{}", self.name, image.image_name());
+        let _unused = try_destroy_container(workspace_image_name.as_str(), docker.clone()).await;
+        let container = try_create_container(
+            image,
+            fully_qualified_image_name.clone(),
+            self.name().to_string(),
+            &self.config,
+            docker.clone(),
+        )
+        .await?;
         let name = image.container_name();
         let id = container.id.clone();
         self.add_container(name, container);
-        info!("Starting {}.", image_name);
+
+        info!("Starting {}.", fully_qualified_image_name);
         docker.start_container::<String>(id.as_str(), None).await?;
+
         self.mark_container_running(name)?;
-        info!("{} started with id {}", image_name, id);
+        info!("{} started with id {}", fully_qualified_image_name, id);
 
         Ok(name.to_string())
     }
