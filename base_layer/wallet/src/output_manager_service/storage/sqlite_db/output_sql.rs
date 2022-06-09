@@ -123,6 +123,9 @@ impl OutputSql {
         tip_height: i64,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let no_flags = i32::from(OutputFlags::empty().bits());
+        let coinbase_flag = i32::from(OutputFlags::COINBASE_OUTPUT.bits());
+
         if strategy == UTXOSelectionStrategy::Default {
             // lets get the max value for all utxos
             let max: Vec<i64> = outputs::table
@@ -131,6 +134,7 @@ impl OutputSql {
                 .filter(outputs::maturity.le(tip_height))
                 .filter(outputs::features_unique_id.is_null())
                 .filter(outputs::features_parent_public_key.is_null())
+                .filter(outputs::flags.eq(no_flags).or(outputs::flags.eq(coinbase_flag)))
                 .order(outputs::value.desc())
                 .select(outputs::value)
                 .limit(1)
@@ -151,6 +155,7 @@ impl OutputSql {
             .filter(outputs::maturity.le(tip_height))
             .filter(outputs::features_unique_id.is_null())
             .filter(outputs::features_parent_public_key.is_null())
+            .filter(outputs::flags.eq(no_flags).or(outputs::flags.eq(coinbase_flag)))
             .order_by(outputs::spending_priority.desc());
         match strategy {
             UTXOSelectionStrategy::Smallest => {
