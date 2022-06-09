@@ -1,60 +1,42 @@
 import { useState, useEffect } from 'react'
 import TBotPrompt from '../../components/TBot/TBotPrompt'
+import { OnboardingMessagesMap } from '../../config/onboardingMessagesConfig'
 
 const Onboarding = ({ close }: { close: () => void }) => {
   const [trigger, fireTrigger] = useState(false)
 
-  const [messages, setMessages] = useState([
-    {
-      content: 'Message number one',
-      barFill: 0.063,
-    },
-    {
-      content: 'Message number two',
-      barFill: 0.125,
-    },
-    {
-      content: 'Message number three',
-      barFill: 0.188,
-    },
-    {
-      content: 'Message number four',
-      barFill: 0.25,
-    },
-    {
-      content: 'need to wait longer...',
-      wait: 6000,
-      barFill: 0.3,
-    },
-    <div key='key1'>
-      <p>Push new message</p>
-      <button onClick={() => fireTrigger(true)}>Push</button>
-    </div>,
-  ])
+  const [messages, setMessages] = useState(OnboardingMessagesMap)
+
+  // Example of trigger to push new messages
+  //   <div key='key1'>
+  //     <p>Push new message</p>
+  //     <button onClick={() => fireTrigger(true)}>Push</button>
+  //   </div>,
+  //
 
   // If we use currentIndex = 1, it will not show loading dots before rendering first message
   const [current, setCurrent] = useState(0)
 
-  // const [progressFill, setProgressFill] = useState(0)
-
-  useEffect(() => {
-    if (trigger) {
-      const newMsgs = messages.slice()
-      newMsgs.push({ content: 'Newly pushed', barFill: 0 })
-      setMessages(newMsgs)
-      setCurrent(newMsgs.length - 1)
-      setCurrent(newMsgs.length) // it won't show loading dots when currentIndex is equal to the messages length
-      fireTrigger(false)
-    }
-  }, [trigger])
+  // useEffect(() => {
+  //   if (trigger) {
+  //     const newMsgs = messages.slice()
+  //     newMsgs.push({ content: 'Newly pushed', barFill: 0 })
+  //     setMessages(newMsgs)
+  //     setCurrent(newMsgs.length - 1)
+  //     setCurrent(newMsgs.length) // it won't show loading dots when currentIndex is equal to the messages length
+  //     fireTrigger(false)
+  //   }
+  // }, [trigger])
 
   const addSkipMessages = () => {
     const newMsgs = messages.slice()
-    newMsgs.push(
-      <div>
-        <button onClick={() => setCurrent(newMsgs.length + 5)}>Skip</button>
-      </div>,
-    )
+    newMsgs.push({
+      content: (
+        <div>
+          <button onClick={() => setCurrent(newMsgs.length + 5)}>Skip</button>
+        </div>
+      ),
+    })
     // newMsgs.push('msg 1/5')
     // newMsgs.push('msg 2/5')
     // newMsgs.push('msg 3/5')
@@ -62,10 +44,10 @@ const Onboarding = ({ close }: { close: () => void }) => {
     // newMsgs.push('msg 5/5')
     setMessages(newMsgs)
   }
-  // console.log('CURRENT: ', current)
+
   return (
     <div>
-      {/* <div
+      <div
         style={{
           position: 'fixed',
           zIndex: 100,
@@ -85,7 +67,7 @@ const Onboarding = ({ close }: { close: () => void }) => {
         >
           Clear messages
         </button>
-      </div> */}
+      </div>
       <div
         style={{
           display: 'flex',
@@ -101,6 +83,7 @@ const Onboarding = ({ close }: { close: () => void }) => {
           messages={messages}
           currentIndex={current}
           closeIcon={false}
+          mode='onboarding'
         />
       </div>
     </div>

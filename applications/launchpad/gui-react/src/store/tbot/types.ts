@@ -3,11 +3,7 @@ export enum TBotMessages {
   MergedMiningHelp = 'MergedMiningHelp',
   WalletHelp = 'WalletHelp',
   BaseNodeHelp = 'BaseNodeHelp',
-}
-
-export type TBotMessage = {
-  id: number
-  message: string
+  Onboarding = 'Onboarding',
 }
 
 export interface TBotState {
