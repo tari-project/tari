@@ -25,14 +25,14 @@ use std::{convert::TryFrom, fmt::format};
 
 use config::Config;
 use futures::StreamExt;
-use log::{debug, info, warn};
+use log::{debug, info, warn, error};
 use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{http::status, AppHandle, Manager, Wry};
 
 use crate::{
     commands::{status, AppState, DEFAULT_IMAGES},
     docker::{ContainerState, ImageType, TariNetwork},
-    grpc::{GrpcWalletClient, WalletTransaction},
+    grpc::{GrpcWalletClient, WalletTransaction, WalletIdentity},
 };
 
 pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
@@ -57,6 +57,20 @@ pub async fn health_check(image: &str) -> String {
     match ImageType::try_from(image) {
         Ok(img) => status(img).await,
         Err(_err) => format!("image {} not found", image),
+    }
+}
+
+#[tauri::command]
+pub async fn wallet_identity() -> Result<WalletIdentity, String> {
+    //Check if wallet container is running.
+    let status = status(ImageType::Wallet).await;
+    if "running" == status.to_lowercase() {
+        let mut wallet_client = GrpcWalletClient::new();
+        let identity = wallet_client.identity().await.map_err(|e| e.to_string())?;
+        Ok(WalletIdentity::from(identity))       
+    } else {
+        error!("Wallet container[image = {}] is not running", ImageType::Wallet);
+        Err("Wallet is not running".to_string())
     }
 }
 

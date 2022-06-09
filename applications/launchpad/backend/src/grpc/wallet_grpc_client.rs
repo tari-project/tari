@@ -32,7 +32,7 @@ use tari_app_grpc::tari_rpc::{
     wallet_client::WalletClient,
     TransactionEvent,
     TransactionEventRequest,
-    TransactionEventResponse,
+    TransactionEventResponse, GetIdentityResponse, GetIdentityRequest,
 };
 use tonic::transport::Channel;
 
@@ -68,5 +68,12 @@ impl GrpcWalletClient {
         let request = TransactionEventRequest {};
         let response = inner.stream_transaction_events(request).await.unwrap().into_inner();
         Ok(response.map(|e| e.unwrap()))
+    }
+
+    pub async fn identity(&mut self) -> Result<GetIdentityResponse, GrpcError> {
+        let inner = self.connection().await?;
+        let request = GetIdentityRequest {};
+        let identity = inner.identify(request).await?;
+        Ok(identity.into_inner())
     }
 }

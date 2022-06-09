@@ -4,7 +4,7 @@ use std::convert::TryFrom;
 
 use futures::{Future, Stream};
 use serde::Serialize;
-use tari_app_grpc::tari_rpc::TransactionEvent;
+use tari_app_grpc::tari_rpc::{TransactionEvent, GetIdentityResponse};
 use thiserror::Error;
 pub use wallet_grpc_client::*;
 
@@ -18,6 +18,13 @@ pub struct WalletTransaction {
     pub direction: String,
     pub amount: u64,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WalletIdentity{
+    public_key: Vec<u8>,
+    public_address: String,
+    node_id: Vec<u8>,
 }
 
 impl TryFrom<TransactionEvent> for WalletTransaction {
@@ -36,6 +43,17 @@ impl TryFrom<TransactionEvent> for WalletTransaction {
                 amount: value.amount,
                 message: value.message,
             }),
+        }
+    }
+}
+
+impl From<GetIdentityResponse> for WalletIdentity {
+    
+    fn from(value: GetIdentityResponse) -> WalletIdentity {
+        WalletIdentity{
+            public_key: value.public_key,
+            public_address: value.public_address,
+            node_id: value.node_id,
         }
     }
 }
