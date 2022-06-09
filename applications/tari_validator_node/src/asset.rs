@@ -31,6 +31,7 @@ use std::{
 use tari_dan_core::models::AssetDefinition;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Asset {
     definition: AssetDefinition,
     current_state: bool,
@@ -40,6 +41,7 @@ pub struct Asset {
     kill_signal: Option<Arc<AtomicBool>>,
 }
 
+#[allow(dead_code)]
 impl Asset {
     pub fn new(definition: AssetDefinition) -> Self {
         Self {

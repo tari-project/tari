@@ -69,7 +69,7 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
 impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_server::ValidatorNode
     for ValidatorNodeGrpcServer<TServiceSpecification>
 {
-    type GetCommitteeRequestsStream = mpsc::Receiver<Result<TransactionOutput, tonic::Status>>;
+    type GetConstitutionRequestsStream = mpsc::Receiver<Result<TransactionOutput, tonic::Status>>;
 
     async fn publish_contract_acceptance(
         &self,
@@ -96,10 +96,10 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         }
     }
 
-    async fn get_committee_requests(
+    async fn get_constitution_requests(
         &self,
-        _request: tonic::Request<rpc::GetCommitteeRequestsRequest>,
-    ) -> Result<Response<Self::GetCommitteeRequestsStream>, tonic::Status> {
+        _request: tonic::Request<rpc::GetConstitutionRequestsRequest>,
+    ) -> Result<Response<Self::GetConstitutionRequestsStream>, tonic::Status> {
         let (mut _sender, receiver) = mpsc::channel(100);
         task::spawn(async move {
             let mut _test = 1u64;
