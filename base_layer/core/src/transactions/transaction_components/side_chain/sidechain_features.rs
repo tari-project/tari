@@ -25,7 +25,13 @@ use std::io::{Error, Read, Write};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
 
-use super::{ContractAcceptance, ContractDefinition};
+use super::{
+    ContractAcceptance,
+    ContractAmendment,
+    ContractDefinition,
+    ContractUpdateProposal,
+    ContractUpdateProposalAcceptance,
+};
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     transactions::transaction_components::ContractConstitution,
@@ -37,6 +43,9 @@ pub struct SideChainFeatures {
     pub definition: Option<ContractDefinition>,
     pub constitution: Option<ContractConstitution>,
     pub acceptance: Option<ContractAcceptance>,
+    pub update_proposal: Option<ContractUpdateProposal>,
+    pub update_proposal_acceptance: Option<ContractUpdateProposalAcceptance>,
+    pub amendment: Option<ContractAmendment>,
 }
 
 impl SideChainFeatures {
@@ -55,6 +64,10 @@ impl ConsensusEncoding for SideChainFeatures {
         self.definition.consensus_encode(writer)?;
         self.constitution.consensus_encode(writer)?;
         self.acceptance.consensus_encode(writer)?;
+        self.update_proposal.consensus_encode(writer)?;
+        self.update_proposal_acceptance.consensus_encode(writer)?;
+        self.amendment.consensus_encode(writer)?;
+
         Ok(())
     }
 }
@@ -68,6 +81,9 @@ impl ConsensusDecoding for SideChainFeatures {
             definition: ConsensusDecoding::consensus_decode(reader)?,
             constitution: ConsensusDecoding::consensus_decode(reader)?,
             acceptance: ConsensusDecoding::consensus_decode(reader)?,
+            update_proposal: ConsensusDecoding::consensus_decode(reader)?,
+            update_proposal_acceptance: ConsensusDecoding::consensus_decode(reader)?,
+            amendment: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
 }
@@ -84,6 +100,9 @@ impl SideChainFeaturesBuilder {
                 definition: None,
                 constitution: None,
                 acceptance: None,
+                update_proposal: None,
+                update_proposal_acceptance: None,
+                amendment: None,
             },
         }
     }
@@ -121,6 +140,7 @@ mod tests {
             vec_into_fixed_string,
             CheckpointParameters,
             CommitteeMembers,
+            CommitteeSignatures,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
@@ -134,34 +154,36 @@ mod tests {
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
+        let constitution = ContractConstitution {
+            validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                .try_into()
+                .unwrap(),
+            acceptance_requirements: ContractAcceptanceRequirements {
+                acceptance_period_expiry: 100,
+                minimum_quorum_required: 5,
+            },
+            consensus: SideChainConsensus::MerkleRoot,
+            checkpoint_params: CheckpointParameters {
+                minimum_quorum_required: 5,
+                abandoned_interval: 100,
+            },
+            constitution_change_rules: ConstitutionChangeRules {
+                change_flags: ConstitutionChangeFlags::all(),
+                requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
+                    minimum_constitution_committee_signatures: 5,
+                    constitution_committee: Some(
+                        vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                            .try_into()
+                            .unwrap(),
+                    ),
+                }),
+            },
+            initial_reward: 100.into(),
+        };
+
         let subject = SideChainFeatures {
             contract_id: FixedHash::zero(),
-            constitution: Some(ContractConstitution {
-                validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                    .try_into()
-                    .unwrap(),
-                acceptance_requirements: ContractAcceptanceRequirements {
-                    acceptance_period_expiry: 100,
-                    minimum_quorum_required: 5,
-                },
-                consensus: SideChainConsensus::MerkleRoot,
-                checkpoint_params: CheckpointParameters {
-                    minimum_quorum_required: 5,
-                    abandoned_interval: 100,
-                },
-                constitution_change_rules: ConstitutionChangeRules {
-                    change_flags: ConstitutionChangeFlags::all(),
-                    requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
-                        minimum_constitution_committee_signatures: 5,
-                        constitution_committee: Some(
-                            vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                                .try_into()
-                                .unwrap(),
-                        ),
-                    }),
-                },
-                initial_reward: 100.into(),
-            }),
+            constitution: Some(constitution.clone()),
             definition: Some(ContractDefinition {
                 contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
                 contract_issuer: PublicKey::default(),
@@ -188,6 +210,27 @@ mod tests {
             acceptance: Some(ContractAcceptance {
                 validator_node_public_key: PublicKey::default(),
                 signature: Signature::default(),
+            }),
+            update_proposal: Some(ContractUpdateProposal {
+                proposal_id: 0_u64,
+                signature: Signature::default(),
+                updated_constitution: constitution.clone(),
+            }),
+            update_proposal_acceptance: Some(ContractUpdateProposalAcceptance {
+                proposal_id: 0_u64,
+                validator_node_public_key: PublicKey::default(),
+                signature: Signature::default(),
+            }),
+            amendment: Some(ContractAmendment {
+                proposal_id: 0_u64,
+                validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                    .try_into()
+                    .unwrap(),
+                validator_signatures: vec![Signature::default(); CommitteeSignatures::MAX_SIGNATURES]
+                    .try_into()
+                    .unwrap(),
+                updated_constitution: constitution,
+                activation_window: 0_u64,
             }),
         };
 
