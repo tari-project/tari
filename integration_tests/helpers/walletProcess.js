@@ -294,7 +294,7 @@ class WalletProcess {
       args.push(`${k}=${overrides[k]}`);
     });
 
-    // Append command arguments 
+    // Append command arguments
     args.push(...command.split(" "));
 
     let output = { buffer: "" };
