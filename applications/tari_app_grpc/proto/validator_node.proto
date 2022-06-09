@@ -31,11 +31,11 @@ service ValidatorNode {
 //    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
     rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
     rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
-    rpc GetCommitteeRequests(GetCommitteeRequestsRequest) returns (stream TransactionOutput);
+    rpc GetConstitutionRequests(GetConstitutionRequestsRequest) returns (stream TransactionOutput);
     rpc PublishContractAcceptance(PublishContractAcceptanceRequest) returns (PublishContractAcceptanceResponse);
 }
 
-message GetCommitteeRequestsRequest {
+message GetConstitutionRequestsRequest {
     // empty
 }
 

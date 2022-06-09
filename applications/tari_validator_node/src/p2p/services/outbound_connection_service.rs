@@ -48,6 +48,7 @@ pub struct TariCommsOutboundService<TPayload: Payload> {
 }
 
 impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
+    #[allow(dead_code)]
     pub fn new(
         outbound_message_requester: OutboundMessageRequester,
         loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,

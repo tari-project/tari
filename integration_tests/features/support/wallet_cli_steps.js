@@ -301,14 +301,29 @@ Then(
 );
 
 Then(
-  "I create a {string} from file {string} on wallet {word} via command line",
+  "I publish a contract definition from file {string} on wallet {word} via command line",
   { timeout: 120 * 1000 },
-  async function (definition_type, relative_file_path, wallet_name) {
+  async function (relative_file_path, wallet_name) {
     let absolute_path = path.resolve(relative_file_path);
     let wallet = this.getWallet(wallet_name);
     let output = await wallet_run_command(
       wallet,
-      `publish-${definition_type} --json-file ${absolute_path}`
+      `contract-definition publish ${absolute_path}`
+    );
+    console.log(output.buffer);
+  }
+);
+
+Then(
+  "I publish a contract constitution from file {string} on wallet {word} via command line",
+  { timeout: 120 * 1000 },
+  async function (relative_file_path, wallet_name) {
+    let absolute_path = path.resolve(relative_file_path);
+    let wallet = this.getWallet(wallet_name);
+
+    let output = await wallet_run_command(
+      wallet,
+      `publish-constitution-definition ${absolute_path}`
     );
     console.log(output.buffer);
   }

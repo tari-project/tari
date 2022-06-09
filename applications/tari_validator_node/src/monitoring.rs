@@ -31,11 +31,13 @@ use tari_dan_core::models::AssetDefinition;
 use crate::asset::Asset;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Monitoring {
     committee_management_confirmation_time: u64,
     assets: HashMap<PublicKey, Asset>,
 }
 
+#[allow(dead_code)]
 impl Monitoring {
     pub fn new(committee_management_confirmation_time: u64) -> Self {
         Self {
