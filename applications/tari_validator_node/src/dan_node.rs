@@ -75,11 +75,11 @@ impl DanNode {
             });
         }
 
-        // loop {
-        //    For other work
-        //}
+        loop {
+            // other work here
 
-        Ok(())
+            time::sleep(Duration::from_secs(120)).await;
+        }
     }
 
     async fn find_and_accept_constitutions(

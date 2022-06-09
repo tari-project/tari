@@ -148,9 +148,12 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     if let Some(address) = config.validator_node.grpc_address.clone() {
         task::spawn(run_grpc(grpc_server, address, shutdown.to_signal()));
     }
-    info!("🚀 Validator node started!");
-    info!("{}", node_identity);
-    run_dan_node(config.validator_node.clone(), node_identity).await?;
+
+    println!("🚀 Validator node started!");
+    println!("{}", node_identity);
+
+    run_dan_node(config.validator_node.clone(), node_identity.clone()).await?;
+
     Ok(())
 }
 
