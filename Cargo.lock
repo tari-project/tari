@@ -3269,7 +3269,7 @@ dependencies = [
 [[package]]
 name = "liblmdb-sys"
 version = "0.2.3"
-source = "git+https://github.com/leet4tari/lmdb-rs.git?branch=v0.2.3#a9b20197e138fd5268ec06716effbcc88a55de29"
+source = "git+https://github.com/tari-project/lmdb-rs?tag=0.7.6-tari.1#8d88933179c4ab7ceafb407a9615ecdd5c569a5f"
 dependencies = [
  "cc",
  "libc",
@@ -7830,9 +7830,9 @@ checksum = "360dfd1d6d30e05fda32ace2c8c70e9c0a9da713275777f5a4dbb8a1893930c6"
 
 [[package]]
 name = "tracing"
-version = "0.1.34"
+version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d0ecdcb44a79f0fe9844f0c4f33a342cbcbb5117de8001e6ba0dc2351327d09"
+checksum = "a400e31aa60b9d44a52a8ee0343b5b18566b03a8321e0d321f695cf56e940160"
 dependencies = [
  "cfg-if 1.0.0",
  "log",
