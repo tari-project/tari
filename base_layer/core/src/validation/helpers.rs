@@ -688,16 +688,6 @@ pub fn check_coinbase_reward(
     coinbase_kernel: &TransactionKernel,
     coinbase_output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    let constants = rules.consensus_constants(height);
-    if coinbase_output.features.maturity < height + constants.coinbase_lock_height() {
-        warn!(
-            target: LOG_TARGET,
-            "Coinbase {} found with maturity set too low", coinbase_output
-        );
-        return Err(ValidationError::TransactionError(
-            TransactionError::InvalidCoinbaseMaturity,
-        ));
-    }
     let reward = rules.emission_schedule().block_reward(height) + total_fees;
     let rhs = &coinbase_kernel.excess + &factory.commit_value(&Default::default(), reward.into());
     if rhs != coinbase_output.commitment {
