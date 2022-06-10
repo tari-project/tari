@@ -2,8 +2,13 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import { useTheme } from 'styled-components'
 
 import t from '../../../../locales'
+import { Option } from '../../../../components/Select/types'
 
 import PerformanceChart from './PerformanceChart'
+import PerformanceControls, {
+  defaultRenderWindow,
+  defaultRefreshRate,
+} from './PerformanceControls'
 
 /**
  * @name PerformanceContainer
@@ -15,15 +20,18 @@ import PerformanceChart from './PerformanceChart'
 const PerformanceContainer = () => {
   const theme = useTheme()
 
-  const last = 30 * 60 * 1000
-  const refreshRate = 1000
+  const [timeWindow, setTimeWindow] = useState<Option>(defaultRenderWindow)
+  const [refreshRate, setRefreshRate] = useState<Option>(defaultRefreshRate)
   const [now, setNow] = useState(() => {
     const n = new Date()
     n.setMilliseconds(0)
 
     return n
   })
-  const from = useMemo(() => new Date(now.getTime() - last), [now])
+  const from = useMemo(
+    () => new Date(now.getTime() - Number(timeWindow.value)),
+    [now],
+  )
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
   const [refreshEnabled, setRefreshEnabled] = useState<{
     cpu: boolean
@@ -40,14 +48,20 @@ const PerformanceContainer = () => {
       const n = new Date()
       n.setMilliseconds(0)
       setNow(n)
-    }, refreshRate)
+    }, Number(refreshRate.value))
 
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     return () => clearInterval(intervalRef.current!)
-  }, [])
+  }, [refreshRate])
 
   return (
-    <div style={{ overflow: 'auto' }}>
+    <>
+      <PerformanceControls
+        refreshRate={refreshRate}
+        onRefreshRateChange={option => setRefreshRate(option)}
+        timeWindow={timeWindow}
+        onTimeWindowChange={option => setTimeWindow(option)}
+      />
       <PerformanceChart
         enabled={refreshEnabled.cpu}
         extractor={({ timestamp, cpu }) => ({
@@ -105,7 +119,7 @@ const PerformanceContainer = () => {
         style={{ marginTop: theme.spacing() }}
         chartHeight={175}
       />
-    </div>
+    </>
   )
 }
 

@@ -4,6 +4,7 @@ import { Container } from '../../../../store/containers/types'
 import TimeSeriesChart from '../../../../components/Charts/TimeSeries'
 import { SeriesData } from '../../../../components/Charts/TimeSeries/types'
 
+import guardBlanksWithNulls from './guardBlanksWithNulls'
 import usePerformanceStats from './usePerformanceStats'
 import { PerformanceChartProps } from './types'
 
@@ -58,11 +59,15 @@ const PerformanceChart = ({
   const data = useMemo<SeriesData[]>(
     () =>
       Object.entries(performanceData).map(([container, containerData]) => {
-        const data = containerData.map(({ timestamp, value }) => ({
-          x: new Date(timestamp).getTime(),
-          y: value,
-        }))
+        const data = guardBlanksWithNulls(
+          containerData.map(({ timestamp, value }) => ({
+            x: new Date(timestamp).getTime(),
+            y: value,
+          })),
+        )
+
         const visible = !hiddenSeries.includes(container as Container)
+
         return {
           name: container,
           empty: !data.length,

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useTheme } from 'styled-components'
 import ApexChart from 'react-apexcharts'
 
@@ -7,6 +7,7 @@ import VisibleIcon from '../../../styles/Icons/Eye'
 import HiddenIcon from '../../../styles/Icons/EyeSlash'
 import t from '../../../locales'
 import * as Format from '../../../utils/Format'
+import useIntersectionObserver from '../../../utils/useIntersectionObserver'
 import Text from '../../Text'
 import IconButton from '../../IconButton'
 
@@ -17,6 +18,9 @@ import {
   LegendItem,
   SeriesColorIndicator,
 } from './styles'
+
+// magic value coming from apex charts - rendered chart is this many pixels higher than set chart height
+const APEX_CHART_OFFSET = 15
 
 const graphColors = [
   colors.secondary.infoText,
@@ -40,7 +44,7 @@ const getPercentageYAxisDefinition = (
   data: SeriesData[],
   tickResolution: number,
 ) => {
-  const ys = data.flatMap(({ data }) => data.map(({ y }) => y))
+  const ys = data.flatMap(({ data }) => data.map(({ y }) => y || 0))
 
   const maxY = Math.ceil(Math.max(100, ...ys) / tickResolution) * tickResolution
 
@@ -82,6 +86,9 @@ const TimeSeriesChart = ({
   const theme = useTheme()
   const unitToUse = percentageValues ? '%' : unit
   const chartId = title
+  const ref = useRef<HTMLDivElement | undefined>()
+  const observerEntry = useIntersectionObserver(ref, {})
+  const inView = Boolean(observerEntry?.isIntersecting)
 
   const options = useMemo(
     () => ({
@@ -178,21 +185,25 @@ const TimeSeriesChart = ({
 
   return (
     <ChartContainer
+      ref={ref}
       style={{
         ...style,
+        minHeight: chartHeight + APEX_CHART_OFFSET,
       }}
     >
       <Text color={theme.textSecondary} style={{ textAlign: 'center' }}>
         {title}
         {unitToUse ? ` [${unitToUse}]` : ''}
       </Text>
-      <ApexChart
-        options={options}
-        series={data}
-        type='area'
-        width='100%'
-        height={chartHeight}
-      />
+      {inView && (
+        <ApexChart
+          options={options}
+          series={data}
+          type='area'
+          width='100%'
+          height={chartHeight}
+        />
+      )}
       <Legend>
         {data
           .filter(s => !s.empty)

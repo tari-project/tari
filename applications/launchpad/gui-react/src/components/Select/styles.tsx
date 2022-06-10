@@ -1,3 +1,4 @@
+import { CSSProperties } from 'react'
 import styled from 'styled-components'
 import { Listbox } from '@headlessui/react'
 
@@ -18,30 +19,45 @@ export const SelectorIcon = styled.div<SelectInternalProps>`
     inverted ? theme.inverted.primary : theme.primary};
 `
 
-export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
+export const SelectButton = styled(Listbox.Button)<
+  SelectInternalProps & {
+    style?: { borderColor?: (open?: boolean) => string } & Omit<
+      CSSProperties,
+      'borderColor'
+    >
+  }
+>`
+  display: flex;
+  align-items: center;
+  column-gap: 0.3em;
   cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
   font-size: 1em;
   color: ${({ theme, inverted }) =>
     inverted ? theme.inverted.primary : theme.secondary};
   position: relative;
-  width: 100%;
   appearance: none;
   background-color: ${({ theme, inverted }) =>
     inverted ? theme.inverted.controlBackground : theme.controlBackground};
   padding: ${({ theme }) =>
     `${theme.spacingVertical(0.78)} ${theme.spacingHorizontal(0.67)}`};
-  padding-right: ${({ theme }) => theme.spacingHorizontal()};
+  padding-right: ${({ theme }) => theme.spacingHorizontal(1.5)};
+  width: ${({ fullWidth }) => (fullWidth ? '100%' : '')};
   margin: 0;
   outline: none;
   border: none;
   border: 1px solid;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
-  border-color: ${({ theme, inverted, open }) =>
-    open
+  border-color: ${({ style, theme, inverted, open }) => {
+    if (style?.borderColor) {
+      return style.borderColor(open)
+    }
+
+    return open
       ? inverted
         ? theme.inverted.accent
         : theme.accent
-      : theme.borderColor};
+      : theme.borderColor
+  }};
   text-align: left;
 `
 
@@ -53,7 +69,7 @@ const FloatingOptions = styled.ul<SelectInternalProps>`
   padding: 0;
   padding-top: ${({ theme }) => theme.spacingVertical(0.4)};
   padding-bottom: ${({ theme }) => theme.spacingVertical(0.4)};
-  width: 100%;
+  width: ${({ fullWidth }) => (fullWidth ? '100%' : 'auto')};
   border: 1px solid;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
   border-color: ${({ theme, open }) =>

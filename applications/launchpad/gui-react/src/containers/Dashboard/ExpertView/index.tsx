@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useTheme } from 'styled-components'
 
 import { useAppDispatch, useAppSelector } from '../../../store/hooks'
 import { setExpertView } from '../../../store/app'
@@ -15,12 +14,11 @@ import t from '../../../locales'
 
 import Containers from './Containers'
 import Performance from './Performance'
-import { TabsContainer } from './styles'
+import { TabsContainer, PageContentContainer } from './styles'
 
 const ExpertView = () => {
   const dispatch = useAppDispatch()
   const expertView = useAppSelector(selectExpertView)
-  const theme = useTheme()
   const [selectedTab, setTab] = useState('CONTAINERS')
 
   const isFullscreen = expertView === 'fullscreen'
@@ -60,8 +58,6 @@ const ExpertView = () => {
   return (
     <MainContainer
       style={{
-        paddingRight: theme.spacing(),
-        paddingLeft: theme.spacing(),
         height: '100%',
       }}
     >
@@ -90,7 +86,7 @@ const ExpertView = () => {
           </Button>
         )}
       </TabsContainer>
-      {renderPage()}
+      <PageContentContainer>{renderPage()}</PageContentContainer>
     </MainContainer>
   )
 }
