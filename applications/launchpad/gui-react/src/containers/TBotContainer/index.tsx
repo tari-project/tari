@@ -11,7 +11,6 @@ const TBotContainer = () => {
   const messages: (string | ReactNode | TBotMessage)[] = useMemo(() => {
     return tbotQueue.map(msg => HelpMessagesMap[msg])
   }, [tbotQueue])
-
   return <TBotPrompt open={tbotQueue.length > 0} messages={messages} floating />
 }
 

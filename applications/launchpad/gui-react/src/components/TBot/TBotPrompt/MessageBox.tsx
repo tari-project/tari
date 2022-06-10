@@ -8,6 +8,7 @@ import {
   StyledMessage,
   StyledMessageBox,
   MessageSlideIn,
+  SkipButtonContainer,
 } from './styles'
 
 /**
@@ -42,23 +43,27 @@ const MessageBox = (
 
   return (
     <StyledMessageBox ref={ref}>
-      <StyledMessage style={{ opacity: 0 }}>{children}</StyledMessage>
+      <StyledMessage style={{ opacity: 0 }} skipButton={skipButton}>
+        {children}
+      </StyledMessage>
       <MessageSpaceContainer>
         <MessageSlideIn style={{ ...useSlideInAnim }}>
-          <StyledMessage style={{ ...useOpacityAnim }}>
+          <StyledMessage style={{ ...useOpacityAnim }} skipButton={skipButton}>
             {children}
             {skipButton && (
-              <Button
-                style={{
-                  textDecoration: 'none',
-                  color: theme.secondary,
-                }}
-                variant='button-in-text'
-                rightIcon={<SvgArrowRight fontSize={24} />}
-                autosizeIcons={false}
-              >
-                Skip Chatting
-              </Button>
+              <SkipButtonContainer>
+                <Button
+                  style={{
+                    textDecoration: 'none',
+                    color: theme.secondary,
+                  }}
+                  variant='button-in-text'
+                  rightIcon={<SvgArrowRight fontSize={24} />}
+                  autosizeIcons={false}
+                >
+                  Skip Chatting
+                </Button>
+              </SkipButtonContainer>
             )}
           </StyledMessage>
         </MessageSlideIn>

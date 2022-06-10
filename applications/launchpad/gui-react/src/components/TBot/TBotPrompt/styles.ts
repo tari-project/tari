@@ -6,12 +6,11 @@ export const PromptContainer = styled(animated.div)<{ $floating?: boolean }>`
   right: 40px;
   bottom: 40px;
   z-index: 1;
-  width: ${({ $floating }) => ($floating ? '476px' : '100%')};
+  width: ${({ $floating }) => ($floating ? '476px' : '692px')};
   height: fit-content;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  align-items: center;
 `
 
 export const ContentRow = styled(animated.div)`
@@ -27,7 +26,7 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
   margin-right: 30px;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   /* hard-code required here */
-  background-color: #20053d05;
+  background-color: ${({ $floating }) => ($floating ? '#20053d05' : '')};
   backdrop-filter: blur(9px);
   padding-bottom: 12px;
 `
@@ -37,14 +36,10 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
  */
 export const FadeOutSection = styled.div<{ $floating?: boolean }>`
   position: absolute;
-  height: 200px;
-  ${({ $floating }) => ($floating ? '' : 'top: 0;')}
-  width: ${({ $floating }) => ($floating ? '398px' : '80%')};
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 1),
-    rgba(255, 255, 255, 0)
-  );
+  height: ${({ $floating }) => ($floating ? '200px' : '250px')};
+  ${({ $floating }) => ($floating ? '' : 'top: 0;')};
+  width: ${({ $floating }) => ($floating ? '398px' : '600px')};
+
   z-index: 2;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
 `
@@ -95,7 +90,7 @@ export const HeightAnimationWrapper = styled(animated.div)`
 `
 
 export const TBotContainer = styled(animated.div)`
-  width: 100%;
+  /* width: 100%; */
   display: flex;
   justify-content: flex-end;
 `
@@ -130,12 +125,18 @@ export const StyledMessageBox = styled.div`
   position: relative;
 `
 
-export const StyledMessage = styled(animated.div)<{ $floating?: boolean }>`
+export const StyledMessage = styled(animated.div)<{
+  $floating?: boolean
+  skipButton?: boolean
+}>`
+  display: flex;
+  flex-direction: column;
   max-width: ${({ $floating }) => ($floating ? '385px' : '100%')};
   height: fit-content;
   margin-left: ${({ theme }) => theme.spacingHorizontal(0.3)};
   margin-right: ${({ theme }) => theme.spacingHorizontal(0.3)};
-  margin-bottom: ${({ theme }) => theme.spacingHorizontal(0.6)};
+  margin-bottom: ${({ theme, skipButton }) =>
+    skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
   background-color: ${({ theme }) => theme.background};
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   box-shadow: ${({ theme }) => theme.shadow24};
@@ -159,4 +160,17 @@ export const MessageSlideIn = styled(animated.div)`
   position: absolute;
   left: 0;
   right: 0;
+`
+
+export const SkipButtonContainer = styled.div`
+  position: relative;
+  width: 130px;
+  margin-top: ${({ theme }) => theme.spacingHorizontal(1)};
+`
+
+export const TBotProgressContainer = styled.div<{ mode?: string }>`
+  display: flex;
+  width: 100%;
+  justify-content: ${({ mode }) =>
+    mode === 'onboarding' ? 'space-between' : 'flex-end'};
 `
