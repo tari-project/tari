@@ -52,7 +52,9 @@ mod view_id;
 pub use asset_definition::{
     ArgType,
     AssetDefinition,
+    FlowDef,
     FlowFunctionDef,
+    FlowNodeDef,
     InitialState,
     KeyValue,
     SchemaState,
@@ -98,6 +100,7 @@ pub enum TemplateId {
     Tip004 = 4,
     Tip721 = 721,
     Tip6000 = 6000,
+    Tip7000 = 7000,
 }
 
 impl FromStr for TemplateId {
@@ -110,6 +113,7 @@ impl FromStr for TemplateId {
             "Tip004" => Ok(TemplateId::Tip004),
             "Tip721" => Ok(TemplateId::Tip721),
             "Tip6000" => Ok(TemplateId::Tip6000),
+            "Tip7000" => Ok(TemplateId::Tip7000),
             _ => {
                 println!("Unrecognised template");
                 Err(ModelError::StringParseError {
@@ -130,6 +134,7 @@ impl TryFrom<u32> for TemplateId {
             4 => Ok(TemplateId::Tip004),
             721 => Ok(TemplateId::Tip721),
             6000 => Ok(TemplateId::Tip6000),
+            7000 => Ok(TemplateId::Tip7000),
             _ => Err(ModelError::InvalidTemplateIdNumber {
                 value: i64::from(value),
             }),

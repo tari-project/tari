@@ -22,14 +22,16 @@
 
 use std::{collections::HashMap, convert::TryInto, fs};
 
+use d3ne::{engine::Engine, node::Node, workers::Workers};
 use prost::bytes::Buf;
+use serde_json::Value as JsValue;
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_dan_common_types::proto::tips;
 use wasmer::{imports, Instance, Module, Store, Type, Val, Value, WasmPtr};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{ArgType, AssetDefinition, Instruction, InstructionSet, TemplateId},
+    models::{ArgType, AssetDefinition, FlowFunctionDef, FlowNodeDef, Instruction, InstructionSet, TemplateId},
     services::{infrastructure_services::NodeAddressable, CommitteeManager},
     storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
     template_command::ExecutionResult,
@@ -56,6 +58,11 @@ pub struct WasmModule {}
 
 impl WasmModule {}
 
+fn load_workers() -> Workers {
+    let mut workers = Workers::new();
+    workers
+}
+
 #[derive(Clone)]
 pub struct FunctionInterface {}
 
@@ -68,6 +75,9 @@ impl FunctionInterface {
                     name: instruction.method().to_string(),
                 })
             },
+            TemplateId::Tip7000 => Ok(InstructionExecutor::Flow {
+                name: instruction.method().to_string(),
+            }),
             _ => Ok(InstructionExecutor::Template {
                 template_id: instruction.template_id(),
             }),
@@ -78,8 +88,85 @@ impl FunctionInterface {
 pub enum InstructionExecutor {
     WasmModule { name: String },
     Template { template_id: TemplateId },
+    Flow { name: String },
 }
 
+// fn find_node_by_name(func_def: &FlowFunctionDef, name: &str) -> Result<FlowNodeDef, DigitalAssetError> {
+//     for n in func_def.flow.nodes.values() {
+//         if n.title == name {
+//             return Ok(n.clone());
+//         }
+//     }
+//     panic!("could not find node")
+// }
+
+#[derive(Clone, Debug)]
+pub struct FlowInstance {
+    // engine: Engine,
+    // TODO: engine is not Send so can't be added here
+    // process: JsValue,
+    start_node: i64,
+    nodes: HashMap<i64, Node>,
+}
+
+impl FlowInstance {
+    pub fn try_build(value: JsValue, workers: Workers) -> Result<Self, DigitalAssetError> {
+        let engine = Engine::new("tari@0.1.0", workers);
+        dbg!(&value);
+        let nodes = engine.parse_value(value.clone()).expect("could not create engine");
+        Ok(FlowInstance {
+            // process: value,
+            nodes,
+            start_node: 1,
+        })
+    }
+
+    pub fn process(&self, args: &[u8]) -> Result<(), DigitalAssetError> {
+        let engine = Engine::new("tari@0.1.0", load_workers());
+        let output = engine.process(&self.nodes, self.start_node);
+        dbg!(&output);
+        let od = output.expect("engine process failed");
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct FlowFactory {
+    flows: HashMap<String, (Vec<ArgType>, FlowInstance)>,
+}
+impl FlowFactory {
+    pub fn new(asset_definition: &AssetDefinition) -> Self {
+        // let workers = load_workers();
+        let mut flows = HashMap::new();
+        for func_def in &asset_definition.flow_functions {
+            // build_instance(&mut instance, &func_def);
+            flows.insert(
+                func_def.name.clone(),
+                (
+                    func_def.args.iter().map(|at| at.arg_type.clone()).collect(),
+                    FlowInstance::try_build(func_def.flow.clone(), load_workers()).expect("Could not build flow"),
+                ),
+            );
+        }
+        Self { flows }
+    }
+
+    pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        name: String,
+        instruction: &Instruction,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        dbg!("INvoke write");
+        dbg!(&self.flows);
+        dbg!(&name);
+        if let Some((_args, engine)) = self.flows.get(&name) {
+            engine.process(instruction.args())
+        } else {
+            todo!("could not find engine")
+        }
+    }
+}
 #[derive(Clone)]
 pub struct WasmModuleFactory {
     modules: HashMap<String, Instance>,
@@ -231,12 +318,14 @@ pub struct ConcreteAssetProcessor {
     template_factory: TemplateFactory,
     wasm_factory: WasmModuleFactory,
     function_interface: FunctionInterface,
+    flow_factory: FlowFactory,
 }
 
 impl ConcreteAssetProcessor {
     pub fn new(asset_definition: AssetDefinition) -> Self {
         Self {
             wasm_factory: WasmModuleFactory::new(&asset_definition),
+            flow_factory: FlowFactory::new(&asset_definition),
             asset_definition,
             template_factory: Default::default(),
             function_interface: FunctionInterface {},
@@ -255,6 +344,7 @@ impl AssetProcessor for ConcreteAssetProcessor {
                 self.wasm_factory.invoke_write_method(name, instruction, state_db)
             },
             InstructionExecutor::Template { .. } => self.template_factory.invoke_write_method(instruction, state_db),
+            InstructionExecutor::Flow { name } => self.flow_factory.invoke_write_method(name, instruction, state_db),
         }
     }
 

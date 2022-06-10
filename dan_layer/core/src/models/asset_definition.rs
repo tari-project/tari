@@ -23,6 +23,7 @@
 use std::{collections::HashMap, fmt, marker::PhantomData, path::PathBuf};
 
 use serde::{self, de, Deserialize, Deserializer, Serialize};
+use serde_json::Value as JsValue;
 use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_utilities::hex::Hex;
@@ -105,12 +106,20 @@ pub struct WasmFunctionDef {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FlowFunctionDef {
+    pub name: String,
+    pub args: Vec<WasmFunctionArgDef>,
+    pub flow: JsValue,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FlowDef {
     pub nodes: HashMap<String, FlowNodeDef>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FlowNodeDef {
     pub id: u32,
+    pub title: String,
     pub data: HashMap<String, String>,
     pub inputs: Vec<FlowInputConnectionsDef>,
     pub outputs: Vec<FlowOutputConnectionsDef>,

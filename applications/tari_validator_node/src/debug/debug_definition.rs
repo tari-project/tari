@@ -24,12 +24,13 @@ use std::{fs, path::PathBuf};
 
 use prost::Message;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsValue;
 use tari_common::configuration::CommonConfig;
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_dan_common_types::proto::tips::tip6000;
 use tari_dan_core::{
-    models::{ArgType, FlowFunctionDef, WasmFunctionArgDef},
+    models::{ArgType, FlowDef, FlowFunctionDef, WasmFunctionArgDef},
     DigitalAssetError,
 };
 
@@ -87,7 +88,7 @@ pub struct FunctionDef {
     pub name: String,
     pub in_module: Option<String>,
     pub args: Vec<WasmFunctionArgDef>,
-    pub flow: Option<FlowFunctionDef>,
+    pub flow: Option<JsValue>,
 }
 
 #[derive(Serialize, Deserialize)]

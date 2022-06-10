@@ -1777,6 +1777,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "d3ne"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b15bf65ab86658f3d5a2adcf3804228ec5131d633f7d9361f813fb709772bab"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dan_wallet_ffi"
 version = "0.1.0"
 dependencies = [
@@ -7324,6 +7335,7 @@ dependencies = [
  "blake2",
  "bytecodec",
  "clap 3.1.8",
+ "d3ne",
  "digest 0.9.0",
  "futures 0.3.21",
  "lmdb-zero",

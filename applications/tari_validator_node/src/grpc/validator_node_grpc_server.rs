@@ -83,6 +83,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         request: Request<rpc::InvokeMethodRequest>,
     ) -> Result<Response<rpc::InvokeMethodResponse>, Status> {
         let request = request.into_inner();
+        dbg!(&request);
         let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
             .map_err(|_err| Status::invalid_argument("asset_public_key was not a valid public key"))?;
 
