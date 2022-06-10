@@ -4140,9 +4140,12 @@ pub unsafe extern "C" fn wallet_get_utxos(
 
     match rt.block_on((*wallet).wallet.output_manager_service.get_unspent_outputs()) {
         Ok(mut unblinded_outputs) => {
-            unblinded_outputs.sort_by(|a, b| match sort_ascending {
-                true => Ord::cmp(&a.value, &b.value),
-                false => Ord::cmp(&b.value, &a.value),
+            unblinded_outputs.sort_by(|a, b| {
+                if sort_ascending {
+                    Ord::cmp(&a.value, &b.value)
+                } else {
+                    Ord::cmp(&b.value, &a.value)
+                }
             });
 
             let (outputs, dust): (Vec<Utxo>, Vec<Utxo>) = unblinded_outputs
