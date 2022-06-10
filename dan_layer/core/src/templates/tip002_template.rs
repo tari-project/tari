@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use prost::Message;
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_dan_common_types::proto::tips::tip002;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -36,6 +37,7 @@ pub fn initial_instructions(template_param: &TemplateParameter) -> InstructionSe
         TemplateId::Tip002,
         "init".to_string(),
         template_param.template_data.clone(),
+        PublicKey::default(),
     )])
 }
 

@@ -1,6 +1,3 @@
-// Copyright 2022 The Tari Project
-// SPDX-License-Identifier: BSD-3-Clause
-
 table! {
     instructions (id) {
         id -> Integer,
@@ -9,6 +6,7 @@ table! {
         template_id -> Integer,
         method -> Text,
         args -> Binary,
+        sender -> Binary,
     }
 }
 

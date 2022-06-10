@@ -118,6 +118,7 @@ impl From<&Instruction> for proto::common::Instruction {
             template_id: source.template_id() as u32,
             method: source.method().to_string(),
             args: Vec::from(source.args()),
+            sender: source.sender().to_vec(),
         }
     }
 }
@@ -216,7 +217,12 @@ impl TryFrom<proto::common::Instruction> for Instruction {
 
     fn try_from(value: proto::common::Instruction) -> Result<Self, Self::Error> {
         let template_id = TemplateId::try_from(value.template_id).map_err(|err| err.to_string())?;
-        Ok(Self::new(template_id, value.method, value.args))
+        Ok(Self::new(
+            template_id,
+            value.method,
+            value.args,
+            PublicKey::from_bytes(&value.sender).expect("Fix me"),
+        ))
     }
 }
 

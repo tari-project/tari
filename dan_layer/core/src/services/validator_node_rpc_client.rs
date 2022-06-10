@@ -48,6 +48,7 @@ pub trait ValidatorNodeRpcClient: Send + Sync {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError>;
 
     async fn invoke_method(
@@ -56,6 +57,7 @@ pub trait ValidatorNodeRpcClient: Send + Sync {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError>;
 
     async fn get_sidechain_blocks(

@@ -51,6 +51,7 @@ pub trait AssetProxy: Send + Sync {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<(), DigitalAssetError>;
 
     async fn invoke_read_method(
@@ -59,6 +60,7 @@ pub trait AssetProxy: Send + Sync {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
@@ -100,10 +102,11 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         let mut client = self.validator_node_client_factory.create_client(member);
         let resp = client
-            .invoke_read_method(asset_public_key, template_id, method, args)
+            .invoke_read_method(asset_public_key, template_id, method, args, sender)
             .await?;
         Ok(resp)
     }
@@ -115,11 +118,12 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         debug!(target: LOG_TARGET, "Forwarding '{}' instruction to {}", member, method);
         let mut client = self.validator_node_client_factory.create_client(member);
         let resp = client
-            .invoke_method(asset_public_key, template_id, method, args)
+            .invoke_method(asset_public_key, template_id, method, args, sender)
             .await?;
         Ok(resp)
     }
@@ -132,6 +136,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         let committee = self.committee_manager.current_committee(asset_public_key)?;
         match invoke_type {
@@ -144,6 +149,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
                         template_id,
                         method.clone(),
                         args.clone(),
+                        sender,
                     ));
                 }
 
@@ -165,6 +171,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
                         template_id,
                         method.clone(),
                         args.clone(),
+                        sender,
                     ));
                 }
 
@@ -193,6 +200,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<(), DigitalAssetError> {
         // check if we are processing this asset
         if self.db_factory.get_state_db(asset_public_key)?.is_some() {
@@ -200,17 +208,25 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
                 template_id,
                 method.clone(),
                 args.clone(),
-                /* TokenId(request.token_id.clone()),
-                 * TODO: put signature in here
-                 * ComSig::default()
-                 * create_com_sig_from_bytes(&request.signature)
-                 *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
+                sender.clone()
+                // TokenId(request.token_id.clone()),
+                // TODO: put signature in here
+                // ComSig::default()
+                // create_com_sig_from_bytes(&request.signature)
+                //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
             );
             let mut mempool = self.mempool.clone();
             mempool.submit_instruction(instruction).await
         } else {
             let _result = self
-                .forward_to_committee(asset_public_key, InvokeType::InvokeMethod, template_id, method, args)
+                .forward_to_committee(
+                    asset_public_key,
+                    InvokeType::InvokeMethod,
+                    template_id,
+                    method,
+                    args,
+                    sender,
+                )
                 .await?;
             Ok(())
         }
@@ -222,6 +238,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: &PublicKey,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         self.forward_to_committee(
             asset_public_key,
@@ -229,6 +246,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
             template_id,
             method,
             args,
+            sender,
         )
         .await
     }

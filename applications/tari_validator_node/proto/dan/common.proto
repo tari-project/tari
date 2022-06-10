@@ -21,6 +21,7 @@ message Instruction {
   uint32 template_id = 1;
   string method = 2;
   bytes args = 3;
+  bytes sender = 4;
   //    bytes token_id = 5;
   //    bytes signature = 6;
 }

@@ -77,6 +77,8 @@ mod nodes {
     use std::{collections::HashMap, rc::Rc};
 
     use d3ne::node::{IOData, InputData, Node, OutputData};
+    use tari_common_types::types::PublicKey;
+    use tari_utilities::hex::Hex;
 
     use crate::services::asset_processor::{ArgValue, Bucket, Worker};
 
@@ -113,7 +115,7 @@ mod nodes {
                 },
             };
             let from = match node.get_string_field("from", &inputs) {
-                Ok(a) => a,
+                Ok(a) => PublicKey::from_hex(&a).expect("Not a valid pub key"),
                 Err(err) => {
                     let mut err_map = HashMap::new();
                     err_map.insert("error".to_string(), Err(err));
@@ -147,12 +149,30 @@ mod nodes {
             Rc::new(map)
         }
     }
+
+    pub struct SenderWorker {
+        pub sender: PublicKey,
+    }
+
+    impl Worker for SenderWorker {
+        fn call(&self, node: Node, input: InputData) -> OutputData {
+            dbg!("sender");
+            let mut map = HashMap::new();
+            map.insert(
+                "default".to_string(),
+                Ok(IOData {
+                    data: Box::new(self.sender.to_hex()),
+                }),
+            );
+            Rc::new(map)
+        }
+    }
 }
 
 pub struct Bucket {
     amount: u64,
     token_id: u64,
-    from: String,
+    from: PublicKey,
 }
 
 trait Worker {
@@ -175,7 +195,7 @@ impl CallableWorkers for TariWorkers {
     }
 }
 
-fn load_workers(args: HashMap<String, ArgValue>) -> TariWorkers {
+fn load_workers(args: HashMap<String, ArgValue>, sender: PublicKey) -> TariWorkers {
     let mut workers = TariWorkers::new();
     workers
         .map
@@ -187,6 +207,9 @@ fn load_workers(args: HashMap<String, ArgValue>) -> TariWorkers {
     workers
         .map
         .insert("core::arg".to_string(), Box::new(nodes::ArgWorker { args }));
+    workers
+        .map
+        .insert("core::sender".to_string(), Box::new(nodes::SenderWorker { sender }));
     workers
 }
 
@@ -266,7 +289,12 @@ impl FlowInstance {
         })
     }
 
-    pub fn process(&self, args: &[u8], arg_defs: &[WasmFunctionArgDef]) -> Result<(), DigitalAssetError> {
+    pub fn process(
+        &self,
+        args: &[u8],
+        arg_defs: &[WasmFunctionArgDef],
+        sender: PublicKey,
+    ) -> Result<(), DigitalAssetError> {
         let mut engine_args = HashMap::new();
 
         let mut remaining_args = Vec::from(args);
@@ -295,7 +323,7 @@ impl FlowInstance {
             engine_args.insert(ad.name.clone(), value);
         }
 
-        let engine = Engine::new("tari@0.1.0", Box::new(load_workers(engine_args)));
+        let engine = Engine::new("tari@0.1.0", Box::new(load_workers(engine_args, sender)));
         let output = engine.process(&self.nodes, self.start_node);
         dbg!(&output);
         let od = output.expect("engine process failed");
@@ -334,7 +362,7 @@ impl FlowFactory {
         dbg!(&self.flows);
         dbg!(&name);
         if let Some((args, engine)) = self.flows.get(&name) {
-            engine.process(instruction.args(), args)
+            engine.process(instruction.args(), args, instruction.sender())
         } else {
             todo!("could not find engine")
         }
