@@ -480,16 +480,48 @@ mod test {
                 SideChainConsensus,
             },
             vec_into_fixed_string,
+            CommitteeSignatures,
             ContractAcceptance,
+            ContractAmendment,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
+            ContractUpdateProposal,
+            ContractUpdateProposalAcceptance,
             FunctionRef,
             PublicFunction,
         },
     };
 
+    #[allow(clippy::too_many_lines)]
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
+        let constitution = ContractConstitution {
+            validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                .try_into()
+                .unwrap(),
+            acceptance_requirements: ContractAcceptanceRequirements {
+                acceptance_period_expiry: 100,
+                minimum_quorum_required: 5,
+            },
+            consensus: SideChainConsensus::MerkleRoot,
+            checkpoint_params: CheckpointParameters {
+                minimum_quorum_required: 5,
+                abandoned_interval: 100,
+            },
+            constitution_change_rules: ConstitutionChangeRules {
+                change_flags: ConstitutionChangeFlags::all(),
+                requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
+                    minimum_constitution_committee_signatures: 5,
+                    constitution_committee: Some(
+                        vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                            .try_into()
+                            .unwrap(),
+                    ),
+                }),
+            },
+            initial_reward: 100.into(),
+        };
+
         OutputFeatures {
             version,
             flags: OutputFlags::all(),
@@ -502,32 +534,7 @@ mod test {
             unique_id: Some(vec![0u8; 256]),
             sidechain_features: Some(SideChainFeatures {
                 contract_id: FixedHash::zero(),
-                constitution: Some(ContractConstitution {
-                    validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                        .try_into()
-                        .unwrap(),
-                    acceptance_requirements: ContractAcceptanceRequirements {
-                        acceptance_period_expiry: 100,
-                        minimum_quorum_required: 5,
-                    },
-                    consensus: SideChainConsensus::MerkleRoot,
-                    checkpoint_params: CheckpointParameters {
-                        minimum_quorum_required: 5,
-                        abandoned_interval: 100,
-                    },
-                    constitution_change_rules: ConstitutionChangeRules {
-                        change_flags: ConstitutionChangeFlags::all(),
-                        requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
-                            minimum_constitution_committee_signatures: 5,
-                            constitution_committee: Some(
-                                vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                                    .try_into()
-                                    .unwrap(),
-                            ),
-                        }),
-                    },
-                    initial_reward: 100.into(),
-                }),
+                constitution: Some(constitution.clone()),
                 definition: Some(ContractDefinition {
                     contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
                     contract_issuer: PublicKey::default(),
@@ -554,6 +561,27 @@ mod test {
                 acceptance: Some(ContractAcceptance {
                     validator_node_public_key: PublicKey::default(),
                     signature: Signature::default(),
+                }),
+                update_proposal: Some(ContractUpdateProposal {
+                    proposal_id: 0_u64,
+                    signature: Signature::default(),
+                    updated_constitution: constitution.clone(),
+                }),
+                update_proposal_acceptance: Some(ContractUpdateProposalAcceptance {
+                    proposal_id: 0_u64,
+                    validator_node_public_key: PublicKey::default(),
+                    signature: Signature::default(),
+                }),
+                amendment: Some(ContractAmendment {
+                    proposal_id: 0_u64,
+                    validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                        .try_into()
+                        .unwrap(),
+                    validator_signatures: vec![Signature::default(); CommitteeSignatures::MAX_SIGNATURES]
+                        .try_into()
+                        .unwrap(),
+                    updated_constitution: constitution,
+                    activation_window: 0_u64,
                 }),
             }),
             // Deprecated
