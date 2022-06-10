@@ -6841,12 +6841,8 @@ dependencies = [
  "tauri",
  "tauri-build",
  "thiserror",
-<<<<<<< Updated upstream
- "tokio 1.17.0",
- "tonic",
-=======
  "tokio 1.19.2",
->>>>>>> Stashed changes
+ "tonic",
  "tor-hash-passwd",
 ]
 
