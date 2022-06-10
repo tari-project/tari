@@ -1,5 +1,24 @@
 // Copyright 2019. The Tari Project
-// SPDX-License-Identifier: BSD-3-Clause
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! # LibWallet API Definition
 //! This module contains the Rust backend implementations of the functionality that a wallet for the Tari Base Layer
@@ -212,7 +231,6 @@ pub struct TariSeedWords(Vec<String>);
 #[derive(Debug, PartialEq)]
 pub struct TariPublicKeys(Vec<TariPublicKey>);
 
-#[repr(C)]
 pub struct TariWallet {
     pub wallet: WalletSqlite,
     pub runtime: Runtime,
@@ -2423,7 +2441,7 @@ pub unsafe extern "C" fn completed_transaction_get_fee(
 pub unsafe extern "C" fn completed_transaction_get_timestamp(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong {
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2431,7 +2449,7 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).timestamp.timestamp() as c_ulonglong
+    (*transaction).timestamp.timestamp() as c_longlong
 }
 
 /// Gets the message of a TariCompletedTransaction
@@ -2724,7 +2742,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
 pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong {
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2732,7 +2750,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).timestamp.timestamp() as c_ulonglong
+    (*transaction).timestamp.timestamp() as c_longlong
 }
 
 /// Gets the message of a TariPendingOutboundTransaction
@@ -2931,7 +2949,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
 pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> c_ulonglong {
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2939,7 +2957,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).timestamp.timestamp() as c_ulonglong
+    (*transaction).timestamp.timestamp() as c_longlong
 }
 
 /// Gets the message of a TariPendingInboundTransaction
