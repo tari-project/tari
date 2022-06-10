@@ -22,7 +22,11 @@
 
 use std::{collections::HashMap, convert::TryInto, fs};
 
-use d3ne::{engine::Engine, node::Node, workers::Workers};
+use d3ne::{
+    engine::Engine,
+    node::{InputData, Node, OutputData},
+    workers::{CallableWorkers, Workers},
+};
 use prost::bytes::Buf;
 use serde_json::Value as JsValue;
 use tari_core::transactions::transaction_components::TemplateParameter;
@@ -58,8 +62,116 @@ pub struct WasmModule {}
 
 impl WasmModule {}
 
-fn load_workers() -> Workers {
-    let mut workers = Workers::new();
+mod nodes {
+    use std::{collections::HashMap, rc::Rc};
+
+    use d3ne::node::{IOData, InputData, Node, OutputData};
+
+    use crate::services::asset_processor::{Bucket, Worker};
+
+    pub struct StartWorker {}
+
+    impl Worker for StartWorker {
+        fn call(&self, node: Node, inputs: InputData) -> OutputData {
+            let mut map = HashMap::new();
+            map.insert("default".to_string(), Ok(IOData { data: Box::new(()) }));
+            Rc::new(map)
+        }
+    }
+    pub struct CreateBucketWorker {}
+
+    impl Worker for CreateBucketWorker {
+        fn call(&self, node: Node, inputs: InputData) -> OutputData {
+            let mut map = HashMap::new();
+            let amount = match node.get_number_field("amount", &inputs) {
+                Ok(a) => a,
+                Err(err) => {
+                    let mut err_map = HashMap::new();
+                    err_map.insert("error".to_string(), Err(err));
+                    return Rc::new(err_map);
+                },
+            };
+            let token_id = match node.get_number_field("token_id", &inputs) {
+                Ok(a) => a,
+                Err(err) => {
+                    let mut err_map = HashMap::new();
+                    err_map.insert("error".to_string(), Err(err));
+                    return Rc::new(err_map);
+                },
+            };
+            let from = match node.get_string_field("from", &inputs) {
+                Ok(a) => a,
+                Err(err) => {
+                    let mut err_map = HashMap::new();
+                    err_map.insert("error".to_string(), Err(err));
+                    return Rc::new(err_map);
+                },
+            };
+
+            let bucket = Bucket {
+                amount: amount as u64,
+                token_id: token_id as u64,
+                from,
+            };
+            map.insert("default".to_string(), Ok(IOData { data: Box::new(()) }));
+            map.insert("bucket".to_string(), Ok(IOData { data: Box::new(bucket) }));
+            Rc::new(map)
+        }
+    }
+
+    pub struct ArgWorker {
+        pub args: HashMap<String, u64>,
+    }
+
+    impl Worker for ArgWorker {
+        fn call(&self, node: Node, inputs: InputData) -> OutputData {
+            let name = node.get_string_field("name", &inputs).unwrap();
+            let mut map = HashMap::new();
+            let value = self.args.get(&name).unwrap();
+            map.insert("default".to_string(), Ok(IOData { data: Box::new(*value) }));
+            Rc::new(map)
+        }
+    }
+}
+
+pub struct Bucket {
+    amount: u64,
+    token_id: u64,
+    from: String,
+}
+
+trait Worker {
+    fn call(&self, node: Node, input: InputData) -> OutputData;
+}
+
+pub struct TariWorkers {
+    map: HashMap<String, Box<dyn Worker>>,
+}
+
+impl TariWorkers {
+    pub fn new() -> TariWorkers {
+        TariWorkers { map: HashMap::new() }
+    }
+}
+
+impl CallableWorkers for TariWorkers {
+    fn call(&self, name: &str, node: Node, input: InputData) -> Option<OutputData> {
+        self.map.get(name).map(|worker| worker.call(node, input))
+    }
+}
+
+fn load_workers(args: HashMap<String, u64>) -> TariWorkers {
+    let mut workers = TariWorkers::new();
+    workers
+        .map
+        .insert("core::start".to_string(), Box::new(nodes::StartWorker {}));
+    workers.map.insert(
+        "tari::create_bucket".to_string(),
+        Box::new(nodes::CreateBucketWorker {}),
+    );
+    workers
+        .map
+        .insert("core::arg".to_string(), Box::new(nodes::ArgWorker { args }));
     workers
 }
 
@@ -110,8 +222,8 @@ pub struct FlowInstance {
 }
 
 impl FlowInstance {
-    pub fn try_build(value: JsValue, workers: Workers) -> Result<Self, DigitalAssetError> {
-        let engine = Engine::new("tari@0.1.0", workers);
+    pub fn try_build(value: JsValue, workers: TariWorkers) -> Result<Self, DigitalAssetError> {
+        let engine = Engine::new("tari@0.1.0", Box::new(workers));
         dbg!(&value);
         let nodes = engine.parse_value(value.clone()).expect("could not create engine");
         Ok(FlowInstance {
@@ -122,7 +234,9 @@ impl FlowInstance {
     }
 
     pub fn process(&self, args: &[u8]) -> Result<(), DigitalAssetError> {
-        let engine = Engine::new("tari@0.1.0", load_workers());
+        let engine_args = HashMap::new();
+
+        let engine = Engine::new("tari@0.1.0", Box::new(load_workers(engine_args)));
         let output = engine.process(&self.nodes, self.start_node);
         dbg!(&output);
         let od = output.expect("engine process failed");
@@ -144,7 +258,7 @@ impl FlowFactory {
                 func_def.name.clone(),
                 (
                     func_def.args.iter().map(|at| at.arg_type.clone()).collect(),
-                    FlowInstance::try_build(func_def.flow.clone(), load_workers()).expect("Could not build flow"),
+                    FlowInstance::try_build(func_def.flow.clone(), TariWorkers::new()).expect("Could not build flow"),
                 ),
             );
         }
