@@ -108,9 +108,9 @@ pub enum CliCommands {
     InitShaAtomicSwap(SendTariArgs),
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
-    PublishConstitutionDefinition(PublishDefinitionArgs),
+    PublishConstitutionDefinition(PublishFileArgs),
     RevalidateWalletDb,
-    ContractDefinition(ContractDefinitionCommand),
+    Contract(ContractCommand),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -200,22 +200,22 @@ pub struct ClaimShaAtomicSwapRefundArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct ContractDefinitionCommand {
+pub struct ContractCommand {
     #[clap(subcommand)]
-    pub subcommand: ContractDefinitionSubcommand,
+    pub subcommand: ContractSubcommand,
 }
 
 #[derive(Debug, Subcommand, Clone)]
-pub enum ContractDefinitionSubcommand {
+pub enum ContractSubcommand {
     /// Generates a new contract definition JSON spec file that can be edited and passed to other contract definition
     /// commands.
-    Init(InitContractDefinitionArgs),
+    InitDefinition(InitDefinitionArgs),
     /// Creates and publishes a contract definition UTXO from the JSON spec file.
-    Publish(PublishDefinitionArgs),
+    PublishDefinition(PublishFileArgs),
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct InitContractDefinitionArgs {
+pub struct InitDefinitionArgs {
     /// The destination path of the contract definition to create
     pub dest_path: PathBuf,
     /// Force overwrite the destination file if it already exists
@@ -230,6 +230,6 @@ pub struct InitContractDefinitionArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PublishDefinitionArgs {
+pub struct PublishFileArgs {
     pub file_path: PathBuf,
 }

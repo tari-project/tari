@@ -64,13 +64,7 @@ use tokio::{
 use super::error::CommandError;
 use crate::{
     automation::prompt::{HexArg, Prompt},
-    cli::{
-        CliCommands,
-        ContractDefinitionCommand,
-        ContractDefinitionSubcommand,
-        InitContractDefinitionArgs,
-        PublishDefinitionArgs,
-    },
+    cli::{CliCommands, ContractCommand, ContractSubcommand, InitDefinitionArgs, PublishFileArgs},
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
@@ -750,7 +744,7 @@ pub async fn command_runner(
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
             },
-            ContractDefinition(subcommand) => {
+            Contract(subcommand) => {
                 handle_contract_definition_command(&wallet, subcommand).await?;
             },
         }
@@ -796,15 +790,15 @@ pub async fn command_runner(
 
 async fn handle_contract_definition_command(
     wallet: &WalletSqlite,
-    command: ContractDefinitionCommand,
+    command: ContractCommand,
 ) -> Result<(), CommandError> {
     match command.subcommand {
-        ContractDefinitionSubcommand::Init(args) => init_contract_definition_spec(args),
-        ContractDefinitionSubcommand::Publish(args) => publish_contract_definition(wallet, args).await,
+        ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(args),
+        ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
     }
 }
 
-fn init_contract_definition_spec(args: InitContractDefinitionArgs) -> Result<(), CommandError> {
+fn init_contract_definition_spec(args: InitDefinitionArgs) -> Result<(), CommandError> {
     if args.dest_path.exists() {
         if args.force {
             println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
@@ -845,7 +839,7 @@ fn init_contract_definition_spec(args: InitContractDefinitionArgs) -> Result<(),
     Ok(())
 }
 
-async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishDefinitionArgs) -> Result<(), CommandError> {
+async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
     // open the JSON file with the contract definition values
     let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let file_reader = BufReader::new(file);
