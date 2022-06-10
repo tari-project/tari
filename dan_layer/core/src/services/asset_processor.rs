@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, fs};
+use std::{any::Any, collections::HashMap, convert::TryInto, fs};
 
 use d3ne::{
     engine::Engine,
@@ -29,13 +29,24 @@ use d3ne::{
 };
 use prost::bytes::Buf;
 use serde_json::Value as JsValue;
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_dan_common_types::proto::tips;
+use tari_utilities::{hex::Hex, ByteArray};
 use wasmer::{imports, Instance, Module, Store, Type, Val, Value, WasmPtr};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{ArgType, AssetDefinition, FlowFunctionDef, FlowNodeDef, Instruction, InstructionSet, TemplateId},
+    models::{
+        ArgType,
+        AssetDefinition,
+        FlowFunctionDef,
+        FlowNodeDef,
+        Instruction,
+        InstructionSet,
+        TemplateId,
+        WasmFunctionArgDef,
+    },
     services::{infrastructure_services::NodeAddressable, CommitteeManager},
     storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
     template_command::ExecutionResult,
@@ -67,12 +78,13 @@ mod nodes {
 
     use d3ne::node::{IOData, InputData, Node, OutputData};
 
-    use crate::services::asset_processor::{Bucket, Worker};
+    use crate::services::asset_processor::{ArgValue, Bucket, Worker};
 
     pub struct StartWorker {}
 
     impl Worker for StartWorker {
         fn call(&self, node: Node, inputs: InputData) -> OutputData {
+            dbg!("start");
             let mut map = HashMap::new();
             map.insert("default".to_string(), Ok(IOData { data: Box::new(()) }));
             Rc::new(map)
@@ -82,6 +94,7 @@ mod nodes {
 
     impl Worker for CreateBucketWorker {
         fn call(&self, node: Node, inputs: InputData) -> OutputData {
+            dbg!("create_bucket");
             let mut map = HashMap::new();
             let amount = match node.get_number_field("amount", &inputs) {
                 Ok(a) => a,
@@ -120,15 +133,17 @@ mod nodes {
     }
 
     pub struct ArgWorker {
-        pub args: HashMap<String, u64>,
+        pub args: HashMap<String, ArgValue>,
     }
 
     impl Worker for ArgWorker {
         fn call(&self, node: Node, inputs: InputData) -> OutputData {
+            dbg!("arg");
             let name = node.get_string_field("name", &inputs).unwrap();
+            dbg!(&name);
             let mut map = HashMap::new();
-            let value = self.args.get(&name).unwrap();
-            map.insert("default".to_string(), Ok(IOData { data: Box::new(*value) }));
+            let value = self.args.get(&name).map(|v| v.clone()).expect("could not find arg");
+            map.insert("default".to_string(), Ok(IOData { data: Box::new(value) }));
             Rc::new(map)
         }
     }
@@ -160,7 +175,7 @@ impl CallableWorkers for TariWorkers {
     }
 }
 
-fn load_workers(args: HashMap<String, u64>) -> TariWorkers {
+fn load_workers(args: HashMap<String, ArgValue>) -> TariWorkers {
     let mut workers = TariWorkers::new();
     workers
         .map
@@ -221,6 +236,24 @@ pub struct FlowInstance {
     nodes: HashMap<i64, Node>,
 }
 
+#[derive(Clone)]
+pub enum ArgValue {
+    String(String),
+    Byte(u8),
+    PublicKey(PublicKey),
+    Uint(u64),
+}
+
+impl ArgValue {
+    pub fn into_any(self) -> Box<dyn Any> {
+        match self {
+            ArgValue::String(s) => Box::new(s),
+            ArgValue::Byte(b) => Box::new(b),
+            ArgValue::PublicKey(k) => Box::new(k),
+            ArgValue::Uint(u) => Box::new(u),
+        }
+    }
+}
 impl FlowInstance {
     pub fn try_build(value: JsValue, workers: TariWorkers) -> Result<Self, DigitalAssetError> {
         let engine = Engine::new("tari@0.1.0", Box::new(workers));
@@ -233,8 +266,34 @@ impl FlowInstance {
         })
     }
 
-    pub fn process(&self, args: &[u8]) -> Result<(), DigitalAssetError> {
-        let engine_args = HashMap::new();
+    pub fn process(&self, args: &[u8], arg_defs: &[WasmFunctionArgDef]) -> Result<(), DigitalAssetError> {
+        let mut engine_args = HashMap::new();
+
+        let mut remaining_args = Vec::from(args);
+        for ad in arg_defs {
+            let value = match ad.arg_type {
+                ArgType::String => {
+                    let length = remaining_args.pop().expect("no more args: len") as usize;
+                    let s_bytes: Vec<u8> = remaining_args.drain(0..length).collect();
+                    let s = String::from_utf8(s_bytes).expect("could not convert string");
+                    ArgValue::String(s)
+                },
+                ArgType::Byte => ArgValue::Byte(remaining_args.pop().expect("No byte to read")),
+                ArgType::PublicKey => {
+                    let bytes: Vec<u8> = remaining_args.drain(0..32).collect();
+                    dbg!(bytes.to_hex());
+                    let pk = PublicKey::from_bytes(&bytes).expect("Not a valid public key");
+                    ArgValue::PublicKey(pk)
+                },
+                ArgType::Uint => {
+                    let bytes: Vec<u8> = remaining_args.drain(0..8).collect();
+                    let mut fixed: [u8; 8] = [0u8; 8];
+                    fixed.copy_from_slice(&bytes);
+                    ArgValue::Uint(u64::from_le_bytes(fixed))
+                },
+            };
+            engine_args.insert(ad.name.clone(), value);
+        }
 
         let engine = Engine::new("tari@0.1.0", Box::new(load_workers(engine_args)));
         let output = engine.process(&self.nodes, self.start_node);
@@ -246,7 +305,7 @@ impl FlowInstance {
 
 #[derive(Clone)]
 pub struct FlowFactory {
-    flows: HashMap<String, (Vec<ArgType>, FlowInstance)>,
+    flows: HashMap<String, (Vec<WasmFunctionArgDef>, FlowInstance)>,
 }
 impl FlowFactory {
     pub fn new(asset_definition: &AssetDefinition) -> Self {
@@ -257,7 +316,7 @@ impl FlowFactory {
             flows.insert(
                 func_def.name.clone(),
                 (
-                    func_def.args.iter().map(|at| at.arg_type.clone()).collect(),
+                    func_def.args.clone(),
                     FlowInstance::try_build(func_def.flow.clone(), TariWorkers::new()).expect("Could not build flow"),
                 ),
             );
@@ -274,8 +333,8 @@ impl FlowFactory {
         dbg!("INvoke write");
         dbg!(&self.flows);
         dbg!(&name);
-        if let Some((_args, engine)) = self.flows.get(&name) {
-            engine.process(instruction.args())
+        if let Some((args, engine)) = self.flows.get(&name) {
+            engine.process(instruction.args(), args)
         } else {
             todo!("could not find engine")
         }
