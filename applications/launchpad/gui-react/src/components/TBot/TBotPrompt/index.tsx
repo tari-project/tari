@@ -21,10 +21,12 @@ import {
   MessageWrapper,
   ScrollWrapper,
   HeightAnimationWrapper,
+  TBotProgressContainer,
 } from './styles'
 
 import ChatDots from '../DotsComponent'
 import MessageBox from './MessageBox'
+import ProgressIndicator from '../../Onboarding/ProgressIndicator'
 
 // The default time between rendering messages
 const WAIT_TIME = 2800
@@ -111,7 +113,8 @@ const TBotPrompt = ({
       setMessageLoading(true)
 
       // use custom waiting time, if previous message has 'wait' field.
-      const lastMsg = counter > 1 ? messages[counter - 1] : undefined
+      // const lastMsg = counter > 1 ? messages[counter] : undefined
+      const lastMsg = messages[counter]
       let wait = WAIT_TIME
       if (
         lastMsg &&
@@ -167,7 +170,7 @@ const TBotPrompt = ({
       if (lastMsgRef?.current) {
         lastMsgRef?.current.scrollIntoView({ block: 'start' })
       }
-    }, 3000)
+    }, 500)
   }, [lastMsgRef, lastMsgRef?.current])
 
   // Build messages list
@@ -221,6 +224,10 @@ const TBotPrompt = ({
     return null
   }
 
+  const fadeOutGradient = floating
+    ? 'linear-gradient(to bottom, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.6))'
+    : 'linear-gradient(to bottom, rgba(250, 250, 250, 1), rgba(250, 250, 250, 0.4))'
+
   return (
     <PromptContainer
       style={promptAnim}
@@ -229,7 +236,12 @@ const TBotPrompt = ({
     >
       <ContentRow>
         <ContentContainer $floating={floating}>
-          <FadeOutSection $floating={floating} />
+          <FadeOutSection
+            $floating={floating}
+            style={{
+              backgroundImage: fadeOutGradient,
+            }}
+          />
           {closeIcon && (
             <StyledCloseContainer>
               <StyledCloseIcon>
@@ -249,9 +261,12 @@ const TBotPrompt = ({
           </MessageContainer>
         </ContentContainer>
       </ContentRow>
-      <TBotContainer>
-        <TBot animate={tickle} />
-      </TBotContainer>
+      <TBotProgressContainer mode={mode}>
+        {mode === 'onboarding' && <ProgressIndicator fill={0.5} />}
+        <TBotContainer>
+          <TBot animate={tickle} />
+        </TBotContainer>
+      </TBotProgressContainer>
     </PromptContainer>
   )
 }

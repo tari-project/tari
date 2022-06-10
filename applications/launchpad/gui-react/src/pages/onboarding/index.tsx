@@ -46,8 +46,8 @@ const Onboarding = ({ close }: { close: () => void }) => {
   }
 
   return (
-    <div>
-      <div
+    <div style={{ backgroundColor: '#FAFAFA' }}>
+      {/* <div
         style={{
           position: 'fixed',
           zIndex: 100,
@@ -67,7 +67,7 @@ const Onboarding = ({ close }: { close: () => void }) => {
         >
           Clear messages
         </button>
-      </div>
+      </div> */}
       <div
         style={{
           display: 'flex',
