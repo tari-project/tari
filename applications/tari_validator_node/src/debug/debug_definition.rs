@@ -28,7 +28,10 @@ use tari_common::configuration::CommonConfig;
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_dan_common_types::proto::tips::tip6000;
-use tari_dan_core::DigitalAssetError;
+use tari_dan_core::{
+    models::{ArgType, FlowFunctionDef, WasmFunctionArgDef},
+    DigitalAssetError,
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct DebugDefinition {
@@ -37,36 +40,37 @@ pub struct DebugDefinition {
     // TODO: change to contract od
     pub public_key: PublicKey,
     pub initialization: Vec<InitializationDef>,
+    pub wasm_modules: Vec<WasmModuleDef>,
     pub functions: Vec<FunctionDef>,
 }
 
 impl DebugDefinition {
     pub fn get_template_parameters(&self, config: &CommonConfig) -> Result<Vec<TemplateParameter>, DigitalAssetError> {
         let mut result = vec![];
-        for def in &self.initialization {
-            match def {
-                InitializationDef::Wasm { wat_path } => {
-                    let wat_path = if wat_path.is_absolute() {
-                        wat_path.to_path_buf()
-                    } else {
-                        config.base_path().join(wat_path)
-                    };
-                    let wat_file = fs::read_to_string(&wat_path).expect("Can't read file");
-                    // let store = Store::default();
-                    // let module = Module::new(&store, wat_file.as_str());
-                    // let import_object = imports! {};
-                    // let instance = Instance::new(&module, &import_object)?;
-
-                    let data = tip6000::InitRequest { wat: wat_file }.encode_to_vec();
-
-                    result.push(TemplateParameter {
-                        template_id: 6000,
-                        template_data_version: 0,
-                        template_data: data,
-                    });
-                },
-            }
-        }
+        // for def in &self.initialization {
+        //     match def {
+        //         InitializationDef::Wasm { wat_path } => {
+        //             let wat_path = if wat_path.is_absolute() {
+        //                 wat_path.to_path_buf()
+        //             } else {
+        //                 config.base_path().join(wat_path)
+        //             };
+        //             let wat_file = fs::read_to_string(&wat_path).expect("Can't read file");
+        //             // let store = Store::default();
+        //             // let module = Module::new(&store, wat_file.as_str());
+        //             // let import_object = imports! {};
+        //             // let instance = Instance::new(&module, &import_object)?;
+        //
+        //             let data = tip6000::InitRequest { wat: wat_file }.encode_to_vec();
+        //
+        //             result.push(TemplateParameter {
+        //                 template_id: 6000,
+        //                 template_data_version: 0,
+        //                 template_data: data,
+        //             });
+        //         },
+        //     }
+        // }
         Ok(result)
     }
 }
@@ -79,6 +83,15 @@ pub enum InitializationDef {
 
 #[derive(Serialize, Deserialize)]
 pub struct FunctionDef {
-    pub template_id: String,
-    pub method: String,
+    // pub template_id: String,
+    pub name: String,
+    pub in_module: Option<String>,
+    pub args: Vec<WasmFunctionArgDef>,
+    pub flow: Option<FlowFunctionDef>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct WasmModuleDef {
+    pub name: String,
+    pub path: PathBuf,
 }

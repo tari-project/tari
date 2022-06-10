@@ -105,6 +105,12 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         sender: &TSpecification::Addr,
         outbound: &mut TSpecification::OutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        info!(
+            target: LOG_TARGET,
+            "Received message as leader:{:?} for view:{}",
+            message.message_type(),
+            message.view_number()
+        );
         if !message.matches(HotStuffMessageType::PreCommit, current_view.view_id) {
             return Ok(None);
         }
@@ -191,6 +197,12 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         signing_service: &TSpecification::SigningService,
         unit_of_work: &mut TUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        info!(
+            target: LOG_TARGET,
+            "Received message as replica:{:?} for view:{}",
+            message.message_type(),
+            message.view_number()
+        );
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::PreCommit, current_view.view_id) {
                 warn!(

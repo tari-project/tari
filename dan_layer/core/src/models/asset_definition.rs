@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, marker::PhantomData};
+use std::{collections::HashMap, fmt, marker::PhantomData, path::PathBuf};
 
 use serde::{self, de, Deserialize, Deserializer, Serialize};
 use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
@@ -40,7 +40,9 @@ pub struct AssetDefinition {
     pub checkpoint_unique_id: Vec<u8>,
     pub initial_state: InitialState,
     pub template_parameters: Vec<TemplateParameter>,
+    pub wasm_modules: Vec<WasmModuleDef>,
     pub wasm_functions: Vec<WasmFunctionDef>,
+    pub flow_functions: Vec<FlowFunctionDef>,
 }
 
 impl Default for AssetDefinition {
@@ -50,10 +52,12 @@ impl Default for AssetDefinition {
             checkpoint_unique_id: ASSET_CHECKPOINT_ID.into(),
             public_key: Default::default(),
             // committee: vec![],
-            phase_timeout: 30,
+            phase_timeout: 1,
             initial_state: Default::default(),
             template_parameters: vec![],
+            wasm_modules: vec![],
             wasm_functions: vec![],
+            flow_functions: vec![],
         }
     }
 }
@@ -87,9 +91,67 @@ impl AssetDefinition {
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
+pub struct WasmModuleDef {
+    pub name: String,
+    pub path: PathBuf,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct WasmFunctionDef {
     pub name: String,
-    pub wat_file: String,
+    pub args: Vec<WasmFunctionArgDef>,
+    pub in_module: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FlowFunctionDef {
+    pub nodes: HashMap<String, FlowNodeDef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FlowNodeDef {
+    pub id: u32,
+    pub data: HashMap<String, String>,
+    pub inputs: Vec<FlowInputConnectionsDef>,
+    pub outputs: Vec<FlowOutputConnectionsDef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FlowInputConnectionsDef {
+    pub connections: Vec<FlowInputConnectionDef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FlowInputConnectionDef {
+    pub node: u32,
+    pub output: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FlowOutputConnectionsDef {
+    pub connections: Vec<FlowOutputConnectionDef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FlowOutputConnectionDef {
+    pub node: u32,
+    pub input: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WasmFunctionArgDef {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub arg_type: ArgType,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ArgType {
+    String,
+    Byte,
+    PublicKey,
+    Uint,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]

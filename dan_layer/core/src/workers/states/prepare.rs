@@ -161,7 +161,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
         outbound: &mut TSpecification::OutboundService,
         db_factory: &TSpecification::DbFactory,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Received message as leader:{:?} for view:{}",
             message.message_type(),
@@ -170,7 +170,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
 
         // TODO: This might need to be checked in the QC rather
         if self.received_new_view_messages.contains_key(sender) {
-            println!("Already received message from {:?}", sender);
+            warn!(target: LOG_TARGET, "Already received message from {:?}", &sender);
             return Ok(None);
         }
 
@@ -226,7 +226,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
         chain_storage_service: &TSpecification::ChainStorageService,
         state_tx: &mut TStateDbUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Received message as replica:{:?} for view:{}",
             message.message_type(),

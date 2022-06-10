@@ -55,7 +55,7 @@ use tari_common::{
 use tari_comms::{peer_manager::PeerFeatures, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_dan_core::{
-    models::{AssetDefinition, WasmFunctionDef},
+    models::{AssetDefinition, WasmFunctionDef, WasmModuleDef},
     services::{
         BaseLayerCheckpointManager,
         BaseLayerCommitteeManager,
@@ -161,21 +161,35 @@ async fn start_debug_mode(
     let definition: DebugDefinition = serde_json::from_reader(reader).expect("Not a valid definition");
     let asset_definition = AssetDefinition {
         public_key: definition.public_key.clone(),
-        phase_timeout: 30,
+        phase_timeout: 2,
         base_layer_confirmation_time: 1,
         checkpoint_unique_id: vec![],
         initial_state: Default::default(),
         template_parameters: definition.get_template_parameters(&config.common).unwrap(),
-        wasm_functions: vec![WasmFunctionDef {
-            name: "add_one".to_string(),
-            wat_file: r#"(module
-      (type $t0 (func (param i32) (result i32)))
-      (func $add_one (export "add_one") (type $t0) (param $p0 i32) (result i32)
-        get_local $p0
-        i32.const 1
-        i32.add))"#
-                .to_string(),
-        }],
+        wasm_modules: definition
+            .wasm_modules
+            .iter()
+            .map(|def| WasmModuleDef {
+                name: def.name.clone(),
+                path: if def.path.is_absolute() {
+                    def.path.clone()
+                } else {
+                    debug_file.parent().unwrap().join(&def.path)
+                },
+            })
+            .collect(),
+        wasm_functions: definition
+            .functions
+            .iter()
+            .filter_map(|def| {
+                def.in_module.as_ref().map(|module| WasmFunctionDef {
+                    name: def.name.clone(),
+                    args: def.args.clone(),
+                    in_module: module.clone(),
+                })
+            })
+            .collect(),
+        flow_functions: definition.functions.iter().filter_map(|def| def.flow.clone()).collect(),
     };
     let committee_manager = StaticListCommitteeManager::new(definition.committee.clone(), asset_definition.clone());
     let (handles, subscription_factory) = comms::build_service_and_comms_stack(

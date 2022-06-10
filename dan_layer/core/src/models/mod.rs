@@ -49,7 +49,17 @@ mod tree_node_hash;
 mod view;
 mod view_id;
 
-pub use asset_definition::{AssetDefinition, InitialState, KeyValue, SchemaState, WasmFunctionDef};
+pub use asset_definition::{
+    ArgType,
+    AssetDefinition,
+    FlowFunctionDef,
+    InitialState,
+    KeyValue,
+    SchemaState,
+    WasmFunctionArgDef,
+    WasmFunctionDef,
+    WasmModuleDef,
+};
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::{BaseLayerOutput, CheckpointOutput, CommitteeOutput};
 pub use committee::Committee;
@@ -166,6 +176,7 @@ pub enum HotStuffMessageType {
     Prepare,
     PreCommit,
     Commit,
+    Decide,
     // Special type
     Genesis,
 }
@@ -177,6 +188,7 @@ impl HotStuffMessageType {
             HotStuffMessageType::Prepare => 2,
             HotStuffMessageType::PreCommit => 3,
             HotStuffMessageType::Commit => 4,
+            HotStuffMessageType::Decide => 5,
             HotStuffMessageType::Genesis => 255,
         }
     }

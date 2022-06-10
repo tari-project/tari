@@ -343,11 +343,6 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
     }
 
     async fn next_view(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        info!(
-            target: LOG_TARGET,
-            "Status: {} in mempool ",
-            self.worker.payload_provider.get_payload_queue().await,
-        );
         self.worker.state_db_unit_of_work = None;
         let mut state = states::NextViewState::<T>::new();
         state

@@ -72,8 +72,7 @@ impl<TSpecification: ServiceSpecification> NextViewState<TSpecification> {
                 new_view: genesis_view_no,
             })
         } else {
-            info!(target: LOG_TARGET, "End of view: {}", current_view.view_id);
-            debug!(target: LOG_TARGET, "--------------------------------");
+            info!(target: LOG_TARGET, "View completed: {}", current_view.view_id);
             let prepare_qc = chain_db.find_highest_prepared_qc()?;
             let next_view = current_view.view_id.next();
             let message = HotStuffMessage::new_view(prepare_qc, next_view, asset_definition.public_key.clone());

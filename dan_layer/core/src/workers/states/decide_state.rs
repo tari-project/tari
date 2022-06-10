@@ -85,7 +85,7 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
                       }
                   }
                 },
-              r = inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
+              r = inbound_services.wait_for_qc(HotStuffMessageType::Commit, current_view.view_id()) => {
                     let (from, message) = r?;
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
                       if let Some(event) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {
@@ -106,6 +106,12 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
         sender: &TSpecification::Addr,
         outbound: &mut TSpecification::OutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        info!(
+            target: LOG_TARGET,
+            "Received message as leader:{:?} for view:{}",
+            message.message_type(),
+            message.view_number()
+        );
         if !message.matches(HotStuffMessageType::Commit, current_view.view_id) {
             return Ok(None);
         }
@@ -189,7 +195,7 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
         unit_of_work: &mut TUnitOfWork,
         payload_provider: &mut TSpecification::PayloadProvider,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        debug!(target: LOG_TARGET, "[DECIDE] replica message: {:?}", message);
+        info!(target: LOG_TARGET, "[DECIDE] replica message: {:?}", message);
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
                 warn!(
@@ -212,7 +218,12 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
 
             payload_provider.remove_payload(justify.node_hash()).await?;
             unit_of_work.commit_node(justify.node_hash())?;
-            info!(target: LOG_TARGET, "Committed node: {}", justify.node_hash().to_hex());
+            debug!(
+                target: LOG_TARGET,
+                "Committed node: {}.{}",
+                current_view.view_id,
+                justify.node_hash().to_hex()
+            );
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {
             warn!(target: LOG_TARGET, "received non justify message");

@@ -106,7 +106,7 @@ impl<TSpecification: ServiceSpecification> PreCommitState<TSpecification> {
         sender: &TSpecification::Addr,
         outbound: &mut TSpecification::OutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Received message as leader:{:?} for view:{}",
             message.message_type(),
@@ -117,6 +117,7 @@ impl<TSpecification: ServiceSpecification> PreCommitState<TSpecification> {
         }
 
         if self.received_prepare_messages.contains_key(sender) {
+            warn!(target: LOG_TARGET, "Already received message from {:?}", &sender);
             return Ok(None);
         }
 
@@ -198,7 +199,7 @@ impl<TSpecification: ServiceSpecification> PreCommitState<TSpecification> {
         signing_service: &TSpecification::SigningService,
         unit_of_work: &mut TUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Received message as replica:{:?} for view:{}",
             message.message_type(),
