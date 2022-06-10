@@ -150,7 +150,6 @@ use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
-    output_manager_service::error::OutputManagerError,
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
@@ -238,13 +237,17 @@ pub struct TariWallet {
     shutdown: Shutdown,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub struct Utxo {
     commitment: Commitment,
     value: c_ulonglong,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub struct GetUtxosView {
     outputs: Vec<Utxo>,
     unlisted_dust_sum: c_ulonglong,
@@ -4134,7 +4137,14 @@ pub unsafe extern "C" fn wallet_get_utxos(
     dust_threshold: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut GetUtxosView {
-    let mut error = 0;
+    if wallet.is_null() {
+        ptr::replace(
+            error_out,
+            LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code as c_int,
+        );
+        return ptr::null_mut();
+    }
+
     let factories = CryptoFactories::default();
     let page = (page as usize).max(1) - 1;
     let page_size = (page_size as usize).max(1);
@@ -4148,16 +4158,10 @@ pub unsafe extern "C" fn wallet_get_utxos(
         dust_threshold
     );
 
-    let rt = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
-    };
-
-    match rt.block_on((*wallet).wallet.output_manager_service.get_unspent_outputs()) {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.output_manager_service.get_unspent_outputs())
+    {
         Ok(mut unblinded_outputs) => {
             unblinded_outputs.sort_by(|a, b| match sort_ascending {
                 true => Ord::cmp(&a.value, &b.value),
@@ -4192,9 +4196,11 @@ pub unsafe extern "C" fn wallet_get_utxos(
         },
 
         Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
+            ptr::replace(
+                error_out,
+                LibWalletError::from(WalletError::OutputManagerError(e)).code as c_int,
+            );
+            ptr::null_mut()
         },
     }
 }
@@ -7023,10 +7029,7 @@ mod test {
     use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_core::{
         covenant,
-        transactions::{
-            test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::TransactionOutputVersion,
-        },
+        transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
     };
     use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
@@ -8737,7 +8740,6 @@ mod test {
             let mut recovery_in_progress = true;
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
-            let factories = CryptoFactories::default();
             let secret_key_alice = private_key_generate();
             let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
@@ -8789,11 +8791,11 @@ mod test {
                 error_ptr,
             );
 
-            let rt = Runtime::new().unwrap();
-
             (0..10).for_each(|i| {
-                let (txin, uout) = create_test_input((1000 * i).into(), 0, &PedersenCommitmentFactory::default());
-                rt.block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
+                let (_, uout) = create_test_input((1000 * i).into(), 0, &PedersenCommitmentFactory::default());
+                (*alice_wallet)
+                    .runtime
+                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
                     .unwrap();
             });
 
@@ -8802,7 +8804,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*utxos).outputs.len(), 6);
             assert_eq!((*utxos).unlisted_dust_sum, 6000);
-            assert_eq!(
+            assert!(
                 (*utxos)
                     .outputs
                     .iter()
@@ -8811,8 +8813,7 @@ mod test {
                         acc.0 && x.value > acc.1,
                         x.value
                     ))
-                    .0,
-                true
+                    .0
             );
 
             // descending order
@@ -8820,7 +8821,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*utxos).outputs.len(), 6);
             assert_eq!((*utxos).unlisted_dust_sum, 6000);
-            assert_eq!(
+            assert!(
                 (*utxos)
                     .outputs
                     .iter()
@@ -8829,8 +8830,7 @@ mod test {
                         acc.0 && x.value < acc.1,
                         x.value
                     ))
-                    .0,
-                true
+                    .0
             );
 
             // result must be empty due to high dust threshold
