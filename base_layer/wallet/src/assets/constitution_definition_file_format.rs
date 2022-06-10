@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::{
     CheckpointParameters,
     ConstitutionChangeFlags,
@@ -34,11 +34,11 @@ use tari_core::transactions::transaction_components::{
     SideChainConsensus,
     SideChainFeatures,
 };
-use tari_utilities::ByteArray;
+use tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConstitutionDefinitionFileFormat {
-    pub contract_id: PublicKey,
+    pub contract_id: String,
     pub validator_committee: Vec<PublicKey>,
     pub consensus: SideChainConsensus,
     pub initial_reward: u64,
@@ -66,7 +66,7 @@ impl TryFrom<ConstitutionDefinitionFileFormat> for SideChainFeatures {
     type Error = String;
 
     fn try_from(value: ConstitutionDefinitionFileFormat) -> Result<Self, Self::Error> {
-        let contract_id = value.contract_id.as_bytes().try_into().map_err(|e| format!("{}", e))?;
+        let contract_id = FixedHash::from_hex(&value.contract_id).map_err(|e| format!("{}", e))?;
 
         Ok(Self::builder(contract_id)
             .with_contract_constitution(value.try_into()?)

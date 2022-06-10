@@ -125,7 +125,13 @@ Then(
 Given(
   "I have a validator node {word} connected to base node {word} and wallet {word} with {word} set to {word}",
   { timeout: 20 * 1000 },
-  async function (vn_name, base_node_name, wallet_name, option_key, option_value) {
+  async function (
+    vn_name,
+    base_node_name,
+    wallet_name,
+    option_key,
+    option_value
+  ) {
     const baseNode = this.getNode(base_node_name);
     const walletNode = this.getWallet(wallet_name);
 
