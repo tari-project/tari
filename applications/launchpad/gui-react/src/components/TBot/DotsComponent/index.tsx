@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import lottie from 'lottie-web'
 import dotsChatLottie from '../../../styles/lotties/tbot-dots-animation.json'
-import { DotsContainer, StyledDots, StyledRow } from './styles'
+import { DotsContainer, StyledRow } from './styles'
 
 /**
  * @name ChatDots

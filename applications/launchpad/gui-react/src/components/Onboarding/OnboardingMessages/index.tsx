@@ -1,6 +1,5 @@
 import Text from '../../Text'
 import t from '../../../locales'
-import { ReactNode } from 'react'
 
 const Message1 = (
   <Text as='span' type='defaultHeavy'>
