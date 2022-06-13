@@ -45,7 +45,7 @@ use crate::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
-            OutputFlags,
+            OutputType,
             Transaction,
             TransactionInput,
             TransactionKernel,
@@ -545,7 +545,7 @@ pub fn create_unblinded_txos(
                 amount_for_last_output
             };
             let test_params = TestParams::new();
-            let script_offset_pvt_key = if output_features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+            let script_offset_pvt_key = if output_features.output_type == OutputType::Coinbase {
                 PrivateKey::default()
             } else {
                 test_params.sender_offset_private_key.clone()

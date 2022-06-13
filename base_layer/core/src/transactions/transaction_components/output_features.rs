@@ -52,7 +52,7 @@ use crate::{
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
             MintNonFungibleFeatures,
-            OutputFlags,
+            OutputType,
             SideChainCheckpointFeatures,
             TemplateParameter,
         },
@@ -65,7 +65,7 @@ use crate::{
 pub struct OutputFeatures {
     pub version: OutputFeaturesVersion,
     /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
-    pub flags: OutputFlags,
+    pub output_type: OutputType,
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
@@ -88,7 +88,7 @@ pub struct OutputFeatures {
 impl OutputFeatures {
     pub fn new(
         version: OutputFeaturesVersion,
-        flags: OutputFlags,
+        flags: OutputType,
         maturity: u64,
         recovery_byte: u8,
         metadata: Vec<u8>,
@@ -103,7 +103,7 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         OutputFeatures {
             version,
-            flags,
+            output_type: flags,
             maturity,
             recovery_byte,
             metadata,
@@ -119,7 +119,7 @@ impl OutputFeatures {
     }
 
     pub fn new_current_version(
-        flags: OutputFlags,
+        flags: OutputType,
         maturity: u64,
         recovery_byte: u8,
         metadata: Vec<u8>,
@@ -151,7 +151,7 @@ impl OutputFeatures {
 
     pub fn create_coinbase(maturity_height: u64, recovery_byte: u8) -> OutputFeatures {
         OutputFeatures {
-            flags: OutputFlags::COINBASE_OUTPUT,
+            output_type: OutputType::Coinbase,
             maturity: maturity_height,
             recovery_byte,
             ..Default::default()
@@ -210,7 +210,7 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         let unique_id = Some(public_key.as_bytes().to_vec());
         Self {
-            flags: OutputFlags::ASSET_REGISTRATION,
+            output_type: OutputType::AssetRegistration,
             maturity: 0,
             metadata,
             asset: Some(AssetOutputFeatures {
@@ -230,11 +230,7 @@ impl OutputFeatures {
         other_features: Option<OutputFeatures>,
     ) -> OutputFeatures {
         Self {
-            flags: OutputFlags::MINT_NON_FUNGIBLE |
-                other_features
-                    .as_ref()
-                    .map(|of| of.flags)
-                    .unwrap_or_else(OutputFlags::empty),
+            output_type: OutputType::MintNonFungible,
             mint_non_fungible: Some(MintNonFungibleFeatures {
                 asset_public_key: asset_public_key.clone(),
                 asset_owner_commitment,
@@ -253,10 +249,10 @@ impl OutputFeatures {
         is_initial: bool,
     ) -> OutputFeatures {
         Self {
-            flags: if is_initial {
-                OutputFlags::SIDECHAIN_CHECKPOINT | OutputFlags::MINT_NON_FUNGIBLE
+            output_type: if is_initial {
+                OutputType::SidechainInitialCheckpoint
             } else {
-                OutputFlags::SIDECHAIN_CHECKPOINT
+                OutputType::SidechainCheckpoint
             },
             sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
             parent_public_key: Some(parent_public_key),
@@ -273,10 +269,10 @@ impl OutputFeatures {
         is_initial: bool,
     ) -> OutputFeatures {
         Self {
-            flags: if is_initial {
-                OutputFlags::COMMITTEE_DEFINITION | OutputFlags::MINT_NON_FUNGIBLE
+            output_type: if is_initial {
+                OutputType::CommitteeInitialDefinition
             } else {
-                OutputFlags::COMMITTEE_DEFINITION
+                OutputType::CommitteeDefinition
             },
             committee_definition: Some(CommitteeDefinitionFeatures {
                 committee,
@@ -292,7 +288,7 @@ impl OutputFeatures {
         let contract_id = definition.calculate_contract_id();
 
         Self {
-            flags: OutputFlags::CONTRACT_DEFINITION,
+            output_type: OutputType::ContractDefinition,
             sidechain_features: Some(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_contract_definition(definition)
@@ -308,7 +304,7 @@ impl OutputFeatures {
         signature: Signature,
     ) -> OutputFeatures {
         Self {
-            flags: OutputFlags::CONTRACT_ACCEPT,
+            output_type: OutputType::ContractValidatorAcceptance,
             sidechain_features: Some(
                 SideChainFeatures::builder(contract_id)
                     .with_contract_acceptance(ContractAcceptance {
@@ -341,15 +337,15 @@ impl OutputFeatures {
     }
 
     pub fn is_non_fungible_mint(&self) -> bool {
-        self.flags.contains(OutputFlags::MINT_NON_FUNGIBLE)
+        matches!(self.output_type, OutputType::MintNonFungible)
     }
 
     pub fn is_non_fungible_burn(&self) -> bool {
-        self.flags.contains(OutputFlags::BURN_NON_FUNGIBLE)
+        matches!(self.output_type, OutputType::BurnNonFungible)
     }
 
     pub fn is_coinbase(&self) -> bool {
-        self.flags.contains(OutputFlags::COINBASE_OUTPUT)
+        matches!(self.output_type, OutputType::Coinbase)
     }
 
     fn consensus_encode_recovery_byte<W: Write>(recovery_byte: u8, writer: &mut W) -> Result<usize, io::Error> {
@@ -373,7 +369,7 @@ impl ConsensusEncoding for OutputFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         self.version.consensus_encode(writer)?;
         self.maturity.consensus_encode(writer)?;
-        self.flags.consensus_encode(writer)?;
+        self.output_type.consensus_encode(writer)?;
         match self.version {
             OutputFeaturesVersion::V0 => (),
             _ => {
@@ -405,7 +401,7 @@ impl ConsensusDecoding for OutputFeatures {
         // Decode safety: consensus_decode will stop reading the varint after 10 bytes
         let version = OutputFeaturesVersion::consensus_decode(reader)?;
         let maturity = u64::consensus_decode(reader)?;
-        let flags = OutputFlags::consensus_decode(reader)?;
+        let flags = OutputType::consensus_decode(reader)?;
         let recovery_byte = match version {
             OutputFeaturesVersion::V0 => 0,
             _ => OutputFeatures::consensus_decode_recovery_byte(reader)?,
@@ -426,7 +422,7 @@ impl ConsensusDecoding for OutputFeatures {
         };
         Ok(Self {
             version,
-            flags,
+            output_type: flags,
             maturity,
             recovery_byte,
             parent_public_key,
@@ -444,7 +440,7 @@ impl ConsensusDecoding for OutputFeatures {
 impl Default for OutputFeatures {
     fn default() -> Self {
         OutputFeatures::new_current_version(
-            OutputFlags::empty(),
+            OutputType::default(),
             0,
             0,
             vec![],
@@ -476,7 +472,7 @@ impl Display for OutputFeatures {
         write!(
             f,
             "OutputFeatures: Flags = {:?}, Maturity = {}, recovery byte = {:#08b}",
-            self.flags, self.maturity, self.recovery_byte
+            self.output_type, self.maturity, self.recovery_byte
         )
     }
 }
@@ -545,7 +541,7 @@ mod test {
 
         OutputFeatures {
             version,
-            flags: OutputFlags::all(),
+            output_type: OutputType::ContractDefinition,
             maturity: u64::MAX,
             recovery_byte: match version {
                 OutputFeaturesVersion::V0 => 0,
@@ -685,7 +681,7 @@ mod test {
         };
         assert_eq!(
             OutputFeatures {
-                flags: OutputFlags::ASSET_REGISTRATION,
+                output_type: OutputType::AssetRegistration,
                 maturity: 0,
                 metadata: metadata.clone(),
                 asset: Some(AssetOutputFeatures {
@@ -714,7 +710,7 @@ mod test {
         let unique_id = vec![7, 2, 3, 4];
         assert_eq!(
             OutputFeatures {
-                flags: OutputFlags::MINT_NON_FUNGIBLE | other_features.flags,
+                output_type: OutputType::MintNonFungible,
                 mint_non_fungible: Some(MintNonFungibleFeatures {
                     asset_public_key: PublicKey::default(),
                     asset_owner_commitment: Commitment::from_public_key(&PublicKey::default())
@@ -740,7 +736,7 @@ mod test {
         // Initial
         assert_eq!(
             OutputFeatures {
-                flags: OutputFlags::SIDECHAIN_CHECKPOINT | OutputFlags::MINT_NON_FUNGIBLE,
+                output_type: OutputType::SidechainInitialCheckpoint,
                 sidechain_checkpoint: Some(SideChainCheckpointFeatures {
                     merkle_root: hash,
                     committee: committee.clone()
@@ -755,7 +751,7 @@ mod test {
         // Not initial
         assert_eq!(
             OutputFeatures {
-                flags: OutputFlags::SIDECHAIN_CHECKPOINT,
+                output_type: OutputType::SidechainCheckpoint,
                 sidechain_checkpoint: Some(SideChainCheckpointFeatures {
                     merkle_root: hash,
                     committee: committee.clone()
@@ -775,7 +771,7 @@ mod test {
         let effective_sidechain_height = 123;
         assert_eq!(
             OutputFeatures {
-                flags: OutputFlags::COMMITTEE_DEFINITION | OutputFlags::MINT_NON_FUNGIBLE,
+                output_type: OutputType::CommitteeInitialDefinition,
                 committee_definition: Some(CommitteeDefinitionFeatures {
                     committee: committee.clone(),
                     effective_sidechain_height
@@ -794,7 +790,7 @@ mod test {
         );
         assert_eq!(
             OutputFeatures {
-                flags: OutputFlags::COMMITTEE_DEFINITION,
+                output_type: OutputType::CommitteeDefinition,
                 committee_definition: Some(CommitteeDefinitionFeatures {
                     committee: committee.clone(),
                     effective_sidechain_height

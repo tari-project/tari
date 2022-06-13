@@ -946,7 +946,7 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
                 .commitment()
                 .map_err(|e| CommandError::WalletError(WalletError::TransactionError(e)))?
                 .to_hex(),
-            utxo.features.flags,
+            utxo.features.output_type,
             utxo.features.maturity,
             utxo.script.to_hex(),
             utxo.input_data.to_hex(),

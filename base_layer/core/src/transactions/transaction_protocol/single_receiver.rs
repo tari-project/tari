@@ -150,7 +150,7 @@ mod test {
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction_components::OutputFeatures,
+        transaction_components::{OutputFeatures, OutputType},
         transaction_protocol::{
             build_challenge,
             sender::SingleRoundSenderData,
@@ -226,6 +226,10 @@ mod test {
             "Output commitment is invalid"
         );
         out.verify_range_proof(&factories.range_proof).unwrap();
-        assert!(out.features.flags.is_empty(), "Output features flags have changed");
+        assert_eq!(
+            out.features.output_type,
+            OutputType::Standard,
+            "Output features flags have changed"
+        );
     }
 }

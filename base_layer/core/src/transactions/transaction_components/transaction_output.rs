@@ -65,7 +65,7 @@ use crate::{
             rewind_result::RewindResult,
             EncryptedValue,
             OutputFeatures,
-            OutputFlags,
+            OutputType,
             TransactionError,
             TransactionInput,
         },
@@ -226,7 +226,7 @@ impl TransactionOutput {
 
     /// Returns true if the output is a coinbase, otherwise false
     pub fn is_coinbase(&self) -> bool {
-        self.features.flags.contains(OutputFlags::COINBASE_OUTPUT)
+        matches!(self.features.output_type, OutputType::Coinbase)
     }
 
     /// Convenience function that returns the challenge for the metadata commitment signature

@@ -10,7 +10,8 @@ const { expect } = require("chai");
 const { createEnv } = require("./config");
 const WalletClient = require("./walletClient");
 const csvParser = require("csv-parser");
-var tari_crypto = require("tari_crypto");
+const tari_crypto = require("tari_crypto");
+const { OutputType } = require("./types");
 
 let outputProcess;
 
@@ -398,7 +399,7 @@ class WalletProcess {
             value: parseInt(row.value),
             spending_key: Buffer.from(row.spending_key, "hex"),
             features: {
-              flags: 0,
+              output_type: OutputType.STANDARD,
               maturity: parseInt(row.maturity) || 0,
               recovery_byte: parseInt(row.recovery_byte),
             },

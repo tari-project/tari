@@ -6,7 +6,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
+use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
@@ -25,7 +25,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// Fetch outputs with specific features
-    fn fetch_with_features(&self, features: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_with_features(&self, features: OutputType) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Fetch outputs with specific features for a given asset public key
     fn fetch_by_features_asset_public_key(
         &self,
