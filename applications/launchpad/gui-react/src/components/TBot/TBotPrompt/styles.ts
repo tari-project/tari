@@ -23,7 +23,7 @@ export const ContentRow = styled(animated.div)<{ $floating?: boolean }>`
 export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
   display: flex;
   justify-content: center;
-  width: ${({ $floating }) => ($floating ? '417px' : '100%')};
+  /* width: ${({ $floating }) => ($floating ? '417px' : '628px')}; */
   height: fit-content;
   margin-right: 30px;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
@@ -112,14 +112,6 @@ export const StyledCloseIcon = styled.div`
   z-index: 3;
 `
 
-export const DotsContainer = styled.div`
-  display: flex;
-  flex-direction: row;
-  justify-content: flex-end;
-  padding-right: ${({ theme }) => theme.spacingHorizontal(0.6)};
-  margin-bottom: -15px;
-`
-
 export const StyledMessageBox = styled.div`
   position: relative;
 `
@@ -130,7 +122,7 @@ export const StyledMessage = styled(animated.div)<{
 }>`
   display: flex;
   flex-direction: column;
-  width: ${({ $floating }) => ($floating ? '385px' : '568px')};
+  width: ${({ $floating }) => ($floating ? '307px' : '550px')};
   height: fit-content;
   /* height: ${({ $floating }) =>
     $floating ? '300px' : 'fit-content + 100px'}; */
