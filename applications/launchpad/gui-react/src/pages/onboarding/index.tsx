@@ -17,16 +17,16 @@ const Onboarding = ({ close }: { close: () => void }) => {
   // If we use currentIndex = 1, it will not show loading dots before rendering first message
   const [current, setCurrent] = useState(0)
 
-  // useEffect(() => {
-  //   if (trigger) {
-  //     const newMsgs = messages.slice()
-  //     newMsgs.push({ content: 'Newly pushed', barFill: 0 })
-  //     setMessages(newMsgs)
-  //     setCurrent(newMsgs.length - 1)
-  //     setCurrent(newMsgs.length) // it won't show loading dots when currentIndex is equal to the messages length
-  //     fireTrigger(false)
-  //   }
-  // }, [trigger])
+  useEffect(() => {
+    if (trigger) {
+      const newMsgs = messages.slice()
+      newMsgs.push({ content: 'Newly pushed', barFill: 0 })
+      setMessages(newMsgs)
+      setCurrent(newMsgs.length - 1)
+      setCurrent(newMsgs.length) // it won't show loading dots when currentIndex is equal to the messages length
+      fireTrigger(false)
+    }
+  }, [trigger])
 
   const addSkipMessages = () => {
     const newMsgs = messages.slice()
@@ -47,14 +47,14 @@ const Onboarding = ({ close }: { close: () => void }) => {
 
   return (
     <div style={{ backgroundColor: '#FAFAFA' }}>
-      {/* <div
-        style={{
-          position: 'fixed',
-          zIndex: 100,
-          top: 0,
-          left: 0,
-          background: '#a99',
-        }}
+      <div
+      // style={{
+      //   position: 'fixed',
+      //   zIndex: 100,
+      //   top: 0,
+      //   left: 0,
+      //   background: '#a99',
+      // }}
       >
         <p>Onboarding</p>
         <button onClick={close}>Go to home</button>
@@ -67,7 +67,7 @@ const Onboarding = ({ close }: { close: () => void }) => {
         >
           Clear messages
         </button>
-      </div> */}
+      </div>
       <div
         style={{
           display: 'flex',
