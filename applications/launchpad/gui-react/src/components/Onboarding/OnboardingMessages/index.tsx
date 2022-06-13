@@ -23,4 +23,10 @@ const Message3 = (
   </Text>
 )
 
-export { Message1, Message2, Message3 }
+const Message4 = (
+  <Text as='span' type='defaultMedium'>
+    {t.onboarding.message4}
+  </Text>
+)
+
+export { Message1, Message2, Message3, Message4 }

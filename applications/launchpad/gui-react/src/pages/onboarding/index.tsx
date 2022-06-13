@@ -84,6 +84,7 @@ const Onboarding = ({ close }: { close: () => void }) => {
           currentIndex={current}
           closeIcon={false}
           mode='onboarding'
+          floating={false}
         />
       </div>
     </div>

@@ -13,14 +13,16 @@ export const PromptContainer = styled(animated.div)<{ $floating?: boolean }>`
   justify-content: center;
 `
 
-export const ContentRow = styled(animated.div)`
-  width: 90%;
+export const ContentRow = styled(animated.div)<{ $floating?: boolean }>`
+  width: ${({ $floating }) => ($floating ? '417px' : '628px')};
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
 `
 
 export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
+  display: flex;
+  justify-content: center;
   width: ${({ $floating }) => ($floating ? '417px' : '100%')};
   height: fit-content;
   margin-right: 30px;
@@ -36,17 +38,16 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
  */
 export const FadeOutSection = styled.div<{ $floating?: boolean }>`
   position: absolute;
-  height: ${({ $floating }) => ($floating ? '200px' : '250px')};
+  height: ${({ $floating }) => ($floating ? '100px' : '250px')};
   ${({ $floating }) => ($floating ? '' : 'top: 0;')};
-  width: ${({ $floating }) => ($floating ? '398px' : '600px')};
-
+  width: ${({ $floating }) => ($floating ? '417px' : '628px')};
   z-index: 2;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
 `
 
-export const MessageContainer = styled(animated.div)`
-  padding-left: 10px;
-  padding-right: 10px;
+export const MessageContainer = styled(animated.div)<{ $floating?: boolean }>`
+  padding-left: ${({ $floating }) => ($floating ? '0px' : '10px')};
+  padding-right: ${({ $floating }) => ($floating ? '0px' : '10px')};
 `
 
 export const ScrollWrapper = styled.div`
@@ -90,7 +91,6 @@ export const HeightAnimationWrapper = styled(animated.div)`
 `
 
 export const TBotContainer = styled(animated.div)`
-  /* width: 100%; */
   display: flex;
   justify-content: flex-end;
 `
@@ -117,7 +117,6 @@ export const DotsContainer = styled.div`
   flex-direction: row;
   justify-content: flex-end;
   padding-right: ${({ theme }) => theme.spacingHorizontal(0.6)};
-  margin-top: -30px;
   margin-bottom: -15px;
 `
 
@@ -131,10 +130,10 @@ export const StyledMessage = styled(animated.div)<{
 }>`
   display: flex;
   flex-direction: column;
-  max-width: ${({ $floating }) => ($floating ? '385px' : '100%')};
+  width: ${({ $floating }) => ($floating ? '385px' : '568px')};
   height: fit-content;
-  margin-left: ${({ theme }) => theme.spacingHorizontal(0.3)};
-  margin-right: ${({ theme }) => theme.spacingHorizontal(0.3)};
+  /* height: ${({ $floating }) =>
+    $floating ? '300px' : 'fit-content + 100px'}; */
   margin-bottom: ${({ theme, skipButton }) =>
     skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
   background-color: ${({ theme }) => theme.background};
@@ -165,7 +164,7 @@ export const MessageSlideIn = styled(animated.div)`
 export const SkipButtonContainer = styled.div`
   position: relative;
   width: 130px;
-  margin-top: ${({ theme }) => theme.spacingHorizontal(1)};
+  margin-top: ${({ theme }) => theme.spacingHorizontal(0.5)};
 `
 
 export const TBotProgressContainer = styled.div<{ mode?: string }>`
