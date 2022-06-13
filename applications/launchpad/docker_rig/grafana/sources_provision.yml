@@ -4,7 +4,7 @@ datasources:
   - name: Loki
     type: loki
     editable: false
-    is_default: true
+    isDefault: true
     access: proxy
     url: http://loki:3100
     jsonData:
