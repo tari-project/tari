@@ -773,8 +773,6 @@ pub async fn command_runner(
                     .create_update_proposal(&contract_id, &update_proposal_features)
                     .await?;
 
-                println!("{}", transaction);
-
                 let message = format!(
                     "Contract update proposal {} for contract {}",
                     update_proposal_features.proposal_id, contract_id_hex
