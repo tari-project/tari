@@ -34,7 +34,11 @@ use futures::FutureExt;
 use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::TxId,
+    types::{FixedHash, PublicKey},
+};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -43,7 +47,13 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{ContractDefinition, SideChainFeatures, TransactionOutput, UnblindedOutput},
+    transaction_components::{
+        ContractDefinition,
+        ContractUpdateProposal,
+        SideChainFeatures,
+        TransactionOutput,
+        UnblindedOutput,
+    },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
@@ -752,14 +762,22 @@ pub async fn command_runner(
                 // parse the JSON file
                 let update_proposal: ContractUpdateProposalFileFormat =
                     serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-                let side_chain_features = SideChainFeatures::try_from(update_proposal.clone()).unwrap();
+                let contract_id_hex = update_proposal.updated_constitution.contract_id.clone();
+                let contract_id =
+                    FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                let update_proposal_features =
+                    ContractUpdateProposal::try_from(update_proposal).map_err(CommandError::JsonFile)?;
 
                 let mut asset_manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = asset_manager.create_update_proposal(&side_chain_features).await?;
+                let (tx_id, transaction) = asset_manager
+                    .create_update_proposal(&contract_id, &update_proposal_features)
+                    .await?;
+
+                println!("{}", transaction);
 
                 let message = format!(
                     "Contract update proposal {} for contract {}",
-                    update_proposal.proposal_id, update_proposal.updated_constitution.contract_id
+                    update_proposal_features.proposal_id, contract_id_hex
                 );
 
                 transaction_service
@@ -768,7 +786,7 @@ pub async fn command_runner(
 
                 println!(
                     "Contract update proposal transaction submitted with tx_id={} for contract with contract_id={}",
-                    tx_id, update_proposal.proposal_id
+                    tx_id, contract_id_hex
                 );
             },
             RevalidateWalletDb => {

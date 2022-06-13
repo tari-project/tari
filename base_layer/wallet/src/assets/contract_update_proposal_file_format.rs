@@ -23,8 +23,8 @@
 use std::convert::{TryFrom, TryInto};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
-use tari_core::transactions::transaction_components::{ContractUpdateProposal, SideChainFeatures};
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+use tari_core::transactions::transaction_components::ContractUpdateProposal;
 use tari_utilities::hex::Hex;
 
 use super::ConstitutionDefinitionFileFormat;
@@ -45,18 +45,6 @@ impl TryFrom<ContractUpdateProposalFileFormat> for ContractUpdateProposal {
             signature: value.signature.try_into()?,
             updated_constitution: value.updated_constitution.try_into()?,
         })
-    }
-}
-
-impl TryFrom<ContractUpdateProposalFileFormat> for SideChainFeatures {
-    type Error = String;
-
-    fn try_from(value: ContractUpdateProposalFileFormat) -> Result<Self, Self::Error> {
-        let contract_id = FixedHash::from_hex(&value.updated_constitution.contract_id).map_err(|e| format!("{}", e))?;
-
-        Ok(Self::builder(contract_id)
-            .with_update_proposal(value.try_into()?)
-            .finish())
     }
 }
 

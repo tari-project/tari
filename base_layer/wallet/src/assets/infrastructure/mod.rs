@@ -28,6 +28,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
+    ContractUpdateProposal,
     OutputFeatures,
     SideChainFeatures,
     TemplateParameter,
@@ -80,7 +81,8 @@ pub enum AssetManagerRequest {
         signature: Box<Signature>,
     },
     CreateContractUpdateProposal {
-        update_proposal: Box<SideChainFeatures>,
+        contract_id: FixedHash,
+        update_proposal: Box<ContractUpdateProposal>,
     },
 }
 

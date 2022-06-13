@@ -26,6 +26,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
+    ContractUpdateProposal,
     OutputFeatures,
     SideChainFeatures,
     TemplateParameter,
@@ -238,12 +239,14 @@ impl AssetManagerHandle {
 
     pub async fn create_update_proposal(
         &mut self,
-        side_chain_features: &SideChainFeatures,
+        contract_id: &FixedHash,
+        update_proposal: &ContractUpdateProposal,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateContractUpdateProposal {
-                update_proposal: Box::new(side_chain_features.clone()),
+                contract_id: *contract_id,
+                update_proposal: Box::new(update_proposal.clone()),
             })
             .await??
         {
