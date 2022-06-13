@@ -43,12 +43,25 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{ContractDefinition, SideChainFeatures, TransactionOutput, UnblindedOutput},
+    transaction_components::{
+        CheckpointParameters,
+        ContractAcceptanceRequirements,
+        ContractDefinition,
+        SideChainConsensus,
+        SideChainFeatures,
+        TransactionOutput,
+        UnblindedOutput,
+    },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::{ConstitutionDefinitionFileFormat, ContractDefinitionFileFormat, ContractSpecificationFileFormat},
+    assets::{
+        ConstitutionChangeRulesFileFormat,
+        ConstitutionDefinitionFileFormat,
+        ContractDefinitionFileFormat,
+        ContractSpecificationFileFormat,
+    },
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
@@ -64,7 +77,14 @@ use tokio::{
 use super::error::CommandError;
 use crate::{
     automation::prompt::{HexArg, Prompt},
-    cli::{CliCommands, ContractCommand, ContractSubcommand, InitDefinitionArgs, PublishFileArgs},
+    cli::{
+        CliCommands,
+        ContractCommand,
+        ContractSubcommand,
+        InitConstitutionArgs,
+        InitDefinitionArgs,
+        PublishFileArgs,
+    },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
@@ -794,6 +814,7 @@ async fn handle_contract_definition_command(
 ) -> Result<(), CommandError> {
     match command.subcommand {
         ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(args),
+        ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
     }
 }
@@ -835,6 +856,63 @@ fn init_contract_definition_spec(args: InitDefinitionArgs) -> Result<(), Command
     let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let writer = BufWriter::new(file);
     serde_json::to_writer_pretty(writer, &contract_definition).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    let contract_id = Prompt::new("Contract id (hex):")
+        .skip_if_some(args.contract_id)
+        .get_result()?;
+    let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
+    let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
+        .skip_if_some(args.acceptance_period_expiry)
+        .with_default("50".to_string())
+        .get_result()?;
+    let minimum_quorum_required = Prompt::new("Minimum quorum:")
+        .skip_if_some(args.minimum_quorum_required)
+        .with_default(committee.len().to_string())
+        .get_result()?;
+
+    let constitution = ConstitutionDefinitionFileFormat {
+        contract_id,
+        validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
+        consensus: SideChainConsensus::MerkleRoot,
+        initial_reward: 0,
+        acceptance_parameters: ContractAcceptanceRequirements {
+            acceptance_period_expiry: acceptance_period_expiry
+                .parse::<u64>()
+                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+            minimum_quorum_required: minimum_quorum_required
+                .parse::<u32>()
+                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+        },
+        checkpoint_parameters: CheckpointParameters {
+            minimum_quorum_required: 0,
+            abandoned_interval: 0,
+        },
+        constitution_change_rules: ConstitutionChangeRulesFileFormat {
+            change_flags: 0,
+            requirements_for_constitution_change: None,
+        },
+    };
+
+    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(writer, &constitution).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     println!("Wrote {}", dest.to_string_lossy());
     Ok(())
 }

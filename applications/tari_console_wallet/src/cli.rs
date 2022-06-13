@@ -210,6 +210,10 @@ pub enum ContractSubcommand {
     /// Generates a new contract definition JSON spec file that can be edited and passed to other contract definition
     /// commands.
     InitDefinition(InitDefinitionArgs),
+
+    /// A generator for constitution files that can be edited and passed to other contract commands
+    InitConstitution(InitConstitutionArgs),
+
     /// Creates and publishes a contract definition UTXO from the JSON spec file.
     PublishDefinition(PublishFileArgs),
 }
@@ -227,6 +231,23 @@ pub struct InitDefinitionArgs {
     pub contract_issuer: Option<String>,
     #[clap(long, alias = "runtime")]
     pub runtime: Option<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct InitConstitutionArgs {
+    /// The destination path of the contract definition to create
+    pub dest_path: PathBuf,
+    /// Force overwrite the destination file if it already exists
+    #[clap(short = 'f', long)]
+    pub force: bool,
+    #[clap(long, alias = "id")]
+    pub contract_id: Option<String>,
+    #[clap(long, alias = "committee")]
+    pub validator_committee: Option<Vec<String>>,
+    #[clap(long, alias = "acceptance_period")]
+    pub acceptance_period_expiry: Option<String>,
+    #[clap(long, alias = "quorum_required")]
+    pub minimum_quorum_required: Option<String>,
 }
 
 #[derive(Debug, Args, Clone)]
