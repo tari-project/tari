@@ -180,7 +180,7 @@ async fn it_checks_txo_sort_order() {
     let (txs, _) = schema_to_transaction(&[schema1]);
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
 
-    let (mut block, _) = blockchain.create_unmined_block("A", BlockSpec::new().with_transactions(txs).finish());
+    let (mut block, _) = blockchain.create_unmined_block("B->A", BlockSpec::new().with_transactions(txs).finish());
     let outputs = block.body.outputs().iter().rev().cloned().collect::<Vec<_>>();
     let inputs = block.body.inputs().clone();
     let kernels = block.body.kernels().clone();
