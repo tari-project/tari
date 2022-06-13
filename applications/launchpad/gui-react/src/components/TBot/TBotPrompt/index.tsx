@@ -260,8 +260,7 @@ const TBotPrompt = ({
                 </MessageWrapper>
               </HeightAnimationWrapper>
             </ScrollWrapper>
-            {/* {messageLoading && <ChatDots />} */}
-            <ChatDots />
+            {messageLoading && <ChatDots />}
           </MessageContainer>
         </ContentContainer>
       </ContentRow>
