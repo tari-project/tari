@@ -3,6 +3,7 @@ import { useSpring } from 'react-spring'
 import { useTheme } from 'styled-components'
 import SvgArrowRight from '../../../styles/Icons/ArrowRight'
 import Button from '../../Button'
+import t from '../../../locales'
 import {
   MessageSpaceContainer,
   StyledMessage,
@@ -20,10 +21,12 @@ const MessageBox = (
     animate,
     children,
     skipButton,
+    $floating,
   }: {
     animate: boolean
     children: ReactNode
     skipButton?: boolean
+    $floating?: boolean
   },
   ref?: ForwardedRef<HTMLDivElement>,
 ) => {
@@ -43,12 +46,20 @@ const MessageBox = (
 
   return (
     <StyledMessageBox ref={ref}>
-      <StyledMessage style={{ opacity: 0 }} skipButton={skipButton}>
+      <StyledMessage
+        style={{ opacity: 0 }}
+        skipButton={skipButton}
+        $floating={$floating}
+      >
         {children}
       </StyledMessage>
       <MessageSpaceContainer>
         <MessageSlideIn style={{ ...useSlideInAnim }}>
-          <StyledMessage style={{ ...useOpacityAnim }} skipButton={skipButton}>
+          <StyledMessage
+            style={{ ...useOpacityAnim }}
+            skipButton={skipButton}
+            $floating={$floating}
+          >
             {children}
             {skipButton && (
               <SkipButtonContainer>
@@ -61,7 +72,7 @@ const MessageBox = (
                   rightIcon={<SvgArrowRight fontSize={24} />}
                   autosizeIcons={false}
                 >
-                  Skip Chatting
+                  {t.onboarding.actions.skipChatting}
                 </Button>
               </SkipButtonContainer>
             )}

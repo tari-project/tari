@@ -191,6 +191,7 @@ const TBotPrompt = ({
               animate={count === idx + 1}
               ref={count === idx + 1 ? lastMsgRef : null}
               skipButton={mode === 'onboarding' && skipButtonCheck}
+              $floating={floating}
             >
               <TempMsg />
             </MessageBox>
@@ -201,6 +202,7 @@ const TBotPrompt = ({
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
             skipButton={mode === 'onboarding' && skipButtonCheck}
+            $floating={floating}
           >
             {'content' in msg ? (msg.content as ReactNode | string) : msg}
           </MessageBox>
@@ -213,6 +215,7 @@ const TBotPrompt = ({
           animate={count === idx + 1}
           ref={count === idx + 1 ? lastMsgRef : null}
           skipButton={mode === 'onboarding' && skipButtonCheck}
+          $floating={floating}
         >
           {msg}
         </MessageBox>
@@ -225,7 +228,7 @@ const TBotPrompt = ({
   }
 
   const fadeOutGradient = floating
-    ? 'linear-gradient(to bottom, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.6))'
+    ? 'linear-gradient(to bottom, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.4))'
     : 'linear-gradient(to bottom, rgba(250, 250, 250, 1), rgba(250, 250, 250, 0.4))'
 
   return (
