@@ -48,7 +48,12 @@ use tari_core::transactions::{
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::{ConstitutionDefinitionFileFormat, ContractDefinitionFileFormat, ContractSpecificationFileFormat},
+    assets::{
+        ConstitutionDefinitionFileFormat,
+        ContractDefinitionFileFormat,
+        ContractSpecificationFileFormat,
+        ContractUpdateProposalFileFormat,
+    },
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
@@ -741,7 +746,20 @@ pub async fn command_runner(
                     .await?;
             },
             PublishContractUpdateProposal(args) => {
-                println!("hello world from PublishContractUpdateProposal: {:?}", args);
+                let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                let file_reader = BufReader::new(file);
+
+                // parse the JSON file
+                let update_proposal: ContractUpdateProposalFileFormat =
+                    serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                println!("parsed proposal: {:?}", update_proposal);
+
+                let side_chain_features = SideChainFeatures::try_from(update_proposal.clone()).unwrap();
+
+                println!(
+                    "hello world from PublishContractUpdateProposal: {:?}",
+                    side_chain_features
+                );
             },
             RevalidateWalletDb => {
                 output_service

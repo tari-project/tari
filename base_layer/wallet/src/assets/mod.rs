@@ -33,6 +33,8 @@ pub(crate) mod infrastructure;
 
 mod constitution_definition_file_format;
 mod contract_definition_file_format;
+mod contract_update_proposal_file_format;
 
 pub use constitution_definition_file_format::ConstitutionDefinitionFileFormat;
 pub use contract_definition_file_format::{ContractDefinitionFileFormat, ContractSpecificationFileFormat};
+pub use contract_update_proposal_file_format::ContractUpdateProposalFileFormat;
