@@ -23,7 +23,11 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::{io, io::Read};
+use std::{
+    fmt::{Display, Formatter},
+    io,
+    io::Read,
+};
 
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
@@ -111,6 +115,13 @@ impl ConsensusDecoding for OutputType {
             )
         })?;
         Ok(output_type)
+    }
+}
+
+impl Display for OutputType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // Debug "shortcut" works because variants do not have fields
+        write!(f, "{:?}", self)
     }
 }
 
