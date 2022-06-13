@@ -792,7 +792,7 @@ async fn test_block_sync_body_validator() {
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
         &factories,
         rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
-        1,
+        1 + rules.consensus_constants(1).coinbase_lock_height(),
     );
     let template = chain_block_with_coinbase(
         &genesis,

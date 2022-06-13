@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fs::File,
     io::{BufReader, BufWriter, LineWriter, Write},
     path::PathBuf,
@@ -42,12 +43,12 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{ContractDefinition, TransactionOutput, UnblindedOutput},
+    transaction_components::{ContractDefinition, SideChainFeatures, TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::{ContractDefinitionFileFormat, ContractSpecificationFileFormat},
+    assets::{ConstitutionDefinitionFileFormat, ContractDefinitionFileFormat, ContractSpecificationFileFormat},
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
@@ -68,7 +69,7 @@ use crate::{
         ContractDefinitionCommand,
         ContractDefinitionSubcommand,
         InitContractDefinitionArgs,
-        PublishContractDefinitionArgs,
+        PublishDefinitionArgs,
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
@@ -98,7 +99,7 @@ pub enum WalletCommand {
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
-    CreateCommitteeDefinition,
+    PublishConstitutionDefinition,
     RevalidateWalletDb,
     PublishContractDefinition,
 }
@@ -715,7 +716,30 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
+            PublishConstitutionDefinition(args) => {
+                let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                let file_reader = BufReader::new(file);
 
+                // parse the JSON file
+                let constitution_definition: ConstitutionDefinitionFileFormat =
+                    serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+                let side_chain_features = SideChainFeatures::try_from(constitution_definition.clone()).unwrap();
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager
+                    .create_constitution_definition(&side_chain_features)
+                    .await?;
+
+                let message = format!(
+                    "Committee definition with {} members for {:?}",
+                    constitution_definition.validator_committee.len(),
+                    constitution_definition.contract_id
+                );
+
+                transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+            },
             RevalidateWalletDb => {
                 output_service
                     .revalidate_all_outputs()
@@ -821,10 +845,7 @@ fn init_contract_definition_spec(args: InitContractDefinitionArgs) -> Result<(),
     Ok(())
 }
 
-async fn publish_contract_definition(
-    wallet: &WalletSqlite,
-    args: PublishContractDefinitionArgs,
-) -> Result<(), CommandError> {
+async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishDefinitionArgs) -> Result<(), CommandError> {
     // open the JSON file with the contract definition values
     let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let file_reader = BufReader::new(file);
@@ -876,7 +897,7 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
                 .commitment()
                 .map_err(|e| CommandError::WalletError(WalletError::TransactionError(e)))?
                 .to_hex(),
-            utxo.features.flags,
+            utxo.features.output_type,
             utxo.features.maturity,
             utxo.script.to_hex(),
             utxo.input_data.to_hex(),

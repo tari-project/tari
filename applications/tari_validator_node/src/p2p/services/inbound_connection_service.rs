@@ -54,6 +54,7 @@ enum WaitForMessageType {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum TariCommsInboundRequest {
     WaitForMessage {
         wait_for_type: WaitForMessageType,
@@ -63,6 +64,7 @@ enum TariCommsInboundRequest {
     },
 }
 
+#[allow(dead_code)]
 pub struct TariCommsInboundConnectionService {
     receiver: TariCommsInboundReceiverHandle,
     // sender: Sender<(CommsPublicKey, HotStuffMessage<TariDanPayload>)>,
@@ -81,6 +83,7 @@ pub struct TariCommsInboundConnectionService {
     loopback_receiver: Receiver<(CommsPublicKey, HotStuffMessage<TariDanPayload>)>,
 }
 
+#[allow(dead_code)]
 impl TariCommsInboundConnectionService {
     pub fn new(asset_public_key: PublicKey) -> Self {
         let (sender, receiver) = channel(1000);

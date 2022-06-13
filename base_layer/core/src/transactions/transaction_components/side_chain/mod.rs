@@ -43,8 +43,20 @@ pub use contract_definition::{
     PublicFunction,
 };
 
+mod contract_update_proposal;
+pub use contract_update_proposal::ContractUpdateProposal;
+
+mod contract_update_proposal_acceptance;
+pub use contract_update_proposal_acceptance::ContractUpdateProposalAcceptance;
+
+mod contract_amendment;
+pub use contract_amendment::ContractAmendment;
+
 mod committee_members;
 pub use committee_members::CommitteeMembers;
+
+mod committee_signatures;
+pub use committee_signatures::CommitteeSignatures;
 
 mod sidechain_features;
 pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};

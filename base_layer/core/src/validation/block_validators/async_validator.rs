@@ -40,7 +40,7 @@ use crate::{
         aggregated_body::AggregateBody,
         transaction_components::{
             KernelSum,
-            OutputFlags,
+            OutputType,
             TransactionError,
             TransactionInput,
             TransactionKernel,
@@ -108,7 +108,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         // Check that unique_ids are unique in this block
         let mut unique_ids = Vec::new();
         for output in &outputs {
-            if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) {
+            if output.features.output_type == OutputType::MintNonFungible {
                 if let Some(unique_id) = output.features.unique_asset_id() {
                     let parent_public_key = output.features.parent_public_key.as_ref();
                     let asset_tuple = (parent_public_key, unique_id);
@@ -128,10 +128,11 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let kernels_result = kernels_task.await??;
 
         // Perform final checks using validation outputs
+        helpers::check_coinbase_maturity(&self.rules, valid_header.height, outputs_result.coinbase())?;
         helpers::check_coinbase_reward(
             &self.factories.commitment,
             &self.rules,
-            &valid_header,
+            valid_header.height,
             kernels_result.kernel_sum.fees,
             kernels_result.coinbase(),
             outputs_result.coinbase(),

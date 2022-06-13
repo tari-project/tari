@@ -3,6 +3,8 @@
 
 @dan
 Feature: NFT
+
+    @broken
     Scenario: Minting tokens
         Given I have a seed node SEED
         And I have wallet WALLET_A connected to seed node SEED
@@ -26,6 +28,7 @@ Feature: NFT
         Then I have token TOKEN1 for asset FACTORY on wallet WALLET_B in state ENCUMBEREDTOBERECEIVED
         Then I have asset FACTORY on wallet WALLET_A with status ENCUMBEREDTOBERECEIVED
 
+    @broken
     Scenario: Minting tokens via command line
         Given I have a seed node SEED
         And I have wallet WALLET_A connected to seed node SEED

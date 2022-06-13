@@ -108,6 +108,7 @@ pub enum CliCommands {
     InitShaAtomicSwap(SendTariArgs),
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
+    PublishConstitutionDefinition(PublishDefinitionArgs),
     RevalidateWalletDb,
     ContractDefinition(ContractDefinitionCommand),
 }
@@ -210,7 +211,7 @@ pub enum ContractDefinitionSubcommand {
     /// commands.
     Init(InitContractDefinitionArgs),
     /// Creates and publishes a contract definition UTXO from the JSON spec file.
-    Publish(PublishContractDefinitionArgs),
+    Publish(PublishDefinitionArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -229,6 +230,6 @@ pub struct InitContractDefinitionArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PublishContractDefinitionArgs {
+pub struct PublishDefinitionArgs {
     pub file_path: PathBuf,
 }

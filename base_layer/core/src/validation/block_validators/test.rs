@@ -37,7 +37,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction_components::{OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputType, TransactionError, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -293,7 +293,7 @@ mod unique_id {
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(parent_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -318,7 +318,7 @@ mod unique_id {
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(parent_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -332,7 +332,6 @@ mod unique_id {
         blockchain.append_block("2", block);
 
         let features = OutputFeatures {
-            flags: OutputFlags::empty(),
             parent_public_key: Some(parent_pk),
             unique_id: Some(unique_id),
             ..Default::default()
@@ -353,7 +352,7 @@ mod unique_id {
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(parent_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -367,7 +366,7 @@ mod unique_id {
         blockchain.append_block("2", block);
 
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(parent_pk),
             unique_id: Some(unique_id),
             ..Default::default()
@@ -388,7 +387,7 @@ mod unique_id {
         let parent_pk = PublicKey::default();
 
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(parent_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -402,7 +401,7 @@ mod unique_id {
         blockchain.append_block("2", block);
 
         let features = OutputFeatures {
-            flags: OutputFlags::BURN_NON_FUNGIBLE,
+            output_type: OutputType::BurnNonFungible,
             parent_public_key: Some(parent_pk),
             unique_id: Some(unique_id),
             ..Default::default()

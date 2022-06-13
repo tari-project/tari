@@ -45,7 +45,7 @@ use crate::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
-            OutputFlags,
+            OutputType,
             Transaction,
             TransactionInput,
             TransactionKernel,
@@ -318,6 +318,20 @@ pub fn create_random_signature_from_s_key(
     (p, Signature::sign(s_key, r, &e).unwrap())
 }
 
+pub fn create_consensus_manager() -> ConsensusManager {
+    ConsensusManager::builder(Network::LocalNet).build()
+}
+
+pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64) -> UnblindedOutput {
+    let rules = create_consensus_manager();
+    let constants = rules.consensus_constants(height);
+    test_params.create_unblinded_output(UtxoTestParams {
+        value: rules.get_block_reward_at(height),
+        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), 0x00),
+        ..Default::default()
+    })
+}
+
 pub fn create_unblinded_output(
     script: TariScript,
     output_features: OutputFeatures,
@@ -531,7 +545,7 @@ pub fn create_unblinded_txos(
                 amount_for_last_output
             };
             let test_params = TestParams::new();
-            let script_offset_pvt_key = if output_features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+            let script_offset_pvt_key = if output_features.output_type == OutputType::Coinbase {
                 PrivateKey::default()
             } else {
                 test_params.sender_offset_private_key.clone()
@@ -758,6 +772,17 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
     );
     outputs.push(change_output);
     (stx_protocol, outputs)
+}
+
+pub fn create_coinbase_kernel(excess: &PrivateKey) -> TransactionKernel {
+    let public_excess = PublicKey::from_secret_key(excess);
+    let s = create_signature(excess.clone(), 0.into(), 0);
+    KernelBuilder::new()
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .with_excess(&Commitment::from_public_key(&public_excess))
+        .with_signature(&s)
+        .build()
+        .unwrap()
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature

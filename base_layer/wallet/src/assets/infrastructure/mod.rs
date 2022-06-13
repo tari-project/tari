@@ -29,6 +29,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
     OutputFeatures,
+    SideChainFeatures,
     TemplateParameter,
     Transaction,
 };
@@ -67,11 +68,8 @@ pub enum AssetManagerRequest {
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
-    CreateCommitteeDefinition {
-        asset_public_key: Box<PublicKey>,
-        committee_public_keys: Vec<PublicKey>,
-        effective_sidechain_height: u64,
-        is_initial: bool,
+    CreateConstitutionDefinition {
+        constitution_definition: Box<SideChainFeatures>,
     },
     CreateContractDefinition {
         contract_definition: Box<ContractDefinition>,
@@ -90,7 +88,7 @@ pub enum AssetManagerResponse {
     CreateMintingTransaction { transaction: Box<Transaction>, tx_id: TxId },
     CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateFollowOnCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
-    CreateCommitteeDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateConstitutionDefinition { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractAcceptance { transaction: Box<Transaction>, tx_id: TxId },
 }

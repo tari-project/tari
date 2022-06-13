@@ -34,7 +34,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, OutputFeatures, OutputFlags, SideChainFeatures, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, SideChainFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -70,6 +70,7 @@ pub struct OutputSql {
     #[derivative(Debug = "ignore")]
     pub spending_key: Vec<u8>,
     pub value: i64,
+    // TODO: Rename this to output_type
     pub flags: i32,
     pub maturity: i64,
     pub recovery_byte: i32,
@@ -123,6 +124,9 @@ impl OutputSql {
         tip_height: i64,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let no_flags = i32::from(OutputType::Standard.as_byte());
+        let coinbase_flag = i32::from(OutputType::Coinbase.as_byte());
+
         if strategy == UTXOSelectionStrategy::Default {
             // lets get the max value for all utxos
             let max: Vec<i64> = outputs::table
@@ -131,6 +135,7 @@ impl OutputSql {
                 .filter(outputs::maturity.le(tip_height))
                 .filter(outputs::features_unique_id.is_null())
                 .filter(outputs::features_parent_public_key.is_null())
+                .filter(outputs::flags.eq(no_flags).or(outputs::flags.eq(coinbase_flag)))
                 .order(outputs::value.desc())
                 .select(outputs::value)
                 .limit(1)
@@ -151,6 +156,7 @@ impl OutputSql {
             .filter(outputs::maturity.le(tip_height))
             .filter(outputs::features_unique_id.is_null())
             .filter(outputs::features_parent_public_key.is_null())
+            .filter(outputs::flags.eq(no_flags).or(outputs::flags.eq(coinbase_flag)))
             .order_by(outputs::spending_priority.desc());
         match strategy {
             UTXOSelectionStrategy::Smallest => {
@@ -190,11 +196,11 @@ impl OutputSql {
     }
 
     pub fn index_by_feature_flags(
-        flags: OutputFlags,
+        flags: OutputType,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         let res = diesel::sql_query("SELECT * FROM outputs where flags & $1 = $1 ORDER BY id;")
-            .bind::<diesel::sql_types::Integer, _>(i32::from(flags.bits()))
+            .bind::<diesel::sql_types::Integer, _>(i32::from(flags.as_byte()))
             .load(conn)?;
         Ok(res)
     }
@@ -506,9 +512,9 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             .flags
             .try_into()
             .map_err(|_| OutputManagerStorageError::ConversionError {
-                reason: format!("Unable to convert flag bits with value {} to OutputFlags", o.flags),
+                reason: format!("Unable to convert flag bits with value {} to OutputType", o.flags),
             })?;
-        features.flags = OutputFlags::from_bits(flags).ok_or(OutputManagerStorageError::ConversionError {
+        features.output_type = OutputType::from_byte(flags).ok_or(OutputManagerStorageError::ConversionError {
             reason: "Flags could not be converted from bits".to_string(),
         })?;
         features.maturity = o.maturity as u64;

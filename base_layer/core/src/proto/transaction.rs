@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey, Signature};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -44,19 +44,23 @@ use crate::{
             CheckpointParameters,
             CommitteeDefinitionFeatures,
             CommitteeMembers,
+            CommitteeSignatures,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptance,
             ContractAcceptanceRequirements,
+            ContractAmendment,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
+            ContractUpdateProposal,
+            ContractUpdateProposalAcceptance,
             FunctionRef,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
-            OutputFlags,
+            OutputType,
             PublicFunction,
             RequirementsForConstitutionChange,
             SideChainCheckpointFeatures,
@@ -301,13 +305,16 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             .map(SideChainFeatures::try_from)
             .transpose()?;
 
-        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u16")?;
+        let flags = features
+            .flags
+            .try_into()
+            .map_err(|_| "Invalid output type: overflowed")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            OutputFlags::from_bits(flags).ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
+            OutputType::from_byte(flags).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
@@ -325,7 +332,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
 impl From<OutputFeatures> for proto::types::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
-            flags: u32::from(features.flags.bits()),
+            flags: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
             metadata: features.metadata,
             unique_id: features.unique_id.unwrap_or_default(),
@@ -352,6 +359,9 @@ impl From<SideChainFeatures> for proto::types::SideChainFeatures {
             definition: value.definition.map(Into::into),
             constitution: value.constitution.map(Into::into),
             acceptance: value.acceptance.map(Into::into),
+            update_proposal: value.update_proposal.map(Into::into),
+            update_proposal_acceptance: value.update_proposal_acceptance.map(Into::into),
+            amendment: value.amendment.map(Into::into),
         }
     }
 }
@@ -360,15 +370,28 @@ impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::SideChainFeatures) -> Result<Self, Self::Error> {
+        let contract_id = features.contract_id.try_into().map_err(|_| "Invalid contract_id")?;
         let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
         let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
         let acceptance = features.acceptance.map(ContractAcceptance::try_from).transpose()?;
+        let update_proposal = features
+            .update_proposal
+            .map(ContractUpdateProposal::try_from)
+            .transpose()?;
+        let update_proposal_acceptance = features
+            .update_proposal_acceptance
+            .map(ContractUpdateProposalAcceptance::try_from)
+            .transpose()?;
+        let amendment = features.amendment.map(ContractAmendment::try_from).transpose()?;
 
         Ok(Self {
-            contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            contract_id,
             definition,
             constitution,
             acceptance,
+            update_proposal,
+            update_proposal_acceptance,
+            amendment,
         })
     }
 }
@@ -469,6 +492,116 @@ impl TryFrom<proto::types::ContractAcceptance> for ContractAcceptance {
         Ok(Self {
             validator_node_public_key,
             signature,
+        })
+    }
+}
+
+//---------------------------------- ContractUpdateProposal --------------------------------------------//
+
+impl From<ContractUpdateProposal> for proto::types::ContractUpdateProposal {
+    fn from(value: ContractUpdateProposal) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            signature: Some(value.signature.into()),
+            updated_constitution: Some(value.updated_constitution.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractUpdateProposal> for ContractUpdateProposal {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractUpdateProposal) -> Result<Self, Self::Error> {
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|err: ByteArrayError| err.to_string())?;
+
+        let updated_constitution = value
+            .updated_constitution
+            .ok_or_else(|| "updated_constiution not provided".to_string())?
+            .try_into()?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            signature,
+            updated_constitution,
+        })
+    }
+}
+
+//---------------------------------- ContractUpdateProposalAcceptance --------------------------------------------//
+
+impl From<ContractUpdateProposalAcceptance> for proto::types::ContractUpdateProposalAcceptance {
+    fn from(value: ContractUpdateProposalAcceptance) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            validator_node_public_key: value.validator_node_public_key.as_bytes().to_vec(),
+            signature: Some(value.signature.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractUpdateProposalAcceptance> for ContractUpdateProposalAcceptance {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractUpdateProposalAcceptance) -> Result<Self, Self::Error> {
+        let validator_node_public_key =
+            PublicKey::from_bytes(value.validator_node_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|err: ByteArrayError| err.to_string())?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            validator_node_public_key,
+            signature,
+        })
+    }
+}
+
+//---------------------------------- ContractAmendment --------------------------------------------//
+
+impl From<ContractAmendment> for proto::types::ContractAmendment {
+    fn from(value: ContractAmendment) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            validator_committee: Some(value.validator_committee.into()),
+            validator_signatures: Some(value.validator_signatures.into()),
+            updated_constitution: Some(value.updated_constitution.into()),
+            activation_window: value.activation_window,
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractAmendment> for ContractAmendment {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractAmendment) -> Result<Self, Self::Error> {
+        let validator_committee = value
+            .validator_committee
+            .map(TryInto::try_into)
+            .ok_or("validator_committee not provided")??;
+
+        let validator_signatures = value
+            .validator_signatures
+            .map(TryInto::try_into)
+            .ok_or("validator_signatures not provided")??;
+
+        let updated_constitution = value
+            .updated_constitution
+            .ok_or_else(|| "updated_constiution not provided".to_string())?
+            .try_into()?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            validator_committee,
+            validator_signatures,
+            updated_constitution,
+            activation_window: value.activation_window,
         })
     }
 }
@@ -606,6 +739,42 @@ impl TryFrom<proto::types::CommitteeMembers> for CommitteeMembers {
 
         let members = CommitteeMembers::try_from(members).map_err(|e| e.to_string())?;
         Ok(members)
+    }
+}
+
+//---------------------------------- CommitteeSignatures --------------------------------------------//
+impl From<CommitteeSignatures> for proto::types::CommitteeSignatures {
+    fn from(value: CommitteeSignatures) -> Self {
+        Self {
+            signatures: value.signatures().into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::CommitteeSignatures> for CommitteeSignatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::CommitteeSignatures) -> Result<Self, Self::Error> {
+        if value.signatures.len() > CommitteeSignatures::MAX_SIGNATURES {
+            return Err(format!(
+                "Too many committee signatures: expected {} but got {}",
+                CommitteeSignatures::MAX_SIGNATURES,
+                value.signatures.len()
+            ));
+        }
+
+        let signatures = value
+            .signatures
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| {
+                Signature::try_from(s)
+                    .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let signatures = CommitteeSignatures::try_from(signatures).map_err(|e| e.to_string())?;
+        Ok(signatures)
     }
 }
 

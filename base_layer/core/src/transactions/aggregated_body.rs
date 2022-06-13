@@ -54,7 +54,7 @@ use crate::{
         transaction_components::{
             KernelFeatures,
             KernelSum,
-            OutputFlags,
+            OutputType,
             Transaction,
             TransactionError,
             TransactionInput,
@@ -284,7 +284,7 @@ impl AggregateBody {
         let mut coinbase_kernel = None;
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in self.outputs() {
-            if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+            if utxo.features.output_type == OutputType::Coinbase {
                 coinbase_counter += 1;
                 if utxo.features.maturity < (height + coinbase_lock_height) {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
@@ -349,7 +349,6 @@ impl AggregateBody {
     /// This function does NOT check that inputs come from the UTXO set
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction
-
     pub fn validate_internal_consistency(
         &self,
         tx_offset: &BlindingFactor,

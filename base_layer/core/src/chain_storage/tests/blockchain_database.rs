@@ -40,7 +40,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction_components::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputType, Transaction, UnblindedOutput},
     },
     txn_schema,
 };
@@ -471,7 +471,7 @@ mod add_block {
         let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
         let unique_id = vec![1; 3];
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id),
             ..Default::default()
@@ -484,7 +484,7 @@ mod add_block {
 
         let unique_id = vec![2; 3];
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(asset_pk),
             unique_id: Some(unique_id),
             ..Default::default()
@@ -713,7 +713,7 @@ mod fetch_utxo_by_unique_id {
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoPublicKey};
 
     use super::*;
-    use crate::transactions::transaction_components::OutputFlags;
+    use crate::transactions::transaction_components::OutputType;
 
     #[test]
     fn it_returns_none_if_empty() {
@@ -733,7 +733,7 @@ mod fetch_utxo_by_unique_id {
         let (blocks, outputs) = add_many_chained_blocks(1, &db);
 
         let mut features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -769,7 +769,6 @@ mod fetch_utxo_by_unique_id {
         );
 
         let mut features = OutputFeatures {
-            flags: OutputFlags::empty(),
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()

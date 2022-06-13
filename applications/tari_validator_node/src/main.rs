@@ -52,8 +52,6 @@ use tari_comms::{
 use tari_comms_dht::Dht;
 use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
 use tari_dan_storage_sqlite::SqliteDbFactory;
-use tari_p2p::comms_connector::SubscriptionFactory;
-use tari_service_framework::ServiceHandles;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
@@ -118,7 +116,7 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         node_identity.node_id()
     );
     // fs::create_dir_all(&global.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
-    let (handles, subscription_factory) = comms::build_service_and_comms_stack(
+    let (handles, _subscription_factory) = comms::build_service_and_comms_stack(
         config,
         shutdown.to_signal(),
         node_identity.clone(),
@@ -150,18 +148,12 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     if let Some(address) = config.validator_node.grpc_address.clone() {
         task::spawn(run_grpc(grpc_server, address, shutdown.to_signal()));
     }
+
     println!("🚀 Validator node started!");
     println!("{}", node_identity);
-    run_dan_node(
-        shutdown.to_signal(),
-        config.validator_node.clone(),
-        mempool_service,
-        db_factory,
-        handles,
-        subscription_factory,
-        node_identity,
-    )
-    .await?;
+
+    run_dan_node(config.validator_node.clone(), node_identity.clone()).await?;
+
     Ok(())
 }
 
@@ -173,25 +165,9 @@ fn build_runtime() -> Result<Runtime, ExitError> {
         .map_err(|e| ExitError::new(ExitCode::UnknownError, e))
 }
 
-async fn run_dan_node(
-    shutdown_signal: ShutdownSignal,
-    config: ValidatorNodeConfig,
-    mempool_service: MempoolServiceHandle,
-    db_factory: SqliteDbFactory,
-    handles: ServiceHandles,
-    subscription_factory: SubscriptionFactory,
-    node_identity: Arc<NodeIdentity>,
-) -> Result<(), ExitError> {
-    let node = DanNode::new(config);
-    node.start(
-        shutdown_signal,
-        node_identity,
-        mempool_service,
-        db_factory,
-        handles,
-        subscription_factory,
-    )
-    .await
+async fn run_dan_node(config: ValidatorNodeConfig, node_identity: Arc<NodeIdentity>) -> Result<(), ExitError> {
+    let node = DanNode::new(config, node_identity);
+    node.start().await
 }
 
 async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
@@ -199,7 +175,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
     grpc_address: Multiaddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    println!("Starting GRPC on {}", grpc_address);
+    info!("Starting GRPC on {}", grpc_address);
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
@@ -213,7 +189,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
             err
         })?;
 
-    println!("Stopping GRPC");
+    info!("Stopping GRPC");
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
 }

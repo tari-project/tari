@@ -32,7 +32,7 @@ use tari_core::transactions::transaction_components::{
     MintNonFungibleFeatures,
     OutputFeatures,
     OutputFeaturesVersion,
-    OutputFlags,
+    OutputType,
     SideChainCheckpointFeatures,
     SideChainFeatures,
     TemplateParameter,
@@ -60,13 +60,16 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             .map(SideChainFeatures::try_from)
             .transpose()?;
 
-        let flags = u16::try_from(features.flags).map_err(|_| "Invalid output flags: overflowed u16")?;
+        let output_type = features
+            .output_type
+            .try_into()
+            .map_err(|_| "Invalid output type: overflow")?;
 
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
             )?,
-            OutputFlags::from_bits(flags).ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
+            OutputType::from_byte(output_type).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
             u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
@@ -85,7 +88,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
             version: features.version as u32,
-            flags: u32::from(features.flags.bits()),
+            output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
             metadata: features.metadata,
             unique_id: features.unique_id.unwrap_or_default(),

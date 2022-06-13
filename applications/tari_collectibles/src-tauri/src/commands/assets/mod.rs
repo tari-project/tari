@@ -307,10 +307,11 @@ pub(crate) async fn inner_assets_create_initial_checkpoint(
 }
 
 #[tauri::command]
-pub(crate) async fn assets_create_committee_definition(
-  asset_public_key: String,
+pub(crate) async fn assets_create_constitution_definition(
+  contract_id: String,
   committee: Vec<String>,
-  is_initial: bool,
+  acceptance_period_expiry: u64,
+  minimum_quorum_required: u64,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Vec<String>, Status> {
   let mut client = state.create_wallet_client().await;
@@ -318,7 +319,12 @@ pub(crate) async fn assets_create_committee_definition(
 
   // TODO: effective sidechain height...
   client
-    .create_committee_definition(&asset_public_key, &committee, 0, is_initial)
+    .create_constitution_definition(
+      &contract_id,
+      committee.clone(),
+      acceptance_period_expiry,
+      minimum_quorum_required,
+    )
     .await?;
 
   Ok(committee)

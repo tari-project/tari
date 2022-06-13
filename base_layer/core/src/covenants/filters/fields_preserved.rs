@@ -42,7 +42,7 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::transaction_components::{OutputFlags, SideChainFeatures},
+        transactions::transaction_components::{OutputType, SideChainFeatures},
     };
 
     #[test]
@@ -52,17 +52,17 @@ mod test {
         let mut input = create_input();
         input.set_maturity(42).unwrap();
         input.features_mut().unwrap().sidechain_features = Some(SideChainFeatures::new(hash));
-        input.features_mut().unwrap().flags = OutputFlags::SIDECHAIN_CHECKPOINT;
+        input.features_mut().unwrap().output_type = OutputType::ContractDefinition;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features.maturity = 42;
             outputs[5].features.sidechain_features = Some(SideChainFeatures::new(hash));
-            outputs[5].features.flags = OutputFlags::SIDECHAIN_CHECKPOINT;
+            outputs[5].features.output_type = OutputType::ContractDefinition;
             outputs[7].features.maturity = 42;
-            outputs[7].features.flags = OutputFlags::SIDECHAIN_CHECKPOINT;
+            outputs[7].features.output_type = OutputType::ContractDefinition;
             outputs[7].features.sidechain_features = Some(SideChainFeatures::new(FixedHash::hash_bytes("B")));
             outputs[8].features.maturity = 42;
             outputs[8].features.sidechain_features = Some(SideChainFeatures::new(hash));
-            outputs[8].features.flags = OutputFlags::SIDECHAIN_CHECKPOINT | OutputFlags::COINBASE_OUTPUT;
+            outputs[8].features.output_type = OutputType::Coinbase;
         });
         let mut output_set = OutputSet::new(&outputs);
 

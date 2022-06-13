@@ -22,18 +22,22 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{FixedHash, PublicKey};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_core::transactions::transaction_components::{
     vec_into_fixed_string,
     CheckpointParameters,
     CommitteeMembers,
+    CommitteeSignatures,
     ConstitutionChangeFlags,
     ConstitutionChangeRules,
     ContractAcceptance,
     ContractAcceptanceRequirements,
+    ContractAmendment,
     ContractConstitution,
     ContractDefinition,
     ContractSpecification,
+    ContractUpdateProposal,
+    ContractUpdateProposalAcceptance,
     FunctionRef,
     PublicFunction,
     RequirementsForConstitutionChange,
@@ -51,6 +55,9 @@ impl From<SideChainFeatures> for grpc::SideChainFeatures {
             definition: value.definition.map(Into::into),
             constitution: value.constitution.map(Into::into),
             acceptance: value.acceptance.map(Into::into),
+            update_proposal: value.update_proposal.map(Into::into),
+            update_proposal_acceptance: value.update_proposal_acceptance.map(Into::into),
+            amendment: value.amendment.map(Into::into),
         }
     }
 }
@@ -62,12 +69,67 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
         let definition = features.definition.map(ContractDefinition::try_from).transpose()?;
         let constitution = features.constitution.map(ContractConstitution::try_from).transpose()?;
         let acceptance = features.acceptance.map(ContractAcceptance::try_from).transpose()?;
+        let update_proposal = features
+            .update_proposal
+            .map(ContractUpdateProposal::try_from)
+            .transpose()?;
+        let update_proposal_acceptance = features
+            .update_proposal_acceptance
+            .map(ContractUpdateProposalAcceptance::try_from)
+            .transpose()?;
+        let amendment = features.amendment.map(ContractAmendment::try_from).transpose()?;
 
         Ok(Self {
             contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
             definition,
             constitution,
             acceptance,
+            update_proposal,
+            update_proposal_acceptance,
+            amendment,
+        })
+    }
+}
+
+impl TryFrom<grpc::CreateConstitutionDefinitionRequest> for SideChainFeatures {
+    type Error = String;
+
+    fn try_from(request: grpc::CreateConstitutionDefinitionRequest) -> Result<Self, Self::Error> {
+        let acceptance_period_expiry = request.acceptance_period_expiry;
+        let minimum_quorum_required = request.minimum_quorum_required;
+        let validator_committee = request
+            .validator_committee
+            .map(CommitteeMembers::try_from)
+            .transpose()?
+            .unwrap();
+
+        Ok(Self {
+            contract_id: request.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
+            definition: None,
+            constitution: Some(ContractConstitution {
+                validator_committee: validator_committee.clone(),
+                acceptance_requirements: ContractAcceptanceRequirements {
+                    minimum_quorum_required: minimum_quorum_required as u32,
+                    acceptance_period_expiry,
+                },
+                consensus: SideChainConsensus::MerkleRoot,
+                checkpoint_params: CheckpointParameters {
+                    minimum_quorum_required: 5,
+                    abandoned_interval: 100,
+                },
+                constitution_change_rules: ConstitutionChangeRules {
+                    change_flags: ConstitutionChangeFlags::all(),
+                    requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
+                        minimum_constitution_committee_signatures: 5,
+                        constitution_committee: Some(validator_committee),
+                    }),
+                },
+                initial_reward: 100.into(),
+            }),
+            acceptance: None,
+            update_proposal: None,
+            update_proposal_acceptance: None,
+            amendment: None,
         })
     }
 }
@@ -395,6 +457,42 @@ impl TryFrom<grpc::CommitteeMembers> for CommitteeMembers {
     }
 }
 
+//---------------------------------- CommitteeSignatures --------------------------------------------//
+impl From<CommitteeSignatures> for grpc::CommitteeSignatures {
+    fn from(value: CommitteeSignatures) -> Self {
+        Self {
+            signatures: value.signatures().into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl TryFrom<grpc::CommitteeSignatures> for CommitteeSignatures {
+    type Error = String;
+
+    fn try_from(value: grpc::CommitteeSignatures) -> Result<Self, Self::Error> {
+        if value.signatures.len() > CommitteeSignatures::MAX_SIGNATURES {
+            return Err(format!(
+                "Too many committee signatures: expected {} but got {}",
+                CommitteeSignatures::MAX_SIGNATURES,
+                value.signatures.len()
+            ));
+        }
+
+        let signatures = value
+            .signatures
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| {
+                Signature::try_from(s)
+                    .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let signatures = CommitteeSignatures::try_from(signatures).map_err(|e| e.to_string())?;
+        Ok(signatures)
+    }
+}
+
 //---------------------------------- ContractAcceptance --------------------------------------------//
 
 impl From<ContractAcceptance> for grpc::ContractAcceptance {
@@ -417,11 +515,122 @@ impl TryFrom<grpc::ContractAcceptance> for ContractAcceptance {
             .signature
             .ok_or_else(|| "signature not provided".to_string())?
             .try_into()
-            .map_err(|_| "signaturecould not be converted".to_string())?;
+            .map_err(|_| "signature could not be converted".to_string())?;
 
         Ok(Self {
             validator_node_public_key,
             signature,
+        })
+    }
+}
+
+//---------------------------------- ContractUpdateProposal --------------------------------------------//
+
+impl From<ContractUpdateProposal> for grpc::ContractUpdateProposal {
+    fn from(value: ContractUpdateProposal) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            signature: Some(value.signature.into()),
+            updated_constitution: Some(value.updated_constitution.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractUpdateProposal> for ContractUpdateProposal {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractUpdateProposal) -> Result<Self, Self::Error> {
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "signature could not be converted".to_string())?;
+
+        let updated_constitution = value
+            .updated_constitution
+            .ok_or_else(|| "updated_constiution not provided".to_string())?
+            .try_into()?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            signature,
+            updated_constitution,
+        })
+    }
+}
+
+//---------------------------------- ContractUpdateProposalAcceptance --------------------------------------------//
+
+impl From<ContractUpdateProposalAcceptance> for grpc::ContractUpdateProposalAcceptance {
+    fn from(value: ContractUpdateProposalAcceptance) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            validator_node_public_key: value.validator_node_public_key.as_bytes().to_vec(),
+            signature: Some(value.signature.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractUpdateProposalAcceptance> for ContractUpdateProposalAcceptance {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractUpdateProposalAcceptance) -> Result<Self, Self::Error> {
+        let validator_node_public_key =
+            PublicKey::from_bytes(value.validator_node_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let signature = value
+            .signature
+            .ok_or_else(|| "signature not provided".to_string())?
+            .try_into()
+            .map_err(|_| "signature could not be converted".to_string())?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            validator_node_public_key,
+            signature,
+        })
+    }
+}
+
+//---------------------------------- ContractAmendment --------------------------------------------//
+
+impl From<ContractAmendment> for grpc::ContractAmendment {
+    fn from(value: ContractAmendment) -> Self {
+        Self {
+            proposal_id: value.proposal_id,
+            validator_committee: Some(value.validator_committee.into()),
+            validator_signatures: Some(value.validator_signatures.into()),
+            updated_constitution: Some(value.updated_constitution.into()),
+            activation_window: value.activation_window,
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractAmendment> for ContractAmendment {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractAmendment) -> Result<Self, Self::Error> {
+        let validator_committee = value
+            .validator_committee
+            .map(TryInto::try_into)
+            .ok_or("validator_committee not provided")??;
+
+        let validator_signatures = value
+            .validator_signatures
+            .map(TryInto::try_into)
+            .ok_or("validator_signatures not provided")??;
+
+        let updated_constitution = value
+            .updated_constitution
+            .ok_or_else(|| "updated_constiution not provided".to_string())?
+            .try_into()?;
+
+        Ok(Self {
+            proposal_id: value.proposal_id,
+            validator_committee,
+            validator_signatures,
+            updated_constitution,
+            activation_window: value.activation_window,
         })
     }
 }
