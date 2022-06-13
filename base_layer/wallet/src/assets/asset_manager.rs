@@ -308,6 +308,26 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         Ok((tx_id, transaction))
     }
+
+    pub async fn create_update_proposal(
+        &mut self,
+        update_proposal: &SideChainFeatures,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(0.into(), OutputFeatures {
+                sidechain_features: Some(update_proposal.clone()),
+                ..Default::default()
+            })
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
 }
 
 fn convert_to_asset(unblinded_output: DbUnblindedOutput) -> Result<Asset, WalletError> {

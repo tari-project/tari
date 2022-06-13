@@ -752,13 +752,23 @@ pub async fn command_runner(
                 // parse the JSON file
                 let update_proposal: ContractUpdateProposalFileFormat =
                     serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-                println!("parsed proposal: {:?}", update_proposal);
-
                 let side_chain_features = SideChainFeatures::try_from(update_proposal.clone()).unwrap();
 
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager.create_update_proposal(&side_chain_features).await?;
+
+                let message = format!(
+                    "Contract update proposal {} for contract {}",
+                    update_proposal.proposal_id, update_proposal.updated_constitution.contract_id
+                );
+
+                transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+
                 println!(
-                    "hello world from PublishContractUpdateProposal: {:?}",
-                    side_chain_features
+                    "Contract update proposal transaction submitted with tx_id={} for contract with contract_id={}",
+                    tx_id, update_proposal.proposal_id
                 );
             },
             RevalidateWalletDb => {

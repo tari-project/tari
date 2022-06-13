@@ -79,6 +79,9 @@ pub enum AssetManagerRequest {
         validator_node_public_key: Box<PublicKey>,
         signature: Box<Signature>,
     },
+    CreateContractUpdateProposal {
+        update_proposal: Box<SideChainFeatures>,
+    },
 }
 
 pub enum AssetManagerResponse {
@@ -91,4 +94,5 @@ pub enum AssetManagerResponse {
     CreateConstitutionDefinition { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractAcceptance { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractUpdateProposal { transaction: Box<Transaction>, tx_id: TxId },
 }

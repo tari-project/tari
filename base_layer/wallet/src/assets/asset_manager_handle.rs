@@ -235,4 +235,23 @@ impl AssetManagerHandle {
             }),
         }
     }
+
+    pub async fn create_update_proposal(
+        &mut self,
+        side_chain_features: &SideChainFeatures,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractUpdateProposal {
+                update_proposal: Box::new(side_chain_features.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractUpdateProposal { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_update_proposal".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
 }
