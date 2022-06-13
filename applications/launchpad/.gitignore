@@ -21,3 +21,5 @@ gui/build
 gui/npm-debug.log*
 gui/yarn-debug.log*
 gui/yarn-error.log*
+
+docker_rig/grafana/data

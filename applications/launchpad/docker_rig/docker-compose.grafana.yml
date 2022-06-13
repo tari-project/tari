@@ -19,8 +19,10 @@ services:
 
   grafana:
     image: grafana/grafana
+    user: "${UID:-root}:${GID:-root}"
     volumes:
       - ./grafana/defaults.ini:/usr/share/grafana/conf/defaults.ini
       - ./grafana/sources_provision.yml:/etc/grafana/provisioning/datasources/all.yml # for some reason does not work if volumed into /usr/share/grafana/conf/provisioning/datasources
+      - ./grafana/data:/var/lib/grafana
     ports:
       - "3001:3000"
