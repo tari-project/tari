@@ -795,6 +795,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbindgen"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6358dedf60f4d9b8db43ad187391afe959746101346fe51bb978126bec61dfb"
+dependencies = [
+ "clap 3.1.8",
+ "heck 0.4.0",
+ "indexmap",
+ "log",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6924,7 +6943,7 @@ source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.13.0#c4dd4c
 dependencies = [
  "base64 0.10.1",
  "blake2",
- "cbindgen",
+ "cbindgen 0.17.0",
  "curve25519-dalek-ng",
  "digest 0.9.0",
  "lazy_static",
@@ -7437,6 +7456,7 @@ dependencies = [
 name = "tari_wallet_ffi"
 version = "0.32.3"
 dependencies = [
+ "cbindgen 0.24.3",
  "chrono",
  "env_logger 0.7.1",
  "futures 0.3.21",
