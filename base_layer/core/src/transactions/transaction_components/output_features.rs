@@ -322,7 +322,7 @@ impl OutputFeatures {
         update_proposal: ContractUpdateProposal,
     ) -> OutputFeatures {
         Self {
-            flags: OutputFlags::CONTRACT_CONSTITUTION,
+            output_type: OutputType::ContractConstitutionProposal,
             sidechain_features: Some(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_update_proposal(update_proposal)
