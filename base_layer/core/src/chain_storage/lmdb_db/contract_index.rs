@@ -316,8 +316,7 @@ impl ContractIndexKey {
         buf
     }
 
-    /// Returns an 0xff filled buf. 0xff is used because if the 8-byte deleted_height part is not populated, it is the
-    /// last key value.
+    /// Returns a fixed 0-filled byte array.
     const fn new_buf() -> [u8; Self::FULL_KEY_LEN] {
         [0x0u8; Self::FULL_KEY_LEN]
     }
@@ -332,5 +331,28 @@ impl AsLmdbBytes for ContractIndexKey {
 impl Display for ContractIndexKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", to_hex(self.as_bytes()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use digest::Digest;
+    use tari_common_types::types::HashDigest;
+
+    use super::*;
+    mod contract_index_key {
+
+        use super::*;
+
+        #[test]
+        fn it_represents_a_well_formed_contract_index_key() {
+            let hash = HashDigest::new().chain(b"foobar").finalize().into();
+            let key = ContractIndexKey::new(hash, OutputType::ContractCheckpoint);
+            assert_eq!(key.as_lmdb_bytes()[..32], *hash.as_slice());
+            assert_eq!(
+                OutputType::from_byte(key.as_lmdb_bytes()[32]).unwrap(),
+                OutputType::ContractCheckpoint
+            );
+        }
     }
 }
