@@ -25,7 +25,7 @@ const App = () => {
   const themeConfig = useAppSelector(selectThemeConfig)
   const dispatch = useAppDispatch()
 
-  const [onboarding, setOnboarding] = useState(true)
+  const [onboarding, setOnboarding] = useState(false)
 
   dispatch(loadDefaultServiceSettings())
 
