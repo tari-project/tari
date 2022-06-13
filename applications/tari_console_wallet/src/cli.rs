@@ -109,6 +109,7 @@ pub enum CliCommands {
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     PublishConstitutionDefinition(PublishDefinitionArgs),
+    PublishContractUpdateProposal(PublishUpdateProposalArgs),
     RevalidateWalletDb,
     ContractDefinition(ContractDefinitionCommand),
 }
@@ -231,5 +232,10 @@ pub struct InitContractDefinitionArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct PublishDefinitionArgs {
+    pub file_path: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PublishUpdateProposalArgs {
     pub file_path: PathBuf,
 }

@@ -740,6 +740,9 @@ pub async fn command_runner(
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
+            PublishContractUpdateProposal(args) => {
+                println!("hello world from PublishContractUpdateProposal: {:?}", args);
+            },
             RevalidateWalletDb => {
                 output_service
                     .revalidate_all_outputs()
