@@ -108,7 +108,6 @@ pub enum CliCommands {
     InitShaAtomicSwap(SendTariArgs),
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
-    PublishConstitutionDefinition(PublishFileArgs),
     RevalidateWalletDb,
     Contract(ContractCommand),
 }
@@ -216,6 +215,9 @@ pub enum ContractSubcommand {
 
     /// Creates and publishes a contract definition UTXO from the JSON spec file.
     PublishDefinition(PublishFileArgs),
+
+    /// Creates and publishes a contract definition UTXO from the JSON spec file.
+    PublishConstitution(PublishFileArgs),
 }
 
 #[derive(Debug, Args, Clone)]

@@ -113,9 +113,7 @@ pub enum WalletCommand {
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
-    PublishConstitutionDefinition,
     RevalidateWalletDb,
-    PublishContractDefinition,
 }
 
 #[derive(Debug)]
@@ -730,30 +728,6 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
-            PublishConstitutionDefinition(args) => {
-                let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-                let file_reader = BufReader::new(file);
-
-                // parse the JSON file
-                let constitution_definition: ConstitutionDefinitionFileFormat =
-                    serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-                let side_chain_features = SideChainFeatures::try_from(constitution_definition.clone()).unwrap();
-
-                let mut asset_manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = asset_manager
-                    .create_constitution_definition(&side_chain_features)
-                    .await?;
-
-                let message = format!(
-                    "Committee definition with {} members for {:?}",
-                    constitution_definition.validator_committee.len(),
-                    constitution_definition.contract_id
-                );
-
-                transaction_service
-                    .submit_transaction(tx_id, transaction, 0.into(), message)
-                    .await?;
-            },
             RevalidateWalletDb => {
                 output_service
                     .revalidate_all_outputs()
@@ -816,6 +790,7 @@ async fn handle_contract_definition_command(
         ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(args),
         ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
+        ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
     }
 }
 
@@ -946,6 +921,33 @@ async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArg
         tx_id, contract_id_hex
     );
     println!("Done!");
+    Ok(())
+}
+
+async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let file_reader = BufReader::new(file);
+
+    // parse the JSON file
+    let constitution_definition: ConstitutionDefinitionFileFormat =
+        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let side_chain_features = SideChainFeatures::try_from(constitution_definition.clone()).unwrap();
+
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_constitution_definition(&side_chain_features)
+        .await?;
+
+    let message = format!(
+        "Committee definition with {} members for {:?}",
+        constitution_definition.validator_committee.len(),
+        constitution_definition.contract_id
+    );
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
     Ok(())
 }
 
