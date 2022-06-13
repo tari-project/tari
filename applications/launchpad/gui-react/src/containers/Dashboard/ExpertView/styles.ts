@@ -10,6 +10,13 @@ export const TabsContainer = styled.div`
 `
 
 export const PageContentContainer = styled.div`
+  flex-grow: 1;
+  padding ${({ theme }) => theme.spacing()};
+  padding-top: 0;
+`
+
+export const ScrollablePageContentContainer = styled.div`
+  flex-grow: 1;
   overflow: auto;
   padding ${({ theme }) => theme.spacing()};
   padding-top: 0;

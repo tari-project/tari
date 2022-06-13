@@ -19,5 +19,7 @@ services:
 
   grafana:
     image: grafana/grafana
+    volumes:
+      - ./grafana/defaults.ini:/usr/share/grafana/conf/defaults.ini
     ports:
-      - "3001:3001"
+      - "3001:3000"
