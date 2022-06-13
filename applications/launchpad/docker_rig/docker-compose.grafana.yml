@@ -21,5 +21,6 @@ services:
     image: grafana/grafana
     volumes:
       - ./grafana/defaults.ini:/usr/share/grafana/conf/defaults.ini
+      - ./grafana/sources_provision.yml:/etc/grafana/provisioning/datasources/all.yml # for some reason does not work if volumed into /usr/share/grafana/conf/provisioning/datasources
     ports:
       - "3001:3000"
