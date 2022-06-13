@@ -31,7 +31,7 @@ export const initialState: ContainersState = {
   stats: {},
 }
 
-const servicesSlice = createSlice({
+const containersSlice = createSlice({
   name: 'containers',
   initialState,
   reducers: {
@@ -126,7 +126,7 @@ const servicesSlice = createSlice({
   },
 })
 
-const { actions: syncActions } = servicesSlice
+const { actions: syncActions } = containersSlice
 export const actions = { start, stop, stopByType, restart, ...syncActions }
 
-export default servicesSlice.reducer
+export default containersSlice.reducer

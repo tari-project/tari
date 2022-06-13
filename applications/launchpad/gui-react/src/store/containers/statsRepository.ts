@@ -1,6 +1,20 @@
+import Database from 'tauri-plugin-sql-api'
+import groupby from 'lodash.groupby'
+
 import { Dictionary } from '../../types/general'
 
 import { Container, SerializableContainerStats } from './types'
+
+let db: Database
+const getDb = async () => {
+  if (!db) {
+    db = await Database.load('sqlite:launchpad.db')
+  }
+
+  return db
+}
+// load immediately to avoid waiting with first query
+getDb()
 
 export interface StatsEntry {
   timestamp: string
@@ -26,44 +40,40 @@ export interface StatsRepository {
   ) => Promise<Dictionary<StatsEntry[]>>
 }
 
-const storage = new Map<Container, StatsEntry[]>()
-
-// TODO implement sqlite
 const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, service, secondTimestamp, stats) => {
-      if (!storage.has(service)) {
-        storage.set(service, [])
-      }
+      const db = await getDb()
 
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      storage!.get(service)?.push({
-        timestamp: secondTimestamp,
-        network,
-        service,
-        cpu: stats.cpu,
-        memory: stats.memory,
-        upload: stats.network.upload,
-        download: stats.network.download,
-      })
+      await db.execute(
+        `INSERT INTO stats(timestamp, network, service, cpu, memory, upload, download) VALUES($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT(timestamp, network, service)
+           DO UPDATE SET
+            "insertsPerTimestamp"="insertsPerTimestamp"+1,
+            cpu=(cpu+$4)/("insertsPerTimestamp"+1),
+            memory=(memory+$5)/("insertsPerTimestamp"+1),
+            upload=(upload+$6)/("insertsPerTimestamp"+1),
+            download=(download+$7)/("insertsPerTimestamp"+1)`,
+        [
+          secondTimestamp,
+          network,
+          service,
+          stats.cpu,
+          stats.memory,
+          stats.network.upload,
+          stats.network.download,
+        ],
+      )
     },
-    getGroupedByContainer: async (_network, from, to) => {
-      return Object.values(Container).reduce((accu, current) => {
-        if (storage.has(current)) {
-          return {
-            ...accu,
-            [current]: storage
-              .get(current)
-              ?.filter(
-                item =>
-                  item.timestamp >= from.toISOString() &&
-                  item.timestamp <= to.toISOString(),
-              ),
-          } as Dictionary<StatsEntry[]>
-        }
+    getGroupedByContainer: async (network, from, to) => {
+      const db = await getDb()
 
-        return accu
-      }, {} as Dictionary<StatsEntry[]>)
+      const results: StatsEntry[] = await db.select(
+        'SELECT * FROM stats WHERE network = $1 AND "timestamp" >= $2 AND "timestamp" <= $3 ORDER BY "timestamp"',
+        [network, from, to],
+      )
+
+      return groupby(results, 'service')
     },
   }
 }

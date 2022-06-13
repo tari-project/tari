@@ -10,7 +10,7 @@ module.exports = {
   transform: {
     '^.+\\.(ts|tsx|js|jsx)$': 'ts-jest',
   },
-  testPathIgnorePatterns: ['node_modules/', '__tests__/mocks/'],
+  testPathIgnorePatterns: ['node_modules/', '__tests__/mocks/', '__mocks__/'],
   transformIgnorePatterns: ['node_modules/(?!@tauri)'],
   cacheDirectory: '.jest/cache',
   moduleNameMapper: {

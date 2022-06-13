@@ -37,7 +37,14 @@ futures = "0.3"
 regex= "1.5.4"
 derivative = "2.2.0"
 tonic = "0.6.2"
+# need to force this version to avoid circular dependency in tauri-plugin-sql deps
+# https://github.com/tkaitchuck/aHash/issues/95#issuecomment-881152315
+indexmap = "~1.6.2"
 
+[dependencies.tauri-plugin-sql]
+git = "https://github.com/tauri-apps/tauri-plugin-sql"
+features = ["sqlite"] # or "postgres", or "mysql"
+branch = "release"
 
 [features]
 default = [ "custom-protocol" ]

@@ -28,6 +28,7 @@
     "react-time-picker-input": "^2.0.10",
     "redux-persist": "^6.0.0",
     "styled-components": "^5.3.5",
+    "tauri-plugin-sql-api": "github:tauri-apps/tauri-plugin-sql#release",
     "typescript": "^4.4.2",
     "use-lilius": "^2.0.0",
     "uuid": "^8.3.2",

@@ -44,12 +44,13 @@ use crate::{
         stop_service,
         AppState,
     },
-    grpc::GrpcWalletClient,
 };
 
-#[tokio::main]
-async fn main() {
+use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
+
+fn main() {
     env_logger::init();
+
     let context = tauri::generate_context!();
     let cli_config = context.config().tauri.cli.clone().unwrap();
 
@@ -95,8 +96,17 @@ async fn main() {
     // TODO - Load workspace definitions from persistent storage here
     let workspaces = Workspaces::default();
     info!("Using Docker version: {}", docker.version());
-    tokio::spawn(subscribe());
+
     tauri::Builder::default()
+        .plugin(TauriSql::default().add_migrations(
+          "sqlite:launchpad.db",
+          vec![Migration {
+            version: 1,
+            description: "create stats table",
+            sql: include_str!("../migrations/2022-06-13.create-stats-table.sql"),
+            kind: MigrationKind::Up,
+          }],
+        ))
         .manage(AppState::new(docker, workspaces, package_info))
         .menu(menu)
         .invoke_handler(tauri::generate_handler![
@@ -113,33 +123,6 @@ async fn main() {
         ])
         .run(context)
         .expect("error starting");
-    // .build(context)
-    // .expect("error while running Launchpad");
-
-    // app.run(|app, event| {
-    //     if let RunEvent::Exit = event {
-    //         info!("Received Exit event");
-    //         block_on(async move {
-    //             let state = app.state();
-    //             let _message = shutdown(state).await;
-    //         });
-    //     }
-    // });
-}
-
-async fn subscribe() {
-    debug!("Subscribing to wallet grpc server...");
-    let mut wallet_client = GrpcWalletClient::new();
-    match wallet_client.stream().await.map_err(|e| e.chained_message()) {
-        Ok(mut stream) => {
-            debug!("Successfully subscribed to wallet grpc server.");
-            while let Some(response) = stream.next().await {
-                debug!("response: {:?}", response.transaction);
-            }
-            info!("Event stream is closed.");
-        },
-        Err(e) => error!("Failed to connect to wallet grpc server: {}", e),
-    };
 }
 
 fn handle_cli_options(cli_config: &CliConfig, pkg_info: &PackageInfo) {
