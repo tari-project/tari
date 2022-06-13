@@ -36,7 +36,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashDigest, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
@@ -79,7 +79,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -1169,6 +1169,15 @@ where B: BlockchainBackend
     pub fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_all_reorgs()
+    }
+
+    pub fn fetch_contract_outputs_by_contract_id_and_type(
+        &self,
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
     }
 
     pub fn clear_all_reorgs(&self) -> Result<(), ChainStorageError> {
