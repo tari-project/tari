@@ -22,6 +22,7 @@
 
 use std::{
     convert::TryFrom,
+    fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
 };
 
@@ -141,5 +142,11 @@ impl Deref for FixedHash {
 impl DerefMut for FixedHash {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl Display for FixedHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_hex())
     }
 }

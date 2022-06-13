@@ -95,18 +95,22 @@ macro_rules! block_spec {
     };
     (@ { $spec: ident } reward: $reward:expr, $($tail:tt)*) => {
         $spec = $spec.with_reward($reward.into());
-        $crate::block_spec!(@ { spec } $($tail)*)
+        $crate::block_spec!(@ { $spec } $($tail)*)
     };
     (@ { $spec: ident } parent: $parent:expr, $($tail:tt)*) => {
-        $spec = $spec.with_prev_block($parent);
-        $crate::block_spec!(@ { spec } $($tail)*)
+        $spec = $spec.with_parent_block($parent);
+        $crate::block_spec!(@ { $spec } $($tail)*)
     };
     (@ { $spec: ident } transactions: $transactions:expr, $($tail:tt)*) => {
         $spec = $spec.with_transactions($transactions);
-        $crate::block_spec!(@ { spec } $($tail)*)
+        $crate::block_spec!(@ { $spec } $($tail)*)
+    };
+    (@ { $spec: ident } skip_coinbase: true, $($tail:tt)*) => {
+        $spec = $spec.skip_coinbase();
+        $crate::block_spec!(@ { $spec } $($tail)*)
     };
 
-    (@ { $spec: ident } $k:ident: $v:expr $(,)?) => { $crate::block_spec!(@ { $spec } $k: $v,) };
+    (@ { $spec: ident } $k:ident: $v:expr) => { $crate::block_spec!(@ { $spec } $k: $v,) };
 
     ($name:expr, $($tail:tt)+) => {{
         let mut spec = $crate::block_spec!($name);
@@ -160,7 +164,7 @@ macro_rules! block_specs {
 #[derive(Debug, Clone)]
 pub struct BlockSpec {
     pub name: &'static str,
-    pub prev_block: &'static str,
+    pub parent: &'static str,
     pub difficulty: Difficulty,
     pub block_time: u64,
     pub reward_override: Option<MicroTari>,
@@ -183,13 +187,13 @@ impl BlockSpec {
         let name = split.next().unwrap_or("<noname>");
         self.name = name;
         if let Some(prev_block) = split.next() {
-            self.prev_block = prev_block;
+            self.parent = prev_block;
         }
         self
     }
 
-    pub fn with_prev_block(mut self, prev_block_name: &'static str) -> Self {
-        self.prev_block = prev_block_name;
+    pub fn with_parent_block(mut self, prev_block_name: &'static str) -> Self {
+        self.parent = prev_block_name;
         self
     }
 
@@ -232,7 +236,7 @@ impl Default for BlockSpec {
     fn default() -> Self {
         Self {
             name: "<unnamed>",
-            prev_block: "",
+            parent: "",
             difficulty: 1.into(),
             block_time: 120,
             height_override: None,
