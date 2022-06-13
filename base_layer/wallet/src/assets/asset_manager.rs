@@ -28,7 +28,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
     OutputFeatures,
-    OutputFlags,
+    OutputType,
     SideChainFeatures,
     TemplateParameter,
     Transaction,
@@ -64,7 +64,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
     pub async fn list_owned(&self) -> Result<Vec<Asset>, WalletError> {
         let outputs = self
             .output_database
-            .fetch_with_features(OutputFlags::ASSET_REGISTRATION)
+            .fetch_with_features(OutputType::AssetRegistration)
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
         debug!(

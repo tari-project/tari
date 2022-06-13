@@ -278,7 +278,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::uT,
             test_helpers::TestParams,
-            transaction_components::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
+            transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
@@ -348,7 +348,7 @@ mod test {
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
         utxo.verify_range_proof(&factories.range_proof).unwrap();
-        assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
+        assert_eq!(utxo.features.output_type, OutputType::Coinbase);
         tx.body
             .check_coinbase_output(
                 block_reward,

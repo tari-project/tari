@@ -209,7 +209,7 @@ void covenant_destroy(struct TariCovenant *covenant);
 // Creates a TariOutputFeatures from byte values
 struct TariOutputFeatures *output_features_create_from_bytes(
     unsigned char version,
-    unsigned short flags,
+    unsigned short output_type,
     unsigned long long maturity,
     unsigned char recovery_byte,
     struct ByteVector *metadata,

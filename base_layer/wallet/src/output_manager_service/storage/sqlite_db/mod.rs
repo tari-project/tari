@@ -35,7 +35,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey},
 };
-use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
+use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
 use tokio::time::Instant;
@@ -296,7 +296,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
-    fn fetch_with_features(&self, flags: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    fn fetch_with_features(&self, flags: OutputType) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
         let mut outputs = OutputSql::index_by_feature_flags(flags, &conn)?;
         for o in &mut outputs {
