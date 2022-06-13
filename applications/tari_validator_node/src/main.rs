@@ -146,6 +146,7 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     );
 
     if let Some(address) = config.validator_node.grpc_address.clone() {
+        println!("Started GRPC server on {}", address);
         task::spawn(run_grpc(grpc_server, address, shutdown.to_signal()));
     }
 
