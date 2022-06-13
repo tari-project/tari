@@ -110,7 +110,7 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     grpc::{convert_to_transaction_event, TransactionWrapper},
-    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
+    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT, UNMINED},
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -592,6 +592,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             match result {
                                 Ok(msg) => {
                                     match (*msg).clone() {
+                                        tari_wallet::transaction_service::handle::TransactionEvent::NewBlockMined(tx_id) => {
+                                            match transaction_service.get_any_transaction(tx_id).await{
+                                                Ok(found_transaction) => {
+                                                    if let Some(WalletTransaction::PendingOutbound(tx)) = found_transaction {
+                                                        let transaction_event = convert_to_transaction_event(UNMINED.to_string(),
+                                                            TransactionWrapper::Outbound(tx.clone()));
+                                                        send_transaction_event(transaction_event, &mut sender).await;
+                                                    } 
+                                                    
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+}
+                                        }
                                         tari_wallet::transaction_service::handle::TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                             match transaction_service.get_completed_transaction(tx_id).await{
                                                 Ok(completed) => {
@@ -694,8 +707,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                                 Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
                                             }
                                         },
-                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionValidationStateChanged(_operation_id) => {
-
+                                        tari_wallet::transaction_service::handle::TransactionEvent::TransactionValidationStateChanged(_t_operation_id) => {
                                             let transaction_event = TransactionEvent {
                                                 event: "unknown".to_string(),
                                                 tx_id: String::default(),

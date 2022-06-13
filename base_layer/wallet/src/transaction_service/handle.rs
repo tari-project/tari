@@ -241,6 +241,7 @@ impl Display for TransactionSendStatus {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum TransactionEvent {
     MempoolBroadcastTimedOut(TxId),
+    NewBlockMined(TxId),
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
@@ -350,6 +351,9 @@ impl fmt::Display for TransactionEvent {
             },
             TransactionEvent::TransactionValidationFailed(operation_id) => {
                 write!(f, "Transaction validation failed: {}", operation_id)
+            },
+            TransactionEvent::NewBlockMined(tx_id) => {
+                write!(f, "New block mined {}", tx_id)
             },
         }
     }

@@ -13,9 +13,11 @@ import SvgSetting2 from '../../../styles/Icons/Setting2'
 const MiningViewActions = ({
   openScheduling,
   toggleStatistics,
+  openSettings,
 }: {
   openScheduling: () => void
   toggleStatistics: () => void
+  openSettings: () => void
 }) => {
   const canAnyMiningBeRun = useSelector(selectCanAnyMiningNodeRun)
 
@@ -37,6 +39,8 @@ const MiningViewActions = ({
         variant='text'
         leftIcon={<SvgSetting2 width='1.5rem' height='1.5rem' />}
         style={{ paddingLeft: 0 }}
+        onClick={openSettings}
+        testId='mining-view-actions-settings-btn'
       >
         {t.mining.viewActions.miningSettings}
       </Button>

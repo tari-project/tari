@@ -12,6 +12,7 @@ import MiningViewActions from './MiningViewActions'
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import { setTheme } from '../../store/app'
 import { selectTheme } from '../../store/app/selectors'
+import { actions as settingsActions } from '../../store/settings'
 
 import { NodesContainer } from './styles'
 import MiningBoxTari from './MiningBoxTari'
@@ -43,6 +44,7 @@ const MiningContainer = () => {
         toggleStatistics={() => {
           setStatisticsOpen(o => !o)
         }}
+        openSettings={() => dispatch(settingsActions.open({}))}
       />
       <Scheduling
         open={schedulingOpen}

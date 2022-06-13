@@ -39,10 +39,20 @@ export interface MiningNodeState {
   session?: MiningSession
 }
 
+export interface MoneroUrl {
+  url: string
+  useAuth?: boolean
+  username?: string
+  password?: string
+}
+
+/**
+ * @TODO - omit password? Probably we don't want to store password in global state.
+ */
 export interface MergedMiningNodeState extends MiningNodeState {
   address?: string
-  threads?: number
-  urls?: string[]
+  threads: number
+  urls?: MoneroUrl[]
 }
 
 export interface MiningState {

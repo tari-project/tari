@@ -30,8 +30,10 @@ declare module 'styled-components' {
     accentMerged: string
     disabledText: string
     tariGradient: string
+    tariTextGradient: string
     mergedGradient: string
     warningGradient: string
+    greenMedium: string
     borderColor: string
     borderColorLight: string
     actionBackground: string
@@ -59,6 +61,7 @@ declare module 'styled-components' {
     lightTag: string
     lightTagText: string
     placeholderText: string
+    textSecondary: string
 
     inverted: {
       controlBackground: string
@@ -74,7 +77,9 @@ declare module 'styled-components' {
       accentMerged: string
       disabledText: string
       tariGradient: string
+      tariTextGradient: string
       warningGradient: string
+      greenMedium: string
       resetBackground: string
       resetBackgroundHover: string
       moneroDark: string

@@ -1,3 +1,12 @@
+export const dateTime = (d: Date): string =>
+  `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`
+
+export const localHour = (d: Date): string =>
+  d.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
 export const utcHour = ({
   hours,
   minutes,

@@ -84,4 +84,28 @@ describe('Input', () => {
 
     expect(onIconClick).not.toHaveBeenCalled()
   })
+
+  it('should render error when given', () => {
+    const errorText = 'This field is invalid - test text'
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Input error={errorText} />
+      </ThemeProvider>,
+    )
+
+    const el = screen.getByText(errorText)
+    expect(el).toBeInTheDocument()
+  })
+
+  it('should render label when given', () => {
+    const labelText = 'This is text label'
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Input label={labelText} />
+      </ThemeProvider>,
+    )
+
+    const el = screen.getByText(labelText)
+    expect(el).toBeInTheDocument()
+  })
 })

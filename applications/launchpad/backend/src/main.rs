@@ -7,11 +7,16 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 #[macro_use]
 extern crate lazy_static;
+use std::thread;
+
+use futures::StreamExt;
 use log::*;
 mod api;
 mod commands;
 mod docker;
 mod error;
+mod grpc;
+
 use docker::{DockerWrapper, Workspaces};
 use tauri::{
     api::cli::get_matches,
@@ -39,9 +44,11 @@ use crate::{
         stop_service,
         AppState,
     },
+    grpc::GrpcWalletClient,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let context = tauri::generate_context!();
     let cli_config = context.config().tauri.cli.clone().unwrap();
@@ -88,7 +95,7 @@ fn main() {
     // TODO - Load workspace definitions from persistent storage here
     let workspaces = Workspaces::default();
     info!("Using Docker version: {}", docker.version());
-
+    tokio::spawn(subscribe());
     tauri::Builder::default()
         .manage(AppState::new(docker, workspaces, package_info))
         .menu(menu)
@@ -118,6 +125,21 @@ fn main() {
     //         });
     //     }
     // });
+}
+
+async fn subscribe() {
+    debug!("Subscribing to wallet grpc server...");
+    let mut wallet_client = GrpcWalletClient::new();
+    match wallet_client.stream().await.map_err(|e| e.chained_message()) {
+        Ok(mut stream) => {
+            debug!("Successfully subscribed to wallet grpc server.");
+            while let Some(response) = stream.next().await {
+                debug!("response: {:?}", response.transaction);
+            }
+            info!("Event stream is closed.");
+        },
+        Err(e) => error!("Failed to connect to wallet grpc server: {}", e),
+    };
 }
 
 fn handle_cli_options(cli_config: &CliConfig, pkg_info: &PackageInfo) {

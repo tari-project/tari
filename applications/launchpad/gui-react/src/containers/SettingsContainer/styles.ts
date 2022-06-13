@@ -1,5 +1,8 @@
 import styled from 'styled-components'
 
+// Preserve the space in the modal for the bottom bar with buttons.
+const SettingsBottomBarHeight = '70px'
+
 export const MainContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -9,6 +12,7 @@ export const MainContainer = styled.div`
 export const MainContentContainer = styled.div`
   display: flex;
   flex-grow: 1;
+  max-height: calc(100% - ${SettingsBottomBarHeight});
 `
 
 export const Sidebar = styled.aside`
@@ -49,11 +53,13 @@ export const MenuItem = styled.button<{ active?: boolean }>`
 
 export const MainContent = styled.main`
   flex-grow: 1;
+  max-height: 100%;
   padding-top: ${({ theme }) => theme.spacing(2)};
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   align-items: center;
+  overflow: auto;
   & > * {
     max-width: 100%;
     width: 70%;
@@ -68,4 +74,15 @@ export const Footer = styled.footer`
     ${({ theme }) => theme.spacingHorizontal()};
   column-gap: ${({ theme }) => theme.spacing()};
   border-top: 1px solid ${({ theme }) => theme.borderColor};
+`
+
+export const DiscardWarning = styled.div`
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  gap: ${({ theme }) => theme.spacingHorizontal(0.2)};
+`
+
+export const SettingsHeader = styled.div`
+  margin-bottom: ${({ theme }) => theme.spacingVertical(2.5)};
 `

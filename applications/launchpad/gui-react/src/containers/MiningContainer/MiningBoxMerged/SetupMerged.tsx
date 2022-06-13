@@ -30,6 +30,7 @@ const SetupMerged = ({
         disabled={
           mergedSetupRequired === MergedMiningSetupRequired.MissingWalletAddress
         }
+        testId='setup-merged-open-settings'
       >
         {t.mining.actions.setupAndStartMining}
       </Button>

@@ -5,6 +5,9 @@ export interface InputProps
   type?: string
   disabled?: boolean
   value?: string
+  id?: string
+  label?: string
+  error?: string
   placeholder?: string
   inputUnits?: string
   inputIcon?: ReactNode
@@ -13,4 +16,5 @@ export interface InputProps
   testId?: string
   style?: CSSProperties
   containerStyle?: CSSProperties
+  inverted?: boolean
 }

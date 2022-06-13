@@ -40,7 +40,6 @@ export const ExpertViewDrawer = styled(animated.div)`
   top: 0;
   bottom: 0;
   right: 0;
-  overflow: hidden;
   padding-left: 10px;
   padding-right: 10px;
   padding-top: ${({ theme }) => theme.spacing(2.5)};

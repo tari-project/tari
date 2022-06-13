@@ -9,13 +9,7 @@ import CenteredLayout from '../../components/CenteredLayout'
 import t from '../../locales'
 
 import { BaseNodeProps, Network } from './types'
-
-const networks = ['dibbler', 'testnet']
-const networkOptions = networks.map(network => ({
-  label: network,
-  value: network,
-  key: network,
-}))
+import { networkOptions } from './constants'
 
 const BaseNode = ({
   running,

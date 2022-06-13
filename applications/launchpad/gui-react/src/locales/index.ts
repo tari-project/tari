@@ -17,6 +17,8 @@ import walletPasswordWizardI18n from './walletPasswordWizard'
 import cryptoMiningHelpIl8n from './cryptoMiningHelp'
 import mergedMiningHelpIl8n from './mergedMiningHelp'
 import onboardingIl8n from './onboarding'
+import settingsIl8n from './settings'
+
 
 const translations = {
   common: commonI18n,
@@ -29,6 +31,7 @@ const translations = {
   cryptoMiningHelp: cryptoMiningHelpIl8n,
   mergedMiningHelp: mergedMiningHelpIl8n,
   onboarding: onboardingIl8n,
+  settings: settingsIl8n,
 }
 
 export default translations

@@ -38,6 +38,7 @@ const colors = {
     error: '#E7362A',
     actionBackground: '#76A59D',
     borderLight: '#DBDBDD',
+    greenMedium: '#5F9C91',
   },
   darkMode: {
     modalBackground: '#141414',
@@ -49,6 +50,11 @@ const colors = {
     logoCard: '#00000030',
     darkLogoCard: '#00000060',
     disabledText: '#47434A',
+  },
+  graph: {
+    fuchsia: '#EF5DA8',
+    yellow: '#EEDC3C',
+    lightGreen: '#78E590',
   },
 }
 

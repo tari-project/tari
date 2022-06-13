@@ -13,6 +13,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     close: 'Close',
   },
   nouns: {
+    expert: 'Expert',
     expertView: 'Expert view',
     baseNode: 'Base Node',
     mining: 'Mining',
@@ -56,6 +57,8 @@ const translations: { [key: string]: { [key: string]: string } } = {
   phrases: {
     actionRequired: 'Action required',
     bestChoice: 'Best choice',
+    keepEditing: 'Keep editing',
+    saveChanges: 'Save changes',
     startHere: 'Start here',
     readyToGo: 'Ready to go',
     readyToSet: 'Ready to set',
@@ -73,6 +76,9 @@ const translations: { [key: string]: { [key: string]: string } } = {
   miningType: {
     tari: 'Tari Mining',
     merged: 'Merged Mining',
+  },
+  units: {
+    mib: 'MiB',
   },
 }
 

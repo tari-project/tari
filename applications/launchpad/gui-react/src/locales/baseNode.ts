@@ -14,6 +14,9 @@ const translations = {
     start: 'Base Node could not start.',
     stop: 'Base Node did not stop.',
   },
+  settings: {
+    title: 'Base Node Settings',
+  },
 }
 
 export default translations

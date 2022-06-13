@@ -1,0 +1,42 @@
+import styled from 'styled-components'
+
+export const AddressDescription = styled.div`
+  margin-top: ${({ theme }) => theme.spacingVertical(1)};
+
+  & > p {
+    color: ${({ theme }) => theme.secondary};
+  }
+`
+
+export const NarrowInlineInput = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: ${({ theme }) => theme.spacingHorizontal(0.5)};
+
+  & > label {
+    margin-bottom: 0;
+  }
+
+  & input {
+    max-width: 96px;
+    min-width: auto;
+  }
+`
+
+export const ActionsContainer = styled.div`
+  color: ${({ theme }) => theme.greenMedium};
+  display: flex;
+  justify-content: flex-end;
+  padding-top: ${({ theme }) => theme.spacingVertical(1)};
+  padding-bottom: ${({ theme }) => theme.spacingVertical(1)};
+  margin-bottom: ${({ theme }) => theme.spacingVertical(2)};
+
+  & > button {
+    text-decoration: none;
+  }
+`
+
+export const UrlList = styled.div`
+  margin-top: ${({ theme }) => theme.spacingVertical(2)};
+`
