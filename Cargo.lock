@@ -2327,12 +2327,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gcc"
-version = "0.3.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
-
-[[package]]
 name = "gdk"
 version = "0.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3257,11 +3251,10 @@ dependencies = [
 
 [[package]]
 name = "liblmdb-sys"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "feed38a3a580f60bf61aaa067b0ff4123395966839adeaf67258a9e50c4d2e49"
+version = "0.2.3"
+source = "git+https://github.com/tari-project/lmdb-rs?tag=0.7.6-tari.1#8d88933179c4ab7ceafb407a9615ecdd5c569a5f"
 dependencies = [
- "gcc",
+ "cc",
  "libc",
 ]
 
