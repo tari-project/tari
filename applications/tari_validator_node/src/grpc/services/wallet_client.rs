@@ -25,7 +25,11 @@ use std::net::SocketAddr;
 use async_trait::async_trait;
 use tari_app_grpc::{
     tari_rpc as grpc,
-    tari_rpc::{CreateFollowOnAssetCheckpointRequest, SubmitContractAcceptanceRequest},
+    tari_rpc::{
+        CreateFollowOnAssetCheckpointRequest,
+        SubmitContractAcceptanceRequest,
+        SubmitContractUpdateProposalAcceptanceRequest,
+    },
 };
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::types::CommsPublicKey;
@@ -101,6 +105,32 @@ impl WalletClient for GrpcWalletClient {
             .submit_contract_acceptance(request)
             .await
             .map_err(|e| DigitalAssetError::FatalError(format!("Could not submit contract acceptance: {}", e)))?;
+
+        Ok(res.into_inner().tx_id)
+    }
+
+    async fn submit_contract_update_proposal_acceptance(
+        &mut self,
+        contract_id: &FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<u64, DigitalAssetError> {
+        let inner = self.connection().await?;
+
+        let request = SubmitContractUpdateProposalAcceptanceRequest {
+            contract_id: contract_id.as_bytes().to_vec(),
+            proposal_id,
+            validator_node_public_key: validator_node_public_key.as_bytes().to_vec(),
+            signature: Some((*signature).clone().into()),
+        };
+
+        let res = inner
+            .submit_contract_update_proposal_acceptance(request)
+            .await
+            .map_err(|e| {
+                DigitalAssetError::FatalError(format!("Could not submit contract update proposal acceptance: {}", e))
+            })?;
 
         Ok(res.into_inner().tx_id)
     }

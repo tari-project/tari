@@ -235,4 +235,31 @@ impl AssetManagerHandle {
             }),
         }
     }
+
+    pub async fn create_contract_update_proposal_acceptance(
+        &mut self,
+        contract_id: &FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractUpdateProposalAcceptance {
+                contract_id: *contract_id,
+                proposal_id,
+                validator_node_public_key: Box::new(validator_node_public_key.clone()),
+                signature: Box::new(signature.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractUpdateProposalAcceptance { transaction, tx_id } => {
+                Ok((tx_id, *transaction))
+            },
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_update_proposal_acceptance".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
 }
