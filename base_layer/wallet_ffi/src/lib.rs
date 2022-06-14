@@ -1,3 +1,4 @@
+#![feature(vec_into_raw_parts)]
 // Copyright 2019. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -222,12 +223,16 @@ pub struct TariWallet {
 #[repr(C)]
 pub struct TariUtxo {
     pub commitment: *mut c_char,
-    pub value: c_ulonglong,
+    pub value: u64,
 }
 
 #[derive(Debug, Clone)]
 #[repr(C)]
-pub struct TariOutputs(pub Vec<TariUtxo>);
+pub struct TariOutputs {
+    pub len: usize,
+    pub cap: usize,
+    pub ptr: *mut TariUtxo,
+}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -4097,30 +4102,31 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// This function returns a list of unspent UTXO values and commitments.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `page` - Page offset
-/// `page_size` - A number of items per page
-/// `sort_ascending` - Sorting order
-/// `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold`, are not listed in the
-/// result, but are added to the `GetUtxosView.unlisted_dust_sum`.
-/// `error_out` - Pointer to an int which will be modified to an error
+/// `wallet` - The TariWallet pointer,
+/// `page` - Page offset,
+/// `page_size` - A number of items per page,
+/// `sorting` - An enum representing desired sorting,
+/// `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
+/// result.
+/// `error_out` - A pointer to an int which will be modified to an error
 /// code should one occur, may not be null. Functions as an out parameter.
 ///
 /// ## Returns
-/// `*mut GetUtxosView` - Returns a struct with a list of unspent `outputs` and an `unlisted_dust_sum` holding a sum of
-/// values that were filtered out by `dust_threshold`.
+/// `*mut TariOutputs` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+/// after use).
 ///
 /// # Safety
+/// `destroy_tari_outputs()` must be called after use.
 /// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
 /// LOG_TARGET.
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_utxos(
     wallet: *mut TariWallet,
-    page: c_uint,
-    page_size: c_uint,
+    page: usize,
+    page_size: usize,
     sorting: TariUtxoSort,
-    dust_threshold: c_ulonglong,
-    error_out: *mut c_int,
+    dust_threshold: u64,
+    error_out: *mut i32,
 ) -> *mut TariOutputs {
     if wallet.is_null() {
         ptr::replace(
@@ -4130,9 +4136,8 @@ pub unsafe extern "C" fn wallet_get_utxos(
         return ptr::null_mut();
     }
 
-    let factories = CryptoFactories::default();
-    let page = (page as usize).max(1) - 1;
-    let page_size = (page_size as usize).max(1);
+    let page = page.max(1) - 1;
+    let page_size = page_size.max(1);
 
     debug!(
         target: LOG_TARGET,
@@ -4165,7 +4170,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
                 .filter_map(|out| {
                     Some(TariUtxo {
                         value: out.value.as_u64(),
-                        commitment: match out.as_transaction_output(&factories) {
+                        commitment: match out.as_transaction_output(&CryptoFactories::default()) {
                             Ok(tout) => match CString::new(tout.commitment.to_hex()) {
                                 Ok(cstr) => cstr.into_raw(),
                                 Err(e) => {
@@ -4188,7 +4193,12 @@ pub unsafe extern "C" fn wallet_get_utxos(
                 })
                 .collect();
 
-            Box::into_raw(Box::new(TariOutputs(outputs)))
+            let (ptr_outputs, len, cap) = outputs.into_raw_parts();
+            Box::into_raw(Box::new(TariOutputs {
+                len,
+                cap,
+                ptr: ptr_outputs,
+            }))
         },
 
         Err(e) => {
@@ -4214,6 +4224,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
 #[no_mangle]
 pub unsafe extern "C" fn destroy_tari_outputs(x: *mut TariOutputs) {
     if !x.is_null() {
+        Vec::from_raw_parts((*x).ptr, (*x).len, (*x).cap);
         Box::from_raw(x);
     }
 }
@@ -8814,40 +8825,41 @@ mod test {
 
             // ascending order
             let outputs = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueAsc, 3000, error_ptr);
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
             assert_eq!(error, 0);
-            assert_eq!((*outputs).0.len(), 6);
+            assert_eq!((*outputs).len, 6);
+            assert_eq!(utxos.len(), 6);
             assert!(
-                (*outputs)
-                    .0
-                    .iter()
+                utxos
+                    .into_iter()
                     .skip(1)
-                    .fold((true, (*outputs).0[0].value), |acc, x| (
-                        acc.0 && x.value > acc.1,
-                        x.value
-                    ))
+                    .fold((true, utxos[0].value), |acc, x| { (acc.0 && x.value > acc.1, x.value) })
                     .0
             );
+            destroy_tari_outputs(outputs);
 
             // descending order
             let outputs = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueDesc, 3000, error_ptr);
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
             assert_eq!(error, 0);
-            assert_eq!((*outputs).0.len(), 6);
+            assert_eq!((*outputs).len, 6);
+            assert_eq!(utxos.len(), 6);
             assert!(
-                (*outputs)
-                    .0
-                    .iter()
+                utxos
+                    .into_iter()
                     .skip(1)
-                    .fold((true, (*outputs).0[0].value), |acc, x| (
-                        acc.0 && x.value < acc.1,
-                        x.value
-                    ))
+                    .fold((true, utxos[0].value), |acc, x| (acc.0 && x.value < acc.1, x.value))
                     .0
             );
+            destroy_tari_outputs(outputs);
 
             // result must be empty due to high dust threshold
-            let utxos = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueAsc, 15000, error_ptr);
+            let outputs = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueAsc, 15000, error_ptr);
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
             assert_eq!(error, 0);
-            assert_eq!((*utxos).0.len(), 0);
+            assert_eq!((*outputs).len, 0);
+            assert_eq!(utxos.len(), 0);
+            destroy_tari_outputs(outputs);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -8855,7 +8867,6 @@ mod test {
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             transport_config_destroy(transport_config_alice);
-            destroy_tari_outputs(outputs);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
