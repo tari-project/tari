@@ -46,6 +46,7 @@ use tari_core::transactions::{
     transaction_components::{
         CheckpointParameters,
         ContractAcceptanceRequirements,
+        ContractAmendment,
         ContractDefinition,
         SideChainConsensus,
         SideChainFeatures,
@@ -59,6 +60,7 @@ use tari_wallet::{
     assets::{
         ConstitutionChangeRulesFileFormat,
         ConstitutionDefinitionFileFormat,
+        ContractAmendmentFileFormat,
         ContractDefinitionFileFormat,
         ContractSpecificationFileFormat,
     },
@@ -953,7 +955,18 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
 }
 
 async fn publish_contract_amendment(_wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
-    println!("hello world from publish_contract_amendment: {:?}", args);
+    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let file_reader = BufReader::new(file);
+
+    // parse the JSON file
+    let amendment: ContractAmendmentFileFormat =
+        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    println!("parsed amendment: {:?}", amendment);
+    let _contract_id_hex = amendment.updated_constitution.contract_id.clone();
+
+    let amendment_features = ContractAmendment::try_from(amendment).map_err(CommandError::JsonFile)?;
+    println!("hello world from publish_contract_amendment: {:?}", amendment_features);
+
     Ok(())
 }
 
