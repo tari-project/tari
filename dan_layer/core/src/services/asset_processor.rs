@@ -128,6 +128,7 @@ mod nodes {
                 token_id: token_id as u64,
                 from,
             };
+            dbg!(&bucket);
             map.insert("default".to_string(), Ok(IOData { data: Box::new(()) }));
             map.insert("bucket".to_string(), Ok(IOData { data: Box::new(bucket) }));
             Rc::new(map)
@@ -169,6 +170,7 @@ mod nodes {
     }
 }
 
+#[derive(Debug)]
 pub struct Bucket {
     amount: u64,
     token_id: u64,
