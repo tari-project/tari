@@ -660,12 +660,9 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
-  /*
   const vn = new ValidatorNodeProcess("compile", false, {}, null, null, "127.0.0.1:9999", "127.0.0.1:9998");
   console.log("Compiling validator node...");
-  await vn.init();
   await vn.compile();
-  */
 
   console.log("Compiling wallet FFI...");
   await InterfaceFFI.compile();
