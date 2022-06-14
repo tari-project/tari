@@ -21,12 +21,12 @@ const MessageBox = (
     animate,
     children,
     skipButton,
-    $floating,
+    floating,
   }: {
     animate: boolean
     children: ReactNode
     skipButton?: boolean
-    $floating?: boolean
+    floating?: boolean
   },
   ref?: ForwardedRef<HTMLDivElement>,
 ) => {
@@ -49,7 +49,7 @@ const MessageBox = (
       <StyledMessage
         style={{ opacity: 0 }}
         skipButton={skipButton}
-        $floating={$floating}
+        $floating={floating}
       >
         {children}
       </StyledMessage>
@@ -58,7 +58,7 @@ const MessageBox = (
           <StyledMessage
             style={{ ...useOpacityAnim }}
             skipButton={skipButton}
-            $floating={$floating}
+            $floating={floating}
           >
             {children}
             {skipButton && (

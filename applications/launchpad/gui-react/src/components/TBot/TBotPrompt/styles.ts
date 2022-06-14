@@ -23,12 +23,11 @@ export const ContentRow = styled(animated.div)<{ $floating?: boolean }>`
 export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
   display: flex;
   justify-content: center;
-  /* width: ${({ $floating }) => ($floating ? '417px' : '628px')}; */
   height: fit-content;
   margin-right: 30px;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   /* hard-code required here */
-  background-color: ${({ $floating }) => ($floating ? '#20053d05' : '')};
+  ${({ $floating }) => ($floating ? 'background-color: #20053d05;' : '')}
   backdrop-filter: blur(9px);
   padding-bottom: 12px;
 `
@@ -39,10 +38,14 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
 export const FadeOutSection = styled.div<{ $floating?: boolean }>`
   position: absolute;
   height: ${({ $floating }) => ($floating ? '100px' : '250px')};
-  ${({ $floating }) => ($floating ? '' : 'top: 0;')};
+  ${({ $floating }) => ($floating ? '' : 'top: 0;')}
   width: ${({ $floating }) => ($floating ? '417px' : '628px')};
   z-index: 2;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
+  background-image: ${({ $floating }) =>
+    $floating
+      ? 'linear-gradient(to bottom, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.4))'
+      : 'linear-gradient(to bottom, rgba(250, 250, 250, 1), rgba(250, 250, 250, 0.4))'};
 `
 
 export const MessageContainer = styled(animated.div)<{ $floating?: boolean }>`
@@ -124,8 +127,6 @@ export const StyledMessage = styled(animated.div)<{
   flex-direction: column;
   width: ${({ $floating }) => ($floating ? '307px' : '550px')};
   height: fit-content;
-  /* height: ${({ $floating }) =>
-    $floating ? '300px' : 'fit-content + 100px'}; */
   margin-bottom: ${({ theme, skipButton }) =>
     skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
   background-color: ${({ theme }) => theme.background};

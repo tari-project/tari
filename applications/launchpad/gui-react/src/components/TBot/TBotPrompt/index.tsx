@@ -40,7 +40,9 @@ const WAIT_TIME = 2800
  * @prop {string} [testid] - for testing
  * @prop {number} [currentIndex] -
  * @prop {boolean} [closeIcon] - controls rendering of close button
+ * @prop {'help' | 'onboarding'} [mode] - usage mode for TBotPrompt
  */
+
 const TBotPrompt = ({
   open,
   floating,
@@ -113,7 +115,6 @@ const TBotPrompt = ({
       setMessageLoading(true)
 
       // use custom waiting time, if previous message has 'wait' field.
-      // const lastMsg = counter > 1 ? messages[counter] : undefined
       const lastMsg = messages[counter]
       let wait = WAIT_TIME
       if (
@@ -183,17 +184,16 @@ const TBotPrompt = ({
         typeof msg !== 'boolean' &&
         msg
       ) {
-        // if message is complete functional component
         if ('content' in msg && typeof msg.content === 'function') {
-          const TempMsg = msg.content
+          const FuncComponentMsg = msg.content
           return (
             <MessageBox
               animate={count === idx + 1}
               ref={count === idx + 1 ? lastMsgRef : null}
               skipButton={mode === 'onboarding' && skipButtonCheck}
-              $floating={floating}
+              floating={floating}
             >
-              <TempMsg />
+              <FuncComponentMsg />
             </MessageBox>
           )
         }
@@ -202,7 +202,7 @@ const TBotPrompt = ({
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
             skipButton={mode === 'onboarding' && skipButtonCheck}
-            $floating={floating}
+            floating={floating}
           >
             {'content' in msg ? (msg.content as ReactNode | string) : msg}
           </MessageBox>
@@ -215,7 +215,7 @@ const TBotPrompt = ({
           animate={count === idx + 1}
           ref={count === idx + 1 ? lastMsgRef : null}
           skipButton={mode === 'onboarding' && skipButtonCheck}
-          $floating={floating}
+          floating={floating}
         >
           {msg}
         </MessageBox>
@@ -227,10 +227,6 @@ const TBotPrompt = ({
     return null
   }
 
-  const fadeOutGradient = floating
-    ? 'linear-gradient(to bottom, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.4))'
-    : 'linear-gradient(to bottom, rgba(250, 250, 250, 1), rgba(250, 250, 250, 0.4))'
-
   return (
     <PromptContainer
       style={promptAnim}
@@ -239,12 +235,7 @@ const TBotPrompt = ({
     >
       <ContentRow>
         <ContentContainer $floating={floating}>
-          <FadeOutSection
-            $floating={floating}
-            style={{
-              backgroundImage: fadeOutGradient,
-            }}
-          />
+          <FadeOutSection $floating={floating} />
           {closeIcon && (
             <StyledCloseContainer>
               <StyledCloseIcon>

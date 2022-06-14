@@ -1,10 +1,5 @@
 import { TBotMessages } from './../store/tbot/types'
-import {
-  Message1,
-  Message2,
-  Message3,
-  Message4,
-} from '../components/Onboarding/OnboardingMessages'
+import messages from '../components/Onboarding/OnboardingMessages'
 import { TBotMessage } from '../components/TBot/TBotPrompt/types'
 
 const OnBoardingMessagesConfig = {
@@ -17,19 +12,19 @@ const OnBoardingMessagesConfig = {
 
 export const OnboardingMessagesMap: (string | TBotMessage)[] = [
   {
-    content: Message1,
+    content: messages[0],
     wait: 500,
   },
   {
-    content: Message2,
+    content: messages[1],
     wait: 5000,
   },
   {
-    content: Message3,
+    content: messages[2],
     wait: 5000,
   },
   {
-    content: Message4,
+    content: messages[3],
     wait: 5000,
   },
 ]
