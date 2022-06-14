@@ -14,7 +14,12 @@ import t from '../../../locales'
 
 import Containers from './Containers'
 import Performance from './Performance'
-import { TabsContainer, PageContentContainer } from './styles'
+import Logs from './Logs'
+import {
+  TabsContainer,
+  PageContentContainer,
+  ScrollablePageContentContainer,
+} from './styles'
 
 const ExpertView = () => {
   const dispatch = useAppDispatch()
@@ -45,11 +50,23 @@ const ExpertView = () => {
 
     switch (selectedTab) {
       case 'PERFORMANCE':
-        return <Performance />
+        return (
+          <ScrollablePageContentContainer>
+            <Performance />
+          </ScrollablePageContentContainer>
+        )
       case 'CONTAINERS':
-        return <Containers />
+        return (
+          <ScrollablePageContentContainer>
+            <Containers />
+          </ScrollablePageContentContainer>
+        )
       case 'LOGS':
-        return <p style={{ color: 'white' }}>logs tab</p>
+        return (
+          <PageContentContainer>
+            <Logs />
+          </PageContentContainer>
+        )
       default:
         return null
     }
@@ -86,7 +103,7 @@ const ExpertView = () => {
           </Button>
         )}
       </TabsContainer>
-      <PageContentContainer>{renderPage()}</PageContentContainer>
+      {renderPage()}
     </MainContainer>
   )
 }
