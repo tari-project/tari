@@ -5,13 +5,28 @@ import { listen } from '@tauri-apps/api/event'
 import { AppDispatch } from './store'
 import { TransactionsRepository } from './persistence/transactionsRepository'
 
+export enum TransactionEvent {
+  Received = 'received',
+  Sent = 'sent',
+  Queued = 'queued',
+  Confirmation = 'confirmation',
+  Mined = 'mined',
+  Cancelled = 'cancelled',
+  NewBlockMined = 'new_block_mined',
+}
+
+export enum TransactionDirection {
+  Inbound = 'inbound',
+  Outbound = 'outbound',
+}
+
 export type WalletTransactionEvent = {
-  event: string
+  event: TransactionEvent
   tx_id: string
   source_pk: string
   dest_pk: string
   status: string
-  direction: string
+  direction: TransactionDirection
   amount: number
   message: string
 }
