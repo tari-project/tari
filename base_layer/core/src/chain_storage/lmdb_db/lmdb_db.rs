@@ -2068,6 +2068,32 @@ impl BlockchainBackend for LMDBDatabase {
                                 tip_height <= constitution_max_acceptance_height &&
                                 tip_height <= vn_max_acceptance_time
                             {
+                                let acceptances = self
+                                    .fetch_contract_outputs_by_contract_id_and_type(
+                                        sidechain_features.contract_id,
+                                        OutputType::ContractValidatorAcceptance,
+                                    )
+                                    .unwrap();
+
+                                for acceptance_output in acceptances {
+                                    if &acceptance_output
+                                        .output
+                                        .as_transaction_output()
+                                        .unwrap()
+                                        .features
+                                        .sidechain_features
+                                        .as_ref()
+                                        .unwrap()
+                                        .acceptance
+                                        .as_ref()
+                                        .unwrap()
+                                        .validator_node_public_key ==
+                                        dan_node_public_key
+                                    {
+                                        return None;
+                                    }
+                                }
+
                                 Some(txo)
                             } else {
                                 None
