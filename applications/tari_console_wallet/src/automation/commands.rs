@@ -34,7 +34,11 @@ use futures::FutureExt;
 use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::TxId,
+    types::{FixedHash, PublicKey},
+};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -954,18 +958,36 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
     Ok(())
 }
 
-async fn publish_contract_amendment(_wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+async fn publish_contract_amendment(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
     let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let file_reader = BufReader::new(file);
 
     // parse the JSON file
     let amendment: ContractAmendmentFileFormat =
         serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    println!("parsed amendment: {:?}", amendment);
-    let _contract_id_hex = amendment.updated_constitution.contract_id.clone();
-
+    let contract_id_hex = amendment.updated_constitution.contract_id.clone();
+    let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let amendment_features = ContractAmendment::try_from(amendment).map_err(CommandError::JsonFile)?;
-    println!("hello world from publish_contract_amendment: {:?}", amendment_features);
+
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_contract_amendment(&contract_id, &amendment_features)
+        .await?;
+
+    let message = format!(
+        "Contract amendment {} for contract {}",
+        amendment_features.proposal_id, contract_id_hex
+    );
+
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
+    println!(
+        "Contract amendment transaction submitted with tx_id={} for contract with contract_id={}",
+        tx_id, contract_id_hex
+    );
 
     Ok(())
 }

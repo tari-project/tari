@@ -53,15 +53,17 @@ pub enum OutputType {
     /// Output that indicates acceptance of an existing contract constitution amendment proposal.
     ContractConstitutionChangeAcceptance = 7,
 
+    ContractAmendment = 8,
+
     // TODO: Remove these deprecated flags
-    NonFungible = 8,
-    AssetRegistration = 9,
-    MintNonFungible = 10,
-    BurnNonFungible = 11,
-    SidechainInitialCheckpoint = 12,
-    SidechainCheckpoint = 13,
-    CommitteeInitialDefinition = 14,
-    CommitteeDefinition = 15,
+    NonFungible = 9,
+    AssetRegistration = 10,
+    MintNonFungible = 11,
+    BurnNonFungible = 12,
+    SidechainInitialCheckpoint = 13,
+    SidechainCheckpoint = 14,
+    CommitteeInitialDefinition = 15,
+    CommitteeDefinition = 16,
 }
 
 impl OutputType {

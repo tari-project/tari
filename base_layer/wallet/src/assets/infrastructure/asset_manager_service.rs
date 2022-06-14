@@ -193,6 +193,19 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
+            AssetManagerRequest::CreateContractAmendment {
+                contract_id,
+                contract_amendment,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_amendment(contract_id, *contract_amendment)
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractAmendment {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 }
