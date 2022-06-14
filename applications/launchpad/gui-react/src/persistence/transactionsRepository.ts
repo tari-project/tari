@@ -1,36 +1,48 @@
+import groupby from 'lodash.groupby'
+
 import { WalletTransactionEvent, TransactionEvent } from '../useWalletEvents'
+import { Dictionary } from '../types/general'
+
 import getDb from './db'
 
-enum Resolution {
+export enum DataResolution {
   Daily = 'daily',
   Monthly = 'monthly',
   Yearly = 'yearly',
 }
 
-export interface MinedAmountEntry {
+export interface MinedTariEntry {
   when: string
-  amount: number
+  xtr: number
 }
 
 export interface TransactionsRepository {
   add: (transactionEvent: WalletTransactionEvent) => Promise<void>
   getMinedXtr: (
     from: Date,
-    to: Date,
-    resolution: Resolution,
-  ) => Promise<MinedAmountEntry[]>
+    to?: Date,
+    resolution?: DataResolution,
+  ) => Promise<Dictionary<MinedTariEntry>>
+  hasDataBefore: (d: Date) => Promise<boolean>
 }
 
 const repositoryFactory: () => TransactionsRepository = () => ({
   add: async event => {
     const db = await getDb()
 
+    const now = new Date()
+    const year = `${now.getFullYear()}`
+    const month = `${year}-${now.getMonth().toString().padStart(2, '0')}`
+    const day = `${month}-${now.getDate().toString().padStart(2, '0')}`
     await db.execute(
-      'INSERT INTO transactions(event, id, receivedAt, status, direction, amount, message, source, destination), values($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      'INSERT INTO transactions(event, id, receivedAt, year, month, day, status, direction, amount, message, source, destination), values($1, $2, $3, $4, $5, $6, $7, $8, $9)',
       [
         event.event,
         event.tx_id,
-        new Date(),
+        now,
+        year,
+        month,
+        day,
         event.status,
         event.direction,
         event.amount,
@@ -40,32 +52,59 @@ const repositoryFactory: () => TransactionsRepository = () => ({
       ],
     )
   },
-  getMinedXtr: async (from, to = new Date(), resolution = Resolution.Daily) => {
+  getMinedXtr: async (
+    from,
+    to = new Date(),
+    resolution = DataResolution.Daily,
+  ) => {
     const db = await getDb()
 
-    const amountQueries = {
-      [Resolution.Daily]: 'date("receivedAt")',
-      // eslint-disable-next-line quotes
-      [Resolution.Monthly]: `strftime('%Y-%m')`,
-      // eslint-disable-next-line quotes
-      [Resolution.Yearly]: `strftime('%Y')`,
-    }
-
-    const results: MinedAmountEntry[] = await db.select(
+    const results: {
+      year: string
+      month: string
+      day: string
+      amount: number
+    }[] = await db.select(
       `SELECT
-        ${amountQueries[resolution]} as when,
-        sum(amount) as amount
+        year,
+        month,
+        day,
+        amount
       FROM
         transactions
       WHERE
         event = $1 AND
         receivedAt >= $2 AND
-        receivedAt <= $3
-      GROUP BY when`,
+        receivedAt <= $3`,
       [TransactionEvent.Mined, from, to],
     )
 
-    return results
+    const grouping = {
+      [DataResolution.Daily]: 'day',
+      [DataResolution.Monthly]: 'month',
+      [DataResolution.Yearly]: 'year',
+    }
+    const grouped = groupby(results, grouping[resolution])
+
+    return Object.fromEntries(
+      Object.entries(grouped).map(([when, entries]) => [
+        when,
+        {
+          when,
+          xtr: entries.reduce((accu, current) => accu + current.amount, 0),
+        },
+      ]),
+    )
+  },
+  hasDataBefore: async date => {
+    const db = await getDb()
+
+    const results: { id: string }[] = await db.select(
+      'SELECT id FROM transactions WHERE receivedAt < $1 LIMIT 1',
+      [date],
+    )
+
+    return Boolean(results.length)
   },
 })
 
