@@ -10,4 +10,5 @@ export interface AppState {
   view?: ViewType
   theme: ThemeType
   schedules: Record<ScheduleId, Omit<Schedule, 'date'> & { date?: string }>
+  onboardingComplete?: boolean
 }

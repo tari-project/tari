@@ -68,3 +68,6 @@ export const selectActiveMiningTypes = createSelector(
     return active
   },
 )
+
+export const selectOnboardingComplete = ({ app }: RootState) =>
+  app.onboardingComplete

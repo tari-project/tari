@@ -12,6 +12,7 @@ export const appInitialState: AppState = {
   view: 'MINING',
   theme: 'light',
   schedules: {},
+  onboardingComplete: false,
 }
 
 const appSlice = createSlice({
@@ -52,6 +53,9 @@ const appSlice = createSlice({
 
       state.schedules[scheduleId] = newSchedule
     },
+    setOnboardingComplete(state, { payload }: { payload: boolean }) {
+      state.onboardingComplete = payload
+    },
   },
 })
 
@@ -63,6 +67,7 @@ export const {
   toggleSchedule,
   removeSchedule,
   updateSchedule,
+  setOnboardingComplete,
 } = appSlice.actions
 
 const reducer = appSlice.reducer

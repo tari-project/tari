@@ -1,7 +1,10 @@
 import 'react-devtools' // @TODO: remove this import before final Production deployment!!!
 import styled, { ThemeProvider } from 'styled-components'
 import { useAppSelector, useAppDispatch } from './store/hooks'
-import { selectThemeConfig } from './store/app/selectors'
+import {
+  selectOnboardingComplete,
+  selectThemeConfig,
+} from './store/app/selectors'
 
 import { useSystemEvents } from './useSystemEvents'
 import HomePage from './pages/home'
@@ -12,7 +15,6 @@ import useMiningSimulator from './useMiningSimulator'
 import useMiningScheduling from './useMiningScheduling'
 import TBotContainer from './containers/TBotContainer'
 import Onboarding from './pages/onboarding'
-import { useState } from 'react'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -24,8 +26,7 @@ const AppContainer = styled.div`
 const App = () => {
   const themeConfig = useAppSelector(selectThemeConfig)
   const dispatch = useAppDispatch()
-
-  const [onboarding, setOnboarding] = useState(false)
+  const onboardingComplete = useAppSelector(selectOnboardingComplete)
 
   dispatch(loadDefaultServiceSettings())
 
@@ -38,7 +39,7 @@ const App = () => {
   return (
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
-        {onboarding ? (
+        {!onboardingComplete ? (
           <Onboarding />
         ) : (
           <>
