@@ -7,7 +7,10 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 #[macro_use]
 extern crate lazy_static;
-use std::thread;
+use std::{
+    thread::{self, sleep},
+    time::Duration,
+};
 
 use futures::StreamExt;
 use log::*;
@@ -41,6 +44,7 @@ use crate::{
         pull_images,
         shutdown,
         start_service,
+        status,
         stop_service,
         AppState,
     },
@@ -96,7 +100,6 @@ fn main() {
     // TODO - Load workspace definitions from persistent storage here
     let workspaces = Workspaces::default();
     info!("Using Docker version: {}", docker.version());
-
     tauri::Builder::default()
         .plugin(TauriSql::default().add_migrations(
           "sqlite:launchpad.db",

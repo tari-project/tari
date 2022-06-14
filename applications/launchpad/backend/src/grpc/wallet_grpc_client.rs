@@ -30,9 +30,13 @@ use futures::{stream, Stream, StreamExt, TryStreamExt};
 use log::info;
 use tari_app_grpc::tari_rpc::{
     wallet_client::WalletClient,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetIdentityRequest,
+    GetIdentityResponse,
     TransactionEvent,
     TransactionEventRequest,
-    TransactionEventResponse, GetIdentityResponse, GetIdentityRequest,
+    TransactionEventResponse,
 };
 use tonic::transport::Channel;
 
@@ -74,6 +78,13 @@ impl GrpcWalletClient {
         let inner = self.connection().await?;
         let request = GetIdentityRequest {};
         let identity = inner.identify(request).await?;
+        Ok(identity.into_inner())
+    }
+
+    pub async fn balance(&mut self) -> Result<GetBalanceResponse, GrpcError> {
+        let inner = self.connection().await?;
+        let request = GetBalanceRequest {};
+        let identity = inner.get_balance(request).await?;
         Ok(identity.into_inner())
     }
 }
