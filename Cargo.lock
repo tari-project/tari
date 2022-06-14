@@ -5135,9 +5135,8 @@ dependencies = [
 
 [[package]]
 name = "randomx-rs"
-version = "1.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4ba6cd8d99a8ba5eb5e5ca9bbb96b9a180c7eddfe88df166e3ecb0284432cdb"
+version = "1.1.12"
+source = "git+https://github.com/tari-project/randomx-rs?tag=v1.1.12#4295aea71021a919e55c7ca3c7fb328eb44d6063"
 dependencies = [
  "bitflags 1.3.2",
  "libc",
