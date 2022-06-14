@@ -74,7 +74,14 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput, UnblindedOutput},
+        transaction_components::{
+            ContractAcceptance,
+            OutputType,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+            UnblindedOutput,
+        },
         CryptoFactories,
     },
     validation::{
@@ -336,6 +343,17 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .fetch_all_constitutions(dan_node_public_key, vn_confirmation_time, tip_height)
+    }
+
+    fn fetch_acceptances_by_contract_id_and_vn_pubkey(
+        &self,
+        contract_id: FixedHash,
+        dan_node_public_key: PublicKey,
+    ) -> Result<ContractAcceptance, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_acceptances_by_contract_id_and_vn_pubkey(contract_id, dan_node_public_key)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {

@@ -110,6 +110,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{
+            ContractAcceptance,
             OutputType,
             TransactionError,
             TransactionInput,
@@ -2055,54 +2056,60 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.utxos_db, |output: TransactionOutputRowData| {
             match output.output {
                 None => None,
-                Some(txo) => match txo.features.sidechain_features.clone() {
-                    None => None,
-                    Some(sidechain_features) => match sidechain_features.constitution {
+                Some(txo) => match txo.features.output_type {
+                    OutputType::ContractConstitution => match txo.features.sidechain_features.clone() {
                         None => None,
-                        Some(constitution) => {
-                            let constitution_max_acceptance_height =
-                                output.mined_height + constitution.acceptance_requirements.acceptance_period_expiry;
-                            let vn_max_acceptance_time = output.mined_height + vn_confirmation_time;
+                        Some(sidechain_features) => match sidechain_features.constitution {
+                            None => None,
+                            Some(constitution) => {
+                                let constitution_max_acceptance_height =
+                                    output.mined_height + constitution.acceptance_requirements.acceptance_period_expiry;
+                                let vn_max_acceptance_time = output.mined_height + vn_confirmation_time;
 
-                            if constitution.validator_committee.members().contains(dan_node_public_key) &&
-                                tip_height <= constitution_max_acceptance_height &&
-                                tip_height <= vn_max_acceptance_time
-                            {
-                                let acceptances = self
-                                    .fetch_contract_outputs_by_contract_id_and_type(
+                                if constitution.validator_committee.members().contains(dan_node_public_key) &&
+                                    tip_height <= constitution_max_acceptance_height &&
+                                    tip_height <= vn_max_acceptance_time
+                                {
+                                    match self.fetch_acceptances_by_contract_id_and_vn_pubkey(
                                         sidechain_features.contract_id,
-                                        OutputType::ContractValidatorAcceptance,
-                                    )
-                                    .unwrap();
-
-                                for acceptance_output in acceptances {
-                                    if &acceptance_output
-                                        .output
-                                        .as_transaction_output()
-                                        .unwrap()
-                                        .features
-                                        .sidechain_features
-                                        .as_ref()
-                                        .unwrap()
-                                        .acceptance
-                                        .as_ref()
-                                        .unwrap()
-                                        .validator_node_public_key ==
-                                        dan_node_public_key
-                                    {
-                                        return None;
+                                        dan_node_public_key.clone(),
+                                    ) {
+                                        Ok(_) => None,
+                                        _ => Some(txo),
                                     }
+                                } else {
+                                    None
                                 }
-
-                                Some(txo)
-                            } else {
-                                None
-                            }
+                            },
                         },
                     },
+                    _ => None,
                 },
             }
         })
+    }
+
+    fn fetch_acceptances_by_contract_id_and_vn_pubkey(
+        &self,
+        contract_id: FixedHash,
+        dan_node_public_key: PublicKey,
+    ) -> Result<ContractAcceptance, ChainStorageError> {
+        let acceptances =
+            self.fetch_contract_outputs_by_contract_id_and_type(contract_id, OutputType::ContractValidatorAcceptance)?;
+
+        for acceptance_output in acceptances {
+            if let Some(output) = acceptance_output.output.as_transaction_output() {
+                if let Some(sidechain_features) = &output.features.sidechain_features {
+                    if let Some(acceptance) = &sidechain_features.acceptance {
+                        if acceptance.validator_node_public_key == dan_node_public_key {
+                            return Ok(acceptance.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(ChainStorageError::InvalidOperation("hello".to_string()))
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {

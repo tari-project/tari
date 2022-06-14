@@ -33,7 +33,13 @@ use crate::{
         Reorg,
         UtxoMinedInfo,
     },
-    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{
+        ContractAcceptance,
+        OutputType,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+    },
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -144,6 +150,12 @@ pub trait BlockchainBackend: Send + Sync {
         vn_confirmation_time: u64,
         tip_height: u64,
     ) -> Result<Vec<TransactionOutput>, ChainStorageError>;
+
+    fn fetch_acceptances_by_contract_id_and_vn_pubkey(
+        &self,
+        contract_id: FixedHash,
+        dan_node_public_key: PublicKey,
+    ) -> Result<ContractAcceptance, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
