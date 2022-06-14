@@ -29,7 +29,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, PrivateKey, Signature},
+    types::{BlockHash, Commitment, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
@@ -95,6 +95,7 @@ pub struct OutboundTransaction {
     pub direct_send_success: bool,
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
+    pub include_utxos: Vec<Commitment>,
 }
 
 impl OutboundTransaction {
@@ -108,6 +109,7 @@ impl OutboundTransaction {
         message: String,
         timestamp: NaiveDateTime,
         direct_send_success: bool,
+        include_utxos: Vec<Commitment>,
     ) -> Self {
         Self {
             tx_id,
@@ -122,6 +124,7 @@ impl OutboundTransaction {
             direct_send_success,
             send_count: 0,
             last_send_timestamp: None,
+            include_utxos,
         }
     }
 }
@@ -249,6 +252,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            include_utxos: vec![],
         }
     }
 }

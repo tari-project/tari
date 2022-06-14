@@ -1667,6 +1667,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
             direct_send_success: o.direct_send_success != 0,
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp,
+            include_utxos: vec![],
         })
     }
 }

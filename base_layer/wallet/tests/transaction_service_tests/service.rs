@@ -1013,7 +1013,7 @@ fn test_htlc_send_and_claim() {
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
     let (tx_id, pre_image, output) = runtime.block_on(async move {
         alice_ts_clone
-            .send_sha_atomic_swap_transaction(bob_pubkey, value, 20.into(), message.clone())
+            .send_sha_atomic_swap_transaction(bob_pubkey, value, 20.into(), message.clone(), vec![])
             .await
             .expect("Alice sending HTLC transaction")
     });

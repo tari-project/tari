@@ -29,7 +29,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -306,6 +306,7 @@ where
                 message,
                 script,
                 covenant,
+                include_utxos,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -317,6 +318,7 @@ where
                     message,
                     script,
                     covenant,
+                    include_utxos,
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
@@ -337,6 +339,7 @@ where
                     fee_per_gram,
                     lock_height,
                     message,
+                    vec![],
                 )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
@@ -843,6 +846,7 @@ where
                 None,
                 None,
                 None,
+                vec![],
             )
             .await?;
 
@@ -868,6 +872,7 @@ where
         message: String,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
+        include_utxos: Vec<Commitment>,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -896,6 +901,7 @@ where
                 None,
                 unique_id.as_ref(),
                 parent_public_key.as_ref(),
+                include_utxos,
             )
             .await?;
 
@@ -1109,6 +1115,7 @@ where
                 None,
                 spending_unique_id,
                 spending_parent_public_key,
+                vec![],
             )
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
@@ -1248,6 +1255,7 @@ where
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        include_utxos: Vec<Commitment>,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
@@ -1274,6 +1282,7 @@ where
                 None,
                 unique_id.as_ref(),
                 parent_public_key.as_ref(),
+                include_utxos,
             )
             .await?;
 
@@ -1439,6 +1448,7 @@ where
         strategy: Option<UTXOSelectionStrategy>,
         unique_id: Option<&Vec<u8>>,
         parent_public_key: Option<&PublicKey>,
+        include_utxos: Vec<Commitment>,
     ) -> Result<UtxoSelection, OutputManagerError> {
         let token = match unique_id {
             Some(unique_id) => {
@@ -1474,8 +1484,6 @@ where
         let mut utxos = Vec::new();
 
         let mut utxos_total_value = MicroTari::from(0);
-        let mut fee_without_change = MicroTari::from(0);
-        let mut fee_with_change = MicroTari::from(0);
         let fee_calc = self.get_fee_calc();
         if let Some(token) = token {
             utxos_total_value = token.unblinded_output.value;
@@ -1523,25 +1531,53 @@ where
             output_features_estimate.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
         );
         let mut requires_change_output = false;
-        for o in uo {
-            utxos_total_value += o.unblinded_output.value;
-            utxos.push(o);
-            // The assumption here is that the only output will be the payment output and change if required
-            fee_without_change =
-                fee_calc.calculate(fee_per_gram, 1, utxos.len(), num_outputs, output_metadata_byte_size);
-            if utxos_total_value == amount + fee_without_change {
-                break;
+        for include_utxo in include_utxos.clone() {
+            if let Some(output) = uo.iter().find(|&o| o.commitment == include_utxo) {
+                utxos_total_value += output.unblinded_output.value;
+                utxos.push(output.clone());
+            } else {
+                return Err(OutputManagerError::CantIncludeUtxoSet {
+                    utxo: include_utxo.to_hex(),
+                });
             }
-            fee_with_change = fee_calc.calculate(
-                fee_per_gram,
-                1,
-                utxos.len(),
-                num_outputs + 1,
-                output_metadata_byte_size + default_metadata_size,
-            );
-            if utxos_total_value > amount + fee_with_change {
-                requires_change_output = true;
-                break;
+        }
+        let mut fee_without_change =
+            fee_calc.calculate(fee_per_gram, 1, utxos.len(), num_outputs, output_metadata_byte_size);
+        let mut fee_with_change = fee_calc.calculate(
+            fee_per_gram,
+            1,
+            utxos.len(),
+            num_outputs + 1,
+            output_metadata_byte_size + default_metadata_size,
+        );
+        if utxos_total_value >= amount + fee_with_change {
+            requires_change_output = true;
+        }
+        if utxos_total_value != amount + fee_without_change && utxos_total_value < amount + fee_with_change {
+            // We need to select some more utxos, the selected set was not enough
+            for o in uo {
+                if include_utxos.contains(&o.commitment) {
+                    continue;
+                }
+                utxos_total_value += o.unblinded_output.value;
+                utxos.push(o);
+                // The assumption here is that the only output will be the payment output and change if required
+                fee_without_change =
+                    fee_calc.calculate(fee_per_gram, 1, utxos.len(), num_outputs, output_metadata_byte_size);
+                if utxos_total_value == amount + fee_without_change {
+                    break;
+                }
+                fee_with_change = fee_calc.calculate(
+                    fee_per_gram,
+                    1,
+                    utxos.len(),
+                    num_outputs + 1,
+                    output_metadata_byte_size + default_metadata_size,
+                );
+                if utxos_total_value >= amount + fee_with_change {
+                    requires_change_output = true;
+                    break;
+                }
             }
         }
 
@@ -1621,6 +1657,7 @@ where
                 Some(UTXOSelectionStrategy::Largest),
                 None,
                 None,
+                vec![],
             )
             .await?;
 

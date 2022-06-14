@@ -34,7 +34,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PublicKey,
+    types::{Commitment, PublicKey},
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,
@@ -288,6 +288,7 @@ impl AppState {
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
+        include_utxos: Vec<Commitment>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
@@ -306,6 +307,7 @@ impl AppState {
             fee_per_gram,
             tx_service_handle,
             result_tx,
+            include_utxos,
         ));
 
         Ok(())
@@ -320,6 +322,7 @@ impl AppState {
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
+        include_utxos: Vec<Commitment>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let public_key = match CommsPublicKey::from_hex(public_key.as_str()) {
@@ -338,6 +341,7 @@ impl AppState {
             fee_per_gram,
             tx_service_handle,
             result_tx,
+            include_utxos,
         ));
 
         Ok(())

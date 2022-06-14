@@ -111,6 +111,7 @@ message PaymentRecipient {
         ONE_SIDED = 1;
     }
     PaymentType payment_type = 5;
+    repeated bytes include_utxos = 6;
 }
 
 message TransferResponse {

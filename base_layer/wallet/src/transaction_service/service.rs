@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey},
+    types::{Commitment, PrivateKey, PublicKey},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -566,6 +566,7 @@ where
                 parent_public_key,
                 fee_per_gram,
                 message,
+                include_utxos,
             } => {
                 let rp = reply_channel.take().expect("Cannot be missing");
                 self.send_transaction(
@@ -578,6 +579,7 @@ where
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
                     rp,
+                    include_utxos,
                 )
                 .await?;
                 return Ok(());
@@ -589,6 +591,7 @@ where
                 parent_public_key,
                 fee_per_gram,
                 message,
+                include_utxos,
             } => self
                 .send_one_sided_transaction(
                     dest_pubkey,
@@ -598,21 +601,27 @@ where
                     fee_per_gram,
                     message,
                     transaction_broadcast_join_handles,
+                    include_utxos,
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
-            TransactionServiceRequest::SendShaAtomicSwapTransaction(dest_pubkey, amount, fee_per_gram, message) => {
-                Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
-                    self.send_sha_atomic_swap_transaction(
-                        dest_pubkey,
-                        amount,
-                        fee_per_gram,
-                        message,
-                        transaction_broadcast_join_handles,
-                    )
-                    .await?,
-                ))
-            },
+            TransactionServiceRequest::SendShaAtomicSwapTransaction(
+                dest_pubkey,
+                amount,
+                fee_per_gram,
+                message,
+                include_utxos,
+            ) => Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
+                self.send_sha_atomic_swap_transaction(
+                    dest_pubkey,
+                    amount,
+                    fee_per_gram,
+                    message,
+                    transaction_broadcast_join_handles,
+                    include_utxos,
+                )
+                .await?,
+            )),
             TransactionServiceRequest::CancelTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
                 .await
@@ -859,6 +868,7 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+        include_utxos: Vec<Commitment>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -938,6 +948,7 @@ where
             None,
             self.last_seen_tip_height,
             None,
+            include_utxos,
         );
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
@@ -960,6 +971,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
+        include_utxos: Vec<Commitment>,
     ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
         let tx_id = TxId::new_random();
         // this can be anything, so lets generate a random private key
@@ -994,6 +1006,7 @@ where
                 message.clone(),
                 script.clone(),
                 covenant.clone(),
+                include_utxos,
             )
             .await?;
 
@@ -1139,6 +1152,7 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
+        include_utxos: Vec<Commitment>,
     ) -> Result<TxId, TransactionServiceError> {
         if self.node_identity.public_key() == &dest_pubkey {
             warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
@@ -1162,6 +1176,7 @@ where
                 message.clone(),
                 script!(PushPubKey(Box::new(dest_pubkey.clone()))),
                 Covenant::default(),
+                include_utxos,
             )
             .await?;
 
@@ -1584,6 +1599,7 @@ where
                     None,
                     self.last_seen_tip_height,
                     sender_protocol,
+                    tx.include_utxos,
                 );
 
                 let join_handle = tokio::spawn(protocol.execute());

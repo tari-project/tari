@@ -4622,6 +4622,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 MicroTari::from(amount),
                 MicroTari::from(fee_per_gram),
                 message_string,
+                vec![],
             )) {
             Ok(tx_id) => tx_id.as_u64(),
             Err(e) => {
@@ -4638,6 +4639,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 MicroTari::from(amount),
                 MicroTari::from(fee_per_gram),
                 message_string,
+                vec![],
             )) {
             Ok(tx_id) => tx_id.as_u64(),
             Err(e) => {

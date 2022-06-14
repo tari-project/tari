@@ -82,7 +82,7 @@ use tari_app_grpc::{
 };
 use tari_common_types::{
     array::copy_into_fixed_array,
-    types::{BlockHash, FixedHash, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
@@ -288,6 +288,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 message.fee_per_gram.into(),
                 message.message,
+                vec![],
             )
             .await
         {
@@ -440,6 +441,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(|(idx, dest)| -> Result<_, String> {
                 let pk = CommsPublicKey::from_hex(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
+                let include_utxos = dest
+                    .include_utxos
+                    .iter()
+                    .map(|v| Commitment::from_bytes(v.as_bytes()).unwrap())
+                    .collect();
                 Ok((
                     dest.address,
                     pk,
@@ -447,6 +453,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     dest.fee_per_gram,
                     dest.message,
                     dest.payment_type,
+                    include_utxos,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
@@ -454,14 +461,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut standard_transfers = Vec::new();
         let mut one_sided_transfers = Vec::new();
-        for (address, pk, amount, fee_per_gram, message, payment_type) in recipients {
+        for (address, pk, amount, fee_per_gram, message, payment_type, include_utxos) in recipients {
             let mut transaction_service = self.get_transaction_service();
             if payment_type == PaymentType::StandardMimblewimble as i32 {
                 standard_transfers.push(async move {
                     (
                         address,
                         transaction_service
-                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message, include_utxos)
                             .await,
                     )
                 });
@@ -470,7 +477,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message, include_utxos)
                             .await,
                     )
                 });

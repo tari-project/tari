@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -82,6 +82,7 @@ pub enum OutputManagerRequest {
         message: String,
         script: TariScript,
         covenant: Covenant,
+        include_utxos: Vec<Commitment>,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -522,6 +523,7 @@ impl OutputManagerHandle {
         message: String,
         script: TariScript,
         covenant: Covenant,
+        include_utxos: Vec<Commitment>,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -535,6 +537,7 @@ impl OutputManagerHandle {
                 message,
                 script,
                 covenant,
+                include_utxos,
             })
             .await??
         {

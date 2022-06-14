@@ -126,6 +126,8 @@ pub enum OutputManagerError {
     InvalidMessageError(String),
     #[error("Key manager service error : {0}")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+    #[error("Can't include UTXO {utxo}")]
+    CantIncludeUtxoSet { utxo: String },
 }
 
 #[derive(Debug, Error)]

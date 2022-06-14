@@ -27,7 +27,7 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{HashOutput, PublicKey},
+    types::{Commitment, HashOutput, PublicKey},
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
@@ -99,6 +99,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     prev_header: Option<HashOutput>,
     height: Option<u64>,
     sender_protocol: Option<SenderTransactionProtocol>,
+    include_utxos: Vec<Commitment>,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionSendProtocol<TBackend, TWalletConnectivity>
@@ -124,6 +125,7 @@ where
         prev_header: Option<HashOutput>,
         height: Option<u64>,
         sender_protocol: Option<SenderTransactionProtocol>,
+        include_utxos: Vec<Commitment>,
     ) -> Self {
         Self {
             id,
@@ -141,6 +143,7 @@ where
             prev_header,
             height,
             sender_protocol,
+            include_utxos,
         }
     }
 
@@ -230,6 +233,7 @@ where
                 self.message.clone(),
                 script!(Nop),
                 Covenant::default(),
+                self.include_utxos.clone(),
             )
             .await
         {
@@ -333,6 +337,7 @@ where
                 self.message.clone(),
                 Utc::now().naive_utc(),
                 direct_send_result,
+                self.include_utxos.clone(),
             );
             self.resources
                 .db

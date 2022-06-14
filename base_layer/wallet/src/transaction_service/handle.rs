@@ -30,7 +30,7 @@ use std::{
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{Commitment, PublicKey},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -79,6 +79,7 @@ pub enum TransactionServiceRequest {
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
+        include_utxos: Vec<Commitment>,
     },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
@@ -87,8 +88,9 @@ pub enum TransactionServiceRequest {
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
+        include_utxos: Vec<Commitment>,
     },
-    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String, Vec<Commitment>),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroTari,
@@ -149,7 +151,7 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 message
             )),
-            Self::SendShaAtomicSwapTransaction(k, v, _, msg) => {
+            Self::SendShaAtomicSwapTransaction(k, v, _, msg, _) => {
                 f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
@@ -400,6 +402,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
+        include_utxos: Vec<Commitment>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -410,6 +413,7 @@ impl TransactionServiceHandle {
                 parent_public_key: None,
                 fee_per_gram,
                 message,
+                include_utxos,
             })
             .await??
         {
@@ -426,6 +430,7 @@ impl TransactionServiceHandle {
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
+        include_utxos: Vec<Commitment>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -436,6 +441,7 @@ impl TransactionServiceHandle {
                 parent_public_key,
                 fee_per_gram,
                 message,
+                include_utxos,
             })
             .await??
         {
@@ -450,6 +456,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
+        include_utxos: Vec<Commitment>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -460,6 +467,7 @@ impl TransactionServiceHandle {
                 parent_public_key: None,
                 fee_per_gram,
                 message,
+                include_utxos,
             })
             .await??
         {
@@ -476,6 +484,7 @@ impl TransactionServiceHandle {
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
+        include_utxos: Vec<Commitment>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -486,6 +495,7 @@ impl TransactionServiceHandle {
                 parent_public_key,
                 fee_per_gram,
                 message,
+                include_utxos,
             })
             .await??
         {
@@ -787,6 +797,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
+        include_utxos: Vec<Commitment>,
     ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
         match self
             .handle
@@ -795,6 +806,7 @@ impl TransactionServiceHandle {
                 amount,
                 fee_per_gram,
                 message,
+                include_utxos,
             ))
             .await??
         {

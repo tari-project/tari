@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{Commitment, PublicKey};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_wallet::transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle};
@@ -39,12 +39,21 @@ pub async fn send_transaction_task(
     fee_per_gram: MicroTari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
+    include_utxos: Vec<Commitment>,
 ) {
     let _result = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     let mut send_status = TransactionSendStatus::default();
     match transaction_service_handle
-        .send_transaction_or_token(public_key, amount, unique_id, parent_public_key, fee_per_gram, message)
+        .send_transaction_or_token(
+            public_key,
+            amount,
+            unique_id,
+            parent_public_key,
+            fee_per_gram,
+            message,
+            include_utxos,
+        )
         .await
     {
         Err(e) => {
@@ -108,11 +117,20 @@ pub async fn send_one_sided_transaction_task(
     fee_per_gram: MicroTari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
+    include_utxos: Vec<Commitment>,
 ) {
     let _result = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
-        .send_one_sided_transaction_or_token(public_key, amount, unique_id, parent_public_key, fee_per_gram, message)
+        .send_one_sided_transaction_or_token(
+            public_key,
+            amount,
+            unique_id,
+            parent_public_key,
+            fee_per_gram,
+            message,
+            include_utxos,
+        )
         .await
     {
         Err(e) => {

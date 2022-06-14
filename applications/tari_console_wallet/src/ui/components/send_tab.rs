@@ -313,6 +313,7 @@ impl SendTab {
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
+                                    vec![],
                                 )) {
                                     Err(e) => {
                                         self.error_message = Some(format!(
@@ -331,6 +332,7 @@ impl SendTab {
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
+                                    vec![],
                                 )) {
                                     Err(e) => {
                                         self.error_message = Some(format!(

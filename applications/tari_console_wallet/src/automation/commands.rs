@@ -34,7 +34,11 @@ use futures::FutureExt;
 use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::TxId,
+    types::{Commitment, PublicKey},
+};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -126,9 +130,10 @@ pub async fn send_tari(
     amount: MicroTari,
     dest_pubkey: PublicKey,
     message: String,
+    include_utxos: Vec<Commitment>,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
-        .send_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
+        .send_transaction(dest_pubkey, amount, fee_per_gram * uT, message, include_utxos)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -140,9 +145,10 @@ pub async fn init_sha_atomic_swap(
     amount: MicroTari,
     dest_pubkey: PublicKey,
     message: String,
+    include_utxos: Vec<Commitment>,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
+        .send_sha_atomic_swap_transaction(dest_pubkey, amount, fee_per_gram * uT, message, include_utxos)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -190,9 +196,10 @@ pub async fn send_one_sided(
     amount: MicroTari,
     dest_pubkey: PublicKey,
     message: String,
+    include_utxos: Vec<Commitment>,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
-        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
+        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram * uT, message, include_utxos)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -353,9 +360,9 @@ pub async fn make_it_rain(
                     let spawn_start = Instant::now();
                     // Send transaction
                     let tx_id = if negotiated {
-                        send_tari(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                        send_tari(tx_service, fee, amount, pk.clone(), msg.clone(), vec![]).await
                     } else {
-                        send_one_sided(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                        send_one_sided(tx_service, fee, amount, pk.clone(), msg.clone(), vec![]).await
                     };
                     let submit_time = Instant::now();
                     tokio::task::spawn(async move {
@@ -561,6 +568,7 @@ pub async fn command_runner(
                     args.amount,
                     args.destination.into(),
                     args.message,
+                    vec![],
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
@@ -573,6 +581,7 @@ pub async fn command_runner(
                     args.amount,
                     args.destination.into(),
                     args.message,
+                    vec![],
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
@@ -694,6 +703,7 @@ pub async fn command_runner(
                     args.amount,
                     args.destination.into(),
                     args.message,
+                    vec![],
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
