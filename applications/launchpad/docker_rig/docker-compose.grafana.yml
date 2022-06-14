@@ -10,6 +10,7 @@ services:
 
   promtail:
     image: grafana/promtail
+    user: "${UID:-root}:${GID:-root}"
     volumes:
       - ~/.cache/tari/tmp/:/var/log
       - ./logs/promtail.config.yml:/etc/promtail/config.yml
