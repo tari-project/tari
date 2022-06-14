@@ -63,6 +63,40 @@ impl<'a> Prompt<'a> {
         Ok(parsed)
     }
 
+    pub fn ask_repeatedly<T>(self) -> Result<Vec<T>, CommandError>
+    where
+        T: FromStr,
+        T::Err: ToString,
+    {
+        let mut collection: Vec<T> = vec![];
+
+        loop {
+            let prompt = Prompt::new(self.label);
+            let result = prompt.get_result_parsed()?;
+            collection.push(result);
+
+            loop {
+                println!("Add another? Y/N");
+                print!("> ");
+
+                io::stdout().flush()?;
+                let mut line_buf = String::new();
+                io::stdin().read_line(&mut line_buf)?;
+                println!();
+
+                let trimmed = line_buf.trim();
+
+                match trimmed {
+                    "N" => {
+                        return Ok(collection);
+                    },
+                    "Y" => break,
+                    _ => continue,
+                }
+            }
+        }
+    }
+
     pub fn get_result(self) -> Result<String, CommandError> {
         if let Some(value) = self.skip_if_some {
             return Ok(value);

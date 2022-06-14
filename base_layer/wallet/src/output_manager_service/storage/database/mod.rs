@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{OutputFlags, TransactionOutput},
+    transaction_components::{OutputType, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
 
@@ -206,7 +206,7 @@ where T: OutputManagerBackend + 'static
 
     pub fn fetch_with_features(
         &self,
-        feature: OutputFlags,
+        feature: OutputType,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         self.db.fetch_with_features(feature)
     }

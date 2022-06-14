@@ -41,7 +41,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{EncryptedValue, OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         weight::TransactionWeight,
         CryptoFactories,
@@ -736,7 +736,7 @@ async fn test_utxo_selection_with_tx_priority() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 1);
 
-    assert!(!utxos[0].features.flags.contains(OutputFlags::COINBASE_OUTPUT));
+    assert_ne!(utxos[0].features.output_type, OutputType::Coinbase);
 }
 
 #[tokio::test]
