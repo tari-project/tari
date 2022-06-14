@@ -212,7 +212,6 @@ pub struct TariSeedWords(Vec<String>);
 #[derive(Debug, PartialEq)]
 pub struct TariPublicKeys(Vec<TariPublicKey>);
 
-#[repr(C)]
 pub struct TariWallet {
     pub wallet: WalletSqlite,
     pub runtime: Runtime,
