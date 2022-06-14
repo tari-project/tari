@@ -3,7 +3,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yaml # This location needs to be writeable by Promtail.
+  filename: /tmp/positions.yml # This location needs to be writeable by Promtail.
 
 client:
   url: http://loki:3100/loki/api/v1/push

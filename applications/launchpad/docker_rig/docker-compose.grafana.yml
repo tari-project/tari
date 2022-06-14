@@ -12,15 +12,16 @@ services:
     image: grafana/promtail
     volumes:
       - ~/.cache/tari/tmp/:/var/log
-      - ./promtail.config.yml:/etc/promtail/config.yml
+      - ./logs/promtail.config.yml:/etc/promtail/config.yml
+      - ./logs/positions.yml:/tmp/positions.yml
     command: -config.file=/etc/promtail/config.yml
 
   grafana:
     image: grafana/grafana
     user: "${UID:-root}:${GID:-root}"
     volumes:
-      - ./grafana/defaults.ini:/usr/share/grafana/conf/defaults.ini
-      - ./grafana/sources_provision.yml:/etc/grafana/provisioning/datasources/all.yml # for some reason does not work if volumed into /usr/share/grafana/conf/provisioning/datasources
-      - ./grafana/data:/var/lib/grafana
+      - ./logs/defaults.ini:/usr/share/grafana/conf/defaults.ini
+      - ./logs/sources_provision.yml:/etc/grafana/provisioning/datasources/all.yml # for some reason does not work if volumed into /usr/share/grafana/conf/provisioning/datasources
+      - ./logs/data:/var/lib/grafana
     ports:
       - "3001:3000"
