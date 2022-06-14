@@ -11,7 +11,7 @@ tari_common = {path="../../common"}
 tari_common_types = {path="../common_types"}
 tari_comms = { version = "^0.32", path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.32", path = "../../comms/dht", default-features = false }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.1" }
 tari_key_manager = { version = "^0.32", path = "../key_manager" }
 tari_p2p = { version = "^0.32", path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
