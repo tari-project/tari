@@ -33,6 +33,7 @@ service ValidatorNode {
     rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
     rpc GetConstitutionRequests(GetConstitutionRequestsRequest) returns (stream TransactionOutput);
     rpc PublishContractAcceptance(PublishContractAcceptanceRequest) returns (PublishContractAcceptanceResponse);
+    rpc PublishContractUpdateProposalAcceptance(PublishContractUpdateProposalAcceptanceRequest) returns (PublishContractUpdateProposalAcceptanceResponse);
 }
 
 message GetConstitutionRequestsRequest {
@@ -48,6 +49,16 @@ message PublishContractAcceptanceRequest {
 }
 
 message PublishContractAcceptanceResponse {
+    string status = 1;
+    uint64 tx_id = 2;
+}
+
+message PublishContractUpdateProposalAcceptanceRequest {
+    bytes contract_id = 1;
+    uint64 proposal_id = 2;
+}
+
+message PublishContractUpdateProposalAcceptanceResponse {
     string status = 1;
     uint64 tx_id = 2;
 }

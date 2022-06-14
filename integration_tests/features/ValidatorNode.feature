@@ -42,3 +42,14 @@ Feature: Validator Node
         Then I create a "constitution-definition" from file "fixtures/constitution_definition.json" on wallet WALLET1 via command line
         When I mine 8 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+
+    @dan @critical
+    Scenario: Publish contract update proposal acceptance
+        Given I have a seed node NODE1
+        And I have wallet WALLET1 connected to all seed nodes
+        When I mine 9 blocks using wallet WALLET1 on NODE1
+        Then I wait for wallet WALLET1 to have at least 1000000 uT
+        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1 with "constitiution_auto_accept" set to "false"
+        Then I publish a contract update proposal acceptance transaction for the validator node VN1
+        When I mine 4 blocks using wallet WALLET1 on NODE1
+        Then wallet WALLET1 has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
