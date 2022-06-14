@@ -27,7 +27,12 @@ use std::{
 
 use config::Config;
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader, SubConfigPath};
+use tari_common::{
+    configuration::{CommonConfig, Network},
+    ConfigurationError,
+    DefaultConfigLoader,
+    SubConfigPath,
+};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::{P2pConfig, PeerSeedsConfig};
 
@@ -36,6 +41,7 @@ pub struct ApplicationConfig {
     pub common: CommonConfig,
     pub validator_node: ValidatorNodeConfig,
     pub peer_seeds: PeerSeedsConfig,
+    pub network: Network,
 }
 
 impl ApplicationConfig {
@@ -44,6 +50,7 @@ impl ApplicationConfig {
             common: CommonConfig::load_from(cfg)?,
             validator_node: ValidatorNodeConfig::load_from(cfg)?,
             peer_seeds: PeerSeedsConfig::load_from(cfg)?,
+            network: cfg.get("network")?,
         };
         config.validator_node.set_base_path(config.common.base_path());
         Ok(config)

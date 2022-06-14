@@ -32,7 +32,7 @@ use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -52,6 +52,7 @@ use crate::{
     },
     chain_storage::{
         create_lmdb_database,
+        BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
@@ -73,7 +74,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput, UnblindedOutput},
+        transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
     validation::{
@@ -440,6 +441,17 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_all_reorgs()
     }
+
+    fn fetch_contract_outputs_by_contract_id_and_type(
+        &self,
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
+    }
 }
 
 pub fn create_chained_blocks<T: Into<BlockSpecs>>(
@@ -453,8 +465,8 @@ pub fn create_chained_blocks<T: Into<BlockSpecs>>(
     let mut block_names = Vec::with_capacity(blocks.len());
     for block_spec in blocks {
         let prev_block = block_hashes
-            .get(block_spec.prev_block)
-            .unwrap_or_else(|| panic!("Could not find block {}", block_spec.prev_block));
+            .get(block_spec.parent)
+            .unwrap_or_else(|| panic!("Could not find block {}", block_spec.parent));
         let name = block_spec.name;
         let difficulty = block_spec.difficulty;
         let (block, _) = create_block(&rules, prev_block.block(), block_spec);
@@ -532,6 +544,38 @@ impl TestBlockchain {
         Self::new(create_custom_blockchain(rules.clone()), rules)
     }
 
+    pub fn append_chain(
+        &mut self,
+        block_specs: BlockSpecs,
+    ) -> Result<Vec<(Arc<ChainBlock>, UnblindedOutput)>, ChainStorageError> {
+        let mut blocks = Vec::with_capacity(block_specs.len());
+        for spec in block_specs {
+            blocks.push(self.append(spec)?);
+        }
+        Ok(blocks)
+    }
+
+    pub fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, UnblindedOutput)> {
+        block_specs
+            .into_iter()
+            .map(|spec| self.create_chained_block(spec))
+            .collect()
+    }
+
+    pub fn add_blocks(&self, blocks: Vec<Arc<ChainBlock>>) -> Result<(), ChainStorageError> {
+        for block in blocks {
+            let result = self.db.add_block(block.to_arc_block())?;
+            assert!(result.is_added());
+        }
+        Ok(())
+    }
+
+    pub fn with_validators(validators: Validators<TempDatabase>) -> Self {
+        let rules = ConsensusManager::builder(Network::LocalNet).build();
+        let db = create_store_with_consensus_and_validators(rules.clone(), validators);
+        Self::new(db, rules)
+    }
+
     pub fn rules(&self) -> &ConsensusManager {
         &self.rules
     }
@@ -542,25 +586,31 @@ impl TestBlockchain {
 
     pub fn add_block(
         &mut self,
-        name: &'static str,
-        child_of: &'static str,
         block_spec: BlockSpec,
-    ) -> (Arc<ChainBlock>, UnblindedOutput) {
-        let (block, coinbase) = self.create_chained_block(child_of, block_spec);
-        self.append_block(name, block.clone());
-        (block, coinbase)
-    }
-
-    pub fn add_next_tip(&mut self, name: &'static str, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
-        let (block, coinbase) = self.create_next_tip(spec);
-        self.append_block(name, block.clone());
-        (block, coinbase)
-    }
-
-    pub fn append_block(&mut self, name: &'static str, block: Arc<ChainBlock>) {
-        let result = self.db.add_block(block.to_arc_block()).unwrap();
+    ) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
+        let name = block_spec.name;
+        let (block, coinbase) = self.create_chained_block(block_spec);
+        let result = self.append_block(name, block.clone())?;
         assert!(result.is_added());
+        Ok((block, coinbase))
+    }
+
+    pub fn add_next_tip(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
+        let name = spec.name;
+        let (block, coinbase) = self.create_next_tip(spec);
+        let result = self.append_block(name, block.clone())?;
+        assert!(result.is_added());
+        Ok((block, coinbase))
+    }
+
+    pub fn append_block(
+        &mut self,
+        name: &'static str,
+        block: Arc<ChainBlock>,
+    ) -> Result<BlockAddResult, ChainStorageError> {
+        let result = self.db.add_block(block.to_arc_block())?;
         self.chain.push((name, block));
+        Ok(result)
     }
 
     pub fn get_block_by_name(&self, name: &'static str) -> Option<Arc<ChainBlock>> {
@@ -571,14 +621,10 @@ impl TestBlockchain {
         self.chain.last().cloned().unwrap()
     }
 
-    pub fn create_chained_block(
-        &self,
-        parent_name: &'static str,
-        block_spec: BlockSpec,
-    ) -> (Arc<ChainBlock>, UnblindedOutput) {
+    pub fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
         let parent = self
-            .get_block_by_name(parent_name)
-            .ok_or_else(|| format!("Parent block not found with name '{}'", parent_name))
+            .get_block_by_name(block_spec.parent)
+            .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let difficulty = block_spec.difficulty;
         let (block, coinbase) = create_block(&self.rules, parent.block(), block_spec);
@@ -586,10 +632,10 @@ impl TestBlockchain {
         (block, coinbase)
     }
 
-    pub fn create_unmined_block(&self, parent_name: &'static str, block_spec: BlockSpec) -> (Block, UnblindedOutput) {
+    pub fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, UnblindedOutput) {
         let parent = self
-            .get_block_by_name(parent_name)
-            .ok_or_else(|| format!("Parent block not found with name '{}'", parent_name))
+            .get_block_by_name(block_spec.parent)
+            .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let (mut block, outputs) = create_block(&self.rules, parent.block(), block_spec);
         block.body.sort();
@@ -603,17 +649,29 @@ impl TestBlockchain {
 
     pub fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
         let (name, _) = self.get_tip_block();
-        self.create_chained_block(name, spec)
+        self.create_chained_block(spec.with_parent_block(name))
     }
 
-    pub fn append(&mut self, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
+    pub fn append_to_tip(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
+        let (tip, _) = self.get_tip_block();
+        self.append(spec.with_parent_block(tip))
+    }
+
+    pub fn append(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
         let name = spec.name;
-        let (block, outputs) = self.create_chained_block(spec.prev_block, spec);
-        self.append_block(name, block.clone());
-        (block, outputs)
+        let (block, outputs) = self.create_chained_block(spec);
+        self.append_block(name, block.clone())?;
+        Ok((block, outputs))
     }
 
     pub fn get_genesis_block(&self) -> Arc<ChainBlock> {
         self.chain.first().map(|(_, block)| block).unwrap().clone()
+    }
+}
+
+impl Default for TestBlockchain {
+    fn default() -> Self {
+        let rules = ConsensusManager::builder(Network::LocalNet).build();
+        TestBlockchain::create(rules)
     }
 }
