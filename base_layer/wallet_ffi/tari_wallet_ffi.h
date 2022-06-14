@@ -11,6 +11,11 @@
  */
 #define OutputFields_NUM_FIELDS 10
 
+enum TariUtxoSort {
+  ValueAsc,
+  ValueDesc,
+};
+
 /**
  * This struct holds the detailed balance of the Output Manager Service.
  */
@@ -55,8 +60,6 @@ struct EmojiSet;
 struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
-
-struct GetUtxosView;
 
 struct InboundTransaction;
 
@@ -123,6 +126,8 @@ struct RistrettoPublicKey;
  */
 struct RistrettoSecretKey;
 
+struct Shutdown;
+
 struct TariCompletedTransactions;
 
 struct TariContacts;
@@ -134,8 +139,6 @@ struct TariPendingOutboundTransactions;
 struct TariPublicKeys;
 
 struct TariSeedWords;
-
-struct TariWallet;
 
 /**
  * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
@@ -149,6 +152,14 @@ struct TransactionKernel;
 struct TransactionSendStatus;
 
 struct TransportConfig;
+
+struct Vec_TariUtxo;
+
+/**
+ * A structure containing the config and services that a Wallet application will require. This struct will start up all
+ * the services and provide the APIs that applications will use to interact with the services
+ */
+struct Wallet_WalletSqliteDatabase__TransactionServiceSqliteDatabase__OutputManagerSqliteDatabase__ContactsServiceSqliteDatabase__KeyManagerSqliteDatabase;
 
 typedef struct TransactionKernel TariTransactionKernel;
 
@@ -269,7 +280,19 @@ typedef struct TransportConfig TariTransportConfig;
 
 typedef struct P2pConfig TariCommsConfig;
 
+typedef struct Wallet_WalletSqliteDatabase__TransactionServiceSqliteDatabase__OutputManagerSqliteDatabase__ContactsServiceSqliteDatabase__KeyManagerSqliteDatabase WalletSqlite;
+
+struct TariWallet {
+  WalletSqlite wallet;
+  Runtime runtime;
+  struct Shutdown shutdown;
+};
+
 typedef struct Balance TariBalance;
+
+struct TariOutputs {
+  struct Vec_TariUtxo _0;
+};
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
@@ -2168,12 +2191,26 @@ TariBalance *wallet_get_balance(struct TariWallet *wallet,
  * Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
  * LOG_TARGET.
  */
-struct GetUtxosView *wallet_get_utxos(struct TariWallet *wallet,
-                                      unsigned int page,
-                                      unsigned int page_size,
-                                      bool sort_ascending,
-                                      unsigned long long dust_threshold,
-                                      int *error_out);
+struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
+                                     unsigned int page,
+                                     unsigned int page_size,
+                                     enum TariUtxoSort sorting,
+                                     unsigned long long dust_threshold,
+                                     int *error_out);
+
+/**
+ * Frees memory for a `TariOutputs`
+ *
+ * ## Arguments
+ * `x` - The pointer to `TariOutputs`
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_tari_outputs(struct TariOutputs *x);
 
 /**
  * Signs a message using the public key of the TariWallet

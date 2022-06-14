@@ -212,26 +212,31 @@ pub struct TariSeedWords(Vec<String>);
 #[derive(Debug, PartialEq)]
 pub struct TariPublicKeys(Vec<TariPublicKey>);
 
+#[repr(C)]
 pub struct TariWallet {
-    wallet: WalletSqlite,
-    runtime: Runtime,
-    shutdown: Shutdown,
+    pub wallet: WalletSqlite,
+    pub runtime: Runtime,
+    pub shutdown: Shutdown,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
-// #[repr(C)]
-pub struct Utxo {
-    commitment: Commitment,
-    value: c_ulonglong,
+#[repr(C)]
+pub struct TariUtxo {
+    pub commitment: *mut c_char,
+    pub value: c_ulonglong,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
-// #[repr(C)]
-pub struct GetUtxosView {
-    outputs: Vec<Utxo>,
-    unlisted_dust_sum: c_ulonglong,
+#[repr(C)]
+pub struct TariOutputs(pub Vec<TariUtxo>);
+
+#[derive(Debug)]
+#[repr(C)]
+pub enum TariUtxoSort {
+    ValueAsc,
+    ValueDesc,
+    /* MinedHeightAsc,
+     * MinedHeightDesc, */
 }
 
 /// -------------------------------- Strings ------------------------------------------------ ///
@@ -4114,10 +4119,10 @@ pub unsafe extern "C" fn wallet_get_utxos(
     wallet: *mut TariWallet,
     page: c_uint,
     page_size: c_uint,
-    sort_ascending: bool,
+    sorting: TariUtxoSort,
     dust_threshold: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut GetUtxosView {
+) -> *mut TariOutputs {
     if wallet.is_null() {
         ptr::replace(
             error_out,
@@ -4135,7 +4140,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
         "page = {:#?} page_size = {:#?} sort_asc = {:#?} dust_threshold = {:#?}",
         page,
         page_size,
-        sort_ascending,
+        sorting,
         dust_threshold
     );
 
@@ -4145,38 +4150,46 @@ pub unsafe extern "C" fn wallet_get_utxos(
     {
         Ok(mut unblinded_outputs) => {
             unblinded_outputs.sort_by(|a, b| {
-                if sort_ascending {
-                    Ord::cmp(&a.value, &b.value)
-                } else {
-                    Ord::cmp(&b.value, &a.value)
+                match sorting {
+                    // TariUtxoSort::MinedHeightAsc => {},
+                    TariUtxoSort::ValueAsc => Ord::cmp(&a.value, &b.value),
+                    TariUtxoSort::ValueDesc => Ord::cmp(&b.value, &a.value),
+                    // TariUtxoSort::MinedHeightDesc => {},
                 }
             });
 
-            let (outputs, dust): (Vec<Utxo>, Vec<Utxo>) = unblinded_outputs
+            let outputs: Vec<TariUtxo> = unblinded_outputs
                 .into_iter()
+                .filter(|out| out.value.as_u64() > dust_threshold)
                 .skip(page * page_size)
                 .take(page_size)
                 .filter_map(|out| {
-                    Some(Utxo {
+                    Some(TariUtxo {
                         value: out.value.as_u64(),
                         commitment: match out.as_transaction_output(&factories) {
-                            Ok(commitment) => commitment.commitment,
+                            Ok(tout) => match CString::new(tout.commitment.to_hex()) {
+                                Ok(cstr) => cstr.into_raw(),
+                                Err(e) => {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "failed to convert commitment hex String into CString: {:#?}", e
+                                    );
+                                    return None;
+                                },
+                            },
                             Err(e) => {
                                 warn!(
                                     target: LOG_TARGET,
-                                    "failed to obtain commitment from the unblinded output: {:#?}", e
+                                    "failed to obtain commitment from the transaction output: {:#?}", e
                                 );
                                 return None;
                             },
                         },
                     })
                 })
-                .partition(|out| out.value.gt(&(dust_threshold as c_ulonglong)));
+                .collect();
 
-            Box::into_raw(Box::new(GetUtxosView {
-                outputs,
-                unlisted_dust_sum: dust.into_iter().fold(0, |acc, x| acc + x.value),
-            }))
+            Box::into_raw(Box::new(TariOutputs(outputs)))
         },
 
         Err(e) => {
@@ -4186,6 +4199,23 @@ pub unsafe extern "C" fn wallet_get_utxos(
             );
             ptr::null_mut()
         },
+    }
+}
+
+/// Frees memory for a `TariOutputs`
+///
+/// ## Arguments
+/// `x` - The pointer to `TariOutputs`
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_tari_outputs(x: *mut TariOutputs) {
+    if !x.is_null() {
+        Box::from_raw(x);
     }
 }
 
@@ -8784,16 +8814,15 @@ mod test {
             });
 
             // ascending order
-            let utxos = wallet_get_utxos(alice_wallet, 1, 20, true, 3000, error_ptr);
+            let outputs = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueAsc, 3000, error_ptr);
             assert_eq!(error, 0);
-            assert_eq!((*utxos).outputs.len(), 6);
-            assert_eq!((*utxos).unlisted_dust_sum, 6000);
+            assert_eq!((*outputs).0.len(), 6);
             assert!(
-                (*utxos)
-                    .outputs
+                (*outputs)
+                    .0
                     .iter()
                     .skip(1)
-                    .fold((true, (*utxos).outputs[0].value), |acc, x| (
+                    .fold((true, (*outputs).0[0].value), |acc, x| (
                         acc.0 && x.value > acc.1,
                         x.value
                     ))
@@ -8801,16 +8830,15 @@ mod test {
             );
 
             // descending order
-            let utxos = wallet_get_utxos(alice_wallet, 1, 20, false, 3000, error_ptr);
+            let outputs = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueDesc, 3000, error_ptr);
             assert_eq!(error, 0);
-            assert_eq!((*utxos).outputs.len(), 6);
-            assert_eq!((*utxos).unlisted_dust_sum, 6000);
+            assert_eq!((*outputs).0.len(), 6);
             assert!(
-                (*utxos)
-                    .outputs
+                (*outputs)
+                    .0
                     .iter()
                     .skip(1)
-                    .fold((true, (*utxos).outputs[0].value), |acc, x| (
+                    .fold((true, (*outputs).0[0].value), |acc, x| (
                         acc.0 && x.value < acc.1,
                         x.value
                     ))
@@ -8818,9 +8846,9 @@ mod test {
             );
 
             // result must be empty due to high dust threshold
-            let utxos = wallet_get_utxos(alice_wallet, 1, 20, true, 15000, error_ptr);
+            let utxos = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueAsc, 15000, error_ptr);
             assert_eq!(error, 0);
-            assert_eq!((*utxos).outputs.len(), 0);
+            assert_eq!((*utxos).0.len(), 0);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -8828,7 +8856,7 @@ mod test {
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             transport_config_destroy(transport_config_alice);
-
+            destroy_tari_outputs(outputs);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
