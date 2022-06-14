@@ -2049,10 +2049,8 @@ impl BlockchainBackend for LMDBDatabase {
         &self,
         dan_node_public_key: &PublicKey,
         vn_confirmation_time: u64,
-        tip_header: u64,
+        tip_height: u64,
     ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
-        let vn_max_mined_height = tip_header - vn_confirmation_time;
-
         let txn = self.read_transaction()?;
         lmdb_filter_map_values(&txn, &self.utxos_db, |output: TransactionOutputRowData| {
             match output.output {
@@ -2064,9 +2062,11 @@ impl BlockchainBackend for LMDBDatabase {
                         Some(constitution) => {
                             let constitution_max_acceptance_height =
                                 output.mined_height + constitution.acceptance_requirements.acceptance_period_expiry;
+                            let vn_max_acceptance_time = output.mined_height + vn_confirmation_time;
+
                             if constitution.validator_committee.members().contains(dan_node_public_key) &&
-                                output.mined_height <= vn_max_mined_height &&
-                                constitution_max_acceptance_height <= tip_header
+                                tip_height <= constitution_max_acceptance_height &&
+                                tip_height <= vn_max_acceptance_time
                             {
                                 Some(txo)
                             } else {
