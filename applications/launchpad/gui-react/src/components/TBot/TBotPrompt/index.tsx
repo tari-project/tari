@@ -177,13 +177,18 @@ const TBotPrompt = ({
   // Build messages list
   const renderedMessages = useMemo(() => {
     return messages?.slice(0, count).map((msg, idx) => {
-      const skipButtonCheck = count === idx + 1
-      if (
+      let skipButtonCheck
+      const msgTypeCheck =
         typeof msg !== 'string' &&
         typeof msg !== 'number' &&
         typeof msg !== 'boolean' &&
         msg
-      ) {
+      if (msgTypeCheck && 'noSkip' in msg) {
+        skipButtonCheck = false
+      } else if (count === idx + 1) {
+        skipButtonCheck = true
+      }
+      if (msgTypeCheck) {
         if ('content' in msg && typeof msg.content === 'function') {
           const FuncComponentMsg = msg.content
           return (

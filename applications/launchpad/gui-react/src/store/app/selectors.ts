@@ -10,6 +10,9 @@ import {
 
 export const selectExpertView = ({ app }: RootState) => app.expertView
 
+export const selectExpertSwitchDisabled = ({ app }: RootState) =>
+  app.expertSwitchDisabled
+
 export const selectView = ({ app }: RootState) => app.view
 
 export const selectTheme = ({ app }: RootState) => app.theme

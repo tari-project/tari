@@ -14,6 +14,10 @@ const translations = {
     'So let\'s get started! 🚀 The setup process usually takes 5 to 10 minutes. A duo like you and me should be able to deal with it quickly, right?',
   message4:
     'But first things first! ☕️ A warm drink will surely make the time spent together more pleasant. Unfortunately, I have no connection with your kettle or coffee machine - you have to deal with this side task yourself.',
+  message5: {
+    part1: 'I need a few minutes for further configuration. If you want to know exactly what I am doing now, open ',
+    part2: 'Expert view.'
+  }
 }
 
 export default translations

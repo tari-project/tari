@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTheme } from 'styled-components'
 import { useSpring } from 'react-spring'
 
-import { useAppSelector } from '../../store/hooks'
+import { useAppSelector, useAppDispatch } from '../../store/hooks'
+import { setExpertSwitchDisabled } from '../../store/app'
 import { selectExpertView } from '../../store/app/selectors'
 import ExpertViewUtils from '../../utils/ExpertViewUtils'
 import TitleBar from '../../components/TitleBar'
@@ -25,6 +26,7 @@ import {
 const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
   const mainContainerRef = useRef(null)
   const theme = useTheme()
+  const dispatch = useAppDispatch()
 
   const expertView = useAppSelector(selectExpertView)
 
@@ -53,6 +55,10 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
       window.removeEventListener('resize', onResize)
     }
   }, [])
+
+  useEffect(() => {
+    dispatch(setExpertSwitchDisabled(false))
+  })
 
   /**
    * Animations

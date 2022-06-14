@@ -8,6 +8,7 @@ import { AppState, ExpertViewType, ViewType } from './types'
 
 export const appInitialState: AppState = {
   expertView: 'hidden',
+  expertSwitchDisabled: false,
   view: 'MINING',
   theme: 'light',
   schedules: {},
@@ -19,6 +20,9 @@ const appSlice = createSlice({
   reducers: {
     setExpertView(state, { payload }: { payload: ExpertViewType }) {
       state.expertView = payload
+    },
+    setExpertSwitchDisabled(state, { payload }: { payload: boolean }) {
+      state.expertSwitchDisabled = payload
     },
     setTheme(state, { payload }: { payload: ThemeType }) {
       state.theme = payload
@@ -53,6 +57,7 @@ const appSlice = createSlice({
 
 export const {
   setExpertView,
+  setExpertSwitchDisabled,
   setTheme,
   setPage,
   toggleSchedule,

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useTheme } from 'styled-components'
 import TBotPrompt from '../../components/TBot/TBotPrompt'
+import TitleBar from '../../components/TitleBar'
 import { OnboardingMessagesMap } from '../../config/onboardingMessagesConfig'
 
 /**
@@ -11,6 +13,7 @@ import { OnboardingMessagesMap } from '../../config/onboardingMessagesConfig'
  */
 
 const Onboarding = ({ close }: { close: () => void }) => {
+  const theme = useTheme()
   const [trigger, fireTrigger] = useState(false)
 
   const [messages, setMessages] = useState(OnboardingMessagesMap)
@@ -32,33 +35,9 @@ const Onboarding = ({ close }: { close: () => void }) => {
     }
   }, [trigger])
 
-  const addSkipMessages = () => {
-    const newMsgs = messages.slice()
-    newMsgs.push({
-      content: (
-        <div>
-          <button onClick={() => setCurrent(newMsgs.length + 5)}>Skip</button>
-        </div>
-      ),
-    })
-    setMessages(newMsgs)
-  }
-
   return (
-    <div style={{ backgroundColor: '#FAFAFA' }}>
-      <div>
-        <p>Onboarding</p>
-        <button onClick={close}>Go to home</button>
-        <button onClick={addSkipMessages}>Add skip messages</button>
-        <button
-          onClick={() => {
-            setMessages([])
-            setCurrent(0)
-          }}
-        >
-          Clear messages
-        </button>
-      </div>
+    <div>
+      <TitleBar mode='onboarding' />
       <div
         style={{
           display: 'flex',
@@ -67,6 +46,7 @@ const Onboarding = ({ close }: { close: () => void }) => {
           height: '100%',
           alignItems: 'center',
           justifyContent: 'center',
+          backgroundColor: `${theme.backgroundSecondary}`,
         }}
       >
         <TBotPrompt

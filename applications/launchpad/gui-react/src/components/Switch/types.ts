@@ -6,5 +6,6 @@ export interface SwitchProps {
   rightLabel?: string | ReactNode
   onClick: (val: boolean) => void
   inverted?: boolean
+  disable?: boolean
   testId?: string
 }
