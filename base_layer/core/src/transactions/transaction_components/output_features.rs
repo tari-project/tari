@@ -363,6 +363,10 @@ impl OutputFeatures {
     pub fn contract_id(&self) -> Option<FixedHash> {
         self.sidechain_features.as_ref().map(|f| f.contract_id)
     }
+
+    pub fn is_sidechain_contract(&self) -> bool {
+        self.sidechain_features.is_some()
+    }
 }
 
 impl ConsensusEncoding for OutputFeatures {

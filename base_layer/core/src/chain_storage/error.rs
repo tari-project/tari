@@ -129,6 +129,8 @@ pub enum ChainStorageError {
     TransactionError(#[from] TransactionError),
     #[error("Could not convert data:{0}")]
     ConversionError(String),
+    #[error("Unable to spend UTXO because it has dependant UTXOS: {details}")]
+    UnspendableDueToDependentUtxos { details: String },
 }
 
 impl ChainStorageError {

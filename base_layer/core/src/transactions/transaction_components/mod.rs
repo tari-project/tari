@@ -36,7 +36,7 @@ pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
 pub use rewind_result::RewindResult;
-pub use side_chain::{ContractConstitution, *};
+pub use side_chain::*;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::Commitment;
 use tari_script::TariScript;

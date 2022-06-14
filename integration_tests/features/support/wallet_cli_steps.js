@@ -308,7 +308,7 @@ Then(
     let wallet = this.getWallet(wallet_name);
     let output = await wallet_run_command(
       wallet,
-      `contract-definition publish ${absolute_path}`
+      `contract publish-definition ${absolute_path}`
     );
     console.log(output.buffer);
   }
@@ -323,7 +323,7 @@ Then(
 
     let output = await wallet_run_command(
       wallet,
-      `publish-constitution-definition ${absolute_path}`
+      `contract publish-constitution ${absolute_path}`
     );
     console.log(output.buffer);
   }
@@ -338,7 +338,7 @@ Then(
 
     let output = await wallet_run_command(
       wallet,
-      `publish-contract-update-proposal ${absolute_path}`
+      `contract publish-update-proposal ${absolute_path}`
     );
     console.log(output.buffer);
   }

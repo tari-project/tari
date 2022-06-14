@@ -26,6 +26,7 @@ use tari_common_types::types::HashOutput;
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
+mod contract_index;
 pub(crate) mod helpers;
 pub(crate) mod key_prefix_cursor;
 mod lmdb;
