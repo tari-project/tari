@@ -176,7 +176,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
     grpc_address: Multiaddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    info!("Starting GRPC on {}", grpc_address);
+    println!("Starting GRPC on {}", grpc_address);
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
