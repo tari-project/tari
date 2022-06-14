@@ -28,6 +28,7 @@ use d3ne::{
     workers::{CallableWorkers, Workers},
 };
 use prost::bytes::Buf;
+use serde::Deserialize;
 use serde_json::Value as JsValue;
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::TemplateParameter;
@@ -122,6 +123,8 @@ mod nodes {
                     return Rc::new(err_map);
                 },
             };
+            dbg!(amount);
+            dbg!(token_id);
 
             let bucket = Bucket {
                 amount: amount as u64,
@@ -131,6 +134,38 @@ mod nodes {
             dbg!(&bucket);
             map.insert("default".to_string(), Ok(IOData { data: Box::new(()) }));
             map.insert("bucket".to_string(), Ok(IOData { data: Box::new(bucket) }));
+            Rc::new(map)
+        }
+    }
+
+    pub struct EmptyBucketWorker {}
+
+    impl Worker for EmptyBucketWorker {
+        fn call(&self, node: Node, inputs: InputData) -> OutputData {
+            dbg!("empty");
+            let mut map = HashMap::new();
+            let bucket: Bucket = match node.get_field_t("bucket", &inputs) {
+                Ok(a) => a,
+                Err(err) => {
+                    let mut err_map = HashMap::new();
+                    err_map.insert("error".to_string(), Err(err));
+                    return Rc::new(err_map);
+                },
+            };
+
+            let to = match node.get_string_field("to", &inputs) {
+                Ok(a) => PublicKey::from_hex(&a).expect("Not a valid pub key"),
+                Err(err) => {
+                    let mut err_map = HashMap::new();
+                    err_map.insert("error".to_string(), Err(err));
+                    return Rc::new(err_map);
+                },
+            };
+
+            dbg!(&bucket);
+            dbg!(&to);
+            map.insert("default".to_string(), Ok(IOData { data: Box::new(()) }));
+            // map.insert("bucket".to_string(), Ok(IOData { data: Box::new(bucket) }));
             Rc::new(map)
         }
     }
@@ -146,7 +181,23 @@ mod nodes {
             dbg!(&name);
             let mut map = HashMap::new();
             let value = self.args.get(&name).map(|v| v.clone()).expect("could not find arg");
-            map.insert("default".to_string(), Ok(IOData { data: Box::new(value) }));
+            dbg!(&value);
+            match value {
+                ArgValue::Uint(x) => map.insert(
+                    "default".to_string(),
+                    Ok(IOData {
+                        data: Box::new(x as i64),
+                    }),
+                ),
+                ArgValue::PublicKey(pk) => map.insert(
+                    "default".to_string(),
+                    Ok(IOData {
+                        data: Box::new(pk.to_hex()),
+                    }),
+                ),
+                _ => todo!(),
+            };
+
             Rc::new(map)
         }
     }
@@ -170,7 +221,7 @@ mod nodes {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct Bucket {
     amount: u64,
     token_id: u64,
@@ -208,7 +259,14 @@ fn load_workers(args: HashMap<String, ArgValue>, sender: PublicKey) -> TariWorke
     );
     workers
         .map
-        .insert("core::arg".to_string(), Box::new(nodes::ArgWorker { args }));
+        .insert("tari::empty_bucket".to_string(), Box::new(nodes::EmptyBucketWorker {}));
+    workers.map.insert(
+        "core::arg".to_string(),
+        Box::new(nodes::ArgWorker { args: args.clone() }),
+    );
+    workers
+        .map
+        .insert("core::arg::public_key".to_string(), Box::new(nodes::ArgWorker { args }));
     workers
         .map
         .insert("core::sender".to_string(), Box::new(nodes::SenderWorker { sender }));
@@ -261,7 +319,7 @@ pub struct FlowInstance {
     nodes: HashMap<i64, Node>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ArgValue {
     String(String),
     Byte(u8),
@@ -282,7 +340,7 @@ impl ArgValue {
 impl FlowInstance {
     pub fn try_build(value: JsValue, workers: TariWorkers) -> Result<Self, DigitalAssetError> {
         let engine = Engine::new("tari@0.1.0", Box::new(workers));
-        dbg!(&value);
+        // dbg!(&value);
         let nodes = engine.parse_value(value.clone()).expect("could not create engine");
         Ok(FlowInstance {
             // process: value,
@@ -319,9 +377,14 @@ impl FlowInstance {
                     let bytes: Vec<u8> = remaining_args.drain(0..8).collect();
                     let mut fixed: [u8; 8] = [0u8; 8];
                     fixed.copy_from_slice(&bytes);
-                    ArgValue::Uint(u64::from_le_bytes(fixed))
+                    dbg!(&fixed);
+                    let value = u64::from_le_bytes(fixed);
+                    dbg!(value);
+                    ArgValue::Uint(value)
                 },
             };
+            dbg!(&ad.name);
+            dbg!(&value);
             engine_args.insert(ad.name.clone(), value);
         }
 
