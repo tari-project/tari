@@ -12,7 +12,7 @@ import { OnboardingMessagesMap } from '../../config/onboardingMessagesConfig'
     </div>
  */
 
-const Onboarding = ({ close }: { close: () => void }) => {
+const Onboarding = () => {
   const theme = useTheme()
   const [trigger, fireTrigger] = useState(false)
 
