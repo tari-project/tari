@@ -307,7 +307,7 @@ pub fn chain_block_with_new_coinbase(
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         factories,
         coinbase_value,
-        height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
+        height + consensus_manager.consensus_constants(height).coinbase_lock_height(),
     );
     let mut header = BlockHeader::from_previous(prev_block.header());
     header.height = height;

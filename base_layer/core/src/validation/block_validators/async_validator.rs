@@ -128,10 +128,11 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let kernels_result = kernels_task.await??;
 
         // Perform final checks using validation outputs
+        helpers::check_coinbase_maturity(&self.rules, valid_header.height, outputs_result.coinbase())?;
         helpers::check_coinbase_reward(
             &self.factories.commitment,
             &self.rules,
-            &valid_header,
+            valid_header.height,
             kernels_result.kernel_sum.fees,
             kernels_result.coinbase(),
             outputs_result.coinbase(),

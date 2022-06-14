@@ -110,7 +110,7 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     grpc::{convert_to_transaction_event, TransactionWrapper},
-    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT, UNMINED},
+    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT, NEW_BLOCK_MINED},
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -596,7 +596,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                             match transaction_service.get_any_transaction(tx_id).await{
                                                 Ok(found_transaction) => {
                                                     if let Some(WalletTransaction::PendingOutbound(tx)) = found_transaction {
-                                                        let transaction_event = convert_to_transaction_event(UNMINED.to_string(),
+                                                        let transaction_event = convert_to_transaction_event(NEW_BLOCK_MINED.to_string(),
                                                             TransactionWrapper::Outbound(tx.clone()));
                                                         send_transaction_event(transaction_event, &mut sender).await;
                                                     } 

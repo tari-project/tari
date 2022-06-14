@@ -1,24 +1,5 @@
 // Copyright 2019. The Tari Project
-//
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// SPDX-License-Identifier: BSD-3-Clause
 
 //! # LibWallet API Definition
 //! This module contains the Rust backend implementations of the functionality that a wallet for the Tari Base Layer
@@ -47,9 +28,9 @@
 //!     becoming a `CompletedTransaction` with the `Completed` status. This means that the transaction has been
 //!     negotiated between the parties and is now ready to be broadcast to the Base Layer. The funds are still
 //!     encumbered as pending because the transaction has not been mined yet.
-//! 3.  The finalized `CompletedTransaction' will be sent back to the the receiver so that they have a copy.
-//! 4.  The wallet will broadcast the `CompletedTransaction` to a Base Node to be added to the mempool. its status will
-//!     from `Completed` to `Broadcast.
+//! 3.  The finalized `CompletedTransaction` will be sent back to the the receiver so that they have a copy.
+//! 4.  The wallet will broadcast the `CompletedTransaction` to a Base Node to be added to the mempool. Its status will
+//!     move from `Completed` to `Broadcast`.
 //! 5.  Wait until the transaction is mined. The `CompleteTransaction` status will then move from `Broadcast` to `Mined`
 //!     and the pending funds will be spent and received.
 //!
@@ -86,7 +67,7 @@ use std::{
 
 use chrono::{DateTime, Local};
 use error::LibWalletError;
-use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
+use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
 use log4rs::{
     append::{
@@ -235,6 +216,22 @@ pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
+}
+
+#[allow(unused)]
+#[derive(Debug, Clone)]
+// #[repr(C)]
+pub struct Utxo {
+    commitment: Commitment,
+    value: c_ulonglong,
+}
+
+#[allow(unused)]
+#[derive(Debug, Clone)]
+// #[repr(C)]
+pub struct GetUtxosView {
+    outputs: Vec<Utxo>,
+    unlisted_dust_sum: c_ulonglong,
 }
 
 /// -------------------------------- Strings ------------------------------------------------ ///
@@ -2421,7 +2418,7 @@ pub unsafe extern "C" fn completed_transaction_get_fee(
 pub unsafe extern "C" fn completed_transaction_get_timestamp(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> c_longlong {
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2429,7 +2426,7 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).timestamp.timestamp() as c_longlong
+    (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
 /// Gets the message of a TariCompletedTransaction
@@ -2722,7 +2719,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
 pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> c_longlong {
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2730,7 +2727,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).timestamp.timestamp() as c_longlong
+    (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
 /// Gets the message of a TariPendingOutboundTransaction
@@ -2929,7 +2926,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
 pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
-) -> c_longlong {
+) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -2937,7 +2934,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).timestamp.timestamp() as c_longlong
+    (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
 /// Gets the message of a TariPendingInboundTransaction
@@ -4088,6 +4085,105 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
         Err(_) => {
             error = LibWalletError::from(InterfaceError::BalanceError).code;
             ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// This function returns a list of unspent UTXO values and commitments.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `page` - Page offset
+/// `page_size` - A number of items per page
+/// `sort_ascending` - Sorting order
+/// `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold`, are not listed in the
+/// result, but are added to the `GetUtxosView.unlisted_dust_sum`.
+/// `error_out` - Pointer to an int which will be modified to an error
+/// code should one occur, may not be null. Functions as an out parameter.
+///
+/// ## Returns
+/// `*mut GetUtxosView` - Returns a struct with a list of unspent `outputs` and an `unlisted_dust_sum` holding a sum of
+/// values that were filtered out by `dust_threshold`.
+///
+/// # Safety
+/// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
+/// LOG_TARGET.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_utxos(
+    wallet: *mut TariWallet,
+    page: c_uint,
+    page_size: c_uint,
+    sort_ascending: bool,
+    dust_threshold: c_ulonglong,
+    error_out: *mut c_int,
+) -> *mut GetUtxosView {
+    if wallet.is_null() {
+        ptr::replace(
+            error_out,
+            LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code as c_int,
+        );
+        return ptr::null_mut();
+    }
+
+    let factories = CryptoFactories::default();
+    let page = (page as usize).max(1) - 1;
+    let page_size = (page_size as usize).max(1);
+
+    debug!(
+        target: LOG_TARGET,
+        "page = {:#?} page_size = {:#?} sort_asc = {:#?} dust_threshold = {:#?}",
+        page,
+        page_size,
+        sort_ascending,
+        dust_threshold
+    );
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.output_manager_service.get_unspent_outputs())
+    {
+        Ok(mut unblinded_outputs) => {
+            unblinded_outputs.sort_by(|a, b| {
+                if sort_ascending {
+                    Ord::cmp(&a.value, &b.value)
+                } else {
+                    Ord::cmp(&b.value, &a.value)
+                }
+            });
+
+            let (outputs, dust): (Vec<Utxo>, Vec<Utxo>) = unblinded_outputs
+                .into_iter()
+                .skip(page * page_size)
+                .take(page_size)
+                .filter_map(|out| {
+                    Some(Utxo {
+                        value: out.value.as_u64(),
+                        commitment: match out.as_transaction_output(&factories) {
+                            Ok(commitment) => commitment.commitment,
+                            Err(e) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "failed to obtain commitment from the unblinded output: {:#?}", e
+                                );
+                                return None;
+                            },
+                        },
+                    })
+                })
+                .partition(|out| out.value.gt(&(dust_threshold as c_ulonglong)));
+
+            Box::into_raw(Box::new(GetUtxosView {
+                outputs,
+                unlisted_dust_sum: dust.into_iter().fold(0, |acc, x| acc + x.value),
+            }))
+        },
+
+        Err(e) => {
+            ptr::replace(
+                error_out,
+                LibWalletError::from(WalletError::OutputManagerError(e)).code as c_int,
+            );
             ptr::null_mut()
         },
     }
@@ -6917,8 +7013,9 @@ mod test {
     use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_unblinded_output, TestParams},
+        transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
     };
+    use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::{
@@ -8615,6 +8712,125 @@ mod test {
             assert_eq!(*seed_words, *recovered_seed_words);
             assert_eq!(*public_key, *recovered_public_key);
             // TODO: Clean up memory leaks please
+        }
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_wallet_get_utxos() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
+
+            let secret_key_alice = private_key_generate();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
+            let alice_temp_dir = tempdir().unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_config_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                10800,
+                error_ptr,
+            );
+
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                ptr::null(),
+                network_str,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
+                transaction_send_result_callback,
+                tx_cancellation_callback,
+                txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
+                balance_updated_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                connectivity_status_callback,
+                recovery_in_progress_ptr,
+                error_ptr,
+            );
+
+            (0..10).for_each(|i| {
+                let (_, uout) = create_test_input((1000 * i).into(), 0, &PedersenCommitmentFactory::default());
+                (*alice_wallet)
+                    .runtime
+                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
+                    .unwrap();
+            });
+
+            // ascending order
+            let utxos = wallet_get_utxos(alice_wallet, 1, 20, true, 3000, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!((*utxos).outputs.len(), 6);
+            assert_eq!((*utxos).unlisted_dust_sum, 6000);
+            assert!(
+                (*utxos)
+                    .outputs
+                    .iter()
+                    .skip(1)
+                    .fold((true, (*utxos).outputs[0].value), |acc, x| (
+                        acc.0 && x.value > acc.1,
+                        x.value
+                    ))
+                    .0
+            );
+
+            // descending order
+            let utxos = wallet_get_utxos(alice_wallet, 1, 20, false, 3000, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!((*utxos).outputs.len(), 6);
+            assert_eq!((*utxos).unlisted_dust_sum, 6000);
+            assert!(
+                (*utxos)
+                    .outputs
+                    .iter()
+                    .skip(1)
+                    .fold((true, (*utxos).outputs[0].value), |acc, x| (
+                        acc.0 && x.value < acc.1,
+                        x.value
+                    ))
+                    .0
+            );
+
+            // result must be empty due to high dust threshold
+            let utxos = wallet_get_utxos(alice_wallet, 1, 20, true, 15000, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!((*utxos).outputs.len(), 0);
+
+            string_destroy(network_str as *mut c_char);
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            transport_config_destroy(transport_config_alice);
+
+            comms_config_destroy(alice_config);
+            wallet_destroy(alice_wallet);
         }
     }
 }
