@@ -4,6 +4,7 @@ import { useAppSelector, useAppDispatch } from './store/hooks'
 import { selectThemeConfig } from './store/app/selectors'
 
 import { useSystemEvents } from './useSystemEvents'
+import { useWalletEvents } from './useWalletEvents'
 import HomePage from './pages/home'
 import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
@@ -30,6 +31,8 @@ const App = () => {
   dispatch(loadDefaultServiceSettings())
 
   useSystemEvents({ dispatch })
+
+  useWalletEvents({ dispatch })
 
   useMiningSimulator()
 

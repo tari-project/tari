@@ -1,20 +1,11 @@
-import Database from 'tauri-plugin-sql-api'
 import groupby from 'lodash.groupby'
 
-import { Dictionary } from '../../types/general'
-
-import { Container, SerializableContainerStats } from './types'
-
-let db: Database
-const getDb = async () => {
-  if (!db) {
-    db = await Database.load('sqlite:launchpad.db')
-  }
-
-  return db
-}
-// load immediately to avoid waiting with first query
-getDb()
+import { Dictionary } from '../types/general'
+import {
+  Container,
+  SerializableContainerStats,
+} from '../store/containers/types'
+import getDb from './db'
 
 export interface StatsEntry {
   timestamp: string

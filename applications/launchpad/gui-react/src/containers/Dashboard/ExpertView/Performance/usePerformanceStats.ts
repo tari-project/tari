@@ -4,7 +4,7 @@ import { useAppSelector } from '../../../../store/hooks'
 import { selectNetwork } from '../../../../store/baseNode/selectors'
 import getStatsRepository, {
   StatsEntry,
-} from '../../../../store/containers/statsRepository'
+} from '../../../../persistence/statsRepository'
 import { Container } from '../../../../store/containers/types'
 import { Dictionary } from '../../../../types/general'
 
