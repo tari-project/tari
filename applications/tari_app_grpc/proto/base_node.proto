@@ -447,4 +447,5 @@ message MempoolStatsResponse {
 
 message GetConstitutionsRequest {
     bytes dan_node_public_key = 1;
+    uint64 vn_confirmation_time = 2;
 }

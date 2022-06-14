@@ -322,10 +322,14 @@ impl LocalNodeCommsInterface {
     pub async fn get_constitutions(
         &mut self,
         dan_node_public_key: PublicKey,
+        vn_confirmation_time: u64,
     ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchConstitutions { dan_node_public_key })
+            .call(NodeCommsRequest::FetchConstitutions {
+                dan_node_public_key,
+                vn_confirmation_time,
+            })
             .await??
         {
             NodeCommsResponse::FetchConstitutionsResponse { outputs } => Ok(outputs),

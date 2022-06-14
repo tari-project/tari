@@ -103,10 +103,12 @@ impl BaseNodeClient for GrpcBaseNodeClient {
     async fn get_constitutions(
         &mut self,
         dan_node_public_key: PublicKey,
+        vn_confirmation_time: u64,
     ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
         let inner = self.connection().await?;
         let request = grpc::GetConstitutionsRequest {
             dan_node_public_key: dan_node_public_key.as_bytes().to_vec(),
+            vn_confirmation_time,
         };
         let mut result = inner.get_constitutions(request).await?.into_inner();
         let mut outputs = vec![];

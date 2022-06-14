@@ -426,9 +426,11 @@ where B: BlockchainBackend
     pub fn fetch_all_constitutions(
         &self,
         dan_node_public_key: PublicKey,
+        vn_confirmation_time: u64,
     ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+        let tip_header = self.fetch_tip_header()?;
         let db = self.db_read_access()?;
-        db.fetch_all_constitutions(&dan_node_public_key)
+        db.fetch_all_constitutions(&dan_node_public_key, vn_confirmation_time, tip_header.height())
     }
 
     pub fn fetch_kernel_by_excess(

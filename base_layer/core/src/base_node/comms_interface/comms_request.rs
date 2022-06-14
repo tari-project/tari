@@ -72,6 +72,7 @@ pub enum NodeCommsRequest {
     },
     FetchConstitutions {
         dan_node_public_key: PublicKey,
+        vn_confirmation_time: u64,
     },
 }
 

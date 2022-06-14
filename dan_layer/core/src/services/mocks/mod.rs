@@ -224,6 +224,7 @@ impl BaseNodeClient for MockBaseNodeClient {
     async fn get_constitutions(
         &mut self,
         _dan_node_public_key: PublicKey,
+        _last_tip: u64,
     ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
         todo!();
     }

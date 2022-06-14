@@ -1848,7 +1848,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 target: LOG_TARGET,
                 "Starting thread to process GetConstitutions: dan_node_public_key: {}", dan_node_public_key_hex,
             );
-            let constitutions = match handler.get_constitutions(dan_node_public_key).await {
+            let constitutions = match handler
+                .get_constitutions(dan_node_public_key, request.vn_confirmation_time)
+                .await
+            {
                 Ok(constitutions) => constitutions,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);

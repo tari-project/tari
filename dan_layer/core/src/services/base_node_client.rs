@@ -43,6 +43,7 @@ pub trait BaseNodeClient: Send + Sync {
     async fn get_constitutions(
         &mut self,
         dan_node_public_key: PublicKey,
+        last_tip: u64,
     ) -> Result<Vec<TransactionOutput>, DigitalAssetError>;
 
     async fn check_if_in_committee(

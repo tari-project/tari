@@ -463,10 +463,16 @@ where B: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::FetchTokensResponse { outputs })
             },
-            NodeCommsRequest::FetchConstitutions { dan_node_public_key } => {
+            NodeCommsRequest::FetchConstitutions {
+                dan_node_public_key,
+                vn_confirmation_time,
+            } => {
                 debug!(target: LOG_TARGET, "Starting fetch constitutions");
                 Ok(NodeCommsResponse::FetchConstitutionsResponse {
-                    outputs: self.blockchain_db.fetch_all_constitutions(dan_node_public_key).await?,
+                    outputs: self
+                        .blockchain_db
+                        .fetch_all_constitutions(dan_node_public_key, vn_confirmation_time)
+                        .await?,
                 })
             },
             NodeCommsRequest::FetchAssetRegistrations { range } => {

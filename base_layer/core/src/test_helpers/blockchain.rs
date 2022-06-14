@@ -329,8 +329,13 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_all_constitutions(
         &self,
         dan_node_public_key: &PublicKey,
+        vn_confirmation_time: u64,
+        tip_height: u64,
     ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_all_constitutions(dan_node_public_key)
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_all_constitutions(dan_node_public_key, vn_confirmation_time, tip_height)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {

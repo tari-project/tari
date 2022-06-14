@@ -141,6 +141,8 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_all_constitutions(
         &self,
         dan_node_public_key: &PublicKey,
+        vn_confirmation_time: u64,
+        tip_height: u64,
     ) -> Result<Vec<TransactionOutput>, ChainStorageError>;
 
     /// Fetch all outputs in a block
