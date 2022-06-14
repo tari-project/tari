@@ -178,3 +178,18 @@ Feature: Wallet CLI
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         Then WALLET is connected to BASE
+
+    @dan @critical
+    Scenario: As a user I want to publish a contract amendment via command line
+        Given I have a base node BASE
+        And I have wallet WALLET connected to base node BASE
+        And I have mining node MINE connected to base node BASE and wallet WALLET
+        And mining node MINE mines 4 blocks
+        Then I wait for wallet WALLET to have at least 1000000 uT
+        And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET via command line
+        And mining node MINE mines 8 blocks
+        Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        And I publish a contract amendment from file "fixtures/contract_amendment.json" on wallet WALLET via command line
+        And mining node MINE mines 8 blocks
+        Then wallet WALLET has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        Then WALLET is connected to BASE

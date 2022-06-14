@@ -308,7 +308,7 @@ Then(
     let wallet = this.getWallet(wallet_name);
     let output = await wallet_run_command(
       wallet,
-      `contract-definition publish ${absolute_path}`
+      `contract publish-definition ${absolute_path}`
     );
     console.log(output.buffer);
   }
@@ -324,6 +324,21 @@ Then(
     let output = await wallet_run_command(
       wallet,
       `publish-constitution-definition ${absolute_path}`
+    );
+    console.log(output.buffer);
+  }
+);
+
+Then(
+  "I publish a contract amendment from file {string} on wallet {word} via command line",
+  { timeout: 120 * 1000 },
+  async function (relative_file_path, wallet_name) {
+    let absolute_path = path.resolve(relative_file_path);
+    let wallet = this.getWallet(wallet_name);
+
+    let output = await wallet_run_command(
+      wallet,
+      `contract publish-amendment ${absolute_path}`
     );
     console.log(output.buffer);
   }

@@ -791,6 +791,7 @@ async fn handle_contract_definition_command(
         ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
         ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
+        ContractSubcommand::PublishAmendment(args) => publish_contract_amendment(wallet, args).await,
     }
 }
 
@@ -948,6 +949,11 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
         .submit_transaction(tx_id, transaction, 0.into(), message)
         .await?;
 
+    Ok(())
+}
+
+async fn publish_contract_amendment(_wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    println!("hello world from publish_contract_amendment: {:?}", args);
     Ok(())
 }
 
