@@ -23,10 +23,7 @@
 use std::sync::Arc;
 
 use tari_app_utilities::{identity_management, identity_management::load_from_json};
-use tari_common::{
-    configuration::Network,
-    exit_codes::{ExitCode, ExitError},
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::Dht;
 use tari_dan_core::services::{ConcreteAssetProcessor, MempoolServiceHandle};
@@ -58,8 +55,7 @@ pub async fn build_service_and_comms_stack(
         .add_initializer(P2pInitializer::new(
             p2p_config.clone(),
             config.peer_seeds.clone(),
-            // TODO: configurable
-            Network::Dibbler,
+            config.network,
             node_identity.clone(),
             publisher,
         ))

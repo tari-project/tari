@@ -88,6 +88,7 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
+    println!("Starting validator node on network {}", cli.network);
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
     initialize_logging(
@@ -179,7 +180,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
     grpc_address: Multiaddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    info!("Starting GRPC on {}", grpc_address);
+    println!("Starting GRPC on {}", grpc_address);
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;

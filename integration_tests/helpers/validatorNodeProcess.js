@@ -68,16 +68,40 @@ class ValidatorNodeProcess {
 
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
-        "build",
-        "--release",
-        "--bin",
-        "tari_validator_node",
-        "-Z",
-        "unstable-options",
-        "--out-dir",
-        process.cwd() + "/temp/out",
-      ]);
+      await new Promise((resolve, reject) => {
+        const ps = spawn(
+          "cargo",
+          [
+            "build",
+            "--release",
+            "--bin",
+            "tari_validator_node",
+            "-Z",
+            "unstable-options",
+            "--out-dir",
+            process.cwd() + "/temp/out",
+          ],
+          {
+            cwd: this.baseDir,
+            // shell: true,
+            env: { ...process.env },
+          }
+        );
+
+        ps.on("close", (code) => {
+          const ps = this.ps;
+          this.ps = null;
+          if (code) {
+            reject(`child process exited with code ${code}`);
+          } else {
+            resolve(ps);
+          }
+        });
+
+        expect(ps.error).to.be.an("undefined");
+        this.ps = ps;
+      });
+
       outputProcess = process.cwd() + "/temp/out/tari_validator_node";
     }
     return outputProcess;
