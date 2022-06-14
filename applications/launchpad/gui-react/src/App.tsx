@@ -39,7 +39,7 @@ const App = () => {
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
         {onboarding ? (
-          <Onboarding close={() => setOnboarding(false)} />
+          <Onboarding />
         ) : (
           <>
             <HomePage />
