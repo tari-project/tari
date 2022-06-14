@@ -25,14 +25,14 @@ use std::{convert::TryFrom, fmt::format};
 
 use config::Config;
 use futures::StreamExt;
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{http::status, AppHandle, Manager, Wry};
 
 use crate::{
     commands::{status, AppState, DEFAULT_IMAGES},
     docker::{ContainerState, ImageType, TariNetwork},
-    grpc::{GrpcWalletClient, WalletTransaction, WalletIdentity},
+    grpc::{GrpcWalletClient, WalletIdentity, WalletTransaction},
 };
 
 pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
@@ -62,12 +62,12 @@ pub async fn health_check(image: &str) -> String {
 
 #[tauri::command]
 pub async fn wallet_identity() -> Result<WalletIdentity, String> {
-    //Check if wallet container is running.
+    // Check if wallet container is running.
     let status = status(ImageType::Wallet).await;
     if "running" == status.to_lowercase() {
         let mut wallet_client = GrpcWalletClient::new();
         let identity = wallet_client.identity().await.map_err(|e| e.to_string())?;
-        Ok(WalletIdentity::from(identity))       
+        Ok(WalletIdentity::from(identity))
     } else {
         error!("Wallet container[image = {}] is not running", ImageType::Wallet);
         Err("Wallet is not running".to_string())
@@ -93,7 +93,7 @@ pub async fn wallet_events(app: AppHandle<Wry>) -> Result<(), String> {
                     amount: value.amount,
                     message: value.message,
                 };
-                
+
                 if let Err(err) = app_clone.emit_all("wallet_event", wt.clone()) {
                     warn!("Could not emit event to front-end, {:?}", err);
                 }

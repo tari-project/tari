@@ -30,9 +30,11 @@ use futures::{stream, Stream, StreamExt, TryStreamExt};
 use log::info;
 use tari_app_grpc::tari_rpc::{
     wallet_client::WalletClient,
+    GetIdentityRequest,
+    GetIdentityResponse,
     TransactionEvent,
     TransactionEventRequest,
-    TransactionEventResponse, GetIdentityResponse, GetIdentityRequest,
+    TransactionEventResponse,
 };
 use tonic::transport::Channel;
 

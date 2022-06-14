@@ -30,6 +30,7 @@ use tauri::{
     RunEvent,
     Submenu,
 };
+use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 use crate::{
     api::{image_list, network_list},
@@ -45,8 +46,6 @@ use crate::{
         AppState,
     },
 };
-
-use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 fn main() {
     env_logger::init();
@@ -97,16 +96,20 @@ fn main() {
     let workspaces = Workspaces::default();
     info!("Using Docker version: {}", docker.version());
 
+    let migrations = vec![Migration {
+        version: 1,
+        description: "create stats table",
+        sql: include_str!("../migrations/2022-06-13.create-stats-table.sql"),
+        kind: MigrationKind::Up,
+    }, Migration {
+        version: 2,
+        description: "create transactions table",
+        sql: include_str!("../migrations/2022-06-14.create-transactions-table.sql"),
+        kind: MigrationKind::Up,
+    }];
+
     tauri::Builder::default()
-        .plugin(TauriSql::default().add_migrations(
-          "sqlite:launchpad.db",
-          vec![Migration {
-            version: 1,
-            description: "create stats table",
-            sql: include_str!("../migrations/2022-06-13.create-stats-table.sql"),
-            kind: MigrationKind::Up,
-          }],
-        ))
+        .plugin(TauriSql::default().add_migrations("sqlite:launchpad.db", migrations))
         .manage(AppState::new(docker, workspaces, package_info))
         .menu(menu)
         .invoke_handler(tauri::generate_handler![

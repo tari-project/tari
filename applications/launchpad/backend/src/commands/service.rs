@@ -231,7 +231,6 @@ async fn start_service_impl(
     if !workspace.network_exists(&docker).await? {
         workspace.create_network(&docker).await?;
     }
-    //
     // Launch the container
     let image = ImageType::try_from(service_name.as_str())?;
     let container_name = workspace.start_service(image, docker.clone()).await?;
