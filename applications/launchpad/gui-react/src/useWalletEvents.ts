@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
 import { AppDispatch } from './store'
+import { TransactionsRepository } from './persistence/transactionsRepository'
 
 export type WalletTransactionEvent = {
   event: string
@@ -15,7 +16,13 @@ export type WalletTransactionEvent = {
   message: string
 }
 
-export const useWalletEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
+export const useWalletEvents = ({
+  dispatch,
+  transactionsRepository,
+}: {
+  dispatch: AppDispatch
+  transactionsRepository: TransactionsRepository
+}) => {
   useEffect(() => {
     invoke('wallet_events')
   }, [])

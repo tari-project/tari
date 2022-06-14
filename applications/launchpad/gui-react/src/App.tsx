@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import 'react-devtools' // @TODO: remove this import before final Production deployment!!!
 import styled, { ThemeProvider } from 'styled-components'
+
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import { selectThemeConfig } from './store/app/selectors'
-
+import getTransactionsRepository from './persistence/transactionsRepository'
 import { useSystemEvents } from './useSystemEvents'
 import { useWalletEvents } from './useWalletEvents'
 import HomePage from './pages/home'
@@ -13,7 +15,6 @@ import useMiningSimulator from './useMiningSimulator'
 import useMiningScheduling from './useMiningScheduling'
 import TBotContainer from './containers/TBotContainer'
 import Onboarding from './pages/onboarding'
-import { useState } from 'react'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -22,6 +23,8 @@ const AppContainer = styled.div`
   overflow: hidden;
   border-radius: 10;
 `
+
+const transactionsRepository = getTransactionsRepository()
 const App = () => {
   const themeConfig = useAppSelector(selectThemeConfig)
   const dispatch = useAppDispatch()
@@ -32,7 +35,7 @@ const App = () => {
 
   useSystemEvents({ dispatch })
 
-  useWalletEvents({ dispatch })
+  useWalletEvents({ dispatch, transactionsRepository })
 
   useMiningSimulator()
 
