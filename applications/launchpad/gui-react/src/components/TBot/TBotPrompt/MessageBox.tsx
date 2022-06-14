@@ -1,10 +1,15 @@
 import { forwardRef, ReactNode, ForwardedRef } from 'react'
 import { useSpring } from 'react-spring'
+import { useTheme } from 'styled-components'
+import SvgArrowRight from '../../../styles/Icons/ArrowRight'
+import Button from '../../Button'
+import t from '../../../locales'
 import {
   MessageSpaceContainer,
   StyledMessage,
   StyledMessageBox,
   MessageSlideIn,
+  SkipButtonContainer,
 } from './styles'
 
 /**
@@ -15,9 +20,13 @@ const MessageBox = (
   {
     animate,
     children,
+    skipButton,
+    floating,
   }: {
     animate: boolean
     children: ReactNode
+    skipButton?: boolean
+    floating?: boolean
   },
   ref?: ForwardedRef<HTMLDivElement>,
 ) => {
@@ -33,13 +42,40 @@ const MessageBox = (
     delay: 800,
   })
 
+  const theme = useTheme()
+
   return (
     <StyledMessageBox ref={ref}>
-      <StyledMessage style={{ opacity: 0 }}>{children}</StyledMessage>
+      <StyledMessage
+        style={{ opacity: 0 }}
+        skipButton={skipButton}
+        $floating={floating}
+      >
+        {children}
+      </StyledMessage>
       <MessageSpaceContainer>
         <MessageSlideIn style={{ ...useSlideInAnim }}>
-          <StyledMessage style={{ ...useOpacityAnim }}>
+          <StyledMessage
+            style={{ ...useOpacityAnim }}
+            skipButton={skipButton}
+            $floating={floating}
+          >
             {children}
+            {skipButton && (
+              <SkipButtonContainer>
+                <Button
+                  style={{
+                    textDecoration: 'none',
+                    color: theme.secondary,
+                  }}
+                  variant='button-in-text'
+                  rightIcon={<SvgArrowRight fontSize={24} />}
+                  autosizeIcons={false}
+                >
+                  {t.onboarding.actions.skipChatting}
+                </Button>
+              </SkipButtonContainer>
+            )}
           </StyledMessage>
         </MessageSlideIn>
       </MessageSpaceContainer>

@@ -14,9 +14,10 @@ import baseNodeI18n from './baseNode'
 import walletI18n from './wallet'
 import expertViewI18n from './expertView'
 import walletPasswordWizardI18n from './walletPasswordWizard'
-import cryptoMiningHelpIl8n from './cryptoMiningHelp'
-import mergedMiningHelpIl8n from './mergedMiningHelp'
-import settingsIl8n from './settings'
+import cryptoMiningHelpI18n from './cryptoMiningHelp'
+import mergedMiningHelpI18n from './mergedMiningHelp'
+import settingsI18n from './settings'
+import onboardingI18n from './onboarding'
 
 const translations = {
   common: commonI18n,
@@ -26,9 +27,10 @@ const translations = {
   wallet: walletI18n,
   expertView: expertViewI18n,
   walletPasswordWizard: walletPasswordWizardI18n,
-  cryptoMiningHelp: cryptoMiningHelpIl8n,
-  mergedMiningHelp: mergedMiningHelpIl8n,
-  settings: settingsIl8n,
+  cryptoMiningHelp: cryptoMiningHelpI18n,
+  mergedMiningHelp: mergedMiningHelpI18n,
+  settings: settingsI18n,
+  onboarding: onboardingI18n,
 }
 
 export default translations
