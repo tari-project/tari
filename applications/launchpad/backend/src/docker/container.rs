@@ -102,7 +102,7 @@ fn create_get_update_and_delete_container_test() {
     assert_eq!(1, CONTAINERS.read().unwrap().len());
 
     let value = container_state("tor").unwrap();
-    assert_eq!(state.name(), value.clone().name());
+    assert_eq!(state.name(), value.name());
     assert_eq!(state.id(), value.id());
     assert_eq!(ContainerStatus::Created, value.status());
 
@@ -115,7 +115,7 @@ fn create_get_update_and_delete_container_test() {
     assert_eq!(ContainerStatus::Deleted, value.status());
 
     let deleted = remove_container("tor").unwrap();
-    assert_eq!(state.name(), deleted.clone().name());
+    assert_eq!(state.name(), deleted.name());
     assert!(container_state("tor").is_none());
     assert!(change_container_status("tor", ContainerStatus::Running).is_err());
     assert!(remove_container("tor").is_err());
