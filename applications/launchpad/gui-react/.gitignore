@@ -10,7 +10,8 @@
 .jest/
 
 # production
-/build
+build/**
+!build/.gitkeep
 
 # misc
 .DS_Store

@@ -17,7 +17,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: '${{ env.toolchain }}'
           profile: minimal
           override: true
       - uses: Swatinem/rust-cache@v1
