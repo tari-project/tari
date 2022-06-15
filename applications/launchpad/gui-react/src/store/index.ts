@@ -47,6 +47,10 @@ export const store =
       })
     : configureStore({
         reducer: persistedReducer,
+        middleware: getDefaultMiddleware => [
+          // Silent console errors about non-serializable data
+          ...getDefaultMiddleware({ serializableCheck: false }),
+        ],
         enhancers: [
           devToolsEnhancer({
             name: 'Tari Launchpad',
