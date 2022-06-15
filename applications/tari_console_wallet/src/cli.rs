@@ -218,6 +218,9 @@ pub enum ContractSubcommand {
 
     /// Creates and publishes a contract definition UTXO from the JSON spec file.
     PublishConstitution(PublishFileArgs),
+
+    /// Creates and publishes a contract update proposal UTXO from the JSON spec file.
+    PublishUpdateProposal(PublishFileArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -254,5 +257,10 @@ pub struct InitConstitutionArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct PublishFileArgs {
+    pub file_path: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PublishUpdateProposalArgs {
     pub file_path: PathBuf,
 }
