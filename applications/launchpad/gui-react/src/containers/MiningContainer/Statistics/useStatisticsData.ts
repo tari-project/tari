@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import getTransactionsRepository, {
   DataResolution,
   MinedTariEntry,
-} from '../../../persistence/minedTransactionsRepository'
+} from '../../../persistence/transactionsRepository'
 
 import { MiningStatisticsInterval } from './types'
 

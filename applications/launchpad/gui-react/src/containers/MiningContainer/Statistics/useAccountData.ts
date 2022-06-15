@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 
 import getTransactionsRepository, {
   DataResolution,
-} from '../../../persistence/minedTransactionsRepository'
+} from '../../../persistence/transactionsRepository'
 import * as DateUtils from '../../../utils/Date'
 
 import { MiningStatisticsInterval, AccountData } from './types'

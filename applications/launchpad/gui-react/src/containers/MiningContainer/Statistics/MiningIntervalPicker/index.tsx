@@ -7,7 +7,7 @@ import Button from '../../../../components/Button'
 import Iterator from '../../../../components/Iterator'
 import { MiningStatisticsInterval } from '../types'
 import t from '../../../../locales'
-import getTransactionsRepository from '../../../../persistence/minedTransactionsRepository'
+import getTransactionsRepository from '../../../../persistence/transactionsRepository'
 
 const transactionsRepository = getTransactionsRepository()
 

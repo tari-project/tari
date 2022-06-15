@@ -2,7 +2,7 @@ import 'react-devtools' // @TODO: remove this import before final Production dep
 import styled, { ThemeProvider } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
-import getTransactionsRepository from './persistence/minedTransactionsRepository'
+import getTransactionsRepository from './persistence/transactionsRepository'
 import {
   selectOnboardingComplete,
   selectThemeConfig,

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
-import { TransactionsRepository } from './persistence/minedTransactionsRepository'
+import { TransactionsRepository } from './persistence/transactionsRepository'
 
 export enum TransactionEvent {
   Received = 'received',

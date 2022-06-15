@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 
 import * as DateUtils from '../../../utils/Date'
-import getTransactionsRepository from '../../../persistence/minedTransactionsRepository'
+import getTransactionsRepository from '../../../persistence/transactionsRepository'
 
 import { MiningStatisticsInterval } from './types'
 import Statistics from './Statistics'
