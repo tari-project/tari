@@ -162,7 +162,7 @@ Then(
     let dan_node = this.getNode(vn_name);
     let grpc_dan_node = await dan_node.createGrpcClient();
     let response = await grpc_dan_node.publishContractAcceptance(
-      "f665775dbbf4e428e5c8c2bb1c5e7d2e508e93c83250c495ac617a0a1fb2d76d" // contract_id
+      "90b1da4524ea0e9479040d906db9194d8af90f28d05ff2d64c0a82eb93125177" // contract_id
     );
     expect(response.status).to.be.equal("Accepted");
     console.log({ response });
