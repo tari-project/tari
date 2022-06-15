@@ -67,6 +67,7 @@ use tari_wallet::{
         ContractDefinitionFileFormat,
         ContractSpecificationFileFormat,
         ContractUpdateProposalFileFormat,
+        SignatureFileFormat,
     },
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
@@ -89,6 +90,7 @@ use crate::{
         ContractSubcommand,
         InitConstitutionArgs,
         InitDefinitionArgs,
+        InitUpdateProposalArgs,
         PublishFileArgs,
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
@@ -795,6 +797,7 @@ async fn handle_contract_definition_command(
     match command.subcommand {
         ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(args),
         ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
+        ContractSubcommand::InitUpdateProposal(args) => init_contract_update_proposal_spec(args),
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
         ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
         ContractSubcommand::PublishUpdateProposal(args) => publish_contract_update_proposal(wallet, args).await,
@@ -895,6 +898,76 @@ fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), Com
     let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let writer = BufWriter::new(file);
     serde_json::to_writer_pretty(writer, &constitution).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    let contract_id = Prompt::new("Contract id (hex):")
+        .skip_if_some(args.contract_id)
+        .get_result()?;
+    let proposal_id = Prompt::new("Proposal id (integer, unique inside the contract scope):")
+        .skip_if_some(args.proposal_id)
+        .with_default("0".to_string())
+        .get_result()?
+        .parse::<u64>()
+        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+    let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
+    let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
+        .skip_if_some(args.acceptance_period_expiry)
+        .with_default("50".to_string())
+        .get_result()?;
+    let minimum_quorum_required = Prompt::new("Minimum quorum:")
+        .skip_if_some(args.minimum_quorum_required)
+        .with_default(committee.len().to_string())
+        .get_result()?;
+
+    let updated_constitution = ConstitutionDefinitionFileFormat {
+        contract_id,
+        validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
+        consensus: SideChainConsensus::MerkleRoot,
+        initial_reward: 0,
+        acceptance_parameters: ContractAcceptanceRequirements {
+            acceptance_period_expiry: acceptance_period_expiry
+                .parse::<u64>()
+                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+            minimum_quorum_required: minimum_quorum_required
+                .parse::<u32>()
+                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+        },
+        checkpoint_parameters: CheckpointParameters {
+            minimum_quorum_required: 0,
+            abandoned_interval: 0,
+        },
+        constitution_change_rules: ConstitutionChangeRulesFileFormat {
+            change_flags: 0,
+            requirements_for_constitution_change: None,
+        },
+    };
+
+    let update_proposal = ContractUpdateProposalFileFormat {
+        proposal_id,
+        // TODO: use a private key to sign the proposal
+        signature: SignatureFileFormat::default(),
+        updated_constitution,
+    };
+
+    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(writer, &update_proposal).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     println!("Wrote {}", dest.to_string_lossy());
     Ok(())
 }

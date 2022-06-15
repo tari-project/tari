@@ -37,4 +37,4 @@ mod contract_update_proposal_file_format;
 
 pub use constitution_definition_file_format::{ConstitutionChangeRulesFileFormat, ConstitutionDefinitionFileFormat};
 pub use contract_definition_file_format::{ContractDefinitionFileFormat, ContractSpecificationFileFormat};
-pub use contract_update_proposal_file_format::ContractUpdateProposalFileFormat;
+pub use contract_update_proposal_file_format::{ContractUpdateProposalFileFormat, SignatureFileFormat};
