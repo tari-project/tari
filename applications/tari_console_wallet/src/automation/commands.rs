@@ -90,6 +90,7 @@ use crate::{
         CliCommands,
         ContractCommand,
         ContractSubcommand,
+        InitAmendmentArgs,
         InitConstitutionArgs,
         InitDefinitionArgs,
         InitUpdateProposalArgs,
@@ -797,6 +798,7 @@ async fn handle_contract_command(wallet: &WalletSqlite, command: ContractCommand
         ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(args),
         ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
         ContractSubcommand::InitUpdateProposal(args) => init_contract_update_proposal_spec(args),
+        ContractSubcommand::InitAmendment(args) => init_contract_amendment_spec(args),
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
         ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
         ContractSubcommand::PublishUpdateProposal(args) => publish_contract_update_proposal(wallet, args).await,
@@ -969,6 +971,62 @@ fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<()
     let writer = BufWriter::new(file);
     serde_json::to_writer_pretty(writer, &update_proposal).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+fn init_contract_amendment_spec(args: InitAmendmentArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    // check that the proposal file exists
+    if !args.proposal_file_path.exists() {
+        println!(
+            "Proposal file path {} not found",
+            args.proposal_file_path.to_string_lossy()
+        );
+        return Ok(());
+    }
+    let proposal_file = File::open(&args.proposal_file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let proposal_file_reader = BufReader::new(proposal_file);
+
+    // parse the JSON file with the proposal
+    let update_proposal: ContractUpdateProposalFileFormat =
+        serde_json::from_reader(proposal_file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+
+    // read the activation_window value from the user
+    let activation_window = Prompt::new("Activation window (in blocks, integer):")
+        .skip_if_some(args.activation_window)
+        .with_default("50".to_string())
+        .get_result()?
+        .parse::<u64>()
+        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+
+    // create the amendment from the proposal
+    let amendment = ContractAmendmentFileFormat {
+        proposal_id: update_proposal.proposal_id,
+        validator_committee: update_proposal.updated_constitution.validator_committee.clone(),
+        // TODO: import the real signatures for all the proposal acceptances
+        validator_signatures: Vec::new(),
+        updated_constitution: update_proposal.updated_constitution,
+        activation_window,
+    };
+
+    // write the amendment to the destination file
+    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(writer, &amendment).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    println!("Wrote {}", dest.to_string_lossy());
+
     Ok(())
 }
 
