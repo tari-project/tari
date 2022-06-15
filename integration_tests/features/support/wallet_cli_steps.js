@@ -323,7 +323,7 @@ Then(
 
     let output = await wallet_run_command(
       wallet,
-      `publish-constitution-definition ${absolute_path}`
+      `contract publish-constitution ${absolute_path}`
     );
     console.log(output.buffer);
   }
