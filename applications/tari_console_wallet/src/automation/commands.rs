@@ -746,8 +746,8 @@ pub async fn command_runner(
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
             },
-            Contract(subcommand) => {
-                handle_contract_definition_command(&wallet, subcommand).await?;
+            Contract(command) => {
+                handle_contract_command(&wallet, command).await?;
             },
         }
     }
@@ -790,10 +790,7 @@ pub async fn command_runner(
     Ok(())
 }
 
-async fn handle_contract_definition_command(
-    wallet: &WalletSqlite,
-    command: ContractCommand,
-) -> Result<(), CommandError> {
+async fn handle_contract_command(wallet: &WalletSqlite, command: ContractCommand) -> Result<(), CommandError> {
     match command.subcommand {
         ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(args),
         ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
