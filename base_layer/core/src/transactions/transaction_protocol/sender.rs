@@ -31,7 +31,7 @@ use tari_common_types::{
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+    ristretto::pedersen::{commitment_factory::PedersenCommitmentFactory, PedersenCommitment},
     tari_utilities::ByteArray,
 };
 use tari_script::TariScript;
@@ -770,7 +770,7 @@ mod test {
         common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
-        ristretto::pedersen::PedersenCommitmentFactory,
+        ristretto::pedersen::commitment_factory::PedersenCommitmentFactory,
         tari_utilities::{hex::Hex, ByteArray},
     };
     use tari_script::{script, ExecutionStack, TariScript};
@@ -1223,7 +1223,7 @@ mod test {
     }
 
     #[test]
-    fn single_recipient_with_rewindable_change_and_receiver_outputs() {
+    fn single_recipient_with_rewindable_change_and_receiver_outputs_dalek_bulletproofs() {
         let factories = CryptoFactories::default();
         // Alice's parameters
         let a = TestParams::new();

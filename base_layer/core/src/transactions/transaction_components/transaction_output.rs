@@ -48,7 +48,8 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService as RangeProofServiceTrait,
-    ristretto::pedersen::PedersenCommitmentFactory,
+    rewindable_range_proof::RewindableRangeProofService,
+    ristretto::pedersen::commitment_factory::PedersenCommitmentFactory,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 use tari_script::TariScript;

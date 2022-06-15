@@ -28,7 +28,7 @@ use tari_crypto::{
     common::Blake256,
     ristretto::{
         dalek_range_proof::DalekRangeProofService,
-        pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+        pedersen::{commitment_factory::PedersenCommitmentFactory, PedersenCommitment},
         RistrettoComSig,
         RistrettoPublicKey,
         RistrettoSchnorr,

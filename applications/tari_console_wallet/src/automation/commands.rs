@@ -59,7 +59,7 @@ use tari_core::transactions::{
         UnblindedOutput,
     },
 };
-use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
+use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     assets::{

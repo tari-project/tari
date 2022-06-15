@@ -19,7 +19,7 @@ use digest::Digest;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     ristretto::{
-        pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+        pedersen::{commitment_factory::PedersenCommitmentFactory, PedersenCommitment},
         RistrettoSecretKey,
     },
 };

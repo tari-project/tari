@@ -35,7 +35,7 @@ use tari_common_types::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::pedersen::PedersenCommitmentFactory,
+    ristretto::pedersen::commitment_factory::PedersenCommitmentFactory,
     tari_utilities::{fixed_set::FixedSet, hex::to_hex},
 };
 use tari_script::{ExecutionStack, TariScript};

@@ -15,14 +15,14 @@ tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", commit = "a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312" }
 tari_libtor = { path = "../../infrastructure/libtor" }
 tari_mmr = { path = "../../base_layer/mmr", features = ["native_bitmap"] }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = {path="../../infrastructure/storage"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"

@@ -91,7 +91,8 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::types::Challenge;
 use tari_crypto::{
-    range_proof::{RangeProofError, REWIND_USER_MESSAGE_LENGTH},
+    errors::RangeProofError,
+    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
     signatures::SchnorrSignatureError,
     tari_utilities::byte_array::ByteArray,
 };
