@@ -41,6 +41,7 @@ use super::{
     ContractAcceptance,
     ContractDefinition,
     ContractUpdateProposal,
+    ContractUpdateProposalAcceptance,
     OutputFeaturesVersion,
     SideChainFeaturesBuilder,
 };
@@ -308,6 +309,27 @@ impl OutputFeatures {
             sidechain_features: Some(
                 SideChainFeatures::builder(contract_id)
                     .with_contract_acceptance(ContractAcceptance {
+                        validator_node_public_key,
+                        signature,
+                    })
+                    .finish(),
+            ),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_contract_update_proposal_acceptance(
+        contract_id: FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
+    ) -> OutputFeatures {
+        Self {
+            output_type: OutputType::ContractConstitutionChangeAcceptance,
+            sidechain_features: Some(
+                SideChainFeatures::builder(contract_id)
+                    .with_contract_update_proposal_acceptance(ContractUpdateProposalAcceptance {
+                        proposal_id,
                         validator_node_public_key,
                         signature,
                     })
