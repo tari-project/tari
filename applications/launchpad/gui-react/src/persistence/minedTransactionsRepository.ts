@@ -16,7 +16,7 @@ export interface MinedTariEntry {
   xtr: number
 }
 
-export interface MinedTransactionsRepository {
+export interface TransactionsRepository {
   add: (transactionEvent: WalletTransactionEvent) => Promise<void>
   getMinedXtr: (
     from: Date,
@@ -24,11 +24,11 @@ export interface MinedTransactionsRepository {
     resolution?: DataResolution,
   ) => Promise<Dictionary<MinedTariEntry>>
   hasDataBefore: (d: Date) => Promise<boolean>
-  getLifelongBalance: () => Promise<number>
-  getDataSpan: () => Promise<{ from: Date; to: Date }>
+  getLifelongMinedBalance: () => Promise<number>
+  getMinedTransactionsDataSpan: () => Promise<{ from: Date; to: Date }>
 }
 
-const repositoryFactory: () => MinedTransactionsRepository = () => ({
+const repositoryFactory: () => TransactionsRepository = () => ({
   add: async event => {
     const db = await getDb()
 
@@ -108,7 +108,7 @@ const repositoryFactory: () => MinedTransactionsRepository = () => ({
 
     return Boolean(results.length)
   },
-  getLifelongBalance: async () => {
+  getLifelongMinedBalance: async () => {
     const db = await getDb()
 
     const results: {
@@ -123,7 +123,7 @@ const repositoryFactory: () => MinedTransactionsRepository = () => ({
 
     return results.reduce((accu, current) => accu + current.amount, 0)
   },
-  getDataSpan: async () => {
+  getMinedTransactionsDataSpan: async () => {
     const db = await getDb()
 
     const resultsTo: {

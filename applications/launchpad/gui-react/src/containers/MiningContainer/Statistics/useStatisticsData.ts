@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 
-import getMinedTransactionsRepository, {
+import getTransactionsRepository, {
   DataResolution,
   MinedTariEntry,
 } from '../../../persistence/minedTransactionsRepository'
 
 import { MiningStatisticsInterval } from './types'
 
-const minedTransactionsRepository = getMinedTransactionsRepository()
+const transactionsRepository = getTransactionsRepository()
 
 const useStatisticsData = ({
   interval,
@@ -29,7 +29,7 @@ const useStatisticsData = ({
     }[interval]
 
     const getData = async () => {
-      const results = await minedTransactionsRepository.getMinedXtr(
+      const results = await transactionsRepository.getMinedXtr(
         from,
         to,
         resolution,

@@ -7,9 +7,9 @@ import Button from '../../../../components/Button'
 import Iterator from '../../../../components/Iterator'
 import { MiningStatisticsInterval } from '../types'
 import t from '../../../../locales'
-import getMinedTransactionsRepository from '../../../../persistence/minedTransactionsRepository'
+import getTransactionsRepository from '../../../../persistence/minedTransactionsRepository'
 
-const minedTransactionsRepository = getMinedTransactionsRepository()
+const transactionsRepository = getTransactionsRepository()
 
 const viewingToday = (d: Date, interval: MiningStatisticsInterval): boolean => {
   switch (interval) {
@@ -49,7 +49,7 @@ const MiningIntervalPicker = ({
   }>({ from: new Date(), to: new Date() })
   useEffect(() => {
     const getData = async () => {
-      const dates = await minedTransactionsRepository.getDataSpan()
+      const dates = await transactionsRepository.getMinedTransactionsDataSpan()
 
       setDates(dates)
     }

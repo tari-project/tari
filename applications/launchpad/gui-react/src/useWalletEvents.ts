@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
-import { MinedTransactionsRepository } from './persistence/minedTransactionsRepository'
+import { TransactionsRepository } from './persistence/minedTransactionsRepository'
 
 export enum TransactionEvent {
   Received = 'received',
@@ -31,9 +31,9 @@ export type WalletTransactionEvent = {
 }
 
 export const useWalletEvents = ({
-  minedTransactionsRepository,
+  transactionsRepository,
 }: {
-  minedTransactionsRepository: MinedTransactionsRepository
+  transactionsRepository: TransactionsRepository
 }) => {
   useEffect(() => {
     invoke('wallet_events')
@@ -52,7 +52,7 @@ export const useWalletEvents = ({
           event: string
           payload: WalletTransactionEvent
         }) => {
-          minedTransactionsRepository.add(payload)
+          transactionsRepository.add(payload)
         },
       )
     }

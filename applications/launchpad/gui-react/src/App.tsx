@@ -4,7 +4,7 @@ import styled, { ThemeProvider } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import { selectThemeConfig } from './store/app/selectors'
-import getMinedTransactionsRepository from './persistence/minedTransactionsRepository'
+import getTransactionsRepository from './persistence/minedTransactionsRepository'
 import { useSystemEvents } from './useSystemEvents'
 import { useWalletEvents } from './useWalletEvents'
 import HomePage from './pages/home'
@@ -24,7 +24,7 @@ const AppContainer = styled.div`
   border-radius: 10;
 `
 
-const minedTransactionsRepository = getMinedTransactionsRepository()
+const transactionsRepository = getTransactionsRepository()
 const App = () => {
   const themeConfig = useAppSelector(selectThemeConfig)
   const dispatch = useAppDispatch()
@@ -35,7 +35,7 @@ const App = () => {
 
   useSystemEvents({ dispatch })
 
-  useWalletEvents({ minedTransactionsRepository })
+  useWalletEvents({ transactionsRepository })
 
   useMiningSimulator()
 

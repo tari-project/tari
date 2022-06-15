@@ -1,14 +1,14 @@
 import { useMemo, useState, useEffect } from 'react'
 
 import * as DateUtils from '../../../utils/Date'
-import getMinedTransactionsRepository from '../../../persistence/minedTransactionsRepository'
+import getTransactionsRepository from '../../../persistence/minedTransactionsRepository'
 
 import { MiningStatisticsInterval } from './types'
 import Statistics from './Statistics'
 import useStatisticsData from './useStatisticsData'
 import useAccountData from './useAccountData'
 
-const minedTransactionsRepository = getMinedTransactionsRepository()
+const transactionsRepository = getTransactionsRepository()
 
 const getFrom = (
   interval: MiningStatisticsInterval,
@@ -62,7 +62,7 @@ const StatisticsContainer = ({
   useEffect(() => {
     const calculateAllFilterDisabled = async () => {
       const hasDataBeforeCurrentYear =
-        await minedTransactionsRepository.hasDataBefore(
+        await transactionsRepository.hasDataBefore(
           DateUtils.startOfYear(new Date()),
         )
       setDisableAllFilter(!hasDataBeforeCurrentYear)

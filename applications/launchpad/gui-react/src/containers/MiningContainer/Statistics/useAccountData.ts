@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 
-import getMinedTransactionsRepository, {
+import getTransactionsRepository, {
   DataResolution,
 } from '../../../persistence/minedTransactionsRepository'
 import * as DateUtils from '../../../utils/Date'
 
 import { MiningStatisticsInterval, AccountData } from './types'
 
-const minedTransactionsRepository = getMinedTransactionsRepository()
+const transactionsRepository = getTransactionsRepository()
 
 const useAccountData = ({
   interval,
@@ -25,7 +25,7 @@ const useAccountData = ({
     const getAccountData = async () => {
       if (interval === 'monthly') {
         const currentMonthStart = DateUtils.startOfMonth(intervalToShow)
-        const currentMonthPromise = minedTransactionsRepository
+        const currentMonthPromise = transactionsRepository
           .getMinedXtr(
             currentMonthStart,
             DateUtils.endOfMonth(intervalToShow),
@@ -38,7 +38,7 @@ const useAccountData = ({
             .toString()
             .padStart(2, '0')}`,
         )
-        const previousMonthPromise = minedTransactionsRepository
+        const previousMonthPromise = transactionsRepository
           .getMinedXtr(
             previousMonthStart,
             DateUtils.endOfMonth(previousMonthStart),
@@ -75,7 +75,7 @@ const useAccountData = ({
 
       if (interval === 'yearly') {
         const currentYearStart = DateUtils.startOfYear(intervalToShow)
-        const currentYearPromise = minedTransactionsRepository
+        const currentYearPromise = transactionsRepository
           .getMinedXtr(
             currentYearStart,
             DateUtils.endOfYear(intervalToShow),
@@ -85,7 +85,7 @@ const useAccountData = ({
         const previousYearStart = new Date(
           `${currentYearStart.getFullYear() - 1}`,
         )
-        const previousYearPromise = minedTransactionsRepository
+        const previousYearPromise = transactionsRepository
           .getMinedXtr(
             previousYearStart,
             DateUtils.endOfYear(previousYearStart),
@@ -122,7 +122,7 @@ const useAccountData = ({
 
       if (interval === 'all') {
         const currentBalance =
-          await minedTransactionsRepository.getLifelongBalance()
+          await transactionsRepository.getLifelongMinedBalance()
 
         const yearlyAccountData: AccountData = [
           {
