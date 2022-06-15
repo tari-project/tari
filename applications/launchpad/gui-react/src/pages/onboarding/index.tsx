@@ -37,7 +37,7 @@ const Onboarding = () => {
 
   return (
     <div>
-      <TitleBar mode='onboarding' />
+      <TitleBar hideSettingsButton />
       <div
         style={{
           display: 'flex',
