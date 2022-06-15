@@ -17,10 +17,14 @@ export const BarSegmentContainer = styled(animated.div)<{ fill?: number }>`
   position: relative;
 `
 
-export const ProgressBarSegment = styled(animated.span)`
+export const AnimatedSegment = styled(animated.span)<{ $fill?: number }>`
   background-image: ${({ theme }) => theme.tariGradient};
-  border-radius: ${({ theme }) => theme.borderRadius(4)};
-  /* display: inline-block, */
+  border-top-left-radius: ${({ theme }) => theme.borderRadius(4)};
+  border-bottom-left-radius: ${({ theme }) => theme.borderRadius(4)};
+  border-top-right-radius: ${({ theme, $fill }) =>
+    $fill !== 1 ? theme.borderRadius(1) : theme.borderRadius(4)};
+  border-bottom-right-radius: ${({ theme, $fill }) =>
+    $fill !== 1 ? theme.borderRadius(1) : theme.borderRadius(4)};
   height: 100%;
   position: absolute;
 `

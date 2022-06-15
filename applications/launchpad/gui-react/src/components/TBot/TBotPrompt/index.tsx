@@ -131,8 +131,8 @@ const TBotPrompt = ({
       // show loading dots, and then increase count which results in rendering next message.
       timeout = setTimeout(() => {
         setMessageLoading(false)
-        setCount(count => count + 1)
         counter++
+        setCount(count => count + 1)
       }, wait)
     }
 
@@ -240,8 +240,8 @@ const TBotPrompt = ({
       data-testid={testid || 'tbotprompt-cmp'}
     >
       <ContentRow>
+        <FadeOutSection $floating={floating} />
         <ContentContainer $floating={floating}>
-          <FadeOutSection $floating={floating} />
           {closeIcon && (
             <StyledCloseContainer>
               <StyledCloseIcon>

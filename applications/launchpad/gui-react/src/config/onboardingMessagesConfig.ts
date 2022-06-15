@@ -33,7 +33,7 @@ export const OnboardingMessagesMap: TBotMessage[] = [
   },
   {
     content: messages[4],
-    barFill: 0.35,
+    barFill: 0.625,
     wait: 5000,
     noSkip: true,
   },

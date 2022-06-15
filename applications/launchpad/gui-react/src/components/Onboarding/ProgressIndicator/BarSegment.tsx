@@ -1,5 +1,5 @@
-import { animated, config, useSpring } from 'react-spring'
-import { BarSegmentContainer, ProgressBarSegment } from './styles'
+import { config, useSpring } from 'react-spring'
+import { BarSegmentContainer, AnimatedSegment } from './styles'
 
 const BarSegment = ({ fill }: { fill: number | undefined }) => {
   let progressBarWidth
@@ -8,20 +8,11 @@ const BarSegment = ({ fill }: { fill: number | undefined }) => {
   }
   const progressAnim = useSpring({
     width: progressBarWidth,
-    config: config.default,
+    config: config.gentle,
   })
-  // console.log('FILL: ', fill)
   return (
     <BarSegmentContainer>
-      <ProgressBarSegment
-        style={{
-          ...progressAnim,
-          // backgroundColor: 'red',
-          // display: 'inline-block',
-          // height: '100%',
-          // position: 'absolute',
-        }}
-      />
+      <AnimatedSegment style={{ ...progressAnim }} $fill={fill} />
     </BarSegmentContainer>
   )
 }

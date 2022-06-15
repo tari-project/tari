@@ -39,7 +39,7 @@ export const FadeOutSection = styled.div<{ $floating?: boolean }>`
   position: absolute;
   height: ${({ $floating }) => ($floating ? '100px' : '250px')};
   ${({ $floating }) => ($floating ? '' : 'top: 0;')}
-  width: ${({ $floating }) => ($floating ? '417px' : '628px')};
+  width: ${({ $floating }) => ($floating ? '417px' : '650px')};
   z-index: 2;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   background-image: ${({ $floating }) =>
