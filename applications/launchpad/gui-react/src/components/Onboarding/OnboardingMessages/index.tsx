@@ -42,7 +42,7 @@ const messages = [
     useEffect(() => {
       setTimeout(() => {
         setShowButton(true)
-      }, 5000)
+      }, 3000)
     }, [])
 
     return (
@@ -62,7 +62,7 @@ const messages = [
           <Button
             variant='secondary'
             onClick={() => dispatch(setOnboardingComplete(true))}
-            style={{ width: '200px' }}
+            style={{ width: '200px', marginTop: '20px' }}
           >
             Close Onboarding
           </Button>
