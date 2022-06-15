@@ -135,6 +135,11 @@ impl SideChainFeaturesBuilder {
         self
     }
 
+    pub fn with_contract_amendment(mut self, contract_amendment: ContractAmendment) -> Self {
+        self.features.amendment = Some(contract_amendment);
+        self
+    }
+
     pub fn finish(self) -> SideChainFeatures {
         self.features
     }

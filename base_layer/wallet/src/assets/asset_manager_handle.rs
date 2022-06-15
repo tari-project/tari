@@ -25,6 +25,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_core::transactions::transaction_components::{
+    ContractAmendment,
     ContractDefinition,
     ContractUpdateProposal,
     OutputFeatures,
@@ -280,6 +281,27 @@ impl AssetManagerHandle {
             AssetManagerResponse::CreateContractUpdateProposal { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_update_proposal".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_amendment(
+        &mut self,
+        contract_id: &FixedHash,
+        amendment: &ContractAmendment,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractAmendment {
+                contract_id: *contract_id,
+                contract_amendment: Box::new(amendment.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractAmendment { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_amendment".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

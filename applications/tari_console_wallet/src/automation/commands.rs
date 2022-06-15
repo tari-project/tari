@@ -50,6 +50,7 @@ use tari_core::transactions::{
     transaction_components::{
         CheckpointParameters,
         ContractAcceptanceRequirements,
+        ContractAmendment,
         ContractDefinition,
         ContractUpdateProposal,
         SideChainConsensus,
@@ -64,6 +65,7 @@ use tari_wallet::{
     assets::{
         ConstitutionChangeRulesFileFormat,
         ConstitutionDefinitionFileFormat,
+        ContractAmendmentFileFormat,
         ContractDefinitionFileFormat,
         ContractSpecificationFileFormat,
         ContractUpdateProposalFileFormat,
@@ -798,6 +800,7 @@ async fn handle_contract_definition_command(
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
         ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
         ContractSubcommand::PublishUpdateProposal(args) => publish_contract_update_proposal(wallet, args).await,
+        ContractSubcommand::PublishAmendment(args) => publish_contract_amendment(wallet, args).await,
     }
 }
 
@@ -986,6 +989,40 @@ async fn publish_contract_update_proposal(wallet: &WalletSqlite, args: PublishFi
 
     println!(
         "Contract update proposal transaction submitted with tx_id={} for contract with contract_id={}",
+        tx_id, contract_id_hex
+    );
+
+    Ok(())
+}
+
+async fn publish_contract_amendment(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let file_reader = BufReader::new(file);
+
+    // parse the JSON file
+    let amendment: ContractAmendmentFileFormat =
+        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let contract_id_hex = amendment.updated_constitution.contract_id.clone();
+    let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let amendment_features = ContractAmendment::try_from(amendment).map_err(CommandError::JsonFile)?;
+
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_contract_amendment(&contract_id, &amendment_features)
+        .await?;
+
+    let message = format!(
+        "Contract amendment {} for contract {}",
+        amendment_features.proposal_id, contract_id_hex
+    );
+
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
+    println!(
+        "Contract amendment transaction submitted with tx_id={} for contract with contract_id={}",
         tx_id, contract_id_hex
     );
 
