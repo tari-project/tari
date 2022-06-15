@@ -10,6 +10,7 @@
 .jest/
 
 # production
+!build/.gitkeep
 /build
 
 # misc
