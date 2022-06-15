@@ -27,7 +27,12 @@ use std::{
 
 use config::Config;
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader, SubConfigPath};
+use tari_common::{
+    configuration::{CommonConfig, Network},
+    ConfigurationError,
+    DefaultConfigLoader,
+    SubConfigPath,
+};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::{P2pConfig, PeerSeedsConfig};
 
@@ -36,6 +41,7 @@ pub struct ApplicationConfig {
     pub common: CommonConfig,
     pub validator_node: ValidatorNodeConfig,
     pub peer_seeds: PeerSeedsConfig,
+    pub network: Network,
 }
 
 impl ApplicationConfig {
@@ -44,6 +50,7 @@ impl ApplicationConfig {
             common: CommonConfig::load_from(cfg)?,
             validator_node: ValidatorNodeConfig::load_from(cfg)?,
             peer_seeds: PeerSeedsConfig::load_from(cfg)?,
+            network: cfg.get("network")?,
         };
         config.validator_node.set_base_path(config.common.base_path());
         Ok(config)
@@ -75,6 +82,9 @@ impl ValidatorNodeConfig {
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         if !self.identity_file.is_absolute() {
             self.identity_file = base_path.as_ref().join(&self.identity_file);
+        }
+        if !self.tor_identity_file.is_absolute() {
+            self.tor_identity_file = base_path.as_ref().join(&self.tor_identity_file);
         }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(&self.data_dir);

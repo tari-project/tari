@@ -42,6 +42,7 @@ pub(crate) struct Cli {
 impl Cli {
     pub fn config_property_overrides(&self) -> Vec<(String, String)> {
         let mut overrides = self.common.config_property_overrides();
+        overrides.push(("network".to_string(), self.network.clone()));
         overrides.push(("validator_node.override_from".to_string(), self.network.clone()));
         overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
         overrides

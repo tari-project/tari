@@ -64,7 +64,7 @@ impl DanNode {
                         .await
                     {
                         Ok(()) => info!("Contracts accepted"),
-                        Err(e) => error!("Contracts not accepted becayse {:?}", e),
+                        Err(e) => error!("Contracts not accepted because {:?}", e),
                     }
 
                     time::sleep(Duration::from_secs(

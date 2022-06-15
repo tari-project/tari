@@ -193,6 +193,19 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
+            AssetManagerRequest::CreateContractUpdateProposal {
+                contract_id,
+                update_proposal,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_update_proposal(contract_id, *update_proposal)
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractUpdateProposal {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 }

@@ -41,6 +41,7 @@ use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
+    initialize_logging,
     load_configuration,
 };
 use tari_comms::{
@@ -87,9 +88,13 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
+    println!("Starting validator node on network {}", cli.network);
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
-
+    initialize_logging(
+        &cli.common.log_config_path("validator"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
     let config = ApplicationConfig::load_from(&cfg)?;
     let runtime = build_runtime()?;
     runtime.block_on(run_node(&config))?;
@@ -146,6 +151,7 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     );
 
     if let Some(address) = config.validator_node.grpc_address.clone() {
+        println!("Started GRPC server on {}", address);
         task::spawn(run_grpc(grpc_server, address, shutdown.to_signal()));
     }
 
@@ -175,7 +181,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
     grpc_address: Multiaddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    info!("Starting GRPC on {}", grpc_address);
+    println!("Starting GRPC on {}", grpc_address);
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;

@@ -962,6 +962,7 @@ your wallet identity under `Username:` to see your shares, or try `taritest` if 
 
 - [RFC documents](https://rfc.tari.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
 - Source code documentation is hosted on [docs.rs](https://docs.rs)
+- [RFC repo](https://github.com/tari-project/rfcs)
 
 ## RFC documents
 
