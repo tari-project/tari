@@ -1,3 +1,3 @@
 export interface ProgressIndicatorProps {
-  fill: number
+  overallFill: number | undefined
 }

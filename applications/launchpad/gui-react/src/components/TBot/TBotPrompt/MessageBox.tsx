@@ -48,7 +48,7 @@ const MessageBox = (
     <StyledMessageBox ref={ref}>
       <StyledMessage
         style={{ opacity: 0 }}
-        skipButton={skipButton}
+        $skipButton={skipButton}
         $floating={floating}
       >
         {children}
@@ -57,7 +57,7 @@ const MessageBox = (
         <MessageSlideIn style={{ ...useSlideInAnim }}>
           <StyledMessage
             style={{ ...useOpacityAnim }}
-            skipButton={skipButton}
+            $skipButton={skipButton}
             $floating={floating}
           >
             {children}

@@ -10,25 +10,30 @@ const OnBoardingMessagesConfig = {
   ],
 }
 
-export const OnboardingMessagesMap: (string | TBotMessage)[] = [
+export const OnboardingMessagesMap: TBotMessage[] = [
   {
     content: messages[0],
-    wait: 500,
+    barFill: 0.063,
+    wait: 1000,
   },
   {
     content: messages[1],
+    barFill: 0.125,
     wait: 5000,
   },
   {
     content: messages[2],
+    barFill: 0.188,
     wait: 5000,
   },
   {
     content: messages[3],
+    barFill: 0.25,
     wait: 5000,
   },
   {
     content: messages[4],
+    barFill: 0.35,
     wait: 5000,
     noSkip: true,
   },

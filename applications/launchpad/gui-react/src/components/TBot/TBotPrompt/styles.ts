@@ -121,14 +121,14 @@ export const StyledMessageBox = styled.div`
 
 export const StyledMessage = styled(animated.div)<{
   $floating?: boolean
-  skipButton?: boolean
+  $skipButton?: boolean
 }>`
   display: flex;
   flex-direction: column;
   width: ${({ $floating }) => ($floating ? '307px' : '550px')};
   height: fit-content;
-  margin-bottom: ${({ theme, skipButton }) =>
-    skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
+  margin-bottom: ${({ theme, $skipButton }) =>
+    $skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
   background-color: ${({ theme }) => theme.background};
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   box-shadow: ${({ theme }) => theme.shadow24};

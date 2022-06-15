@@ -7,7 +7,7 @@ import TBot from '..'
 
 import { useAppDispatch } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
-import { TBotPromptProps } from './types'
+import { TBotMessage, TBotPromptProps } from './types'
 
 import {
   ContentRow,
@@ -63,6 +63,7 @@ const TBotPrompt = ({
   const [count, setCount] = useState(currentIndex || 0)
   const [height, setHeight] = useState(100)
   const [tickle, setTickle] = useState(true)
+  const [progressFill, setProgressFill] = useState<number | undefined>(0)
 
   const promptAnim = useSpring({
     from: {
@@ -113,7 +114,6 @@ const TBotPrompt = ({
       setMessageLoading(false)
     } else if (messages && messages.length > 0) {
       setMessageLoading(true)
-
       // use custom waiting time, if previous message has 'wait' field.
       const lastMsg = messages[counter]
       let wait = WAIT_TIME
@@ -141,7 +141,6 @@ const TBotPrompt = ({
       setMessageLoading(false)
     }
   }, [messages, count])
-
   // It will animate the list max-height. The timeout is needed, bc app has to render new content first,
   // so then we can learn what is the current list height, and animate the max-height of wrapping component.
   useEffect(() => {
@@ -177,6 +176,8 @@ const TBotPrompt = ({
   // Build messages list
   const renderedMessages = useMemo(() => {
     return messages?.slice(0, count).map((msg, idx) => {
+      const progressBarFill = (messages[count - 1] as TBotMessage).barFill
+      setProgressFill(progressBarFill)
       let skipButtonCheck
       const msgTypeCheck =
         typeof msg !== 'string' &&
@@ -261,7 +262,9 @@ const TBotPrompt = ({
         </ContentContainer>
       </ContentRow>
       <TBotProgressContainer mode={mode}>
-        {mode === 'onboarding' && <ProgressIndicator fill={0.5} />}
+        {mode === 'onboarding' && (
+          <ProgressIndicator overallFill={progressFill} />
+        )}
         <TBotContainer>
           <TBot animate={tickle} />
         </TBotContainer>
