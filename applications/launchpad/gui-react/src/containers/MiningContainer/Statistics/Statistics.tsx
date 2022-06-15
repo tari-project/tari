@@ -13,13 +13,13 @@ import MiningIntervalPicker from './MiningIntervalPicker'
 import Account from './Account'
 
 const intervalOptions = (disableAllFilter?: boolean) => [
+  { option: 'monthly', label: t.mining.statistics.intervals.monthly },
+  { option: 'yearly', label: t.mining.statistics.intervals.yearly },
   {
     option: 'all',
     label: t.mining.statistics.intervals.all,
     disabled: disableAllFilter,
   },
-  { option: 'monthly', label: t.mining.statistics.intervals.monthly },
-  { option: 'yearly', label: t.mining.statistics.intervals.yearly },
 ]
 
 /**

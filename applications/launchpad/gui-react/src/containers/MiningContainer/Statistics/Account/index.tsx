@@ -25,17 +25,16 @@ const Account = ({ data }: { data: AccountData }) => {
       }}
     >
       {data.map(({ balance, delta }) => {
-        const deltaColor =
-          delta.percentage <= 0 ? theme.error : theme.onTextLight
+        const deltaColor = delta.value <= 0 ? theme.error : theme.onTextLight
 
         return (
           <div key={balance.currency}>
             <CoinsList
               coins={[{ amount: balance.value, unit: balance.currency }]}
             />
-            {delta.percentage !== 0 && (
+            {delta.percentage && delta.value !== 0 && (
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                {delta.percentage < 0 && (
+                {delta.value < 0 && (
                   <ArrowDown
                     width='24px'
                     height='24px'
@@ -43,7 +42,7 @@ const Account = ({ data }: { data: AccountData }) => {
                     style={{ marginLeft: '-6px' }}
                   />
                 )}
-                {delta.percentage > 0 && (
+                {delta.value > 0 && (
                   <ArrowUp
                     width='24px'
                     height='24px'
@@ -52,8 +51,41 @@ const Account = ({ data }: { data: AccountData }) => {
                   />
                 )}
                 <Text as='span' type='smallMedium' color={deltaColor}>
-                  {delta.percentage}%
+                  {delta.value.toFixed(2)}%
                 </Text>
+                <Text
+                  as='span'
+                  type='smallMedium'
+                  color={theme.secondary}
+                  style={{ display: 'inline-block', marginLeft: '4px' }}
+                >
+                  {t.mining.statistics.deltas[delta.interval as string]}
+                </Text>
+              </div>
+            )}
+            {!delta.percentage && delta.value !== 0 && (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {delta.value < 0 && (
+                  <ArrowDown
+                    width='24px'
+                    height='24px'
+                    color={deltaColor}
+                    style={{ marginLeft: '-6px' }}
+                  />
+                )}
+                {delta.value > 0 && (
+                  <ArrowUp
+                    width='24px'
+                    height='24px'
+                    color={deltaColor}
+                    style={{ marginLeft: '-6px' }}
+                  />
+                )}
+                <CoinsList
+                  small
+                  color={deltaColor}
+                  coins={[{ amount: delta.value, unit: balance.currency }]}
+                />
                 <Text
                   as='span'
                   type='smallMedium'

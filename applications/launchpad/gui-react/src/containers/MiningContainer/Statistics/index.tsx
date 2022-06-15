@@ -153,36 +153,47 @@ const StatisticsContainer = ({
     const getAccountData = async () => {
       if (interval === 'monthly') {
         const currentMonthStart = DateUtils.startOfMonth(intervalToShow)
-        const currentMonthPromise = transactionsRepository.getMinedXtr(
-          currentMonthStart,
-          DateUtils.endOfMonth(intervalToShow),
-          DataResolution.Monthly,
-        )
+        const currentMonthPromise = transactionsRepository
+          .getMinedXtr(
+            currentMonthStart,
+            DateUtils.endOfMonth(intervalToShow),
+            DataResolution.Monthly,
+          )
+          .then(Object.values)
         const previousMonthStart = new Date(
-          `${currentMonthStart.getFullYear()}-${currentMonthStart.getMonth()}`,
+          `${currentMonthStart.getFullYear()}-${currentMonthStart
+            .getMonth()
+            .toString()
+            .padStart(2, '0')}`,
         )
-        const previousMonthPromise = transactionsRepository.getMinedXtr(
-          previousMonthStart,
-          DateUtils.endOfMonth(previousMonthStart),
-          DataResolution.Monthly,
-        )
+        const previousMonthPromise = transactionsRepository
+          .getMinedXtr(
+            previousMonthStart,
+            DateUtils.endOfMonth(previousMonthStart),
+            DataResolution.Monthly,
+          )
+          .then(Object.values)
 
         const [currentMonth, previousMonth] = await Promise.all([
           currentMonthPromise,
           previousMonthPromise,
         ])
 
+        const currentMonthBalance = currentMonth[0]?.xtr || 0
+        const previousMonthBalance = previousMonth[0]?.xtr || 0
         const monthlyAccountData: AccountData = [
           {
             balance: {
-              value: currentMonth[0].xtr,
+              value: currentMonthBalance,
               currency: 'xtr',
             },
             delta: {
-              percentage:
-                ((previousMonth[0].xtr - currentMonth[0].xtr) /
-                  previousMonth[0].xtr) *
-                100,
+              percentage: Boolean(previousMonthBalance),
+              value: previousMonthBalance
+                ? ((currentMonthBalance - previousMonthBalance) /
+                    previousMonthBalance) *
+                  100
+                : currentMonthBalance,
               interval,
             },
           },
@@ -192,19 +203,23 @@ const StatisticsContainer = ({
 
       if (interval === 'yearly') {
         const currentYearStart = DateUtils.startOfYear(intervalToShow)
-        const currentYearPromise = transactionsRepository.getMinedXtr(
-          currentYearStart,
-          DateUtils.endOfYear(intervalToShow),
-          DataResolution.Yearly,
-        )
+        const currentYearPromise = transactionsRepository
+          .getMinedXtr(
+            currentYearStart,
+            DateUtils.endOfYear(intervalToShow),
+            DataResolution.Yearly,
+          )
+          .then(Object.values)
         const previousYearStart = new Date(
           `${currentYearStart.getFullYear() - 1}`,
         )
-        const previousYearPromise = transactionsRepository.getMinedXtr(
-          previousYearStart,
-          DateUtils.endOfMonth(previousYearStart),
-          DataResolution.Yearly,
-        )
+        const previousYearPromise = transactionsRepository
+          .getMinedXtr(
+            previousYearStart,
+            DateUtils.endOfYear(previousYearStart),
+            DataResolution.Yearly,
+          )
+          .then(Object.values)
 
         const [currentYear, previousYear] = await Promise.all([
           currentYearPromise,
@@ -218,10 +233,31 @@ const StatisticsContainer = ({
               currency: 'xtr',
             },
             delta: {
-              percentage:
-                ((previousYear[0].xtr - currentYear[0].xtr) /
-                  previousYear[0].xtr) *
-                100,
+              percentage: Boolean(previousYear),
+              value: previousYear
+                ? ((currentYear[0].xtr - previousYear[0].xtr) /
+                    previousYear[0].xtr) *
+                  100
+                : previousYear,
+              interval,
+            },
+          },
+        ]
+        setAccountData(yearlyAccountData)
+      }
+
+      if (interval === 'all') {
+        const currentBalance = await transactionsRepository.getLifelongBalance()
+
+        const yearlyAccountData: AccountData = [
+          {
+            balance: {
+              value: currentBalance,
+              currency: 'xtr',
+            },
+            delta: {
+              percentage: false,
+              value: 0,
               interval,
             },
           },

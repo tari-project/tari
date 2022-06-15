@@ -24,6 +24,7 @@ export interface TransactionsRepository {
     resolution?: DataResolution,
   ) => Promise<Dictionary<MinedTariEntry>>
   hasDataBefore: (d: Date) => Promise<boolean>
+  getLifelongBalance: () => Promise<number>
 }
 
 const repositoryFactory: () => TransactionsRepository = () => ({
@@ -105,6 +106,21 @@ const repositoryFactory: () => TransactionsRepository = () => ({
     )
 
     return Boolean(results.length)
+  },
+  getLifelongBalance: async () => {
+    const db = await getDb()
+
+    const results: {
+      amount: number
+    }[] = await db.select(
+      `SELECT amount FROM
+        transactions
+      WHERE
+        event = $1`,
+      [TransactionEvent.Mined],
+    )
+
+    return results.reduce((accu, current) => accu + current.amount, 0)
   },
 })
 

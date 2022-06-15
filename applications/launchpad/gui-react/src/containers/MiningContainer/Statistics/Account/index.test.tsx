@@ -12,11 +12,11 @@ describe('Account', () => {
     const accountData = [
       {
         balance: { value: 100, currency: 'xtr' },
-        delta: { percentage: 1, interval: 'monthly' },
+        delta: { percentage: true, value: 1, interval: 'monthly' },
       },
       {
         balance: { value: 200, currency: 'xmr' },
-        delta: { percentage: 2, interval: 'monthly' },
+        delta: { percentage: true, value: 2, interval: 'monthly' },
       },
     ] as AccountData
     render(
@@ -38,11 +38,11 @@ describe('Account', () => {
     const accountData = [
       {
         balance: { value: 100, currency: 'xtr' },
-        delta: { percentage: 0, interval: 'monthly' },
+        delta: { percentage: true, value: 0, interval: 'monthly' },
       },
       {
         balance: { value: 200, currency: 'xmr' },
-        delta: { percentage: 0, interval: 'monthly' },
+        delta: { percentage: true, value: 0, interval: 'monthly' },
       },
     ] as AccountData
     render(
@@ -53,5 +53,26 @@ describe('Account', () => {
     expect(
       screen.queryByText(t.mining.statistics.deltas.monthly),
     ).not.toBeInTheDocument()
+  })
+
+  it('should render non percentage delta', () => {
+    const accountData = [
+      {
+        balance: { value: 100, currency: 'xtr' },
+        delta: { percentage: false, value: 236, interval: 'monthly' },
+      },
+    ] as AccountData
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Account data={accountData} />
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByText('100')).toBeInTheDocument()
+    expect(screen.getByText('236')).toBeInTheDocument()
+    expect(screen.getAllByText('xtr').length).toBe(2)
+    expect(
+      screen.getByText(t.mining.statistics.deltas.monthly),
+    ).toBeInTheDocument()
   })
 })
