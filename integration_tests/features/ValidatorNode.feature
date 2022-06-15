@@ -32,7 +32,7 @@ Feature: Validator Node
         Then wallet WALLET1 has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1 with "constitiution_auto_accept" set to "false"
         Then I publish a contract acceptance transaction for the validator node VN1
-        When I mine 4 blocks using wallet WALLET1 on NODE1
+        When I mine 8 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
 
     @dan @broken
