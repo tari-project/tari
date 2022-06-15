@@ -131,5 +131,6 @@ mod tests {
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
         assert_eq!(OutputType::from_byte(15), Some(OutputType::CommitteeInitialDefinition));
         assert_eq!(OutputType::from_byte(16), Some(OutputType::CommitteeDefinition));
+        assert_eq!(OutputType::from_byte(17), None);
     }
 }
