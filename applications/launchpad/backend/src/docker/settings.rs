@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
 
-use crate::docker::{models::ImageType, TariNetwork};
+use crate::docker::{models::ImageType, mounts::Mounts, TariNetwork};
 
 // TODO get a proper mining address for each network
 pub const DEFAULT_MINING_ADDRESS: &str =
@@ -182,70 +182,17 @@ impl LaunchpadConfig {
 
     /// Similar to [`volumes`], provides a bollard configuration for mounting volumes.
     pub fn mounts(&self, image_type: ImageType, volume_name: String) -> Vec<Mount> {
-        match image_type {
-            ImageType::BaseNode => self.build_mounts(true, true, volume_name),
-            ImageType::Wallet => self.build_mounts(true, true, volume_name),
-            ImageType::XmRig => self.build_mounts(false, true, volume_name),
-            ImageType::Sha3Miner => self.build_mounts(false, true, volume_name),
-            ImageType::MmProxy => self.build_mounts(false, true, volume_name),
-            ImageType::Tor => self.build_mounts(false, false, volume_name),
-            ImageType::Monerod => self.build_mounts(false, false, volume_name),
-            ImageType::Frontail => self.build_mounts(false, true, volume_name),
-        }
-    }
-
-    fn build_mounts(&self, blockchain: bool, general: bool, volume_name: String) -> Vec<Mount> {
-        let mut mounts = Vec::with_capacity(2);
-        if general {
-            #[cfg(target_os = "windows")]
-            let host = format!(
-                "//{}",
-                self.data_directory
-                    .iter()
-                    .filter_map(|part| {
-                        use std::{ffi::OsStr, path};
-
-                        use regex::Regex;
-
-                        if part == OsStr::new(&path::MAIN_SEPARATOR.to_string()) {
-                            None
-                        } else {
-                            let drive = Regex::new(r"(?P<letter>[A-Za-z]):").unwrap();
-                            let part = part.to_string_lossy().to_string();
-                            if drive.is_match(part.as_str()) {
-                                Some(drive.replace(part.as_str(), "$letter").to_lowercase())
-                            } else {
-                                Some(part)
-                            }
-                        }
-                    })
-                    .collect::<Vec<String>>()
-                    .join("/")
-            );
-            #[cfg(target_os = "macos")]
-            let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
-            #[cfg(target_os = "linux")]
-            let host = self.data_directory.to_string_lossy().to_string();
-            let mount = Mount {
-                target: Some("/var/tari".to_string()),
-                source: Some(host),
-                typ: Some(MountTypeEnum::BIND),
-                bind_options: None,
-                ..Default::default()
-            };
-            mounts.push(mount);
-        }
-        if blockchain {
-            let mount = Mount {
-                target: Some("/blockchain".to_string()),
-                source: Some(volume_name),
-                typ: Some(MountTypeEnum::VOLUME),
-                volume_options: None,
-                ..Default::default()
-            };
-            mounts.push(mount);
-        }
-        mounts
+        let mounts = match image_type {
+            ImageType::BaseNode => Mounts::with_general(&self.data_directory).with_blockchain(volume_name),
+            ImageType::Wallet => Mounts::with_general(&self.data_directory).with_blockchain(volume_name),
+            ImageType::XmRig => Mounts::with_general(&self.data_directory),
+            ImageType::Sha3Miner => Mounts::with_general(&self.data_directory),
+            ImageType::MmProxy => Mounts::with_general(&self.data_directory),
+            ImageType::Tor => Mounts::empty(),
+            ImageType::Monerod => Mounts::empty(),
+            ImageType::Frontail => Mounts::with_general(&self.data_directory),
+        };
+        mounts.to_docker_mounts()
     }
 
     /// Returns a map of ports to expose to the host system. TODO - remove the hardcoding so that multiple workspaces

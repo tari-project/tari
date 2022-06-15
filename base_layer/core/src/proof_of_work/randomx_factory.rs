@@ -9,24 +9,18 @@ use std::{
 };
 
 use log::*;
-use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
+use randomx_rs::{RandomXCache, RandomXError, RandomXFlag, RandomXVM};
 
 use crate::proof_of_work::monero_rx::MergeMineError;
 
 const LOG_TARGET: &str = "c::pow::randomx_factory";
-
-struct RandomXVMInstanceInner {
-    vm: RandomXVM,
-    _cache: RandomXCache,
-    _dataset: Option<RandomXDataset>,
-}
 
 #[derive(Clone)]
 pub struct RandomXVMInstance {
     // Note: If a cache and dataset (if assigned) allocated to the VM drops, the VM will crash.
     // The cache and dataset for the VM need to be stored together with it since they are not
     // mix and match.
-    instance: Arc<RwLock<RandomXVMInstanceInner>>,
+    instance: Arc<RandomXVM>,
 }
 
 impl RandomXVMInstance {
@@ -47,7 +41,7 @@ impl RandomXVMInstance {
         };
 
         // Note: Memory required per VM in light mode is 256MB
-        let vm = RandomXVM::new(flags, Some(&cache), None)?;
+        let vm = RandomXVM::new(flags, Some(cache), None)?;
 
         // Note: No dataset is initialized here because we want to run in light mode. Only a cache
         // is required by the VM for verification, giving it a dataset will only make the VM
@@ -57,17 +51,11 @@ impl RandomXVMInstance {
         // Note: RandomXFlag::FULL_MEM and RandomXFlag::LARGE_PAGES are incompatible with
         // light mode. These are not set by RandomX automatically even in fast mode.
 
-        Ok(Self {
-            instance: Arc::new(RwLock::new(RandomXVMInstanceInner {
-                vm,
-                _cache: cache,
-                _dataset: None,
-            })),
-        })
+        Ok(Self { instance: Arc::new(vm) })
     }
 
     pub fn calculate_hash(&self, input: &[u8]) -> Result<Vec<u8>, RandomXError> {
-        self.instance.read().unwrap().vm.calculate_hash(input)
+        self.instance.calculate_hash(input)
     }
 }
 

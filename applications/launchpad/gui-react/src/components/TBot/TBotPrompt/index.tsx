@@ -21,11 +21,12 @@ import {
   MessageWrapper,
   ScrollWrapper,
   HeightAnimationWrapper,
+  TBotProgressContainer,
 } from './styles'
 
-import { HelpMessagesMap } from '../../../config/helpMessagesConfig'
 import ChatDots from '../DotsComponent'
 import MessageBox from './MessageBox'
+import ProgressIndicator from '../../Onboarding/ProgressIndicator'
 
 // The default time between rendering messages
 const WAIT_TIME = 2800
@@ -37,13 +38,19 @@ const WAIT_TIME = 2800
  * @prop {() => void} [onClose] - callback on close action of prompt
  * @prop {ReactNode} [children] - content rendered inside prompt component
  * @prop {string} [testid] - for testing
+ * @prop {number} [currentIndex] -
+ * @prop {boolean} [closeIcon] - controls rendering of close button
+ * @prop {'help' | 'onboarding'} [mode] - usage mode for TBotPrompt
  */
+
 const TBotPrompt = ({
   open,
   floating,
   testid,
   messages,
   currentIndex = 1,
+  closeIcon = true,
+  mode = 'help',
 }: TBotPromptProps) => {
   const dispatch = useAppDispatch()
 
@@ -108,7 +115,7 @@ const TBotPrompt = ({
       setMessageLoading(true)
 
       // use custom waiting time, if previous message has 'wait' field.
-      const lastMsg = counter > 1 ? messages[counter - 1] : undefined
+      const lastMsg = messages[counter]
       let wait = WAIT_TIME
       if (
         lastMsg &&
@@ -170,51 +177,52 @@ const TBotPrompt = ({
   // Build messages list
   const renderedMessages = useMemo(() => {
     return messages?.slice(0, count).map((msg, idx) => {
-      if (
+      let skipButtonCheck
+      const msgTypeCheck =
         typeof msg !== 'string' &&
         typeof msg !== 'number' &&
         typeof msg !== 'boolean' &&
         msg
-      ) {
+      if (msgTypeCheck && 'noSkip' in msg) {
+        skipButtonCheck = false
+      } else if (count === idx + 1) {
+        skipButtonCheck = true
+      }
+      if (msgTypeCheck) {
+        if ('content' in msg && typeof msg.content === 'function') {
+          const FuncComponentMsg = msg.content
+          return (
+            <MessageBox
+              animate={count === idx + 1}
+              ref={count === idx + 1 ? lastMsgRef : null}
+              skipButton={mode === 'onboarding' && skipButtonCheck}
+              floating={floating}
+            >
+              <FuncComponentMsg />
+            </MessageBox>
+          )
+        }
         return (
           <MessageBox
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
+            skipButton={mode === 'onboarding' && skipButtonCheck}
+            floating={floating}
           >
-            {'content' in msg ? msg.content : msg}
+            {'content' in msg ? (msg.content as ReactNode | string) : msg}
           </MessageBox>
         )
       }
 
-      if (typeof msg !== 'string') {
-        return (
-          <MessageBox
-            animate={count === idx + 1}
-            ref={count === idx + 1 ? lastMsgRef : null}
-          >
-            {msg}
-          </MessageBox>
-        )
-      }
-
-      if (HelpMessagesMap[msg] === undefined) {
-        return (
-          <MessageBox
-            animate={count === idx + 1}
-            ref={count === idx + 1 ? lastMsgRef : null}
-          >
-            {msg}
-          </MessageBox>
-        )
-      }
-      const Message = HelpMessagesMap[msg]
       return (
         <MessageBox
-          key={`${idx}-msg`}
+          key={idx}
           animate={count === idx + 1}
           ref={count === idx + 1 ? lastMsgRef : null}
+          skipButton={mode === 'onboarding' && skipButtonCheck}
+          floating={floating}
         >
-          <Message />
+          {msg}
         </MessageBox>
       )
     })
@@ -233,26 +241,31 @@ const TBotPrompt = ({
       <ContentRow>
         <ContentContainer $floating={floating}>
           <FadeOutSection $floating={floating} />
-          <StyledCloseContainer>
-            <StyledCloseIcon>
-              <SvgClose fontSize={20} onClick={close} />
-            </StyledCloseIcon>
-          </StyledCloseContainer>
+          {closeIcon && (
+            <StyledCloseContainer>
+              <StyledCloseIcon>
+                <SvgClose fontSize={20} onClick={close} />
+              </StyledCloseIcon>
+            </StyledCloseContainer>
+          )}
           <MessageContainer>
             <ScrollWrapper ref={scrollRef}>
               <HeightAnimationWrapper style={heightAnim}>
                 <MessageWrapper ref={messageWrapperRef}>
                   {renderedMessages}
-                  {messageLoading && <ChatDots />}
                 </MessageWrapper>
               </HeightAnimationWrapper>
             </ScrollWrapper>
+            {messageLoading && <ChatDots />}
           </MessageContainer>
         </ContentContainer>
       </ContentRow>
-      <TBotContainer>
-        <TBot animate={tickle} />
-      </TBotContainer>
+      <TBotProgressContainer mode={mode}>
+        {mode === 'onboarding' && <ProgressIndicator fill={0.5} />}
+        <TBotContainer>
+          <TBot animate={tickle} />
+        </TBotContainer>
+      </TBotProgressContainer>
     </PromptContainer>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import lottie from 'lottie-web'
 import dotsChatLottie from '../../../styles/lotties/tbot-dots-animation.json'
-import { StyledContainer, StyledDots } from './styles'
+import { DotsContainer, StyledRow } from './styles'
 
 /**
  * @name ChatDots
@@ -24,9 +24,9 @@ const ChatDots = () => {
   }, [animation])
 
   return (
-    <StyledContainer>
-      <StyledDots ref={animation} />
-    </StyledContainer>
+    <StyledRow>
+      <DotsContainer ref={animation} />
+    </StyledRow>
   )
 }
 

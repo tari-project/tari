@@ -1,10 +1,13 @@
-import { useState } from 'react'
 import 'react-devtools' // @TODO: remove this import before final Production deployment!!!
 import styled, { ThemeProvider } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
-import { selectThemeConfig } from './store/app/selectors'
 import getTransactionsRepository from './persistence/minedTransactionsRepository'
+import {
+  selectOnboardingComplete,
+  selectThemeConfig,
+} from './store/app/selectors'
+
 import { useSystemEvents } from './useSystemEvents'
 import { useWalletEvents } from './useWalletEvents'
 import HomePage from './pages/home'
@@ -28,8 +31,7 @@ const transactionsRepository = getTransactionsRepository()
 const App = () => {
   const themeConfig = useAppSelector(selectThemeConfig)
   const dispatch = useAppDispatch()
-
-  const [onboarding, setOnboarding] = useState(false)
+  const onboardingComplete = useAppSelector(selectOnboardingComplete)
 
   dispatch(loadDefaultServiceSettings())
 
@@ -44,8 +46,8 @@ const App = () => {
   return (
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
-        {onboarding ? (
-          <Onboarding close={() => setOnboarding(false)} />
+        {!onboardingComplete ? (
+          <Onboarding />
         ) : (
           <>
             <HomePage />

@@ -1,21 +1,22 @@
 import { useState, useEffect } from 'react'
+import { useTheme } from 'styled-components'
 import TBotPrompt from '../../components/TBot/TBotPrompt'
+import TitleBar from '../../components/TitleBar'
+import { OnboardingMessagesMap } from '../../config/onboardingMessagesConfig'
 
-const Onboarding = ({ close }: { close: () => void }) => {
-  const [trigger, fireTrigger] = useState(false)
-
-  const [messages, setMessages] = useState([
-    'first message',
-    'second message',
-    {
-      content: 'need to wait longer...',
-      wait: 6000,
-    },
+/**
+ * @example Example of trigger to push new messages
     <div key='key1'>
       <p>Push new message</p>
       <button onClick={() => fireTrigger(true)}>Push</button>
-    </div>,
-  ])
+    </div>
+ */
+
+const Onboarding = () => {
+  const theme = useTheme()
+  const [trigger, fireTrigger] = useState(false)
+
+  const [messages, setMessages] = useState(OnboardingMessagesMap)
 
   // If we use currentIndex = 1, it will not show loading dots before rendering first message
   const [current, setCurrent] = useState(1)
@@ -23,62 +24,39 @@ const Onboarding = ({ close }: { close: () => void }) => {
   useEffect(() => {
     if (trigger) {
       const newMsgs = messages.slice()
-      newMsgs.push('newly pushed')
+      newMsgs.push({ content: 'Newly pushed', barFill: 0 })
       setMessages(newMsgs)
       setCurrent(newMsgs.length - 1)
-      // setCurrent(newMsgs.length) // it won't show loading dots when currentIndex is equal to the messages length
+      const hideLoadingDots = () => {
+        setCurrent(newMsgs.length)
+      }
+      hideLoadingDots()
       fireTrigger(false)
     }
   }, [trigger])
 
-  const addSkipMessages = () => {
-    const newMsgs = messages.slice()
-    newMsgs.push(
-      <div>
-        <button onClick={() => setCurrent(newMsgs.length + 5)}>Skip</button>
-      </div>,
-    )
-    newMsgs.push('msg 1/5')
-    newMsgs.push('msg 2/5')
-    newMsgs.push('msg 3/5')
-    newMsgs.push('msg 4/5')
-    newMsgs.push('msg 5/5')
-    setMessages(newMsgs)
-  }
-
   return (
     <div>
-      <div
-        style={{
-          position: 'fixed',
-          zIndex: 100,
-          top: 0,
-          left: 0,
-          background: '#a99',
-        }}
-      >
-        <p>Onboarding</p>
-        <button onClick={close}>Go to home</button>
-        <button onClick={addSkipMessages}>Add skip messages</button>
-        <button
-          onClick={() => {
-            setMessages([])
-            setCurrent(0)
-          }}
-        >
-          Clear messages
-        </button>
-      </div>
+      <TitleBar mode='onboarding' />
       <div
         style={{
           display: 'flex',
+          flexDirection: 'column',
           width: '100vw',
           height: '100%',
-          alignItems: 'flex-end',
+          alignItems: 'center',
           justifyContent: 'center',
+          backgroundColor: `${theme.backgroundSecondary}`,
         }}
       >
-        <TBotPrompt open={true} messages={messages} currentIndex={current} />
+        <TBotPrompt
+          open={true}
+          messages={messages}
+          currentIndex={current}
+          closeIcon={false}
+          mode='onboarding'
+          floating={false}
+        />
       </div>
     </div>
   )

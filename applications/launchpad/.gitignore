@@ -21,3 +21,6 @@ gui/build
 gui/npm-debug.log*
 gui/yarn-debug.log*
 gui/yarn-error.log*
+
+docker_rig/logs/data
+docker_rig/logs/positions.yml

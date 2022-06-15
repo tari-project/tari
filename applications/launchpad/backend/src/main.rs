@@ -7,7 +7,10 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 #[macro_use]
 extern crate lazy_static;
-use std::thread;
+use std::{
+    thread::{self, sleep},
+    time::Duration,
+};
 
 use futures::StreamExt;
 use log::*;
@@ -42,6 +45,7 @@ use crate::{
         pull_images,
         shutdown,
         start_service,
+        status,
         stop_service,
         AppState,
     },
@@ -96,17 +100,20 @@ fn main() {
     let workspaces = Workspaces::default();
     info!("Using Docker version: {}", docker.version());
 
-    let migrations = vec![Migration {
-        version: 1,
-        description: "create stats table",
-        sql: include_str!("../migrations/2022-06-13.create-stats-table.sql"),
-        kind: MigrationKind::Up,
-    }, Migration {
-        version: 2,
-        description: "create transactions table",
-        sql: include_str!("../migrations/2022-06-14.create-transactions-table.sql"),
-        kind: MigrationKind::Up,
-    }];
+    let migrations = vec![
+        Migration {
+            version: 1,
+            description: "create stats table",
+            sql: include_str!("../migrations/2022-06-13.create-stats-table.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "create transactions table",
+            sql: include_str!("../migrations/2022-06-14.create-transactions-table.sql"),
+            kind: MigrationKind::Up,
+        },
+    ];
 
     tauri::Builder::default()
         .plugin(TauriSql::default().add_migrations("sqlite:launchpad.db", migrations))

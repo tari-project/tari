@@ -7,7 +7,10 @@ import Logo from '../Logo'
 import Switch from '../Switch'
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
-import { selectExpertView } from '../../store/app/selectors'
+import {
+  selectExpertSwitchDisabled,
+  selectExpertView,
+} from '../../store/app/selectors'
 import { setExpertView } from '../../store/app'
 import { actions as settingsActions } from '../../store/settings'
 
@@ -26,10 +29,14 @@ import {
 } from './styles'
 import { TitleBarProps } from './types'
 
-const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
+const TitleBar = ({
+  drawerViewWidth = '50%',
+  mode = 'help',
+}: TitleBarProps) => {
   const dispatch = useAppDispatch()
 
   const expertView = useAppSelector(selectExpertView)
+  const expertSwitchDisabled = useAppSelector(selectExpertSwitchDisabled)
   const theme = useTheme()
 
   const [expertViewSize] = ExpertViewUtils.convertExpertViewModeToValue(
@@ -62,10 +69,14 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
   }
 
   const onExpertViewClick = () => {
-    if (expertView !== 'hidden') {
-      dispatch(setExpertView('hidden'))
+    if (expertSwitchDisabled) {
+      return
     } else {
-      dispatch(setExpertView('open'))
+      if (expertView !== 'hidden') {
+        dispatch(setExpertView('hidden'))
+      } else {
+        dispatch(setExpertView('open'))
+      }
     }
   }
 
@@ -191,15 +202,26 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
           boxSizing: 'border-box',
         }}
       >
-        <Button
-          variant='text'
-          leftIcon={<SvgSetting width='16px' height='16px' />}
-          onClick={() => dispatch(settingsActions.open({}))}
-        >
-          {t.common.nouns.settings}
-        </Button>
+        {mode === 'help' && (
+          <Button
+            variant='text'
+            size='small'
+            leftIcon={<SvgSetting width='16px' height='16px' />}
+            onClick={() => dispatch(settingsActions.open({}))}
+            style={{
+              color:
+                expertView === 'hidden'
+                  ? theme.primary
+                  : theme.inverted.primary,
+            }}
+          >
+            {t.common.nouns.settings}
+          </Button>
+        )}
+
         <Switch
           value={expertView !== 'hidden'}
+          disable={expertSwitchDisabled}
           rightLabel={t.common.nouns.expertView}
           onClick={onExpertViewClick}
           testId={'titlebar-expert-view-btn'}

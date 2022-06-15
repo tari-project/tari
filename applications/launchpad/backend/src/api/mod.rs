@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+mod wallet_api;
 
 use std::{convert::TryFrom, fmt::format};
 
 use config::Config;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
-use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{http::status, AppHandle, Manager, Wry};
 
 use crate::{
@@ -34,6 +34,15 @@ use crate::{
     docker::{ContainerState, ImageType, TariNetwork},
     grpc::{GrpcWalletClient, WalletIdentity, WalletTransaction},
 };
+
+pub const RECEIVED: &str = "received";
+pub const SENT: &str = "sent";
+pub const QUEUED: &str = "queued";
+pub const CONFIRMATION: &str = "confirmation";
+pub const MINED: &str = "mined";
+pub const CANCELLED: &str = "cancelled";
+pub const NEW_BLOCK_MINED: &str = "new_block_mined";
+pub static TRANSACTION_EVENTS: [&str; 7] = [RECEIVED, SENT, QUEUED, CONFIRMATION, MINED, CANCELLED, NEW_BLOCK_MINED];
 
 pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
 
@@ -52,54 +61,14 @@ pub fn image_list() -> Vec<String> {
     enum_to_list::<ImageType>(&DEFAULT_IMAGES)
 }
 
+pub fn event_list() -> Vec<String> {
+    TRANSACTION_EVENTS.iter().map(|&s| s.into()).collect()
+}
+
 #[tauri::command]
 pub async fn health_check(image: &str) -> String {
     match ImageType::try_from(image) {
         Ok(img) => status(img).await,
         Err(_err) => format!("image {} not found", image),
     }
-}
-
-#[tauri::command]
-pub async fn wallet_identity() -> Result<WalletIdentity, String> {
-    // Check if wallet container is running.
-    let status = status(ImageType::Wallet).await;
-    if "running" == status.to_lowercase() {
-        let mut wallet_client = GrpcWalletClient::new();
-        let identity = wallet_client.identity().await.map_err(|e| e.to_string())?;
-        Ok(WalletIdentity::from(identity))
-    } else {
-        error!("Wallet container[image = {}] is not running", ImageType::Wallet);
-        Err("Wallet is not running".to_string())
-    }
-}
-
-#[tauri::command]
-pub async fn wallet_events(app: AppHandle<Wry>) -> Result<(), String> {
-    info!("Setting up event stream");
-    let mut wallet_client = GrpcWalletClient::new();
-    let mut stream = wallet_client.stream().await.map_err(|e| e.chained_message()).unwrap();
-    let app_clone = app.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(response) = stream.next().await {
-            if let Some(value) = response.transaction {
-                let wt = WalletTransaction {
-                    event: value.event,
-                    tx_id: value.tx_id,
-                    source_pk: value.source_pk,
-                    dest_pk: value.dest_pk,
-                    status: value.status,
-                    direction: value.direction,
-                    amount: value.amount,
-                    message: value.message,
-                };
-
-                if let Err(err) = app_clone.emit_all("wallet_event", wt.clone()) {
-                    warn!("Could not emit event to front-end, {:?}", err);
-                }
-            }
-        }
-        info!("Event stream has closed.");
-    });
-    Ok(())
 }
