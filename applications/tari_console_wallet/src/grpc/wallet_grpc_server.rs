@@ -72,6 +72,8 @@ use tari_app_grpc::{
         SetBaseNodeResponse,
         SubmitContractAcceptanceRequest,
         SubmitContractAcceptanceResponse,
+        SubmitContractUpdateProposalAcceptanceRequest,
+        SubmitContractUpdateProposalAcceptanceResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -692,6 +694,53 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(SubmitContractAcceptanceResponse {
+            tx_id: tx_id.as_u64(),
+        }))
+    }
+
+    async fn submit_contract_update_proposal_acceptance(
+        &self,
+        request: Request<SubmitContractUpdateProposalAcceptanceRequest>,
+    ) -> Result<Response<SubmitContractUpdateProposalAcceptanceResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let contract_id = FixedHash::try_from(message.contract_id)
+            .map_err(|err| Status::invalid_argument(format!("Invalid contract_id:{:?}", err)))?;
+
+        let validator_node_public_key =
+            PublicKey::from_bytes(message.validator_node_public_key.as_slice()).map_err(|e| {
+                Status::invalid_argument(format!("Validator node public key was not a valid pub key:{}", e))
+            })?;
+
+        let signature = message
+            .signature
+            .ok_or_else(|| Status::invalid_argument("signature not provided"))?;
+        let signature =
+            Signature::try_from(signature).map_err(|e| Status::invalid_argument(format!("Invalid signature:{}", e)))?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_contract_update_proposal_acceptance(
+                &contract_id,
+                message.proposal_id,
+                &validator_node_public_key,
+                &signature,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let contract_id_hex = contract_id.to_vec().to_hex();
+        let message = format!(
+            "Contract update proposal acceptance for contract_id={} and proposal_id={}",
+            contract_id_hex, message.proposal_id
+        );
+        transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), message)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(SubmitContractUpdateProposalAcceptanceResponse {
             tx_id: tx_id.as_u64(),
         }))
     }

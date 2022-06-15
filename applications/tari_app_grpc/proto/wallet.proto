@@ -84,6 +84,7 @@ service Wallet {
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 
     rpc SubmitContractAcceptance(SubmitContractAcceptanceRequest) returns (SubmitContractAcceptanceResponse);
+    rpc SubmitContractUpdateProposalAcceptance(SubmitContractUpdateProposalAcceptanceRequest) returns (SubmitContractUpdateProposalAcceptanceResponse);
 }
 
 message GetVersionRequest { }
@@ -306,6 +307,17 @@ message SubmitContractAcceptanceRequest {
 }
 
 message SubmitContractAcceptanceResponse {
+    uint64 tx_id = 1;
+}
+
+message SubmitContractUpdateProposalAcceptanceRequest {
+    bytes contract_id = 1;
+    uint64 proposal_id = 2;
+    bytes validator_node_public_key = 3;
+    Signature signature = 4;
+}
+
+message SubmitContractUpdateProposalAcceptanceResponse {
     uint64 tx_id = 1;
 }
 

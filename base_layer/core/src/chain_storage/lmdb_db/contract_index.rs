@@ -174,6 +174,7 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
             // These are collections of output hashes
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
+            OutputType::ContractConstitutionChangeAcceptance |
             OutputType::ContractAmendment => {
                 self.assert_definition_exists(contract_id)?;
                 let mut hashes = self.find::<FixedHashSet>(&key)?.unwrap_or_default();

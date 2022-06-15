@@ -37,7 +37,7 @@ use tari_dan_core::{
 use tokio::{task, time};
 use tonic::{Request, Response, Status};
 
-const _LOG_TARGET: &str = "tari::validator_node::grpc";
+const LOG_TARGET: &str = "tari::validator_node::grpc";
 
 pub struct ValidatorNodeGrpcServer<TServiceSpecification: ServiceSpecification> {
     node_identity: NodeIdentity,
@@ -77,7 +77,8 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
     ) -> Result<Response<rpc::PublishContractAcceptanceResponse>, tonic::Status> {
         let mut wallet_client = self.wallet_client.clone();
         let request = request.into_inner();
-        let contract_id = FixedHash::try_from(request.contract_id).unwrap_or_default();
+        let contract_id =
+            FixedHash::try_from(request.contract_id).map_err(|err| tonic::Status::invalid_argument(err.to_string()))?;
         let validator_node_public_key = self.node_identity.public_key();
         let signature = Signature::default();
 
@@ -89,7 +90,40 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
                 tx_id,
                 status: "Accepted".to_string(),
             })),
-            Err(_) => Ok(Response::new(rpc::PublishContractAcceptanceResponse {
+            Err(err) => {
+                log::error!(target: LOG_TARGET, "publish_contract_acceptance: {}", err);
+                Ok(Response::new(rpc::PublishContractAcceptanceResponse {
+                    status: "Errored".to_string(),
+                    tx_id: 0_u64,
+                }))
+            },
+        }
+    }
+
+    async fn publish_contract_update_proposal_acceptance(
+        &self,
+        request: tonic::Request<rpc::PublishContractUpdateProposalAcceptanceRequest>,
+    ) -> Result<Response<rpc::PublishContractUpdateProposalAcceptanceResponse>, tonic::Status> {
+        let mut wallet_client = self.wallet_client.clone();
+        let request = request.into_inner();
+        let contract_id = FixedHash::try_from(request.contract_id).unwrap_or_default();
+        let validator_node_public_key = self.node_identity.public_key();
+        let signature = Signature::default();
+
+        match wallet_client
+            .submit_contract_update_proposal_acceptance(
+                &contract_id,
+                request.proposal_id,
+                validator_node_public_key,
+                &signature,
+            )
+            .await
+        {
+            Ok(tx_id) => Ok(Response::new(rpc::PublishContractUpdateProposalAcceptanceResponse {
+                tx_id,
+                status: "Accepted".to_string(),
+            })),
+            Err(_) => Ok(Response::new(rpc::PublishContractUpdateProposalAcceptanceResponse {
                 status: "Errored".to_string(),
                 tx_id: 0_u64,
             })),

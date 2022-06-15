@@ -168,3 +168,18 @@ Then(
     console.log({ response });
   }
 );
+
+Then(
+  "I publish a contract update proposal acceptance transaction for the validator node {word}",
+  { timeout: 20 * 1000 },
+  async function (vn_name) {
+    let dan_node = this.getNode(vn_name);
+    let grpc_dan_node = await dan_node.createGrpcClient();
+    let response = await grpc_dan_node.publishContractUpdateProposalAcceptance(
+      "90b1da4524ea0e9479040d906db9194d8af90f28d05ff2d64c0a82eb93125177", // contract_id
+      0 // proposal_id
+    );
+    expect(response.status).to.be.equal("Accepted");
+    console.log({ response });
+  }
+);
