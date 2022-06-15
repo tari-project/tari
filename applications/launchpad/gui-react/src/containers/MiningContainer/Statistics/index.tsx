@@ -92,8 +92,6 @@ const StatisticsContainer = ({
       onClose={onClose}
       data={data}
       accountData={accountData}
-      dataFrom={from}
-      dataTo={to}
     />
   )
 }

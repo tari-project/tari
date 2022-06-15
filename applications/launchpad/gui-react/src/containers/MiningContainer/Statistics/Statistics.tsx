@@ -44,8 +44,6 @@ const Statistics = ({
   data,
   accountData,
   disableAllFilter,
-  dataFrom,
-  dataTo,
 }: {
   interval: MiningStatisticsInterval
   setInterval: (i: MiningStatisticsInterval) => void
@@ -55,8 +53,6 @@ const Statistics = ({
   data: MinedTariEntry[]
   accountData: AccountData
   disableAllFilter?: boolean
-  dataFrom: Date
-  dataTo: Date
 }) => {
   const theme = useTheme()
 
@@ -94,8 +90,6 @@ const Statistics = ({
           value={intervalToShow}
           interval={interval as MiningStatisticsInterval}
           onChange={setIntervalToShow}
-          dataFrom={dataFrom}
-          dataTo={dataTo}
         />
       </div>
       <div>

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useTheme } from 'styled-components'
 
 import { shortMonth } from '../../../../utils/Format'
@@ -7,6 +7,9 @@ import Button from '../../../../components/Button'
 import Iterator from '../../../../components/Iterator'
 import { MiningStatisticsInterval } from '../types'
 import t from '../../../../locales'
+import getTransactionsRepository from '../../../../persistence/transactionsRepository'
+
+const transactionsRepository = getTransactionsRepository()
 
 const viewingToday = (d: Date, interval: MiningStatisticsInterval): boolean => {
   switch (interval) {
@@ -33,16 +36,25 @@ const MiningIntervalPicker = ({
   value,
   interval,
   onChange,
-  dataFrom,
-  dataTo,
 }: {
   value: Date
   interval: MiningStatisticsInterval
   onChange: (d: Date) => void
-  dataFrom: Date
-  dataTo: Date
 }) => {
   const theme = useTheme()
+
+  const [{ from: dataFrom, to: dataTo }, setDates] = useState<{
+    from: Date
+    to: Date
+  }>({ from: new Date(), to: new Date() })
+  useEffect(() => {
+    const getData = async () => {
+      const dates = await transactionsRepository.getDataSpan()
+
+      setDates(dates)
+    }
+    getData()
+  }, [])
 
   const iterators = useMemo(
     () =>
@@ -91,7 +103,7 @@ const MiningIntervalPicker = ({
           hasPrevious: () => boolean
         }
       >),
-    [onChange, value],
+    [onChange, value, dataFrom, dataTo],
   )
 
   if (interval === ('all' as MiningStatisticsInterval)) {

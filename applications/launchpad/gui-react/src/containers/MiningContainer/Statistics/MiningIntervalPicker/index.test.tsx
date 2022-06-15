@@ -14,8 +14,6 @@ describe('MiningIntervalPicker', () => {
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={() => null}
-          dataFrom={new Date('2022-05-01')}
-          dataTo={new Date()}
         />
       </ThemeProvider>,
     )
@@ -31,8 +29,6 @@ describe('MiningIntervalPicker', () => {
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={() => null}
-          dataFrom={new Date('2022-05-01')}
-          dataTo={new Date()}
         />
       </ThemeProvider>,
     )
@@ -49,8 +45,6 @@ describe('MiningIntervalPicker', () => {
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={onChange}
-          dataFrom={new Date('2021-05-01')}
-          dataTo={new Date('2023-06-21')}
         />
       </ThemeProvider>,
     )
@@ -77,8 +71,6 @@ describe('MiningIntervalPicker', () => {
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={onChange}
-          dataFrom={new Date('2022-05-01')}
-          dataTo={new Date('2022-06-21')}
         />
       </ThemeProvider>,
     )
@@ -98,8 +90,6 @@ describe('MiningIntervalPicker', () => {
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={onChange}
-          dataFrom={new Date('2021-05-01')}
-          dataTo={new Date('2023-06-21')}
         />
       </ThemeProvider>,
     )
@@ -126,8 +116,6 @@ describe('MiningIntervalPicker', () => {
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={onChange}
-          dataFrom={new Date('2022-06-01')}
-          dataTo={new Date('2022-06-20')}
         />
       </ThemeProvider>,
     )
