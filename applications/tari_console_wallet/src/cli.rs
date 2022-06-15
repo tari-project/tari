@@ -224,6 +224,9 @@ pub enum ContractSubcommand {
 
     /// Creates and publishes a contract update proposal UTXO from the JSON spec file.
     PublishUpdateProposal(PublishFileArgs),
+
+    /// Creates and publishes a contract amendment UTXO from the JSON spec file.
+    PublishAmendment(PublishFileArgs),
 }
 
 #[derive(Debug, Args, Clone)]

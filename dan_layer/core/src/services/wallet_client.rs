@@ -42,4 +42,12 @@ pub trait WalletClient: Send + Sync {
         validator_node_public_key: &PublicKey,
         signature: &Signature,
     ) -> Result<u64, DigitalAssetError>;
+
+    async fn submit_contract_update_proposal_acceptance(
+        &mut self,
+        contract_id: &FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<u64, DigitalAssetError>;
 }

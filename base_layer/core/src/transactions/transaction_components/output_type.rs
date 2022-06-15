@@ -29,11 +29,13 @@ use std::{
     io::Read,
 };
 
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-#[derive(Debug, Clone, Copy, Hash, Deserialize_repr, Serialize_repr, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, Deserialize_repr, Serialize_repr, PartialEq, Eq, FromPrimitive)]
 #[repr(u8)]
 pub enum OutputType {
     /// An standard non-coinbase output.
@@ -52,16 +54,18 @@ pub enum OutputType {
     ContractConstitutionProposal = 6,
     /// Output that indicates acceptance of an existing contract constitution amendment proposal.
     ContractConstitutionChangeAcceptance = 7,
+    /// Output that defines and amendment of a contract constitution amendment
+    ContractAmendment = 8,
 
     // TODO: Remove these deprecated flags
-    NonFungible = 8,
-    AssetRegistration = 9,
-    MintNonFungible = 10,
-    BurnNonFungible = 11,
-    SidechainInitialCheckpoint = 12,
-    SidechainCheckpoint = 13,
-    CommitteeInitialDefinition = 14,
-    CommitteeDefinition = 15,
+    NonFungible = 9,
+    AssetRegistration = 10,
+    MintNonFungible = 11,
+    BurnNonFungible = 12,
+    SidechainInitialCheckpoint = 13,
+    SidechainCheckpoint = 14,
+    CommitteeInitialDefinition = 15,
+    CommitteeDefinition = 16,
 }
 
 impl OutputType {
@@ -72,16 +76,8 @@ impl OutputType {
 
     /// Returns the OutputType that corresponds to this OutputType. If the byte does not correspond to any OutputType,
     /// None is returned.
-    pub fn from_byte(bit: u8) -> Option<Self> {
-        if !Self::is_valid_byte(bit) {
-            return None;
-        }
-        // SAFETY: bit has been checked for validity before transmute is called
-        Some(unsafe { std::mem::transmute(bit) })
-    }
-
-    fn is_valid_byte(bit: u8) -> bool {
-        bit <= 15
+    pub fn from_byte(value: u8) -> Option<Self> {
+        FromPrimitive::from_u8(value)
     }
 }
 
@@ -133,7 +129,8 @@ mod tests {
     fn it_converts_from_byte_to_output_type() {
         assert_eq!(OutputType::from_byte(0), Some(OutputType::Standard));
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
-        assert_eq!(OutputType::from_byte(15), Some(OutputType::CommitteeDefinition));
-        assert_eq!(OutputType::from_byte(16), None);
+        assert_eq!(OutputType::from_byte(15), Some(OutputType::CommitteeInitialDefinition));
+        assert_eq!(OutputType::from_byte(16), Some(OutputType::CommitteeDefinition));
+        assert_eq!(OutputType::from_byte(17), None);
     }
 }

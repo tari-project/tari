@@ -193,6 +193,26 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
+            AssetManagerRequest::CreateContractUpdateProposalAcceptance {
+                contract_id,
+                proposal_id,
+                validator_node_public_key,
+                signature,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_update_proposal_acceptance(
+                        contract_id,
+                        proposal_id,
+                        *validator_node_public_key,
+                        *signature,
+                    )
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractUpdateProposalAcceptance {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
             AssetManagerRequest::CreateContractUpdateProposal {
                 contract_id,
                 update_proposal,
@@ -202,6 +222,19 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     .create_update_proposal(contract_id, *update_proposal)
                     .await?;
                 Ok(AssetManagerResponse::CreateContractUpdateProposal {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractAmendment {
+                contract_id,
+                contract_amendment,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_amendment(contract_id, *contract_amendment)
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractAmendment {
                     transaction: Box::new(transaction),
                     tx_id,
                 })

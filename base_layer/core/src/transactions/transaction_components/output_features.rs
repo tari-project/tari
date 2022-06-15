@@ -39,8 +39,10 @@ use tari_utilities::ByteArray;
 
 use super::{
     ContractAcceptance,
+    ContractAmendment,
     ContractDefinition,
     ContractUpdateProposal,
+    ContractUpdateProposalAcceptance,
     OutputFeaturesVersion,
     SideChainFeaturesBuilder,
 };
@@ -317,6 +319,27 @@ impl OutputFeatures {
         }
     }
 
+    pub fn for_contract_update_proposal_acceptance(
+        contract_id: FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
+    ) -> OutputFeatures {
+        Self {
+            output_type: OutputType::ContractConstitutionChangeAcceptance,
+            sidechain_features: Some(
+                SideChainFeatures::builder(contract_id)
+                    .with_contract_update_proposal_acceptance(ContractUpdateProposalAcceptance {
+                        proposal_id,
+                        validator_node_public_key,
+                        signature,
+                    })
+                    .finish(),
+            ),
+            ..Default::default()
+        }
+    }
+
     pub fn for_contract_update_proposal(
         contract_id: FixedHash,
         update_proposal: ContractUpdateProposal,
@@ -326,6 +349,18 @@ impl OutputFeatures {
             sidechain_features: Some(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_update_proposal(update_proposal)
+                    .finish(),
+            ),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_contract_amendment(contract_id: FixedHash, amendment: ContractAmendment) -> OutputFeatures {
+        Self {
+            output_type: OutputType::ContractAmendment,
+            sidechain_features: Some(
+                SideChainFeaturesBuilder::new(contract_id)
+                    .with_contract_amendment(amendment)
                     .finish(),
             ),
             ..Default::default()

@@ -27,6 +27,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_core::transactions::transaction_components::{
+    ContractAmendment,
     ContractDefinition,
     ContractUpdateProposal,
     OutputFeatures,
@@ -80,9 +81,19 @@ pub enum AssetManagerRequest {
         validator_node_public_key: Box<PublicKey>,
         signature: Box<Signature>,
     },
+    CreateContractUpdateProposalAcceptance {
+        contract_id: FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: Box<PublicKey>,
+        signature: Box<Signature>,
+    },
     CreateContractUpdateProposal {
         contract_id: FixedHash,
         update_proposal: Box<ContractUpdateProposal>,
+    },
+    CreateContractAmendment {
+        contract_id: FixedHash,
+        contract_amendment: Box<ContractAmendment>,
     },
 }
 
@@ -96,5 +107,7 @@ pub enum AssetManagerResponse {
     CreateConstitutionDefinition { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractAcceptance { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractUpdateProposalAcceptance { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractUpdateProposal { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractAmendment { transaction: Box<Transaction>, tx_id: TxId },
 }

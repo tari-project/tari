@@ -26,6 +26,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey, Signature, ASSET_CHECKPOINT_ID},
 };
 use tari_core::transactions::transaction_components::{
+    ContractAmendment,
     ContractDefinition,
     ContractUpdateProposal,
     OutputFeatures,
@@ -311,6 +312,34 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         Ok((tx_id, transaction))
     }
 
+    pub async fn create_contract_update_proposal_acceptance(
+        &mut self,
+        contract_id: FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_contract_update_proposal_acceptance(
+                    contract_id,
+                    proposal_id,
+                    validator_node_public_key,
+                    signature,
+                ),
+            )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
     pub async fn create_update_proposal(
         &mut self,
         contract_id: FixedHash,
@@ -322,6 +351,24 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 0.into(),
                 OutputFeatures::for_contract_update_proposal(contract_id, update_proposal),
             )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_contract_amendment(
+        &mut self,
+        contract_id: FixedHash,
+        amendment: ContractAmendment,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(0.into(), OutputFeatures::for_contract_amendment(contract_id, amendment))
             .await?;
 
         let (tx_id, transaction) = self
