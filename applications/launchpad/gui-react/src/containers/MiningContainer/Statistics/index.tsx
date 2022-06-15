@@ -60,14 +60,14 @@ const StatisticsContainer = ({
 
   const [disableAllFilter, setDisableAllFilter] = useState(false)
   useEffect(() => {
-    const doTheThing = async () => {
+    const calculateAllFilterDisabled = async () => {
       const hasDataBeforeCurrentYear =
         await transactionsRepository.hasDataBefore(
           DateUtils.startOfYear(new Date()),
         )
       setDisableAllFilter(!hasDataBeforeCurrentYear)
     }
-    doTheThing()
+    calculateAllFilterDisabled()
   }, [])
 
   const from = useMemo(

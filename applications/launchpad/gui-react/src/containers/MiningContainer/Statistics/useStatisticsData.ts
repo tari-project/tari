@@ -87,7 +87,7 @@ const useStatisticsData = ({
       }
     }
     getData()
-  }, [from, to, interval])
+  }, [from, to, interval, intervalToShow])
 
   return data
 }

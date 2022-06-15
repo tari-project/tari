@@ -98,6 +98,8 @@ const useAccountData = ({
           previousYearPromise,
         ])
 
+        const currentYearBalance = currentYear[0]?.xtr || 0
+        const previousYearBalance = previousYear[0]?.xtr || 0
         const yearlyAccountData: AccountData = [
           {
             balance: {
@@ -105,12 +107,12 @@ const useAccountData = ({
               currency: 'xtr',
             },
             delta: {
-              percentage: Boolean(previousYear),
-              value: previousYear
-                ? ((currentYear[0].xtr - previousYear[0].xtr) /
-                    previousYear[0].xtr) *
+              percentage: Boolean(previousYearBalance),
+              value: previousYearBalance
+                ? ((currentYearBalance - previousYearBalance) /
+                    previousYearBalance) *
                   100
-                : previousYear,
+                : previousYearBalance,
               interval,
             },
           },
@@ -138,7 +140,7 @@ const useAccountData = ({
       }
     }
     getAccountData()
-  }, [from, to, interval])
+  }, [from, to, interval, intervalToShow])
 
   return accountData
 }
