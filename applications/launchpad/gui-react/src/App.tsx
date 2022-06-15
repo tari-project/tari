@@ -35,7 +35,7 @@ const App = () => {
 
   useSystemEvents({ dispatch })
 
-  useWalletEvents({ dispatch, minedTransactionsRepository })
+  useWalletEvents({ minedTransactionsRepository })
 
   useMiningSimulator()
 

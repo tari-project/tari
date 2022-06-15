@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
-import { AppDispatch } from './store'
 import { MinedTransactionsRepository } from './persistence/minedTransactionsRepository'
 
 export enum TransactionEvent {
@@ -32,10 +31,8 @@ export type WalletTransactionEvent = {
 }
 
 export const useWalletEvents = ({
-  dispatch,
   minedTransactionsRepository,
 }: {
-  dispatch: AppDispatch
   minedTransactionsRepository: MinedTransactionsRepository
 }) => {
   useEffect(() => {
@@ -49,13 +46,13 @@ export const useWalletEvents = ({
       unsubscribe = await listen(
         'wallet_event',
         ({
-          event,
+          event: _,
           payload,
         }: {
           event: string
           payload: WalletTransactionEvent
         }) => {
-          console.debug({ event, payload })
+          minedTransactionsRepository.add(payload)
         },
       )
     }
