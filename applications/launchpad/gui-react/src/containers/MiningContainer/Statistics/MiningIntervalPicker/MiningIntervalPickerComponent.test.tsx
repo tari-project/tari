@@ -3,17 +3,19 @@ import { ThemeProvider } from 'styled-components'
 
 import themes from '../../../../styles/themes'
 
-import MiningIntervalPicker from '.'
+import MiningIntervalPickerComponent from './MiningIntervalPickerComponent'
 
-describe('MiningIntervalPicker', () => {
+describe('MiningIntervalPickerComponent', () => {
   it('should render current month for monthly interval', () => {
     const expectedValue = 'Jun 2022'
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={() => null}
+          dataFrom={new Date('2022-05-01')}
+          dataTo={new Date()}
         />
       </ThemeProvider>,
     )
@@ -25,10 +27,12 @@ describe('MiningIntervalPicker', () => {
     const expectedValue = '2022'
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={() => null}
+          dataFrom={new Date('2022-05-01')}
+          dataTo={new Date()}
         />
       </ThemeProvider>,
     )
@@ -41,10 +45,12 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={onChange}
+          dataFrom={new Date('2021-05-01')}
+          dataTo={new Date('2023-06-21')}
         />
       </ThemeProvider>,
     )
@@ -67,10 +73,12 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={onChange}
+          dataFrom={new Date('2022-05-01')}
+          dataTo={new Date('2022-06-21')}
         />
       </ThemeProvider>,
     )
@@ -86,10 +94,12 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={onChange}
+          dataFrom={new Date('2021-05-01')}
+          dataTo={new Date('2023-06-21')}
         />
       </ThemeProvider>,
     )
@@ -112,10 +122,12 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={onChange}
+          dataFrom={new Date('2022-06-01')}
+          dataTo={new Date('2022-06-20')}
         />
       </ThemeProvider>,
     )
