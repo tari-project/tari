@@ -16,7 +16,7 @@ export interface MinedTariEntry {
   xtr: number
 }
 
-export interface TransactionsRepository {
+export interface MinedTransactionsRepository {
   add: (transactionEvent: WalletTransactionEvent) => Promise<void>
   getMinedXtr: (
     from: Date,
@@ -28,7 +28,7 @@ export interface TransactionsRepository {
   getDataSpan: () => Promise<{ from: Date; to: Date }>
 }
 
-const repositoryFactory: () => TransactionsRepository = () => ({
+const repositoryFactory: () => MinedTransactionsRepository = () => ({
   add: async event => {
     const db = await getDb()
 

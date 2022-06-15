@@ -6,7 +6,7 @@ import Text from '../../../components/Text'
 import BarChart from '../../../components/Charts/Bar'
 import CloseIcon from '../../../styles/Icons/Close'
 import t from '../../../locales'
-import { MinedTariEntry } from '../../../persistence/transactionsRepository'
+import { MinedTariEntry } from '../../../persistence/minedTransactionsRepository'
 
 import { MiningStatisticsInterval, AccountData } from './types'
 import MiningIntervalPicker from './MiningIntervalPicker'
