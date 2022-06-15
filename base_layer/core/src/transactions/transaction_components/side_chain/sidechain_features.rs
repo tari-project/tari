@@ -130,6 +130,11 @@ impl SideChainFeaturesBuilder {
         self
     }
 
+    pub fn with_update_proposal(mut self, update_proposal: ContractUpdateProposal) -> Self {
+        self.features.update_proposal = Some(update_proposal);
+        self
+    }
+
     pub fn finish(self) -> SideChainFeatures {
         self.features
     }

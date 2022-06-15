@@ -27,6 +27,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::transaction_components::{
     ContractDefinition,
+    ContractUpdateProposal,
     OutputFeatures,
     OutputType,
     SideChainFeatures,
@@ -327,6 +328,27 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                     validator_node_public_key,
                     signature,
                 ),
+            )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_update_proposal(
+        &mut self,
+        contract_id: FixedHash,
+        update_proposal: ContractUpdateProposal,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_contract_update_proposal(contract_id, update_proposal),
             )
             .await?;
 
