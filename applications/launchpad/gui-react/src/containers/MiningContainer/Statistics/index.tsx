@@ -1,13 +1,12 @@
 import { useMemo, useState, useEffect } from 'react'
 
-import getTransactionsRepository, {
-  DataResolution,
-  MinedTariEntry,
-} from '../../../persistence/transactionsRepository'
 import * as DateUtils from '../../../utils/Date'
+import getTransactionsRepository from '../../../persistence/transactionsRepository'
 
-import { MiningStatisticsInterval, AccountData } from './types'
+import { MiningStatisticsInterval } from './types'
 import Statistics from './Statistics'
+import useStatisticsData from './useStatisticsData'
+import useAccountData from './useAccountData'
 
 const transactionsRepository = getTransactionsRepository()
 
@@ -80,193 +79,8 @@ const StatisticsContainer = ({
     [interval, intervalToShow],
   )
 
-  const [data, setData] = useState<MinedTariEntry[]>([])
-  useEffect(() => {
-    const resolution = {
-      monthly: DataResolution.Daily,
-      yearly: DataResolution.Monthly,
-      all: DataResolution.Yearly,
-    }[interval]
-
-    const getData = async () => {
-      const results = await transactionsRepository.getMinedXtr(
-        from,
-        to,
-        resolution,
-      )
-
-      if (interval === 'monthly') {
-        const year = intervalToShow.getFullYear()
-        const month = intervalToShow.getMonth() + 1
-        setData(
-          [...Array(new Date(year, month, 0).getDate()).keys()]
-            .map(day => {
-              const when = `${year}-${month.toString().padStart(2, '0')}-${(
-                day + 1
-              )
-                .toString()
-                .padStart(2, '0')}`
-
-              return (
-                results[when] || {
-                  when,
-                  xtr: 0,
-                }
-              )
-            })
-            .map(({ when, xtr }) => ({
-              xtr,
-              when: when.substring(8),
-            })),
-        )
-      }
-
-      if (interval === 'yearly') {
-        const year = intervalToShow.getFullYear()
-        setData(
-          [...Array(12).keys()]
-            .map(month => {
-              const when = `${year}-${(month + 1).toString().padStart(2, '0')}`
-
-              return (
-                results[when] || {
-                  when,
-                  xtr: 0,
-                }
-              )
-            })
-            .map(({ when, xtr }) => ({
-              xtr,
-              when: when.substring(5),
-            })),
-        )
-      }
-
-      if (interval === 'all') {
-        setData(Object.values(results))
-      }
-    }
-    getData()
-  }, [from, to, interval])
-  const [accountData, setAccountData] = useState<AccountData>([])
-  useEffect(() => {
-    const getAccountData = async () => {
-      if (interval === 'monthly') {
-        const currentMonthStart = DateUtils.startOfMonth(intervalToShow)
-        const currentMonthPromise = transactionsRepository
-          .getMinedXtr(
-            currentMonthStart,
-            DateUtils.endOfMonth(intervalToShow),
-            DataResolution.Monthly,
-          )
-          .then(Object.values)
-        const previousMonthStart = new Date(
-          `${currentMonthStart.getFullYear()}-${currentMonthStart
-            .getMonth()
-            .toString()
-            .padStart(2, '0')}`,
-        )
-        const previousMonthPromise = transactionsRepository
-          .getMinedXtr(
-            previousMonthStart,
-            DateUtils.endOfMonth(previousMonthStart),
-            DataResolution.Monthly,
-          )
-          .then(Object.values)
-
-        const [currentMonth, previousMonth] = await Promise.all([
-          currentMonthPromise,
-          previousMonthPromise,
-        ])
-
-        const currentMonthBalance = currentMonth[0]?.xtr || 0
-        const previousMonthBalance = previousMonth[0]?.xtr || 0
-        const monthlyAccountData: AccountData = [
-          {
-            balance: {
-              value: currentMonthBalance,
-              currency: 'xtr',
-            },
-            delta: {
-              percentage: Boolean(previousMonthBalance),
-              value: previousMonthBalance
-                ? ((currentMonthBalance - previousMonthBalance) /
-                    previousMonthBalance) *
-                  100
-                : currentMonthBalance,
-              interval,
-            },
-          },
-        ]
-        setAccountData(monthlyAccountData)
-      }
-
-      if (interval === 'yearly') {
-        const currentYearStart = DateUtils.startOfYear(intervalToShow)
-        const currentYearPromise = transactionsRepository
-          .getMinedXtr(
-            currentYearStart,
-            DateUtils.endOfYear(intervalToShow),
-            DataResolution.Yearly,
-          )
-          .then(Object.values)
-        const previousYearStart = new Date(
-          `${currentYearStart.getFullYear() - 1}`,
-        )
-        const previousYearPromise = transactionsRepository
-          .getMinedXtr(
-            previousYearStart,
-            DateUtils.endOfYear(previousYearStart),
-            DataResolution.Yearly,
-          )
-          .then(Object.values)
-
-        const [currentYear, previousYear] = await Promise.all([
-          currentYearPromise,
-          previousYearPromise,
-        ])
-
-        const yearlyAccountData: AccountData = [
-          {
-            balance: {
-              value: currentYear[0].xtr,
-              currency: 'xtr',
-            },
-            delta: {
-              percentage: Boolean(previousYear),
-              value: previousYear
-                ? ((currentYear[0].xtr - previousYear[0].xtr) /
-                    previousYear[0].xtr) *
-                  100
-                : previousYear,
-              interval,
-            },
-          },
-        ]
-        setAccountData(yearlyAccountData)
-      }
-
-      if (interval === 'all') {
-        const currentBalance = await transactionsRepository.getLifelongBalance()
-
-        const yearlyAccountData: AccountData = [
-          {
-            balance: {
-              value: currentBalance,
-              currency: 'xtr',
-            },
-            delta: {
-              percentage: false,
-              value: 0,
-              interval,
-            },
-          },
-        ]
-        setAccountData(yearlyAccountData)
-      }
-    }
-    getAccountData()
-  }, [from, to, interval])
+  const data = useStatisticsData({ from, to, interval, intervalToShow })
+  const accountData = useAccountData({ from, to, interval, intervalToShow })
 
   return (
     <Statistics
