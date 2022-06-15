@@ -26,16 +26,16 @@ use tari_utilities::hex::{Hex, HexError};
 
 use crate::automation::error::CommandError;
 
-pub struct Prompt<'a> {
-    label: &'a str,
+pub struct Prompt {
+    label: String,
     skip_if_some: Option<String>,
     default: Option<String>,
 }
 
-impl<'a> Prompt<'a> {
-    pub fn new(label: &'a str) -> Self {
+impl Prompt {
+    pub fn new<T: Into<String>>(label: T) -> Self {
         Self {
-            label,
+            label: label.into(),
             default: None,
             skip_if_some: None,
         }
@@ -46,18 +46,18 @@ impl<'a> Prompt<'a> {
         self
     }
 
-    pub fn with_default(mut self, default: String) -> Self {
-        self.default = Some(default);
+    pub fn with_default<T: Into<String>>(mut self, default: T) -> Self {
+        self.default = Some(default.into());
         self
     }
 
-    pub fn get_result_parsed<T>(self) -> Result<T, CommandError>
+    pub fn ask_parsed<T>(self) -> Result<T, CommandError>
     where
         T: FromStr,
         T::Err: ToString,
     {
-        let result = self.get_result()?;
-        let parsed = result
+        let resp = self.ask()?;
+        let parsed = resp
             .parse()
             .map_err(|e: T::Err| CommandError::InvalidArgument(e.to_string()))?;
         Ok(parsed)
@@ -71,8 +71,8 @@ impl<'a> Prompt<'a> {
         let mut collection: Vec<T> = vec![];
 
         loop {
-            let prompt = Prompt::new(self.label);
-            let result = prompt.get_result_parsed()?;
+            let prompt = Prompt::new(self.label.clone());
+            let result = prompt.ask_parsed()?;
             collection.push(result);
 
             loop {
@@ -97,13 +97,13 @@ impl<'a> Prompt<'a> {
         }
     }
 
-    pub fn get_result(self) -> Result<String, CommandError> {
+    pub fn ask(self) -> Result<String, CommandError> {
         if let Some(value) = self.skip_if_some {
             return Ok(value);
         }
         loop {
-            match self.default {
-                Some(ref default) => {
+            match self.default.as_ref().filter(|s| !s.is_empty()) {
+                Some(default) => {
                     println!("{} (Default: {})", self.label, default);
                 },
                 None => {
@@ -118,7 +118,7 @@ impl<'a> Prompt<'a> {
             let trimmed = line_buf.trim();
             if trimmed.is_empty() {
                 match self.default {
-                    Some(ref default) => return Ok(default.clone()),
+                    Some(default) => return Ok(default),
                     None => continue,
                 }
             } else {
@@ -141,5 +141,25 @@ impl<T: Hex> FromStr for HexArg<T> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(T::from_hex(s)?))
+    }
+}
+
+pub struct Optional<T>(Option<T>);
+
+impl<T> Optional<T> {
+    pub fn into_inner(self) -> Option<T> {
+        self.0
+    }
+}
+
+impl<T: FromStr> FromStr for Optional<T> {
+    type Err = T::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.trim().is_empty() {
+            Ok(Self(None))
+        } else {
+            Ok(Self(Some(T::from_str(s)?)))
+        }
     }
 }
