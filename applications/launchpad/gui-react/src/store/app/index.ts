@@ -8,9 +8,11 @@ import { AppState, ExpertViewType, ViewType } from './types'
 
 export const appInitialState: AppState = {
   expertView: 'hidden',
+  expertSwitchDisabled: false,
   view: 'MINING',
   theme: 'light',
   schedules: {},
+  onboardingComplete: false,
 }
 
 const appSlice = createSlice({
@@ -19,6 +21,9 @@ const appSlice = createSlice({
   reducers: {
     setExpertView(state, { payload }: { payload: ExpertViewType }) {
       state.expertView = payload
+    },
+    setExpertSwitchDisabled(state, { payload }: { payload: boolean }) {
+      state.expertSwitchDisabled = payload
     },
     setTheme(state, { payload }: { payload: ThemeType }) {
       state.theme = payload
@@ -48,16 +53,21 @@ const appSlice = createSlice({
 
       state.schedules[scheduleId] = newSchedule
     },
+    setOnboardingComplete(state, { payload }: { payload: boolean }) {
+      state.onboardingComplete = payload
+    },
   },
 })
 
 export const {
   setExpertView,
+  setExpertSwitchDisabled,
   setTheme,
   setPage,
   toggleSchedule,
   removeSchedule,
   updateSchedule,
+  setOnboardingComplete,
 } = appSlice.actions
 
 const reducer = appSlice.reducer

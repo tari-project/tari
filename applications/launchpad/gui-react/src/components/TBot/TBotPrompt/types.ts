@@ -4,6 +4,7 @@ export type TBotMessage = {
   content: string | ReactNode | (() => JSX.Element)
   wait?: number
   barFill?: number
+  noSkip?: boolean
 }
 
 export interface TBotPromptProps {

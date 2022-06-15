@@ -27,6 +27,11 @@ export const OnboardingMessagesMap: (string | TBotMessage)[] = [
     content: messages[3],
     wait: 5000,
   },
+  {
+    content: messages[4],
+    wait: 5000,
+    noSkip: true,
+  },
 ]
 
 export default OnBoardingMessagesConfig
