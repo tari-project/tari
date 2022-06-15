@@ -106,11 +106,16 @@ impl BaseNodeClient for GrpcBaseNodeClient {
     ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
         let inner = self.connection().await?;
         let request = grpc::GetConstitutionsRequest {
+            // TODO: pass in the last block hash that was scanned
+            start_block_hash: vec![],
             dan_node_public_key: dan_node_public_key.as_bytes().to_vec(),
         };
         let mut result = inner.get_constitutions(request).await?.into_inner();
         let mut outputs = vec![];
-        while let Some(output) = result.message().await? {
+        while let Some(mined_info) = result.message().await? {
+            let output = mined_info
+                .output
+                .ok_or_else(|| DigitalAssetError::InvalidPeerMessage("Mined info contained no output".to_string()))?;
             outputs.push(output.try_into().map_err(DigitalAssetError::ConversionError)?);
         }
         Ok(outputs)

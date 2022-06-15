@@ -97,6 +97,7 @@ impl DanNode {
         for output in outputs {
             if let Some(sidechain_features) = output.features.sidechain_features {
                 let contract_id = sidechain_features.contract_id;
+                // TODO: expect will crash the validator node if the base node misbehaves
                 let constitution = sidechain_features.constitution.expect("Constitution wasn't present");
 
                 if constitution.acceptance_requirements.acceptance_period_expiry < last_tip {
