@@ -55,6 +55,7 @@ pub enum OutputManagerKeyManagerBranch {
     RecoveryViewOnly,
     RecoveryBlinding,
     RecoveryByte,
+    ContractIssuer,
 }
 
 impl OutputManagerKeyManagerBranch {
@@ -69,6 +70,7 @@ impl OutputManagerKeyManagerBranch {
             OutputManagerKeyManagerBranch::RecoveryViewOnly => "recovery_viewonly".to_string(),
             OutputManagerKeyManagerBranch::RecoveryBlinding => "recovery_blinding".to_string(),
             OutputManagerKeyManagerBranch::RecoveryByte => "Recovery_byte".to_string(),
+            OutputManagerKeyManagerBranch::ContractIssuer => "contract_issuer".to_string(),
         }
     }
 }
