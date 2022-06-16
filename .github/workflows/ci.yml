@@ -51,7 +51,7 @@ jobs:
   tests:
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     uses:
-      ./.github/workflows/reusable-ci-tests.yml
+      ./.github/workflows/reusable-tests.yml
     with:
       profile: "--release"
       test-tari: true
