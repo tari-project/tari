@@ -21,8 +21,8 @@ env:
   PROTOC: protoc
 
 jobs:
-  runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
   check-nightly:
+    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     uses:
       ./.github/workflows/reusable-ci-jobs.yml
     with:
@@ -49,6 +49,7 @@ jobs:
       ./.github/workflows/reusable-licenses.yml
 
   tests:
+    runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     uses:
       ./.github/workflows/reusable-ci-tests.yml
     with:
@@ -59,7 +60,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: test
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: ubuntu-20.04
     steps:
       - name: Save the PR number in an artifact
         shell: bash
