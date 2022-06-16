@@ -7218,6 +7218,7 @@ dependencies = [
  "libc",
  "log",
  "log4rs",
+ "num-traits",
  "openssl",
  "rand 0.8.5",
  "security-framework",

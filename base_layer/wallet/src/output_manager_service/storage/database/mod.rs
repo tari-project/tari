@@ -22,7 +22,7 @@
 
 mod backend;
 use std::{
-    fmt::{Display, Error, Formatter},
+    fmt::{Debug, Display, Error, Formatter},
     sync::Arc,
 };
 
@@ -49,6 +49,35 @@ use crate::output_manager_service::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
+
+#[derive(Debug, Copy, Clone)]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Clone)]
+pub struct StorageBackendQuery {
+    pub tip_height: i64,
+    pub status: Vec<OutputStatus>,
+    pub pagination: (i64, i64),
+    pub value_min: Option<(i64, bool)>,
+    pub value_max: Option<(i64, bool)>,
+    pub sorting: Vec<(&'static str, SortDirection)>,
+}
+
+impl Default for StorageBackendQuery {
+    fn default() -> Self {
+        Self {
+            tip_height: i64::MAX,
+            status: vec![OutputStatus::Spent],
+            pagination: (0, 10),
+            value_min: None,
+            value_max: None,
+            sorting: vec![],
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
@@ -418,6 +447,13 @@ where T: OutputManagerBackend + 'static
     pub fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let outputs = self.db.fetch_outputs_by_tx_id(tx_id)?;
         Ok(outputs)
+    }
+
+    pub fn fetch_outputs_by(
+        &self,
+        q: StorageBackendQuery,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        self.db.fetch_outputs_by(q)
     }
 }
 

@@ -47,6 +47,7 @@ use crate::{
         error::OutputManagerStorageError,
         service::{Balance, UTXOSelectionStrategy},
         storage::{
+            database::{SortDirection, StorageBackendQuery},
             models::DbUnblindedOutput,
             sqlite_db::{UpdateOutput, UpdateOutputSql},
             OutputStatus,
@@ -112,6 +113,64 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
+    }
+
+    /// Retrieves UTXOs by a set of given rules
+    // TODO: maybe use a shorthands macros
+    #[allow(clippy::cast_sign_loss)]
+    pub fn fetch_outputs_by(
+        q: StorageBackendQuery,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::script_lock_height.le(q.tip_height))
+            .filter(outputs::maturity.le(q.tip_height))
+            .filter(outputs::features_unique_id.is_null())
+            .filter(outputs::features_parent_public_key.is_null())
+            .offset(q.pagination.0)
+            .limit(q.pagination.1);
+
+        // filtering by OutputStatus
+        query = match q.status.len() {
+            0 => query,
+            1 => query.filter(outputs::status.eq(q.status[0] as i32)),
+            _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
+        };
+
+        // if set, filtering by minimum value
+        if let Some((min, is_inclusive)) = q.value_min {
+            query = if is_inclusive {
+                query.filter(outputs::value.ge(min))
+            } else {
+                query.filter(outputs::value.gt(min))
+            };
+        }
+
+        // if set, filtering by max value
+        if let Some((max, is_inclusive)) = q.value_max {
+            query = if is_inclusive {
+                query.filter(outputs::value.le(max))
+            } else {
+                query.filter(outputs::value.lt(max))
+            };
+        }
+
+        use SortDirection::{Asc, Desc};
+        Ok(q.sorting
+            .into_iter()
+            .fold(query, |query, s| match s {
+                ("value", d) => match d {
+                    Asc => query.then_order_by(outputs::value.asc()),
+                    Desc => query.then_order_by(outputs::value.desc()),
+                },
+                ("mined_height", d) => match d {
+                    Asc => query.then_order_by(outputs::mined_height.asc()),
+                    Desc => query.then_order_by(outputs::mined_height.desc()),
+                },
+                _ => query,
+            })
+            .load(conn)?)
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
@@ -579,7 +638,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             Covenant::from_bytes(&o.covenant).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+                    "Could not create Covenant from stored bytes ({:?}), They might be encrypted", e
                 );
                 OutputManagerStorageError::ConversionError {
                     reason: "Covenant could not be converted from bytes".to_string(),

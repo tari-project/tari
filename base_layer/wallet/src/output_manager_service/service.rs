@@ -83,7 +83,7 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputManagerBackend, OutputManagerDatabase, StorageBackendQuery},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
@@ -361,6 +361,10 @@ where
             OutputManagerRequest::GetUnspentOutputs => {
                 let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
+            },
+            OutputManagerRequest::GetOutputsBy(q) => {
+                let outputs = self.fetch_outputs_by(q)?.into_iter().map(|v| v.into()).collect();
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
@@ -1567,6 +1571,10 @@ where
 
     pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
+    }
+
+    pub fn fetch_outputs_by(&self, q: StorageBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_outputs_by(q)?)
     }
 
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
