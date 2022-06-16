@@ -32,7 +32,7 @@ use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -74,7 +74,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput, UnblindedOutput},
+        transaction_components::{OutputType, TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
     },
     validation::{
@@ -326,11 +326,15 @@ impl BlockchainBackend for TempDatabase {
             .fetch_all_unspent_by_parent_public_key(parent_public_key, range)
     }
 
-    fn fetch_all_constitutions(
+    fn fetch_contract_outputs_for_block(
         &self,
-        dan_node_public_key: &PublicKey,
-    ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_all_constitutions(dan_node_public_key)
+        block_hash: &BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_contract_outputs_for_block(block_hash, output_type)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
