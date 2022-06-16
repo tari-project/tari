@@ -33,7 +33,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::{Commitment, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -48,7 +48,10 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction_components::{OutputType, Transaction},
+    },
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
@@ -134,7 +137,7 @@ pub async fn get_heights(
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
-    type GetConstitutionsStream = mpsc::Receiver<Result<tari_rpc::TransactionOutput, Status>>;
+    type GetConstitutionsStream = mpsc::Receiver<Result<tari_rpc::GetConstitutionsResponse, Status>>;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
@@ -1827,20 +1830,38 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_constitutions(
         &self,
         request: Request<tari_rpc::GetConstitutionsRequest>,
     ) -> Result<Response<Self::GetConstitutionsStream>, Status> {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        let dan_node_public_key = PublicKey::from_bytes(&request.dan_node_public_key).map_err(|err| {
-            report_error(
-                report_error_flag,
-                Status::invalid_argument(format!("Dan node public key is not a valid public key:{}", err)),
-            )
-        })?;
+        let dan_node_public_key = PublicKey::from_bytes(&request.dan_node_public_key)
+            .map_err(|_| Status::invalid_argument("Dan node public key is not a valid public key"))?;
 
-        let mut handler = self.node_service.clone();
+        let start_hash = Some(request.start_block_hash)
+            .filter(|h| !h.is_empty())
+            .map(FixedHash::try_from)
+            .transpose()
+            .map_err(|_| Status::invalid_argument("Block hash has an invalid length"))?;
+
+        let mut node_service = self.node_service.clone();
+        // Check the start_hash is correct, or if not provided, start from genesis
+        let start_header = match start_hash {
+            Some(hash) => node_service
+                .get_header_by_hash(hash.to_vec())
+                .await
+                .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
+                .ok_or_else(|| Status::not_found(format!("No block found with hash {}", hash)))?,
+            None => node_service
+                .get_header(0)
+                .await
+                .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
+                .ok_or_else(|| Status::internal("Node does not have a genesis block!?"))?,
+        };
+        // The number of headers to load at once to query for UTXOs
+        const BATCH_SIZE: u64 = 50;
         let (mut sender, receiver) = mpsc::channel(50);
         task::spawn(async move {
             let dan_node_public_key_hex = dan_node_public_key.to_hex();
@@ -1848,43 +1869,83 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 target: LOG_TARGET,
                 "Starting thread to process GetConstitutions: dan_node_public_key: {}", dan_node_public_key_hex,
             );
-            let constitutions = match handler.get_constitutions(dan_node_public_key).await {
-                Ok(constitutions) => constitutions,
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
-                    let _get_token_response =
-                        sender.send(Err(report_error(report_error_flag, Status::internal("Internal error"))));
-                    return;
-                },
-            };
+            let mut current_height = start_header.height();
 
-            debug!(
-                target: LOG_TARGET,
-                "Found {} constitutions for {}",
-                constitutions.len(),
-                dan_node_public_key_hex
-            );
-
-            for constitution in constitutions {
-                match sender.send(Ok(constitution.into())).await {
-                    Ok(_) => (),
+            loop {
+                let headers = match node_service
+                    .get_headers(current_height..=current_height + BATCH_SIZE)
+                    .await
+                {
+                    Ok(h) => h,
                     Err(err) => {
-                        warn!(target: LOG_TARGET, "Error sending constitution via GRPC:  {}", err);
-                        match sender
-                            .send(Err(report_error(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
+                        error!(target: LOG_TARGET, "Error fetching headers: {}", err);
+                        let _err = sender
+                            .send(Err(report_error(report_error_flag, Status::internal(err.to_string()))))
+                            .await;
                         return;
                     },
+                };
+
+                if headers.is_empty() {
+                    break;
                 }
+
+                for header in headers {
+                    let block_hash_hex = header.hash().to_hex();
+                    match node_service
+                        .get_contract_outputs_for_block(header.hash().clone(), OutputType::ContractConstitution)
+                        .await
+                    {
+                        Ok(constitutions) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Found {} constitutions in block {}",
+                                constitutions.len(),
+                                block_hash_hex
+                            );
+
+                            let constitutions = constitutions.into_iter().filter(|utxo| {
+                                // Filter for constitutions containing the dan_node_public_key
+                                utxo.output
+                                    .as_transaction_output()
+                                    .and_then(|output| output.features.sidechain_features.as_ref())
+                                    .and_then(|sidechain| sidechain.constitution.as_ref())
+                                    .filter(|constitution| {
+                                        constitution.validator_committee.contains(&dan_node_public_key)
+                                    })
+                                    .is_some()
+                            });
+
+                            for utxo in constitutions {
+                                if sender
+                                    .send(Ok(tari_rpc::GetConstitutionsResponse {
+                                        header_hash: utxo.header_hash,
+                                        mined_height: utxo.mined_height,
+                                        mmr_position: utxo.mmr_position,
+                                        output: utxo.output.into_unpruned_output().map(Into::into),
+                                    }))
+                                    .await
+                                    .is_err()
+                                {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Client disconnected while sending constitution via GRPC"
+                                    );
+                                    break;
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Error fetching contract outputs for block: {}", err);
+                            let _err = sender
+                                .send(Err(report_error(report_error_flag, Status::internal("Internal error"))))
+                                .await;
+                            return;
+                        },
+                    }
+                }
+
+                current_height += BATCH_SIZE + 1;
             }
         });
         Ok(Response::new(receiver))
