@@ -40,7 +40,7 @@ use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::UtxoMinedInfo,
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
 };
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
@@ -319,16 +319,20 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    pub async fn get_constitutions(
+    pub async fn get_contract_outputs_for_block(
         &mut self,
-        dan_node_public_key: PublicKey,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        block_hash: BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchConstitutions { dan_node_public_key })
+            .call(NodeCommsRequest::FetchContractOutputsForBlock {
+                block_hash,
+                output_type,
+            })
             .await??
         {
-            NodeCommsResponse::FetchConstitutionsResponse { outputs } => Ok(outputs),
+            NodeCommsResponse::FetchOutputsForBlockResponse { outputs } => Ok(outputs),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
