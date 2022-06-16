@@ -36,7 +36,7 @@ use tauri::{
 use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 use crate::{
-    api::{image_list, network_list},
+    api::{image_list, network_list, wallet_events},
     commands::{
         create_default_workspace,
         create_new_workspace,
@@ -129,7 +129,8 @@ fn main() {
             launch_docker,
             start_service,
             stop_service,
-            shutdown
+            shutdown,
+            wallet_events
         ])
         .run(context)
         .expect("error starting");
