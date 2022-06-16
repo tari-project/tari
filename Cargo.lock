@@ -7257,6 +7257,7 @@ dependencies = [
  "serde",
  "sha2 0.9.9",
  "sha3",
+ "tari_common_types",
  "tari_crypto",
  "tari_utilities",
  "thiserror",

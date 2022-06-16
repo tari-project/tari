@@ -22,14 +22,21 @@
 
 use digest::Digest;
 use rand::{self, rngs::OsRng, Rng};
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::types::{
+    BlindingFactor,
+    ComSignature,
+    CommitmentFactory,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    Signature,
+};
 use tari_comms::types::Challenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     range_proof::RangeProofService,
-    ristretto::pedersen::commitment_factory::PedersenCommitmentFactory,
     tari_utilities::{hex::Hex, Hashable},
 };
 use tari_script::{script, ExecutionStack, StackItem};
@@ -52,7 +59,7 @@ use crate::{
 #[test]
 fn input_and_output_and_unblinded_output_hash_match() {
     let test_params = TestParams::new();
-    let factory = PedersenCommitmentFactory::default();
+    let factory = CommitmentFactory::default();
 
     let i = test_params.create_unblinded_output(Default::default());
     let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
@@ -64,7 +71,7 @@ fn input_and_output_and_unblinded_output_hash_match() {
 #[test]
 fn unblinded_input() {
     let test_params = TestParams::new();
-    let factory = PedersenCommitmentFactory::default();
+    let factory = CommitmentFactory::default();
 
     let i = test_params.create_unblinded_output(Default::default());
     let input = i
@@ -83,7 +90,7 @@ fn unblinded_input() {
 #[test]
 fn unblinded_input_with_rewind_data() {
     let test_params = TestParams::new();
-    let factory = PedersenCommitmentFactory::default();
+    let factory = CommitmentFactory::default();
 
     let i = test_params.create_unblinded_output_with_rewind_data(Default::default());
     let input = i

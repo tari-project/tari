@@ -28,7 +28,7 @@ use tari_crypto::{
     common::Blake256,
     ristretto::{
         dalek_range_proof::DalekRangeProofService,
-        pedersen::{commitment_factory::PedersenCommitmentFactory, PedersenCommitment},
+        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
         RistrettoComSig,
         RistrettoPublicKey,
         RistrettoSchnorr,
@@ -49,7 +49,7 @@ pub type ComSignature = RistrettoComSig;
 
 /// Define the explicit Commitment implementation for the Tari base layer.
 pub type Commitment = PedersenCommitment;
-pub type CommitmentFactory = PedersenCommitmentFactory;
+pub type CommitmentFactory = ExtendedPedersenCommitmentFactory;
 
 /// Define the explicit Public key implementation for the Tari base layer
 pub type PublicKey = RistrettoPublicKey;
@@ -76,6 +76,7 @@ pub type HashOutput = Vec<u8>;
 pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
 
 /// Specify the range proof type
+// TODO: Replace `DalekRangeProofService` with `BulletproofsPlusService` when 'bulletproofs_plus'
 pub type RangeProofService = DalekRangeProofService;
 
 /// Specify the range proof

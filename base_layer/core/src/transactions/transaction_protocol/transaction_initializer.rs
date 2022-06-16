@@ -30,12 +30,11 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, HashOutput, PrivateKey, PublicKey},
+    types::{BlindingFactor, CommitmentFactory, HashOutput, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::pedersen::commitment_factory::PedersenCommitmentFactory,
     tari_utilities::{fixed_set::FixedSet, hex::to_hex},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -215,7 +214,7 @@ impl SenderTransactionInitializer {
         output: UnblindedOutput,
         sender_offset_private_key: PrivateKey,
     ) -> Result<&mut Self, BuildError> {
-        let commitment_factory = PedersenCommitmentFactory::default();
+        let commitment_factory = CommitmentFactory::default();
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
         if recovery_byte != output.features.recovery_byte {

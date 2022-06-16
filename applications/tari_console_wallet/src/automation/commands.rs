@@ -37,7 +37,7 @@ use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{FixedHash, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -59,7 +59,6 @@ use tari_core::transactions::{
         UnblindedOutput,
     },
 };
-use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     assets::{
@@ -1030,7 +1029,7 @@ async fn publish_contract_amendment(wallet: &WalletSqlite, args: PublishFileArgs
 }
 
 fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> Result<(), CommandError> {
-    let factory = PedersenCommitmentFactory::default();
+    let factory = CommitmentFactory::default();
     let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
     let mut csv_file = LineWriter::new(file);
     writeln!(
