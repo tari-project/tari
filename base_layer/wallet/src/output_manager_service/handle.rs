@@ -168,7 +168,7 @@ impl fmt::Display for OutputManagerRequest {
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
-            GetOutputsBy(sorted_by) => write!(f, "GetUnspentOutputs({:?})", sorted_by),
+            GetOutputsBy(q) => write!(f, "GetOutputs({:#?})", q),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
