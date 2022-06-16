@@ -196,28 +196,52 @@ pub struct LMDBDatabase {
     env: Arc<Environment>,
     env_config: LMDBConfig,
     metadata_db: DatabaseRef,
+    /// Maps height -> BlockHeader
     headers_db: DatabaseRef,
+    /// Maps height -> BlockHeaderAccumulatedData
     header_accumulated_data_db: DatabaseRef,
+    /// Maps height -> BlockAccumulatedData
     block_accumulated_data_db: DatabaseRef,
+    /// Maps block_hash -> height
     block_hashes_db: DatabaseRef,
+    /// Maps OutputKey -> TransactionOutputRowData
     utxos_db: DatabaseRef,
+    /// Maps InputKey -> TransactionInputRowData
     inputs_db: DatabaseRef,
+    /// Maps OutputHash -> <mmr_pos, OutputKey>
     txos_hash_to_index_db: DatabaseRef,
+    /// Maps KernelKey -> TransactionKernelRowData
     kernels_db: DatabaseRef,
+    /// Maps excess -> <block_hash, mmr_pos, kernel_hash>
     kernel_excess_index: DatabaseRef,
+    /// Maps excess_sig -> <block_hash, mmr_pos, kernel_hash>
     kernel_excess_sig_index: DatabaseRef,
+    /// Maps kernel_mmr_size -> height
     kernel_mmr_size_index: DatabaseRef,
+    /// Maps output_mmr_size -> height
     output_mmr_size_index: DatabaseRef,
+    /// Maps commitment -> output_hash
     utxo_commitment_index: DatabaseRef,
+    /// Maps unique_id -> output_hash
     unique_id_index: DatabaseRef,
+    /// Maps <contract_id, output_type> -> (block_hash, output_hash)
+    /// and  <block_hash, output_type, contract_id> -> output_hash
     contract_index: DatabaseRef,
+    /// Maps output_mmr_pos -> <block_hash, output_hash>
     deleted_txo_mmr_position_to_height_index: DatabaseRef,
+    /// Maps block_hash -> Block
     orphans_db: DatabaseRef,
+    /// Maps randomx_seed -> height
     monero_seed_height_db: DatabaseRef,
+    /// Maps block_hash -> BlockHeaderAccumulatedData
     orphan_header_accumulated_data_db: DatabaseRef,
+    /// Stores the orphan tip block hashes
     orphan_chain_tips_db: DatabaseRef,
+    /// Maps parent_block_hash -> block_hash
     orphan_parent_map_index: DatabaseRef,
+    /// Stores bad blocks by block_hash and height
     bad_blocks: DatabaseRef,
+    /// Stores reorgs by epochtime and Reorg
     reorgs: DatabaseRef,
     _file_lock: Arc<File>,
 }
