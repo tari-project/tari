@@ -23,8 +23,10 @@
 use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    errors::RangeProofError,
     keys::PublicKey as PK,
-    range_proof::{RangeProofError, RangeProofService as RPS},
+    range_proof::RangeProofService as RPS,
+    rewindable_range_proof::RewindableRangeProofService,
     tari_utilities::byte_array::ByteArray,
 };
 
@@ -126,8 +128,11 @@ impl SingleReceiverTransactionProtocol {
         let output = TransactionOutput::new_current_version(
             sender_features,
             commitment,
-            RangeProof::from_bytes(&proof)
-                .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
+            RangeProof::from_bytes(&proof).map_err(|_| {
+                TPE::RangeProofError(RangeProofError::ProofConstructionError(
+                    "Creating transaction output".to_string(),
+                ))
+            })?,
             sender_info.script.clone(),
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,

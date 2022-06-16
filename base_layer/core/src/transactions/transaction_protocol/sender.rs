@@ -27,11 +27,20 @@ use digest::{Digest, FixedOutput};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, ComSignature, HashOutput, PrivateKey, PublicKey, RangeProofService, Signature},
+    types::{
+        BlindingFactor,
+        ComSignature,
+        CommitmentFactory,
+        HashOutput,
+        PrivateKey,
+        PublicKey,
+        RangeProofService,
+        Signature,
+    },
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+    ristretto::pedersen::PedersenCommitment,
     tari_utilities::ByteArray,
 };
 use tari_script::TariScript;
@@ -439,7 +448,7 @@ impl SenderTransactionProtocol {
                         private_commitment_nonce,
                         recipient_sender_offset_private_key,
                         &info.outputs[index].clone(),
-                        &PedersenCommitmentFactory::default(),
+                        &CommitmentFactory::default(),
                     )?;
                 }
 
@@ -458,7 +467,7 @@ impl SenderTransactionProtocol {
         private_commitment_nonce: &PrivateKey,
         sender_offset_private_key: &PrivateKey,
         output: &TransactionOutput,
-        commitment_factory: &PedersenCommitmentFactory,
+        commitment_factory: &CommitmentFactory,
     ) -> Result<ComSignature, TPE> {
         // Create sender signature
         let public_commitment_nonce = PublicKey::from_secret_key(private_commitment_nonce);
@@ -764,13 +773,12 @@ impl fmt::Display for SenderState {
 mod test {
     use digest::Digest;
     use rand::rngs::OsRng;
-    use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
+    use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey, RangeProof};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         common::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
-        ristretto::pedersen::PedersenCommitmentFactory,
         tari_utilities::{hex::Hex, ByteArray},
     };
     use tari_script::{script, ExecutionStack, TariScript};
@@ -862,7 +870,7 @@ mod test {
     #[test]
     fn test_metadata_signature_finalize() {
         // Defaults
-        let commitment_factory = PedersenCommitmentFactory::default();
+        let commitment_factory = CommitmentFactory::default();
         let crypto_factory = CryptoFactories::default();
 
         // Sender data
@@ -1223,7 +1231,7 @@ mod test {
     }
 
     #[test]
-    fn single_recipient_with_rewindable_change_and_receiver_outputs() {
+    fn single_recipient_with_rewindable_change_and_receiver_outputs_dalek_bulletproofs() {
         let factories = CryptoFactories::default();
         // Alice's parameters
         let a = TestParams::new();

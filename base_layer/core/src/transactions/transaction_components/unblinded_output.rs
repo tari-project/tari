@@ -43,8 +43,10 @@ use tari_common_types::types::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    errors::RangeProofError,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::{RangeProofError, RangeProofService},
+    range_proof::RangeProofService,
+    rewindable_range_proof::RewindableRangeProofService,
     tari_utilities::{hex::to_hex, ByteArray},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -237,7 +239,11 @@ impl UnblindedOutput {
                     .range_proof
                     .construct_proof(&self.spending_key, self.value.into())?,
             )
-            .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
+            .map_err(|_| {
+                TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                    "Creating transaction output".to_string(),
+                ))
+            })?,
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
@@ -271,8 +277,11 @@ impl UnblindedOutput {
                 &rewind_data.rewind_blinding_key,
                 &rewind_data.proof_message,
             )?;
-            RangeProof::from_bytes(&proof_bytes)
-                .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?
+            RangeProof::from_bytes(&proof_bytes).map_err(|_| {
+                TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                    "Creating rewindable transaction output".to_string(),
+                ))
+            })?
         };
 
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(rewind_data));

@@ -48,7 +48,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService as RangeProofServiceTrait,
-    ristretto::pedersen::PedersenCommitmentFactory,
+    rewindable_range_proof::RewindableRangeProofService,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 use tari_script::TariScript;
@@ -179,7 +179,7 @@ impl TransactionOutput {
         if !self.metadata_signature.verify_challenge(
             &(&self.commitment + &self.sender_offset_public_key),
             &challenge.finalize_fixed(),
-            &PedersenCommitmentFactory::default(),
+            &CommitmentFactory::default(),
         ) {
             return Err(TransactionError::InvalidSignatureError(
                 "Metadata signature not valid!".to_string(),
@@ -287,13 +287,13 @@ impl TransactionOutput {
     ) -> Result<ComSignature, TransactionError> {
         let nonce_a = PrivateKey::random(&mut OsRng);
         let nonce_b = PrivateKey::random(&mut OsRng);
-        let nonce_commitment = PedersenCommitmentFactory::default().commit(&nonce_b, &nonce_a);
+        let nonce_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
         let nonce_commitment = match partial_commitment_nonce {
             None => nonce_commitment,
             Some(partial_nonce) => &nonce_commitment + partial_nonce,
         };
         let pk_value = PrivateKey::from(value.as_u64());
-        let commitment = PedersenCommitmentFactory::default().commit(spending_key, &pk_value);
+        let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
         let encrypted_value = EncryptedValue::todo_encrypt_from(value.as_u64());
         let e = TransactionOutput::build_metadata_signature_challenge(
             version,
@@ -316,7 +316,7 @@ impl TransactionOutput {
             &nonce_a,
             &nonce_b,
             &e.finalize_fixed(),
-            &PedersenCommitmentFactory::default(),
+            &CommitmentFactory::default(),
         )?)
     }
 

@@ -22,13 +22,21 @@
 
 use digest::Digest;
 use rand::{self, rngs::OsRng, Rng};
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::types::{
+    BlindingFactor,
+    ComSignature,
+    CommitmentFactory,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    Signature,
+};
 use tari_comms::types::Challenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    errors::RangeProofError,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    range_proof::{RangeProofError, RangeProofService},
-    ristretto::pedersen::PedersenCommitmentFactory,
+    range_proof::RangeProofService,
     tari_utilities::{hex::Hex, Hashable},
 };
 use tari_script::{script, ExecutionStack, StackItem};
@@ -51,7 +59,7 @@ use crate::{
 #[test]
 fn input_and_output_and_unblinded_output_hash_match() {
     let test_params = TestParams::new();
-    let factory = PedersenCommitmentFactory::default();
+    let factory = CommitmentFactory::default();
 
     let i = test_params.create_unblinded_output(Default::default());
     let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
@@ -63,7 +71,7 @@ fn input_and_output_and_unblinded_output_hash_match() {
 #[test]
 fn unblinded_input() {
     let test_params = TestParams::new();
-    let factory = PedersenCommitmentFactory::default();
+    let factory = CommitmentFactory::default();
 
     let i = test_params.create_unblinded_output(Default::default());
     let input = i
@@ -82,7 +90,7 @@ fn unblinded_input() {
 #[test]
 fn unblinded_input_with_rewind_data() {
     let test_params = TestParams::new();
-    let factory = PedersenCommitmentFactory::default();
+    let factory = CommitmentFactory::default();
 
     let i = test_params.create_unblinded_output_with_rewind_data(Default::default());
     let input = i
@@ -393,7 +401,7 @@ fn inputs_not_malleable() {
 }
 
 #[test]
-fn test_output_rewinding() {
+fn test_output_rewinding_dalek_bulletproofs() {
     let test_params = TestParams::new();
     let factories = CryptoFactories::new(32);
     let v = MicroTari::from(42);
@@ -410,14 +418,26 @@ fn test_output_rewinding() {
         .as_rewindable_transaction_output(&factories, &test_params.rewind_data, None)
         .unwrap();
 
-    assert!(matches!(
-        output.rewind_range_proof_value_only(&factories.range_proof, &public_random_key, &rewind_blinding_public_key),
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
-    ));
-    assert!(matches!(
-        output.rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &public_random_key),
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
-    ));
+    match output.rewind_range_proof_value_only(&factories.range_proof, &public_random_key, &rewind_blinding_public_key)
+    {
+        Ok(_) => {
+            panic!("Should not have succeeded")
+        },
+        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
+        _ => {
+            panic!("Unexpected error condition")
+        },
+    }
+
+    match output.rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &public_random_key) {
+        Ok(_) => {
+            panic!("Should not have succeeded")
+        },
+        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
+        _ => {
+            panic!("Unexpected error condition")
+        },
+    }
 
     let rewind_result = output
         .rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &rewind_blinding_public_key)
@@ -426,18 +446,29 @@ fn test_output_rewinding() {
     assert_eq!(rewind_result.committed_value, v);
     assert_eq!(&rewind_result.proof_message, &test_params.rewind_data.proof_message);
 
-    assert!(matches!(
-        output.full_rewind_range_proof(
-            &factories.range_proof,
-            &random_key,
-            &test_params.rewind_data.rewind_blinding_key
-        ),
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
-    ));
-    assert!(matches!(
-        output.full_rewind_range_proof(&factories.range_proof, &test_params.rewind_data.rewind_key, &random_key),
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
-    ));
+    match output.full_rewind_range_proof(
+        &factories.range_proof,
+        &random_key,
+        &test_params.rewind_data.rewind_blinding_key,
+    ) {
+        Ok(_) => {
+            panic!("Should not have succeeded")
+        },
+        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
+        _ => {
+            panic!("Unexpected error condition")
+        },
+    }
+
+    match output.full_rewind_range_proof(&factories.range_proof, &test_params.rewind_data.rewind_key, &random_key) {
+        Ok(_) => {
+            panic!("Should not have succeeded")
+        },
+        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
+        _ => {
+            panic!("Unexpected error condition")
+        },
+    }
 
     let full_rewind_result = output
         .full_rewind_range_proof(

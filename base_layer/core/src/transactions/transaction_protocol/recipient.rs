@@ -275,7 +275,7 @@ mod test {
     }
 
     #[test]
-    fn single_round_recipient_with_rewinding() {
+    fn single_round_recipient_with_rewinding_dalek_bulletproofs() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Rewind params

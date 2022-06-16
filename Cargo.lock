@@ -6574,7 +6574,7 @@ dependencies = [
 [[package]]
 name = "tari_bulletproofs"
 version = "4.1.2"
-source = "git+https://github.com/tari-project/bulletproofs?tag=v4.1.2#bdad5232c447a3acc1384b950574c6890a444e85"
+source = "git+https://github.com/tari-project/bulletproofs#efb763c6c9ff52f9445ce98594af52d1dc01c53b"
 dependencies = [
  "blake2 0.9.2",
  "byteorder",
@@ -6587,6 +6587,26 @@ dependencies = [
  "serde_derive",
  "sha3",
  "subtle-ng",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
+name = "tari_bulletproofs_plus"
+version = "0.0.5"
+source = "git+https://github.com/tari-project/bulletproofs-plus#28725cdd7d753478c9508cae629a8063fc46be37"
+dependencies = [
+ "blake2 0.9.2",
+ "byteorder",
+ "curve25519-dalek-ng",
+ "derivative",
+ "derive_more",
+ "digest 0.9.0",
+ "lazy_static",
+ "merlin",
+ "rand 0.8.5",
+ "serde",
+ "sha3",
  "thiserror",
  "zeroize",
 ]
@@ -6899,7 +6919,7 @@ dependencies = [
 [[package]]
 name = "tari_crypto"
 version = "0.13.0"
-source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.13.0#c4dd4c0e53528720642b54f42083c6d9e392ee29"
+source = "git+https://github.com/tari-project/tari-crypto.git?rev=a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312#a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",
@@ -6907,6 +6927,7 @@ dependencies = [
  "curve25519-dalek-ng",
  "digest 0.9.0",
  "lazy_static",
+ "log",
  "merlin",
  "once_cell",
  "rand 0.8.5",
@@ -6914,6 +6935,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "tari_bulletproofs",
+ "tari_bulletproofs_plus",
  "tari_utilities",
  "thiserror",
  "zeroize",
@@ -7235,6 +7257,7 @@ dependencies = [
  "serde",
  "sha2 0.9.9",
  "sha3",
+ "tari_common_types",
  "tari_crypto",
  "tari_utilities",
  "thiserror",
@@ -7307,8 +7330,8 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.4.3"
-source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.3#bd328a01ed8f2fec0661e0bd39ea904e3be961cf"
+version = "0.4.4"
+source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.4#cf01f5e5c77457f59bd61ffbed1923f52f4a03c2"
 dependencies = [
  "base58-monero",
  "base64 0.13.0",

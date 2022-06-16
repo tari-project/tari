@@ -52,7 +52,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::REWIND_USER_MESSAGE_LENGTH,
+    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_script::{inputs, script, TariScript};
@@ -1214,7 +1214,7 @@ async fn coin_split_no_change() {
 }
 
 #[tokio::test]
-async fn handle_coinbase() {
+async fn handle_coinbase_with_dalek_bulletproofs_rewinding() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);

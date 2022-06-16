@@ -59,7 +59,7 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::REWIND_USER_MESSAGE_LENGTH,
+    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
 };
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
