@@ -15,8 +15,8 @@ export enum TransactionEvent {
 }
 
 export enum TransactionDirection {
-  Inbound = 'inbound',
-  Outbound = 'outbound',
+  Inbound = 'Inbound',
+  Outbound = 'Outbound',
 }
 
 export type WalletTransactionEvent = {
@@ -36,16 +36,12 @@ export const useWalletEvents = ({
   transactionsRepository: TransactionsRepository
 }) => {
   useEffect(() => {
-    invoke('wallet_events')
-  }, [])
-
-  useEffect(() => {
     let unsubscribe
 
     const listenToEvents = async () => {
       unsubscribe = await listen(
-        'wallet_event',
-        ({
+        'tari://wallet_event',
+        async ({
           event: _,
           payload,
         }: {
@@ -58,6 +54,8 @@ export const useWalletEvents = ({
     }
 
     listenToEvents()
+
+    invoke('wallet_events')
 
     return unsubscribe
   }, [])

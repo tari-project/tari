@@ -11,10 +11,6 @@ enum SystemEventType {
 
 export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
   useEffect(() => {
-    invoke('events')
-  }, [])
-
-  useEffect(() => {
     let unsubscribe
 
     const listenToSystemEvents = async () => {
@@ -39,6 +35,8 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
     }
 
     listenToSystemEvents()
+
+    invoke('events')
 
     return unsubscribe
   }, [])
