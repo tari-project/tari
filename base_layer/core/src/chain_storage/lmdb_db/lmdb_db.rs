@@ -574,7 +574,7 @@ impl LMDBDatabase {
         }
 
         if output.features.contract_id().is_some() {
-            self.get_contract_index(txn).add_output(output)?;
+            self.get_contract_index(txn).add_output(header_hash, output)?;
         }
 
         lmdb_insert(
@@ -1010,11 +1010,11 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         height: u64,
-        hash: &[u8],
+        block_hash: &[u8],
     ) -> Result<(), ChainStorageError> {
-        let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, hash)?;
+        let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash)?;
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
-        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, hash)?;
+        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash)?;
         debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
 
         for utxo in &output_rows {
@@ -1111,7 +1111,7 @@ impl LMDBDatabase {
             }
 
             if input.features()?.is_sidechain_contract() {
-                self.get_contract_index(txn).rewind_input(&input)?;
+                self.get_contract_index(txn).rewind_input(block_hash, &input)?;
             }
         }
         Ok(())
@@ -2070,29 +2070,32 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(result)
     }
 
-    fn fetch_all_constitutions(
+    fn fetch_contract_outputs_for_block(
         &self,
-        dan_node_public_key: &PublicKey,
-    ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+        block_hash: &BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_filter_map_values(&txn, &self.utxos_db, |output: TransactionOutputRowData| {
-            match output.output {
-                None => None,
-                Some(output) => match output.features.sidechain_features.clone() {
-                    None => None,
-                    Some(sidechain_features) => match sidechain_features.constitution {
-                        None => None,
-                        Some(constitution) => {
-                            if constitution.validator_committee.members().contains(dan_node_public_key) {
-                                Some(output)
-                            } else {
-                                None
-                            }
-                        },
-                    },
-                },
-            }
-        })
+        let block_hash =
+            FixedHash::try_from(block_hash.as_slice()).map_err(|e| ChainStorageError::InvalidQuery(e.to_string()))?;
+        if !output_type.is_contract_utxo() {
+            return Err(ChainStorageError::InvalidQuery(format!(
+                "Cannot query for OutputType {} using fetch_contract_outputs_for_block",
+                output_type
+            )));
+        }
+        let output_hashes = self.get_contract_index(&txn).find_by_block(block_hash, output_type)?;
+
+        output_hashes
+            .into_iter()
+            .map(|hash| {
+                self.fetch_output_in_txn(&txn, &*hash)?
+                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                        function: "fetch_contract_outputs_for_block",
+                        details: format!("Output with hash {} exists in contract_index but not in utxo_db", hash),
+                    })
+            })
+            .collect()
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
@@ -2438,7 +2441,9 @@ impl BlockchainBackend for LMDBDatabase {
         output_type: OutputType,
     ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let output_hashes = self.get_contract_index(&txn).fetch(contract_id, output_type)?;
+        let output_hashes = self
+            .get_contract_index(&txn)
+            .find_by_contract_id(contract_id, output_type)?;
         output_hashes
             .into_iter()
             .map(|output_hash| {

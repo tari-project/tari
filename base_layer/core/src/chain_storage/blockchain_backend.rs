@@ -6,7 +6,7 @@ use std::ops::Range;
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::Hash;
 
@@ -33,7 +33,7 @@ use crate::{
         Reorg,
         UtxoMinedInfo,
     },
-    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel},
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -138,10 +138,12 @@ pub trait BlockchainBackend: Send + Sync {
         range: Range<usize>,
     ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError>;
 
-    fn fetch_all_constitutions(
+    /// Fetches contract UTXOs mined within the given block.
+    fn fetch_contract_outputs_for_block(
         &self,
-        dan_node_public_key: &PublicKey,
-    ) -> Result<Vec<TransactionOutput>, ChainStorageError>;
+        block_hash: &BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
