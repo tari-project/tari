@@ -127,9 +127,11 @@ impl OutputSql {
             .filter(outputs::script_lock_height.le(q.tip_height))
             .filter(outputs::maturity.le(q.tip_height))
             .filter(outputs::features_unique_id.is_null())
-            .filter(outputs::features_parent_public_key.is_null())
-            .offset(q.pagination.0)
-            .limit(q.pagination.1);
+            .filter(outputs::features_parent_public_key.is_null());
+
+        if let Some((offset, limit)) = q.pagination {
+            query = query.offset(offset).limit(limit);
+        }
 
         // filtering by OutputStatus
         query = match q.status.len() {

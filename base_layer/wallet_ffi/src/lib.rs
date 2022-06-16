@@ -4150,7 +4150,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
     let q = OutputBackendQuery {
         tip_height: i64::MAX,
         status: vec![OutputStatus::Unspent],
-        pagination: (page, page_size),
+        pagination: Some((page, page_size)),
         value_min: Some((dust_threshold, false)),
         value_max: None,
         sorting: vec![match sorting {

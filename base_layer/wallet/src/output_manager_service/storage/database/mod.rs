@@ -60,7 +60,7 @@ pub enum SortDirection {
 pub struct OutputBackendQuery {
     pub tip_height: i64,
     pub status: Vec<OutputStatus>,
-    pub pagination: (i64, i64),
+    pub pagination: Option<(i64, i64)>,
     pub value_min: Option<(i64, bool)>,
     pub value_max: Option<(i64, bool)>,
     pub sorting: Vec<(&'static str, SortDirection)>,
@@ -71,7 +71,7 @@ impl Default for OutputBackendQuery {
         Self {
             tip_height: i64::MAX,
             status: vec![OutputStatus::Spent],
-            pagination: (0, 10),
+            pagination: Some((0, 10)),
             value_min: None,
             value_max: None,
             sorting: vec![],
