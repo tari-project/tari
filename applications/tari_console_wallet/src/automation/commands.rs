@@ -87,7 +87,7 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
-    automation::prompt::{HexArg, Optional, Prompt},
+    automation::prompt::{HexArg, Optional, Prompt, YesNo},
     cli::{
         CliCommands,
         ContractCommand,
@@ -829,26 +829,47 @@ async fn init_contract_definition_spec(wallet: &WalletSqlite, args: InitDefiniti
             "Contract name must be at most 32 bytes.".to_string(),
         ));
     }
-    let mut contract_issuer = Prompt::new("Issuer public Key (hex): (Press enter to generate a new one)")
-        .with_default("")
-        .skip_if_some(args.contract_issuer)
-        .ask_parsed::<Optional<HexArg<PublicKey>>>()?
-        .into_inner()
-        .map(|v| v.into_inner());
-    if contract_issuer.is_none() {
-        let issuer_key_path = dest.parent().unwrap_or(dest.as_path()).join("issuer_keys.json");
-        let issuer_public_key_path = Prompt::new("Enter path to generate new issuer public key:")
-            .with_default(issuer_key_path.to_string_lossy())
-            .ask_parsed::<PathBuf>()?;
-        let key_result = wallet
-            .key_manager_service
-            .get_next_key(OutputManagerKeyManagerBranch::ContractIssuer.get_branch_key())
-            .await?;
+    println!(
+        "Wallet public key: {}",
+        wallet.comms.node_identity().public_key().to_hex()
+    );
+    let use_wallet_pk = Prompt::new("Use wallet public key as issuer public key? (Y/N):")
+        .skip_if_some(args.contract_issuer.as_ref().map(|_| "y".to_string()))
+        .ask_parsed::<YesNo>()
+        .map(|yn| yn.as_bool())?;
 
-        contract_issuer = Some(key_result.to_public_key());
-        write_to_issuer_key_file(&issuer_public_key_path, key_result)?;
-        println!("Wrote to key file {}", issuer_public_key_path.to_string_lossy());
-    }
+    let contract_issuer = if use_wallet_pk {
+        args.contract_issuer
+            .map(|s| PublicKey::from_hex(&s))
+            .transpose()
+            .map_err(|_| CommandError::InvalidArgument("Issuer public key hex is invalid.".to_string()))?
+            .unwrap_or_else(|| wallet.comms.node_identity().public_key().clone())
+    } else {
+        let contract_issuer = Prompt::new("Issuer public Key (hex): (Press enter to generate a new one)")
+            .with_default("")
+            .skip_if_some(args.contract_issuer)
+            .ask_parsed::<Optional<HexArg<PublicKey>>>()?
+            .into_inner()
+            .map(|v| v.into_inner());
+        match contract_issuer {
+            Some(pk) => pk,
+            None => {
+                let issuer_key_path = dest.parent().unwrap_or_else(|| dest.as_path()).join("issuer_keys.json");
+                let issuer_public_key_path = Prompt::new("Enter path to generate new issuer public key:")
+                    .with_default(issuer_key_path.to_string_lossy())
+                    .ask_parsed::<PathBuf>()?;
+                let key_result = wallet
+                    .key_manager_service
+                    .get_next_key(OutputManagerKeyManagerBranch::ContractIssuer.get_branch_key())
+                    .await?;
+
+                let public_key = key_result.to_public_key();
+                write_to_issuer_key_file(&issuer_public_key_path, key_result)?;
+                println!("Wrote to key file {}", issuer_public_key_path.to_string_lossy());
+                public_key
+            },
+        }
+    };
 
     let runtime = Prompt::new("Contract runtime:")
         .skip_if_some(args.runtime)
@@ -857,7 +878,7 @@ async fn init_contract_definition_spec(wallet: &WalletSqlite, args: InitDefiniti
 
     let contract_definition = ContractDefinitionFileFormat {
         contract_name,
-        contract_issuer: contract_issuer.expect("contract_issuer cannot be None"),
+        contract_issuer,
         contract_spec: ContractSpecificationFileFormat {
             runtime,
             public_functions: vec![],
@@ -972,12 +993,10 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
 }
 
 async fn publish_contract_update_proposal(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
-    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file_reader = BufReader::new(file);
-
     // parse the JSON file
     let update_proposal: ContractUpdateProposalFileFormat =
-        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+
     let contract_id_hex = update_proposal.updated_constitution.contract_id.clone();
     let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let update_proposal_features = ContractUpdateProposal::try_from(update_proposal).map_err(CommandError::JsonFile)?;
@@ -1006,12 +1025,9 @@ async fn publish_contract_update_proposal(wallet: &WalletSqlite, args: PublishFi
 }
 
 async fn publish_contract_amendment(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
-    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file_reader = BufReader::new(file);
-
     // parse the JSON file
     let amendment: ContractAmendmentFileFormat =
-        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let contract_id_hex = amendment.updated_constitution.contract_id.clone();
     let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let amendment_features = ContractAmendment::try_from(amendment).map_err(CommandError::JsonFile)?;

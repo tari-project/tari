@@ -163,3 +163,24 @@ impl<T: FromStr> FromStr for Optional<T> {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct YesNo(bool);
+
+impl YesNo {
+    pub fn as_bool(self) -> bool {
+        self.0
+    }
+}
+
+impl FromStr for YesNo {
+    type Err = CommandError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "y" | "yes" => Ok(Self(true)),
+            "n" | "no" => Ok(Self(false)),
+            _ => Err(CommandError::Argument),
+        }
+    }
+}
