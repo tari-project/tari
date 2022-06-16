@@ -164,7 +164,7 @@ impl TorTransportConfig {
         let forward_addr = self
             .forward_address
             .as_ref()
-            .map(|addr| multiaddr_to_socketaddr(addr))
+            .map(multiaddr_to_socketaddr)
             .transpose()
             .map_err(CommsInitializationError::InvalidTorForwardAddress)?
             .unwrap_or_else(|| ([127, 0, 0, 1], 0).into());

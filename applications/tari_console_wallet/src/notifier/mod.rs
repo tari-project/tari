@@ -98,9 +98,9 @@ impl Notifier {
                     Ok(tx) => {
                         let args = args_from_complete(&tx, RECEIVED, None);
                         let result = Command::new(program).args(&args).output();
-                        let _ = sender.send(WalletEventMessage::Completed {
+                        let _ignored = sender.send(WalletEventMessage::Completed {
                             event: RECEIVED.to_string(),
-                            transaction: tx.clone(),
+                            transaction: tx,
                         });
                         log(result);
                     },
@@ -128,7 +128,7 @@ impl Notifier {
                             event: CONFIRMATION.to_string(),
                             transaction: tx,
                         };
-                        let _ = sender.send(message);
+                        let _ignored = sender.send(message);
                         log(result);
                     },
                     Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
@@ -163,7 +163,7 @@ impl Notifier {
                             event: MINED.to_string(),
                             transaction: tx,
                         };
-                        let _ = sender.send(message);
+                        let _ignored = sender.send(message);
                         log(result);
                     },
                     Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
@@ -200,7 +200,7 @@ impl Notifier {
                                 event: event.to_string(),
                                 transaction: tx.clone(),
                             };
-                            let _ = sender.send(message);
+                            let _ignored = sender.send(message);
 
                             log(result);
                         } else {
@@ -231,7 +231,7 @@ impl Notifier {
                                     event: CANCELLED.to_string(),
                                     transaction: tx.clone(),
                                 };
-                                let _ = sender.send(message);
+                                let _ignored = sender.send(message);
                                 args_from_complete(&tx, CANCELLED, None)
                             },
                             WalletTransaction::PendingInbound(tx) => {
@@ -239,7 +239,7 @@ impl Notifier {
                                     event: CANCELLED.to_string(),
                                     transaction: tx.clone(),
                                 };
-                                let _ = sender.send(message);
+                                let _ignored = sender.send(message);
                                 args_from_inbound(&tx, CANCELLED)
                             },
                             WalletTransaction::PendingOutbound(tx) => {
@@ -247,7 +247,7 @@ impl Notifier {
                                     event: CANCELLED.to_string(),
                                     transaction: tx.clone(),
                                 };
-                                let _ = sender.send(message);
+                                let _ignored = sender.send(message);
                                 args_from_outbound(&tx, CANCELLED)
                             },
                         };

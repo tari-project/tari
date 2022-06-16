@@ -192,7 +192,7 @@ impl LaunchpadConfig {
             ImageType::Monerod => Mounts::empty(),
             ImageType::Frontail => Mounts::with_general(&self.data_directory),
         };
-        mounts.to_docker_mounts()
+        mounts.into_docker_mounts()
     }
 
     /// Returns a map of ports to expose to the host system. TODO - remove the hardcoding so that multiple workspaces

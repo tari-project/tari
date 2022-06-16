@@ -14,7 +14,7 @@ impl Mounts {
         Self { mounts: Vec::new() }
     }
 
-    pub fn to_docker_mounts(self) -> Vec<Mount> {
+    pub fn into_docker_mounts(self) -> Vec<Mount> {
         self.mounts
     }
 
