@@ -7,7 +7,7 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_comms = { path = "../../comms/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", commit = "a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", rev = "a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
