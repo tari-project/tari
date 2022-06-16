@@ -53,7 +53,10 @@ use tower::Service;
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::{Balance, OutputStatusesByTxId},
-    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
+    storage::{
+        database::OutputBackendQuery,
+        models::{KnownOneSidedPaymentScript, SpendingPriority},
+    },
 };
 
 /// API Request enum
@@ -101,6 +104,7 @@ pub enum OutputManagerRequest {
     CancelTransaction(TxId),
     GetSpentOutputs,
     GetUnspentOutputs,
+    GetOutputsBy(OutputBackendQuery),
     GetInvalidOutputs,
     ValidateUtxos,
     RevalidateTxos,
@@ -164,6 +168,7 @@ impl fmt::Display for OutputManagerRequest {
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
+            GetOutputsBy(sorted_by) => write!(f, "GetUnspentOutputs({:?})", sorted_by),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
@@ -234,6 +239,7 @@ pub enum OutputManagerResponse {
     TransactionCancelled,
     SpentOutputs(Vec<UnblindedOutput>),
     UnspentOutputs(Vec<UnblindedOutput>),
+    Outputs(Vec<UnblindedOutput>),
     InvalidOutputs(Vec<UnblindedOutput>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
@@ -600,6 +606,13 @@ impl OutputManagerHandle {
     pub async fn get_unspent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_outputs_by(&mut self, q: OutputBackendQuery) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetOutputsBy(q)).await?? {
+            OutputManagerResponse::Outputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

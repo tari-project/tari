@@ -14,6 +14,8 @@
 enum TariUtxoSort {
   ValueAsc,
   ValueDesc,
+  MinedHeightAsc,
+  MinedHeightDesc,
 };
 
 /**
@@ -126,8 +128,6 @@ struct RistrettoPublicKey;
  */
 struct RistrettoSecretKey;
 
-struct Shutdown;
-
 struct TariCompletedTransactions;
 
 struct TariContacts;
@@ -139,6 +139,8 @@ struct TariPendingOutboundTransactions;
 struct TariPublicKeys;
 
 struct TariSeedWords;
+
+struct TariWallet;
 
 /**
  * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
@@ -152,14 +154,6 @@ struct TransactionKernel;
 struct TransactionSendStatus;
 
 struct TransportConfig;
-
-struct Vec_TariUtxo;
-
-/**
- * A structure containing the config and services that a Wallet application will require. This struct will start up all
- * the services and provide the APIs that applications will use to interact with the services
- */
-struct Wallet_WalletSqliteDatabase__TransactionServiceSqliteDatabase__OutputManagerSqliteDatabase__ContactsServiceSqliteDatabase__KeyManagerSqliteDatabase;
 
 typedef struct TransactionKernel TariTransactionKernel;
 
@@ -280,18 +274,17 @@ typedef struct TransportConfig TariTransportConfig;
 
 typedef struct P2pConfig TariCommsConfig;
 
-typedef struct Wallet_WalletSqliteDatabase__TransactionServiceSqliteDatabase__OutputManagerSqliteDatabase__ContactsServiceSqliteDatabase__KeyManagerSqliteDatabase WalletSqlite;
-
-struct TariWallet {
-  WalletSqlite wallet;
-  Runtime runtime;
-  struct Shutdown shutdown;
-};
-
 typedef struct Balance TariBalance;
 
+struct TariUtxo {
+  char *commitment;
+  uint64_t value;
+};
+
 struct TariOutputs {
-  struct Vec_TariUtxo _0;
+  uintptr_t len;
+  uintptr_t cap;
+  struct TariUtxo *ptr;
 };
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
@@ -2174,29 +2167,30 @@ TariBalance *wallet_get_balance(struct TariWallet *wallet,
  * This function returns a list of unspent UTXO values and commitments.
  *
  * ## Arguments
- * `wallet` - The TariWallet pointer
- * `page` - Page offset
- * `page_size` - A number of items per page
- * `sort_ascending` - Sorting order
- * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold`, are not listed in the
- * result, but are added to the `GetUtxosView.unlisted_dust_sum`.
- * `error_out` - Pointer to an int which will be modified to an error
+ * `wallet` - The TariWallet pointer,
+ * `page` - Page offset,
+ * `page_size` - A number of items per page,
+ * `sorting` - An enum representing desired sorting,
+ * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
+ * result.
+ * `error_out` - A pointer to an int which will be modified to an error
  * code should one occur, may not be null. Functions as an out parameter.
  *
  * ## Returns
- * `*mut GetUtxosView` - Returns a struct with a list of unspent `outputs` and an `unlisted_dust_sum` holding a sum of
- * values that were filtered out by `dust_threshold`.
+ * `*mut TariOutputs` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+ * after use).
  *
  * # Safety
+ * `destroy_tari_outputs()` must be called after use.
  * Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
  * LOG_TARGET.
  */
 struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
-                                     unsigned int page,
-                                     unsigned int page_size,
+                                     uintptr_t page,
+                                     uintptr_t page_size,
                                      enum TariUtxoSort sorting,
-                                     unsigned long long dust_threshold,
-                                     int *error_out);
+                                     uint64_t dust_threshold,
+                                     int32_t *error_out);
 
 /**
  * Frees memory for a `TariOutputs`

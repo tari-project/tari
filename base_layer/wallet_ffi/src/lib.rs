@@ -1,4 +1,3 @@
-#![feature(vec_into_raw_parts)]
 // Copyright 2019. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -58,6 +57,7 @@ use std::{
     boxed::Box,
     convert::TryFrom,
     ffi::{CStr, CString},
+    mem::ManuallyDrop,
     num::NonZeroU16,
     path::PathBuf,
     slice,
@@ -82,6 +82,7 @@ use log4rs::{
     config::{Appender, Config, Root},
     encode::pattern::PatternEncoder,
 };
+use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
 use tari_common::configuration::StringList;
 use tari_common_types::{
@@ -132,6 +133,10 @@ use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
+    output_manager_service::storage::{
+        database::{OutputBackendQuery, SortDirection},
+        OutputStatus,
+    },
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
@@ -239,8 +244,8 @@ pub struct TariOutputs {
 pub enum TariUtxoSort {
     ValueAsc,
     ValueDesc,
-    /* MinedHeightAsc,
-     * MinedHeightDesc, */
+    MinedHeightAsc,
+    MinedHeightDesc,
 }
 
 /// -------------------------------- Strings ------------------------------------------------ ///
@@ -4129,6 +4134,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
     error_out: *mut i32,
 ) -> *mut TariOutputs {
     if wallet.is_null() {
+        error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
             error_out,
             LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code as c_int,
@@ -4136,37 +4142,32 @@ pub unsafe extern "C" fn wallet_get_utxos(
         return ptr::null_mut();
     }
 
-    let page = page.max(1) - 1;
-    let page_size = page_size.max(1);
+    let page = i64::from_usize(page).unwrap_or(i64::MAX).max(1) - 1;
+    let page_size = i64::from_usize(page_size).unwrap_or(i64::MAX).max(1);
+    let dust_threshold = i64::from_u64(dust_threshold).unwrap_or(0);
 
-    debug!(
-        target: LOG_TARGET,
-        "page = {:#?} page_size = {:#?} sort_asc = {:#?} dust_threshold = {:#?}",
-        page,
-        page_size,
-        sorting,
-        dust_threshold
-    );
+    use SortDirection::{Asc, Desc};
+    let q = OutputBackendQuery {
+        tip_height: i64::MAX,
+        status: vec![OutputStatus::Unspent],
+        pagination: (page, page_size),
+        value_min: Some((dust_threshold, false)),
+        value_max: None,
+        sorting: vec![match sorting {
+            TariUtxoSort::MinedHeightAsc => ("mined_height", Asc),
+            TariUtxoSort::MinedHeightDesc => ("mined_height", Desc),
+            TariUtxoSort::ValueAsc => ("value", Asc),
+            TariUtxoSort::ValueDesc => ("value", Desc),
+        }],
+    };
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_unspent_outputs())
+        .block_on((*wallet).wallet.output_manager_service.get_outputs_by(q))
     {
-        Ok(mut unblinded_outputs) => {
-            unblinded_outputs.sort_by(|a, b| {
-                match sorting {
-                    // TariUtxoSort::MinedHeightAsc => {},
-                    TariUtxoSort::ValueAsc => Ord::cmp(&a.value, &b.value),
-                    TariUtxoSort::ValueDesc => Ord::cmp(&b.value, &a.value),
-                    // TariUtxoSort::MinedHeightDesc => {},
-                }
-            });
-
+        Ok(unblinded_outputs) => {
             let outputs: Vec<TariUtxo> = unblinded_outputs
                 .into_iter()
-                .filter(|out| out.value.as_u64() > dust_threshold)
-                .skip(page * page_size)
-                .take(page_size)
                 .filter_map(|out| {
                     Some(TariUtxo {
                         value: out.value.as_u64(),
@@ -4174,7 +4175,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
                             Ok(tout) => match CString::new(tout.commitment.to_hex()) {
                                 Ok(cstr) => cstr.into_raw(),
                                 Err(e) => {
-                                    warn!(
+                                    error!(
                                         target: LOG_TARGET,
                                         "failed to convert commitment hex String into CString: {:#?}", e
                                     );
@@ -4182,7 +4183,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
                                 },
                             },
                             Err(e) => {
-                                warn!(
+                                error!(
                                     target: LOG_TARGET,
                                     "failed to obtain commitment from the transaction output: {:#?}", e
                                 );
@@ -4193,15 +4194,16 @@ pub unsafe extern "C" fn wallet_get_utxos(
                 })
                 .collect();
 
-            let (ptr_outputs, len, cap) = outputs.into_raw_parts();
+            let mut outputs = ManuallyDrop::new(outputs);
             Box::into_raw(Box::new(TariOutputs {
-                len,
-                cap,
-                ptr: ptr_outputs,
+                len: outputs.len(),
+                cap: outputs.capacity(),
+                ptr: outputs.as_mut_ptr(),
             }))
         },
 
         Err(e) => {
+            error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
             ptr::replace(
                 error_out,
                 LibWalletError::from(WalletError::OutputManagerError(e)).code as c_int,
@@ -8831,7 +8833,7 @@ mod test {
             assert_eq!(utxos.len(), 6);
             assert!(
                 utxos
-                    .into_iter()
+                    .iter()
                     .skip(1)
                     .fold((true, utxos[0].value), |acc, x| { (acc.0 && x.value > acc.1, x.value) })
                     .0
@@ -8846,7 +8848,7 @@ mod test {
             assert_eq!(utxos.len(), 6);
             assert!(
                 utxos
-                    .into_iter()
+                    .iter()
                     .skip(1)
                     .fold((true, utxos[0].value), |acc, x| (acc.0 && x.value < acc.1, x.value))
                     .0
