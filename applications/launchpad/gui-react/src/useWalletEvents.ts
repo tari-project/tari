@@ -28,6 +28,7 @@ export type WalletTransactionEvent = {
   direction: TransactionDirection
   amount: number
   message: string
+  is_coinbase: boolean
 }
 
 export const useWalletEvents = ({

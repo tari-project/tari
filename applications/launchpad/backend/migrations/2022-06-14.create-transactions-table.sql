@@ -8,5 +8,6 @@ CREATE TABLE transactions (
   message VARCHAR(255) NOT NULL,
   source VARCHAR(255) NOT NULL,
   destination VARCHAR(255) NOT NULL,
+  isCoinbase INTEGER DEFAULT 0,
   PRIMARY KEY(id)
 );
