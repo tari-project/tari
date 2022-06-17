@@ -1372,9 +1372,19 @@ pub fn fetch_chain_headers<T: BlockchainBackend>(
         ));
     }
 
-    (start..=end_inclusive)
-        .map(|h| db.fetch_chain_header_by_height(h))
-        .collect()
+    #[allow(clippy::cast_possible_truncation)]
+    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    for h in start..=end_inclusive {
+        match db.fetch_chain_header_by_height(h) {
+            Ok(header) => {
+                headers.push(header);
+            },
+            Err(ChainStorageError::ValueNotFound { .. }) => break,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(headers)
 }
 
 fn insert_headers<T: BlockchainBackend>(db: &mut T, headers: Vec<ChainHeader>) -> Result<(), ChainStorageError> {

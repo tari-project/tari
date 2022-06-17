@@ -1889,6 +1889,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 if headers.is_empty() {
                     break;
                 }
+                let num_headers = headers.len();
 
                 for header in headers {
                     let block_hash_hex = header.hash().to_hex();
@@ -1943,6 +1944,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             return;
                         },
                     }
+                }
+
+                if num_headers < BATCH_SIZE as usize {
+                    break;
                 }
 
                 current_height += BATCH_SIZE + 1;
