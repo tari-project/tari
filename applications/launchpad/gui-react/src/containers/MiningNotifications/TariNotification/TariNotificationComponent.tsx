@@ -36,7 +36,7 @@ const TariNotificationContainer = ({
             </Text>
           </div>
           <Text type='subheader'>{whatHaveYouJustDone}</Text>
-          <TBot type='hearts' shadow />
+          <TBot type='hearts' shadow animate={false} />
           <Text style={{ textAlign: 'center' }}>
             Congratarilations! A new Tari block has been mined!
           </Text>

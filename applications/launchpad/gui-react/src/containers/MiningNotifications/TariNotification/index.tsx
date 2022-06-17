@@ -1,13 +1,28 @@
-import { useState } from 'react'
+import { useAppSelector, useAppDispatch } from '../../../store/hooks'
+import { actions } from '../../../store/mining'
+import { selectNotifications } from '../../../store/mining/selectors'
 
 import TariNotification from './TariNotificationComponent'
+import DelayRender from './DelayRender'
 
 const TariNotificationContainer = () => {
-  const [open, setOpen] = useState(true)
-  const amount = 999
-  const onClose = () => setOpen(false)
+  const [notification] = useAppSelector(selectNotifications)
+  const dispatch = useAppDispatch()
+  const onClose = () => dispatch(actions.acknowledgeNotification())
+  const populate = () => dispatch(actions.addDummyNotification())
 
-  return open ? <TariNotification amount={amount} onClose={onClose} /> : null
+  return (
+    <>
+      <button onClick={populate}>test</button>
+      {notification ? (
+        <DelayRender
+          render={() => (
+            <TariNotification amount={notification.amount} onClose={onClose} />
+          )}
+        />
+      ) : null}
+    </>
+  )
 }
 
 export default TariNotificationContainer

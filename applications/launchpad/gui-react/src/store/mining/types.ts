@@ -1,4 +1,4 @@
-import { ScheduleId } from '../../types/general'
+import { ScheduleId, CoinType } from '../../types/general'
 import {
   ContainerStateFields,
   Container,
@@ -55,9 +55,15 @@ export interface MergedMiningNodeState extends MiningNodeState {
   urls?: MoneroUrl[]
 }
 
+export interface BlockMinedNotification {
+  amount: number
+  currency: CoinType
+}
+
 export interface MiningState {
   tari: MiningNodeState
   merged: MergedMiningNodeState
+  notifications: BlockMinedNotification[]
 }
 
 export interface MiningContainersState extends ContainerStateFields {

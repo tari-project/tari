@@ -6,6 +6,7 @@ describe('Mining Redux slice', () => {
     // given
     const testAddress = 'testAddress'
     const state: MiningState = {
+      notifications: [],
       tari: {},
       merged: {
         address: undefined,
@@ -13,6 +14,7 @@ describe('Mining Redux slice', () => {
       },
     }
     const expected: MiningState = {
+      notifications: [],
       tari: {},
       merged: {
         address: testAddress,
@@ -37,6 +39,7 @@ describe('Mining Redux slice', () => {
     const testUrls = [{ url: 'some-url-1' }, { url: 'some-url-2' }]
 
     const state: MiningState = {
+      notifications: [],
       tari: {},
       merged: {
         address: undefined,
@@ -46,6 +49,7 @@ describe('Mining Redux slice', () => {
     }
     const expected: MiningState = {
       tari: {},
+      notifications: [],
       merged: {
         address: testAddress,
         threads: testThreads,

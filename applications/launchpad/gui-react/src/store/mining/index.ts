@@ -21,6 +21,7 @@ export const initialState: MiningState = {
     urls: MiningConfig.defaultMoneroUrls.map(url => ({ url })),
     session: undefined,
   },
+  notifications: [{ amount: 777, currency: 'xtr' }],
 }
 
 const miningSlice = createSlice({
@@ -95,6 +96,20 @@ const miningSlice = createSlice({
       }>,
     ) {
       state.merged = { ...state.merged, ...action.payload }
+    },
+    acknowledgeNotification(state) {
+      const [_head, ...notificationsLeft] = state.notifications
+      state.notifications = notificationsLeft
+    },
+    addDummyNotification(state) {
+      state.notifications = [
+        ...state.notifications,
+        {
+          amount: 123,
+          currency: 'xtr',
+        },
+        { amount: 324, currency: 'xtr' },
+      ]
     },
   },
 })
