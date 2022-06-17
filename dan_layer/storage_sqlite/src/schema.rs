@@ -71,6 +71,13 @@ table! {
     }
 }
 
+table! {
+    metadata (key) {
+        key -> Binary,
+        value -> Binary,
+    }
+}
+
 joinable!(instructions -> nodes (node_id));
 
 allow_tables_to_appear_in_same_query!(

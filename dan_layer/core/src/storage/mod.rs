@@ -28,6 +28,7 @@ pub mod chain;
 mod chain_storage_service;
 mod db_factory;
 mod error;
+pub mod global;
 pub mod lmdb;
 pub mod state;
 mod store;

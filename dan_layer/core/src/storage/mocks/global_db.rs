@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,11 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod global_metadata;
-pub mod instruction;
-pub mod locked_qc;
-pub mod node;
-pub mod prepare_qc;
-pub mod state_key;
-pub mod state_op_log;
-pub mod state_tree;
+use crate::storage::{global::GlobalDbBackendAdapter, StorageError};
+
+#[derive(Debug, Clone, Default)]
+pub struct MockGlobalDbBackupAdapter;
+
+impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
+    type BackendTransaction = ();
+    type Error = StorageError;
+
+    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
+        todo!()
+    }
+
+    fn get_data(&self, _key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+        todo!()
+    }
+
+    fn set_data(&self, _key: &[u8], _value: &[u8]) -> Result<(), Self::Error> {
+        todo!()
+    }
+}

@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod chain_db;
+mod global_db;
 mod state_db;
 
 use std::{
@@ -32,7 +33,12 @@ use tari_common_types::types::PublicKey;
 
 use crate::storage::{
     chain::{ChainDb, DbInstruction, DbNode, DbQc},
-    mocks::{chain_db::MockChainDbBackupAdapter, state_db::MockStateDbBackupAdapter},
+    global::GlobalDb,
+    mocks::{
+        chain_db::MockChainDbBackupAdapter,
+        global_db::MockGlobalDbBackupAdapter,
+        state_db::MockStateDbBackupAdapter,
+    },
     state::StateDb,
     DbFactory,
     StorageError,
@@ -42,10 +48,12 @@ use crate::storage::{
 pub struct MockDbFactory {
     chain_db: Arc<RwLock<HashMap<PublicKey, MockChainDbBackupAdapter>>>,
     state_db: Arc<RwLock<HashMap<PublicKey, MockStateDbBackupAdapter>>>,
+    _global_db: Arc<RwLock<MockGlobalDbBackupAdapter>>,
 }
 
 impl DbFactory for MockDbFactory {
     type ChainDbBackendAdapter = MockChainDbBackupAdapter;
+    type GlobalDbBackendAdapter = MockGlobalDbBackupAdapter;
     type StateDbBackendAdapter = MockStateDbBackupAdapter;
 
     fn get_chain_db(
@@ -100,6 +108,12 @@ impl DbFactory for MockDbFactory {
             .or_default()
             .clone();
         Ok(StateDb::new(asset_public_key.clone(), entry))
+    }
+
+    fn get_or_create_global_db(&self) -> Result<GlobalDb<Self::GlobalDbBackendAdapter>, StorageError> {
+        // let entry = self.global_db.write().unwrap().clone();
+        // Ok(GlobalDb::new(entry))
+        todo!()
     }
 }
 

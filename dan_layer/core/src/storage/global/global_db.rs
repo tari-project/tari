@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,11 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod global_metadata;
-pub mod instruction;
-pub mod locked_qc;
-pub mod node;
-pub mod prepare_qc;
-pub mod state_key;
-pub mod state_op_log;
-pub mod state_tree;
+use crate::storage::{global::GlobalDbBackendAdapter, StorageError};
+
+pub struct GlobalDb<TGlobalDbBackendAdapter> {
+    adapter: TGlobalDbBackendAdapter,
+}
+
+impl<TGlobalDbBackendAdapter: GlobalDbBackendAdapter> GlobalDb<TGlobalDbBackendAdapter> {
+    pub fn new(adapter: TGlobalDbBackendAdapter) -> Self {
+        Self { adapter }
+    }
+
+    pub fn set_data(&self, key: &[u8], value: &[u8]) -> Result<(), StorageError> {
+        self.adapter
+            .set_data(key, value)
+            .map_err(TGlobalDbBackendAdapter::Error::into)
+    }
+
+    pub fn get_data(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
+        self.adapter.get_data(key).map_err(TGlobalDbBackendAdapter::Error::into)
+    }
+}

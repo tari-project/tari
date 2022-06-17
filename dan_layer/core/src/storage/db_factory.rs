@@ -24,6 +24,7 @@ use tari_common_types::types::PublicKey;
 
 use crate::storage::{
     chain::{ChainDb, ChainDbBackendAdapter},
+    global::{GlobalDb, GlobalDbBackendAdapter},
     state::{StateDb, StateDbBackendAdapter},
     StorageError,
 };
@@ -31,6 +32,7 @@ use crate::storage::{
 pub trait DbFactory: Sync + Send + 'static {
     type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type StateDbBackendAdapter: StateDbBackendAdapter;
+    type GlobalDbBackendAdapter: GlobalDbBackendAdapter;
 
     fn get_chain_db(
         &self,
@@ -51,4 +53,6 @@ pub trait DbFactory: Sync + Send + 'static {
         &self,
         asset_public_key: &PublicKey,
     ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;
+
+    fn get_or_create_global_db(&self) -> Result<GlobalDb<Self::GlobalDbBackendAdapter>, StorageError>;
 }

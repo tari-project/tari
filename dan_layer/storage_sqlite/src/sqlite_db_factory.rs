@@ -26,11 +26,12 @@ use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::embed_migrations;
 use log::*;
 use tari_common_types::types::PublicKey;
-use tari_dan_core::storage::{chain::ChainDb, state::StateDb, DbFactory, StorageError};
+use tari_dan_core::storage::{chain::ChainDb, global::GlobalDb, state::StateDb, DbFactory, StorageError};
 use tari_utilities::hex::Hex;
 
 use crate::{
     error::SqliteStorageError,
+    sqlite_global_db_backend_adapter::SqliteGlobalDbBackendAdapter,
     sqlite_state_db_backend_adapter::SqliteStateDbBackendAdapter,
     SqliteChainBackendAdapter,
 };
@@ -82,6 +83,7 @@ impl SqliteDbFactory {
 
 impl DbFactory for SqliteDbFactory {
     type ChainDbBackendAdapter = SqliteChainBackendAdapter;
+    type GlobalDbBackendAdapter = SqliteGlobalDbBackendAdapter;
     type StateDbBackendAdapter = SqliteStateDbBackendAdapter;
 
     fn get_chain_db(
@@ -151,5 +153,28 @@ impl DbFactory for SqliteDbFactory {
             asset_public_key.clone(),
             SqliteStateDbBackendAdapter::new(database_url),
         ))
+    }
+
+    fn get_or_create_global_db(&self) -> Result<GlobalDb<Self::GlobalDbBackendAdapter>, StorageError> {
+        let database_url = self
+            .data_dir
+            .join("global_storage.sqlite")
+            .into_os_string()
+            .into_string()
+            .expect("Should not fail");
+
+        create_dir_all(&PathBuf::from(&database_url).parent().unwrap())
+            .map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
+
+        let connection = SqliteConnection::establish(database_url.as_str()).map_err(SqliteStorageError::from)?;
+        connection
+            .execute("PRAGMA foreign_keys = ON;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set pragma".to_string(),
+            })?;
+        embed_migrations!("./migrations");
+        embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
+        Ok(GlobalDb::new(SqliteGlobalDbBackendAdapter::new(database_url)))
     }
 }
