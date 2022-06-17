@@ -72,7 +72,7 @@ impl Default for OutputBackendQuery {
         Self {
             tip_height: i64::MAX,
             status: vec![OutputStatus::Spent],
-            pagination: Some((0, 10)),
+            pagination: None,
             value_min: None,
             value_max: None,
             sorting: vec![],
