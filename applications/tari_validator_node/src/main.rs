@@ -51,8 +51,11 @@ use tari_comms::{
     NodeIdentity,
 };
 use tari_comms_dht::Dht;
-use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
-use tari_dan_storage_sqlite::SqliteDbFactory;
+use tari_dan_core::{
+    services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification},
+    storage::{global::GlobalDb, DbFactory},
+};
+use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteGlobalDbBackendAdapter};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
@@ -112,6 +115,9 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         PeerFeatures::NONE,
     )?;
     let db_factory = SqliteDbFactory::new(config.validator_node.data_dir.clone());
+    let global_db = db_factory
+        .get_or_create_global_db()
+        .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
     let mempool_service = MempoolServiceHandle::default();
 
     info!(
@@ -158,7 +164,12 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     println!("🚀 Validator node started!");
     println!("{}", node_identity);
 
-    run_dan_node(config.validator_node.clone(), node_identity.clone()).await?;
+    run_dan_node(
+        config.validator_node.clone(),
+        node_identity.clone(),
+        Arc::new(global_db),
+    )
+    .await?;
 
     Ok(())
 }
@@ -171,8 +182,12 @@ fn build_runtime() -> Result<Runtime, ExitError> {
         .map_err(|e| ExitError::new(ExitCode::UnknownError, e))
 }
 
-async fn run_dan_node(config: ValidatorNodeConfig, node_identity: Arc<NodeIdentity>) -> Result<(), ExitError> {
-    let node = DanNode::new(config, node_identity);
+async fn run_dan_node(
+    config: ValidatorNodeConfig,
+    node_identity: Arc<NodeIdentity>,
+    global_db: Arc<GlobalDb<SqliteGlobalDbBackendAdapter>>,
+) -> Result<(), ExitError> {
+    let node = DanNode::new(config, node_identity, global_db);
     node.start().await
 }
 

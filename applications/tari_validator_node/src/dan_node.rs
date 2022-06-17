@@ -26,7 +26,12 @@ use log::{error, info};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::Signature;
 use tari_comms::NodeIdentity;
-use tari_dan_core::services::{BaseNodeClient, WalletClient};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_core::{
+    services::{BaseNodeClient, WalletClient},
+    storage::global::GlobalDb,
+};
+use tari_dan_storage_sqlite::SqliteGlobalDbBackendAdapter;
 use tokio::{task, time};
 
 use crate::{
@@ -40,29 +45,30 @@ const _LOG_TARGET: &str = "tari::validator_node::app";
 pub struct DanNode {
     config: ValidatorNodeConfig,
     identity: Arc<NodeIdentity>,
+    global_db: Arc<GlobalDb<SqliteGlobalDbBackendAdapter>>,
 }
 
 impl DanNode {
-    pub fn new(config: ValidatorNodeConfig, identity: Arc<NodeIdentity>) -> Self {
-        Self { config, identity }
+    pub fn new(
+        config: ValidatorNodeConfig,
+        identity: Arc<NodeIdentity>,
+        global_db: Arc<GlobalDb<SqliteGlobalDbBackendAdapter>>,
+    ) -> Self {
+        Self {
+            config,
+            identity,
+            global_db,
+        }
     }
 
     pub async fn start(&self) -> Result<(), ExitError> {
-        let mut base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
-        let mut last_tip = 0u64;
+        let base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
         let node = self.clone();
 
         if self.config.constitution_auto_accept {
             task::spawn(async move {
                 loop {
-                    if let Ok(metadata) = base_node_client.get_tip_info().await {
-                        last_tip = metadata.height_of_longest_chain;
-                    }
-
-                    match node
-                        .find_and_accept_constitutions(base_node_client.clone(), last_tip)
-                        .await
-                    {
+                    match node.find_and_accept_constitutions(base_node_client.clone()).await {
                         Ok(()) => info!("Contracts accepted"),
                         Err(e) => error!("Contracts not accepted because {:?}", e),
                     }
@@ -82,12 +88,13 @@ impl DanNode {
         }
     }
 
-    async fn find_and_accept_constitutions(
-        &self,
-        mut base_node_client: GrpcBaseNodeClient,
-        last_tip: u64,
-    ) -> Result<(), ExitError> {
+    async fn find_and_accept_constitutions(&self, mut base_node_client: GrpcBaseNodeClient) -> Result<(), ExitError> {
         let mut wallet_client = GrpcWalletClient::new(self.config.wallet_grpc_address);
+
+        let last_hash = match self.global_db.get_data("last_scanned_constitution_hash".as_bytes()) {
+            Ok(Some(h)) => h,
+            _ => vec![],
+        };
 
         let outputs = base_node_client
             .get_constitutions(self.identity.public_key().clone())
@@ -97,22 +104,21 @@ impl DanNode {
         for output in outputs {
             if let Some(sidechain_features) = output.features.sidechain_features {
                 let contract_id = sidechain_features.contract_id;
-                // TODO: expect will crash the validator node if the base node misbehaves
-                let constitution = sidechain_features.constitution.expect("Constitution wasn't present");
+                let signature = Signature::default();
 
-                if constitution.acceptance_requirements.acceptance_period_expiry < last_tip {
-                    let signature = Signature::default();
-
-                    match wallet_client
-                        .submit_contract_acceptance(&contract_id, self.identity.public_key(), &signature)
-                        .await
-                    {
-                        Ok(tx_id) => info!("Accepted with id={}", tx_id),
-                        Err(_) => error!("Did not accept the contract acceptance"),
-                    };
+                match wallet_client
+                    .submit_contract_acceptance(&contract_id, self.identity.public_key(), &signature)
+                    .await
+                {
+                    Ok(tx_id) => info!("Accepted with id={}", tx_id),
+                    Err(_) => error!("Did not accept the contract acceptance"),
                 };
             }
         }
+
+        self.global_db
+            .set_data("last_scanned_constitution_hash".as_bytes(), latest_hash.as_bytes())
+            .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
 
         Ok(())
     }
