@@ -61,6 +61,14 @@ impl EncryptedValue {
         data[0..8].copy_from_slice(&value);
         Self(data)
     }
+
+    /// TODO: Replace this method with a real call of decryption service
+    /// that will produce a decrypted value from self.
+    pub fn todo_decrypt(&self) -> u64 {
+        let mut buffer = [0u8; 8];
+        (&mut buffer[0..8]).copy_from_slice(&self.0.as_slice()[0..8]);
+        u64::from_le_bytes(buffer)
+    }
 }
 
 impl ConsensusEncoding for EncryptedValue {
