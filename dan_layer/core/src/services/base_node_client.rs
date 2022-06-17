@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{BlockHash, PublicKey};
 use tari_core::transactions::transaction_components::TransactionOutput;
 
 use crate::{
@@ -43,7 +43,8 @@ pub trait BaseNodeClient: Send + Sync {
     async fn get_constitutions(
         &mut self,
         dan_node_public_key: PublicKey,
-    ) -> Result<Vec<TransactionOutput>, DigitalAssetError>;
+        block_hash: Vec<u8>,
+    ) -> Result<(Vec<TransactionOutput>, BlockHash), DigitalAssetError>;
 
     async fn check_if_in_committee(
         &mut self,

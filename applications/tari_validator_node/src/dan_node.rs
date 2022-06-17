@@ -96,8 +96,8 @@ impl DanNode {
             _ => vec![],
         };
 
-        let outputs = base_node_client
-            .get_constitutions(self.identity.public_key().clone())
+        let (outputs, latest_hash) = base_node_client
+            .get_constitutions(self.identity.public_key().clone(), last_hash)
             .await
             .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
 

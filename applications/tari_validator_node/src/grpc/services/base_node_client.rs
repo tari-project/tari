@@ -25,7 +25,7 @@ use std::{convert::TryInto, net::SocketAddr};
 use async_trait::async_trait;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common_types::types::{PublicKey, COMMITTEE_DEFINITION_ID};
+use tari_common_types::types::{BlockHash, PublicKey, COMMITTEE_DEFINITION_ID};
 use tari_core::transactions::transaction_components::TransactionOutput;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
@@ -103,22 +103,25 @@ impl BaseNodeClient for GrpcBaseNodeClient {
     async fn get_constitutions(
         &mut self,
         dan_node_public_key: PublicKey,
-    ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
+        block_hash: Vec<u8>,
+    ) -> Result<(Vec<TransactionOutput>, BlockHash), DigitalAssetError> {
         let inner = self.connection().await?;
         let request = grpc::GetConstitutionsRequest {
             // TODO: pass in the last block hash that was scanned
-            start_block_hash: vec![],
+            start_block_hash: block_hash,
             dan_node_public_key: dan_node_public_key.as_bytes().to_vec(),
         };
         let mut result = inner.get_constitutions(request).await?.into_inner();
         let mut outputs = vec![];
+        let mut last_hash: BlockHash = vec![];
         while let Some(mined_info) = result.message().await? {
             let output = mined_info
                 .output
                 .ok_or_else(|| DigitalAssetError::InvalidPeerMessage("Mined info contained no output".to_string()))?;
             outputs.push(output.try_into().map_err(DigitalAssetError::ConversionError)?);
+            last_hash = mined_info.header_hash;
         }
-        Ok(outputs)
+        Ok((outputs, last_hash))
     }
 
     async fn check_if_in_committee(
