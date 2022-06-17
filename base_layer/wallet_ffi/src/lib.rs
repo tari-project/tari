@@ -4158,14 +4158,17 @@ pub unsafe extern "C" fn wallet_get_utxos(
         }],
     };
 
-    match (*wallet).wallet.output_db.fetch_outputs_by(q) {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.output_manager_service.get_outputs_by(q))
+    {
         Ok(unblinded_outputs) => {
             let outputs: Vec<TariUtxo> = unblinded_outputs
                 .into_iter()
                 .filter_map(|out| {
                     Some(TariUtxo {
-                        value: out.unblinded_output.value.as_u64(),
-                        commitment: match out.unblinded_output.as_transaction_output(&CryptoFactories::default()) {
+                        value: out.value.as_u64(),
+                        commitment: match out.as_transaction_output(&CryptoFactories::default()) {
                             Ok(tout) => match CString::new(tout.commitment.to_hex()) {
                                 Ok(cstr) => cstr.into_raw(),
                                 Err(e) => {
