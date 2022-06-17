@@ -82,7 +82,7 @@ pub async fn wallet_events(app: AppHandle<Wry>) -> Result<(), String> {
                     message: value.message,
                 };
 
-                if let Err(err) = app_clone.emit_all("wallet_event", wt.clone()) {
+                if let Err(err) = app_clone.emit_all("tari://wallet_event", wt.clone()) {
                     warn!("Could not emit event to front-end, {:?}", err);
                 }
             }
