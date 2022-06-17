@@ -57,6 +57,8 @@ export interface MergedMiningNodeState extends MiningNodeState {
 
 export interface BlockMinedNotification {
   amount: number
+  header: string
+  message: string
   currency: CoinType
 }
 

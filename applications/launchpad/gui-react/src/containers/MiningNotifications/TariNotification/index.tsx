@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useAppSelector, useAppDispatch } from '../../../store/hooks'
 import { actions } from '../../../store/mining'
 import { selectNotifications } from '../../../store/mining/selectors'
@@ -8,8 +9,16 @@ import DelayRender from './DelayRender'
 const TariNotificationContainer = () => {
   const [notification] = useAppSelector(selectNotifications)
   const dispatch = useAppDispatch()
-  const onClose = () => dispatch(actions.acknowledgeNotification())
-  const populate = () => dispatch(actions.addDummyNotification())
+  const [open, setOpen] = useState(true)
+  const onClose = () => {
+    setOpen(false)
+    dispatch(actions.acknowledgeNotification())
+  }
+  useEffect(() => setOpen(true), [notification])
+  const populate = () => {
+    dispatch(actions.addNotification({ amount: 1232, currency: 'xtr' }))
+    dispatch(actions.addNotification({ amount: 2344, currency: 'xtr' }))
+  }
 
   return (
     <>
@@ -17,7 +26,11 @@ const TariNotificationContainer = () => {
       {notification ? (
         <DelayRender
           render={() => (
-            <TariNotification amount={notification.amount} onClose={onClose} />
+            <TariNotification
+              open={open}
+              notification={notification}
+              onClose={onClose}
+            />
           )}
         />
       ) : null}

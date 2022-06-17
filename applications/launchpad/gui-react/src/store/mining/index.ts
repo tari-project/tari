@@ -1,7 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { v4 as uuidv4 } from 'uuid'
-import { MiningNodeType, ScheduleId } from '../../types/general'
+
+import { MiningNodeType, ScheduleId, CoinType } from '../../types/general'
 import MiningConfig from '../../config/mining'
+import t from '../../locales'
 
 import { startMiningNode, stopMiningNode } from './thunks'
 import { MiningState, MiningActionReason, MoneroUrl } from './types'
@@ -21,7 +23,7 @@ export const initialState: MiningState = {
     urls: MiningConfig.defaultMoneroUrls.map(url => ({ url })),
     session: undefined,
   },
-  notifications: [{ amount: 777, currency: 'xtr' }],
+  notifications: [],
 }
 
 const miningSlice = createSlice({
@@ -101,15 +103,23 @@ const miningSlice = createSlice({
       const [_head, ...notificationsLeft] = state.notifications
       state.notifications = notificationsLeft
     },
-    addDummyNotification(state) {
-      state.notifications = [
-        ...state.notifications,
-        {
-          amount: 123,
-          currency: 'xtr',
-        },
-        { amount: 324, currency: 'xtr' },
-      ]
+    addNotification(
+      state,
+      action: PayloadAction<{ amount: number; currency: CoinType }>,
+    ) {
+      const newNotification = {
+        ...action.payload,
+        message:
+          t.mining.notification.messages[
+            Math.floor(Math.random() * t.mining.notification.messages.length)
+          ],
+        header:
+          t.mining.notification.headers[
+            Math.floor(Math.random() * t.mining.notification.headers.length)
+          ],
+      }
+
+      state.notifications = [...state.notifications, newNotification]
     },
   },
 })

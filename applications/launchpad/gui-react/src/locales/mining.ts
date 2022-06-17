@@ -78,6 +78,19 @@ const translations = {
     wrongUrlFormat: 'Oops! This is not a valid URL',
     moneroUrlPlaceholder: 'Set URL address',
   },
+  notification: {
+    // eslint-disable-next-line quotes
+    youHaveOnlyGoneAndDoneIt: ` You've just mined a Tari block!`,
+    headers: [
+      'Fantaritastic!',
+      'Congratulations, brave Miner!',
+      'Holly moly, what a success!',
+    ],
+    messages: [
+      'Congratarilations! A new Tari block has been mined!',
+      'You did it, Miner! A new Tari block has been mined!',
+    ],
+  },
 }
 
 export default translations

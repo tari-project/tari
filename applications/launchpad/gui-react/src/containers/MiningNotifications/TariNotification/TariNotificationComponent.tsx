@@ -1,5 +1,6 @@
 import { useTheme } from 'styled-components'
 
+import { BlockMinedNotification } from '../../../store/mining/types'
 import Modal from '../../../components/Modal'
 import Text from '../../../components/Text'
 import Button from '../../../components/Button'
@@ -8,20 +9,19 @@ import CoinsList from '../../../components/CoinsList'
 
 import { ContentWrapper, MessageWrapper } from './styles'
 
-// eslint-disable-next-line quotes
-const whatHaveYouJustDone = `You've just mined a Tari block!`
-
-const TariNotificationContainer = ({
-  amount,
+const TariNotificationComponent = ({
+  notification,
+  open,
   onClose,
 }: {
-  amount: number
+  notification: BlockMinedNotification
+  open: boolean
   onClose: () => void
 }) => {
   const theme = useTheme()
 
   return (
-    <Modal open onClose={onClose} size='small'>
+    <Modal open={open} onClose={onClose} size='small'>
       <ContentWrapper>
         <MessageWrapper>
           <div>
@@ -35,12 +35,14 @@ const TariNotificationContainer = ({
               tastic
             </Text>
           </div>
-          <Text type='subheader'>{whatHaveYouJustDone}</Text>
+          <Text type='subheader'>{notification.header}</Text>
           <TBot type='hearts' shadow animate={false} />
-          <Text style={{ textAlign: 'center' }}>
-            Congratarilations! A new Tari block has been mined!
-          </Text>
-          <CoinsList coins={[{ amount, unit: 'xtr' }]} />
+          <Text style={{ textAlign: 'center' }}>{notification.message}</Text>
+          <CoinsList
+            coins={[
+              { amount: notification.amount, unit: notification.currency },
+            ]}
+          />
           <Text>has been added to your wallet.</Text>
         </MessageWrapper>
         <Button
@@ -54,4 +56,4 @@ const TariNotificationContainer = ({
   )
 }
 
-export default TariNotificationContainer
+export default TariNotificationComponent

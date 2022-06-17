@@ -13,7 +13,10 @@ const DelayRender = ({
     setRenderAlready(false)
     const timeout = setTimeout(() => setRenderAlready(true), delay)
 
-    return () => clearTimeout(timeout)
+    return () => {
+      setRenderAlready(false)
+      clearTimeout(timeout)
+    }
   }, [render])
 
   return renderAlready ? render() : null
