@@ -12,7 +12,7 @@ use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::{Balance, UTXOSelectionStrategy},
     storage::{
-        database::{DbKey, DbValue, WriteOperation},
+        database::{DbKey, DbValue, OutputBackendQuery, WriteOperation},
         models::DbUnblindedOutput,
     },
 };
@@ -114,4 +114,5 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         current_tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 }
