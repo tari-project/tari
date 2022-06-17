@@ -1,4 +1,3 @@
-import * as React from 'react'
 import { SVGProps } from 'react'
 
 const SvgTBotHearts = (props: SVGProps<SVGSVGElement>) => (
@@ -6,7 +5,7 @@ const SvgTBotHearts = (props: SVGProps<SVGSVGElement>) => (
     width='1em'
     height='1em'
     viewBox='0 0 1419 1420'
-    fill='none'
+    fill='transparent'
     xmlns='http://www.w3.org/2000/svg'
     data-testid='svg-tbothearts'
     {...props}
