@@ -27,12 +27,13 @@ use std::{convert::TryFrom, fmt::format};
 use config::Config;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
+use serde::Serialize;
 use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{http::status, AppHandle, Manager, Wry};
 
 use crate::{
-    commands::{status, AppState, DEFAULT_IMAGES},
-    docker::{ContainerState, ImageType, TariNetwork},
+    commands::{status, AppState, ServiceSettings, DEFAULT_IMAGES},
+    docker::{ContainerState, ImageType, TariNetwork, TariWorkspace},
     grpc::{GrpcWalletClient, WalletIdentity, WalletTransaction},
 };
 
@@ -47,6 +48,13 @@ pub static TRANSACTION_EVENTS: [&str; 7] = [RECEIVED, SENT, QUEUED, CONFIRMATION
 
 pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
 
+#[derive(Debug, Serialize)]
+pub struct ImageInfo {
+    image_name: String,
+    display_name: String,
+    docker_image: String,
+}
+
 pub fn enum_to_list<T: Sized + ToString + Clone>(enums: &[T]) -> Vec<String> {
     enums.iter().map(|enum_value| enum_value.to_string()).collect()
 }
@@ -58,8 +66,18 @@ pub fn network_list() -> Vec<String> {
 
 /// Provide a list of image names in the Tari "ecosystem"
 #[tauri::command]
-pub fn image_list() -> Vec<String> {
-    enum_to_list::<ImageType>(&DEFAULT_IMAGES)
+pub fn image_list(settings: ServiceSettings) -> Vec<ImageInfo> {
+    let registry = settings.docker_registry.as_ref().map(String::as_str);
+    let tag = settings.docker_tag.as_ref().map(String::as_str);
+    let images: Vec<ImageInfo> = DEFAULT_IMAGES
+        .iter()
+        .map(|value| ImageInfo {
+            image_name: value.image_name().to_string(),
+            display_name: value.display_name().to_string(),
+            docker_image: TariWorkspace::fully_qualified_image(*value, registry, tag),
+        })
+        .collect();
+    images
 }
 
 pub fn event_list() -> Vec<String> {
