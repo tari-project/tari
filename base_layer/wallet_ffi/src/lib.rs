@@ -133,9 +133,12 @@ use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
-    output_manager_service::storage::{
-        database::{OutputBackendQuery, SortDirection},
-        OutputStatus,
+    output_manager_service::{
+        error::OutputManagerError,
+        storage::{
+            database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
+            OutputStatus,
+        },
     },
     storage::{
         database::WalletDatabase,
@@ -3910,6 +3913,7 @@ pub unsafe extern "C" fn wallet_create(
             },
         };
     let wallet_database = WalletDatabase::new(wallet_backend);
+    let output_manager_database = OutputManagerDatabase::new(output_manager_backend.clone());
 
     debug!(target: LOG_TARGET, "Databases Initialized");
 
@@ -4001,6 +4005,7 @@ pub unsafe extern "C" fn wallet_create(
         node_identity,
         factories,
         wallet_database,
+        output_manager_database,
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
@@ -4161,17 +4166,14 @@ pub unsafe extern "C" fn wallet_get_utxos(
         }],
     };
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_outputs_by(q))
-    {
+    match (*wallet).wallet.output_db.fetch_outputs_by(q) {
         Ok(unblinded_outputs) => {
             let outputs: Vec<TariUtxo> = unblinded_outputs
                 .into_iter()
                 .filter_map(|out| {
                     Some(TariUtxo {
-                        value: out.value.as_u64(),
-                        commitment: match out.as_transaction_output(&CryptoFactories::default()) {
+                        value: out.unblinded_output.value.as_u64(),
+                        commitment: match out.unblinded_output.as_transaction_output(&CryptoFactories::default()) {
                             Ok(tout) => match CString::new(tout.commitment.to_hex()) {
                                 Ok(cstr) => cstr.into_raw(),
                                 Err(e) => {
@@ -4206,7 +4208,10 @@ pub unsafe extern "C" fn wallet_get_utxos(
             error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
             ptr::replace(
                 error_out,
-                LibWalletError::from(WalletError::OutputManagerError(e)).code as c_int,
+                LibWalletError::from(WalletError::OutputManagerError(
+                    OutputManagerError::OutputManagerStorageError(e),
+                ))
+                .code as c_int,
             );
             ptr::null_mut()
         },
@@ -8869,7 +8874,6 @@ mod test {
             string_destroy(address_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             transport_config_destroy(transport_config_alice);
-
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
