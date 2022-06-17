@@ -197,6 +197,7 @@ pub type TariCommsConfig = tari_p2p::P2pConfig;
 pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
 pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
+pub type TariEncryptedValue = tari_core::transactions::transaction_components::EncryptedValue;
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -1044,6 +1045,149 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
 pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
     if !covenant.is_null() {
         Box::from_raw(covenant);
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+/// --------------------------------------- EncryptedValue --------------------------------------------///
+
+/// Creates a TariEncryptedValue from a ByteVector containing the encrypted_value bytes
+///
+/// ## Arguments
+/// `encrypted_value_bytes` - The encrypted_value bytes as a ByteVector
+///
+/// ## Returns
+/// `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_value_create_from_bytes(
+    encrypted_value_bytes: *const ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariEncryptedValue {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if encrypted_value_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_value_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let decoded_encrypted_value_bytes = (*encrypted_value_bytes).0.clone();
+
+    match TariEncryptedValue::from_bytes(&decoded_encrypted_value_bytes) {
+        Ok(encrypted_value) => Box::into_raw(Box::new(encrypted_value)),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Error creating an encrypted_value: {:?}", e);
+            error = LibWalletError::from(InterfaceError::InvalidArgument("encrypted_value_bytes".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a ByteVector containing the encrypted_value bytes from a TariEncryptedValue
+///
+/// ## Arguments
+/// `encrypted_value` - The encrypted_value as a TariEncryptedValue
+///
+/// ## Returns
+/// `ByteVector` - Returns a ByteVector containing the encrypted_value bytes. Note that it will be ptr::null_mut() if
+/// any argument is null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_value_as_bytes(
+    encrypted_value: *const TariEncryptedValue,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if encrypted_value.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_value".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let encrypted_value_bytes = TariEncryptedValue::as_bytes(&(*encrypted_value)).to_vec();
+    let encrypted_byte_vector = ByteVector(encrypted_value_bytes);
+    Box::into_raw(Box::new(encrypted_byte_vector))
+}
+
+/// Creates a TariEncryptedValue from an amount
+///
+/// ## Arguments
+/// `amount` - The Tari amount
+///
+/// ## Returns
+/// `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_value_encrypt(
+    amount: c_ulonglong,
+    error_out: *mut c_int,
+) -> *mut TariEncryptedValue {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let encrypted_value = TariEncryptedValue::todo_encrypt_from(amount);
+    Box::into_raw(Box::new(encrypted_value))
+}
+
+/// Creates an amount from a TariEncryptedValue
+///
+/// ## Arguments
+/// `amount` - The Tari amount
+///
+/// ## Returns
+/// `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_value_decrypt(
+    encrypted_value: *const TariEncryptedValue,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if encrypted_value.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_value".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    let encrypted_value = (*encrypted_value).clone();
+    encrypted_value.todo_decrypt() as c_ulonglong
+}
+
+/// Frees memory for a TariEncryptedValue
+///
+/// ## Arguments
+/// `encrypted_value` - The pointer to a TariEncryptedValue
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncryptedValue) {
+    if !encrypted_value.is_null() {
+        Box::from_raw(encrypted_value);
     }
 }
 
@@ -5460,6 +5604,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     sender_offset_public_key: *mut TariPublicKey,
     script_private_key: *mut TariPrivateKey,
     covenant: *mut TariCovenant,
+    encrypted_value: *mut TariEncryptedValue,
     message: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
@@ -5513,6 +5658,12 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         (*covenant).clone()
     };
 
+    let encrypted_value = if encrypted_value.is_null() {
+        TariEncryptedValue::default()
+    } else {
+        (*encrypted_value).clone()
+    };
+
     let message_string;
     if message.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
@@ -5557,6 +5708,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
             &(*sender_offset_public_key).clone(),
             0,
             covenant,
+            encrypted_value,
         )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
@@ -6914,7 +7066,10 @@ mod test {
     use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_unblinded_output, TestParams},
+        transactions::{
+            test_helpers::{create_unblinded_output, TestParams},
+            transaction_components::EncryptedValue,
+        },
     };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
@@ -7457,6 +7612,64 @@ mod test {
 
             covenant_destroy(covenant);
             byte_vector_destroy(covenant_bytes);
+        }
+    }
+
+    #[test]
+    fn test_encrypted_value_empty() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let encrypted_value_bytes = Box::into_raw(Box::new(ByteVector(Vec::new())));
+            let encrypted_value_1 = encrypted_value_create_from_bytes(encrypted_value_bytes, error_ptr);
+
+            assert_ne!(error, 0);
+
+            encrypted_value_destroy(encrypted_value_1);
+            byte_vector_destroy(encrypted_value_bytes);
+        }
+    }
+
+    #[test]
+    fn test_encrypted_value_filled() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let amount = 1234u64;
+            let expected_encrypted_value = EncryptedValue::todo_encrypt_from(amount);
+            let encrypted_value_bytes =
+                Box::into_raw(Box::new(ByteVector(expected_encrypted_value.as_bytes().to_vec())));
+
+            let encrypted_value_1 = encrypted_value_create_from_bytes(encrypted_value_bytes, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(*encrypted_value_1, expected_encrypted_value);
+
+            let encrypted_value_1_as_bytes = encrypted_value_as_bytes(encrypted_value_1, error_ptr);
+            assert_eq!(error, 0);
+            // The wrapped raw bytes includes a memory allocation, thus not equal
+            assert_ne!(encrypted_value_1_as_bytes, encrypted_value_bytes);
+            // The dereferenced vector is equal
+            assert_eq!(*encrypted_value_1_as_bytes, *encrypted_value_bytes);
+
+            let encrypted_value_2 = encrypted_value_create_from_bytes(encrypted_value_1_as_bytes, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(*encrypted_value_2, expected_encrypted_value);
+
+            let encrypted_value_3 = encrypted_value_encrypt(amount as c_ulonglong, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(*encrypted_value_3, expected_encrypted_value);
+
+            let decrypted_value_3 = encrypted_value_decrypt(encrypted_value_3, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(decrypted_value_3, amount as c_ulonglong);
+
+            encrypted_value_destroy(encrypted_value_1);
+            encrypted_value_destroy(encrypted_value_2);
+            encrypted_value_destroy(encrypted_value_3);
+            byte_vector_destroy(encrypted_value_bytes);
+            byte_vector_destroy(encrypted_value_1_as_bytes);
         }
     }
 
@@ -8364,6 +8577,7 @@ mod test {
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant));
+            let encrypted_value_ptr = Box::into_raw(Box::new(utxo_1.encrypted_value));
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
 
             let tx_id = wallet_import_external_utxo_as_non_rewindable(
@@ -8376,6 +8590,7 @@ mod test {
                 sender_offset_public_key_ptr,
                 script_private_key_ptr,
                 covenant_ptr,
+                encrypted_value_ptr,
                 message_ptr,
                 error_ptr,
             );
@@ -8420,6 +8635,7 @@ mod test {
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_2.sender_offset_public_key));
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_2.script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_2.covenant));
+            let encrypted_value_ptr = Box::into_raw(Box::new(utxo_2.encrypted_value));
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
 
             let tx_id = wallet_import_external_utxo_as_non_rewindable(
@@ -8432,6 +8648,7 @@ mod test {
                 sender_offset_public_key_ptr,
                 script_private_key_ptr,
                 covenant_ptr,
+                encrypted_value_ptr,
                 message_ptr,
                 error_ptr,
             );

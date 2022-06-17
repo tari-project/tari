@@ -103,6 +103,7 @@ pub(super) fn hash_output(
     commitment: &Commitment,
     script: &TariScript,
     covenant: &Covenant,
+    encrypted_value: &EncryptedValue,
 ) -> [u8; 32] {
     match version {
         TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
@@ -111,6 +112,7 @@ pub(super) fn hash_output(
             .chain(commitment)
             .chain(script)
             .chain(covenant)
+            .chain(encrypted_value)
             .finalize(),
     }
 }

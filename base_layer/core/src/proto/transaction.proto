@@ -53,6 +53,8 @@ message TransactionInput {
     bytes covenant = 9;
     // Version
     uint32 version = 10;
+    // The encrypted value
+    bytes encrypted_value = 11;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -75,6 +77,8 @@ message TransactionOutput {
     bytes covenant = 7;
     // Version
     uint32 version = 8;
+    // The encrypted value
+    bytes encrypted_value = 9;
 }
 
 // Options for UTXOs

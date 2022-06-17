@@ -204,6 +204,35 @@ struct TariCovenant *covenant_create_from_bytes(
 // Frees memory for a TariCovenant
 void covenant_destroy(struct TariCovenant *covenant);
 
+/// -------------------------------- EncryptedValue  --------------------------------------------- ///
+
+/// Creates a TariEncryptedValue from a ByteVector containing the encrypted_value bytes
+struct TariEncryptedValue *encrypted_value_create_from_bytes(
+    struct ByteVector encrypted_value_bytes,
+    int *error_out
+);
+
+/// Creates a ByteVector containing the encrypted_value bytes from a TariEncryptedValue
+struct ByteVector *encrypted_value_as_bytes(
+    struct TariEncryptedValue *encrypted_value,
+    int *error_out
+);
+
+// Creates a TariEncryptedValue from an amount
+struct TariEncryptedValue *encrypted_value_encrypt(
+    unsigned long long amount,
+    int *error_out
+)
+
+/// Creates an amount from a TariEncryptedValue
+unsigned long long encrypted_value_decrypt(
+    struct TariEncryptedValue *encrypted_value,
+    int *error_out
+);
+
+/// Frees memory for a TariEncryptedValue
+void  encrypted_value_destroy(struct TariEncryptedValue *encrypted_value);
+
 /// -------------------------------- Output Features  --------------------------------------------- ///
 
 // Creates a TariOutputFeatures from byte values
@@ -738,6 +767,7 @@ unsigned long long wallet_import_external_utxo_as_non_rewindable(
     struct TariPublicKey *sender_offset_public_key,
     struct TariPrivateKey *script_private_key,
     struct TariCovenant *covenant,
+    struct TariEncryptedValue *encrypted_value,
     const char *message,
     int *error_out
 );

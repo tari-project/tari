@@ -421,8 +421,8 @@ where
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) -> Result<TxId, WalletError> {
-        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),

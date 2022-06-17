@@ -918,6 +918,7 @@ mod test {
             sender_offset_public_key,
             partial_metadata_signature.clone(),
             covenant,
+            encrypted_value,
         );
         assert!(!output.verify_metadata_signature().is_ok());
         assert!(partial_metadata_signature.verify_challenge(

@@ -309,6 +309,9 @@ const getTransactionOutputHash = function (output) {
   ]);
   encodedBytesLength += covenant.length;
   blake2bUpdate(context, covenant);
+  // encrypted_value
+  encodedBytesLength += output.encrypted_value.length;
+  blake2bUpdate(context, output.encrypted_value);
 
   expect(context.c).to.equal(encodedBytesLength);
   const hash = blake2bFinal(context);

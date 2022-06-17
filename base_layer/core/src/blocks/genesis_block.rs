@@ -44,6 +44,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
+            EncryptedValue,
             KernelFeatures,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -115,6 +116,7 @@ fn get_igor_genesis_block_raw() -> Block {
             // For genesis block: Metadata signature will never be checked
             Default::default(),
             Covenant::default(),
+            EncryptedValue::default(),
         )],
         vec![TransactionKernel::new_current_version(
             KernelFeatures::COINBASE_KERNEL,
@@ -214,7 +216,7 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     // hardcode the Merkle roots once they've been computed above
     block.header.kernel_mr = from_hex("5b91bebd33e18798e03e9c5d831d161ee9c3d12560f50b987e1a8c3ec53146df").unwrap();
     block.header.witness_mr = from_hex("11227f6ce9ff34349d7dcab606b633f55234d5c8a73696a68c6e9ddc7cd3bc40").unwrap();
-    block.header.output_mr = from_hex("5e69274e72f8590e1cf91c189e24368527414aed966de62135d9273a6c14c3ef").unwrap();
+    block.header.output_mr = from_hex("e3d8e137e8efb476d0ef0149ec5f82441daec91847bd910c8d102d6432ce3278").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -259,7 +261,8 @@ fn get_dibbler_genesis_block_raw() -> Block {
             // For genesis block: Metadata signature will never be checked
             ComSignature::default(),
             // Covenant
-            Covenant::default()
+            Covenant::default(),
+            EncryptedValue::default(),
         );
     let kernel = TransactionKernel::new(
         TransactionKernelVersion::V0,

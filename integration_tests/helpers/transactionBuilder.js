@@ -92,7 +92,8 @@ class TransactionBuilder {
     scriptOffsetPublicKey,
     publicNonce,
     commitment,
-    covenant
+    covenant,
+    encryptedValue
   ) {
     const KEY = null; // optional key
     const OUTPUT_LENGTH = 32; // bytes
@@ -108,6 +109,7 @@ class TransactionBuilder {
     blake2bUpdate(context, script_offset_public_key);
     blake2bUpdate(context, commitment);
     blake2bUpdate(context, this.toLengthEncoded(covenant));
+    blake2bUpdate(context, encryptedValue);
     const final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
@@ -219,6 +221,7 @@ class TransactionBuilder {
         },
         sender_offset_public_key: input.output.sender_offset_public_key,
         covenant: Buffer.from([]),
+        encrypted_value: input.output.encrypted_value,
       },
       amount: input.amount,
       privateKey: input.privateKey,
@@ -264,6 +267,10 @@ class TransactionBuilder {
       tari_crypto.commit(privateKey, BigInt(amount)).commitment,
       "hex"
     );
+    let encryptedValue = Buffer.concat([
+      Buffer.from(toLittleEndian(amount, 64)),
+      Buffer.alloc(16),
+    ]);
     const recoveryByte = this.create_unique_recovery_byte(commitment);
     const outputFeatures = Object.assign({
       output_type: OutputType.STANDARD,
@@ -286,7 +293,8 @@ class TransactionBuilder {
       scriptOffsetPublicKey,
       public_nonce,
       commitment,
-      covenantBytes
+      covenantBytes,
+      encryptedValue
     );
     let total_key = combineTwoTariKeys(
       scriptOffsetPrivateKey.toString(),
@@ -316,6 +324,7 @@ class TransactionBuilder {
           signature_v: Buffer.from(meta_sig.v, "hex"),
         },
         covenant: covenantBytes,
+        encrypted_value: encryptedValue,
       },
     };
     this.outputs.push(output);
@@ -458,6 +467,10 @@ class TransactionBuilder {
       tari_crypto.commit(privateKey, BigInt(value + fee)).commitment,
       "hex"
     );
+    let encryptedValue = Buffer.concat([
+      Buffer.from(toLittleEndian(value, 64)),
+      Buffer.alloc(16),
+    ]);
     const recoveryByte = this.create_unique_recovery_byte(commitment);
     let outputFeatures = {
       output_type: OutputType.COINBASE,
@@ -477,7 +490,8 @@ class TransactionBuilder {
       scriptOffsetPublicKey,
       public_nonce_c,
       commitment,
-      covenantBytes
+      covenantBytes,
+      encryptedValue
     );
     let total_key = combineTwoTariKeys(
       scriptOffsetPrivateKey.toString(),
@@ -505,6 +519,7 @@ class TransactionBuilder {
             signature_v: Buffer.from(meta_sig.v, "hex"),
           },
           covenant: covenantBytes,
+          encrypted_value: encryptedValue,
         },
       ],
       kernels: [

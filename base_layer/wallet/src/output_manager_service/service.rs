@@ -1798,7 +1798,6 @@ where
         let rewound =
             output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key)?;
 
-        let encrypted_value = EncryptedValue::todo_encrypt_from(rewound.committed_value);
         let rewound_output = UnblindedOutput::new(
             output.version,
             rewound.committed_value,
@@ -1813,7 +1812,7 @@ where
             // as we are claiming the Hashed part which has a 0 time lock
             0,
             output.covenant,
-            encrypted_value,
+            output.encrypted_value,
         );
         let amount = rewound.committed_value;
 
@@ -2019,7 +2018,6 @@ where
                 );
 
                 if let Ok(rewound_result) = rewound {
-                    let encrypted_value = EncryptedValue::todo_encrypt_from(rewound_result.committed_value);
                     let rewound_output = UnblindedOutput::new(
                         output.version,
                         rewound_result.committed_value,
@@ -2032,7 +2030,7 @@ where
                         output.metadata_signature,
                         known_one_sided_payment_scripts[i].script_lock_height,
                         output.covenant,
-                        encrypted_value,
+                        output.encrypted_value,
                     );
 
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
