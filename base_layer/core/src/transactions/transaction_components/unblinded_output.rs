@@ -44,9 +44,9 @@ use tari_common_types::types::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
+    extended_range_proof::ExtendedRangeProofService,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
-    rewindable_range_proof::RewindableRangeProofService,
     tari_utilities::{hex::to_hex, ByteArray},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -272,12 +272,10 @@ impl UnblindedOutput {
         let proof = if let Some(proof) = range_proof {
             proof.clone()
         } else {
-            let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
+            let proof_bytes = factories.range_proof.construct_proof_with_recovery_seed_nonce(
                 &self.spending_key,
                 self.value.into(),
-                &rewind_data.rewind_key,
                 &rewind_data.rewind_blinding_key,
-                &rewind_data.proof_message,
             )?;
             RangeProof::from_bytes(&proof_bytes).map_err(|_| {
                 TransactionError::RangeProofError(RangeProofError::ProofConstructionError(

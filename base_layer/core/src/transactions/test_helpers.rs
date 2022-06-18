@@ -151,10 +151,8 @@ impl TestParams {
             commitment_factory: CommitmentFactory::default(),
             transaction_weight: TransactionWeight::v2(),
             rewind_data: RewindData {
-                rewind_key: PrivateKey::random(&mut OsRng),
                 rewind_blinding_key: PrivateKey::random(&mut OsRng),
                 recovery_byte_key: PrivateKey::random(&mut OsRng),
-                proof_message: b"alice__12345678910111".to_owned(),
             },
         }
     }
@@ -834,6 +832,8 @@ pub fn create_utxo(
         covenant.clone(),
         encrypted_value,
     );
+    utxo.verify_range_proof(&CryptoFactories::default().range_proof)
+        .unwrap();
     (utxo, keys.k, offset_keys.k)
 }
 

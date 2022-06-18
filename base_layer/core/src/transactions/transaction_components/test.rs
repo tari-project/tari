@@ -35,7 +35,7 @@ use tari_comms::types::Challenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    keys::SecretKey as SecretKeyTrait,
     range_proof::RangeProofService,
     tari_utilities::{hex::Hex, Hashable},
 };
@@ -137,12 +137,12 @@ fn range_proof_verification() {
         },
     }
 
-    let value = 2u64.pow(32) + 1;
+    let value = 2u64.pow(32);
     let v = PrivateKey::from(value);
     let c = factories.commitment.commit(&test_params_2.spend_key, &v);
     let proof = factories
         .range_proof
-        .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
+        .construct_proof(&test_params_2.spend_key, 2u64.pow(32) - 1)
         .unwrap();
 
     let encrypted_value = EncryptedValue::todo_encrypt_from(value);
@@ -403,14 +403,11 @@ fn inputs_not_malleable() {
 }
 
 #[test]
-fn test_output_rewinding_dalek_bulletproofs() {
+fn test_output_rewinding_bulletproofs() {
     let test_params = TestParams::new();
     let factories = CryptoFactories::new(32);
     let v = MicroTari::from(42);
     let random_key = PrivateKey::random(&mut OsRng);
-    let public_random_key = PublicKey::from_secret_key(&random_key);
-    let rewind_public_key = PublicKey::from_secret_key(&test_params.rewind_data.rewind_key);
-    let rewind_blinding_public_key = PublicKey::from_secret_key(&test_params.rewind_data.rewind_blinding_key);
 
     let unblinded_output = test_params.create_unblinded_output_with_rewind_data(UtxoTestParams {
         value: v,
@@ -420,71 +417,25 @@ fn test_output_rewinding_dalek_bulletproofs() {
         .as_rewindable_transaction_output(&factories, &test_params.rewind_data, None)
         .unwrap();
 
-    match output.rewind_range_proof_value_only(&factories.range_proof, &public_random_key, &rewind_blinding_public_key)
-    {
-        Ok(_) => {
-            panic!("Should not have succeeded")
+    match output.recover_mask(&factories.range_proof, &random_key) {
+        Ok(recovered_mask) => {
+            if let Ok(succeeded) =
+                output.verify_mask(&factories.range_proof, &recovered_mask, unblinded_output.value.as_u64())
+            {
+                if succeeded {
+                    panic!("Should not have succeeded")
+                }
+            }
         },
         Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
         _ => {
             panic!("Unexpected error condition")
         },
     }
-
-    match output.rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &public_random_key) {
-        Ok(_) => {
-            panic!("Should not have succeeded")
-        },
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
-        _ => {
-            panic!("Unexpected error condition")
-        },
-    }
-
-    let rewind_result = output
-        .rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &rewind_blinding_public_key)
+    let recovered_mask = output
+        .recover_mask(&factories.range_proof, &test_params.rewind_data.rewind_blinding_key)
         .unwrap();
-
-    assert_eq!(rewind_result.committed_value, v);
-    assert_eq!(&rewind_result.proof_message, &test_params.rewind_data.proof_message);
-
-    match output.full_rewind_range_proof(
-        &factories.range_proof,
-        &random_key,
-        &test_params.rewind_data.rewind_blinding_key,
-    ) {
-        Ok(_) => {
-            panic!("Should not have succeeded")
-        },
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
-        _ => {
-            panic!("Unexpected error condition")
-        },
-    }
-
-    match output.full_rewind_range_proof(&factories.range_proof, &test_params.rewind_data.rewind_key, &random_key) {
-        Ok(_) => {
-            panic!("Should not have succeeded")
-        },
-        Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind(_))) => {},
-        _ => {
-            panic!("Unexpected error condition")
-        },
-    }
-
-    let full_rewind_result = output
-        .full_rewind_range_proof(
-            &factories.range_proof,
-            &test_params.rewind_data.rewind_key,
-            &test_params.rewind_data.rewind_blinding_key,
-        )
-        .unwrap();
-    assert_eq!(full_rewind_result.committed_value, v);
-    assert_eq!(
-        &full_rewind_result.proof_message,
-        &test_params.rewind_data.proof_message
-    );
-    assert_eq!(full_rewind_result.blinding_factor, test_params.spend_key);
+    assert_eq!(recovered_mask, test_params.spend_key);
 }
 mod output_features {
     use std::io;

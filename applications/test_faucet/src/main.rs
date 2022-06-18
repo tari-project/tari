@@ -3,11 +3,12 @@
 
 use std::{
     fs::File,
-    io::{stdout, Write},
+    io,
+    io::{stdout, BufRead, Write},
 };
 
 use serde::Serialize;
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::types::{Commitment, PrivateKey, RangeProof};
 use tari_core::{
     covenants::Covenant,
     transactions::{
@@ -27,6 +28,7 @@ use tari_core::{
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, range_proof::RangeProofService, tari_utilities::hex::Hex};
 use tari_script::{script, TariScript};
+use tari_utilities::ByteArray;
 use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 4000;
@@ -125,6 +127,40 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
     let kernel = serde_json::to_string(&kernel).unwrap();
     let _result = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
 
+    // Test the UTXO file
+    println!("\n\nTesting the UTXO file...\n\n");
+    drop(utxo_file);
+    let file = File::open("utxos.json").unwrap();
+    let mut counter = 1;
+    for line in io::BufReader::new(file).lines() {
+        if counter < 4001 {
+            let utxo: TransactionOutput = serde_json::from_str(&*line.unwrap()).unwrap();
+            match utxo.verify_range_proof(&CryptoFactories::default().range_proof) {
+                Ok(_) => {},
+                Err(e) => {
+                    println!("proof error! {}: {}", counter, e);
+                },
+            }
+            match utxo.verify_metadata_signature() {
+                Ok(_) => {},
+                Err(e) => {
+                    println!("metadata_signature error! {}: {}", counter, e);
+                },
+            }
+        } else {
+            let kernel: TransactionKernel = serde_json::from_str(&*line.unwrap()).unwrap();
+            match kernel.verify_signature() {
+                Ok(_) => {},
+                Err(e) => {
+                    println!("kernel_signature error! {}: {}", counter, e);
+                },
+            }
+            println!();
+            break;
+        }
+        counter += 1;
+    }
+
     println!("Done.");
 }
 
@@ -161,6 +197,9 @@ fn create_utxo(
     let offset_keys = generate_keys();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
+    if !factories.range_proof.verify(&proof, &commitment) {
+        panic!("Range proof does not verify");
+    };
     let encrypted_value = EncryptedValue::todo_encrypt_from(value);
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
@@ -177,12 +216,14 @@ fn create_utxo(
     let utxo = TransactionOutput::new_current_version(
         features,
         commitment,
-        proof.into(),
+        RangeProof::from_bytes(&proof).unwrap(),
         script,
         offset_keys.pk,
         metadata_sig,
         covenant,
         encrypted_value,
     );
+    utxo.verify_range_proof(&CryptoFactories::default().range_proof)
+        .unwrap();
     (utxo, keys.k, offset_keys.k)
 }

@@ -6591,8 +6591,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs"
-version = "4.1.2"
-source = "git+https://github.com/tari-project/bulletproofs#efb763c6c9ff52f9445ce98594af52d1dc01c53b"
+version = "4.2.1"
+source = "git+https://github.com/tari-project/bulletproofs?tag=v4.2.1#b7118625aeaf1a5f42301ca293fd89e5e783a2a8"
 dependencies = [
  "blake2 0.9.2",
  "byteorder",
@@ -6611,8 +6611,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs_plus"
-version = "0.0.5"
-source = "git+https://github.com/tari-project/bulletproofs-plus#28725cdd7d753478c9508cae629a8063fc46be37"
+version = "0.0.6"
+source = "git+https://github.com/tari-project/bulletproofs-plus?tag=v0.0.6#1af8e5102cca178f7de0f0c4ed73e8f31f00e95c"
 dependencies = [
  "blake2 0.9.2",
  "byteorder",
@@ -6936,8 +6936,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.13.0"
-source = "git+https://github.com/tari-project/tari-crypto.git?rev=a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312#a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312"
+version = "0.13.2"
+source = "git+https://github.com/tari-project/tari-crypto.git?rev=6a857d4ba160d632b02d81fd9c276db7e4f065a8#6a857d4ba160d632b02d81fd9c276db7e4f065a8"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",

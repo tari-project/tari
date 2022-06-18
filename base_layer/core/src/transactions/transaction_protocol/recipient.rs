@@ -275,21 +275,15 @@ mod test {
     }
 
     #[test]
-    fn single_round_recipient_with_rewinding_dalek_bulletproofs() {
+    fn single_round_recipient_with_rewinding_bulletproofs() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Rewind params
-        let rewind_key = PrivateKey::random(&mut OsRng);
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
-        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
         let recovery_byte_key = PrivateKey::random(&mut OsRng);
-        let message = b"alice__12345678910111";
         let rewind_data = RewindData {
-            rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key,
-            proof_message: message.to_owned(),
         };
         let amount = MicroTari(500);
         let m = TransactionMetadata {
@@ -330,18 +324,12 @@ mod test {
         let data = receiver.get_signed_data().unwrap();
         assert_eq!(data.output.features.recovery_byte, recovery_byte);
 
-        let rr = data
+        let committed_value = data.output.encrypted_value.todo_decrypt();
+        assert_eq!(committed_value, amount.as_u64());
+        let blinding_factor = data
             .output
-            .rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &rewind_blinding_public_key)
+            .recover_mask(&factories.range_proof, &rewind_blinding_key)
             .unwrap();
-        assert_eq!(rr.committed_value, amount);
-        assert_eq!(&rr.proof_message, message);
-        let full_rewind_result = data
-            .output
-            .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
-            .unwrap();
-        assert_eq!(full_rewind_result.committed_value, amount);
-        assert_eq!(&full_rewind_result.proof_message, message);
-        assert_eq!(full_rewind_result.blinding_factor, p.spend_key);
+        assert_eq!(blinding_factor, p.spend_key);
     }
 }
