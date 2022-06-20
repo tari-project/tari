@@ -1,9 +1,8 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { v4 as uuidv4 } from 'uuid'
 
-import { MiningNodeType, ScheduleId, CoinType } from '../../types/general'
+import { MiningNodeType, ScheduleId } from '../../types/general'
 import MiningConfig from '../../config/mining'
-import t from '../../locales'
 
 import {
   startMiningNode,
