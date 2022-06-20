@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use aes_gcm::Aes256Gcm;
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
@@ -36,6 +37,12 @@ pub enum AddResult {
 pub struct NextKeyResult {
     pub key: PrivateKey,
     pub index: u64,
+}
+
+impl NextKeyResult {
+    pub fn to_public_key(&self) -> PublicKey {
+        PublicKey::from_secret_key(&self.key)
+    }
 }
 
 /// Behaviour required for the Key manager service
