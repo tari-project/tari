@@ -16,6 +16,7 @@ describe('MiningSettings', () => {
       reducer: rootReducer,
       preloadedState: {
         mining: {
+          notifications: [],
           tari: {},
           merged: {
             address: 'initial-address-value',

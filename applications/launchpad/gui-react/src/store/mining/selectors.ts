@@ -9,6 +9,9 @@ import {
   TariMiningSetupRequired,
 } from './types'
 
+export const selectNotifications = (r: RootState) =>
+  r.mining.notifications || []
+
 /**
  * ============== TARI ===================
  */

@@ -35,6 +35,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use bollard::{
     container::{Config, CreateContainerOptions, ListContainersOptions, NetworkingConfig, RemoveContainerOptions},
+    image,
     models::{ContainerCreateResponse, EndpointSettings, HostConfig},
     Docker,
 };
@@ -57,6 +58,8 @@ pub use settings::{
 };
 pub use workspace::{TariWorkspace, Workspaces};
 pub use wrapper::DockerWrapper;
+
+use crate::commands::DEFAULT_IMAGES;
 
 lazy_static! {
     pub static ref DOCKER_INSTANCE: Docker = Docker::connect_with_local_defaults().unwrap();
@@ -148,6 +151,17 @@ pub async fn try_destroy_container(image_name: &str, docker: Docker) -> Result<(
                     }),
                 )
                 .await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn shutdown_all_containers(workspace_name: String, docker: &Docker) -> Result<(), DockerWrapperError> {
+    for image in DEFAULT_IMAGES {
+        let image_name = format!("{}_{}", workspace_name, image.image_name());
+        match try_destroy_container(image_name.as_str(), docker.clone()).await {
+            Ok(_) => info!("Docker image {} is being stopped.", image_name),
+            Err(_) => debug!("Docker image {} has not been found", image_name),
         }
     }
     Ok(())

@@ -1,12 +1,18 @@
 import { createAsyncThunk } from '@reduxjs/toolkit'
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/api/notification'
 
-import { MiningNodeType, ScheduleId } from '../../types/general'
+import { MiningNodeType, ScheduleId, CoinType } from '../../types/general'
 import { selectContainerStatus } from '../containers/selectors'
 import { actions as containersActions } from '../containers'
-import { actions as miningActions } from './index'
 import { Container } from '../containers/types'
+import t from '../../locales'
 import { RootState } from '..'
 
+import { actions as miningActions } from '.'
 import { MiningActionReason } from './types'
 import { selectTariSetupRequired, selectMergedSetupRequired } from './selectors'
 
@@ -161,4 +167,41 @@ export const stopMiningNode = createAsyncThunk<
   } catch (e) {
     return thunkApi.rejectWithValue(e)
   }
+})
+
+export const notifyUserAboutMinedTariBlock = createAsyncThunk<
+  { message: string; header: string },
+  { amount: number; currency: CoinType }
+>('mining/notifyUser', async () => {
+  const notification = {
+    message:
+      t.mining.notification.messages[
+        Math.floor(Math.random() * t.mining.notification.messages.length)
+      ],
+    header:
+      t.mining.notification.headers[
+        Math.floor(Math.random() * t.mining.notification.headers.length)
+      ],
+  }
+
+  const notifyAndIgnorePromise = async () => {
+    const notify = () =>
+      sendNotification({
+        title: notification.header,
+        body: notification.message,
+      })
+
+    if (await isPermissionGranted()) {
+      notify()
+      return
+    }
+
+    const perm = await requestPermission()
+    if (perm === 'granted') {
+      notify()
+    }
+  }
+  notifyAndIgnorePromise()
+
+  return notification
 })

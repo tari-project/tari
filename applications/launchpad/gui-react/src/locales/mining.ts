@@ -87,6 +87,25 @@ const translations = {
     authPasswordLabel: 'Password (optional)',
     authPasswordPlaceholder: 'Password you log in to the Monero node',
   },
+  notification: {
+    added: 'has been added to your wallet.',
+    ack: 'Got it',
+    // WARNING do not use '_' in headers and messages (see TariText.tsx)
+    headers: [
+      // eslint-disable-next-line quotes
+      `Fantaritastic! You've just mined a Tari block!`,
+      // eslint-disable-next-line quotes
+      `Congratulations, brave Miner! You've just mined a Tari block!`,
+      // eslint-disable-next-line quotes
+      `Holly moly, what a success! You've just mined a Tari block!`,
+      'Holy moly, you mine Tari like a boss!',
+      'Miner, have you taken lessons from the Dwarves of Moria?',
+    ],
+    messages: [
+      'Congratarilations! A new Tari block has been mined!',
+      'You did it, Miner! A new Tari block has been mined!',
+    ],
+  },
 }
 
 export default translations

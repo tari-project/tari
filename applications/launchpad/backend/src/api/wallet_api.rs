@@ -80,6 +80,7 @@ pub async fn wallet_events(app: AppHandle<Wry>) -> Result<(), String> {
                     direction: value.direction,
                     amount: value.amount,
                     message: value.message,
+                    is_coinbase: value.is_coinbase,
                 };
 
                 if let Err(err) = app_clone.emit_all("tari://wallet_event", wt.clone()) {

@@ -1138,6 +1138,7 @@ fn simple_event(event: &str) -> TransactionEvent {
         direction: event.to_string(),
         amount: 0,
         message: String::default(),
+        is_coinbase: false,
     }
 }
 

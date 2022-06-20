@@ -1,9 +1,14 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { v4 as uuidv4 } from 'uuid'
+
 import { MiningNodeType, ScheduleId } from '../../types/general'
 import MiningConfig from '../../config/mining'
 
-import { startMiningNode, stopMiningNode } from './thunks'
+import {
+  startMiningNode,
+  stopMiningNode,
+  notifyUserAboutMinedTariBlock,
+} from './thunks'
 import { MiningState, MiningActionReason, MoneroUrl } from './types'
 
 const currencies: Record<MiningNodeType, string[]> = {
@@ -22,6 +27,7 @@ export const initialState: MiningState = {
     authentication: undefined,
     session: undefined,
   },
+  notifications: [],
 }
 
 const miningSlice = createSlice({
@@ -101,6 +107,23 @@ const miningSlice = createSlice({
     ) {
       state.merged = { ...state.merged, ...action.payload }
     },
+    acknowledgeNotification(state) {
+      const [_head, ...notificationsLeft] = state.notifications
+      state.notifications = notificationsLeft
+    },
+  },
+  extraReducers: builder => {
+    builder.addCase(
+      notifyUserAboutMinedTariBlock.fulfilled,
+      (state, action) => {
+        const newNotification = {
+          ...action.meta.arg,
+          ...action.payload,
+        }
+
+        state.notifications = [...state.notifications, newNotification]
+      },
+    )
   },
 })
 
@@ -110,6 +133,7 @@ export const actions = {
   ...miningActions,
   startMiningNode,
   stopMiningNode,
+  notifyUserAboutMinedTariBlock,
 }
 
 export default miningSlice.reducer

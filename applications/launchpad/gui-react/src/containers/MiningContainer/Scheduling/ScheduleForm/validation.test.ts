@@ -1,6 +1,5 @@
 import { Interval, Schedule } from '../../../../types/general'
 import t from '../../../../locales'
-import { startOfDay } from '../../../../utils/Date'
 
 import { validate } from './validation'
 import { utcTimeToString } from './utils'

@@ -386,6 +386,7 @@ message TransactionEvent {
     string direction = 6;
     uint64 amount = 7;
     string message = 8;
+    bool is_coinbase = 9;
 }
 
 message TransactionEventResponse {
