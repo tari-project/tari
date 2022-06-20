@@ -84,6 +84,8 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
                 })?,
         };
 
+        self.commit(&tx)?;
+
         Ok(())
     }
 
@@ -101,5 +103,15 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
             })?;
 
         Ok(row.map(|r| r.value))
+    }
+
+    fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        tx.connection()
+            .execute("COMMIT TRANSACTION;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "commit::state".to_string(),
+            })?;
+        Ok(())
     }
 }

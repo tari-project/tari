@@ -26,7 +26,6 @@ use log::{error, info};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::Signature;
 use tari_comms::NodeIdentity;
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
     services::{BaseNodeClient, WalletClient},
     storage::global::GlobalDb,
@@ -102,6 +101,8 @@ impl DanNode {
             .await
             .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
 
+        let outputs_len = outputs.len();
+
         for output in outputs {
             if let Some(sidechain_features) = output.features.sidechain_features {
                 let contract_id = sidechain_features.contract_id;
@@ -117,9 +118,11 @@ impl DanNode {
             }
         }
 
-        self.global_db
-            .set_data(metadata_key_name, &latest_hash)
-            .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
+        if outputs_len > 0 {
+            self.global_db
+                .set_data(metadata_key_name, &latest_hash)
+                .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
+        }
 
         Ok(())
     }

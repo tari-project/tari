@@ -27,6 +27,7 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
     type Error: Into<StorageError>;
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
+    fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn get_data(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
     fn set_data(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error>;
 }

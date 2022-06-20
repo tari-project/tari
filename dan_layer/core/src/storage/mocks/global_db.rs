@@ -40,4 +40,8 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
     fn set_data(&self, _key: &[u8], _value: &[u8]) -> Result<(), Self::Error> {
         todo!()
     }
+
+    fn commit(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        todo!()
+    }
 }
