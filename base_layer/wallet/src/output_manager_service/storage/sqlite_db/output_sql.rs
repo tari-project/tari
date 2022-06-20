@@ -143,6 +143,17 @@ impl OutputSql {
             _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
         };
 
+        // filtering by Commitment
+        if let Some(commitment) = q.commitment {
+            query = match commitment.len() {
+                0 => query,
+                1 => query.filter(outputs::commitment.eq(commitment[0].to_vec())),
+                _ => query.filter(
+                    outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitment.into_iter().map(|c| c.to_vec()).collect()),
+                ),
+            };
+        }
+
         // if set, filtering by minimum value
         if let Some((min, is_inclusive)) = q.value_min {
             query = if is_inclusive {

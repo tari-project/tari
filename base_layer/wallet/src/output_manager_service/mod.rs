@@ -60,6 +60,8 @@ use crate::{
     },
 };
 
+mod types;
+
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
 pub struct OutputManagerServiceInitializer<T, TKeyManagerInterface>

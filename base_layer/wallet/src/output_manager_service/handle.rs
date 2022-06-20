@@ -57,6 +57,7 @@ use crate::output_manager_service::{
         database::OutputBackendQuery,
         models::{KnownOneSidedPaymentScript, SpendingPriority},
     },
+    types::CoinJoinResult,
 };
 
 /// API Request enum
@@ -109,6 +110,11 @@ pub enum OutputManagerRequest {
     ValidateUtxos,
     RevalidateTxos,
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
+    CreateCoinJoin {
+        target_amount: MicroTari,
+        fee_per_gram: MicroTari,
+        commitments: Option<Vec<PublicKey>>,
+    },
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
@@ -173,6 +179,15 @@ impl fmt::Display for OutputManagerRequest {
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
+            CreateCoinJoin {
+                target_amount,
+                fee_per_gram,
+                commitments,
+            } => write!(
+                f,
+                "CreateCoinJoin: target_amount={}, fee_per_gram={}, commitments={:#?}",
+                target_amount, fee_per_gram, commitments
+            ),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
@@ -244,6 +259,7 @@ pub enum OutputManagerResponse {
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
+    CoinJoinResult(CoinJoinResult),
     EncryptionApplied,
     EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
@@ -679,6 +695,26 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_coin_join(
+        &mut self,
+        target_amount: MicroTari,
+        fee_per_gram: MicroTari,
+        commitments: Option<Vec<PublicKey>>,
+    ) -> Result<CoinJoinResult, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCoinJoin {
+                target_amount,
+                fee_per_gram,
+                commitments,
+            })
+            .await??
+        {
+            OutputManagerResponse::CoinJoinResult(result) => Ok(result),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -25,6 +25,10 @@ use std::{convert::TryInto, fmt, sync::Arc};
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
+use itertools::{
+    FoldWhile::{Continue, Done},
+    Itertools,
+};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
@@ -43,6 +47,7 @@ use tari_core::{
             KernelFeatures,
             OutputFeatures,
             Transaction,
+            TransactionInput,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
@@ -84,11 +89,12 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase, SortDirection},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
         tasks::TxoValidationTask,
+        types::CoinJoinResult,
     },
     types::HashDigest,
 };
@@ -381,6 +387,18 @@ where
                 .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
                 .await
                 .map(OutputManagerResponse::Transaction),
+            OutputManagerRequest::CreateCoinJoin {
+                target_amount,
+                fee_per_gram,
+                commitments,
+            } => self
+                .create_coin_join(target_amount, fee_per_gram, commitments)
+                .await
+                .map(|result| OutputManagerResponse::CoinJoinResult(result))
+                .map_err(|e| {
+                    eprintln!("ERROR = {:#?}", e);
+                    e
+                }),
             OutputManagerRequest::ApplyEncryption(cipher) => self
                 .resources
                 .db
@@ -1698,6 +1716,256 @@ where
         )?;
         let tx = stp.take_transaction()?;
         Ok((tx_id, tx, utxos_total_value))
+    }
+
+    // TODO: manual input list or auto (pick best fitting combination)
+    #[allow(clippy::too_many_lines)]
+    pub async fn create_coin_join(
+        &mut self,
+        target_amount: MicroTari,
+        fee_per_gram: MicroTari,
+        commitments: Option<Vec<PublicKey>>,
+    ) -> Result<CoinJoinResult, OutputManagerError> {
+        let covenant = Covenant::default();
+        let noop_script = script!(Nop);
+
+        // container for resulting outputs
+        let mut outputs = Vec::with_capacity(2);
+
+        // collecting UTXOs sufficient to cover the target amount
+        let (aggregated_amount, src_outputs) = self
+            .resources
+            .db
+            .fetch_outputs_by(OutputBackendQuery {
+                tip_height: i64::MAX,
+                status: vec![OutputStatus::Unspent],
+                commitment: commitments,
+                pagination: None,
+                value_min: None,
+                value_max: None,
+                sorting: vec![("value", SortDirection::Asc)],
+            })?
+            .into_iter()
+            .fold_while((MicroTari::zero(), Vec::<DbUnblindedOutput>::new()), |mut acc, out| {
+                let next = acc.0 + out.unblinded_output.value;
+                if next < target_amount || acc.0 < target_amount && next >= target_amount {
+                    acc.0 = next;
+                    acc.1.push(out);
+                    Continue(acc)
+                } else {
+                    Done(acc)
+                }
+            })
+            .into_inner();
+
+        eprintln!("aggregated_amount = {:#?}", aggregated_amount);
+        eprintln!("target_amount = {:#?}", target_amount);
+
+        // checking whether a total output value is enough
+        if aggregated_amount < target_amount {
+            error!(
+                target: LOG_TARGET,
+                "failed to join coins, not enough funds to fulfill target amount"
+            );
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // computing the fee based on whether there is leftover value
+        let computed_fee_amount = {
+            let base_metadata_size = self
+                .resources
+                .consensus_constants
+                .transaction_weight()
+                .round_up_metadata_size(
+                    script!(Nop).consensus_encode_exact_size() +
+                        covenant.consensus_encode_exact_size() +
+                        OutputFeatures::default().consensus_encode_exact_size(),
+                );
+
+            match aggregated_amount.saturating_sub(target_amount).as_u64() {
+                0 => self
+                    .get_fee_calc()
+                    .calculate(fee_per_gram, 1, src_outputs.len(), 1, base_metadata_size),
+                _ => self
+                    .get_fee_calc()
+                    .calculate(fee_per_gram, 1, src_outputs.len(), 2, base_metadata_size * 2),
+            }
+        };
+
+        eprintln!("computed_fee = {:#?}", computed_fee_amount);
+        eprintln!("balance = {:#?}", self.get_balance(None)?);
+
+        // preliminary balance check
+        if self.get_balance(None)?.available_balance < (target_amount + computed_fee_amount) {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // NOTE: called `leftover` to remove possible brainlag by confusing `change` as a verb
+        let leftover_change = aggregated_amount.saturating_sub(target_amount + computed_fee_amount);
+
+        // ----------------------------------------------------------------------------
+        // initializing new transaction
+
+        trace!(target: LOG_TARGET, "initializing new join transaction");
+
+        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(PrivateKey::random(&mut OsRng))
+            .with_private_nonce(PrivateKey::random(&mut OsRng))
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
+
+        // collecting inputs from source outputs
+        let inputs: Vec<TransactionInput> = src_outputs
+            .iter()
+            .map(|src_out| {
+                src_out
+                    .unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)
+            })
+            .try_collect()?;
+
+        // adding inputs to the transaction
+        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+            trace!(
+                target: LOG_TARGET,
+                "adding transaction input: output_hash=: {:?}",
+                src_output.hash
+            );
+            tx_builder.with_input(input, src_output.unblinded_output.clone());
+        });
+
+        // initializing primary output
+        let (primary_spending_key, primary_script_private_key) = self.get_spend_and_script_keys().await?;
+        let output_features = OutputFeatures {
+            recovery_byte: self.calculate_recovery_byte(primary_spending_key.clone(), target_amount.as_u64(), true)?,
+            ..Default::default()
+        };
+
+        // generating sender's keypair
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+        let commitment_signature = TransactionOutput::create_final_metadata_signature(
+            TransactionOutputVersion::get_current_version(),
+            target_amount,
+            &primary_spending_key,
+            &noop_script,
+            &output_features,
+            &sender_offset_private_key,
+            &covenant,
+        )?;
+
+        let primary_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+            UnblindedOutput::new_current_version(
+                target_amount,
+                primary_spending_key,
+                output_features,
+                noop_script,
+                inputs!(PublicKey::from_secret_key(&primary_script_private_key)),
+                primary_script_private_key,
+                sender_offset_public_key,
+                commitment_signature,
+                0,
+                covenant.clone(),
+            ),
+            &self.resources.factories,
+            &self.resources.rewind_data.clone(),
+            None,
+            None,
+        )?;
+
+        tx_builder
+            .with_output(primary_output.unblinded_output.clone(), sender_offset_private_key)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // extending transaction if there is some `change` left over
+        if leftover_change > MicroTari::zero() {
+            let (leftover_spending_key, leftover_script_private_key) = self.get_spend_and_script_keys().await?;
+            tx_builder.with_change_secret(leftover_spending_key);
+            tx_builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            tx_builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&leftover_script_private_key)),
+                leftover_script_private_key,
+            );
+        }
+
+        let mut stp = tx_builder
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
+        // store them until the transaction times out OR is confirmed
+        let tx_id = stp.get_tx_id()?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Encumber coin join transaction (tx_id={}) outputs",
+            tx_id
+        );
+
+        // adding primary output to the container
+        outputs.push(primary_output.clone());
+
+        // again, to obtain output for leftover change
+        if leftover_change > MicroTari::zero() {
+            // obtaining output for the `change`
+            let unblinded_output_for_change = stp.get_change_unblinded_output()?.ok_or_else(|| {
+                OutputManagerError::BuildError(
+                    "There should be a `change` output metadata signature available".to_string(),
+                )
+            })?;
+
+            // appending `change` output to the result
+            outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
+                unblinded_output_for_change,
+                &self.resources.factories,
+                &self.resources.rewind_data.clone(),
+                None,
+                None,
+            )?);
+        }
+
+        // encumbering transaction
+        self.resources
+            .db
+            .encumber_outputs(tx_id, src_outputs.clone(), outputs)?;
+        self.confirm_encumberance(tx_id)?;
+
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin join transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
+
+        eprintln!("balance_after = {:#?}", self.get_balance(None)?);
+
+        Ok(CoinJoinResult {
+            tx_id,
+            transaction: stp.take_transaction()?,
+            target_amount,
+            total_expense_amount: target_amount + computed_fee_amount,
+            aggregated_amount,
+            leftover_change_amount: leftover_change,
+            primary_output,
+            leftover_change_output: src_outputs[1].clone(),
+            src_outputs,
+            computed_fee_amount,
+        })
     }
 
     async fn fetch_outputs_from_node(

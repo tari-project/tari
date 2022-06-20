@@ -565,6 +565,39 @@ where
         }
     }
 
+    pub async fn coin_join(
+        &mut self,
+        target_amount: MicroTari,
+        fee_per_gram: MicroTari,
+        commitments: Option<Vec<PublicKey>>,
+        msg: Option<String>,
+    ) -> Result<TxId, WalletError> {
+        let coin_join_tx = self
+            .output_manager_service
+            .create_coin_join(target_amount, fee_per_gram, commitments)
+            .await;
+
+        match coin_join_tx {
+            Ok(result) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(
+                        result.tx_id,
+                        result.transaction,
+                        result.target_amount,
+                        msg.unwrap_or(String::new()),
+                    )
+                    .await;
+
+                match coin_tx {
+                    Ok(_) => Ok(result.tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
     /// Apply encryption to all the Wallet db backends. The Wallet backend will test if the db's are already encrypted
     /// in which case this will fail.
     pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {

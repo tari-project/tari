@@ -68,6 +68,7 @@ use std::{
 
 use chrono::{DateTime, Local};
 use error::LibWalletError;
+use itertools::Itertools;
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
 use log4rs::{
@@ -137,6 +138,7 @@ use tari_wallet::{
         error::OutputManagerError,
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
+            models::DbUnblindedOutput,
             OutputStatus,
         },
     },
@@ -227,11 +229,37 @@ pub struct TariWallet {
     shutdown: Shutdown,
 }
 
+#[derive(Debug)]
+#[repr(C)]
+pub enum TariUtxoSort {
+    ValueAsc = 0,
+    ValueDesc = 1,
+    MinedHeightAsc = 2,
+    MinedHeightDesc = 3,
+}
+
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct TariUtxo {
     pub commitment: *mut c_char,
     pub value: u64,
+}
+
+impl TryFrom<DbUnblindedOutput> for TariUtxo {
+    type Error = WalletError;
+
+    fn try_from(x: DbUnblindedOutput) -> Result<Self, Self::Error> {
+        Ok(Self {
+            commitment: CString::new(x.commitment.to_hex())
+                .map_err(|e| WalletError::ArgumentError {
+                    argument: "commitment hex".to_string(),
+                    value: "".to_string(),
+                    message: format!("failed to obtain hex from a commitment: {:?}", e),
+                })?
+                .into_raw(),
+            value: x.unblinded_output.value.as_u64(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -242,13 +270,49 @@ pub struct TariOutputs {
     pub ptr: *mut TariUtxo,
 }
 
-#[derive(Debug)]
+// WARNING: must be dropped properly after use
+impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
+    type Error = WalletError;
+
+    fn try_from(outputs: Vec<DbUnblindedOutput>) -> Result<Self, Self::Error> {
+        let mut outputs = ManuallyDrop::new(
+            outputs
+                .into_iter()
+                .map(|x| {
+                    Ok(TariUtxo {
+                        commitment: CString::new(x.commitment.to_hex())
+                            .map_err(|e| WalletError::ArgumentError {
+                                argument: "commitment hex".to_string(),
+                                value: "".to_string(),
+                                message: format!("failed to obtain hex from a commitment: {:?}", e),
+                            })?
+                            .into_raw(),
+                        value: x.unblinded_output.value.as_u64(),
+                    })
+                })
+                .try_collect::<TariUtxo, Vec<TariUtxo>, WalletError>()?,
+        );
+
+        Ok(Self {
+            len: outputs.len(),
+            cap: outputs.capacity(),
+            ptr: outputs.as_mut_ptr(),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 #[repr(C)]
-pub enum TariUtxoSort {
-    ValueAsc,
-    ValueDesc,
-    MinedHeightAsc,
-    MinedHeightDesc,
+pub struct TariCoinJoinResult {
+    pub tx_id: u64,
+    pub src_outputs: *mut TariOutputs,
+    pub computed_fee_amount: u64,
+    pub target_amount: u64,
+    pub aggregated_amount: u64,
+    pub leftover_change_amount: u64,
+    pub total_expense_amount: u64,
+    pub primary_output: TariUtxo,
+    pub leftover_change_output: TariUtxo,
 }
 
 /// -------------------------------- Strings ------------------------------------------------ ///
@@ -4128,13 +4192,13 @@ pub unsafe extern "C" fn wallet_get_utxos(
     page_size: usize,
     sorting: TariUtxoSort,
     dust_threshold: u64,
-    error_out: *mut i32,
+    error_ptr: *mut i32,
 ) -> *mut TariOutputs {
     if wallet.is_null() {
         error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
-            error_out,
-            LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code as c_int,
+            error_ptr,
+            LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code,
         );
         return ptr::null_mut();
     }
@@ -4147,6 +4211,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
     let q = OutputBackendQuery {
         tip_height: i64::MAX,
         status: vec![OutputStatus::Unspent],
+        commitment: None,
         pagination: Some((page, page_size)),
         value_min: Some((dust_threshold, false)),
         value_max: None,
@@ -4159,51 +4224,29 @@ pub unsafe extern "C" fn wallet_get_utxos(
     };
 
     match (*wallet).wallet.output_db.fetch_outputs_by(q) {
-        Ok(unblinded_outputs) => {
-            let outputs: Vec<TariUtxo> = unblinded_outputs
-                .into_iter()
-                .filter_map(|out| {
-                    Some(TariUtxo {
-                        value: out.unblinded_output.value.as_u64(),
-                        commitment: match out.unblinded_output.as_transaction_output(&CryptoFactories::default()) {
-                            Ok(tout) => match CString::new(tout.commitment.to_hex()) {
-                                Ok(cstr) => cstr.into_raw(),
-                                Err(e) => {
-                                    error!(
-                                        target: LOG_TARGET,
-                                        "failed to convert commitment hex String into CString: {:#?}", e
-                                    );
-                                    return None;
-                                },
-                            },
-                            Err(e) => {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "failed to obtain commitment from the transaction output: {:#?}", e
-                                );
-                                return None;
-                            },
-                        },
-                    })
-                })
-                .collect();
-
-            let mut outputs = ManuallyDrop::new(outputs);
-            Box::into_raw(Box::new(TariOutputs {
-                len: outputs.len(),
-                cap: outputs.capacity(),
-                ptr: outputs.as_mut_ptr(),
-            }))
+        Ok(outputs) => match TariOutputs::try_from(outputs) {
+            Ok(tari_outputs) => {
+                ptr::replace(error_ptr, 0);
+                Box::into_raw(Box::new(tari_outputs))
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "failed to convert outputs to `TariOutputs`: {:#?}", e
+                );
+                ptr::replace(error_ptr, LibWalletError::from(e).code);
+                ptr::null_mut()
+            },
         },
 
         Err(e) => {
             error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
             ptr::replace(
-                error_out,
+                error_ptr,
                 LibWalletError::from(WalletError::OutputManagerError(
                     OutputManagerError::OutputManagerStorageError(e),
                 ))
-                .code as c_int,
+                .code,
             );
             ptr::null_mut()
         },
@@ -4225,6 +4268,93 @@ pub unsafe extern "C" fn destroy_tari_outputs(x: *mut TariOutputs) {
     if !x.is_null() {
         Vec::from_raw_parts((*x).ptr, (*x).len, (*x).cap);
         Box::from_raw(x);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wallet_coin_join(
+    wallet: *mut TariWallet,
+    target_amount: u64,
+    fee_per_gram: u64,
+    commitments: *mut TariPublicKey,
+    error_ptr: *mut i32,
+) -> *mut TariCoinJoinResult {
+    if wallet.is_null() {
+        error!(target: LOG_TARGET, "wallet pointer is null");
+        ptr::replace(
+            error_ptr,
+            LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code as c_int,
+        );
+        return ptr::null_mut();
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.output_manager_service.create_coin_join(
+            target_amount.into(),
+            fee_per_gram.into(),
+            None,
+        )) {
+        Ok(result) => {
+            let src_outputs = match TariOutputs::try_from(result.src_outputs) {
+                Ok(tari_outputs) => {
+                    eprintln!("tari_outputs = {:#?}", tari_outputs);
+                    Box::into_raw(Box::new(tari_outputs))
+                },
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "failed to convert source outputs to `TariOutputs`: {:#?}", e
+                    );
+                    ptr::replace(error_ptr, LibWalletError::from(InterfaceError::AllocationError).code);
+                    return ptr::null_mut();
+                },
+            };
+
+            let primary_output = match TariUtxo::try_from(result.primary_output) {
+                Ok(utxo) => utxo,
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "failed to convert `primary_output` to `TariUtxo`: {:#?}", e
+                    );
+                    ptr::replace(error_ptr, LibWalletError::from(InterfaceError::AllocationError).code);
+                    return ptr::null_mut();
+                },
+            };
+
+            let leftover_change_output = match TariUtxo::try_from(result.leftover_change_output) {
+                Ok(utxo) => utxo,
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "failed to convert `leftover_change_output` to `TariUtxo`: {:#?}", e
+                    );
+                    ptr::replace(error_ptr, LibWalletError::from(InterfaceError::AllocationError).code);
+                    return ptr::null_mut();
+                },
+            };
+
+            ptr::replace(error_ptr, 0);
+
+            Box::into_raw(Box::new(TariCoinJoinResult {
+                tx_id: result.tx_id.as_u64(),
+                src_outputs,
+                computed_fee_amount: result.computed_fee_amount.as_u64(),
+                target_amount: result.target_amount.as_u64(),
+                aggregated_amount: result.aggregated_amount.as_u64(),
+                leftover_change_amount: result.leftover_change_amount.as_u64(),
+                total_expense_amount: result.total_expense_amount.as_u64(),
+                primary_output,
+                leftover_change_output,
+            }))
+        },
+
+        Err(e) => {
+            error!(target: LOG_TARGET, "failed to join outputs: {:#?}", e);
+            ptr::replace(error_ptr, LibWalletError::from(WalletError::OutputManagerError(e)).code);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -8850,6 +8980,119 @@ mod test {
             assert_eq!((*outputs).len, 0);
             assert_eq!(utxos.len(), 0);
             destroy_tari_outputs(outputs);
+
+            string_destroy(network_str as *mut c_char);
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            transport_config_destroy(transport_config_alice);
+            comms_config_destroy(alice_config);
+            wallet_destroy(alice_wallet);
+        }
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_wallet_coin_join() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
+
+            let secret_key_alice = private_key_generate();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
+            let alice_temp_dir = tempdir().unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_config_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                10800,
+                error_ptr,
+            );
+
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                ptr::null(),
+                network_str,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
+                transaction_send_result_callback,
+                tx_cancellation_callback,
+                txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
+                balance_updated_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                connectivity_status_callback,
+                recovery_in_progress_ptr,
+                error_ptr,
+            );
+
+            (*alice_wallet)
+                .runtime
+                .block_on((*alice_wallet).wallet.output_manager_service.add_output(
+                    create_test_input(1000000.into(), 0, &PedersenCommitmentFactory::default()).1,
+                    None,
+                ))
+                .unwrap();
+
+            (1..=5).for_each(|i| {
+                (*alice_wallet)
+                    .runtime
+                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
+                        create_test_input((50 * i).into(), 0, &PedersenCommitmentFactory::default()).1,
+                        None,
+                    ))
+                    .unwrap();
+            });
+
+            let outputs = wallet_get_utxos(alice_wallet, 1, 20, TariUtxoSort::ValueAsc, 0, error_ptr);
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            assert_eq!(error, 0);
+            destroy_tari_outputs(outputs);
+
+            let result = wallet_coin_join(alice_wallet, 170, 1, ptr::null_mut(), error_ptr);
+            let src_utxos: &[TariUtxo] =
+                slice::from_raw_parts_mut((*(*result).src_outputs).ptr, (*(*result).src_outputs).len);
+
+            eprintln!("src_utxos = {:#?}", src_utxos);
+            eprintln!("target_amount = {:#?}", (*result).target_amount);
+            eprintln!("aggregated_amount = {:#?}", (*result).aggregated_amount);
+            eprintln!("computed_fee_amount = {:#?}", (*result).computed_fee_amount);
+            eprintln!("leftover_change_amount = {:#?}", (*result).leftover_change_amount);
+            eprintln!("total_expense_amount = {:#?}", (*result).total_expense_amount);
+            eprintln!("primary_output = {:#?}", (*result).primary_output);
+            eprintln!("leftover_output = {:#?}", (*result).leftover_change_output);
+            // let src_outputs: &[TariUtxo] =
+            //     slice::from_raw_parts_mut((*result).src_outputs.ptr, (*result).src_outputs.len);
+            // assert_eq!(error, 0);
+            // assert_eq!((*src_outputs).len, 5);
+            // assert_eq!(src_outputs.into_iter().fold(0, |acc, x| { acc + x.value }), 300);
+            // assert_eq!(error, 0);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);

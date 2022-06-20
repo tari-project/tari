@@ -12,10 +12,10 @@
 #define OutputFields_NUM_FIELDS 10
 
 enum TariUtxoSort {
-  ValueAsc,
-  ValueDesc,
-  MinedHeightAsc,
-  MinedHeightDesc,
+  ValueAsc = 0,
+  ValueDesc = 1,
+  MinedHeightAsc = 2,
+  MinedHeightDesc = 3,
 };
 
 /**
@@ -285,6 +285,18 @@ struct TariOutputs {
   uintptr_t len;
   uintptr_t cap;
   struct TariUtxo *ptr;
+};
+
+struct TariCoinJoinResult {
+  uint64_t tx_id;
+  struct TariOutputs *src_outputs;
+  uint64_t computed_fee_amount;
+  uint64_t target_amount;
+  uint64_t aggregated_amount;
+  uint64_t leftover_change_amount;
+  uint64_t total_expense_amount;
+  struct TariUtxo primary_output;
+  struct TariUtxo leftover_change_output;
 };
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
@@ -2190,7 +2202,7 @@ struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
                                      uintptr_t page_size,
                                      enum TariUtxoSort sorting,
                                      uint64_t dust_threshold,
-                                     int32_t *error_out);
+                                     int32_t *error_ptr);
 
 /**
  * Frees memory for a `TariOutputs`
@@ -2205,6 +2217,12 @@ struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
  * None
  */
 void destroy_tari_outputs(struct TariOutputs *x);
+
+struct TariCoinJoinResult *wallet_coin_join(struct TariWallet *wallet,
+                                            uint64_t target_amount,
+                                            uint64_t fee_per_gram,
+                                            TariPublicKey *commitments,
+                                            int32_t *error_ptr);
 
 /**
  * Signs a message using the public key of the TariWallet
