@@ -29,8 +29,8 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             status: completed.status.to_string(),
             direction: completed.direction.to_string(),
             amount: completed.amount.as_u64(),
-            message: completed.clone().message,
-            is_coinbase: (&completed.clone()).is_coinbase(),
+            message: completed.message.to_string(),
+            is_coinbase: completed.is_coinbase(),
         },
         TransactionWrapper::Outbound(outbound) => TransactionEvent {
             event,
