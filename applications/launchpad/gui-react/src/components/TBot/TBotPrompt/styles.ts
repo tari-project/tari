@@ -89,7 +89,6 @@ export const MessageWrapper = styled.div`
 `
 export const HeightAnimationWrapper = styled(animated.div)`
   max-height: 200px;
-  overflow: hidden;
   min-height: 30px;
 `
 
@@ -145,7 +144,6 @@ export const MessageSpaceContainer = styled.div`
   right: 0;
   bottom: 0;
   position: absolute;
-  overflow: hidden;
 `
 
 export const MessageSlideIn = styled(animated.div)`
@@ -155,9 +153,7 @@ export const MessageSlideIn = styled(animated.div)`
 `
 
 export const SkipButtonContainer = styled.div`
-  position: relative;
-  width: 130px;
-  margin-top: ${({ theme }) => theme.spacingHorizontal(0.5)};
+  margin-top: ${({ theme }) => theme.spacingVertical(2)};
 `
 
 export const TBotProgressContainer = styled.div<{ mode?: string }>`
