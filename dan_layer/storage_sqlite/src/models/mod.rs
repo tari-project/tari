@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod global_metadata;
 pub mod instruction;
 pub mod locked_qc;
+pub mod metadata;
 pub mod node;
 pub mod prepare_qc;
 pub mod state_key;

@@ -72,8 +72,8 @@ table! {
 }
 
 table! {
-    metadata (key) {
-        key -> Binary,
+    metadata (key_name) {
+        key_name -> Binary,
         value -> Binary,
     }
 }

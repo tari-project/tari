@@ -173,8 +173,9 @@ impl DbFactory for SqliteDbFactory {
                 source,
                 operation: "set pragma".to_string(),
             })?;
-        embed_migrations!("./migrations");
-        embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
+        embed_migrations!("./global_db_migrations");
+        // embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
+        embedded_migrations::run_with_output(&connection, &mut std::io::stdout()).expect("Migration failed");
         Ok(GlobalDb::new(SqliteGlobalDbBackendAdapter::new(database_url)))
     }
 }

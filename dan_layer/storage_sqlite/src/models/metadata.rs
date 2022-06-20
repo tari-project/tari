@@ -24,8 +24,8 @@ use crate::schema::*;
 
 #[derive(Queryable, Insertable, Identifiable)]
 #[table_name = "metadata"]
-#[primary_key(key)]
+#[primary_key(key_name)]
 pub struct Metadata {
-    pub key: Vec<u8>,
+    pub key_name: Vec<u8>,
     pub value: Vec<u8>,
 }

@@ -26,7 +26,7 @@ use log::{error, info};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::Signature;
 use tari_comms::NodeIdentity;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
     services::{BaseNodeClient, WalletClient},
     storage::global::GlobalDb,
@@ -90,8 +90,9 @@ impl DanNode {
 
     async fn find_and_accept_constitutions(&self, mut base_node_client: GrpcBaseNodeClient) -> Result<(), ExitError> {
         let mut wallet_client = GrpcWalletClient::new(self.config.wallet_grpc_address);
+        let metadata_key_name = "last_scanned_constitution_hash".as_bytes();
 
-        let last_hash = match self.global_db.get_data("last_scanned_constitution_hash".as_bytes()) {
+        let last_hash = match self.global_db.get_data(metadata_key_name) {
             Ok(Some(h)) => h,
             _ => vec![],
         };
@@ -117,7 +118,7 @@ impl DanNode {
         }
 
         self.global_db
-            .set_data("last_scanned_constitution_hash".as_bytes(), latest_hash.as_bytes())
+            .set_data(metadata_key_name, &latest_hash)
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
 
         Ok(())

@@ -23,7 +23,7 @@
 use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
 use tari_dan_core::storage::global::GlobalDbBackendAdapter;
 
-use crate::{error::SqliteStorageError, models::global_metadata::Metadata, SqliteTransaction};
+use crate::{error::SqliteStorageError, models::metadata::Metadata, SqliteTransaction};
 
 #[derive(Clone)]
 pub struct SqliteGlobalDbBackendAdapter {
@@ -61,11 +61,12 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
 
     fn set_data(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
         use crate::schema::metadata;
+        let row = self.get_data(key)?;
         let tx = self.create_transaction()?;
 
-        match self.get_data(key) {
-            Ok(Some(r)) => diesel::update(&Metadata {
-                key: key.into(),
+        match row {
+            Some(r) => diesel::update(&Metadata {
+                key_name: key.into(),
                 value: r,
             })
             .set(metadata::value.eq(value))
@@ -74,14 +75,13 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
                 source,
                 operation: "update::metadata".to_string(),
             })?,
-            Ok(None) => diesel::insert_into(metadata::table)
-                .values((metadata::key.eq(key), metadata::value.eq(value)))
+            None => diesel::insert_into(metadata::table)
+                .values((metadata::key_name.eq(key), metadata::value.eq(value)))
                 .execute(tx.connection())
                 .map_err(|source| SqliteStorageError::DieselError {
                     source,
                     operation: "insert::metadata".to_string(),
                 })?,
-            Err(e) => return Err(e),
         };
 
         Ok(())
