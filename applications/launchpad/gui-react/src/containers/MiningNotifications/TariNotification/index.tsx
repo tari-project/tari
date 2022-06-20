@@ -15,31 +15,18 @@ const TariNotificationContainer = () => {
     dispatch(actions.acknowledgeNotification())
   }
   useEffect(() => setOpen(true), [notification])
-  const populate = () => {
-    dispatch(
-      actions.notifyUserAboutMinedTariBlock({ amount: 1232, currency: 'xtr' }),
-    )
-    dispatch(
-      actions.notifyUserAboutMinedTariBlock({ amount: 2344, currency: 'xtr' }),
-    )
-  }
 
-  return (
-    <>
-      <button onClick={populate}>test</button>
-      {notification ? (
-        <DelayRender
-          render={() => (
-            <TariNotification
-              open={open}
-              notification={notification}
-              onClose={onClose}
-            />
-          )}
+  return notification ? (
+    <DelayRender
+      render={() => (
+        <TariNotification
+          open={open}
+          notification={notification}
+          onClose={onClose}
         />
-      ) : null}
-    </>
-  )
+      )}
+    />
+  ) : null
 }
 
 export default TariNotificationContainer
