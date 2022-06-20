@@ -11,14 +11,14 @@ import { StyledStrengthMeter } from './styles'
 const StrengthMeter = ({ password }: { password?: string }) => {
   const theme = useTheme()
   const pathRef = useRef<SVGCircleElement>(null)
-  const [offset, setOffset] = useState<number | undefined>(undefined)
+  const [offset, setOffset] = useState<number>(0)
   const [strength, setStrength] = useState<number>(1)
 
   useEffect(() => {
     if (pathRef.current && pathRef.current.getTotalLength) {
       setOffset((pathRef.current as SVGCircleElement).getTotalLength())
     }
-  }, [offset])
+  }, [])
 
   useEffect(() => {
     if (!password) {
@@ -44,8 +44,10 @@ const StrengthMeter = ({ password }: { password?: string }) => {
   const { progress, color } = useSpring({
     progress:
       strength >= 1
-        ? -Math.round(0.99 * (offset || 0))
-        : -Math.round(strength * (offset || 0)),
+        ? `${Math.round(0.99 * offset)} ${offset - Math.round(0.99 * offset)}`
+        : `${Math.round(strength * offset)} ${
+            offset - Math.round(strength * offset)
+          }`,
     color: getColor(),
     tension: 4,
     friction: 0.5,
@@ -61,31 +63,16 @@ const StrengthMeter = ({ password }: { password?: string }) => {
         data-testid='strength-meter'
         data-strength={strength}
       >
-        {strength === 0 ? (
-          <animated.circle
-            strokeDashoffset={offset}
-            strokeDasharray={offset}
-            strokeWidth='2'
-            cx='11'
-            cy='11'
-            r='9'
-            stroke='transparent'
-            fill='none'
-            ref={pathRef}
-          />
-        ) : (
-          <animated.circle
-            strokeDashoffset={progress}
-            strokeDasharray={offset}
-            strokeWidth='2'
-            cx='11'
-            cy='11'
-            r='9'
-            stroke={color}
-            fill='none'
-            ref={pathRef}
-          />
-        )}
+        <animated.circle
+          strokeDasharray={progress}
+          strokeWidth='2'
+          cx='11'
+          cy='11'
+          r='9'
+          stroke={strength === 0 ? 'transparent' : color}
+          fill='none'
+          ref={pathRef}
+        />
       </svg>
     </StyledStrengthMeter>
   )
