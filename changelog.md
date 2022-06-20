@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.5](https://github.com/tari-project/tari/compare/v0.32.4...v0.32.5) (2022-06-20)
+
+
+### Features
+
+* generate wallet ffi header file automatically ([#4183](https://github.com/tari-project/tari/issues/4183)) ([665f1f7](https://github.com/tari-project/tari/commit/665f1f7cb33b4639a83e7682926c319cdf2ea501))
+* **wallet_ffi:** wallet_get_utxos() ([#4209](https://github.com/tari-project/tari/issues/4209)) ([1b30524](https://github.com/tari-project/tari/commit/1b3052491f25efbd03249dd3300a296d7858c0f7))
+
 ### [0.32.4](https://github.com/tari-project/tari/compare/v0.32.3...v0.32.4) (2022-06-10)
 
 
