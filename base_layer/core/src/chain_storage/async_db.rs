@@ -66,7 +66,7 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -176,7 +176,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
-    make_async_fn!(fetch_all_constitutions(dan_node_public_key: PublicKey) -> Vec<TransactionOutput>, "fetch_all_constitutions");
+    make_async_fn!(fetch_contract_outputs_for_block(block_hash: BlockHash, output_type: OutputType) -> Vec<UtxoMinedInfo>, "fetch_contract_outputs_for_block");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");

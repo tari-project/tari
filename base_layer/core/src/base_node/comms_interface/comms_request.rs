@@ -29,7 +29,12 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
+use crate::{
+    blocks::NewBlockTemplate,
+    chain_storage::MmrTree,
+    proof_of_work::PowAlgorithm,
+    transactions::transaction_components::OutputType,
+};
 
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,8 +75,9 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
-    FetchConstitutions {
-        dan_node_public_key: PublicKey,
+    FetchContractOutputsForBlock {
+        block_hash: HashOutput,
+        output_type: OutputType,
     },
 }
 
@@ -122,7 +128,7 @@ impl Display for NodeCommsRequest {
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
             },
-            FetchConstitutions { .. } => {
+            FetchContractOutputsForBlock { .. } => {
                 write!(f, "FetchConstitutions")
             },
         }

@@ -79,6 +79,20 @@ impl OutputType {
     pub fn from_byte(value: u8) -> Option<Self> {
         FromPrimitive::from_u8(value)
     }
+
+    pub fn is_contract_utxo(self) -> bool {
+        #[allow(clippy::enum_glob_use)]
+        use OutputType::*;
+        matches!(
+            self,
+            ContractDefinition |
+                ContractConstitution |
+                ContractValidatorAcceptance |
+                ContractCheckpoint |
+                ContractConstitutionProposal |
+                ContractConstitutionChangeAcceptance
+        )
+    }
 }
 
 impl Default for OutputType {

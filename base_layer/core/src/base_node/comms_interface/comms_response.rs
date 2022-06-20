@@ -66,8 +66,8 @@ pub enum NodeCommsResponse {
         output: Box<Option<UtxoMinedInfo>>,
     },
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
-    FetchConstitutionsResponse {
-        outputs: Vec<TransactionOutput>,
+    FetchOutputsForBlockResponse {
+        outputs: Vec<UtxoMinedInfo>,
     },
 }
 
@@ -106,7 +106,7 @@ impl Display for NodeCommsResponse {
                 resp.transactions.len(),
                 resp.not_found.len()
             ),
-            FetchConstitutionsResponse { .. } => write!(f, "FetchConstitutionsResponse"),
+            FetchOutputsForBlockResponse { .. } => write!(f, "FetchConstitutionsResponse"),
         }
     }
 }

@@ -48,6 +48,10 @@ impl CommitteeMembers {
     pub fn members(&self) -> &[PublicKey] {
         &self.members
     }
+
+    pub fn contains(&self, x: &PublicKey) -> bool {
+        self.members.contains(x)
+    }
 }
 
 impl TryFrom<Vec<PublicKey>> for CommitteeMembers {

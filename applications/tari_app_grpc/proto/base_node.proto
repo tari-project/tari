@@ -93,7 +93,7 @@ service BaseNode {
     rpc GetAssetMetadata(GetAssetMetadataRequest) returns (GetAssetMetadataResponse);
 
     // Get all constitutions where the public key is in the committee
-    rpc GetConstitutions(GetConstitutionsRequest) returns (stream TransactionOutput);
+    rpc GetConstitutions(GetConstitutionsRequest) returns (stream GetConstitutionsResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -446,5 +446,13 @@ message MempoolStatsResponse {
 }
 
 message GetConstitutionsRequest {
-    bytes dan_node_public_key = 1;
+    bytes start_block_hash = 1;
+    bytes dan_node_public_key = 2;
+}
+
+message GetConstitutionsResponse {
+    TransactionOutput output = 1;
+    uint32 mmr_position = 2;
+    uint64 mined_height = 3;
+    bytes header_hash = 4;
 }

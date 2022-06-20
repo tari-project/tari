@@ -899,7 +899,7 @@ mod with_contract_utxos {
         fn it_allows_spend_of_contract_definition_without_dependent_utxos() {
             let contract_id = FixedHash::zero();
             let mut blockchain = helpers::create_blockchain_without_validation();
-            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A", parent: "GB")).unwrap();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A->GB")).unwrap();
             // Spend coinbase_a to new contract definition
             let (contract_definition, outputs) =
                 helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
@@ -948,6 +948,76 @@ mod with_contract_utxos {
         }
     }
 
+    mod fetch_contract_outputs_for_block {
+        use super::*;
+
+        #[test]
+        fn it_returns_none_if_block_does_not_exist() {
+            let blockchain = TestBlockchain::default();
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(vec![0u8; 32], OutputType::ContractDefinition)
+                .unwrap();
+            assert!(utxo.is_empty());
+        }
+
+        #[test]
+        fn it_returns_none_if_contract_does_not_exist() {
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (block_a, coinbase_a) = blockchain.append_to_tip(block_spec!("A->GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, _) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], [0u8; 32].into());
+
+            let _block = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(block_a.hash().clone(), OutputType::ContractDefinition)
+                .unwrap();
+            assert!(utxo.is_empty());
+        }
+
+        #[test]
+        fn it_finds_contract_utxos_by_block_hash_and_type() {
+            let contract_id = FixedHash::from([1u8; 32]);
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A->GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, outputs) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
+
+            let (block, _) = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+            let (contract_definition, change) = outputs
+                .into_iter()
+                .partition::<Vec<_>, _>(|output| output.features.is_sidechain_contract());
+            let contract_def_hash = contract_definition[0].hash(&CryptoFactories::default());
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(block.hash().clone(), OutputType::ContractDefinition)
+                .unwrap();
+            assert_eq!(utxo[0].output.hash(), contract_def_hash);
+
+            let (constitution, outputs) = helpers::create_contract_constitution_transaction(change, contract_id);
+            let (block, _) = blockchain
+                .append_to_tip(block_spec!("C", transactions: vec![constitution]))
+                .unwrap();
+            let contract_const_hash = outputs
+                .into_iter()
+                .find(|o| o.features.is_sidechain_contract())
+                .map(|o| o.hash(&CryptoFactories::default()))
+                .unwrap();
+            let utxos = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(block.hash().clone(), OutputType::ContractConstitution)
+                .unwrap();
+            assert_eq!(utxos[0].output.hash(), contract_const_hash);
+        }
+    }
+
     mod fetch_contract_outputs_by_contract_id_and_type {
         use super::*;
 
@@ -962,7 +1032,7 @@ mod with_contract_utxos {
         }
 
         #[test]
-        fn it_errors_on_spend_of_contract_definition_with_dependent_utxos() {
+        fn it_finds_contract_utxos_by_contract_id_and_type() {
             let contract_id = FixedHash::zero();
             let mut blockchain = helpers::create_blockchain_without_validation();
             let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A", parent: "GB")).unwrap();
