@@ -21,6 +21,7 @@ pub struct WalletTransaction {
     pub direction: String,
     pub amount: u64,
     pub message: String,
+    pub is_coinbase: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,6 +52,7 @@ impl TryFrom<TransactionEvent> for WalletTransaction {
                 direction: value.direction,
                 amount: value.amount,
                 message: value.message,
+                is_coinbase: value.is_coinbase,
             }),
         }
     }
