@@ -31,7 +31,7 @@ import { TitleBarProps } from './types'
 
 const TitleBar = ({
   drawerViewWidth = '50%',
-  mode = 'help',
+  hideSettingsButton = false,
 }: TitleBarProps) => {
   const dispatch = useAppDispatch()
 
@@ -202,7 +202,7 @@ const TitleBar = ({
           boxSizing: 'border-box',
         }}
       >
-        {mode === 'help' && (
+        {!hideSettingsButton && (
           <Button
             variant='text'
             size='small'
