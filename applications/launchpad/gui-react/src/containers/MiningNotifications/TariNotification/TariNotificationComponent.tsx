@@ -9,6 +9,14 @@ import t from '../../../locales'
 import TariText from './TariText'
 import { ContentWrapper, MessageWrapper } from './styles'
 
+/**
+ * @name TariNotificationComponent
+ * @description component that shows modal notification about new Tari block mined
+ *
+ * @prop {BlockMinedNotification} notification - notification to show
+ * @prop {boolean} open - whether modal should be open
+ * @prop {() => void} onClose - callback to call when user acknowledges the notification
+ */
 const TariNotificationComponent = ({
   notification,
   open,
@@ -22,7 +30,9 @@ const TariNotificationComponent = ({
     <Modal open={open} onClose={onClose} size='small'>
       <ContentWrapper>
         <MessageWrapper>
-          <TariText>{notification.header}</TariText>
+          <TariText style={{ textAlign: 'center' }}>
+            {notification.header}
+          </TariText>
           <TBot type='hearts' shadow disableEnterAnimation />
           <TariText style={{ textAlign: 'center' }} type='defaultMedium'>
             {notification.message}

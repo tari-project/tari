@@ -79,14 +79,18 @@ const translations = {
     moneroUrlPlaceholder: 'Set URL address',
   },
   notification: {
-    // eslint-disable-next-line quotes
-    youHaveOnlyGoneAndDoneIt: ` You've just mined a Tari block!`,
     added: 'has been added to your wallet.',
     ack: 'Got it',
+    // WARNING do not use '_' in headers and messages (see TariText.tsx)
     headers: [
-      'Fantaritastic!',
-      'Congratulations, brave Miner!',
-      'Holly moly, what a success!',
+      // eslint-disable-next-line quotes
+      `Fantaritastic! You've just mined a Tari block!`,
+      // eslint-disable-next-line quotes
+      `Congratulations, brave Miner! You've just mined a Tari block!`,
+      // eslint-disable-next-line quotes
+      `Holly moly, what a success! You've just mined a Tari block!`,
+      'Holy moly, you mine Tari like a boss!',
+      'Miner, have you taken lessons from the Dwarves of Moria?',
     ],
     messages: [
       'Congratarilations! A new Tari block has been mined!',

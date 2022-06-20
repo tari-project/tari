@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react'
 
+/**
+ * @name DelayRender
+ * @description component that renders elements with delay
+ *
+ * @prop {() => JSX.Element} render - render prop
+ * @prop {number} [delay] - optional delay in ms (400ms by default)
+ */
 const DelayRender = ({
   delay = 400,
   render,

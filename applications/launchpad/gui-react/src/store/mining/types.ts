@@ -55,6 +55,14 @@ export interface MergedMiningNodeState extends MiningNodeState {
   urls?: MoneroUrl[]
 }
 
+/**
+ * @typedef BlockMinedNotification
+ *
+ * @prop {number} amount - amount mined
+ * @prop {CoinType} currency - what currency was awarded for mining
+ * @prop {string} header - header message for notification
+ * @prop {string} message - additional body message for notification
+ */
 export interface BlockMinedNotification {
   amount: number
   header: string

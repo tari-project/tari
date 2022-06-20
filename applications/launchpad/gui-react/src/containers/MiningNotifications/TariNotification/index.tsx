@@ -6,6 +6,11 @@ import { selectNotifications } from '../../../store/mining/selectors'
 import TariNotification from './TariNotificationComponent'
 import DelayRender from './DelayRender'
 
+/**
+ * @name TariNotificationContainer
+ * @description container that connects tari notification to tari-specific notifications of mined blocks
+ * it takes care to render each notification in the list after a delay
+ */
 const TariNotificationContainer = () => {
   const [notification] = useAppSelector(selectNotifications)
   const dispatch = useAppDispatch()
