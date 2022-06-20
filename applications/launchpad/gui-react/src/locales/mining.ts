@@ -81,6 +81,8 @@ const translations = {
   notification: {
     // eslint-disable-next-line quotes
     youHaveOnlyGoneAndDoneIt: ` You've just mined a Tari block!`,
+    added: 'has been added to your wallet.',
+    ack: 'Got it',
     headers: [
       'Fantaritastic!',
       'Congratulations, brave Miner!',

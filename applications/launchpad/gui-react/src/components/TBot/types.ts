@@ -25,4 +25,5 @@ export interface TBotProps {
   style?: CSSProperties
   animate?: boolean
   shadow?: boolean | ShadowDefinition
+  disableEnterAnimation?: boolean
 }

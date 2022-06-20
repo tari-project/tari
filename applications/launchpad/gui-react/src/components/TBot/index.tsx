@@ -17,11 +17,18 @@ import { TBotProps, CSSShadowDefinition } from './types'
  * @prop {CSSProperties} [style] - optional TBot additional styling
  * @prop {boolean} [animate] - optional prop to trigger the new message T-Bot animation, set to true to trigger animation
  * @prop {boolean | ShadowDefinition} [shadow] - optional prop to define shadow dropped around TBot, use true for defaults (color: theme.accent, spread: 10, blur: 100)
+ * @prop {boolean} [disableEnterAnimation] - optional prop to disable enter animation
  *
  * @example
  * <TBot type='hearts' style={{ fontSize: '24px' }} animate={triggerAnimation} />
  */
-const TBot = ({ type = 'base', style, animate, shadow }: TBotProps) => {
+const TBot = ({
+  type = 'base',
+  style,
+  animate,
+  shadow,
+  disableEnterAnimation,
+}: TBotProps) => {
   const theme = useTheme()
   const { fontSize } = { fontSize: 74, ...style }
   const defaultShadow: CSSShadowDefinition = {
@@ -39,20 +46,20 @@ const TBot = ({ type = 'base', style, animate, shadow }: TBotProps) => {
     search: SvgTBotRadar,
   }
 
-  // Animation for T-Bot first render
-  const enterAnim = useSpring({
-    from: { width: '0px', height: '0px' },
-    to: {
-      width: '100%',
-      height: '100%',
-    },
-    config: {
-      duration: 100,
-    },
-  })
+  const enterAnim = disableEnterAnimation
+    ? undefined
+    : useSpring({
+        from: { width: '0px', height: '0px' },
+        to: {
+          width: '100%',
+          height: '100%',
+        },
+        config: {
+          duration: 100,
+        },
+      })
 
-  // Animation for new T-Bot messages
-  const scaleAnim = useSpring({
+  const newTBotMessageAnimation = useSpring({
     from: { transform: 'scale(1)' },
     to: {
       transform: animate ? 'scale(1.5)' : 'scale(1)',
@@ -73,7 +80,7 @@ const TBot = ({ type = 'base', style, animate, shadow }: TBotProps) => {
 
   return (
     <TBotContainer
-      style={scaleAnim}
+      style={newTBotMessageAnimation}
       shadow={shadow ? shadowDefinition : undefined}
     >
       <TBotScaleContainer style={enterAnim}>

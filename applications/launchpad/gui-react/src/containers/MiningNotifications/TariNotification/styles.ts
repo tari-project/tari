@@ -17,4 +17,5 @@ export const MessageWrapper = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  row-gap: ${({ theme }) => theme.spacing(0.5)};
 `
