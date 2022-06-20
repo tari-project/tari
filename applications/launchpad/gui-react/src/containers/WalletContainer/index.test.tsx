@@ -8,9 +8,10 @@ import WalletContainer from '.'
 import { rootReducer } from '../../store'
 import { initialState as walletInitialState } from '../../store/wallet/index'
 import themes from '../../styles/themes'
+import t from '../../locales'
 
 describe('WalletContainer', () => {
-  it('should render password box initially if wallet is not unlocked', () => {
+  it('should render setup box initially if wallet is not configured', () => {
     render(
       <Provider
         store={configureStore({
@@ -18,6 +19,30 @@ describe('WalletContainer', () => {
           preloadedState: {
             wallet: {
               ...walletInitialState,
+              unlocked: false,
+            },
+          },
+        })}
+      >
+        <ThemeProvider theme={themes.light}>
+          <WalletContainer />
+        </ThemeProvider>
+      </Provider>,
+    )
+
+    const el = screen.getByText(t.walletPasswordWizard.description)
+    expect(el).toBeInTheDocument()
+  })
+
+  it('should render password box initially if wallet is configured but not unlocked', () => {
+    render(
+      <Provider
+        store={configureStore({
+          reducer: rootReducer,
+          preloadedState: {
+            wallet: {
+              ...walletInitialState,
+              address: 'configuredWalletAddress',
               unlocked: false,
             },
           },
@@ -41,6 +66,7 @@ describe('WalletContainer', () => {
           preloadedState: {
             wallet: {
               ...walletInitialState,
+              address: 'configuredWalletAddress',
               unlocked: true,
             },
           },
@@ -64,6 +90,7 @@ describe('WalletContainer', () => {
           preloadedState: {
             wallet: {
               ...walletInitialState,
+              address: 'configuredWalletAddress',
               unlocked: true,
             },
           },

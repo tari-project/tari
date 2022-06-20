@@ -34,6 +34,7 @@ describe('starting node', () => {
     const getState = () =>
       ({
         wallet: {
+          address: '',
           unlocked: false,
         },
         mining: {
@@ -68,6 +69,7 @@ describe('starting node', () => {
     const getState = () =>
       ({
         wallet: {
+          address: '',
           unlocked: false,
         },
         mining: {
@@ -103,6 +105,7 @@ describe('starting node', () => {
     const getState = () =>
       ({
         wallet: {
+          address: 'some wallet adress',
           unlocked: true,
         },
         mining: {
@@ -142,6 +145,7 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
+              address: 'walletAddress',
               unlocked: true,
             },
             mining: {
@@ -180,6 +184,7 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
+              address: 'some wallet adress',
               unlocked: true,
             },
             mining: {
@@ -224,6 +229,7 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
+              address: 'some wallet adress',
               unlocked: true,
             },
             mining: {
@@ -273,6 +279,7 @@ describe('start stop mining', () =>
           const getState = () =>
             ({
               wallet: {
+                address: 'some wallet adress',
                 unlocked: true,
               },
               containers: allStopped,
@@ -324,6 +331,7 @@ describe('start stop mining', () =>
           const getState = () =>
             ({
               wallet: {
+                address: 'some wallet adress',
                 unlocked: true,
               },
               containers: allStopped,
@@ -386,6 +394,7 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
+              address: 'some wallet adress',
               unlocked: true,
             },
             containers: allStopped,
@@ -432,6 +441,7 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
+              address: 'some wallet adress',
               unlocked: true,
             },
             containers: allStopped,

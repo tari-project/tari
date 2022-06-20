@@ -22,4 +22,4 @@ export const selectIsPending = (state: RootState) => state.wallet.pending
 export const selectIsRunning = (state: RootState) => state.wallet.running
 
 export const selectWalletSetupRequired = (state: RootState) =>
-  !state.wallet.unlocked ? WalletSetupRequired.MissingWalletAddress : undefined
+  !state.wallet.address ? WalletSetupRequired.MissingWalletAddress : undefined
