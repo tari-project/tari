@@ -8,7 +8,8 @@ export type AccountData = {
     currency: CoinType
   }
   delta: {
-    percentage: number
+    value: number
+    percentage: boolean
     interval: MiningStatisticsInterval
   }
 }[]

@@ -1,104 +1,41 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 
-import { MiningStatisticsInterval, AccountData } from './types'
+import * as DateUtils from '../../../utils/Date'
+import getTransactionsRepository from '../../../persistence/transactionsRepository'
+
+import { MiningStatisticsInterval } from './types'
 import Statistics from './Statistics'
+import useStatisticsData from './useStatisticsData'
+import useAccountData from './useAccountData'
 
-const monthly = {
-  getData: (d: Date) =>
-    [...Array(new Date(d.getFullYear(), d.getMonth(), 0).getDate()).keys()].map(
-      day => ({
-        point: (day + 1).toString().padStart(2, '0'),
-        xtr: (day + 1) * 2000 - 60 * (day + 1),
-        xmr: (day + 1) * 200 - 10 * (day + 1),
-      }),
-    ),
-  getAccountData: () =>
-    [
-      {
-        balance: {
-          value: 45500,
-          currency: 'xtr',
-        },
-        delta: {
-          percentage: 2.1,
-          interval: 'monthly',
-        },
-      },
-      {
-        balance: {
-          value: 430,
-          currency: 'xmr',
-        },
-        delta: {
-          percentage: -3.7,
-          interval: 'monthly',
-        },
-      },
-    ] as AccountData,
+const transactionsRepository = getTransactionsRepository()
+
+const getFrom = (
+  interval: MiningStatisticsInterval,
+  dateInInterval: Date,
+): Date => {
+  switch (interval) {
+    case 'monthly':
+      return DateUtils.startOfMonth(dateInInterval)
+    case 'yearly':
+      return DateUtils.startOfYear(dateInInterval)
+    case 'all':
+      return new Date('1970')
+  }
 }
 
-const yearly = {
-  getData: () =>
-    [...Array(12).keys()].map(month => ({
-      point: (month + 1).toString().padStart(2, '0'),
-      xtr: (month + 1) * 2000 - 60 * (month + 1),
-      xmr: (month + 1) * 200 - 10 * (month + 1),
-    })),
-  getAccountData: () =>
-    [
-      {
-        balance: {
-          value: 6660000,
-          currency: 'xtr',
-        },
-        delta: {
-          percentage: -22.1,
-          interval: 'yearly',
-        },
-      },
-      {
-        balance: {
-          value: 72000,
-          currency: 'xmr',
-        },
-        delta: {
-          percentage: 0.7,
-          interval: 'yearly',
-        },
-      },
-    ] as AccountData,
-}
-
-const all = {
-  getData: () =>
-    [...Array(2).keys()].map(year => ({
-      point: (year + 2021).toString(),
-      xtr: (year + 1) * 2000 - 60 * (year + 1),
-      xmr: (year + 1) * 200 - 10 * (year + 1),
-    })),
-  getAccountData: () =>
-    [
-      {
-        balance: {
-          value: 6660000,
-          currency: 'xtr',
-        },
-        delta: {
-          percentage: 0,
-          interval: 'yearly',
-        },
-      },
-      {
-        balance: {
-          value: 72000,
-          currency: 'xmr',
-        },
-        delta: {
-          percentage: 0,
-          interval: 'yearly',
-        },
-      },
-    ] as AccountData,
+const getTo = (
+  interval: MiningStatisticsInterval,
+  dateInInterval: Date,
+): Date => {
+  switch (interval) {
+    case 'monthly':
+      return DateUtils.endOfMonth(dateInInterval)
+    case 'yearly':
+      return DateUtils.endOfYear(dateInInterval)
+    case 'all':
+      return new Date()
+  }
 }
 
 /**
@@ -121,21 +58,33 @@ const StatisticsContainer = ({
     onReady && onReady()
   }, [])
 
-  let data = monthly.getData(intervalToShow)
-  let accountData: AccountData = monthly.getAccountData()
+  const [disableAllFilter, setDisableAllFilter] = useState(false)
+  useEffect(() => {
+    const calculateAllFilterDisabled = async () => {
+      const hasDataBeforeCurrentYear =
+        await transactionsRepository.hasDataBefore(
+          DateUtils.startOfYear(new Date()),
+        )
+      setDisableAllFilter(!hasDataBeforeCurrentYear)
+    }
+    calculateAllFilterDisabled()
+  }, [])
 
-  if (interval === 'yearly') {
-    data = yearly.getData()
-    accountData = yearly.getAccountData()
-  }
+  const from = useMemo(
+    () => getFrom(interval, intervalToShow),
+    [interval, intervalToShow],
+  )
+  const to = useMemo(
+    () => getTo(interval, intervalToShow),
+    [interval, intervalToShow],
+  )
 
-  if (interval === 'all') {
-    data = all.getData()
-    accountData = all.getAccountData()
-  }
+  const data = useStatisticsData({ from, to, interval, intervalToShow })
+  const accountData = useAccountData({ from, to, interval, intervalToShow })
 
   return (
     <Statistics
+      disableAllFilter={disableAllFilter}
       interval={interval}
       setInterval={setInterval}
       intervalToShow={intervalToShow}
@@ -143,8 +92,6 @@ const StatisticsContainer = ({
       onClose={onClose}
       data={data}
       accountData={accountData}
-      dataFrom={new Date('2021-07-02')}
-      dataTo={new Date()}
     />
   )
 }

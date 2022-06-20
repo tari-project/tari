@@ -1,5 +1,4 @@
 // Copyright 2021. The Tari Project
-//
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
 //
@@ -21,7 +20,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 mod wallet_api;
-
 use std::{convert::TryFrom, fmt::format};
 
 use config::Config;
@@ -30,6 +28,7 @@ use log::{debug, error, info, warn};
 use serde::Serialize;
 use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{http::status, AppHandle, Manager, Wry};
+pub use wallet_api::wallet_events;
 
 use crate::{
     commands::{status, AppState, ServiceSettings, DEFAULT_IMAGES},

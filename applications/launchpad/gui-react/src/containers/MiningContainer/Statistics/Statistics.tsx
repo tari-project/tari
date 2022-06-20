@@ -6,19 +6,20 @@ import Text from '../../../components/Text'
 import BarChart from '../../../components/Charts/Bar'
 import CloseIcon from '../../../styles/Icons/Close'
 import t from '../../../locales'
+import { MinedTariEntry } from '../../../persistence/transactionsRepository'
 
 import { MiningStatisticsInterval, AccountData } from './types'
 import MiningIntervalPicker from './MiningIntervalPicker'
 import Account from './Account'
 
 const intervalOptions = (disableAllFilter?: boolean) => [
+  { option: 'monthly', label: t.mining.statistics.intervals.monthly },
+  { option: 'yearly', label: t.mining.statistics.intervals.yearly },
   {
     option: 'all',
     label: t.mining.statistics.intervals.all,
     disabled: disableAllFilter,
   },
-  { option: 'monthly', label: t.mining.statistics.intervals.monthly },
-  { option: 'yearly', label: t.mining.statistics.intervals.yearly },
 ]
 
 /**
@@ -30,7 +31,7 @@ const intervalOptions = (disableAllFilter?: boolean) => [
  * @prop {Date} intervalToShow - representation of time period (month / year) to allow user to navigate between different periods
  * @prop {(d: Date) => void} setIntervalToShow - setter for intervalToShow
  * @prop {() => void} onClose - callback when user closes statistics
- * @prop {Record<string, string | number>[]} data - period data
+ * @prop {MinedTariEntry[]} data - period data
  * @prop {AccountData} accountData - data regarding coin balances and percentage changes period to period
  * @prop {boolean} [disableAllFilter] - whether 'all' filter should be disabled - happens when there is only data for one year
  */
@@ -43,19 +44,15 @@ const Statistics = ({
   data,
   accountData,
   disableAllFilter,
-  dataFrom,
-  dataTo,
 }: {
   interval: MiningStatisticsInterval
   setInterval: (i: MiningStatisticsInterval) => void
   intervalToShow: Date
   setIntervalToShow: (d: Date) => void
   onClose: () => void
-  data: Record<string, string | number>[]
+  data: MinedTariEntry[]
   accountData: AccountData
   disableAllFilter?: boolean
-  dataFrom: Date
-  dataTo: Date
 }) => {
   const theme = useTheme()
 
@@ -93,17 +90,15 @@ const Statistics = ({
           value={intervalToShow}
           interval={interval as MiningStatisticsInterval}
           onChange={setIntervalToShow}
-          dataFrom={dataFrom}
-          dataTo={dataTo}
         />
       </div>
       <div>
         <Account data={accountData} />
       </div>
       <BarChart
-        data={data}
-        indexBy={'point'}
-        keys={['xtr', 'xmr']}
+        data={data as unknown as Record<string, string | number>[]}
+        indexBy={'when'}
+        keys={['xtr']}
         style={{ width: '100%', height: 250 }}
       />
     </Box>

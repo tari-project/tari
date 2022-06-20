@@ -1,25 +1,11 @@
-import { useMemo } from 'react'
-import { useTheme } from 'styled-components'
+import { useState, useEffect } from 'react'
 
-import { shortMonth } from '../../../../utils/Format'
-import { isCurrentMonth } from '../../../../utils/Date'
-import Button from '../../../../components/Button'
-import Iterator from '../../../../components/Iterator'
-import { MiningStatisticsInterval } from '../types'
-import t from '../../../../locales'
+import getTransactionsRepository from '../../../../persistence/transactionsRepository'
 
-const viewingToday = (d: Date, interval: MiningStatisticsInterval): boolean => {
-  switch (interval) {
-    case 'all':
-      return true
-    case 'monthly':
-      return isCurrentMonth(d)
-    case 'yearly':
-      return d.getFullYear() === new Date().getFullYear()
-    default:
-      return true
-  }
-}
+import { MiningIntervalPickerComponentProps } from './types'
+import MiningIntervalPickerComponent from './MiningIntervalPickerComponent'
+
+const transactionsRepository = getTransactionsRepository()
 
 /**
  * @name MiningIntervalPicker
@@ -33,103 +19,28 @@ const MiningIntervalPicker = ({
   value,
   interval,
   onChange,
-  dataFrom,
-  dataTo,
-}: {
-  value: Date
-  interval: MiningStatisticsInterval
-  onChange: (d: Date) => void
-  dataFrom: Date
-  dataTo: Date
-}) => {
-  const theme = useTheme()
+}: Omit<MiningIntervalPickerComponentProps, 'dataFrom' | 'dataTo'>) => {
+  const [{ from: dataFrom, to: dataTo }, setDates] = useState<{
+    from: Date
+    to: Date
+  }>({ from: new Date(), to: new Date() })
+  useEffect(() => {
+    const getData = async () => {
+      const dates = await transactionsRepository.getMinedTransactionsDataSpan()
 
-  const iterators = useMemo(
-    () =>
-      ({
-        monthly: {
-          getCurrent: (d: Date) => shortMonth(d),
-          getNext: () => {
-            const copy = new Date(value)
-            copy.setMonth(value.getMonth() + 1)
-            onChange(copy)
-          },
-          getPrevious: () => {
-            const copy = new Date(value)
-            copy.setMonth(value.getMonth() - 1)
-            onChange(copy)
-          },
-          hasNext: () =>
-            value.getFullYear() < dataTo.getFullYear() ||
-            value.getMonth() < dataTo.getMonth(),
-          hasPrevious: () =>
-            value.getFullYear() > dataFrom.getFullYear() ||
-            value.getMonth() > dataFrom.getMonth(),
-        },
-        yearly: {
-          getCurrent: (current: Date) => current.getFullYear().toString(),
-          getNext: () => {
-            const copy = new Date(value)
-            copy.setFullYear(value.getFullYear() + 1)
-            onChange(copy)
-          },
-          getPrevious: () => {
-            const copy = new Date(value)
-            copy.setFullYear(value.getFullYear() - 1)
-            onChange(copy)
-          },
-          hasNext: () => value.getFullYear() < dataTo.getFullYear(),
-          hasPrevious: () => value.getFullYear() > dataFrom.getFullYear(),
-        },
-      } as Record<
-        MiningStatisticsInterval,
-        {
-          getCurrent: (d: Date) => string
-          getNext: () => void
-          getPrevious: () => void
-          hasNext: () => boolean
-          hasPrevious: () => boolean
-        }
-      >),
-    [onChange, value],
-  )
-
-  if (interval === ('all' as MiningStatisticsInterval)) {
-    return null
-  }
-
-  const iterator = iterators[interval]
+      setDates(dates)
+    }
+    getData()
+  }, [])
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        columnGap: theme.spacing(0.5),
-      }}
-    >
-      <Iterator
-        value={iterator.getCurrent(value)}
-        next={iterator.getNext}
-        previous={iterator.getPrevious}
-        hasNext={iterator.hasNext()}
-        hasPrevious={iterator.hasPrevious()}
-        style={{
-          width: interval === 'monthly' ? '10em' : '7em',
-        }}
-      />
-      <Button
-        variant='text'
-        onClick={() => onChange(new Date())}
-        style={{
-          textDecoration: viewingToday(value, interval) ? 'underline' : '',
-          paddingRight: 0,
-          paddingLeft: 0,
-        }}
-      >
-        {t.common.nouns.today}
-      </Button>
-    </div>
+    <MiningIntervalPickerComponent
+      value={value}
+      interval={interval}
+      onChange={onChange}
+      dataFrom={dataFrom}
+      dataTo={dataTo}
+    />
   )
 }
 

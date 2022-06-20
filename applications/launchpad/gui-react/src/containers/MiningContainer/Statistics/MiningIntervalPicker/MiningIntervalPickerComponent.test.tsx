@@ -3,14 +3,14 @@ import { ThemeProvider } from 'styled-components'
 
 import themes from '../../../../styles/themes'
 
-import MiningIntervalPicker from '.'
+import MiningIntervalPickerComponent from './MiningIntervalPickerComponent'
 
-describe('MiningIntervalPicker', () => {
+describe('MiningIntervalPickerComponent', () => {
   it('should render current month for monthly interval', () => {
     const expectedValue = 'Jun 2022'
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={() => null}
@@ -27,7 +27,7 @@ describe('MiningIntervalPicker', () => {
     const expectedValue = '2022'
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={() => null}
@@ -45,7 +45,7 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={onChange}
@@ -73,7 +73,7 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='yearly'
           onChange={onChange}
@@ -94,7 +94,7 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={onChange}
@@ -122,7 +122,7 @@ describe('MiningIntervalPicker', () => {
 
     render(
       <ThemeProvider theme={themes.light}>
-        <MiningIntervalPicker
+        <MiningIntervalPickerComponent
           value={new Date('2022-06-20')}
           interval='monthly'
           onChange={onChange}

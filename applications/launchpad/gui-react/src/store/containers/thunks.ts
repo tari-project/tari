@@ -7,6 +7,7 @@ import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 import { selectNetwork } from '../baseNode/selectors'
 import { startOfSecond } from '../../utils/Date'
+import getStatsRepository from '../../persistence/statsRepository'
 
 import {
   StatsEventPayload,
@@ -16,7 +17,6 @@ import {
   SerializableContainerStats,
 } from './types'
 import { selectContainerByType, selectRunningContainers } from './selectors'
-import getStatsRepository from './statsRepository'
 
 export const persistStats = createAsyncThunk<
   void,

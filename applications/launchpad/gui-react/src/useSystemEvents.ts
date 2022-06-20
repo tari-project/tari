@@ -11,14 +11,10 @@ enum SystemEventType {
 
 export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
   useEffect(() => {
-    invoke('events')
-  }, [])
-
-  useEffect(() => {
     let unsubscribe
 
     const listenToSystemEvents = async () => {
-      const unlisten = await listen(
+      unsubscribe = await listen(
         'tari://docker-system-event',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (event: any) => {
@@ -36,13 +32,11 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
           }
         },
       )
-
-      unsubscribe = () => {
-        unlisten()
-      }
     }
 
     listenToSystemEvents()
+
+    invoke('events')
 
     return unsubscribe
   }, [])
