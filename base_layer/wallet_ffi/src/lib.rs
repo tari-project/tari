@@ -532,14 +532,12 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
 pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let v;
     if bytes.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
-    } else {
-        v = (*bytes).0.clone();
     }
+    let v = (*bytes).0.clone();
     let pk = TariPublicKey::from_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
@@ -773,14 +771,12 @@ pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out:
 pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPrivateKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let v;
     if bytes.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
-    } else {
-        v = (*bytes).0.clone();
     }
+    let v = (*bytes).0.clone();
     let pk = TariPrivateKey::from_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
@@ -3652,17 +3648,13 @@ unsafe fn init_logging(
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
-    let path;
-    match CStr::from_ptr(log_path).to_str() {
-        Ok(v) => {
-            path = v.to_owned();
-        },
-        _ => {
-            error = LibWalletError::from(InterfaceError::PointerError("log_path".to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return;
-        },
+    let v = CStr::from_ptr(log_path).to_str();
+    if v.is_err() {
+        error = LibWalletError::from(InterfaceError::PointerError("log_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
     }
+    let path = v.unwrap().to_owned();
     let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
     let log_appender: Box<dyn Append> = if num_rolling_log_files != 0 && size_per_log_file_bytes != 0 {
         let mut pattern;
@@ -4343,28 +4335,22 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
         return result;
     }
 
-    let message;
-    match CStr::from_ptr(msg).to_str() {
-        Ok(v) => {
-            message = v.to_owned();
-        },
+    let message = match CStr::from_ptr(msg).to_str() {
+        Ok(v) => v.to_owned(),
         _ => {
             error = LibWalletError::from(InterfaceError::PointerError("msg".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return false;
         },
-    }
-    let hex;
-    match CStr::from_ptr(hex_sig_nonce).to_str() {
-        Ok(v) => {
-            hex = v.to_owned();
-        },
+    };
+    let hex = match CStr::from_ptr(hex_sig_nonce).to_str() {
+        Ok(v) => v.to_owned(),
         _ => {
             error = LibWalletError::from(InterfaceError::PointerError("hex_sig_nonce".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return false;
         },
-    }
+    };
     let hex_keys: Vec<&str> = hex.split('|').collect();
     if hex_keys.len() != 2 {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
@@ -6462,17 +6448,14 @@ pub unsafe extern "C" fn wallet_start_recovery(
     let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase>::builder();
 
     if !recovered_output_message.is_null() {
-        let message_str;
-        match CStr::from_ptr(recovered_output_message).to_str() {
-            Ok(v) => {
-                message_str = v.to_owned();
-            },
+        let message_str = match CStr::from_ptr(recovered_output_message).to_str() {
+            Ok(v) => v.to_owned(),
             _ => {
                 error = LibWalletError::from(InterfaceError::PointerError("recovered_output_message".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return false;
             },
-        }
+        };
         recovery_task_builder.with_recovery_message(message_str);
     }
 

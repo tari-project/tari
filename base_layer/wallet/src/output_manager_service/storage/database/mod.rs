@@ -463,11 +463,11 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStor
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::SpentOutput(_) => f.write_str(&"Spent Output Key".to_string()),
-            DbKey::UnspentOutput(_) => f.write_str(&"Unspent Output Key".to_string()),
-            DbKey::UnspentOutputHash(_) => f.write_str(&"Unspent Output Hash Key".to_string()),
-            DbKey::UnspentOutputs => f.write_str(&"Unspent Outputs Key".to_string()),
-            DbKey::SpentOutputs => f.write_str(&"Spent Outputs Key".to_string()),
+            DbKey::SpentOutput(_) => f.write_str("Spent Output Key"),
+            DbKey::UnspentOutput(_) => f.write_str("Unspent Output Key"),
+            DbKey::UnspentOutputHash(_) => f.write_str("Unspent Output Hash Key"),
+            DbKey::UnspentOutputs => f.write_str("Unspent Outputs Key"),
+            DbKey::SpentOutputs => f.write_str("Spent Outputs Key"),
             DbKey::InvalidOutputs => f.write_str("Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str("Timelocked Outputs"),
             DbKey::KnownOneSidedPaymentScripts => f.write_str("Known claiming scripts"),

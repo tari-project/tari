@@ -309,12 +309,11 @@ pub(crate) async fn inner_asset_wallets_get_latest_address(
   let addresses = db
     .addresses()
     .find_by_asset_and_wallet(asset_id, wallet_id, &tx)?;
-  Ok(
-    addresses
-      .into_iter()
-      .last()
-      .ok_or_else(|| Status::not_found("Address".to_string()))?,
-  )
+
+  addresses
+    .into_iter()
+    .last()
+    .ok_or_else(|| Status::not_found("Address".to_string()))
 }
 
 pub(crate) async fn inner_asset_wallets_send_to(
@@ -329,7 +328,6 @@ pub(crate) async fn inner_asset_wallets_send_to(
     .ok_or_else(Status::unauthorized)?;
   let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
   let to_public_key = PublicKey::from_hex(&to_address)?;
-  let args;
   let db = state.create_db().await?;
 
   let tx = db.create_transaction()?;
@@ -346,7 +344,7 @@ pub(crate) async fn inner_asset_wallets_send_to(
       .public_key
       .as_bytes(),
   );
-  args = tip002::TransferRequest {
+  let args = tip002::TransferRequest {
     to: Vec::from(to_public_key.as_bytes()),
     amount,
     from: from_address.clone(),

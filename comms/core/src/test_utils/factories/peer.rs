@@ -20,15 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::iter::repeat_with;
+
+use multiaddr::Multiaddr;
+use rand::rngs::OsRng;
+use tari_crypto::keys::PublicKey;
+
 use super::{net_address::NetAddressesFactory, TestFactory, TestFactoryError};
 use crate::{
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
 };
-use multiaddr::Multiaddr;
-use rand::rngs::OsRng;
-use std::iter::repeat_with;
-use tari_crypto::keys::PublicKey;
 
 pub fn create_many(n: usize) -> PeersFactory {
     PeersFactory::default().with_count(n)
@@ -123,7 +125,7 @@ impl TestFactory for PeersFactory {
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         Ok(repeat_with(|| self.create_peer())
-            .take(self.count.or(Some(1)).unwrap())
+            .take(self.count.unwrap_or(1))
             .collect::<Vec<Peer>>())
     }
 }

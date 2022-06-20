@@ -37,7 +37,7 @@ use crate::{
 // TODO: Develop a language autodetection mechanism to distinguish between ChineseTraditional and ChineseSimplified
 // #LOGGED
 
-#[derive(Clone, Debug, PartialEq, EnumString, Display, Copy, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, EnumString, Display, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MnemonicLanguage {
     ChineseSimplified,
@@ -131,29 +131,20 @@ impl MnemonicLanguage {
 
 /// Finds and returns the index of a specific word in a mnemonic word list defined by the specified language
 fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Result<usize, MnemonicError> {
-    let search_result: Result<usize, usize>;
     let lowercase_word = word.to_lowercase();
-    match language {
+    let search_result = match language {
         // Search through languages are ordered according to the predominance (number of speakers in the world) of that
         // language
         MnemonicLanguage::ChineseSimplified => {
-            search_result = MNEMONIC_CHINESE_SIMPLIFIED_WORDS.binary_search(&lowercase_word.as_str())
+            MNEMONIC_CHINESE_SIMPLIFIED_WORDS.binary_search(&lowercase_word.as_str())
         },
-        MnemonicLanguage::English => {
-            search_result = MNEMONIC_ENGLISH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str())
-        },
-        MnemonicLanguage::French => {
-            search_result = MNEMONIC_FRENCH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str())
-        },
-        MnemonicLanguage::Italian => {
-            search_result = MNEMONIC_ITALIAN_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str())
-        },
-        MnemonicLanguage::Japanese => search_result = MNEMONIC_JAPANESE_WORDS.binary_search(&lowercase_word.as_str()),
-        MnemonicLanguage::Korean => search_result = MNEMONIC_KOREAN_WORDS.binary_search(&lowercase_word.as_str()),
-        MnemonicLanguage::Spanish => {
-            search_result = MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str())
-        },
-    }
+        MnemonicLanguage::English => MNEMONIC_ENGLISH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
+        MnemonicLanguage::French => MNEMONIC_FRENCH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
+        MnemonicLanguage::Italian => MNEMONIC_ITALIAN_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
+        MnemonicLanguage::Japanese => MNEMONIC_JAPANESE_WORDS.binary_search(&lowercase_word.as_str()),
+        MnemonicLanguage::Korean => MNEMONIC_KOREAN_WORDS.binary_search(&lowercase_word.as_str()),
+        MnemonicLanguage::Spanish => MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(&lowercase_word).as_str()),
+    };
     match search_result {
         Ok(v) => Ok(v),
         Err(_err) => Err(MnemonicError::WordNotFound(word.to_string())),
@@ -319,29 +310,29 @@ mod test {
     #[test]
     fn test_language_detection() {
         // Test valid Mnemonic words
-        let language = MnemonicLanguage::from(&"目".to_string()).expect("");
+        let language = MnemonicLanguage::from("目").expect("");
         assert_eq!(language, MnemonicLanguage::ChineseSimplified);
-        let language = MnemonicLanguage::from(&"trick".to_string()).expect("");
+        let language = MnemonicLanguage::from("trick").expect("");
         assert_eq!(language, MnemonicLanguage::English);
-        let language = MnemonicLanguage::from(&"risque".to_string()).expect("");
+        let language = MnemonicLanguage::from("risque").expect("");
         assert_eq!(language, MnemonicLanguage::French);
-        let language = MnemonicLanguage::from(&"topazio".to_string()).expect("");
+        let language = MnemonicLanguage::from("topazio").expect("");
         assert_eq!(language, MnemonicLanguage::Italian);
-        let language = MnemonicLanguage::from(&"ふりる".to_string()).expect("");
+        let language = MnemonicLanguage::from("ふりる").expect("");
         assert_eq!(language, MnemonicLanguage::Japanese);
-        let language = MnemonicLanguage::from(&"마지막".to_string()).expect("");
+        let language = MnemonicLanguage::from("마지막").expect("");
         assert_eq!(language, MnemonicLanguage::Korean);
-        let language = MnemonicLanguage::from(&"sala".to_string()).expect("");
+        let language = MnemonicLanguage::from("sala").expect("");
         assert_eq!(language, MnemonicLanguage::Spanish);
 
         // Test Invalid Mnemonic words
-        assert!(MnemonicLanguage::from(&"馕".to_string()).is_err()); // Invalid Mnemonic Chinese Simplified word
-        assert!(MnemonicLanguage::from(&"retro".to_string()).is_err()); // Invalid Mnemonic English word
-        assert!(MnemonicLanguage::from(&"flâner".to_string()).is_err()); // Invalid Mnemonic French word
-        assert!(MnemonicLanguage::from(&"meriggiare".to_string()).is_err()); // Invalid Mnemonic Italian word
-        assert!(MnemonicLanguage::from(&"おかあさん".to_string()).is_err()); // Invalid Mnemonic Japanese word
-        assert!(MnemonicLanguage::from(&"답정너".to_string()).is_err()); // Invalid Mnemonic Korean word
-        assert!(MnemonicLanguage::from(&"desvelado".to_string()).is_err()); // Invalid Mnemonic Spanish word
+        assert!(MnemonicLanguage::from("馕").is_err()); // Invalid Mnemonic Chinese Simplified word
+        assert!(MnemonicLanguage::from("retro").is_err()); // Invalid Mnemonic English word
+        assert!(MnemonicLanguage::from("flâner").is_err()); // Invalid Mnemonic French word
+        assert!(MnemonicLanguage::from("meriggiare").is_err()); // Invalid Mnemonic Italian word
+        assert!(MnemonicLanguage::from("おかあさん").is_err()); // Invalid Mnemonic Japanese word
+        assert!(MnemonicLanguage::from("답정너").is_err()); // Invalid Mnemonic Korean word
+        assert!(MnemonicLanguage::from("desvelado").is_err()); // Invalid Mnemonic Spanish word
 
         // English/Spanish + English/French -> English
         let words1 = vec![
