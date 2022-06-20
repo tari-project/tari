@@ -64,3 +64,16 @@ impl TryFrom<SignatureFileFormat> for Signature {
         Ok(Signature::new(public_key, signature))
     }
 }
+
+impl Default for SignatureFileFormat {
+    fn default() -> Self {
+        let default_sig = Signature::default();
+        let public_nonce = default_sig.get_public_nonce().to_hex();
+        let signature = default_sig.get_signature().to_hex();
+
+        Self {
+            public_nonce,
+            signature,
+        }
+    }
+}
