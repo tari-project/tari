@@ -928,10 +928,10 @@ fn handle_reorg_failure_recovery() {
     // Block B3 (Incorrect height)
     let double_spend_block = {
         let schemas = vec![
-                txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
-                // Double spend
-                //txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
-            ];
+            txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+            // Double spend
+            // txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+        ];
         let mut txns = Vec::new();
         let mut block_utxos = Vec::new();
         for schema in schemas {

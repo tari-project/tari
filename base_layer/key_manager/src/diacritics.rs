@@ -89,17 +89,17 @@ mod test {
     #[test]
     fn test_temp() {
         // Words with Diacretics
-        assert_eq!(remove_diacritics(&"ábaco".to_string()), "abaco".to_string());
-        assert_eq!(remove_diacritics(&"cúpula".to_string()), "cupula".to_string());
-        assert_eq!(remove_diacritics(&"legión".to_string()), "legion".to_string());
-        assert_eq!(remove_diacritics(&"sureño".to_string()), "sureno".to_string());
-        assert_eq!(remove_diacritics(&"chimère".to_string()), "chimere".to_string());
-        assert_eq!(remove_diacritics(&"élève".to_string()), "eleve".to_string());
+        assert_eq!(remove_diacritics("ábaco"), "abaco".to_string());
+        assert_eq!(remove_diacritics("cúpula"), "cupula".to_string());
+        assert_eq!(remove_diacritics("legión"), "legion".to_string());
+        assert_eq!(remove_diacritics("sureño"), "sureno".to_string());
+        assert_eq!(remove_diacritics("chimère"), "chimere".to_string());
+        assert_eq!(remove_diacritics("élève"), "eleve".to_string());
 
         // Words without Diacretics
-        assert_eq!(remove_diacritics(&"observe".to_string()), "observe".to_string());
-        assert_eq!(remove_diacritics(&"response".to_string()), "response".to_string());
-        assert_eq!(remove_diacritics(&"bizzarro".to_string()), "bizzarro".to_string());
-        assert_eq!(remove_diacritics(&"materasso".to_string()), "materasso".to_string());
+        assert_eq!(remove_diacritics("observe"), "observe".to_string());
+        assert_eq!(remove_diacritics("response"), "response".to_string());
+        assert_eq!(remove_diacritics("bizzarro"), "bizzarro".to_string());
+        assert_eq!(remove_diacritics("materasso"), "materasso".to_string());
     }
 }
