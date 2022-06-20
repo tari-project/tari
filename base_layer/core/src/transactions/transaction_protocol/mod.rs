@@ -129,6 +129,8 @@ pub enum TransactionProtocolError {
     ConversionError(String),
     #[error("The script offset private key could not be found")]
     ScriptOffsetPrivateKeyNotFound,
+    #[error("Value encryption failed")]
+    EncryptionError,
 }
 
 /// Transaction metadata, including the fee and lock height
@@ -146,6 +148,7 @@ pub struct RewindData {
     #[derivative(Debug = "ignore")]
     pub rewind_blinding_key: PrivateKey,
     pub recovery_byte_key: PrivateKey,
+    pub encryption_key: PrivateKey,
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures

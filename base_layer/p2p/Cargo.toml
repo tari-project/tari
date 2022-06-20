@@ -27,7 +27,8 @@ futures = { version = "^0.3.1" }
 lmdb-zero = "0.4.4"
 log = "0.4.6"
 openssl-sys = { version = "=0.9.66", features = ["vendored"], optional = true }
-pgp = { version = "0.7.2", optional = true }
+#pgp = { version = "0.7.2", optional = true } TODO: Fix this dependency issue
+pgp = { git = "https://github.com/rpgp/rpgp.git", rev = "ef5112654a75abb402c24e1f15301113bd611a8f", optional = true }
 prost = "=0.9.0"
 rand = "0.8"
 reqwest = { version = "0.11", optional = true, default-features = false }

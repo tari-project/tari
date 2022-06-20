@@ -200,7 +200,7 @@ fn create_utxo(
     if !factories.range_proof.verify(&proof, &commitment) {
         panic!("Range proof does not verify");
     };
-    let encrypted_value = EncryptedValue::todo_encrypt_from(value);
+    let encrypted_value = EncryptedValue::default();
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         value,

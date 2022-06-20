@@ -27,7 +27,7 @@ use tari_common_types::transaction::{TransactionConversionError, TransactionDire
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction_components::TransactionError,
+    transaction_components::{EncryptionError, TransactionError},
     transaction_protocol::TransactionProtocolError,
 };
 use tari_p2p::services::liveness::error::LivenessError;
@@ -164,6 +164,8 @@ pub enum TransactionServiceError {
     },
     #[error("Base Node is not synced")]
     BaseNodeNotSynced,
+    #[error("Value encryption error: `{0}`")]
+    EncryptionError(#[from] EncryptionError),
 }
 
 #[derive(Debug, Error)]

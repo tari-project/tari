@@ -66,6 +66,8 @@ pub enum CoinbaseBuildError {
     MissingSpendKey,
     #[error("The script key for this coinbase transaction wasn't provided")]
     MissingScriptKey,
+    #[error("The value encryption was not succeed")]
+    ValueEncryptionFailed,
     #[error("An error occurred building the final transaction: `{0}`")]
     BuildError(String),
     #[error("Some inconsistent data was given to the builder. This transaction is not valid")]
@@ -206,7 +208,14 @@ impl CoinbaseBuilder {
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
-        let encrypted_value = EncryptedValue::todo_encrypt_from(total_reward);
+        let encrypted_value = self
+            .rewind_data
+            .as_ref()
+            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, total_reward))
+            .transpose()
+            .map_err(|_| CoinbaseBuildError::ValueEncryptionFailed)?
+            .unwrap_or_default();
+
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             total_reward,
@@ -276,9 +285,9 @@ mod test {
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             crypto_factories::CryptoFactories,
-            tari_amount::{uT, MicroTari},
+            tari_amount::uT,
             test_helpers::TestParams,
-            transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError},
+            transaction_components::{EncryptedValue, KernelFeatures, OutputFeatures, OutputType, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
@@ -366,6 +375,7 @@ mod test {
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key: PrivateKey::random(&mut OsRng),
+            encryption_key: PrivateKey::random(&mut OsRng),
         };
 
         let p = TestParams::new();
@@ -375,15 +385,18 @@ mod test {
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone())
-            .with_rewind_data(rewind_data);
+            .with_rewind_data(rewind_data.clone());
         let (tx, _) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
-        let committed_value = MicroTari::from(tx.body.outputs()[0].encrypted_value.todo_decrypt());
+        let output = &tx.body.outputs()[0];
+        let committed_value =
+            EncryptedValue::decrypt_value(&rewind_data.encryption_key, &output.commitment, &output.encrypted_value)
+                .unwrap();
         assert_eq!(committed_value, block_reward);
-        let blinding_factor = tx.body.outputs()[0]
+        let blinding_factor = output
             .recover_mask(&factories.range_proof, &rewind_blinding_key)
             .unwrap();
         assert_eq!(blinding_factor, p.spend_key);
