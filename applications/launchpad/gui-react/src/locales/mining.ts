@@ -77,6 +77,15 @@ const translations = {
     addNextUrl: 'Add next URL',
     wrongUrlFormat: 'Oops! This is not a valid URL',
     moneroUrlPlaceholder: 'Set URL address',
+    moneroNodeAuthLabel: 'Monero node authentication',
+    moneroAuthFormTitle: 'Apply Authentication',
+    moneroAuthFormDesc:
+      'To ensure that Tari Launchpad communicates with the external Monero node you chose please enter valid data that secures it.',
+    moneroAuthApplied: 'Monero node authentication applied',
+    authUsernameLabel: 'Username (optional)',
+    authUsernamePlaceholder: 'Username you log in to the Monero node',
+    authPasswordLabel: 'Password (optional)',
+    authPasswordPlaceholder: 'Password you log in to the Monero node',
   },
 }
 

@@ -42,8 +42,6 @@ export interface MiningNodeState {
 export interface MoneroUrl {
   url: string
   useAuth?: boolean
-  username?: string
-  password?: string
 }
 
 /**
@@ -53,6 +51,10 @@ export interface MergedMiningNodeState extends MiningNodeState {
   address?: string
   threads: number
   urls?: MoneroUrl[]
+  authentication?: {
+    username?: string
+    password?: string
+  }
 }
 
 export interface MiningState {

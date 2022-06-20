@@ -18,7 +18,12 @@ import {
 import BaseNodeSettings from './BaseNodeSettings'
 import MiningSettings from './MiningSettings'
 import WalletSettings from './WalletSettings'
-import { SettingsProps, SettingsComponentProps } from './types'
+import {
+  SettingsProps,
+  SettingsComponentProps,
+  AuthenticationInputs,
+} from './types'
+import MoneroAuthentication from './MiningSettings/MoneroAuthentication'
 
 const renderSettings = (
   settings: Settings,
@@ -28,7 +33,14 @@ const renderSettings = (
     case Settings.Wallet:
       return <WalletSettings />
     case Settings.Mining:
-      return <MiningSettings control={props.control} />
+      return (
+        <MiningSettings
+          control={props.control}
+          values={props.values}
+          setValue={props.setValue}
+          setOpenMiningAuthForm={props.setOpenMiningAuthForm}
+        />
+      )
     case Settings.BaseNode:
       return <BaseNodeSettings control={props.control} />
     default:
@@ -42,12 +54,37 @@ const SettingsComponent = ({
   activeSettings,
   goToSettings,
   formState,
+  values,
+  setValue,
   control,
+  defaultMiningMergedValues,
   onSubmit,
   confirmCancel,
   cancelDiscard,
   discardChanges,
+  openMiningAuthForm,
+  setOpenMiningAuthForm,
 }: SettingsComponentProps) => {
+  // Render Monero Authentication form if open:
+  if (openMiningAuthForm) {
+    return (
+      <Modal size='small' open={open}>
+        <MoneroAuthentication
+          defaultValues={
+            defaultMiningMergedValues?.authentication as
+              | AuthenticationInputs
+              | undefined
+          }
+          onSubmit={val =>
+            setValue('mining.merged.authentication', val, { shouldDirty: true })
+          }
+          close={() => setOpenMiningAuthForm(false)}
+        />
+      </Modal>
+    )
+  }
+
+  // Render main Settings modal:
   return (
     <Modal open={open} onClose={onClose}>
       <MainContainer data-testid='settings-modal-container'>
@@ -76,6 +113,9 @@ const SettingsComponent = ({
           <MainContent>
             {renderSettings(activeSettings, {
               control,
+              values,
+              setValue,
+              setOpenMiningAuthForm,
             })}
           </MainContent>
         </MainContentContainer>

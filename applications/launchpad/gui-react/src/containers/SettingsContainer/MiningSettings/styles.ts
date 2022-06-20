@@ -13,6 +13,7 @@ export const NarrowInlineInput = styled.div`
   align-items: center;
   justify-content: flex-start;
   gap: ${({ theme }) => theme.spacingHorizontal(0.5)};
+  margin: ${({ theme }) => theme.spacingVertical(0.5)} 0;
 
   & > label {
     margin-bottom: 0;
@@ -38,5 +39,5 @@ export const ActionsContainer = styled.div`
 `
 
 export const UrlList = styled.div`
-  margin-top: ${({ theme }) => theme.spacingVertical(2)};
+  margin-top: ${({ theme }) => theme.spacingVertical(1)};
 `

@@ -1,10 +1,13 @@
-import { Control, FormState } from 'react-hook-form'
-import { MoneroUrl } from '../../store/mining/types'
+import { Control, FormState, UseFormSetValue } from 'react-hook-form'
+import { MergedMiningNodeState, MoneroUrl } from '../../store/mining/types'
 import { Settings } from '../../store/settings/types'
 import { Network } from '../BaseNodeContainer/types'
 
 export type SettingsProps = {
   control: Control<SettingsInputs>
+  values: SettingsInputs
+  setValue: UseFormSetValue<SettingsInputs>
+  setOpenMiningAuthForm: (value: boolean) => void
 }
 
 export interface SettingsInputs {
@@ -14,10 +17,16 @@ export interface SettingsInputs {
   baseNode: BaseNodeSettingsInputs
 }
 
+export interface AuthenticationInputs {
+  username: string
+  password: string
+}
+
 export interface MiningSettingsInputs {
   address: string
   threads: number
   urls: MoneroUrl[]
+  authentication?: AuthenticationInputs
 }
 
 export interface BaseNodeSettingsInputs {
@@ -30,9 +39,14 @@ export type SettingsComponentProps = {
   goToSettings: (s: Settings) => void
   activeSettings: Settings
   formState: FormState<SettingsInputs>
+  defaultMiningMergedValues?: MergedMiningNodeState
+  values: SettingsInputs
+  setValue: UseFormSetValue<SettingsInputs>
   onSubmit: () => void
   control: Control<SettingsInputs>
   confirmCancel: boolean
   cancelDiscard: () => void
   discardChanges: () => void
+  openMiningAuthForm: boolean
+  setOpenMiningAuthForm: (value: boolean) => void
 }

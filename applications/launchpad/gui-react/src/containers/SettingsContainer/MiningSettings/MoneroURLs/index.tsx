@@ -22,8 +22,6 @@ const MoneroURLs = ({ control }: { control: Control<SettingsInputs> }) => {
           key={field.id}
           url={field.url}
           useAuth={field.useAuth}
-          username={field.username}
-          password={field.password}
           control={control}
           remove={remove}
           index={index}

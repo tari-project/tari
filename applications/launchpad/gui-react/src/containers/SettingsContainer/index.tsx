@@ -20,20 +20,23 @@ const SettingsContainer = () => {
 
   const miningMerged = useAppSelector(selectMergedMiningState)
 
+  const [openMiningAuthForm, setOpenMiningAuthForm] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
 
-  const { control, handleSubmit, formState, reset } = useForm<SettingsInputs>({
-    mode: 'onChange',
-    defaultValues: {
-      mining: {
-        merged: {
-          address: miningMerged.address,
-          threads: miningMerged.threads,
-          urls: miningMerged.urls,
+  const { control, handleSubmit, formState, reset, setValue, getValues } =
+    useForm<SettingsInputs>({
+      mode: 'onChange',
+      defaultValues: {
+        mining: {
+          merged: {
+            address: miningMerged.address,
+            threads: miningMerged.threads,
+            urls: miningMerged.urls,
+            authentication: miningMerged.authentication,
+          },
         },
       },
-    },
-  })
+    })
 
   useEffect(() => {
     if (settingsOpen === true) {
@@ -43,6 +46,7 @@ const SettingsContainer = () => {
             address: miningMerged.address,
             threads: miningMerged.threads,
             urls: miningMerged.urls,
+            authentication: miningMerged.authentication,
           },
         },
       })
@@ -83,11 +87,16 @@ const SettingsContainer = () => {
       activeSettings={activeSettings}
       goToSettings={settingsPage => dispatch(actions.goTo(settingsPage))}
       formState={formState}
+      values={getValues()}
+      setValue={setValue}
       onSubmit={() => handleSubmit(onSubmit)()}
       control={control}
+      defaultMiningMergedValues={getValues().mining.merged}
       confirmCancel={confirmCancel}
       cancelDiscard={() => setConfirmCancel(false)}
       discardChanges={closeAndDiscard}
+      openMiningAuthForm={openMiningAuthForm}
+      setOpenMiningAuthForm={setOpenMiningAuthForm}
     />
   )
 }

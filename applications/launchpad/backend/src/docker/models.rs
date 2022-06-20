@@ -31,6 +31,7 @@ use bollard::{container::LogOutput, models::ContainerCreateResponse};
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
+use super::TariWorkspace;
 use crate::docker::DockerWrapperError;
 
 //-------------------------------------------     ContainerId      ----------------------------------------------
@@ -213,6 +214,19 @@ impl ImageType {
             Self::MmProxy => "tari_mm_proxy",
             Self::Monerod => "monerod",
             Self::Frontail => "frontail",
+        }
+    }
+
+    pub fn display_name(&self) -> &str {
+        match self {
+            Self::Tor => "Tor",
+            Self::BaseNode => "Base Node",
+            Self::Wallet => "Wallet",
+            Self::XmRig => "Xmrig",
+            Self::Sha3Miner => "SHA3 miner",
+            Self::MmProxy => "MM proxy",
+            Self::Monerod => "Monerod",
+            Self::Frontail => "Frontail",
         }
     }
 
