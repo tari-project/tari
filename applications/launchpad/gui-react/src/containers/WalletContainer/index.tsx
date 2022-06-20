@@ -1,27 +1,27 @@
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import { actions } from '../../store/wallet'
-import {
-  selectIsUnlocked,
-  selectWalletAddress,
-  selectTariAmount,
-  selectIsPending,
-  selectIsRunning,
-  selectWalletEmojiAddress,
-} from '../../store/wallet/selectors'
+import { selectIsUnlocked, selectIsPending } from '../../store/wallet/selectors'
 import CenteredLayout from '../../components/CenteredLayout'
+import { selectTariSetupRequired } from '../../store/mining/selectors'
+import { TariMiningSetupRequired } from '../../store/mining/types'
 
+import WalletContent from './WalletContent'
 import PasswordBox from './PasswordBox'
-import TariWallet from './TariWallet'
-import WalletBalance from './WalletBalance'
+import WalletSetupBox from './WalletSetupBox'
 
 const WalletContainer = () => {
   const dispatch = useAppDispatch()
   const unlocked = useAppSelector(selectIsUnlocked)
-  const walletAddress = useAppSelector(selectWalletAddress)
-  const emojiId = useAppSelector(selectWalletEmojiAddress)
-  const { balance, available } = useAppSelector(selectTariAmount)
   const pending = useAppSelector(selectIsPending)
-  const running = useAppSelector(selectIsRunning)
+  const tariSetupRequired = useAppSelector(selectTariSetupRequired)
+
+  if (tariSetupRequired === TariMiningSetupRequired.MissingWalletAddress) {
+    return (
+      <CenteredLayout horizontally>
+        <WalletSetupBox />
+      </CenteredLayout>
+    )
+  }
 
   if (!unlocked) {
     return (
@@ -36,8 +36,7 @@ const WalletContainer = () => {
 
   return (
     <CenteredLayout horizontally>
-      <TariWallet address={walletAddress} emojiId={emojiId} running={running} />
-      <WalletBalance balance={balance} available={available} />
+      <WalletContent />
     </CenteredLayout>
   )
 }
