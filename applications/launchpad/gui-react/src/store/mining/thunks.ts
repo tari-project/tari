@@ -65,18 +65,20 @@ export const startMiningNode = createAsyncThunk<
     const walletStatus = selectContainerStatus(Container.Wallet)(rootState)
 
     if (!torStatus.running && !torStatus.pending) {
-      await thunkApi.dispatch(containersActions.start(Container.Tor)).unwrap()
+      await thunkApi
+        .dispatch(containersActions.start({ service: Container.Tor }))
+        .unwrap()
     }
 
     if (!baseNodeStatus.running && !baseNodeStatus.pending) {
       await thunkApi
-        .dispatch(containersActions.start(Container.BaseNode))
+        .dispatch(containersActions.start({ service: Container.BaseNode }))
         .unwrap()
     }
 
     if (!walletStatus.running && !walletStatus.pending) {
       await thunkApi
-        .dispatch(containersActions.start(Container.Wallet))
+        .dispatch(containersActions.start({ service: Container.Wallet }))
         .unwrap()
     }
 
@@ -84,7 +86,7 @@ export const startMiningNode = createAsyncThunk<
       const minerStatus = selectContainerStatus(Container.SHA3Miner)(rootState)
       if (!minerStatus.running && !minerStatus.pending) {
         await thunkApi
-          .dispatch(containersActions.start(Container.SHA3Miner))
+          .dispatch(containersActions.start({ service: Container.SHA3Miner }))
           .unwrap()
         thunkApi.dispatch(
           miningActions.startNewSession({ node, reason, schedule }),
@@ -95,10 +97,10 @@ export const startMiningNode = createAsyncThunk<
     switch (node) {
       case 'merged':
         await thunkApi
-          .dispatch(containersActions.start(Container.MMProxy))
+          .dispatch(containersActions.start({ service: Container.MMProxy }))
           .unwrap()
         await thunkApi
-          .dispatch(containersActions.start(Container.XMrig))
+          .dispatch(containersActions.start({ service: Container.XMrig }))
           .unwrap()
         thunkApi.dispatch(
           miningActions.startNewSession({ node, reason, schedule }),

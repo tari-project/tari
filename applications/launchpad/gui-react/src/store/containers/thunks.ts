@@ -94,12 +94,12 @@ export const addStats = createAsyncThunk<
 
 export const start = createAsyncThunk<
   { id: ContainerId; unsubscribeStats: UnlistenFn },
-  Container,
+  { service: Container; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
   { state: RootState }
->('containers/start', async (service, thunkApi) => {
+>('containers/start', async ({ service, serviceSettings }, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
-    const settings = selectServiceSettings(rootState)
+    const settings = { ...selectServiceSettings(rootState), ...serviceSettings }
 
     const descriptor: ServiceDescriptor = await invoke('start_service', {
       serviceName: service.toString(),
@@ -180,7 +180,7 @@ export const restart = createAsyncThunk<void, void, { state: RootState }>(
 
       // Start containers:
       const startPromises = runningContainers.map(c => {
-        return dispatch(start(c))
+        return dispatch(start({ service: c }))
       })
 
       await Promise.all(startPromises)
