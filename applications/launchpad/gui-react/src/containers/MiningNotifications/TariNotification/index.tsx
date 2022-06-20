@@ -16,8 +16,12 @@ const TariNotificationContainer = () => {
   }
   useEffect(() => setOpen(true), [notification])
   const populate = () => {
-    dispatch(actions.addNotification({ amount: 1232, currency: 'xtr' }))
-    dispatch(actions.addNotification({ amount: 2344, currency: 'xtr' }))
+    dispatch(
+      actions.notifyUserAboutMinedTariBlock({ amount: 1232, currency: 'xtr' }),
+    )
+    dispatch(
+      actions.notifyUserAboutMinedTariBlock({ amount: 2344, currency: 'xtr' }),
+    )
   }
 
   return (

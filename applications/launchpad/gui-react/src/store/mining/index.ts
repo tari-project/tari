@@ -5,7 +5,11 @@ import { MiningNodeType, ScheduleId, CoinType } from '../../types/general'
 import MiningConfig from '../../config/mining'
 import t from '../../locales'
 
-import { startMiningNode, stopMiningNode } from './thunks'
+import {
+  startMiningNode,
+  stopMiningNode,
+  notifyUserAboutMinedTariBlock,
+} from './thunks'
 import { MiningState, MiningActionReason, MoneroUrl } from './types'
 
 const currencies: Record<MiningNodeType, string[]> = {
@@ -103,24 +107,19 @@ const miningSlice = createSlice({
       const [_head, ...notificationsLeft] = state.notifications
       state.notifications = notificationsLeft
     },
-    addNotification(
-      state,
-      action: PayloadAction<{ amount: number; currency: CoinType }>,
-    ) {
-      const newNotification = {
-        ...action.payload,
-        message:
-          t.mining.notification.messages[
-            Math.floor(Math.random() * t.mining.notification.messages.length)
-          ],
-        header:
-          t.mining.notification.headers[
-            Math.floor(Math.random() * t.mining.notification.headers.length)
-          ],
-      }
+  },
+  extraReducers: builder => {
+    builder.addCase(
+      notifyUserAboutMinedTariBlock.fulfilled,
+      (state, action) => {
+        const newNotification = {
+          ...action.meta.arg,
+          ...action.payload,
+        }
 
-      state.notifications = [...state.notifications, newNotification]
-    },
+        state.notifications = [...state.notifications, newNotification]
+      },
+    )
   },
 })
 
@@ -130,6 +129,7 @@ export const actions = {
   ...miningActions,
   startMiningNode,
   stopMiningNode,
+  notifyUserAboutMinedTariBlock,
 }
 
 export default miningSlice.reducer
