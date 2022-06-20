@@ -55,6 +55,7 @@ use crate::{
             ContractSpecification,
             ContractUpdateProposal,
             ContractUpdateProposalAcceptance,
+            EncryptedValue,
             FunctionRef,
             KernelFeatures,
             MintNonFungibleFeatures,
@@ -160,6 +161,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 script_signature,
                 sender_offset_public_key,
                 Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?,
+                EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?,
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -219,6 +221,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
                     .to_bytes(),
                 version: input.version as u32,
+                encrypted_value: input
+                    .encrypted_value()
+                    .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
+                    .to_vec(),
             })
         }
     }
@@ -254,6 +260,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let covenant = Covenant::from_bytes(&output.covenant).map_err(|err| err.to_string())?;
 
+        let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
+
         Ok(Self::new(
             TransactionOutputVersion::try_from(
                 u8::try_from(output.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -265,6 +273,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             sender_offset_public_key,
             metadata_signature,
             covenant,
+            encrypted_value,
         ))
     }
 }
@@ -280,6 +289,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             metadata_signature: Some(output.metadata_signature.into()),
             covenant: output.covenant.to_bytes(),
             version: output.version as u32,
+            encrypted_value: output.encrypted_value.to_vec(),
         }
     }
 }

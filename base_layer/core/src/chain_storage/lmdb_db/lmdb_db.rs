@@ -1056,6 +1056,7 @@ impl LMDBDatabase {
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
+                        output.encrypted_value,
                     );
                 },
             }

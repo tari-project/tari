@@ -404,6 +404,7 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
+          this.ptr,
           this.string,
           this.intPtr,
         ],
@@ -1565,6 +1566,8 @@ class InterfaceFFI {
       // script_private_key
       spending_key_ptr,
       // default Covenant
+      null,
+      // default EncryptedValue
       null,
       message,
       error

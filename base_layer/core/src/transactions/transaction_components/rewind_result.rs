@@ -22,7 +22,7 @@
 //
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
-use tari_crypto::range_proof::{RewindResult as CryptoRewindResult, REWIND_USER_MESSAGE_LENGTH};
+use tari_crypto::rewindable_range_proof::{RewindResult as CryptoRewindResult, REWIND_USER_MESSAGE_LENGTH};
 
 use crate::transactions::tari_amount::MicroTari;
 

@@ -16,12 +16,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
+use tari_common_types::types::CommitmentFactory;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    ristretto::{
-        pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-        RistrettoSecretKey,
-    },
+    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
 };
 use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
@@ -89,7 +87,7 @@ impl ScriptCommitment {
     }
 }
 
-/// A factory for generating script commitments. The default [PedersenCommitmentFactory] is used by default.
+/// A factory for generating script commitments. The default [CommitmentFactory] is used by default.
 ///
 /// ## Example
 ///
@@ -117,7 +115,7 @@ impl ScriptCommitment {
 
 #[derive(Default)]
 pub struct ScriptCommitmentFactory {
-    factory: PedersenCommitmentFactory,
+    factory: CommitmentFactory,
 }
 
 impl ScriptCommitmentFactory {

@@ -182,6 +182,7 @@ fn create_utxo(
         offset_keys.pk,
         metadata_sig,
         covenant,
+        encrypted_value,
     );
     (utxo, keys.k, offset_keys.k)
 }

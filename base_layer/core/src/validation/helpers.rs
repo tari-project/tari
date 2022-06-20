@@ -415,6 +415,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
+                        output.encrypted_value,
                     );
                     let input_hash = input.canonical_hash()?;
                     if compact.canonical_hash()? != input_hash {
@@ -895,6 +896,7 @@ mod test {
                     maturity: 5,
                     ..Default::default()
                 },
+                Default::default(),
                 Default::default(),
                 Default::default(),
                 Default::default(),
