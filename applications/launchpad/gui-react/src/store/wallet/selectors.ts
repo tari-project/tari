@@ -17,7 +17,7 @@ export const selectWalletEmojiAddress = () => [
   '🐬💡🎳',
   '🚦🍹🎒',
 ]
-export const selectTariAmount = (state: RootState) => state.wallet.tari
+export const selectTariBalance = (state: RootState) => state.wallet.tari
 export const selectIsPending = (state: RootState) => state.wallet.pending
 export const selectIsRunning = (state: RootState) => state.wallet.running
 

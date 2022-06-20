@@ -10,5 +10,6 @@ export type WalletState = {
   tari: {
     balance: number
     available: number
+    pending: boolean
   }
 }
