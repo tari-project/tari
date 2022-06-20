@@ -8,7 +8,8 @@
 #[macro_use]
 extern crate lazy_static;
 use std::{
-    thread::{self, sleep},
+    sync::{atomic::AtomicBool, Arc},
+    thread::{self, sleep, Thread},
     time::Duration,
 };
 
@@ -19,19 +20,20 @@ mod commands;
 mod docker;
 mod error;
 mod grpc;
-
-use docker::{DockerWrapper, Workspaces};
+use docker::{shutdown_all_containers, DockerWrapper, Workspaces, DOCKER_INSTANCE};
 use tauri::{
     api::cli::get_matches,
     async_runtime::block_on,
     utils::config::CliConfig,
     CustomMenuItem,
+    GlobalWindowEvent,
     Manager,
     Menu,
     MenuItem,
     PackageInfo,
     RunEvent,
     Submenu,
+    WindowEvent,
 };
 use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
@@ -53,7 +55,6 @@ use crate::{
 
 fn main() {
     env_logger::init();
-
     let context = tauri::generate_context!();
     let cli_config = context.config().tauri.cli.clone().unwrap();
 
@@ -132,8 +133,17 @@ fn main() {
             shutdown,
             wallet_events
         ])
+        .on_window_event(on_event)
         .run(context)
         .expect("error starting");
+}
+
+fn on_event(evt: GlobalWindowEvent) {
+    if let WindowEvent::Destroyed = evt.event() {
+        info!("Stopping and destroying all tari containers");
+        thread::spawn(|| block_on(shutdown_all_containers("default".to_string(), &DOCKER_INSTANCE.clone())));
+        sleep(Duration::from_secs(5));
+    }
 }
 
 fn handle_cli_options(cli_config: &CliConfig, pkg_info: &PackageInfo) {
