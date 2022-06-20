@@ -30,6 +30,9 @@ const formatAmount = (amount: string | number) => {
  * @param {string} unit - the unit, ie. xtr
  * @param {string} [suffixText] - the latter text after the amount and unit
  * @param {boolean} [loading] - is value being loaded
+ *
+ * @example
+ * <CoinsList coins={[{ amount: balance.value, unit: balance.currency }]} />
  */
 const CoinsList = ({
   coins,
