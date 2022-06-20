@@ -9,7 +9,9 @@ const useWalletBalance = () => {
   const balance = useAppSelector(selectTariBalance)
 
   useEffect(() => {
-    dispatch(actions.updateWalletBalance())
+    const { abort } = dispatch(actions.updateWalletBalance())
+
+    return abort
   }, [])
 
   return balance
