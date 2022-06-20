@@ -958,24 +958,20 @@ fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<()
     }
     let dest = args.dest_path;
 
-    let contract_id = Prompt::new("Contract id (hex):")
-        .skip_if_some(args.contract_id)
-        .get_result()?;
+    let contract_id = Prompt::new("Contract id (hex):").skip_if_some(args.contract_id).ask()?;
     let proposal_id = Prompt::new("Proposal id (integer, unique inside the contract scope):")
         .skip_if_some(args.proposal_id)
         .with_default("0".to_string())
-        .get_result()?
-        .parse::<u64>()
-        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+        .ask_parsed()?;
     let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
     let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
         .skip_if_some(args.acceptance_period_expiry)
         .with_default("50".to_string())
-        .get_result()?;
+        .ask_parsed()?;
     let minimum_quorum_required = Prompt::new("Minimum quorum:")
         .skip_if_some(args.minimum_quorum_required)
         .with_default(committee.len().to_string())
-        .get_result()?;
+        .ask_parsed()?;
 
     let updated_constitution = ConstitutionDefinitionFileFormat {
         contract_id,
@@ -983,12 +979,8 @@ fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<()
         consensus: SideChainConsensus::MerkleRoot,
         initial_reward: 0,
         acceptance_parameters: ContractAcceptanceRequirements {
-            acceptance_period_expiry: acceptance_period_expiry
-                .parse::<u64>()
-                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
-            minimum_quorum_required: minimum_quorum_required
-                .parse::<u32>()
-                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+            acceptance_period_expiry,
+            minimum_quorum_required,
         },
         checkpoint_parameters: CheckpointParameters {
             minimum_quorum_required: 0,
@@ -1007,9 +999,7 @@ fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<()
         updated_constitution,
     };
 
-    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &update_proposal).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    write_json_file(&dest, &update_proposal)?;
     println!("Wrote {}", dest.to_string_lossy());
     Ok(())
 }
@@ -1036,20 +1026,14 @@ fn init_contract_amendment_spec(args: InitAmendmentArgs) -> Result<(), CommandEr
         );
         return Ok(());
     }
-    let proposal_file = File::open(&args.proposal_file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let proposal_file_reader = BufReader::new(proposal_file);
-
     // parse the JSON file with the proposal
-    let update_proposal: ContractUpdateProposalFileFormat =
-        serde_json::from_reader(proposal_file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let update_proposal: ContractUpdateProposalFileFormat = read_json_file(&args.proposal_file_path)?;
 
     // read the activation_window value from the user
     let activation_window = Prompt::new("Activation window (in blocks, integer):")
         .skip_if_some(args.activation_window)
         .with_default("50".to_string())
-        .get_result()?
-        .parse::<u64>()
-        .map_err(|e| CommandError::InvalidArgument(e.to_string()))?;
+        .ask_parsed()?;
 
     // create the amendment from the proposal
     let amendment = ContractAmendmentFileFormat {
@@ -1062,9 +1046,7 @@ fn init_contract_amendment_spec(args: InitAmendmentArgs) -> Result<(), CommandEr
     };
 
     // write the amendment to the destination file
-    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &amendment).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    write_json_file(&dest, &amendment)?;
     println!("Wrote {}", dest.to_string_lossy());
 
     Ok(())
