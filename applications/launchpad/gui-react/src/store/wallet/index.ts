@@ -40,14 +40,6 @@ const walletSlice = createSlice({
       state.tari.available = available
     })
 
-    builder.addCase(start.pending, state => {
-      state.pending = true
-    })
-    builder.addCase(start.fulfilled, state => {
-      state.pending = false
-      state.running = true
-    })
-
     builder.addCase(stop.pending, state => {
       state.pending = true
     })

@@ -2,12 +2,21 @@ import { createAsyncThunk } from '@reduxjs/toolkit'
 
 import { RootState } from '..'
 import { Container } from '../containers/types'
-import { selectContainerStatus } from '../containers/selectors'
+import {
+  selectContainerStatus,
+  selectRunningContainers,
+} from '../containers/selectors'
 import { actions as containersActions } from '../containers'
+
+import * as walletService from './walletService'
+import { selectContainerStatuses } from './selectors'
 
 type WalletPassword = string
 
 // TODO backend communication
+const waitForWalletToBeResponsive = () =>
+  new Promise(resolve => setTimeout(resolve, 200))
+
 export const unlockWallet = createAsyncThunk<
   {
     address: string
@@ -38,13 +47,24 @@ export const unlockWallet = createAsyncThunk<
         .unwrap()
     }
 
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await waitForWalletToBeResponsive()
+
+    const getWalletIdentityPromise = walletService.getIdentity()
+    const getBalancePromise = walletService.getBalance()
+
+    const [walletIdentity, tari] = await Promise.all([
+      getWalletIdentityPromise,
+      getBalancePromise,
+    ])
 
     return {
-      address: '7a6ffed9-4252-427e-af7d-3dcaaf2db2df',
+      address: walletIdentity.publicAddress,
       tari: {
-        balance: 11350057,
-        available: 11349009,
+        balance:
+          tari.availableBalance -
+          tari.pendingOutgoingBalance +
+          tari.pendingIncomingBalance,
+        available: tari.availableBalance,
       },
     }
   } catch (e) {
@@ -52,13 +72,30 @@ export const unlockWallet = createAsyncThunk<
   }
 })
 
-export const start = createAsyncThunk<void>('wallet/start', async () => {
-  await new Promise(resolve => setTimeout(resolve, 2000))
-})
+export const start = unlockWallet
 
-export const stop = createAsyncThunk<void>('wallet/stop', async () => {
-  await new Promise(resolve => setTimeout(resolve, 2000))
-})
+export const stop = createAsyncThunk<void, void, { state: RootState }>(
+  'wallet/stop',
+  async (_, thunkApi) => {
+    try {
+      const rootState = thunkApi.getState()
+      const [torContainerStatus, walletContainerStatus] =
+        selectContainerStatuses(rootState)
+
+      thunkApi.dispatch(containersActions.stop(walletContainerStatus.id))
+
+      const runningContainers = selectRunningContainers(rootState)
+      const otherServicesRunning = runningContainers.some(
+        rc => rc !== Container.Tor && rc !== Container.Wallet,
+      )
+      if (!otherServicesRunning) {
+        thunkApi.dispatch(containersActions.stop(torContainerStatus.id))
+      }
+    } catch (e) {
+      return thunkApi.rejectWithValue(e)
+    }
+  },
+)
 
 export const updateWalletBalance = createAsyncThunk<{
   tari: { balance: number; available: number }
@@ -69,14 +106,19 @@ export const updateWalletBalance = createAsyncThunk<{
     timer = setTimeout(() => {
       thunkApi.dispatch({ type: 'wallet/tariBalancePending' })
     }, 300)
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    const tari = await walletService.getBalance()
 
     return {
       tari: {
-        balance: 11350058,
-        available: 11350058,
+        balance:
+          tari.availableBalance -
+          tari.pendingOutgoingBalance +
+          tari.pendingIncomingBalance,
+        available: tari.availableBalance,
       },
     }
+  } catch (e) {
+    return thunkApi.rejectWithValue(e)
   } finally {
     if (timer) {
       clearTimeout(timer)

@@ -6,14 +6,11 @@ import { actions } from '../../../store/wallet'
 
 const useWalletBalance = () => {
   const dispatch = useAppDispatch()
-  const balance = useAppSelector(selectTariBalance)
-
   useEffect(() => {
-    const { abort } = dispatch(actions.updateWalletBalance())
-
-    return abort
+    dispatch(actions.updateWalletBalance())
   }, [])
 
+  const balance = useAppSelector(selectTariBalance)
   return balance
 }
 

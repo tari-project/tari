@@ -13,7 +13,7 @@ const WalletSettingsContainer = () => {
       running={running}
       pending={pending}
       stop={() => dispatch(walletActions.stop())}
-      start={() => dispatch(walletActions.start())}
+      start={password => dispatch(walletActions.start(password))}
       address={address}
     />
   )

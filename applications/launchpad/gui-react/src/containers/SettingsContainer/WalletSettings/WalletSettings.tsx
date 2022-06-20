@@ -19,7 +19,7 @@ const WalletSettings = ({
   pending: boolean
   address: string
   stop: () => void
-  start: () => void
+  start: (password: string) => void
 }) => {
   const theme = useTheme()
 
@@ -40,8 +40,9 @@ const WalletSettings = ({
             {t.common.verbs.stop}
           </Button>
         )}
+        {/* TODO show password box when starting */}
         {!running && (
-          <Button onClick={start} loading={pending}>
+          <Button onClick={() => start('TODO password')} loading={pending}>
             {t.common.verbs.start}
           </Button>
         )}
