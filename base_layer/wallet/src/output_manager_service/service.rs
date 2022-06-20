@@ -170,31 +170,20 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Spend.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key())
-            .await?;
-        match key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key())
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(OutputManagerError::KeyManagerServiceError(e)),
+        const BRANCHES: &[OutputManagerKeyManagerBranch] = &[
+            OutputManagerKeyManagerBranch::Spend,
+            OutputManagerKeyManagerBranch::SpendScript,
+            OutputManagerKeyManagerBranch::Coinbase,
+            OutputManagerKeyManagerBranch::CoinbaseScript,
+            OutputManagerKeyManagerBranch::RecoveryViewOnly,
+            OutputManagerKeyManagerBranch::RecoveryByte,
+            OutputManagerKeyManagerBranch::RecoveryBlinding,
+            OutputManagerKeyManagerBranch::ContractIssuer,
+        ];
+        for branch in BRANCHES {
+            key_manager.add_new_branch(branch.get_branch_key()).await?;
         }
+        Ok(())
     }
 
     /// Return the public rewind keys
