@@ -49,7 +49,6 @@ describe('MiningSettings', () => {
       'initial-address-value',
     )
 
-    // fireEvent.click(addressInput)
     await act(async () => {
       fireEvent.input(addressInput, { target: { value: 'new-address-value' } })
     })

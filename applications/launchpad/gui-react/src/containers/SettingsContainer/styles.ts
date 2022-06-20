@@ -86,3 +86,10 @@ export const DiscardWarning = styled.div`
 export const SettingsHeader = styled.div`
   margin-bottom: ${({ theme }) => theme.spacingVertical(2.5)};
 `
+
+export const RowSpacedBetween = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: ${({ theme }) => theme.spacingVertical(0.6)} 0;
+`

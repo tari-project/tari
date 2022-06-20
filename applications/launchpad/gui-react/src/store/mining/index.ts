@@ -19,6 +19,7 @@ export const initialState: MiningState = {
     threads: 1,
     address: undefined,
     urls: MiningConfig.defaultMoneroUrls.map(url => ({ url })),
+    authentication: undefined,
     session: undefined,
   },
 }
@@ -92,6 +93,10 @@ const miningSlice = createSlice({
         address?: string
         threads?: number
         urls?: MoneroUrl[]
+        authentication?: {
+          username?: string
+          password?: string
+        }
       }>,
     ) {
       state.merged = { ...state.merged, ...action.payload }

@@ -3,11 +3,13 @@ import { Container } from '../store/containers/types'
 const translations: { [key: string]: { [key: string]: string } } = {
   verbs: {
     accept: 'Accept',
+    apply: 'Apply',
     cancel: 'Cancel',
     tryAgain: 'Try again',
     stop: 'Stop',
     start: 'Start',
     save: 'Save',
+    submit: 'Submit',
     pause: 'Pause',
     continue: 'Continue',
     close: 'Close',

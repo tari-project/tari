@@ -1,9 +1,11 @@
 import styled from 'styled-components'
 
-export const HeaderContainer = styled.div`
+export const HeaderContainer = styled.div<{ $noBottomMargin?: boolean }>`
   display: flex;
   align-items: center;
-  margin: ${({ theme }) => theme.spacingVertical(2.7)} 0;
+  margin-top: ${({ theme }) => theme.spacingVertical(2.7)};
+  margin-bottom: ${({ theme, $noBottomMargin }) =>
+    $noBottomMargin ? '0' : theme.spacingVertical(2.7)};
 
   & > h2 {
     ${({ theme }) => theme.tariTextGradient};

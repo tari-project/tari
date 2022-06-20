@@ -5,9 +5,15 @@ import { SettingsSectionHeaderProps } from './types'
 /**
  * Settings header containing a text and line.
  */
-const SettingsSectionHeader = ({ children }: SettingsSectionHeaderProps) => {
+const SettingsSectionHeader = ({
+  children,
+  noBottomMargin,
+}: SettingsSectionHeaderProps) => {
   return (
-    <HeaderContainer data-testid='settings-section-header-cmp'>
+    <HeaderContainer
+      $noBottomMargin={noBottomMargin}
+      data-testid='settings-section-header-cmp'
+    >
       {children && (
         <Text type='microHeavy' as='h2'>
           {children}

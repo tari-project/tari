@@ -72,10 +72,11 @@ export const UnitsText = styled(Text)`
   text-transform: uppercase;
 `
 
-export const Label = styled.label<{ $inverted?: boolean }>`
+export const Label = styled.label<{ $inverted?: boolean; $noMargin?: boolean }>`
   font-size: 0.88em;
   display: inline-block;
-  margin-bottom: ${({ theme }) => theme.spacingVertical()};
+  margin-bottom: ${({ theme, $noMargin }) =>
+    $noMargin ? '0px' : theme.spacingVertical()};
   color: ${({ theme, $inverted }) =>
     $inverted ? theme.inverted.primary : theme.primary};
   font-family 'AvenirMedium';
