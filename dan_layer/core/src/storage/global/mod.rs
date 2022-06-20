@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,40 +19,8 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+mod global_db;
+pub use global_db::GlobalDb;
 
-use tari_common_types::types::PublicKey;
-
-use crate::storage::{
-    chain::{ChainDb, ChainDbBackendAdapter},
-    global::{GlobalDb, GlobalDbBackendAdapter},
-    state::{StateDb, StateDbBackendAdapter},
-    StorageError,
-};
-
-pub trait DbFactory: Sync + Send + 'static {
-    type ChainDbBackendAdapter: ChainDbBackendAdapter;
-    type StateDbBackendAdapter: StateDbBackendAdapter;
-    type GlobalDbBackendAdapter: GlobalDbBackendAdapter;
-
-    fn get_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<ChainDb<Self::ChainDbBackendAdapter>>, StorageError>;
-
-    fn get_or_create_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
-
-    fn get_state_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError>;
-
-    fn get_or_create_state_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;
-
-    fn get_or_create_global_db(&self) -> Result<GlobalDb<Self::GlobalDbBackendAdapter>, StorageError>;
-}
+mod global_db_backend_adapter;
+pub use global_db_backend_adapter::GlobalDbBackendAdapter;

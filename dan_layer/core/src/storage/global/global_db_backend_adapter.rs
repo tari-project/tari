@@ -20,39 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
+use crate::storage::StorageError;
 
-use crate::storage::{
-    chain::{ChainDb, ChainDbBackendAdapter},
-    global::{GlobalDb, GlobalDbBackendAdapter},
-    state::{StateDb, StateDbBackendAdapter},
-    StorageError,
-};
+pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
+    type BackendTransaction;
+    type Error: Into<StorageError>;
 
-pub trait DbFactory: Sync + Send + 'static {
-    type ChainDbBackendAdapter: ChainDbBackendAdapter;
-    type StateDbBackendAdapter: StateDbBackendAdapter;
-    type GlobalDbBackendAdapter: GlobalDbBackendAdapter;
-
-    fn get_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<ChainDb<Self::ChainDbBackendAdapter>>, StorageError>;
-
-    fn get_or_create_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
-
-    fn get_state_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError>;
-
-    fn get_or_create_state_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;
-
-    fn get_or_create_global_db(&self) -> Result<GlobalDb<Self::GlobalDbBackendAdapter>, StorageError>;
+    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
+    fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn get_data(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn set_data(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error>;
 }

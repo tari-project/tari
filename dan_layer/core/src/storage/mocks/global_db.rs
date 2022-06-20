@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,39 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
+use crate::storage::{global::GlobalDbBackendAdapter, StorageError};
 
-use crate::storage::{
-    chain::{ChainDb, ChainDbBackendAdapter},
-    global::{GlobalDb, GlobalDbBackendAdapter},
-    state::{StateDb, StateDbBackendAdapter},
-    StorageError,
-};
+#[derive(Debug, Clone, Default)]
+pub struct MockGlobalDbBackupAdapter;
 
-pub trait DbFactory: Sync + Send + 'static {
-    type ChainDbBackendAdapter: ChainDbBackendAdapter;
-    type StateDbBackendAdapter: StateDbBackendAdapter;
-    type GlobalDbBackendAdapter: GlobalDbBackendAdapter;
+impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
+    type BackendTransaction = ();
+    type Error = StorageError;
 
-    fn get_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<ChainDb<Self::ChainDbBackendAdapter>>, StorageError>;
+    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
+        todo!()
+    }
 
-    fn get_or_create_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
+    fn get_data(&self, _key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+        todo!()
+    }
 
-    fn get_state_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError>;
+    fn set_data(&self, _key: &[u8], _value: &[u8]) -> Result<(), Self::Error> {
+        todo!()
+    }
 
-    fn get_or_create_state_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;
-
-    fn get_or_create_global_db(&self) -> Result<GlobalDb<Self::GlobalDbBackendAdapter>, StorageError>;
+    fn commit(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        todo!()
+    }
 }

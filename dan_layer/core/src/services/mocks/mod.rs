@@ -27,7 +27,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tari_common_types::types::{FixedHash, PublicKey};
+use tari_common_types::types::{BlockHash, FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::TransactionOutput;
 
 use super::CommitteeManager;
@@ -224,7 +224,8 @@ impl BaseNodeClient for MockBaseNodeClient {
     async fn get_constitutions(
         &mut self,
         _dan_node_public_key: PublicKey,
-    ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
+        _block_hash: Vec<u8>,
+    ) -> Result<(Vec<TransactionOutput>, BlockHash), DigitalAssetError> {
         todo!();
     }
 }
