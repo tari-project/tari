@@ -1873,7 +1873,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
             loop {
                 let headers = match node_service
-                    .get_headers(current_height..=current_height + BATCH_SIZE)
+                    .get_headers((current_height + 1)..=current_height + BATCH_SIZE)
                     .await
                 {
                     Ok(h) => h,
