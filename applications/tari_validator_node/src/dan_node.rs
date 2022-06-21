@@ -38,7 +38,7 @@ use crate::{
     grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
 };
 
-const _LOG_TARGET: &str = "tari::validator_node::app";
+const LOG_TARGET: &str = "tari::validator_node::app";
 
 #[derive(Clone)]
 pub struct DanNode {
@@ -65,11 +65,16 @@ impl DanNode {
         let node = self.clone();
 
         if self.config.constitution_auto_accept {
+            println!("Contract constitution auto acceptance feature is TRUE");
+
             task::spawn(async move {
                 loop {
                     match node.find_and_accept_constitutions(base_node_client.clone()).await {
-                        Ok(()) => info!("Contracts accepted"),
-                        Err(e) => error!("Contracts not accepted because {:?}", e),
+                        Ok(r) => r,
+                        Err(e) => error!(
+                            target: LOG_TARGET,
+                            "There was an error processing contract constitution auto acceptances: {}", e
+                        ),
                     }
 
                     time::sleep(Duration::from_secs(
@@ -108,12 +113,25 @@ impl DanNode {
                 let contract_id = sidechain_features.contract_id;
                 let signature = Signature::default();
 
+                info!(
+                    target: LOG_TARGET,
+                    "Found pending contract constitution with id {}", &contract_id
+                );
+
                 match wallet_client
                     .submit_contract_acceptance(&contract_id, self.identity.public_key(), &signature)
                     .await
                 {
-                    Ok(tx_id) => info!("Accepted with id={}", tx_id),
-                    Err(_) => error!("Did not accept the contract acceptance"),
+                    Ok(tx_id) => println!(
+                        "The wallet has received the acceptance transaction id {} for contract constitution id {}",
+                        tx_id, &contract_id
+                    ),
+                    Err(e) => error!(
+                        target: LOG_TARGET,
+                        "The wallet rejected acceptance transaction for contract constitution with id {} with error {}",
+                        &contract_id,
+                        e
+                    ),
                 };
             }
         }
