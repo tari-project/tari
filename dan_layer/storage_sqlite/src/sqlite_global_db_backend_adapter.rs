@@ -61,11 +61,10 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
 
     fn set_data(&self, key: GlobalDbMetadataKey, value: &[u8]) -> Result<(), Self::Error> {
         use crate::schema::metadata;
-        let row = self.get_data(key)?;
         let tx = self.create_transaction()?;
 
-        match row {
-            Some(r) => diesel::update(&Metadata {
+        match self.get_data_with_connection(&key, &tx) {
+            Ok(Some(r)) => diesel::update(&Metadata {
                 key_name: key.as_key_bytes().to_vec(),
                 value: r,
             })
@@ -75,13 +74,14 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
                 source,
                 operation: "update::metadata".to_string(),
             })?,
-            None => diesel::insert_into(metadata::table)
+            Ok(None) => diesel::insert_into(metadata::table)
                 .values((metadata::key_name.eq(key.as_key_bytes()), metadata::value.eq(value)))
                 .execute(tx.connection())
                 .map_err(|source| SqliteStorageError::DieselError {
                     source,
                     operation: "insert::metadata".to_string(),
                 })?,
+            Err(e) => return Err(e),
         };
 
         self.commit(&tx)?;
@@ -96,6 +96,25 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         let row: Option<Metadata> = dsl::metadata
             .find(key.as_key_bytes())
             .first(&connection)
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get::metadata_key".to_string(),
+            })?;
+
+        Ok(row.map(|r| r.value))
+    }
+
+    fn get_data_with_connection(
+        &self,
+        key: &GlobalDbMetadataKey,
+        tx: &Self::BackendTransaction,
+    ) -> Result<Option<Vec<u8>>, Self::Error> {
+        use crate::schema::metadata::dsl;
+
+        let row: Option<Metadata> = dsl::metadata
+            .find(key.as_key_bytes())
+            .first(tx.connection())
             .optional()
             .map_err(|source| SqliteStorageError::DieselError {
                 source,
