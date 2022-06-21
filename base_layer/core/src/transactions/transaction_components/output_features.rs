@@ -40,6 +40,7 @@ use tari_utilities::ByteArray;
 use super::{
     ContractAcceptance,
     ContractAmendment,
+    ContractConstitution,
     ContractDefinition,
     ContractUpdateProposal,
     ContractUpdateProposalAcceptance,
@@ -294,6 +295,18 @@ impl OutputFeatures {
             sidechain_features: Some(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_contract_definition(definition)
+                    .finish(),
+            ),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_contract_constitution(contract_id: FixedHash, constitution: ContractConstitution) -> OutputFeatures {
+        Self {
+            output_type: OutputType::ContractConstitution,
+            sidechain_features: Some(
+                SideChainFeaturesBuilder::new(contract_id)
+                    .with_contract_constitution(constitution)
                     .finish(),
             ),
             ..Default::default()
