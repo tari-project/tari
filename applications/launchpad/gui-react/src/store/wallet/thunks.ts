@@ -26,7 +26,6 @@ export const unlockWallet = createAsyncThunk<
   { state: RootState }
 >('wallet/unlock', async (walletPassword, thunkApi) => {
   try {
-    console.debug({ walletPassword })
     const rootState = thunkApi.getState()
     const torStatus = selectContainerStatus(Container.Tor)(rootState)
 
@@ -73,7 +72,6 @@ export const unlockWallet = createAsyncThunk<
       },
     }
   } catch (e) {
-    console.debug(e)
     return thunkApi.rejectWithValue(e)
   }
 })
