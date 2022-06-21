@@ -207,3 +207,44 @@ export const notifyUserAboutMinedTariBlock = createAsyncThunk<
 
   return notification
 })
+
+export const addMinedTx = createAsyncThunk<
+  {
+    amount: number
+    node: MiningNodeType
+    txId: string
+  },
+  {
+    amount: number
+    node: MiningNodeType
+    txId: string
+  },
+  { state: RootState }
+>('mining/addMinedTx', ({ amount, node, txId }, thunkApi) => {
+  const rootState: RootState = thunkApi.getState()
+
+  const session = rootState.mining[node].session
+
+  if (
+    !session ||
+    (Boolean(session.history) && session.history.find(t => t.txId === txId))
+  ) {
+    return thunkApi.rejectWithValue({ amount, node, txId })
+  }
+
+  /**
+   * @TODO - replace hard-coded currency after the app handles both currencies. (#298)
+   */
+  thunkApi.dispatch(
+    notifyUserAboutMinedTariBlock({
+      amount,
+      currency: 'xtr',
+    }),
+  )
+
+  return {
+    amount,
+    node,
+    txId,
+  }
+})

@@ -14,7 +14,6 @@ import HomePage from './pages/home'
 import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
 
-import useMiningSimulator from './useMiningSimulator'
 import useMiningScheduling from './useMiningScheduling'
 import TBotContainer from './containers/TBotContainer'
 import MiningNotifications from './containers/MiningNotifications'
@@ -38,9 +37,7 @@ const App = () => {
 
   useSystemEvents({ dispatch })
 
-  useWalletEvents({ transactionsRepository })
-
-  useMiningSimulator()
+  useWalletEvents({ dispatch, transactionsRepository })
 
   useMiningScheduling()
 
