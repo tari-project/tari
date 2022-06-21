@@ -26,6 +26,7 @@ export const unlockWallet = createAsyncThunk<
   { state: RootState }
 >('wallet/unlock', async (walletPassword, thunkApi) => {
   try {
+    console.debug({ walletPassword })
     const rootState = thunkApi.getState()
     const torStatus = selectContainerStatus(Container.Tor)(rootState)
 
@@ -34,7 +35,6 @@ export const unlockWallet = createAsyncThunk<
         .dispatch(
           containersActions.start({
             service: Container.Tor,
-            serviceSettings: { walletPassword },
           }),
         )
         .unwrap()
@@ -43,7 +43,12 @@ export const unlockWallet = createAsyncThunk<
     const walletStatus = selectContainerStatus(Container.Wallet)(rootState)
     if (!walletStatus.running && !walletStatus.pending) {
       await thunkApi
-        .dispatch(containersActions.start({ service: Container.Wallet }))
+        .dispatch(
+          containersActions.start({
+            service: Container.Wallet,
+            serviceSettings: { walletPassword },
+          }),
+        )
         .unwrap()
     }
 
@@ -68,6 +73,7 @@ export const unlockWallet = createAsyncThunk<
       },
     }
   } catch (e) {
+    console.debug(e)
     return thunkApi.rejectWithValue(e)
   }
 })

@@ -2,12 +2,13 @@ import styled from 'styled-components'
 
 import type { ModalProps } from './types'
 
-export const ModalContainer = styled.div`
-  position: fixed;
+export const ModalContainer = styled.div<Pick<ModalProps, 'local'>>`
+  position: ${({ local }) => (local ? 'absolute' : 'fixed')};
   top: 0;
   bottom: 0;
   left: 0;
   right: 0;
+  width: 100% !important;
   z-index: 9001;
   display: flex;
   justify-content: center;

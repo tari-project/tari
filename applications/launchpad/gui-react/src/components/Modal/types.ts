@@ -5,4 +5,5 @@ export interface ModalProps {
   children: ReactNode
   onClose?: () => void
   size?: 'large' | 'small' | 'auto'
+  local?: boolean
 }

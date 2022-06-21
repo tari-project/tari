@@ -1,5 +1,5 @@
+import { CSSProperties, useState, SyntheticEvent } from 'react'
 import { useTheme } from 'styled-components'
-import { useState, SyntheticEvent } from 'react'
 
 import PasswordInput from '../../components/Inputs/PasswordInput'
 import Box from '../../components/Box'
@@ -9,14 +9,16 @@ import t from '../../locales'
 
 import { TariBackgroundSignet } from './styles'
 
-const MINIMAL_PASSWORD_LENGTH = 5
+const MINIMAL_PASSWORD_LENGTH = 4
 
 const PasswordBox = ({
   pending,
   onSubmit,
+  style,
 }: {
   pending: boolean
   onSubmit: (password: string) => void
+  style?: CSSProperties
 }) => {
   const theme = useTheme()
   const [password, setPassword] = useState('')
@@ -33,7 +35,7 @@ const PasswordBox = ({
   const disableSubmit = pending || password.length < MINIMAL_PASSWORD_LENGTH
 
   return (
-    <Box style={{ position: 'relative' }}>
+    <Box style={{ position: 'relative', ...style }}>
       <TariBackgroundSignet />
       <Text type='header' style={{ marginBottom: theme.spacing() }}>
         {t.wallet.password.title}
