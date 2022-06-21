@@ -27,7 +27,7 @@ export const selectTariBalance = (state: RootState) => state.wallet.tari
 export const selectWalletSetupRequired = (state: RootState) =>
   !state.wallet.address ? WalletSetupRequired.MissingWalletAddress : undefined
 
-const requiredContainers = [Container.Tor, Container.Wallet]
+const requiredContainers = [Container.Tor, Container.BaseNode, Container.Wallet]
 export const selectContainerStatuses = (rootState: RootState) =>
   requiredContainers.map(containerType =>
     selectContainerStatus(containerType)(rootState),

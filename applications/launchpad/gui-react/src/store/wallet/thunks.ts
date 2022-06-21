@@ -39,6 +39,18 @@ export const unlockWallet = createAsyncThunk<
         .unwrap()
     }
 
+    const baseNodeStatus = selectContainerStatus(Container.Tor)(rootState)
+
+    if (!baseNodeStatus.running && !baseNodeStatus.pending) {
+      await thunkApi
+        .dispatch(
+          containersActions.start({
+            service: Container.BaseNode,
+          }),
+        )
+        .unwrap()
+    }
+
     const walletStatus = selectContainerStatus(Container.Wallet)(rootState)
     if (!walletStatus.running && !walletStatus.pending) {
       await thunkApi
@@ -83,17 +95,22 @@ export const stop = createAsyncThunk<void, void, { state: RootState }>(
   async (_, thunkApi) => {
     try {
       const rootState = thunkApi.getState()
-      const [torContainerStatus, walletContainerStatus] =
-        selectContainerStatuses(rootState)
+      const [
+        torContainerStatus,
+        baseNodeContainerStatus,
+        walletContainerStatus,
+      ] = selectContainerStatuses(rootState)
 
       thunkApi.dispatch(containersActions.stop(walletContainerStatus.id))
 
       const runningContainers = selectRunningContainers(rootState)
       const otherServicesRunning = runningContainers.some(
-        rc => rc !== Container.Tor && rc !== Container.Wallet,
+        rc =>
+          ![Container.Tor, Container.BaseNode, Container.Wallet].includes(rc),
       )
       if (!otherServicesRunning) {
         thunkApi.dispatch(containersActions.stop(torContainerStatus.id))
+        thunkApi.dispatch(containersActions.stop(baseNodeContainerStatus.id))
       }
     } catch (e) {
       return thunkApi.rejectWithValue(e)
