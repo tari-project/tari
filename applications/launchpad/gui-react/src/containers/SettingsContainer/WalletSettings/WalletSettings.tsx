@@ -42,7 +42,7 @@ const WalletSettings = ({
         )}
         {/* TODO show password box when starting */}
         {!running && (
-          <Button onClick={() => start('TODO password')} loading={pending}>
+          <Button onClick={() => start('tari')} loading={pending}>
             {t.common.verbs.start}
           </Button>
         )}
