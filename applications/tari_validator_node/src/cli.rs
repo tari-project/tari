@@ -37,6 +37,9 @@ pub(crate) struct Cli {
     /// Supply a network (overrides existing configuration)
     #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
     pub network: String,
+    /// Auto accept all pending contract constitutions this VN is a committee member of
+    #[clap(short = 'a', long)]
+    pub auto_accept: bool,
 }
 
 impl Cli {
@@ -45,6 +48,10 @@ impl Cli {
         overrides.push(("network".to_string(), self.network.clone()));
         overrides.push(("validator_node.override_from".to_string(), self.network.clone()));
         overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
+        overrides.push((
+            "validator_node.constitution_auto_accept".to_string(),
+            self.auto_accept.to_string(),
+        ));
         overrides
     }
 }
