@@ -3,6 +3,9 @@ import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
 import { TransactionsRepository } from './persistence/transactionsRepository'
+import { AppDispatch } from './store'
+import { actions as miningActions } from './store/mining'
+import { toT } from './utils/Format'
 
 export enum TransactionEvent {
   Received = 'received',
@@ -31,13 +34,22 @@ export type WalletTransactionEvent = {
   is_coinbase: boolean
 }
 
+let isAlreadyInvoked = false
+
 export const useWalletEvents = ({
+  dispatch,
   transactionsRepository,
 }: {
+  dispatch: AppDispatch
   transactionsRepository: TransactionsRepository
 }) => {
   useEffect(() => {
+    if (isAlreadyInvoked) {
+      return
+    }
+
     let unsubscribe
+    isAlreadyInvoked = true
 
     const listenToEvents = async () => {
       unsubscribe = await listen(
@@ -49,7 +61,21 @@ export const useWalletEvents = ({
           event: string
           payload: WalletTransactionEvent
         }) => {
+          /**
+           * @TODO add 'if' statement that will filter uninteresting events.
+           * For addMindexTx, we need only 'mined' with 'is_coinbase === true' (?)
+           * (waiting for confirmation)
+           */
+          // if (payload.is_coinbase && status.toLowerCase() === 'mined confirmed') {
+          dispatch(
+            miningActions.addMinedTx({
+              amount: toT(payload.amount),
+              node: 'tari',
+              txId: payload.tx_id,
+            }),
+          )
           transactionsRepository.add(payload)
+          // }
         },
       )
     }

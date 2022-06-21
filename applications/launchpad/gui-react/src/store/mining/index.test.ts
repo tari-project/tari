@@ -1,5 +1,5 @@
 import miningReducer from '.'
-import { MiningState } from './types'
+import { MiningActionReason, MiningState } from './types'
 
 describe('Mining Redux slice', () => {
   it('should set merged address', () => {
@@ -64,6 +64,63 @@ describe('Mining Redux slice', () => {
         address: testAddress,
         threads: testThreads,
         urls: testUrls,
+      },
+    })
+
+    // then
+    expect(nextState).toStrictEqual(expected)
+  })
+
+  it('should add amount to the Tari session', () => {
+    // given
+    const state: MiningState = {
+      tari: {
+        session: {
+          total: {
+            xtr: 0,
+          },
+          history: [],
+          reason: MiningActionReason.Manual,
+        },
+      },
+      merged: {
+        address: undefined,
+        threads: 1,
+        urls: [],
+      },
+      notifications: [],
+    }
+    const expected: MiningState = {
+      tari: {
+        session: {
+          total: {
+            xtr: 1000,
+          },
+          history: [
+            {
+              txId: 'tx-id',
+              amount: 1000,
+            },
+          ],
+          reason: MiningActionReason.Manual,
+        },
+      },
+      merged: {
+        address: undefined,
+        threads: 1,
+        urls: [],
+      },
+
+      notifications: [],
+    }
+
+    // when
+    const nextState = miningReducer(state, {
+      type: 'mining/addMinedTx/fulfilled',
+      payload: {
+        amount: 1000,
+        txId: 'tx-id',
+        node: 'tari',
       },
     })
 

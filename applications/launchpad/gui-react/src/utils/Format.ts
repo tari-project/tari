@@ -55,3 +55,21 @@ export const humanizeTime = (time: number): string => {
     '0',
   )}:${seconds.padStart(2, '0')}`
 }
+
+/**
+ * Convert Tauri to micro Tauri (uT) value
+ * @param {number} amount amount in Tari
+ * @returns {number}
+ */
+export const toMicroT = (amount: number): number => {
+  return amount * 1000000
+}
+
+/**
+ * Convert micro Tauri to Tauri value
+ * @param {number} amount amount in micro Tari (uT)
+ * @returns {number}
+ */
+export const toT = (amount: number): number => {
+  return amount / 1000000
+}

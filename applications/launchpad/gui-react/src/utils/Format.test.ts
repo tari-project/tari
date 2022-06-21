@@ -1,4 +1,4 @@
-import { humanizeTime } from './Format'
+import { humanizeTime, toT, toMicroT } from './Format'
 
 describe('Format', () => {
   it('humanizeTime: should properly convert milliseconds to the readable string', () => {
@@ -39,5 +39,13 @@ describe('Format', () => {
     const time5Expected = '0:00:00'
     const time5Result = humanizeTime(timeDiff5)
     expect(time5Result).toBe(time5Expected)
+  })
+
+  it('converts Tauri (T) to Micro Tauri (uT)', () => {
+    expect(toT(123456789)).toBe(123.456789)
+  })
+
+  it('converts Micro Tauri (uT) to Tauri (T)', () => {
+    expect(toMicroT(123.456789)).toBe(123456789)
   })
 })

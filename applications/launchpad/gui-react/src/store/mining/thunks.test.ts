@@ -2,7 +2,7 @@ import { MiningNodeType } from '../../types/general'
 import { RootState } from '..'
 import { allStopped } from '../../../__tests__/mocks/states'
 
-import { stopMiningNode, startMiningNode } from './thunks'
+import { stopMiningNode, startMiningNode, addMinedTx } from './thunks'
 import {
   MiningActionReason,
   TariMiningSetupRequired,
@@ -478,3 +478,67 @@ describe('start stop mining', () =>
       })
     }),
   ))
+
+describe('Mining events', () => {
+  it('should call addMined slice when data is correct', async () => {
+    // given
+    const dispatch = jest.fn()
+    const getState = () =>
+      ({
+        wallet: {
+          unlocked: true,
+        },
+        mining: {
+          tari: {
+            session: { total: { xtr: 0 }, history: [] },
+          },
+        },
+      } as unknown as RootState)
+
+    // when
+    const action = addMinedTx({
+      amount: 100,
+      node: 'tari',
+      txId: 'test-tx-id-1',
+    })
+    const result = await action(dispatch, getState, undefined)
+
+    // then
+    expect(result.type.endsWith('/fulfilled')).toBe(true)
+  })
+
+  it('should not call addMined action when transaction is already on the list', async () => {
+    // given
+    const dispatch = jest.fn()
+    const getState = () =>
+      ({
+        wallet: {
+          unlocked: true,
+        },
+        mining: {
+          tari: {
+            session: {
+              total: { xtr: 0 },
+              history: [
+                {
+                  txId: 'test-tx-id-1',
+                  amount: 100,
+                },
+              ],
+            },
+          },
+        },
+      } as unknown as RootState)
+
+    // when
+    const action = addMinedTx({
+      amount: 100,
+      node: 'tari',
+      txId: 'test-tx-id-1',
+    })
+    const result = await action(dispatch, getState, undefined)
+
+    // then
+    expect(result.type.endsWith('/rejected')).toBe(true)
+  })
+})

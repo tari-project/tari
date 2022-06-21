@@ -8,6 +8,7 @@ import {
   startMiningNode,
   stopMiningNode,
   notifyUserAboutMinedTariBlock,
+  addMinedTx,
 } from './thunks'
 import { MiningState, MiningActionReason, MoneroUrl } from './types'
 
@@ -34,24 +35,6 @@ const miningSlice = createSlice({
   name: 'mining',
   initialState,
   reducers: {
-    /**
-     * @TODO - mock that need to be removed later. It is used along with timers in App.tsx
-     * to increase the amount of mined Tari and Merged
-     */
-    addAmount(
-      state,
-      action: PayloadAction<{ amount: string; node: MiningNodeType }>,
-    ) {
-      const node = action.payload.node
-
-      if (state[node].session?.total) {
-        const nodeSessionTotal = state[node].session?.total?.xtr
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        state[node].session!.total!.xtr = (
-          Number(nodeSessionTotal) + Number(action.payload.amount)
-        ).toString()
-      }
-    },
     startNewSession(
       state,
       action: PayloadAction<{
@@ -61,9 +44,9 @@ const miningSlice = createSlice({
       }>,
     ) {
       const { node, reason, schedule } = action.payload
-      const total: Record<string, string> = {}
+      const total: Record<string, number> = {}
       currencies[node].forEach(c => {
-        total[c] = '0'
+        total[c] = 0
       })
 
       state[node].session = {
@@ -72,6 +55,7 @@ const miningSlice = createSlice({
         total,
         reason,
         schedule,
+        history: [],
       }
     },
     stopSession(
@@ -124,6 +108,29 @@ const miningSlice = createSlice({
         state.notifications = [...state.notifications, newNotification]
       },
     )
+
+    builder.addCase(addMinedTx.fulfilled, (state, action) => {
+      const node = action.payload.node
+      const session = state[node].session
+
+      if (!session) {
+        return
+      }
+
+      const nodeSessionTotal = state[node].session?.total?.xtr || 0
+
+      let total = session.total
+      if (!total) {
+        total = { xtr: 0 }
+      }
+
+      total.xtr = nodeSessionTotal + action.payload.amount
+
+      session.history.push({
+        txId: action.payload.txId,
+        amount: action.payload.amount,
+      })
+    })
   },
 })
 
@@ -134,6 +141,7 @@ export const actions = {
   startMiningNode,
   stopMiningNode,
   notifyUserAboutMinedTariBlock,
+  addMinedTx,
 }
 
 export default miningSlice.reducer

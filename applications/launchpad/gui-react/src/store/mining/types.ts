@@ -27,12 +27,13 @@ export enum MiningActionReason {
 }
 
 export interface MiningSession {
-  startedAt?: string // UTC timestamp
+  startedAt?: string
   finishedAt?: string
-  id?: string // uuid (?)
-  total?: Record<string, string> // i,e { xtr: 1000 bignumber (?) }
+  id?: string
+  total?: Record<string, number>
   reason: MiningActionReason
   schedule?: ScheduleId
+  history: { txId: string; amount: number }[]
 }
 
 export interface MiningNodeState {
