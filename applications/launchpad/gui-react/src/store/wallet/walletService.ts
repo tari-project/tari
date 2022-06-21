@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/tauri'
 
+import { toT } from '../../utils/Format'
+
 interface WalletIdentityDto {
   publicAddress: string
 }
@@ -15,8 +17,8 @@ export const getBalance: () => Promise<WalletBalanceDto> = async () => {
   const microTariBalance = await invoke<WalletBalanceDto>('wallet_balance')
 
   return {
-    availableBalance: microTariBalance.availableBalance / 1000000,
-    pendingIncomingBalance: microTariBalance.pendingIncomingBalance / 1000000,
-    pendingOutgoingBalance: microTariBalance.pendingIncomingBalance / 1000000,
+    availableBalance: toT(microTariBalance.availableBalance),
+    pendingIncomingBalance: toT(microTariBalance.pendingIncomingBalance),
+    pendingOutgoingBalance: toT(microTariBalance.pendingIncomingBalance),
   }
 }
