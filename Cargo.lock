@@ -7359,6 +7359,7 @@ dependencies = [
  "patricia_tree",
  "prost",
  "prost-types",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "tari_app_grpc",
