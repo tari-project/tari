@@ -28,7 +28,7 @@ use log::{debug, error, info, warn};
 use serde::Serialize;
 use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{http::status, AppHandle, Manager, Wry};
-pub use wallet_api::{wallet_events, wallet_balance, wallet_identity};
+pub use wallet_api::{wallet_balance, wallet_events, wallet_identity};
 
 use crate::{
     commands::{status, AppState, ServiceSettings, DEFAULT_IMAGES},

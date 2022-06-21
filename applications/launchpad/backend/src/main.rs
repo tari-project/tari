@@ -38,7 +38,7 @@ use tauri::{
 use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 use crate::{
-    api::{image_list, network_list, wallet_events, wallet_balance, wallet_identity},
+    api::{image_list, network_list, wallet_balance, wallet_events, wallet_identity},
     commands::{
         create_default_workspace,
         create_new_workspace,
