@@ -10,7 +10,9 @@ export enum Container {
   MMProxy = 'mm_proxy',
   XMrig = 'xmrig',
   Monerod = 'monerod',
-  Frontail = 'frontail',
+  Loki = 'loki',
+  Promtail = 'promtail',
+  Grafana = 'grafana',
 }
 
 export enum SystemEventAction {

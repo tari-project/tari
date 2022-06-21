@@ -44,6 +44,7 @@ http://singapore.node.xmr.pm:38081";
 
 pub const WALLET_GRPC_ADDRESS_URL: &str = "http://127.0.0.1:18143";
 pub const BASE_NODE_GRPC_ADDRESS_URL: &str = "http://127.0.0.1:18142";
+
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BaseNodeConfig {
     /// The time delay before starting the container and running the base node executable
@@ -162,7 +163,9 @@ impl LaunchpadConfig {
             ImageType::MmProxy => self.mm_proxy_environment(),
             ImageType::Tor => self.tor_environment(),
             ImageType::Monerod => self.monerod_environment(),
-            ImageType::Frontail => self.common_envars(),
+            ImageType::Loki => self.grafana_environment(),
+            ImageType::Promtail => self.grafana_environment(),
+            ImageType::Grafana => self.grafana_environment(),
         }
     }
 
@@ -176,7 +179,9 @@ impl LaunchpadConfig {
             ImageType::MmProxy => self.build_volumes(true, false),
             ImageType::Tor => self.build_volumes(false, false),
             ImageType::Monerod => self.build_volumes(false, false),
-            ImageType::Frontail => self.build_volumes(true, false),
+            ImageType::Loki => self.build_grafana_volumes(),
+            ImageType::Promtail => self.build_grafana_volumes(),
+            ImageType::Grafana => self.build_grafana_volumes(),
         }
     }
 
@@ -190,7 +195,25 @@ impl LaunchpadConfig {
             ImageType::MmProxy => Mounts::with_general(&self.data_directory),
             ImageType::Tor => Mounts::empty(),
             ImageType::Monerod => Mounts::empty(),
-            ImageType::Frontail => Mounts::with_general(&self.data_directory),
+            ImageType::Loki => Mounts::with_general(&self.data_directory).bind(
+                self.data_directory.join("config").join("loki_config.yml"),
+                "/etc/loki/local-config.yaml",
+            ),
+            ImageType::Promtail => Mounts::with_general(&self.data_directory)
+                .with_grafana(volume_name)
+                .bind(
+                    self.data_directory.join("config").join("promtail.config.yml"),
+                    "/etc/promtail/config.yml",
+                ),
+            ImageType::Grafana => Mounts::with_general(&self.data_directory)
+                .bind(
+                    self.data_directory.join("config").join("defaults.ini"),
+                    "/usr/share/grafana/conf/defaults.ini",
+                )
+                .bind(
+                    self.data_directory.join("config").join("sources_provision.yml"),
+                    "/etc/grafana/provisioning/datasources/all.yml",
+                ),
         };
         mounts.into_docker_mounts()
     }
@@ -206,7 +229,9 @@ impl LaunchpadConfig {
             ImageType::MmProxy => create_port_map(&[]),
             ImageType::Tor => create_port_map(&[]),
             ImageType::Monerod => create_port_map(&[]),
-            ImageType::Frontail => create_port_map(&["18130"]),
+            ImageType::Loki => create_port_map(&["18310"]),
+            ImageType::Promtail => create_port_map(&["18980"]),
+            ImageType::Grafana => create_port_map(&["18300"]),
         }
     }
 
@@ -235,7 +260,9 @@ impl LaunchpadConfig {
             ImageType::MmProxy => self.mm_proxy_cmd(),
             ImageType::Tor => self.tor_cmd(),
             ImageType::Monerod => self.monerod_cmd(),
-            ImageType::Frontail => self.frontail_cmd(),
+            ImageType::Loki => self.loki_cmd(),
+            ImageType::Promtail => self.promtail_cmd(),
+            ImageType::Grafana => self.grafana_cmd(),
         }
     }
 
@@ -252,18 +279,6 @@ impl LaunchpadConfig {
             ),
             _ => None,
         }
-    }
-
-    fn frontail_cmd(&self) -> Vec<String> {
-        let args = vec![
-            "-p",
-            "18130",
-            "base_node/log/core.log",
-            "wallet/log/core.log",
-            "sha3_miner/log/core.log",
-            "mm_proxy/log/core.log",
-        ];
-        args.into_iter().map(String::from).collect()
     }
 
     fn base_node_cmd(&self) -> Vec<String> {
@@ -337,6 +352,20 @@ impl LaunchpadConfig {
         args.into_iter().map(String::from).collect()
     }
 
+    fn loki_cmd(&self) -> Vec<String> {
+        let args = vec!["-config.file=/etc/loki/local-config.yaml"];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn promtail_cmd(&self) -> Vec<String> {
+        let args = vec!["-config.file=/etc/promtail/config.yml"];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn grafana_cmd(&self) -> Vec<String> {
+        vec![]
+    }
+
     /// Returns the bollard configuration map. You can specify any/all of the host-mounted data folder, of the
     /// blockchain folder to map.
     pub fn build_volumes(&self, general: bool, tari_blockchain: bool) -> HashMap<String, HashMap<(), ()>> {
@@ -347,6 +376,12 @@ impl LaunchpadConfig {
         if tari_blockchain {
             volumes.insert("/blockchain".to_string(), HashMap::new());
         }
+        volumes
+    }
+
+    pub fn build_grafana_volumes(&self) -> HashMap<String, HashMap<(), ()>> {
+        let mut volumes = self.build_volumes(true, false);
+        volumes.insert("/var/grafana".to_string(), HashMap::new());
         volumes
     }
 
@@ -461,6 +496,13 @@ impl LaunchpadConfig {
 
     fn tor_environment(&self) -> Vec<String> {
         self.common_envars()
+    }
+
+    fn grafana_environment(&self) -> Vec<String> {
+        vec![
+            format!("DATA_FOLDER={}", self.data_directory.to_str().unwrap_or("")), // TODO deal with None
+            "PATH=/usr/share/grafana/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string(),
+        ]
     }
 
     fn monerod_environment(&self) -> Vec<String> {

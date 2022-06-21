@@ -42,7 +42,7 @@ pub struct Payload {
     info: CreateImageInfo,
 }
 
-pub static DEFAULT_IMAGES: [ImageType; 8] = [
+pub static DEFAULT_IMAGES: [ImageType; 10] = [
     ImageType::BaseNode,
     ImageType::Wallet,
     ImageType::Sha3Miner,
@@ -50,7 +50,9 @@ pub static DEFAULT_IMAGES: [ImageType; 8] = [
     ImageType::MmProxy,
     ImageType::XmRig,
     ImageType::Monerod,
-    ImageType::Frontail,
+    ImageType::Loki,
+    ImageType::Promtail,
+    ImageType::Grafana,
 ];
 
 /// Pulls all the images concurrently using the docker API.

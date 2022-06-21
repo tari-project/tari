@@ -25,7 +25,7 @@ mod container;
 mod error;
 mod filesystem;
 mod models;
-mod mounts;
+pub mod mounts;
 mod settings;
 mod workspace;
 mod wrapper;
