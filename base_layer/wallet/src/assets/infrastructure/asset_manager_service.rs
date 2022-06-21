@@ -132,13 +132,13 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                 })
             },
             AssetManagerRequest::CreateInitialCheckpoint {
-                asset_public_key,
+                contract_id,
                 merkle_root,
-                committee_public_keys,
+                committee_public_keys: _pks,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_initial_asset_checkpoint(*asset_public_key, merkle_root, committee_public_keys)
+                    .create_initial_asset_checkpoint(contract_id, merkle_root)
                     .await?;
                 Ok(AssetManagerResponse::CreateInitialCheckpoint {
                     transaction: Box::new(transaction),
@@ -146,14 +146,13 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                 })
             },
             AssetManagerRequest::CreateFollowOnCheckpoint {
-                asset_public_key,
-                unique_id,
+                contract_id,
                 merkle_root,
-                committee_public_keys,
+                committee_public_keys: _pks,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_follow_on_asset_checkpoint(*asset_public_key, unique_id, merkle_root, committee_public_keys)
+                    .create_follow_on_asset_checkpoint(contract_id, merkle_root)
                     .await?;
                 Ok(AssetManagerResponse::CreateFollowOnCheckpoint {
                     transaction: Box::new(transaction),
