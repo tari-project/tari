@@ -2,7 +2,7 @@ import 'react-devtools' // @TODO: remove this import before final Production dep
 import styled, { ThemeProvider } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
-import getTransactionsRepository from './persistence/transactionsRepository'
+import useTransactionsRepository from './persistence/transactionsRepository'
 import {
   selectOnboardingComplete,
   selectThemeConfig,
@@ -28,8 +28,8 @@ const AppContainer = styled.div`
   border-radius: 10;
 `
 
-const transactionsRepository = getTransactionsRepository()
 const App = () => {
+  const transactionsRepository = useTransactionsRepository()
   const themeConfig = useAppSelector(selectThemeConfig)
   const dispatch = useAppDispatch()
   const onboardingComplete = useAppSelector(selectOnboardingComplete)

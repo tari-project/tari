@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 
-import getTransactionsRepository, {
+import useTransactionsRepository, {
   DataResolution,
 } from '../../../persistence/transactionsRepository'
 import * as DateUtils from '../../../utils/Date'
 
 import { MiningStatisticsInterval, AccountData } from './types'
-
-const transactionsRepository = getTransactionsRepository()
 
 const useAccountData = ({
   interval,
@@ -20,6 +18,7 @@ const useAccountData = ({
   from: Date
   to: Date
 }) => {
+  const transactionsRepository = useTransactionsRepository()
   const [accountData, setAccountData] = useState<AccountData>([])
   useEffect(() => {
     const getAccountData = async () => {
