@@ -27,7 +27,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, PrunedOutput},
     consensus::ConsensusConstants,
     transactions::{
-        transaction_components::{SpentOutput, Transaction},
+        transaction_components::{OutputType, SpentOutput, Transaction},
         CryptoFactories,
     },
     validation::{
@@ -249,6 +249,61 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
             None => Ok(()),
         }
     }
+
+    fn validate_contract_acceptances(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        for output in tx.body().outputs() {
+            // we only want to validate contract acceptances
+            if output.features.output_type != OutputType::ContractValidatorAcceptance {
+                continue;
+            }
+            // !output.features.is_sidechain_contract()
+            let sidechain_features = output.features.sidechain_features.as_ref().unwrap();
+            let contract_id = sidechain_features.contract_id;
+            let validator_node_publick_key = &sidechain_features
+                .acceptance
+                .as_ref()
+                .unwrap()
+                .validator_node_public_key;
+
+            let contract_outputs = self
+                .db
+                .fetch_contract_outputs_by_contract_id_and_type(contract_id, OutputType::ContractConstitution)
+                .unwrap();
+            if contract_outputs.is_empty() {
+                continue;
+            }
+            let constitution_output = contract_outputs
+                .first()
+                .unwrap()
+                .output
+                .as_transaction_output()
+                .unwrap();
+            let constitution = constitution_output
+                .features
+                .sidechain_features
+                .as_ref()
+                .unwrap()
+                .constitution
+                .as_ref()
+                .unwrap();
+
+            let is_validator_in_committee = constitution
+                .validator_committee
+                .members()
+                .contains(validator_node_publick_key);
+            if !is_validator_in_committee {
+                let msg = format!(
+                    "Invalid contract acceptance: validator node public key is not in committee ({:?})",
+                    validator_node_publick_key
+                );
+                return Err(ValidationError::ConsensusError(msg));
+            }
+
+            // TODO: check that the signature of the transaction is valid
+        }
+
+        Ok(())
+    }
 }
 
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator<B> {
@@ -265,7 +320,9 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
 
         self.validate_versions(tx, consensus_constants)?;
 
-        self.validate_unique_asset_rules(tx)
+        self.validate_unique_asset_rules(tx)?;
+
+        self.validate_contract_acceptances(tx)
     }
 }
 
