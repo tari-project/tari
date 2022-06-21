@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { CSSProperties, useState, useEffect, useRef } from 'react'
 import { clipboard } from '@tauri-apps/api'
 import { useSpring, animated } from 'react-spring'
 
@@ -15,10 +15,18 @@ import { StyledBox, FeedbackContainer } from './styles'
  * @description Renders a box with value with a button that allows to copy it
  *
  *
- * @prop {string} label - label describing the value
+ * @prop {string} [label] - label describing the value
  * @prop {string} value - value that can be copied to clipboard
  */
-const CopyBox = ({ label, value }: { label: string; value: string }) => {
+const CopyBox = ({
+  label,
+  value,
+  style,
+}: {
+  label?: string
+  value: string
+  style?: CSSProperties
+}) => {
   const [copied, setCopied] = useState(false)
   const styles = useSpring({ opacity: copied ? 1 : 0 })
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -47,12 +55,26 @@ const CopyBox = ({ label, value }: { label: string; value: string }) => {
 
   return (
     <>
-      <Text>{label}</Text>
-      <StyledBox>
-        {value}
+      {label && <Text>{label}</Text>}
+      <StyledBox style={style}>
+        <div
+          style={{
+            overflowX: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+          title={value}
+        >
+          {value}
+        </div>
         <Button
           variant='text'
-          style={{ padding: 0, margin: 0, position: 'relative' }}
+          style={{
+            padding: 0,
+            margin: 0,
+            position: 'relative',
+            flexGrow: '1',
+            color: 'inherit',
+          }}
           onClick={copy}
         >
           <FeedbackContainer>

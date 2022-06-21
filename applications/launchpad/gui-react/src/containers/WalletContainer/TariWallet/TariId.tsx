@@ -4,9 +4,10 @@ import { useTheme } from 'styled-components'
 import t from '../../../locales'
 
 import Text from '../../../components/Text'
+import CopyBox from '../../../components/CopyBox'
 
 import Smiley from './Smiley'
-import { SemiTransparent, TariIdContainer, TariIdBox } from './styles'
+import { SemiTransparent, TariIdContainer } from './styles'
 
 const TariId = ({
   tariId,
@@ -32,9 +33,15 @@ const TariId = ({
         <SemiTransparent>({t.wallet.wallet.address})</SemiTransparent>
       </Text>
       <TariIdContainer>
-        <TariIdBox>
-          <Text as='span'>{showEmoji ? emojiTariId.join(' | ') : tariId}</Text>
-        </TariIdBox>
+        <CopyBox
+          value={showEmoji ? emojiTariId.join(' | ') : tariId}
+          style={{
+            maxWidth: 'calc(100% - 2.4em)',
+            borderColor: theme.borderColor,
+            backgroundColor: theme.resetBackground,
+            color: theme.borderColor,
+          }}
+        />
         <div
           onClick={() => setShowEmoji(a => !a)}
           style={{
