@@ -184,7 +184,7 @@ impl Workspaces {
 /// * Base node - ports 18142 and 18149. TODO - currently the same port is mapped to the host. For multiple Workspaces
 ///   we'd need to expose a different port to the host. e.g. 1n142 where n is the workspace number.
 /// * Wallet - 18143 and 18188
-/// * Frontail - 18130
+/// * Loki (18130), promtail (18980) and grafana (18300) and
 pub struct TariWorkspace {
     name: String,
     config: LaunchpadConfig,

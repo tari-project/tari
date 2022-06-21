@@ -200,7 +200,9 @@ pub enum ImageType {
     Sha3Miner,
     MmProxy,
     Monerod,
-    Frontail,
+    Loki,
+    Promtail,
+    Grafana,
 }
 
 impl ImageType {
@@ -213,7 +215,9 @@ impl ImageType {
             Self::Sha3Miner => "tari_sha3_miner",
             Self::MmProxy => "tari_mm_proxy",
             Self::Monerod => "monerod",
-            Self::Frontail => "frontail",
+            Self::Loki => "loki",
+            Self::Promtail => "promtail",
+            Self::Grafana => "grafana",
         }
     }
 
@@ -239,7 +243,9 @@ impl ImageType {
             Self::Sha3Miner => "sha3_miner",
             Self::MmProxy => "mm_proxy",
             Self::Monerod => "monerod",
-            Self::Frontail => "frontail",
+            Self::Loki => "loki",
+            Self::Promtail => "promtail",
+            Self::Grafana => "grafana",
         }
     }
 
@@ -252,7 +258,9 @@ impl ImageType {
             Self::Sha3Miner => "sha3_miner",
             Self::MmProxy => "mm_proxy",
             Self::Monerod => "monerod",
-            Self::Frontail => "frontail",
+            Self::Loki => "grafana",
+            Self::Promtail => "grafana",
+            Self::Grafana => "grafana",
         }
     }
 }
@@ -270,7 +278,9 @@ impl TryFrom<&str> for ImageType {
             "sha3_miner" | "sha3 miner" => Ok(Self::Sha3Miner),
             "mm_proxy" | "mm proxy" => Ok(Self::MmProxy),
             "monerod" | "monero" => Ok(Self::Monerod),
-            "frontail" => Ok(Self::Frontail),
+            "loki" => Ok(Self::Loki),
+            "promtail" => Ok(Self::Promtail),
+            "grafana" => Ok(Self::Grafana),
             _ => Err(DockerWrapperError::InvalidImageType),
         }
     }

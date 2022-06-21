@@ -134,7 +134,7 @@ pub struct StartServiceResult {
     /// What action was taken. Currently not used.
     action: String,
     /// The name of the event stream to subscribe to for log events. These are the _docker_ logs and not the base node
-    /// _et. al._ logs. Those are saved to disk and accessible using the usual means, or with frontail.
+    /// _et. al._ logs. Those are saved to disk and accessible using the usual means, or with grafana.
     log_events_name: String,
     /// The name of the event stream to subscribe to for resource events (CPU, memory etc).
     stats_events_name: String,

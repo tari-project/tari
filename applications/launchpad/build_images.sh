@@ -22,8 +22,3 @@ docker build -f docker_rig/xmrig.Dockerfile --build-arg VERSION=$VERSION --build
 docker tag quay.io/tarilabs/xmrig:latest-$platform quay.io/tarilabs/xmrig:$VERSION-$platform
 docker push quay.io/tarilabs/xmrig:latest-$platform
 docker push quay.io/tarilabs/xmrig:$VERSION
-
-docker build -f docker_rig/frontail.Dockerfile -t quay.io/tarilabs/frontail:latest-$platform ./docker_rig
-docker tag quay.io/tarilabs/frontail:latest-$platform quay.io/tarilabs/frontail:$VERSION-$platform
-docker push quay.io/tarilabs/frontail:latest-$platform
-docker push quay.io/tarilabs/frontail:$VERSION

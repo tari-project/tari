@@ -73,7 +73,9 @@ const translations: { [key: string]: { [key: string]: string } } = {
     [Container.MMProxy]: 'Merge miner proxy',
     [Container.XMrig]: 'xmrig',
     [Container.Monerod]: 'monerod',
-    [Container.Frontail]: 'frontail',
+    [Container.Loki]: 'loki',
+    [Container.Promtail]: 'promtail',
+    [Container.Grafana]: 'grafana',
   },
   miningType: {
     tari: 'Tari Mining',

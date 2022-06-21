@@ -50,7 +50,9 @@ export default {
       'quay.io/tarilabs/tari_mm_proxy': {displayName: 'Merge miner proxy', status: "Unknown", progress: ""},
       'quay.io/tarilabs/xmrig': {displayName: 'xmrig', status: "Unknown", progress: ""},
       'quay.io/tarilabs/monerod': {displayName: 'monerod', status: "Unknown", progress: ""},
-      'quay.io/tarilabs/frontail': {displayName: 'frontail', status: "Unknown", progress: ""},
+      'grafana/loki': {displayName: 'loki', status: "Unknown", progress: ""},
+      'grafana/promtail': {displayName: 'grafana', status: "Unknown", progress: ""},
+      'grafana/grafana': {displayName: 'grafana', status: "Unknown", progress: ""},
     }
     return {imageList, errors}
   },

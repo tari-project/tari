@@ -46,6 +46,18 @@ impl Mounts {
     pub fn with_general<P: AsRef<Path>>(data_dir: P) -> Self {
         Mounts::empty().bind(data_dir, "/var/tari")
     }
+
+    pub fn with_grafana(mut self, volume_name: String) -> Self {
+        let mount = Mount {
+            target: Some("/grafana".to_string()),
+            source: Some(volume_name),
+            typ: Some(MountTypeEnum::VOLUME),
+            volume_options: None,
+            ..Default::default()
+        };
+        self.mounts.push(mount);
+        self
+    }
 }
 
 // FIXME: This might be replaceable by std::fs::canonicalize, but I don't have a windows machine to check
