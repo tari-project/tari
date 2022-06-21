@@ -47,8 +47,8 @@ impl Monitoring {
     }
 
     pub fn add_if_unmonitored(&mut self, asset: AssetDefinition) {
-        if !self.assets.contains_key(&asset.public_key) {
-            self.assets.insert(asset.public_key.clone(), Asset::new(asset));
+        if !self.assets.contains_key(&asset.contract_id) {
+            self.assets.insert(asset.contract_id.clone(), Asset::new(asset));
         }
     }
 

@@ -20,31 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{
-    global::{GlobalDbBackendAdapter, GlobalDbMetadataKey},
-    StorageError,
-};
+use std::{fmt, marker::PhantomData};
 
-#[derive(Debug, Clone, Default)]
-pub struct MockGlobalDbBackupAdapter;
+use serde::{de, Deserializer};
+use tari_utilities::hex::Hex;
 
-impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
-    type BackendTransaction = ();
-    type Error = StorageError;
-
-    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
-        todo!()
+pub fn deserialize_from_hex<'de, D, T>(des: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Hex,
+{
+    struct HexStringVisitor<K> {
+        marker: PhantomData<K>,
     }
 
-    fn get_data(&self, _key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error> {
-        todo!()
+    impl<'de, K: Hex> de::Visitor<'de> for HexStringVisitor<K> {
+        type Value = K;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a type in hex format")
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where E: de::Error {
+            K::from_hex(v).map_err(E::custom)
+        }
     }
 
-    fn set_data(&self, _key: GlobalDbMetadataKey, _value: &[u8]) -> Result<(), Self::Error> {
-        todo!()
-    }
-
-    fn commit(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        todo!()
-    }
+    des.deserialize_str(HexStringVisitor { marker: PhantomData })
 }

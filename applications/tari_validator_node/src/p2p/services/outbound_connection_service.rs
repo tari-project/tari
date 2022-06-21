@@ -24,7 +24,7 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_dan_core::{
@@ -42,7 +42,7 @@ const LOG_TARGET: &str = "tari::validator_node::messages::outbound::validator_no
 pub struct TariCommsOutboundService<TPayload: Payload> {
     outbound_message_requester: OutboundMessageRequester,
     loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
-    asset_public_key: PublicKey,
+    contract_id: FixedHash,
     // TODO: Remove
     phantom: PhantomData<TPayload>,
 }
@@ -52,12 +52,12 @@ impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
     pub fn new(
         outbound_message_requester: OutboundMessageRequester,
         loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
     ) -> Self {
         Self {
             outbound_message_requester,
             loopback_service,
-            asset_public_key,
+            contract_id,
             phantom: PhantomData,
         }
     }
@@ -76,12 +76,12 @@ impl OutboundService for TariCommsOutboundService<TariDanPayload> {
     ) -> Result<(), DigitalAssetError> {
         debug!(target: LOG_TARGET, "Outbound message to be sent:{} {:?}", to, message);
         // Tari comms does allow sending to itself
-        if from == to && message.asset_public_key() == &self.asset_public_key {
+        if from == to && *message.contract_id() == self.contract_id {
             debug!(
                 target: LOG_TARGET,
-                "Sending {:?} to self for asset {}",
+                "Sending {:?} to self for contract {}",
                 message.message_type(),
-                message.asset_public_key()
+                message.contract_id()
             );
             self.loopback_service.send((from, message)).await.map_err(Box::new)?;
             return Ok(());

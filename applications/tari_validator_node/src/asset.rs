@@ -36,7 +36,7 @@ pub struct Asset {
     definition: AssetDefinition,
     current_state: bool,
     // Changes in the committee for this asset.
-    // Mined height of the change TXs, and the involvement in the committe (true = part of committee)
+    // Mined height of the change TXs, and the involvement in the committee (true = part of committee)
     next_states: HashMap<u64, bool>,
     kill_signal: Option<Arc<AtomicBool>>,
 }
@@ -78,7 +78,7 @@ impl Asset {
         }
     }
 
-    // If we are part of committe or there is a next state then monitor this asset
+    // If we are part of committee or there is a next state then monitor this asset
     pub fn should_monitor(&self) -> bool {
         self.current_state || !self.next_states.is_empty()
     }

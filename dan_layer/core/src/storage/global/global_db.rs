@@ -20,24 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{global::GlobalDbBackendAdapter, StorageError};
+use std::sync::Arc;
 
+use crate::storage::{
+    global::{GlobalDbBackendAdapter, GlobalDbMetadataKey},
+    StorageError,
+};
+
+#[derive(Debug, Clone)]
 pub struct GlobalDb<TGlobalDbBackendAdapter> {
-    adapter: TGlobalDbBackendAdapter,
+    adapter: Arc<TGlobalDbBackendAdapter>,
 }
 
 impl<TGlobalDbBackendAdapter: GlobalDbBackendAdapter> GlobalDb<TGlobalDbBackendAdapter> {
     pub fn new(adapter: TGlobalDbBackendAdapter) -> Self {
-        Self { adapter }
+        Self {
+            adapter: Arc::new(adapter),
+        }
     }
 
-    pub fn set_data(&self, key: &[u8], value: &[u8]) -> Result<(), StorageError> {
+    pub fn set_data(&self, key: GlobalDbMetadataKey, value: &[u8]) -> Result<(), StorageError> {
         self.adapter
             .set_data(key, value)
             .map_err(TGlobalDbBackendAdapter::Error::into)
     }
 
-    pub fn get_data(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
+    pub fn get_data(&self, key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
         self.adapter.get_data(key).map_err(TGlobalDbBackendAdapter::Error::into)
     }
 }

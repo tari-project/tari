@@ -23,4 +23,4 @@ mod global_db;
 pub use global_db::GlobalDb;
 
 mod global_db_backend_adapter;
-pub use global_db_backend_adapter::GlobalDbBackendAdapter;
+pub use global_db_backend_adapter::{GlobalDbBackendAdapter, GlobalDbMetadataKey};

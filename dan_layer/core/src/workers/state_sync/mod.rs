@@ -100,18 +100,16 @@ where
     async fn try_sync_from(&self, member: &TValidatorNodeClientFactory::Addr) -> Result<(), StateSyncError> {
         info!(
             target: LOG_TARGET,
-            "Attempting to sync asset '{}' from peer '{}'", self.last_checkpoint.parent_public_key, member
+            "Attempting to sync asset '{}' from peer '{}'", self.last_checkpoint.contract_id, member
         );
         let mut client = self.validator_node_client_factory.create_client(member);
         let tip_node = client
-            .get_tip_node(&self.last_checkpoint.parent_public_key)
+            .get_tip_node(&self.last_checkpoint.contract_id)
             .await?
             .ok_or(StateSyncError::RemotePeerDoesNotHaveTipNode)?;
 
         // TODO: should rather download the op logs for a checkpoint and reply over initial/current state
-        let state_schemas = client
-            .get_sidechain_state(&self.last_checkpoint.parent_public_key)
-            .await?;
+        let state_schemas = client.get_sidechain_state(&self.last_checkpoint.contract_id).await?;
 
         let mut uow = self.state_db.new_unit_of_work(u64::from(tip_node.height()));
 

@@ -23,11 +23,11 @@
 use std::{convert::TryFrom, marker::PhantomData};
 
 use log::*;
-use tari_common_types::types::COMMITTEE_DEFINITION_ID;
 use tari_comms::types::CommsPublicKey;
+use tari_core::transactions::transaction_components::OutputType;
 
 use crate::{
-    models::{AssetDefinition, CheckpointOutput, CommitteeOutput},
+    models::{AssetDefinition, CheckpointOutput},
     services::{BaseNodeClient, ServiceSpecification},
     storage::{state::StateDbUnitOfWorkReader, DbFactory},
     workers::{state_sync::StateSynchronizer, states::ConsensusWorkerStateEvent},
@@ -60,38 +60,33 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
         // return Ok(ConsensusWorkerStateEvent::Synchronized);
 
         let tip = base_node_client.get_tip_info().await?;
-        let last_checkpoint = base_node_client
-            .get_current_checkpoint(
+        let mut last_checkpoint = base_node_client
+            .get_current_contract_outputs(
                 tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
-                asset_definition.public_key.clone(),
-                asset_definition.checkpoint_unique_id.clone(),
+                asset_definition.contract_id,
+                OutputType::ContractCheckpoint,
             )
             .await?;
 
-        let last_checkpoint = match last_checkpoint {
+        let last_checkpoint = match last_checkpoint.pop() {
             Some(o) => CheckpointOutput::try_from(o)?,
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
         };
 
-        let last_committee_definition = base_node_client
-            .get_current_checkpoint(
+        let mut constitution = base_node_client
+            .get_current_contract_outputs(
                 tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
-                asset_definition.public_key.clone(),
-                COMMITTEE_DEFINITION_ID.into(),
+                asset_definition.contract_id,
+                OutputType::ContractConstitution,
             )
             .await?;
 
-        let last_committee_definition = match last_committee_definition {
-            Some(o) => CommitteeOutput::try_from(o)?,
-            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCommitteeDefinitionNotFound),
+        let current_constitution = match constitution.pop() {
+            Some(o) => o,
+            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckopintNotFound),
         };
-        let committee = last_committee_definition.committee;
 
-        let asset_registration = base_node_client
-            .get_asset_registration(asset_definition.public_key.clone())
-            .await?;
-
-        let mut state_db = db_factory.get_or_create_state_db(&asset_definition.public_key)?;
+        let mut state_db = db_factory.get_or_create_state_db(&asset_definition.contract_id)?;
         {
             let state_reader = state_db.reader();
             let our_merkle_root = state_reader.calculate_root()?;
@@ -99,23 +94,18 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
                 info!(target: LOG_TARGET, "Our state database is up-to-date.");
                 return Ok(ConsensusWorkerStateEvent::Synchronized);
             }
-            let registration_merkle_root = asset_registration.and_then(|ar| ar.get_checkpoint_merkle_root());
-            if registration_merkle_root
-                .map(|mr| our_merkle_root.as_bytes() == mr.as_slice())
-                .unwrap_or(false)
-            {
-                info!(
-                    target: LOG_TARGET,
-                    "Our state database is up-to-date (at initial state)."
-                );
-                return Ok(ConsensusWorkerStateEvent::Synchronized);
-            }
         }
+
+        let committee = current_constitution
+            .features
+            .constitution_committee()
+            .map(|committee| committee.members().to_vec())
+            .unwrap_or_default();
 
         info!(
             target: LOG_TARGET,
             "Our state database for asset '{}' is out of sync. Attempting to contact a committee member to synchronize",
-            asset_definition.public_key
+            asset_definition.contract_id
         );
 
         let synchronizer = StateSynchronizer::new(

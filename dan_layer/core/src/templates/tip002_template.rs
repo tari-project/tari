@@ -70,7 +70,7 @@ fn init<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfWork)
     println!("{:?}", params);
     state_db.set_value(
         "owners".to_string(),
-        state_db.context().asset_public_key().to_vec(),
+        state_db.context().contract_id().to_vec(),
         // TODO: Encode full owner data
         Vec::from(params.total_supply.to_le_bytes()),
     )?;
