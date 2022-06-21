@@ -2,7 +2,6 @@ import { invoke } from '@tauri-apps/api/tauri'
 
 interface WalletIdentityDto {
   publicAddress: string
-  emojiRepresentation: string
 }
 export const getIdentity: () => Promise<WalletIdentityDto> = () =>
   invoke('wallet_identity')
