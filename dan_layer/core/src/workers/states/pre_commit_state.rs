@@ -156,7 +156,7 @@ impl<TSpecification: ServiceSpecification> PreCommitState<TSpecification> {
         prepare_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number, self.contract_id.clone());
+        let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number, self.contract_id);
         outbound
             .broadcast(self.node_id.clone(), committee.members.as_slice(), message)
             .await
@@ -245,7 +245,7 @@ impl<TSpecification: ServiceSpecification> PreCommitState<TSpecification> {
         view_number: ViewId,
         signing_service: &TSpecification::SigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::vote_pre_commit(node, view_number, self.contract_id.clone());
+        let mut message = HotStuffMessage::vote_pre_commit(node, view_number, self.contract_id);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

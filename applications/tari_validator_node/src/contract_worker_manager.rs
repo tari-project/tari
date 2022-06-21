@@ -339,7 +339,7 @@ impl ContractWorkerManager {
         let asset_processor = ConcreteAssetProcessor::default();
 
         let payload_processor = TariDanPayloadProcessor::new(asset_processor);
-        let mut inbound = TariCommsInboundConnectionService::new(asset_definition.contract_id.clone());
+        let mut inbound = TariCommsInboundConnectionService::new(asset_definition.contract_id);
         let receiver = inbound.get_receiver();
 
         let loopback = inbound.clone_sender();
@@ -350,8 +350,7 @@ impl ContractWorkerManager {
             inbound.run(shutdown_2, topic_subscription).await
         });
         let dht = handles.expect_handle::<Dht>();
-        let outbound =
-            TariCommsOutboundService::new(dht.outbound_requester(), loopback, asset_definition.contract_id.clone());
+        let outbound = TariCommsOutboundService::new(dht.outbound_requester(), loopback, asset_definition.contract_id);
         let base_node_client = GrpcBaseNodeClient::new(config.base_node_grpc_address);
         let chain_storage = SqliteStorageService {};
         let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);

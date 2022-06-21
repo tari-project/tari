@@ -148,7 +148,7 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
         commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number, self.contract_id.clone());
+        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number, self.contract_id);
         outbound
             .broadcast(self.node_id.clone(), self.committee.members.as_slice(), message)
             .await

@@ -64,7 +64,7 @@ impl DbFactory for MockDbFactory {
             .chain_db
             .read()
             .unwrap()
-            .get(&contract_id)
+            .get(contract_id)
             .cloned()
             .map(ChainDb::new))
     }

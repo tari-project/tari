@@ -89,7 +89,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         let inner = self.connection().await?;
         let request = grpc::GetCurrentContractOutputsRequest {
             contract_id: contract_id.to_vec(),
-            output_type: output_type.as_byte() as u32,
+            output_type: u32::from(output_type.as_byte()),
         };
         let resp = match inner.get_current_contract_outputs(request).await {
             Ok(resp) => {
