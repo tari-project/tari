@@ -38,7 +38,7 @@ use tauri::{
 use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 use crate::{
-    api::{image_list, network_list, wallet_events},
+    api::{image_list, network_list, wallet_events, wallet_balance},
     commands::{
         create_default_workspace,
         create_new_workspace,
@@ -137,7 +137,8 @@ fn main() {
             start_service,
             stop_service,
             shutdown,
-            wallet_events
+            wallet_events,
+            wallet_balance
         ])
         .on_window_event(on_event)
         .run(context)

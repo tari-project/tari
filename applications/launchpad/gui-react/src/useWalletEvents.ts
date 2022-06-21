@@ -31,12 +31,17 @@ export type WalletTransactionEvent = {
   is_coinbase: boolean
 }
 
+let isSubscribedSuperstate = false
 export const useWalletEvents = ({
   transactionsRepository,
 }: {
   transactionsRepository: TransactionsRepository
 }) => {
   useEffect(() => {
+    if (isSubscribedSuperstate) {
+      return
+    }
+
     let unsubscribe
 
     const listenToEvents = async () => {
@@ -52,6 +57,7 @@ export const useWalletEvents = ({
           transactionsRepository.add(payload)
         },
       )
+      isSubscribedSuperstate = true
     }
 
     listenToEvents()

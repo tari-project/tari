@@ -31,6 +31,7 @@ pub struct WalletIdentity {
     node_id: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct WalletBalance {
     available_balance: u64,
     pending_incoming_balance: u64,
