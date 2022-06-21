@@ -1,3 +1,5 @@
+import { createSelector } from '@reduxjs/toolkit'
+
 import { RootState } from '../'
 import { Container } from '../containers/types'
 import { selectContainerStatus } from '../containers/selectors'
@@ -21,8 +23,6 @@ export const selectWalletEmojiAddress = () => [
   '🚦🍹🎒',
 ]
 export const selectTariBalance = (state: RootState) => state.wallet.tari
-export const selectIsPending = (state: RootState) => state.wallet.pending
-export const selectIsRunning = (state: RootState) => state.wallet.running
 
 export const selectWalletSetupRequired = (state: RootState) =>
   !state.wallet.address ? WalletSetupRequired.MissingWalletAddress : undefined
@@ -32,3 +32,13 @@ export const selectContainerStatuses = (rootState: RootState) =>
   requiredContainers.map(containerType =>
     selectContainerStatus(containerType)(rootState),
   )
+export const selectIsPending = createSelector(
+  selectContainerStatuses,
+  containers => containers.some(container => container.pending),
+)
+export const selectIsRunning = createSelector(
+  selectContainerStatuses,
+  containers =>
+    containers.every(container => container.running) ||
+    containers.some(container => container.running && container.pending),
+)

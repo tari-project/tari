@@ -12,7 +12,10 @@ import {
   selectPending as selectBaseNodePending,
   selectRunning as selectBaseNodeRunning,
 } from '../../../../../store/baseNode/selectors'
-import { selectState as selectWalletState } from '../../../../../store/wallet/selectors'
+import {
+  selectIsRunning as selectWalletIsRunning,
+  selectIsPending as selectWalletIsPending,
+} from '../../../../../store/wallet/selectors'
 import t from '../../../../../locales'
 import {
   selectIsMiningPending,
@@ -87,7 +90,8 @@ const DashboardTabs = () => {
   const baseNodePending = useAppSelector(selectBaseNodePending)
   const baseNodeRunning = useAppSelector(selectBaseNodeRunning)
   const baseNodeNetwork = useAppSelector(selectNetwork)
-  const walletState = useAppSelector(selectWalletState)
+  const walletPending = useAppSelector(selectWalletIsPending)
+  const walletRunning = useAppSelector(selectWalletIsRunning)
   const miningRunning = useAppSelector(selectIsMiningRunning)
   const miningPending = useAppSelector(selectIsMiningPending)
 
@@ -101,16 +105,18 @@ const DashboardTabs = () => {
           network: baseNodeNetwork,
         },
         walletState: {
-          pending: walletState.pending,
-          running: walletState.running,
+          pending: walletPending,
+          running: walletRunning,
         },
       }),
     [
-      walletState,
+      walletPending,
+      walletRunning,
       baseNodePending,
+      baseNodeRunning,
+      baseNodeNetwork,
       miningPending,
       miningRunning,
-      baseNodeNetwork,
     ],
   )
 

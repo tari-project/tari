@@ -4,8 +4,6 @@ import { WalletState } from './types'
 import { unlockWallet, start, stop, updateWalletBalance } from './thunks'
 
 export const initialState: WalletState = {
-  running: false,
-  pending: false,
   unlocked: false,
   address: '',
   tari: {
@@ -24,11 +22,7 @@ const walletSlice = createSlice({
     },
   },
   extraReducers: builder => {
-    builder.addCase(unlockWallet.pending, state => {
-      state.pending = true
-    })
     builder.addCase(unlockWallet.fulfilled, (state, action) => {
-      state.pending = false
       state.unlocked = true
 
       const {
@@ -38,14 +32,6 @@ const walletSlice = createSlice({
       state.address = address
       state.tari.balance = balance
       state.tari.available = available
-    })
-
-    builder.addCase(stop.pending, state => {
-      state.pending = true
-    })
-    builder.addCase(stop.fulfilled, state => {
-      state.pending = false
-      state.running = false
     })
 
     builder.addCase(updateWalletBalance.fulfilled, (state, { payload }) => {
