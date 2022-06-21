@@ -1,9 +1,12 @@
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import { actions } from '../../store/wallet'
-import { selectIsUnlocked, selectIsPending } from '../../store/wallet/selectors'
+import {
+  selectIsUnlocked,
+  selectIsPending,
+  selectWalletSetupRequired,
+} from '../../store/wallet/selectors'
+import { WalletSetupRequired } from '../../store/wallet/types'
 import CenteredLayout from '../../components/CenteredLayout'
-import { selectTariSetupRequired } from '../../store/mining/selectors'
-import { TariMiningSetupRequired } from '../../store/mining/types'
 
 import WalletContent from './WalletContent'
 import PasswordBox from './PasswordBox'
@@ -13,9 +16,9 @@ const WalletContainer = () => {
   const dispatch = useAppDispatch()
   const unlocked = useAppSelector(selectIsUnlocked)
   const pending = useAppSelector(selectIsPending)
-  const tariSetupRequired = useAppSelector(selectTariSetupRequired)
+  const walletSetupRequired = useAppSelector(selectWalletSetupRequired)
 
-  if (tariSetupRequired === TariMiningSetupRequired.MissingWalletAddress) {
+  if (walletSetupRequired === WalletSetupRequired.MissingWalletAddress) {
     return (
       <CenteredLayout horizontally>
         <WalletSetupBox />
