@@ -269,7 +269,7 @@ message RegisterAssetResponse {
 }
 
 message CreateInitialAssetCheckpointRequest {
-    bytes asset_public_key = 1;
+    bytes contract_id = 1;
     bytes merkle_root = 2;
     repeated bytes committee = 3;
 }
@@ -279,10 +279,8 @@ message CreateInitialAssetCheckpointResponse {
 }
 
 message CreateFollowOnAssetCheckpointRequest {
-    bytes asset_public_key = 1;
-    bytes unique_id = 2;
-    bytes merkle_root = 3;
-    repeated bytes next_committee = 4;
+    bytes contract_id = 1;
+    bytes merkle_root = 2;
 }
 
 message CreateFollowOnAssetCheckpointResponse {
