@@ -179,7 +179,7 @@ async fn main_inner() -> Result<(), ExitError> {
                     sleep(config.wait_timeout()).await;
                 },
                 Ok(submitted) => {
-                    info!(target: LOG_TARGET, "Found block");
+                    info!(target: LOG_TARGET, "💰 Found block");
                     if submitted {
                         blocks_found += 1;
                     }
@@ -196,12 +196,10 @@ async fn main_inner() -> Result<(), ExitError> {
 
 async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
     let base_node_addr = multiaddr_to_socketaddr(&config.base_node_addr)?;
-    println!("Connecting to base node at {}", base_node_addr);
-    error!(target: LOG_TARGET, "Connecting to base node at {}", base_node_addr);
+    info!(target: LOG_TARGET, "🔗 Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
     let wallet_addr = multiaddr_to_socketaddr(&config.wallet_addr)?;
-    println!("Connecting to wallet at {}", config.wallet_addr);
-    error!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
+    info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
     let wallet_conn = WalletClient::connect(format!("http://{}", wallet_addr)).await?;
 
     Ok((node_conn, wallet_conn))
@@ -316,7 +314,7 @@ async fn display_report(report: &MiningReport, num_mining_threads: usize) {
     let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
     info!(
         target: LOG_TARGET,
-        "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
+        "⛏ Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
         hashrate * num_mining_threads as f64,
