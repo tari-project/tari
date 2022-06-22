@@ -20,7 +20,7 @@ fn main() {
         parse: ParseConfig {
             parse_deps: true,
             include: Some(vec![
-                "tari_core".to_string(),
+                // "tari_core".to_string(),
                 "tari_common_types".to_string(),
                 "tari_crypto".to_string(),
                 "tari_p2p".to_string(),
