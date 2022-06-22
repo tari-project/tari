@@ -10,7 +10,14 @@ const WalletSetupBox = () => {
 
   return (
     <>
-      <div style={{ position: 'fixed', right: '10vw', bottom: '20vh' }}>
+      <div
+        style={{
+          position: 'fixed',
+          right: '10vw',
+          bottom: '20vh',
+          pointerEvents: 'none',
+        }}
+      >
         <SvgTariSignet
           color={theme.backgroundImage}
           width='auto'
