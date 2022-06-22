@@ -34,6 +34,7 @@ mod helpers;
 #[cfg(test)]
 mod test_helpers;
 
+/// Validator of Digital Asset Network consensus rules.
 #[derive(Clone)]
 pub struct TxDanLayerValidator<B> {
     db: BlockchainDatabase<B>,

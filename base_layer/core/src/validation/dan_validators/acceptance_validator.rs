@@ -35,6 +35,7 @@ use crate::{
     validation::ValidationError,
 };
 
+/// This validator checks that the provided output corresponds to a valid Contract Acceptance in the DAN layer
 pub fn validate_acceptance<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     output: &TransactionOutput,
@@ -59,6 +60,7 @@ pub fn validate_acceptance<B: BlockchainBackend>(
     Ok(())
 }
 
+/// Retrieves a contract acceptance object from the sidechain features, returns an error if not present
 fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&ContractAcceptance, ValidationError> {
     match sidechain_feature.acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
@@ -68,6 +70,7 @@ fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&Con
     }
 }
 
+/// Checks that the validator public key is present as part of the proposed committee in the constitution
 fn validate_public_key(
     constitution: ContractConstitution,
     validator_node_public_key: PublicKey,

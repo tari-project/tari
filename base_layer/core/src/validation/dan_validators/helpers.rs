@@ -67,7 +67,7 @@ pub fn get_contract_constitution<B: BlockchainBackend>(
         ));
     }
 
-    // we assume only one constution should be present in the blockchain
+    // we assume that only one constitution should be present in the blockchain for any given contract
     // TODO: create a validation to avoid duplicated constitution publishing
     let utxo_info = match contract_outputs.first() {
         Some(value) => value,
