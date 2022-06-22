@@ -263,42 +263,6 @@ Then(
 );
 
 Then(
-  "I create committee definition for asset on wallet {word} via command line",
-  { timeout: 20 * 1000 },
-  async function (wallet_name) {
-    // scenario needs "I register asset..." first to populate asset public key
-    expect(this.asset_public_key).to.exist;
-    const member =
-      "3ef702f33925dc65143f7bebcbe0c53902e8772a8fe7f5ddb703587c0203267d";
-    let wallet = this.getWallet(wallet_name);
-    let output = await wallet_run_command(
-      wallet,
-      `create-committee-definition ${this.asset_public_key} ${member}`
-    );
-    // console.log(output.buffer);
-    expect(output.buffer).to.have.string(" committee members");
-    let regex = /with \d+ committee members/;
-    let match = output.buffer.match(regex);
-    expect(match[0]).to.equal("with 1 committee members");
-  }
-);
-
-Then(
-  "I mint tokens {string} for asset {word} on wallet {word} via command line",
-  { timeout: 20 * 1000 },
-  async function (token_names, asset_name, wallet_name) {
-    let wallet = this.getWallet(wallet_name);
-    const walletClient = await wallet.connectClient();
-    const assets = await walletClient.getOwnedAssets();
-    const asset = assets.find((asset) => asset.name === asset_name);
-    let output = await wallet_run_command(
-      wallet,
-      `mint-tokens ${byteArrayToHex(asset.public_key)} ${token_names}`
-    );
-    // console.log(output.buffer);
-    expect(output.buffer).to.have.string("Minting tokens for asset");
-  }
-);
 
 Then(
   "I publish a contract definition from file {string} on wallet {word} via command line",
