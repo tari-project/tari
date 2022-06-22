@@ -7197,7 +7197,7 @@ mod test {
             transaction_components::EncryptedValue,
         },
     };
-    use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
+    use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::{
@@ -9026,7 +9026,7 @@ mod test {
             );
 
             (0..10).for_each(|i| {
-                let (_, uout) = create_test_input((1000 * i).into(), 0, &PedersenCommitmentFactory::default());
+                let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))

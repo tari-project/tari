@@ -6,11 +6,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/**
- * The number of unique fields available. This always matches the number of variants in `OutputField`.
- */
-#define OutputFields_NUM_FIELDS 10
-
 enum TariUtxoSort {
   ValueAsc,
   ValueDesc,
@@ -55,22 +50,13 @@ struct Contact;
 
 struct ContactsLivenessData;
 
-struct Covenant;
-
 struct EmojiSet;
-
-struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
 
 struct InboundTransaction;
 
 struct OutboundTransaction;
-
-/**
- * Options for UTXO's
- */
-struct OutputFeatures;
 
 /**
  * Configuration for a comms node
@@ -142,20 +128,11 @@ struct TariSeedWords;
 
 struct TariWallet;
 
-/**
- * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
- * why it is necessary, refer to the
- * [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
- * The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
- * this transaction can be mined) and the transaction fee, in cleartext.
- */
-struct TransactionKernel;
-
 struct TransactionSendStatus;
 
 struct TransportConfig;
 
-typedef struct TransactionKernel TariTransactionKernel;
+typedef TransactionKernel TariTransactionKernel;
 
 /**
  * Define the explicit Public key implementation for the Tari base layer
@@ -205,6 +182,8 @@ typedef PrivateKey TariPrivateKey;
  * # use digest::Digest;
  * # use tari_crypto::commitment::HomomorphicCommitmentFactory;
  * # use tari_crypto::ristretto::pedersen::*;
+ * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
+ * use tari_utilities::hex::Hex;
  *
  * let mut rng = rand::thread_rng();
  * let a_val = RistrettoSecretKey::random(&mut rng);
@@ -214,7 +193,9 @@ typedef PrivateKey TariPrivateKey;
  * let e = Blake256::digest(b"Maskerade");
  * let factory = PedersenCommitmentFactory::default();
  * let commitment = factory.commit(&x_val, &a_val);
+ * // println!("commitment: {:?}", commitment.to_hex());
  * let sig = RistrettoComSig::sign(&a_val, &x_val, &a_nonce, &x_nonce, &e, &factory).unwrap();
+ * // println!("sig: R {:?} u {:?} v {:?}", sig.public_nonce().to_hex(), sig.u().to_hex(), sig.v().to_hex());
  * assert!(sig.verify_challenge(&commitment, &e, &factory));
  * ```
  *
@@ -232,6 +213,7 @@ typedef PrivateKey TariPrivateKey;
  * # use tari_utilities::hex::*;
  * # use tari_utilities::ByteArray;
  * # use digest::Digest;
+ * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
  *
  * let commitment =
  *     HomomorphicCommitment::from_hex("d6cca5cc4cc302c1854a118221d6cf64d100b7da76665dae5199368f3703c665").unwrap();
@@ -254,9 +236,11 @@ typedef RistrettoComSig ComSignature;
 
 typedef ComSignature TariCommitmentSignature;
 
-typedef struct Covenant TariCovenant;
+typedef Covenant TariCovenant;
 
-typedef struct OutputFeatures TariOutputFeatures;
+typedef EncryptedValue TariEncryptedValue;
+
+typedef OutputFeatures TariOutputFeatures;
 
 typedef struct Contact TariContact;
 
@@ -289,7 +273,7 @@ struct TariOutputs {
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
-typedef struct FeePerGramStat TariFeePerGramStat;
+typedef FeePerGramStat TariFeePerGramStat;
 
 /**
  * -------------------------------- Strings ------------------------------------------------ ///
@@ -737,12 +721,96 @@ void covenant_destroy(TariCovenant *covenant);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
+ * --------------------------------------- EncryptedValue --------------------------------------------///
+ * Creates a TariEncryptedValue from a ByteVector containing the encrypted_value bytes
+ *
+ * ## Arguments
+ * `encrypted_value_bytes` - The encrypted_value bytes as a ByteVector
+ *
+ * ## Returns
+ * `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+ * null or if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+ * memory leak
+ */
+TariEncryptedValue *encrypted_value_create_from_bytes(const struct ByteVector *encrypted_value_bytes,
+                                                      int *error_out);
+
+/**
+ * Creates a ByteVector containing the encrypted_value bytes from a TariEncryptedValue
+ *
+ * ## Arguments
+ * `encrypted_value` - The encrypted_value as a TariEncryptedValue
+ *
+ * ## Returns
+ * `ByteVector` - Returns a ByteVector containing the encrypted_value bytes. Note that it will be ptr::null_mut() if
+ * any argument is null or if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+ * memory leak
+ */
+struct ByteVector *encrypted_value_as_bytes(const TariEncryptedValue *encrypted_value,
+                                            int *error_out);
+
+/**
+ * Creates a TariEncryptedValue from an amount
+ *
+ * ## Arguments
+ * `amount` - The Tari amount
+ *
+ * ## Returns
+ * `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+ * null or if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+ * memory leak
+ */
+TariEncryptedValue *encrypted_value_encrypt(unsigned long long amount,
+                                            int *error_out);
+
+/**
+ * Creates an amount from a TariEncryptedValue
+ *
+ * ## Arguments
+ * `amount` - The Tari amount
+ *
+ * ## Returns
+ * `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+ * null or if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+ * memory leak
+ */
+unsigned long long encrypted_value_decrypt(const TariEncryptedValue *encrypted_value,
+                                           int *error_out);
+
+/**
+ * Frees memory for a TariEncryptedValue
+ *
+ * ## Arguments
+ * `encrypted_value` - The pointer to a TariEncryptedValue
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
+
+/**
+ * -------------------------------------------------------------------------------------------- ///
  * ---------------------------------- Output Features ------------------------------------------///
  * Creates a TariOutputFeatures from byte values
  *
  * ## Arguments
  * `version` - The encoded value of the version as a byte
- * `flags` - The encoded value of the flags as a byte
+ * `output_type` - The encoded value of the output type as a byte
  * `maturity` - The encoded value maturity as bytes
  * `recovery_byte` - The encoded value of the recovery byte as a byte
  * `metadata` - The metadata componenet as a ByteVector. It cannot be null
@@ -760,7 +828,7 @@ void covenant_destroy(TariCovenant *covenant);
  * prevent a memory leak
  */
 TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
-                                                      unsigned char flags,
+                                                      unsigned short output_type,
                                                       unsigned long long maturity,
                                                       unsigned char recovery_byte,
                                                       const struct ByteVector *metadata,
@@ -2713,6 +2781,7 @@ unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWall
                                                                  TariPublicKey *sender_offset_public_key,
                                                                  TariPrivateKey *script_private_key,
                                                                  TariCovenant *covenant,
+                                                                 TariEncryptedValue *encrypted_value,
                                                                  const char *message,
                                                                  int *error_out);
 
