@@ -40,7 +40,7 @@ class ValidatorNodeProcess {
     this.port = await getFreePort();
     this.grpcPort = await getFreePort();
     this.name = `ValidatorNode${this.port}-${this.name}`;
-    this.nodeFile = this.nodeFile || "nodeid.json";
+    this.nodeFile = this.nodeFile || "validator_node_id.json";
 
     let instance = 0;
     do {
@@ -119,7 +119,7 @@ class ValidatorNodeProcess {
     }
     if (!fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
       throw new Error(
-        `Node id file node found ${this.baseDir}/${this.nodeFile}`
+        `Node id file not found ${this.baseDir}/${this.nodeFile}`
       );
     }
 
