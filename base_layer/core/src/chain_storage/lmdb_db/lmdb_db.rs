@@ -153,7 +153,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
     std::fs::create_dir_all(&path)?;
 
-    let file_lock = acquire_exclusive_file_lock(&path.as_ref().to_path_buf())?;
+    let file_lock = acquire_exclusive_file_lock(path.as_ref())?;
 
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)
@@ -2573,7 +2573,7 @@ fn get_database(store: &LMDBStore, name: &str) -> Result<DatabaseRef, ChainStora
     Ok(handle.db())
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 enum MetadataKey {
     ChainHeight,
     BestBlock,

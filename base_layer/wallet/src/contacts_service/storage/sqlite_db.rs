@@ -145,7 +145,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
 }
 
 /// A Sql version of the Contact struct
-#[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
+#[derive(Clone, Debug, Queryable, Insertable, PartialEq, Eq)]
 #[table_name = "contacts"]
 struct ContactSql {
     public_key: Vec<u8>,

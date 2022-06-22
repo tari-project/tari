@@ -1,4 +1,4 @@
-toolchain=nightly-2021-11-20
+toolchain=nightly-2022-05-01
 
 .phony: test
 test:

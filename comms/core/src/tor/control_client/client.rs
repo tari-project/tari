@@ -97,7 +97,7 @@ impl TorControlPortClient {
                 self.send_line("AUTHENTICATE".to_string()).await?;
             },
             Authentication::HashedPassword(passwd) => {
-                self.send_line(format!("AUTHENTICATE \"{}\"", passwd.replace("\"", "\\\"")))
+                self.send_line(format!("AUTHENTICATE \"{}\"", passwd.replace('\"', "\\\"")))
                     .await?;
             },
             Authentication::Cookie(cookie) => {
@@ -306,7 +306,7 @@ mod test {
         // Check that the connection is successfully made
         let _out_sock = result_out.unwrap();
         let (mut in_sock, _) = result_in.unwrap().unwrap();
-        in_sock.write(b"test123").await.unwrap();
+        in_sock.write_all(b"test123").await.unwrap();
         in_sock.shutdown().await.unwrap();
     }
 

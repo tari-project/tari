@@ -118,7 +118,7 @@ impl Display for HorizonSyncInfo {
         }
     }
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HorizonSyncStatus {
     Starting,
     Kernels {
