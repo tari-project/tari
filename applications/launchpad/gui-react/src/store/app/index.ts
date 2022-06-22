@@ -12,7 +12,7 @@ export const appInitialState: AppState = {
   view: 'MINING',
   theme: 'light',
   schedules: {},
-  onboardingComplete: true,
+  onboardingComplete: false,
 }
 
 const appSlice = createSlice({
