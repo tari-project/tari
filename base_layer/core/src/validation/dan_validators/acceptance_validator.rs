@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{FixedHash, PublicKey};
+use tari_common_types::types::PublicKey;
 
+use super::helpers::{get_contract_constitution, get_sidechain_features, validate_output_type};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
@@ -38,7 +39,7 @@ pub fn validate_acceptance<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    validate_output_type(output)?;
+    validate_output_type(output, OutputType::ContractValidatorAcceptance)?;
 
     let sidechain_features = get_sidechain_features(output)?;
     let contract_id = sidechain_features.contract_id;
@@ -58,25 +59,6 @@ pub fn validate_acceptance<B: BlockchainBackend>(
     Ok(())
 }
 
-fn validate_output_type(output: &TransactionOutput) -> Result<(), ValidationError> {
-    let output_tyoe = output.features.output_type;
-    if output_tyoe != OutputType::ContractValidatorAcceptance {
-        let msg = format!("Invalid contract acceptance: invalid output type ({:?})", output_tyoe);
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    Ok(())
-}
-
-fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, ValidationError> {
-    match output.features.sidechain_features.as_ref() {
-        Some(features) => Ok(features),
-        None => Err(ValidationError::ConsensusError(
-            "Invalid contract acceptance: sidechain features not found".to_string(),
-        )),
-    }
-}
-
 fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&ContractAcceptance, ValidationError> {
     match sidechain_feature.acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
@@ -84,60 +66,6 @@ fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&Con
             "Invalid contract acceptance: acceptance features not found".to_string(),
         )),
     }
-}
-
-fn get_contract_constitution<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    contract_id: FixedHash,
-) -> Result<ContractConstitution, ValidationError> {
-    let contract_outputs = db
-        .fetch_contract_outputs_by_contract_id_and_type(contract_id, OutputType::ContractConstitution)
-        .unwrap();
-
-    if contract_outputs.is_empty() {
-        return Err(ValidationError::ConsensusError(
-            "Invalid contract acceptance: contract constitution not found".to_string(),
-        ));
-    }
-
-    // we assume only one constution should be present in the blockchain
-    let utxo_info = match contract_outputs.first() {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::ConsensusError(
-                "Invalid contract acceptance: contract constitution UtxoMindInfo not found".to_string(),
-            ))
-        },
-    };
-
-    let constitution_output = match utxo_info.output.as_transaction_output() {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::ConsensusError(
-                "Invalid contract acceptance: contract constitution output not found".to_string(),
-            ))
-        },
-    };
-
-    let constitution_features = match constitution_output.features.sidechain_features.as_ref() {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::ConsensusError(
-                "Invalid contract acceptance: contract constitution output features not found".to_string(),
-            ))
-        },
-    };
-
-    let constitution = match constitution_features.constitution.as_ref() {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::ConsensusError(
-                "Invalid contract acceptance: contract constitution data not found in the output features".to_string(),
-            ))
-        },
-    };
-
-    Ok(constitution.clone())
 }
 
 fn validate_public_key(

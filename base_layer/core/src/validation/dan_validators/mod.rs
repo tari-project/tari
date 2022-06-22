@@ -29,6 +29,8 @@ use crate::{
 mod acceptance_validator;
 use acceptance_validator::validate_acceptance;
 
+mod helpers;
+
 #[cfg(test)]
 mod test_helpers;
 
