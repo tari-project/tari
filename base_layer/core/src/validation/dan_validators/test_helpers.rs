@@ -23,7 +23,6 @@
 use std::{convert::TryInto, sync::Arc};
 
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
-use tari_utilities::hex::Hex;
 
 use crate::{
     block_spec,
@@ -92,7 +91,11 @@ pub fn create_contract_definition_schema(input: UnblindedOutput) -> (FixedHash, 
     (contract_id, tx_schema)
 }
 
-pub fn create_contract_constitution_schema(contract_id: FixedHash, input: UnblindedOutput) -> TransactionSchema {
+pub fn create_contract_constitution_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    committee: Vec<PublicKey>,
+) -> TransactionSchema {
     let validator_committee: CommitteeMembers = vec![PublicKey::default()].try_into().unwrap();
     let constitution = ContractConstitution {
         validator_committee,
@@ -109,11 +112,7 @@ pub fn create_contract_constitution_schema(contract_id: FixedHash, input: Unblin
             change_flags: ConstitutionChangeFlags::all(),
             requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                 minimum_constitution_committee_signatures: 5,
-                constitution_committee: Some(
-                    vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                        .try_into()
-                        .unwrap(),
-                ),
+                constitution_committee: Some(committee.try_into().unwrap()),
             }),
         },
         initial_reward: 100.into(),
@@ -123,18 +122,15 @@ pub fn create_contract_constitution_schema(contract_id: FixedHash, input: Unblin
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: constitution_features)
 }
 
-pub fn create_contract_acceptance_schema(contract_id: FixedHash, input: UnblindedOutput) -> TransactionSchema {
-    // let validator_node_public_key = PublicKey::default();
-    let validator_node_public_key =
-        PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
+pub fn create_contract_acceptance_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    validator_node_public_key: PublicKey,
+) -> TransactionSchema {
     let signature = Signature::default();
 
     let acceptance_features =
         OutputFeatures::for_contract_acceptance(contract_id, validator_node_public_key, signature);
 
-    let mut tx =
-        txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features);
-    tx.output_version = None;
-
-    tx
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
 }
