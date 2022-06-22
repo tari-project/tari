@@ -113,7 +113,7 @@ pub enum OutputManagerRequest {
     CreateCoinJoin {
         target_amount: MicroTari,
         fee_per_gram: MicroTari,
-        commitments: Option<Vec<PublicKey>>,
+        commitments: Vec<PublicKey>,
     },
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
