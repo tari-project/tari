@@ -959,8 +959,7 @@ impl TryFrom<proto::types::ContractDefinition> for ContractDefinition {
         let contract_spec = value
             .contract_spec
             .map(ContractSpecification::try_from)
-            .ok_or_else(|| "contract_spec is missing".to_string())?
-            .map_err(|err| err)?;
+            .ok_or_else(|| "contract_spec is missing".to_string())??;
 
         Ok(Self {
             contract_name,
@@ -1018,8 +1017,7 @@ impl TryFrom<proto::types::PublicFunction> for PublicFunction {
         let function = value
             .function
             .map(FunctionRef::try_from)
-            .ok_or_else(|| "function is missing".to_string())?
-            .map_err(|err| err)?;
+            .ok_or_else(|| "function is missing".to_string())??;
 
         Ok(Self {
             name: vec_into_fixed_string(value.name),

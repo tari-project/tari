@@ -49,7 +49,7 @@ pub use prepare::Prepare;
 pub use starting::Starting;
 pub use synchronizing::Synchronizing;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ConsensusWorkerStateEvent {
     Initialized,
     Synchronized,

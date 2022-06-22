@@ -122,7 +122,6 @@ impl CovenantArg {
         match self {
             Hash(hash) => {
                 writer.write_u8_fixed(ARG_HASH)?;
-                hash.len();
                 writer.write_all(&hash[..])?;
             },
             PublicKey(pk) => {

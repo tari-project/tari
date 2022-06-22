@@ -28,7 +28,7 @@ use crate::transactions::tari_amount::MicroTari;
 
 /// A wrapper struct to hold the result of a successful range proof rewinding to reveal the committed value and proof
 /// message
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct RewindResult {
     pub committed_value: MicroTari,
     pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],

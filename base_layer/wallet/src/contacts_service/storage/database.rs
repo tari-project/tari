@@ -33,7 +33,7 @@ use crate::contacts_service::error::ContactsServiceStorageError;
 
 const LOG_TARGET: &str = "wallet::contacts_service::database";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contact {
     pub alias: String,
     pub public_key: CommsPublicKey,
@@ -67,7 +67,7 @@ pub trait ContactsBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError>;
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbKey {
     Contact(CommsPublicKey),
     ContactId(NodeId),
@@ -215,7 +215,7 @@ impl Display for DbKey {
         match self {
             DbKey::Contact(c) => f.write_str(&format!("Contact: {:?}", c)),
             DbKey::ContactId(id) => f.write_str(&format!("Contact: {:?}", id)),
-            DbKey::Contacts => f.write_str(&"Contacts".to_string()),
+            DbKey::Contacts => f.write_str("Contacts"),
         }
     }
 }
@@ -223,9 +223,9 @@ impl Display for DbKey {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::Contact(_) => f.write_str(&"Contact".to_string()),
-            DbValue::Contacts(_) => f.write_str(&"Contacts".to_string()),
-            DbValue::PublicKey(_) => f.write_str(&"PublicKey".to_string()),
+            DbValue::Contact(_) => f.write_str("Contact"),
+            DbValue::Contacts(_) => f.write_str("Contacts"),
+            DbValue::PublicKey(_) => f.write_str("PublicKey"),
         }
     }
 }

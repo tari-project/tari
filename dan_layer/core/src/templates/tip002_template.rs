@@ -44,7 +44,7 @@ pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
     state_db: &TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
+    match method.to_lowercase().replace('_', "").as_str() {
         "balanceof" => balance_of(args, state_db),
         name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
     }
@@ -55,7 +55,7 @@ pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<(), DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
+    match method.to_lowercase().replace('_', "").as_str() {
         "init" => init(args, state_db),
         "transfer" => transfer(args, state_db),
         name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),

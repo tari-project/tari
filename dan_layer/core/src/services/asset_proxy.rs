@@ -228,11 +228,11 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
                 template_id,
                 method.clone(),
                 args.clone(),
-                /* TokenId(request.token_id.clone()),
-                 * TODO: put signature in here
-                 * ComSig::default()
-                 * create_com_sig_from_bytes(&request.signature)
-                 *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
+                // TokenId(request.token_id.clone()),
+                // TODO: put signature in here
+                // ComSig::default()
+                // create_com_sig_from_bytes(&request.signature)
+                //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
             );
             let mut mempool = self.mempool.clone();
             mempool.submit_instruction(instruction).await

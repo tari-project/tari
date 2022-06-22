@@ -282,7 +282,7 @@ mod condvar_shim {
 }
 
 /// Define the three response options the mock can respond with.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResponseType {
     Queued,
     QueuedFail,

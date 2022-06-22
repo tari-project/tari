@@ -915,27 +915,19 @@ where T: TransactionBackend + 'static
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::PendingOutboundTransaction(_) => f.write_str(&"Pending Outbound Transaction".to_string()),
-            DbKey::PendingInboundTransaction(_) => f.write_str(&"Pending Inbound Transaction".to_string()),
+            DbKey::PendingOutboundTransaction(_) => f.write_str("Pending Outbound Transaction"),
+            DbKey::PendingInboundTransaction(_) => f.write_str("Pending Inbound Transaction"),
 
-            DbKey::CompletedTransaction(_) => f.write_str(&"Completed Transaction".to_string()),
-            DbKey::PendingOutboundTransactions => f.write_str(&"All Pending Outbound Transactions".to_string()),
-            DbKey::PendingInboundTransactions => f.write_str(&"All Pending Inbound Transactions".to_string()),
-            DbKey::CompletedTransactions => f.write_str(&"All Complete Transactions".to_string()),
-            DbKey::CancelledPendingOutboundTransactions => {
-                f.write_str(&"All Cancelled Pending Inbound Transactions".to_string())
-            },
-            DbKey::CancelledPendingInboundTransactions => {
-                f.write_str(&"All Cancelled Pending Outbound Transactions".to_string())
-            },
-            DbKey::CancelledCompletedTransactions => f.write_str(&"All Cancelled Complete Transactions".to_string()),
-            DbKey::CancelledPendingOutboundTransaction(_) => {
-                f.write_str(&"Cancelled Pending Outbound Transaction".to_string())
-            },
-            DbKey::CancelledPendingInboundTransaction(_) => {
-                f.write_str(&"Cancelled Pending Inbound Transaction".to_string())
-            },
-            DbKey::AnyTransaction(_) => f.write_str(&"Any Transaction".to_string()),
+            DbKey::CompletedTransaction(_) => f.write_str("Completed Transaction"),
+            DbKey::PendingOutboundTransactions => f.write_str("All Pending Outbound Transactions"),
+            DbKey::PendingInboundTransactions => f.write_str("All Pending Inbound Transactions"),
+            DbKey::CompletedTransactions => f.write_str("All Complete Transactions"),
+            DbKey::CancelledPendingOutboundTransactions => f.write_str("All Cancelled Pending Inbound Transactions"),
+            DbKey::CancelledPendingInboundTransactions => f.write_str("All Cancelled Pending Outbound Transactions"),
+            DbKey::CancelledCompletedTransactions => f.write_str("All Cancelled Complete Transactions"),
+            DbKey::CancelledPendingOutboundTransaction(_) => f.write_str("Cancelled Pending Outbound Transaction"),
+            DbKey::CancelledPendingInboundTransaction(_) => f.write_str("Cancelled Pending Inbound Transaction"),
+            DbKey::AnyTransaction(_) => f.write_str("Any Transaction"),
         }
     }
 }
@@ -943,13 +935,13 @@ impl Display for DbKey {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::PendingOutboundTransaction(_) => f.write_str(&"Pending Outbound Transaction".to_string()),
-            DbValue::PendingInboundTransaction(_) => f.write_str(&"Pending Inbound Transaction".to_string()),
-            DbValue::CompletedTransaction(_) => f.write_str(&"Completed Transaction".to_string()),
-            DbValue::PendingOutboundTransactions(_) => f.write_str(&"All Pending Outbound Transactions".to_string()),
-            DbValue::PendingInboundTransactions(_) => f.write_str(&"All Pending Inbound Transactions".to_string()),
-            DbValue::CompletedTransactions(_) => f.write_str(&"All Complete Transactions".to_string()),
-            DbValue::WalletTransaction(_) => f.write_str(&"Any Wallet Transaction".to_string()),
+            DbValue::PendingOutboundTransaction(_) => f.write_str("Pending Outbound Transaction"),
+            DbValue::PendingInboundTransaction(_) => f.write_str("Pending Inbound Transaction"),
+            DbValue::CompletedTransaction(_) => f.write_str("Completed Transaction"),
+            DbValue::PendingOutboundTransactions(_) => f.write_str("All Pending Outbound Transactions"),
+            DbValue::PendingInboundTransactions(_) => f.write_str("All Pending Inbound Transactions"),
+            DbValue::CompletedTransactions(_) => f.write_str("All Complete Transactions"),
+            DbValue::WalletTransaction(_) => f.write_str("Any Wallet Transaction"),
         }
     }
 }
