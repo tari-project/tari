@@ -141,7 +141,7 @@ class CustomWorld {
         walletGrpcAddress
     );
 
-    vn.start();
+    await vn.startNew();
 
     return vn;
   }
