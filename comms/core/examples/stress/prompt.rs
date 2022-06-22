@@ -106,7 +106,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
             },
             'p' => {
                 prompt!("Set peer (default: {})", peer_str.as_deref().unwrap_or("<None>"));
-                let peer = or_continue!(read_line(peer_str.unwrap_or_else(String::new)));
+                let peer = or_continue!(read_line(peer_str.unwrap_or_default()));
                 if peer.is_empty() {
                     continue;
                 }
@@ -123,7 +123,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
 
         if current_peer.is_none() {
             prompt!("Set peer (default: {})", peer_str.as_deref().unwrap_or("<None>"));
-            let peer = or_continue!(read_line(peer_str.unwrap_or_else(String::new)));
+            let peer = or_continue!(read_line(peer_str.unwrap_or_default()));
             if peer.is_empty() {
                 continue;
             }

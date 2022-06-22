@@ -38,7 +38,7 @@ pub struct TxSubmissionResponse {
     pub is_synced: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TxSubmissionRejectionReason {
     None,
     AlreadyMined,
@@ -139,7 +139,7 @@ pub struct TxQueryBatchResponse {
     pub block_height: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TxLocation {
     NotStored,
     InMempool,

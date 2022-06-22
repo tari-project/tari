@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::iter::repeat_with;
+
+use multiaddr::Multiaddr;
+
 use super::{TestFactory, TestFactoryError};
 use crate::transports::MemoryTransport;
-use multiaddr::Multiaddr;
-use std::iter::repeat_with;
 
 pub fn create_many(n: usize) -> NetAddressesFactory {
     NetAddressesFactory::default().with_count(n)
@@ -53,9 +55,7 @@ impl TestFactory for NetAddressesFactory {
     type Object = Vec<Multiaddr>;
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
-        Ok(repeat_with(|| self.make_one())
-            .take(self.count.or(Some(1)).unwrap())
-            .collect())
+        Ok(repeat_with(|| self.make_one()).take(self.count.unwrap_or(1)).collect())
     }
 }
 

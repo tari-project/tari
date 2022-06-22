@@ -43,7 +43,7 @@ tauri = { version = "1.0.0-rc.6", features = ["api-all"] }
 thiserror = "1.0.30"
 tokio = { version = "1.11", features = ["signal"] }
 tonic = "0.6.2"
-uuid = { version = "0.8.2", features = ["serde"] }
+uuid = { version = "0.8.2", features = ["serde", "v4"] }
 
 [features]
 default = ["custom-protocol"]

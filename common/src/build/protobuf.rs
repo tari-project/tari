@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 /// Runs rustfmt on the generated files - this is lifted from tonic-build
 fn rustfmt<P>(out_dir: P)
 where P: AsRef<Path> + Display {
-    let dir = walk_files(&out_dir.as_ref().to_path_buf(), "rs");
+    let dir = walk_files(out_dir.as_ref(), "rs");
 
     for entry in dir {
         let out = Command::new("rustfmt")
