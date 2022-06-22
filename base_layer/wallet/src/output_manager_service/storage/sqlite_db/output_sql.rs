@@ -101,6 +101,7 @@ pub struct OutputSql {
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
+    pub contract_id: Option<Vec<u8>>,
 }
 
 impl OutputSql {

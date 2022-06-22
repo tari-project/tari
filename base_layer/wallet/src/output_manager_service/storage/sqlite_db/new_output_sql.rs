@@ -65,6 +65,7 @@ pub struct NewOutputSql {
     pub features_json: String,
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
+    pub contract_id: Option<Vec<u8>>,
 }
 
 impl NewOutputSql {
@@ -108,6 +109,7 @@ impl NewOutputSql {
             })?,
             covenant: output.unblinded_output.covenant.to_bytes(),
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
+            contract_id: output.unblinded_output.features.contract_id().map(|h| h.to_vec()),
         })
     }
 
@@ -158,6 +160,7 @@ impl From<OutputSql> for NewOutputSql {
             features_json: o.features_json,
             covenant: o.covenant,
             encrypted_value: o.encrypted_value,
+            contract_id: o.contract_id,
         }
     }
 }
