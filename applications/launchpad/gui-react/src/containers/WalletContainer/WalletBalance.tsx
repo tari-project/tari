@@ -7,6 +7,7 @@ import Loading from '../../components/Loading'
 import t from '../../locales'
 
 import Chart from './Chart'
+import AvailableBalanceHelp from './AvailableBalanceHelp'
 
 import { TariSignet, TariAmountContainer } from './styles'
 
@@ -49,19 +50,24 @@ const WalletBalance = ({
         </div>
         <Chart />
       </TariAmountContainer>
-      <Text
-        type='defaultMedium'
-        style={{ display: 'inline-block' }}
-        color={theme.secondary}
-      >
-        {t.wallet.balance.available}
-      </Text>{' '}
-      <CoinsList
-        coins={[{ amount: available, unit: 'xtr' }]}
-        inline
-        small
-        color={pending ? theme.placeholderText : 'inherit'}
-      />
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div>
+          <Text
+            type='defaultMedium'
+            style={{ display: 'inline-block' }}
+            color={theme.secondary}
+          >
+            {t.wallet.balance.available}
+          </Text>{' '}
+          <CoinsList
+            coins={[{ amount: available, unit: 'xtr' }]}
+            inline
+            small
+            color={pending ? theme.placeholderText : 'inherit'}
+          />
+        </div>
+        <AvailableBalanceHelp />
+      </div>
     </Box>
   )
 }

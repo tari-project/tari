@@ -1,15 +1,24 @@
+import { useAppDispatch } from '../../../../store/hooks'
+import { tbotactions } from '../../../../store/tbot'
+import t from '../../../../locales'
 import Button from '../../../Button'
 
-const GotItButton = ({ onClick }: { onClick: () => void }) => {
+const GotItButton = () => {
+  const dispatch = useAppDispatch()
+
+  const close = () => {
+    return dispatch(tbotactions.close())
+  }
+
   return (
     <Button
       type='button'
       variant='primary'
-      onClick={onClick}
+      onClick={close}
       size='medium'
       testId='gotitbutton-cmp'
     >
-      Got it!
+      {t.common.phrases.gotIt}!
     </Button>
   )
 }
