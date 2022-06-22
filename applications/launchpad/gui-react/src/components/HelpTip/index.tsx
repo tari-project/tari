@@ -14,13 +14,13 @@ import { HelpTipProps } from './types'
  * @prop {string} cta - call to action text inside button
  * @prop {() => void} onHelp - callback called when user interacts with cta
  * @prop {CSSProperties} [style] - styles to apply to main wrapper element
- * @prop {boolean} [spaced] - whether the help tip should be rendered with additional top/bottom margin suitable for headers
+ * @prop {boolean} [header] - whether the help tip should be rendered with additional top/bottom margin suitable for headers
  */
-const HelpTip = ({ text, cta, onHelp, style, spaced }: HelpTipProps) => (
+const HelpTip = ({ text, cta, onHelp, style, header }: HelpTipProps) => (
   <StyledHelpTipWrapper
     data-testid='mining-header-tip-cmp'
     style={style}
-    spaced={spaced}
+    header={header}
   >
     <SvgStar height={24} width={24} style={{ marginRight: 8 }} />
     <Text type='defaultHeavy'>

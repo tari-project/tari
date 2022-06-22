@@ -5,5 +5,5 @@ export type HelpTipProps = {
   cta: string
   onHelp: () => void
   style?: CSSProperties
-  spaced?: boolean
+  header?: boolean
 }

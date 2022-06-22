@@ -37,7 +37,7 @@ const MiningHeaderTip = () => {
       text={text}
       cta={t.mining.headerTips.wantToKnowMore}
       onHelp={() => dispatch(tbotactions.push(MessagesConfig.CryptoMiningHelp))}
-      spaced
+      header
     />
   )
 }
