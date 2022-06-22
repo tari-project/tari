@@ -20,21 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
-use log::{error, info};
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_common_types::types::Signature;
 use tari_comms::NodeIdentity;
-use tari_dan_core::{
-    services::{BaseNodeClient, WalletClient},
-    storage::global::GlobalDb,
-};
-use tari_dan_storage_sqlite::SqliteGlobalDbBackendAdapter;
-use tokio::{task, time};
+use tari_dan_core::{services::MempoolServiceHandle, storage::global::GlobalDb};
+use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteGlobalDbBackendAdapter};
+use tari_p2p::comms_connector::SubscriptionFactory;
+use tari_service_framework::ServiceHandles;
+use tari_shutdown::ShutdownSignal;
 
 use crate::{
     config::ValidatorNodeConfig,
+    contract_worker_manager::ContractWorkerManager,
     grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
 };
 
@@ -44,14 +42,14 @@ const _LOG_TARGET: &str = "tari::validator_node::app";
 pub struct DanNode {
     config: ValidatorNodeConfig,
     identity: Arc<NodeIdentity>,
-    global_db: Arc<GlobalDb<SqliteGlobalDbBackendAdapter>>,
+    global_db: GlobalDb<SqliteGlobalDbBackendAdapter>,
 }
 
 impl DanNode {
     pub fn new(
         config: ValidatorNodeConfig,
         identity: Arc<NodeIdentity>,
-        global_db: Arc<GlobalDb<SqliteGlobalDbBackendAdapter>>,
+        global_db: GlobalDb<SqliteGlobalDbBackendAdapter>,
     ) -> Self {
         Self {
             config,
@@ -60,69 +58,33 @@ impl DanNode {
         }
     }
 
-    pub async fn start(&self) -> Result<(), ExitError> {
+    pub async fn start(
+        &self,
+        shutdown: ShutdownSignal,
+        mempool_service: MempoolServiceHandle,
+        db_factory: SqliteDbFactory,
+        handles: ServiceHandles,
+        subscription_factory: SubscriptionFactory,
+    ) -> Result<(), ExitError> {
         let base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
-        let node = self.clone();
+        let wallet_client = GrpcWalletClient::new(self.config.wallet_grpc_address);
+        let workers = ContractWorkerManager::new(
+            self.config.clone(),
+            self.identity.clone(),
+            self.global_db.clone(),
+            base_node_client,
+            wallet_client,
+            mempool_service,
+            handles,
+            subscription_factory,
+            db_factory,
+            shutdown.clone(),
+        );
 
-        if self.config.constitution_auto_accept {
-            task::spawn(async move {
-                loop {
-                    match node.find_and_accept_constitutions(base_node_client.clone()).await {
-                        Ok(()) => info!("Contracts accepted"),
-                        Err(e) => error!("Contracts not accepted because {:?}", e),
-                    }
-
-                    time::sleep(Duration::from_secs(
-                        node.config.constitution_management_polling_interval,
-                    ))
-                    .await;
-                }
-            });
-        }
-
-        loop {
-            // other work here
-
-            time::sleep(Duration::from_secs(120)).await;
-        }
-    }
-
-    async fn find_and_accept_constitutions(&self, mut base_node_client: GrpcBaseNodeClient) -> Result<(), ExitError> {
-        let mut wallet_client = GrpcWalletClient::new(self.config.wallet_grpc_address);
-        let metadata_key_name = "last_scanned_constitution_hash".as_bytes();
-
-        let last_hash = match self.global_db.get_data(metadata_key_name) {
-            Ok(Some(h)) => h,
-            _ => vec![],
-        };
-
-        let (outputs, latest_hash) = base_node_client
-            .get_constitutions(self.identity.public_key().clone(), last_hash)
+        workers
+            .start()
             .await
-            .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, &e))?;
-
-        let outputs_len = outputs.len();
-
-        for output in outputs {
-            if let Some(sidechain_features) = output.features.sidechain_features {
-                let contract_id = sidechain_features.contract_id;
-                let signature = Signature::default();
-
-                match wallet_client
-                    .submit_contract_acceptance(&contract_id, self.identity.public_key(), &signature)
-                    .await
-                {
-                    Ok(tx_id) => info!("Accepted with id={}", tx_id),
-                    Err(_) => error!("Did not accept the contract acceptance"),
-                };
-            }
-        }
-
-        if outputs_len > 0 {
-            self.global_db
-                .set_data(metadata_key_name, &latest_hash)
-                .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
-        }
+            .map_err(|err| ExitError::new(ExitCode::DigitalAssetError, err))?;
 
         Ok(())
     }

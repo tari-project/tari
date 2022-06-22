@@ -132,6 +132,11 @@ pub async fn get_heights(
 ) -> Result<(u64, u64), Status> {
     block_heights(handler, request.start_height, request.end_height, request.from_tip).await
 }
+impl BaseNodeGrpcServer {
+    fn report_error(&self, status: Status) -> Status {
+        report_error(self.report_grpc_error, status)
+    }
+}
 
 #[tonic::async_trait]
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
@@ -452,6 +457,50 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    async fn get_current_contract_outputs(
+        &self,
+        request: Request<tari_rpc::GetCurrentContractOutputsRequest>,
+    ) -> Result<Response<tari_rpc::GetCurrentContractOutputsResponse>, Status> {
+        let request = request.into_inner();
+
+        let contract_id = FixedHash::try_from(request.contract_id.as_slice())
+            .map_err(|err| Status::invalid_argument(format!("Contract ID is not a valid: {}", err)))?;
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for GetCurrentContractOutputs: contract_id: {}", contract_id
+        );
+
+        let output_type = u8::try_from(request.output_type)
+            .ok()
+            .and_then(OutputType::from_byte)
+            .ok_or_else(|| Status::invalid_argument("Invalid output_type"))?;
+
+        let mut node_service = self.node_service.clone();
+        let outputs = node_service
+            .get_outputs_for_contract(contract_id, output_type)
+            .await
+            .map_err(|err| self.report_error(Status::internal(err.to_string())))?;
+
+        let outputs = outputs
+            .into_iter()
+            .map(|output| {
+                let unpruned = output
+                    .output
+                    .as_transaction_output()
+                    .ok_or_else(|| Status::failed_precondition("Checkpoint output has been pruned"))?;
+
+                Ok(tari_rpc::UtxoMinedInfo {
+                    output: Some(unpruned.clone().into()),
+                    mmr_position: output.mmr_position,
+                    mined_height: output.mined_height,
+                    header_hash: output.header_hash,
+                })
+            })
+            .collect::<Result<_, Status>>()?;
+
+        Ok(Response::new(tari_rpc::GetCurrentContractOutputsResponse { outputs }))
+    }
+
     async fn get_tokens(
         &self,
         request: Request<tari_rpc::GetTokensRequest>,
@@ -460,14 +509,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "Incoming GRPC request for GetTokens: asset_pub_key: {}, unique_ids: [{}]",
+            "Incoming GRPC request for GetTokens: asset_pub_key: {}",
             request.asset_public_key.to_hex(),
-            request
-                .unique_ids
-                .iter()
-                .map(|s| s.to_hex())
-                .collect::<Vec<_>>()
-                .join(",")
         );
 
         let pub_key = PublicKey::from_bytes(&request.asset_public_key).map_err(|err| {
@@ -1837,6 +1880,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::GetConstitutionsStream>, Status> {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
+        println!("{:?}", request);
         let dan_node_public_key = PublicKey::from_bytes(&request.dan_node_public_key)
             .map_err(|_| Status::invalid_argument("Dan node public key is not a valid public key"))?;
 
@@ -1846,6 +1890,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .transpose()
             .map_err(|_| Status::invalid_argument("Block hash has an invalid length"))?;
 
+        println!("{:?}", start_hash);
         let mut node_service = self.node_service.clone();
         // Check the start_hash is correct, or if not provided, start from genesis
         let start_header = match start_hash {

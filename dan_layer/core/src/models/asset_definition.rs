@@ -20,23 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, marker::PhantomData};
-
-use serde::{self, de, Deserialize, Deserializer, Serialize};
-use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
+use serde::{self, Deserialize, Serialize};
+use tari_common_types::types::FixedHash;
 use tari_core::transactions::transaction_components::TemplateParameter;
-use tari_utilities::hex::Hex;
+
+use crate::helpers::deserialize_from_hex;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct AssetDefinition {
-    #[serde(deserialize_with = "AssetDefinition::deserialize_pub_key_from_hex")]
-    pub public_key: PublicKey,
+    #[serde(deserialize_with = "deserialize_from_hex")]
+    pub contract_id: FixedHash,
     // TODO: remove and read from base layer
     pub committee: Vec<String>,
     pub phase_timeout: u64,
     // TODO: Better name? lock time/peg time? (in number of blocks)
     pub base_layer_confirmation_time: u64,
+    // TODO: remove
     pub checkpoint_unique_id: Vec<u8>,
     pub initial_state: InitialState,
     pub template_parameters: Vec<TemplateParameter>,
@@ -46,8 +46,8 @@ impl Default for AssetDefinition {
     fn default() -> Self {
         Self {
             base_layer_confirmation_time: 5,
-            checkpoint_unique_id: ASSET_CHECKPOINT_ID.into(),
-            public_key: Default::default(),
+            checkpoint_unique_id: vec![],
+            contract_id: Default::default(),
             committee: vec![],
             phase_timeout: 30,
             initial_state: Default::default(),
@@ -57,28 +57,6 @@ impl Default for AssetDefinition {
 }
 
 impl AssetDefinition {
-    pub fn deserialize_pub_key_from_hex<'de, D>(des: D) -> Result<PublicKey, D::Error>
-    where D: Deserializer<'de> {
-        struct KeyStringVisitor<K> {
-            marker: PhantomData<K>,
-        }
-
-        impl<'de> de::Visitor<'de> for KeyStringVisitor<PublicKey> {
-            type Value = PublicKey;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a public key in hex format")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where E: de::Error {
-                PublicKey::from_hex(v).map_err(E::custom)
-            }
-        }
-
-        des.deserialize_str(KeyStringVisitor { marker: PhantomData })
-    }
-
     pub fn initial_state(&self) -> &InitialState {
         &self.initial_state
     }

@@ -25,37 +25,40 @@ use std::{convert::TryInto, net::SocketAddr};
 use async_trait::async_trait;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common_types::types::{BlockHash, PublicKey, COMMITTEE_DEFINITION_ID};
-use tari_core::transactions::transaction_components::TransactionOutput;
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_common_types::types::{FixedHash, PublicKey};
+use tari_core::{
+    chain_storage::{PrunedOutput, UtxoMinedInfo},
+    transactions::transaction_components::OutputType,
+};
+use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
+    models::{BaseLayerMetadata, BaseLayerOutput},
     services::BaseNodeClient,
     DigitalAssetError,
 };
 
 const LOG_TARGET: &str = "tari::validator_node::app";
 
-type Inner = grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>;
+type Client = grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>;
 
 #[derive(Clone)]
 pub struct GrpcBaseNodeClient {
     endpoint: SocketAddr,
-    inner: Option<Inner>,
+    client: Option<Client>,
 }
 
 impl GrpcBaseNodeClient {
     pub fn new(endpoint: SocketAddr) -> GrpcBaseNodeClient {
-        Self { endpoint, inner: None }
+        Self { endpoint, client: None }
     }
 
-    pub async fn connection(&mut self) -> Result<&mut Inner, DigitalAssetError> {
-        if self.inner.is_none() {
+    pub async fn connection(&mut self) -> Result<&mut Client, DigitalAssetError> {
+        if self.client.is_none() {
             let url = format!("http://{}", self.endpoint);
-            let inner = Inner::connect(url).await?;
-            self.inner = Some(inner);
+            let inner = Client::connect(url).await?;
+            self.client = Some(inner);
         }
-        self.inner
+        self.client
             .as_mut()
             .ok_or_else(|| DigitalAssetError::FatalError("no connection".into()))
     }
@@ -66,147 +69,123 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         let inner = self.connection().await?;
         let request = grpc::Empty {};
         let result = inner.get_tip_info(request).await?.into_inner();
+        let metadata = result
+            .metadata
+            .ok_or_else(|| DigitalAssetError::InvalidPeerMessage("Base node returned no metadata".to_string()))?;
         Ok(BaseLayerMetadata {
-            height_of_longest_chain: result.metadata.unwrap().height_of_longest_chain,
+            height_of_longest_chain: metadata.height_of_longest_chain,
+            tip_hash: metadata.best_block.try_into().map_err(|_| {
+                DigitalAssetError::InvalidPeerMessage("best_block was not a valid fixed hash".to_string())
+            })?,
         })
     }
 
-    async fn get_current_checkpoint(
+    async fn get_current_contract_outputs(
         &mut self,
         _height: u64,
-        asset_public_key: PublicKey,
-        checkpoint_unique_id: Vec<u8>,
-    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError> {
         let inner = self.connection().await?;
-        let request = grpc::GetTokensRequest {
-            asset_public_key: asset_public_key.as_bytes().to_vec(),
-            unique_ids: vec![checkpoint_unique_id],
+        let request = grpc::GetCurrentContractOutputsRequest {
+            contract_id: contract_id.to_vec(),
+            output_type: u32::from(output_type.as_byte()),
         };
-        let mut result = inner.get_tokens(request).await?.into_inner();
-        let mut outputs = vec![];
-        while let Some(r) = result.message().await? {
-            outputs.push(r);
-        }
-        let output = outputs
-            .first()
-            .map(|o| match o.features.clone().unwrap().try_into() {
-                Ok(f) => Ok(BaseLayerOutput {
-                    features: f,
-                    height: o.mined_height,
-                }),
-                Err(e) => Err(DigitalAssetError::ConversionError(e)),
+        let resp = match inner.get_current_contract_outputs(request).await {
+            Ok(resp) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "get_current_contract_outputs: {} output(s) found for contract {}: {:?}",
+                    resp.get_ref().outputs.len(),
+                    contract_id,
+                    resp
+                );
+                resp.into_inner()
+            },
+            Err(err) => return Err(err.into()),
+        };
+
+        resp.outputs
+            .into_iter()
+            .map(|output| {
+                let mined_height = output.mined_height;
+                let features = output.output.and_then(|o| o.features).ok_or_else(|| {
+                    DigitalAssetError::ConversionError("Output was none/pruned or did not contain features".to_string())
+                })?;
+
+                match features.try_into() {
+                    Ok(features) => Ok(BaseLayerOutput {
+                        features,
+                        height: mined_height,
+                    }),
+                    Err(e) => Err(DigitalAssetError::ConversionError(e)),
+                }
             })
-            .transpose()?;
-        Ok(output)
+            .collect()
     }
 
     async fn get_constitutions(
         &mut self,
-        dan_node_public_key: PublicKey,
-        block_hash: Vec<u8>,
-    ) -> Result<(Vec<TransactionOutput>, BlockHash), DigitalAssetError> {
-        let inner = self.connection().await?;
+        start_block_hash: Option<FixedHash>,
+        dan_node_public_key: &PublicKey,
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
+        let conn = self.connection().await?;
         let request = grpc::GetConstitutionsRequest {
-            // TODO: pass in the last block hash that was scanned
-            start_block_hash: block_hash,
+            start_block_hash: start_block_hash.map(|h| h.to_vec()).unwrap_or_else(Vec::new),
             dan_node_public_key: dan_node_public_key.as_bytes().to_vec(),
         };
-        let mut result = inner.get_constitutions(request).await?.into_inner();
+        let mut result = conn.get_constitutions(request).await?.into_inner();
         let mut outputs = vec![];
-        let mut last_hash: BlockHash = vec![];
         while let Some(mined_info) = result.message().await? {
             let output = mined_info
                 .output
+                .map(TryInto::try_into)
+                .transpose()
+                .map_err(DigitalAssetError::ConversionError)?
                 .ok_or_else(|| DigitalAssetError::InvalidPeerMessage("Mined info contained no output".to_string()))?;
-            outputs.push(output.try_into().map_err(DigitalAssetError::ConversionError)?);
-            last_hash = mined_info.header_hash;
+
+            outputs.push(UtxoMinedInfo {
+                output: PrunedOutput::NotPruned { output },
+                mmr_position: mined_info.mmr_position,
+                mined_height: mined_info.mined_height,
+                header_hash: mined_info.header_hash,
+            });
         }
-        Ok((outputs, last_hash))
+        Ok(outputs)
     }
 
     async fn check_if_in_committee(
         &mut self,
-        asset_public_key: PublicKey,
-        dan_node_public_key: PublicKey,
+        _asset_public_key: PublicKey,
+        _dan_node_public_key: PublicKey,
     ) -> Result<(bool, u64), DigitalAssetError> {
-        let tip = self.get_tip_info().await?;
-        if let Some(checkpoint) = self
-            .get_current_checkpoint(
-                tip.height_of_longest_chain,
-                asset_public_key,
-                COMMITTEE_DEFINITION_ID.into(),
-            )
-            .await?
-        {
-            if let Some(committee) = checkpoint.get_side_chain_committee() {
-                if committee.contains(&dan_node_public_key) {
-                    // We know it's part of the committe at this height
-                    // TODO: there could be a scenario where it was not part of the committe for one block (or more,
-                    // depends on the config)
-                    Ok((true, checkpoint.height))
-                } else {
-                    // We know it's no longer part of the committe at this height
-                    // TODO: if the committe changes twice in short period of time, this will cause some glitches
-                    Ok((false, checkpoint.height))
-                }
-            } else {
-                Ok((false, 0))
-            }
-        } else {
-            Ok((false, 0))
-        }
-    }
-
-    async fn get_assets_for_dan_node(
-        &mut self,
-        dan_node_public_key: PublicKey,
-    ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError> {
-        let inner = self.connection().await?;
-        // TODO: probably should use output mmr indexes here
-        let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 100 };
-        let mut result = inner.list_asset_registrations(request).await?.into_inner();
-        let mut assets: Vec<(AssetDefinition, u64)> = vec![];
-        let tip = self.get_tip_info().await?;
-        while let Some(r) = result.message().await? {
-            if let Ok(asset_public_key) = PublicKey::from_bytes(r.asset_public_key.as_bytes()) {
-                if let Some(checkpoint) = self
-                    .get_current_checkpoint(
-                        tip.height_of_longest_chain,
-                        asset_public_key.clone(),
-                        COMMITTEE_DEFINITION_ID.into(),
-                    )
-                    .await?
-                {
-                    if let Some(committee) = checkpoint.get_side_chain_committee() {
-                        if committee.contains(&dan_node_public_key) {
-                            info!(
-                                target: LOG_TARGET,
-                                "Node is on committee for asset : {}", asset_public_key
-                            );
-                            let committee = committee.iter().map(Hex::to_hex).collect::<Vec<String>>();
-                            assets.push((
-                                AssetDefinition {
-                                    committee,
-                                    public_key: asset_public_key,
-                                    template_parameters: r
-                                        .features
-                                        .unwrap()
-                                        .asset
-                                        .unwrap()
-                                        .template_parameters
-                                        .into_iter()
-                                        .map(|tp| tp.into())
-                                        .collect(),
-                                    ..Default::default()
-                                },
-                                checkpoint.height,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        Ok(assets)
+        unimplemented!()
+        // let tip = self.get_tip_info().await?;
+        // if let Some(checkpoint) = self
+        //     .get_current_checkpoint(
+        //         tip.height_of_longest_chain,
+        //         asset_public_key,
+        //         COMMITTEE_DEFINITION_ID.into(),
+        //     )
+        //     .await?
+        // {
+        //     if let Some(committee) = checkpoint.get_side_chain_committee() {
+        //         if committee.contains(&dan_node_public_key) {
+        //             // We know it's part of the committee at this height
+        //             // TODO: there could be a scenario where it was not part of the committee for one block (or more,
+        //             // depends on the config)
+        //             Ok((true, checkpoint.height))
+        //         } else {
+        //             // We know it's no longer part of the committee at this height
+        //             // TODO: if the committee changes twice in short period of time, this will cause some glitches
+        //             Ok((false, checkpoint.height))
+        //         }
+        //     } else {
+        //         Ok((false, 0))
+        //     }
+        // } else {
+        //     Ok((false, 0))
+        // }
     }
 
     async fn get_asset_registration(

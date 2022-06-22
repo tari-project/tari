@@ -32,7 +32,6 @@ use tari_app_grpc::{
     },
 };
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
-use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{models::StateRoot, services::WalletClient, DigitalAssetError};
 
@@ -65,18 +64,14 @@ impl GrpcWalletClient {
 impl WalletClient for GrpcWalletClient {
     async fn create_new_checkpoint(
         &mut self,
-        asset_public_key: &PublicKey,
-        checkpoint_unique_id: &[u8],
+        contract_id: &FixedHash,
         state_root: &StateRoot,
-        next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError> {
         let inner = self.connection().await?;
 
         let request = CreateFollowOnAssetCheckpointRequest {
-            asset_public_key: asset_public_key.as_bytes().to_vec(),
-            unique_id: Vec::from(checkpoint_unique_id),
+            contract_id: contract_id.to_vec(),
             merkle_root: state_root.as_bytes().to_vec(),
-            next_committee: next_committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
         };
 
         let _res = inner

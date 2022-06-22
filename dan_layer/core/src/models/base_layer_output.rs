@@ -37,9 +37,8 @@ pub struct BaseLayerOutput {
 impl BaseLayerOutput {
     pub fn get_side_chain_committee(&self) -> Option<&[PublicKey]> {
         self.features
-            .committee_definition
-            .as_ref()
-            .map(|s| s.committee.as_slice())
+            .constitution_committee()
+            .map(|committee| committee.members())
     }
 
     pub fn get_checkpoint_merkle_root(&self) -> Option<FixedHash> {
@@ -49,12 +48,16 @@ impl BaseLayerOutput {
     pub fn get_parent_public_key(&self) -> Option<&PublicKey> {
         self.features.parent_public_key.as_ref()
     }
+
+    pub fn contract_id(&self) -> Option<FixedHash> {
+        self.features.contract_id()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct CheckpointOutput {
-    pub flags: OutputType,
-    pub parent_public_key: PublicKey,
+    pub output_type: OutputType,
+    pub contract_id: FixedHash,
     pub merkle_root: FixedHash,
 }
 
@@ -66,18 +69,15 @@ impl TryFrom<BaseLayerOutput> for CheckpointOutput {
             return Err(ModelError::NotCheckpointOutput);
         }
 
-        let parent_public_key = output
-            .get_parent_public_key()
-            .cloned()
-            .ok_or(ModelError::OutputMissingParentPublicKey)?;
+        let contract_id = output.contract_id().ok_or(ModelError::OutputMissingParentPublicKey)?;
 
         let merkle_root = output
             .get_checkpoint_merkle_root()
             .ok_or(ModelError::CheckpointOutputMissingCheckpointMerkleRoot)?;
 
         Ok(Self {
-            flags: output.features.output_type,
-            parent_public_key,
+            output_type: output.features.output_type,
+            contract_id,
             merkle_root,
         })
     }

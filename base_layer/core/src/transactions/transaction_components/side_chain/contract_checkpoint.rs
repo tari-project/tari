@@ -20,31 +20,56 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{
-    global::{GlobalDbBackendAdapter, GlobalDbMetadataKey},
-    StorageError,
+use std::io::{Error, Read, Write};
+
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::FixedHash;
+
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    transactions::transaction_components::CommitteeSignatures,
 };
 
-#[derive(Debug, Clone, Default)]
-pub struct MockGlobalDbBackupAdapter;
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct ContractCheckpoint {
+    pub merkle_root: FixedHash,
+    pub signatures: CommitteeSignatures,
+}
 
-impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
-    type BackendTransaction = ();
-    type Error = StorageError;
-
-    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
-        todo!()
+impl ConsensusEncoding for ContractCheckpoint {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.merkle_root.consensus_encode(writer)?;
+        self.signatures.consensus_encode(writer)?;
+        Ok(())
     }
+}
 
-    fn get_data(&self, _key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error> {
-        todo!()
+impl ConsensusEncodingSized for ContractCheckpoint {}
+
+impl ConsensusDecoding for ContractCheckpoint {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        Ok(Self {
+            merkle_root: ConsensusDecoding::consensus_decode(reader)?,
+            signatures: ConsensusDecoding::consensus_decode(reader)?,
+        })
     }
+}
 
-    fn set_data(&self, _key: GlobalDbMetadataKey, _value: &[u8]) -> Result<(), Self::Error> {
-        todo!()
-    }
+#[cfg(test)]
+mod tests {
+    use std::convert::TryInto;
 
-    fn commit(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        todo!()
+    use tari_common_types::types::Signature;
+
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let subject = ContractCheckpoint {
+            merkle_root: FixedHash::zero(),
+            signatures: vec![Signature::default(); 512].try_into().unwrap(),
+        };
+        check_consensus_encoding_correctness(subject).unwrap();
     }
 }

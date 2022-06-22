@@ -50,6 +50,7 @@ use crate::{
             ContractAcceptance,
             ContractAcceptanceRequirements,
             ContractAmendment,
+            ContractCheckpoint,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
@@ -372,6 +373,7 @@ impl From<SideChainFeatures> for proto::types::SideChainFeatures {
             update_proposal: value.update_proposal.map(Into::into),
             update_proposal_acceptance: value.update_proposal_acceptance.map(Into::into),
             amendment: value.amendment.map(Into::into),
+            checkpoint: value.checkpoint.map(Into::into),
         }
     }
 }
@@ -393,6 +395,7 @@ impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
             .map(ContractUpdateProposalAcceptance::try_from)
             .transpose()?;
         let amendment = features.amendment.map(ContractAmendment::try_from).transpose()?;
+        let checkpoint = features.checkpoint.map(ContractCheckpoint::try_from).transpose()?;
 
         Ok(Self {
             contract_id,
@@ -402,6 +405,7 @@ impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
             update_proposal,
             update_proposal_acceptance,
             amendment,
+            checkpoint,
         })
     }
 }
@@ -451,6 +455,29 @@ impl TryFrom<proto::types::ContractConstitution> for ContractConstitution {
             checkpoint_params,
             constitution_change_rules,
             initial_reward,
+        })
+    }
+}
+
+//---------------------------------- ContractCheckpoint --------------------------------------------//
+impl From<ContractCheckpoint> for proto::types::ContractCheckpoint {
+    fn from(value: ContractCheckpoint) -> Self {
+        Self {
+            merkle_root: value.merkle_root.to_vec(),
+            signatures: Some(value.signatures.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractCheckpoint> for ContractCheckpoint {
+    type Error = String;
+
+    fn try_from(value: proto::types::ContractCheckpoint) -> Result<Self, Self::Error> {
+        let merkle_root = value.merkle_root.try_into().map_err(|_| "Invalid merkle root")?;
+        let signatures = value.signatures.map(TryInto::try_into).transpose()?.unwrap_or_default();
+        Ok(Self {
+            merkle_root,
+            signatures,
         })
     }
 }

@@ -29,7 +29,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 
 use crate::storage::{
     chain::{ChainDb, DbInstruction, DbNode, DbQc},
@@ -46,8 +46,8 @@ use crate::storage::{
 
 #[derive(Clone, Default)]
 pub struct MockDbFactory {
-    chain_db: Arc<RwLock<HashMap<PublicKey, MockChainDbBackupAdapter>>>,
-    state_db: Arc<RwLock<HashMap<PublicKey, MockStateDbBackupAdapter>>>,
+    chain_db: Arc<RwLock<HashMap<FixedHash, MockChainDbBackupAdapter>>>,
+    state_db: Arc<RwLock<HashMap<FixedHash, MockStateDbBackupAdapter>>>,
     _global_db: Arc<RwLock<MockGlobalDbBackupAdapter>>,
 }
 
@@ -58,56 +58,44 @@ impl DbFactory for MockDbFactory {
 
     fn get_chain_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<Option<ChainDb<Self::ChainDbBackendAdapter>>, StorageError> {
         Ok(self
             .chain_db
             .read()
             .unwrap()
-            .get(asset_public_key)
+            .get(contract_id)
             .cloned()
             .map(ChainDb::new))
     }
 
     fn get_or_create_chain_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError> {
-        let entry = self
-            .chain_db
-            .write()
-            .unwrap()
-            .entry(asset_public_key.clone())
-            .or_default()
-            .clone();
+        let entry = self.chain_db.write().unwrap().entry(*contract_id).or_default().clone();
         Ok(ChainDb::new(entry))
     }
 
     fn get_state_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError> {
         Ok(self
             .state_db
             .read()
             .unwrap()
-            .get(asset_public_key)
+            .get(contract_id)
             .cloned()
-            .map(|db| StateDb::new(asset_public_key.clone(), db)))
+            .map(|db| StateDb::new(*contract_id, db)))
     }
 
     fn get_or_create_state_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError> {
-        let entry = self
-            .state_db
-            .write()
-            .unwrap()
-            .entry(asset_public_key.clone())
-            .or_default()
-            .clone();
-        Ok(StateDb::new(asset_public_key.clone(), entry))
+        let entry = self.state_db.write().unwrap().entry(*contract_id).or_default().clone();
+        Ok(StateDb::new(*contract_id, entry))
     }
 
     fn get_or_create_global_db(&self) -> Result<GlobalDb<Self::GlobalDbBackendAdapter>, StorageError> {

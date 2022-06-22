@@ -25,7 +25,7 @@ use std::{fs::create_dir_all, path::PathBuf};
 use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::embed_migrations;
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 use tari_dan_core::storage::{chain::ChainDb, global::GlobalDb, state::StateDb, DbFactory, StorageError};
 use tari_utilities::hex::Hex;
 
@@ -54,10 +54,10 @@ impl SqliteDbFactory {
         // Self { database_url }
     }
 
-    fn database_url_for(&self, asset_public_key: &PublicKey) -> String {
+    fn database_url_for(&self, contract_id: &FixedHash) -> String {
         self.data_dir
             .join("asset_data")
-            .join(asset_public_key.to_hex())
+            .join(contract_id.to_hex())
             .join("dan_storage.sqlite")
             .into_os_string()
             .into_string()
@@ -88,9 +88,9 @@ impl DbFactory for SqliteDbFactory {
 
     fn get_chain_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<Option<ChainDb<Self::ChainDbBackendAdapter>>, StorageError> {
-        let database_url = self.database_url_for(asset_public_key);
+        let database_url = self.database_url_for(contract_id);
         match self.try_connect(&database_url)? {
             Some(_) => Ok(Some(ChainDb::new(SqliteChainBackendAdapter::new(database_url)))),
             None => Ok(None),
@@ -99,9 +99,9 @@ impl DbFactory for SqliteDbFactory {
 
     fn get_or_create_chain_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError> {
-        let database_url = self.database_url_for(asset_public_key);
+        let database_url = self.database_url_for(contract_id);
         debug!("Loading chain database from {}", database_url);
         create_dir_all(&PathBuf::from(&database_url).parent().unwrap())
             .map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
@@ -119,12 +119,12 @@ impl DbFactory for SqliteDbFactory {
 
     fn get_state_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError> {
-        let database_url = self.database_url_for(asset_public_key);
+        let database_url = self.database_url_for(contract_id);
         match self.try_connect(&database_url)? {
             Some(_) => Ok(Some(StateDb::new(
-                asset_public_key.clone(),
+                *contract_id,
                 SqliteStateDbBackendAdapter::new(database_url),
             ))),
             None => Ok(None),
@@ -133,9 +133,9 @@ impl DbFactory for SqliteDbFactory {
 
     fn get_or_create_state_db(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError> {
-        let database_url = self.database_url_for(asset_public_key);
+        let database_url = self.database_url_for(contract_id);
 
         create_dir_all(&PathBuf::from(&database_url).parent().unwrap())
             .map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
@@ -150,7 +150,7 @@ impl DbFactory for SqliteDbFactory {
         embed_migrations!("./migrations");
         embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
         Ok(StateDb::new(
-            asset_public_key.clone(),
+            *contract_id,
             SqliteStateDbBackendAdapter::new(database_url),
         ))
     }

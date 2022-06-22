@@ -119,7 +119,8 @@ impl WalletClient {
     let inner = self.get_inner_mut()?;
     let committee = vec![];
     let request = grpc::CreateInitialAssetCheckpointRequest {
-      asset_public_key: Vec::from_hex(asset_public_key)?,
+      // TODO: contract id
+      contract_id: Vec::from_hex(asset_public_key)?,
       merkle_root,
       committee,
     };

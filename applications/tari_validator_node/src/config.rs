@@ -73,6 +73,7 @@ pub struct ValidatorNodeConfig {
     pub data_dir: PathBuf,
     pub p2p: P2pConfig,
     pub constitution_auto_accept: bool,
+    /// Constitution polling interval in block height
     pub constitution_management_polling_interval: u64,
     pub constitution_management_confirmation_time: u64,
     pub grpc_address: Option<Multiaddr>,

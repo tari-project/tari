@@ -22,7 +22,6 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::{
@@ -63,7 +62,7 @@ impl From<HotStuffMessage<TariDanPayload>> for proto::consensus::HotStuffMessage
                 .unwrap_or_else(TreeNodeHash::zero)
                 .as_bytes()
                 .to_vec(),
-            asset_public_key: source.asset_public_key().to_vec(),
+            contract_id: source.contract_id().to_vec(),
         }
     }
 }
@@ -138,8 +137,10 @@ impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPaylo
             value.node.map(|n| n.try_into()).transpose()?,
             node_hash,
             value.partial_sig.map(|p| p.try_into()).transpose()?,
-            PublicKey::from_bytes(&value.asset_public_key)
-                .map_err(|err| format!("Not a valid asset public key:{}", err))?,
+            value
+                .contract_id
+                .try_into()
+                .map_err(|err| format!("Not a valid contract ID:{}", err))?,
         ))
     }
 }

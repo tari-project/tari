@@ -31,7 +31,7 @@ use crate::{
 pub trait CommitteeManager<TAddr: NodeAddressable> {
     fn current_committee(&self) -> Result<&Committee<TAddr>, DigitalAssetError>;
 
-    fn read_from_checkpoint(&mut self, output: BaseLayerOutput) -> Result<(), DigitalAssetError>;
+    fn read_from_constitution(&mut self, output: BaseLayerOutput) -> Result<(), DigitalAssetError>;
 }
 
 pub struct ConcreteCommitteeManager {
@@ -49,7 +49,7 @@ impl CommitteeManager<PublicKey> for ConcreteCommitteeManager {
         Ok(&self.committee)
     }
 
-    fn read_from_checkpoint(&mut self, output: BaseLayerOutput) -> Result<(), DigitalAssetError> {
+    fn read_from_constitution(&mut self, output: BaseLayerOutput) -> Result<(), DigitalAssetError> {
         // TODO: better error
         let committee = output.get_side_chain_committee().unwrap();
         self.committee = Committee::new(committee.to_vec());
