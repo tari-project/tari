@@ -1,11 +1,10 @@
-import { CSSProperties } from 'react'
-
 import Button from '../../components/Button'
 import Text from '../../components/Text'
 import SvgStar from '../../styles/Icons/Star'
 import SvgInfo1 from '../../styles/Icons/Info1'
 
 import { StyledHelpTipWrapper } from './styles'
+import { HelpTipProps } from './types'
 
 /**
  * @name HelpTip
@@ -15,19 +14,14 @@ import { StyledHelpTipWrapper } from './styles'
  * @prop {string} cta - call to action text inside button
  * @prop {() => void} onHelp - callback called when user interacts with cta
  * @prop {CSSProperties} [style] - styles to apply to main wrapper element
+ * @prop {boolean} [spaced] - whether the help tip should be rendered with additional top/bottom margin suitable for headers
  */
-const HelpTip = ({
-  text,
-  cta,
-  onHelp,
-  style,
-}: {
-  text: string
-  cta: string
-  onHelp: () => void
-  style?: CSSProperties
-}) => (
-  <StyledHelpTipWrapper data-testid='mining-header-tip-cmp' style={style}>
+const HelpTip = ({ text, cta, onHelp, style, spaced }: HelpTipProps) => (
+  <StyledHelpTipWrapper
+    data-testid='mining-header-tip-cmp'
+    style={style}
+    spaced={spaced}
+  >
     <SvgStar height={24} width={24} style={{ marginRight: 8 }} />
     <Text type='defaultHeavy'>
       {text}{' '}
