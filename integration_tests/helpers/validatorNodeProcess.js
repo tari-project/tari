@@ -170,6 +170,9 @@ class ValidatorNodeProcess {
 
       let customArgs = {
         "validator_node.p2p.transport.type": "tcp",
+        "validator_node.identity_file": path.resolve(
+          "./fixtures/validator_node_id.json"
+        ),
       };
       if (this.baseNodeAddress) {
         customArgs["validator_node.base_node_grpc_address"] =

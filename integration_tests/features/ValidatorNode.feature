@@ -30,10 +30,13 @@ Feature: Validator Node
         And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
         When I mine 8 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        And I publish a contract constitution from file "fixtures/contract_constitution.json" on wallet WALLET1 via command line
+        When I mine 8 blocks using wallet WALLET1 on NODE1
+        Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1 with "constitiution_auto_accept" set to "false"
         Then I publish a contract acceptance transaction for the validator node VN1
         When I mine 8 blocks using wallet WALLET1 on NODE1
-        Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        Then wallet WALLET1 has at least 3 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
 
     @dan @broken
     Scenario: Contract auto acceptance
