@@ -22,7 +22,7 @@
 
 const { When, Given, Then } = require("@cucumber/cucumber");
 const { expect } = require("chai");
-const { sleep } = require("../../helpers/util");
+const { sleep, findUtxoWithOutputMessage } = require("../../helpers/util");
 const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 
 Given(
@@ -86,48 +86,40 @@ Then(
 
 Then(
     "wallet {word} will have a successfully mined constitution acceptance transaction for contract {word}",
-    { timeout: 20 * 1000 },
+    { timeout: 40 * 1000 },
     async function (wallet_name, contract_name) {
         let wallet = await this.getWallet(wallet_name);
         let contract_id = await this.fetchContract(contract_name);
-        let client = await wallet.connectClient();
-        let str = `Contract acceptance for contract with id=${contract_id}`
-        let accepted = [];
+        let message = `Contract acceptance for contract with id=${contract_id}`
 
-        while (true) {
-            let found_txs = await client.getCompletedTransactions();
-            accepted = found_txs.filter((txo) => {
-                return txo.message == str;
-            });
-
-            if (accepted.length > 0) { break };
-            sleep(5000);
-        }
-
-        expect(accepted.length).to.equal(1);
+        let utxos = await findUtxoWithOutputMessage(wallet, message);
+        expect(utxos.length).to.equal(1);
     }
 )
 
 Then(
     "wallet {word} will have a successfully mined contract acceptance transaction for contract {word}",
-    { timeout: 20 * 1000 },
+    { timeout: 40 * 1000 },
     async function (wallet_name, contract_name) {
         let wallet = await this.getWallet(wallet_name);
         let contract_id = await this.fetchContract(contract_name);
-        let client = await wallet.connectClient();
-        let str = `Contract acceptance for contract with id=${contract_id}`
-        let accepted = [];
+        let message = `Contract acceptance for contract with id=${contract_id}`
 
-        while (true) {
-            let found_txs = await client.getCompletedTransactions();
-            accepted = found_txs.filter((txo) => {
-                return txo.message == str;
-            });
-
-            if (accepted.length > 0) { break };
-            sleep(5000);
-        }
-
-        expect(accepted.length).to.equal(1);
+        let utxos = await findUtxoWithOutputMessage(wallet, message);
+        expect(utxos.length).to.equal(1);
     }
 )
+
+Then(
+    "wallet {word} will have a successfully mined contract update proposal for contract {word}",
+    { timeout: 40 * 1000 },
+    async function (wallet_name, contract_name) {
+        let wallet = await this.getWallet(wallet_name);
+        let contract_id = await this.fetchContract(contract_name);
+        let message = `Contract update proposal acceptance for contract_id=${contract_id} and proposal_id=0`
+
+        let utxos = await findUtxoWithOutputMessage(wallet, message);
+        expect(utxos.length).to.equal(1);
+    }
+)
+
