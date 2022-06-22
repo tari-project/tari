@@ -22,9 +22,10 @@
 
 use std::{
     convert::TryFrom,
+    fs,
     fs::File,
-    io::{BufReader, BufWriter, LineWriter, Write},
-    path::PathBuf,
+    io::{LineWriter, Write},
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -32,6 +33,7 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{
@@ -68,9 +70,11 @@ use tari_wallet::{
         ContractDefinitionFileFormat,
         ContractSpecificationFileFormat,
         ContractUpdateProposalFileFormat,
+        SignatureFileFormat,
     },
     error::WalletError,
-    output_manager_service::handle::OutputManagerHandle,
+    key_manager_service::{KeyManagerInterface, NextKeyResult},
+    output_manager_service::{handle::OutputManagerHandle, resources::OutputManagerKeyManagerBranch},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
     WalletConfig,
@@ -83,13 +87,15 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
-    automation::prompt::{HexArg, Prompt},
+    automation::prompt::{HexArg, Optional, Prompt, YesNo},
     cli::{
         CliCommands,
         ContractCommand,
         ContractSubcommand,
+        InitAmendmentArgs,
         InitConstitutionArgs,
         InitDefinitionArgs,
+        InitUpdateProposalArgs,
         PublishFileArgs,
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
@@ -745,8 +751,8 @@ pub async fn command_runner(
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
             },
-            Contract(subcommand) => {
-                handle_contract_definition_command(&wallet, subcommand).await?;
+            Contract(command) => {
+                handle_contract_command(&wallet, command).await?;
             },
         }
     }
@@ -789,13 +795,12 @@ pub async fn command_runner(
     Ok(())
 }
 
-async fn handle_contract_definition_command(
-    wallet: &WalletSqlite,
-    command: ContractCommand,
-) -> Result<(), CommandError> {
+async fn handle_contract_command(wallet: &WalletSqlite, command: ContractCommand) -> Result<(), CommandError> {
     match command.subcommand {
-        ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(args),
+        ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(wallet, args).await,
         ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
+        ContractSubcommand::InitUpdateProposal(args) => init_contract_update_proposal_spec(args),
+        ContractSubcommand::InitAmendment(args) => init_contract_amendment_spec(args),
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
         ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
         ContractSubcommand::PublishUpdateProposal(args) => publish_contract_update_proposal(wallet, args).await,
@@ -803,7 +808,7 @@ async fn handle_contract_definition_command(
     }
 }
 
-fn init_contract_definition_spec(args: InitDefinitionArgs) -> Result<(), CommandError> {
+async fn init_contract_definition_spec(wallet: &WalletSqlite, args: InitDefinitionArgs) -> Result<(), CommandError> {
     if args.dest_path.exists() {
         if args.force {
             println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
@@ -815,31 +820,75 @@ fn init_contract_definition_spec(args: InitDefinitionArgs) -> Result<(), Command
             return Ok(());
         }
     }
-    let dest = args.dest_path;
+    let mut dest = args.dest_path;
+    if dest.extension().is_none() {
+        dest = dest.join("contract.json");
+    }
 
     let contract_name = Prompt::new("Contract name (max 32 characters):")
         .skip_if_some(args.contract_name)
-        .get_result()?;
-    let contract_issuer = Prompt::new("Issuer public Key (hex):")
-        .skip_if_some(args.contract_issuer)
-        .get_result_parsed::<HexArg<_>>()?;
+        .ask()?;
+    if contract_name.as_bytes().len() > 32 {
+        return Err(CommandError::InvalidArgument(
+            "Contract name must be at most 32 bytes.".to_string(),
+        ));
+    }
+    println!(
+        "Wallet public key: {}",
+        wallet.comms.node_identity().public_key().to_hex()
+    );
+    let use_wallet_pk = Prompt::new("Use wallet public key as issuer public key? (Y/N):")
+        .skip_if_some(args.contract_issuer.as_ref().map(|_| "y".to_string()))
+        .ask_parsed::<YesNo>()
+        .map(|yn| yn.as_bool())?;
+
+    let contract_issuer = if use_wallet_pk {
+        args.contract_issuer
+            .map(|s| PublicKey::from_hex(&s))
+            .transpose()
+            .map_err(|_| CommandError::InvalidArgument("Issuer public key hex is invalid.".to_string()))?
+            .unwrap_or_else(|| wallet.comms.node_identity().public_key().clone())
+    } else {
+        let contract_issuer = Prompt::new("Issuer public Key (hex): (Press enter to generate a new one)")
+            .with_default("")
+            .skip_if_some(args.contract_issuer)
+            .ask_parsed::<Optional<HexArg<PublicKey>>>()?
+            .into_inner()
+            .map(|v| v.into_inner());
+        match contract_issuer {
+            Some(pk) => pk,
+            None => {
+                let issuer_key_path = dest.parent().unwrap_or(dest.as_path()).join("issuer_keys.json");
+                let issuer_public_key_path = Prompt::new("Enter path to generate new issuer public key:")
+                    .with_default(issuer_key_path.to_string_lossy())
+                    .ask_parsed::<PathBuf>()?;
+                let key_result = wallet
+                    .key_manager_service
+                    .get_next_key(OutputManagerKeyManagerBranch::ContractIssuer.get_branch_key())
+                    .await?;
+
+                let public_key = key_result.to_public_key();
+                write_to_issuer_key_file(&issuer_public_key_path, key_result)?;
+                println!("Wrote to key file {}", issuer_public_key_path.to_string_lossy());
+                public_key
+            },
+        }
+    };
+
     let runtime = Prompt::new("Contract runtime:")
         .skip_if_some(args.runtime)
-        .with_default("/tari/wasm/v0.1".to_string())
-        .get_result()?;
+        .with_default("/tari/wasm/v0.1")
+        .ask_parsed()?;
 
     let contract_definition = ContractDefinitionFileFormat {
         contract_name,
-        contract_issuer: contract_issuer.into_inner(),
+        contract_issuer,
         contract_spec: ContractSpecificationFileFormat {
             runtime,
             public_functions: vec![],
         },
     };
-
-    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &contract_definition).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    write_json_file(&dest, &contract_definition).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     println!("Wrote {}", dest.to_string_lossy());
     Ok(())
 }
@@ -860,16 +909,16 @@ fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), Com
 
     let contract_id = Prompt::new("Contract id (hex):")
         .skip_if_some(args.contract_id)
-        .get_result()?;
+        .ask_parsed()?;
     let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
     let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
         .skip_if_some(args.acceptance_period_expiry)
-        .with_default("50".to_string())
-        .get_result()?;
+        .with_default("50")
+        .ask_parsed()?;
     let minimum_quorum_required = Prompt::new("Minimum quorum:")
         .skip_if_some(args.minimum_quorum_required)
         .with_default(committee.len().to_string())
-        .get_result()?;
+        .ask_parsed()?;
 
     let constitution = ConstitutionDefinitionFileFormat {
         contract_id,
@@ -877,12 +926,8 @@ fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), Com
         consensus: SideChainConsensus::MerkleRoot,
         initial_reward: 0,
         acceptance_parameters: ContractAcceptanceRequirements {
-            acceptance_period_expiry: acceptance_period_expiry
-                .parse::<u64>()
-                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
-            minimum_quorum_required: minimum_quorum_required
-                .parse::<u32>()
-                .map_err(|e| CommandError::InvalidArgument(e.to_string()))?,
+            acceptance_period_expiry,
+            minimum_quorum_required,
         },
         checkpoint_parameters: CheckpointParameters {
             minimum_quorum_required: 0,
@@ -894,21 +939,123 @@ fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), Com
         },
     };
 
-    let file = File::create(&dest).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &constitution).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    write_json_file(&dest, &constitution).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     println!("Wrote {}", dest.to_string_lossy());
     Ok(())
 }
 
-async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
-    // open the JSON file with the contract definition values
-    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file_reader = BufReader::new(file);
+fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
 
-    // parse the JSON file
+    let contract_id = Prompt::new("Contract id (hex):").skip_if_some(args.contract_id).ask()?;
+    let proposal_id = Prompt::new("Proposal id (integer, unique inside the contract scope):")
+        .skip_if_some(args.proposal_id)
+        .with_default("0".to_string())
+        .ask_parsed()?;
+    let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
+    let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
+        .skip_if_some(args.acceptance_period_expiry)
+        .with_default("50".to_string())
+        .ask_parsed()?;
+    let minimum_quorum_required = Prompt::new("Minimum quorum:")
+        .skip_if_some(args.minimum_quorum_required)
+        .with_default(committee.len().to_string())
+        .ask_parsed()?;
+
+    let updated_constitution = ConstitutionDefinitionFileFormat {
+        contract_id,
+        validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
+        consensus: SideChainConsensus::MerkleRoot,
+        initial_reward: 0,
+        acceptance_parameters: ContractAcceptanceRequirements {
+            acceptance_period_expiry,
+            minimum_quorum_required,
+        },
+        checkpoint_parameters: CheckpointParameters {
+            minimum_quorum_required: 0,
+            abandoned_interval: 0,
+        },
+        constitution_change_rules: ConstitutionChangeRulesFileFormat {
+            change_flags: 0,
+            requirements_for_constitution_change: None,
+        },
+    };
+
+    let update_proposal = ContractUpdateProposalFileFormat {
+        proposal_id,
+        // TODO: use a private key to sign the proposal
+        signature: SignatureFileFormat::default(),
+        updated_constitution,
+    };
+
+    write_json_file(&dest, &update_proposal)?;
+    println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+fn init_contract_amendment_spec(args: InitAmendmentArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    // check that the proposal file exists
+    if !args.proposal_file_path.exists() {
+        println!(
+            "Proposal file path {} not found",
+            args.proposal_file_path.to_string_lossy()
+        );
+        return Ok(());
+    }
+    // parse the JSON file with the proposal
+    let update_proposal: ContractUpdateProposalFileFormat = read_json_file(&args.proposal_file_path)?;
+
+    // read the activation_window value from the user
+    let activation_window = Prompt::new("Activation window (in blocks, integer):")
+        .skip_if_some(args.activation_window)
+        .with_default("50".to_string())
+        .ask_parsed()?;
+
+    // create the amendment from the proposal
+    let amendment = ContractAmendmentFileFormat {
+        proposal_id: update_proposal.proposal_id,
+        validator_committee: update_proposal.updated_constitution.validator_committee.clone(),
+        // TODO: import the real signatures for all the proposal acceptances
+        validator_signatures: Vec::new(),
+        updated_constitution: update_proposal.updated_constitution,
+        activation_window,
+    };
+
+    // write the amendment to the destination file
+    write_json_file(&dest, &amendment)?;
+    println!("Wrote {}", dest.to_string_lossy());
+
+    Ok(())
+}
+
+async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    // open and parse the JSON file with the contract definition values
     let contract_definition: ContractDefinitionFileFormat =
-        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let contract_definition_features = ContractDefinition::from(contract_definition);
     let contract_id_hex = contract_definition_features.calculate_contract_id().to_vec().to_hex();
 
@@ -919,27 +1066,24 @@ async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArg
         .await?;
 
     // publish the contract definition transaction
-    let message = format!("Contract definition for contract with id={}", contract_id_hex);
+    let message = format!("Contract definition for contract {}", contract_id_hex);
     let mut transaction_service = wallet.transaction_service.clone();
     transaction_service
         .submit_transaction(tx_id, transaction, 0.into(), message)
         .await?;
 
     println!(
-        "Contract definition transaction submitted with tx_id={} for contract with contract_id={}",
-        tx_id, contract_id_hex
+        "Contract definition submitted: contract_id is {} (TxID: {})",
+        contract_id_hex, tx_id,
     );
     println!("Done!");
     Ok(())
 }
 
 async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
-    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file_reader = BufReader::new(file);
-
     // parse the JSON file
     let constitution_definition: ConstitutionDefinitionFileFormat =
-        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let side_chain_features = SideChainFeatures::try_from(constitution_definition.clone()).unwrap();
 
     let mut asset_manager = wallet.asset_manager.clone();
@@ -948,7 +1092,7 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
         .await?;
 
     let message = format!(
-        "Committee definition with {} members for {:?}",
+        "Contract constitution with {} members for {}",
         constitution_definition.validator_committee.len(),
         constitution_definition.contract_id
     );
@@ -961,12 +1105,10 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
 }
 
 async fn publish_contract_update_proposal(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
-    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file_reader = BufReader::new(file);
-
     // parse the JSON file
     let update_proposal: ContractUpdateProposalFileFormat =
-        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+
     let contract_id_hex = update_proposal.updated_constitution.contract_id.clone();
     let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let update_proposal_features = ContractUpdateProposal::try_from(update_proposal).map_err(CommandError::JsonFile)?;
@@ -995,12 +1137,9 @@ async fn publish_contract_update_proposal(wallet: &WalletSqlite, args: PublishFi
 }
 
 async fn publish_contract_amendment(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
-    let file = File::open(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file_reader = BufReader::new(file);
-
     // parse the JSON file
     let amendment: ContractAmendmentFileFormat =
-        serde_json::from_reader(file_reader).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let contract_id_hex = amendment.updated_constitution.contract_id.clone();
     let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let amendment_features = ContractAmendment::try_from(amendment).map_err(CommandError::JsonFile)?;
@@ -1060,5 +1199,34 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
         )
         .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     }
+    Ok(())
+}
+
+fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, data: &T) -> Result<(), CommandError> {
+    fs::create_dir_all(path.as_ref().parent().unwrap()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let file = File::create(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    serde_json::to_writer_pretty(file, data).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    Ok(())
+}
+
+fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, CommandError> {
+    let file = File::open(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    serde_json::from_reader(file).map_err(|e| CommandError::JsonFile(e.to_string()))
+}
+
+fn write_to_issuer_key_file<P: AsRef<Path>>(path: P, key_result: NextKeyResult) -> Result<(), CommandError> {
+    let file_exists = path.as_ref().exists();
+    let mut root = if file_exists {
+        read_json_file::<_, Vec<serde_json::Value>>(&path).map_err(|e| CommandError::JsonFile(e.to_string()))?
+    } else {
+        vec![]
+    };
+    let json = serde_json::json!({
+        "name": format!("issuer-key-{}", key_result.index),
+        "public_key": key_result.to_public_key().to_hex(),
+        "secret_key": key_result.key.to_hex(),
+    });
+    root.push(json);
+    write_json_file(path, &root).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     Ok(())
 }

@@ -43,7 +43,7 @@ pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
     state_db: &TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
+    match method.to_lowercase().replace('_', "").as_str() {
         "ownerof" => {
             let request =
                 tip721::OwnerOfRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
@@ -64,7 +64,7 @@ pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<(), DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
+    match method.to_lowercase().replace('_', "").as_str() {
         "transferfrom" => transfer_from(args, state_db),
         name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
     }

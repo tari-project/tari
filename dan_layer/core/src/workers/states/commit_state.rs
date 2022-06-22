@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 use tokio::time::{sleep, Duration};
 
 use crate::{
@@ -43,7 +43,7 @@ const LOG_TARGET: &str = "tari::dan::workers::states::commit";
 // TODO: This is very similar to pre-commit state
 pub struct CommitState<TSpecification: ServiceSpecification> {
     node_id: TSpecification::Addr,
-    asset_public_key: PublicKey,
+    contract_id: FixedHash,
     committee: Committee<TSpecification::Addr>,
     received_new_view_messages: HashMap<TSpecification::Addr, HotStuffMessage<TSpecification::Payload>>,
 }
@@ -51,12 +51,12 @@ pub struct CommitState<TSpecification: ServiceSpecification> {
 impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
     pub fn new(
         node_id: TSpecification::Addr,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
         committee: Committee<TSpecification::Addr>,
     ) -> Self {
         Self {
             node_id,
-            asset_public_key,
+            contract_id,
             committee,
             received_new_view_messages: HashMap::new(),
         }
@@ -148,7 +148,7 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         pre_commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::commit(None, Some(pre_commit_qc), view_number, self.asset_public_key.clone());
+        let message = HotStuffMessage::commit(None, Some(pre_commit_qc), view_number, self.contract_id);
         outbound
             .broadcast(self.node_id.clone(), self.committee.members.as_slice(), message)
             .await
@@ -235,7 +235,7 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         view_number: ViewId,
         signing_service: &TSpecification::SigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::vote_commit(node, view_number, self.asset_public_key.clone());
+        let mut message = HotStuffMessage::vote_commit(node, view_number, self.contract_id);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

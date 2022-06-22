@@ -23,8 +23,7 @@
 use std::marker::PhantomData;
 
 use log::*;
-use tari_common_types::types::COMMITTEE_DEFINITION_ID;
-use tari_utilities::hex::Hex;
+use tari_core::transactions::transaction_components::OutputType;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -63,38 +62,36 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
         );
         let tip = base_node_client.get_tip_info().await?;
         // get latest checkpoint on the base layer
-        let last_committee_definition = base_node_client
-            .get_current_checkpoint(
+        let mut constitution = base_node_client
+            .get_current_contract_outputs(
                 tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
-                asset_definition.public_key.clone(),
-                COMMITTEE_DEFINITION_ID.into(),
+                asset_definition.contract_id,
+                OutputType::ContractConstitution,
             )
             .await?;
 
-        let output = match last_committee_definition {
-            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCommitteeDefinitionNotFound),
+        let output = match constitution.pop() {
             Some(chk) => chk,
+            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckopintNotFound),
         };
 
-        committee_manager.read_from_checkpoint(output)?;
+        committee_manager.read_from_constitution(output)?;
 
         if !committee_manager.current_committee()?.contains(node_id) {
             info!(
                 target: LOG_TARGET,
-                "Validator node not part of committee for asset public key '{}'",
-                asset_definition.public_key.to_hex()
+                "Validator node not part of committee for asset public key '{}'", asset_definition.contract_id
             );
             return Ok(ConsensusWorkerStateEvent::NotPartOfCommittee);
         }
 
         info!(
             target: LOG_TARGET,
-            "Validator node is a committee member for asset public key '{}'",
-            asset_definition.public_key.to_hex()
+            "Validator node is a committee member for asset public key '{}'", asset_definition.contract_id
         );
         // read and create the genesis block
         info!(target: LOG_TARGET, "Creating DB");
-        let _chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
+        let _chain_db = db_factory.get_or_create_chain_db(&asset_definition.contract_id)?;
 
         Ok(ConsensusWorkerStateEvent::Initialized)
     }

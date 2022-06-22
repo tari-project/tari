@@ -291,8 +291,11 @@ class WalletProcess {
 
     const overrides = this.getOverrides();
     Object.keys(overrides).forEach((k) => {
-      args.push("-p");
-      args.push(`${k}=${overrides[k]}`);
+      let v = overrides[k];
+      if (typeof v !== "undefined") {
+        args.push("-p");
+        args.push(`${k}=${v}`);
+      }
     });
 
     // Append command arguments

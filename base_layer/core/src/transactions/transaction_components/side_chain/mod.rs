@@ -60,3 +60,6 @@ pub use committee_signatures::CommitteeSignatures;
 
 mod sidechain_features;
 pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};
+
+mod contract_checkpoint;
+pub use contract_checkpoint::ContractCheckpoint;

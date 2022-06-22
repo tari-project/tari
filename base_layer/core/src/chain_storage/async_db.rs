@@ -31,7 +31,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -66,7 +66,7 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -176,7 +176,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
-    make_async_fn!(fetch_all_constitutions(dan_node_public_key: PublicKey) -> Vec<TransactionOutput>, "fetch_all_constitutions");
+    make_async_fn!(fetch_contract_outputs_for_block(block_hash: BlockHash, output_type: OutputType) -> Vec<UtxoMinedInfo>, "fetch_contract_outputs_for_block");
+
+    make_async_fn!(fetch_contract_outputs_by_contract_id_and_type(contract_id: FixedHash, output_type: OutputType) -> Vec<UtxoMinedInfo>, "fetch_contract_outputs_by_contract_id_and_type");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");

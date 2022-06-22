@@ -29,7 +29,7 @@ use std::{
 use anyhow::anyhow;
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct DnsNameServer {
     pub addr: SocketAddr,
     pub dns_name: String,

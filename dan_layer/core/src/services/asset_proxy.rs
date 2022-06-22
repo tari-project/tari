@@ -23,7 +23,8 @@
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use log::*;
-use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
+use tari_common_types::types::{FixedHash, PublicKey};
+use tari_core::transactions::transaction_components::OutputType;
 use tari_utilities::hex::Hex;
 use tokio_stream::StreamExt;
 
@@ -46,7 +47,7 @@ const LOG_TARGET: &str = "tari::dan_layer::core::services::asset_proxy";
 pub trait AssetProxy: Send + Sync {
     async fn invoke_method(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
@@ -54,7 +55,7 @@ pub trait AssetProxy: Send + Sync {
 
     async fn invoke_read_method(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
@@ -95,14 +96,14 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
     async fn forward_invoke_read_to_node(
         &self,
         member: &TServiceSpecification::Addr,
-        asset_public_key: &PublicKey,
+        contract_id: FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         let mut client = self.validator_node_client_factory.create_client(member);
         let resp = client
-            .invoke_read_method(asset_public_key, template_id, method, args)
+            .invoke_read_method(&contract_id, template_id, method, args)
             .await?;
         Ok(resp)
     }
@@ -110,23 +111,21 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
     async fn forward_invoke_to_node(
         &self,
         member: &TServiceSpecification::Addr,
-        asset_public_key: &PublicKey,
+        contract_id: FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         debug!(target: LOG_TARGET, "Forwarding '{}' instruction to {}", member, method);
         let mut client = self.validator_node_client_factory.create_client(member);
-        let resp = client
-            .invoke_method(asset_public_key, template_id, method, args)
-            .await?;
+        let resp = client.invoke_method(&contract_id, template_id, method, args).await?;
         Ok(resp)
     }
 
     #[allow(clippy::for_loops_over_fallibles)]
     async fn forward_to_committee(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: FixedHash,
         invoke_type: InvokeType,
         template_id: TemplateId,
         method: String,
@@ -134,26 +133,25 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         let mut base_node_client = self.base_node_client.clone();
         let tip = base_node_client.get_tip_info().await?;
-        let last_checkpoint = base_node_client
-            .get_current_checkpoint(
+        let mut constitution = base_node_client
+            .get_current_contract_outputs(
                 tip.height_of_longest_chain,
-                asset_public_key.clone(),
-                // TODO: read this from the chain maybe?
-                ASSET_CHECKPOINT_ID.into(),
+                contract_id,
+                OutputType::ContractConstitution,
             )
             .await?;
 
-        let last_checkpoint = match last_checkpoint {
+        let constitution = match constitution.pop() {
+            Some(chk) => chk,
             None => {
                 return Err(DigitalAssetError::NotFound {
                     entity: "checkpoint",
-                    id: asset_public_key.to_hex(),
+                    id: contract_id.to_hex(),
                 })
             },
-            Some(chk) => chk,
         };
 
-        let committee = last_checkpoint
+        let committee = constitution
             .get_side_chain_committee()
             .ok_or(DigitalAssetError::NoCommitteeForAsset)?;
 
@@ -170,7 +168,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
                 for member in committee.iter().take(self.max_clients_to_ask) {
                     tasks.push(self.forward_invoke_read_to_node(
                         member,
-                        asset_public_key,
+                        contract_id,
                         template_id,
                         method.clone(),
                         args.clone(),
@@ -191,7 +189,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
                 for member in committee.iter().take(self.max_clients_to_ask) {
                     tasks.push(self.forward_invoke_to_node(
                         member,
-                        asset_public_key,
+                        contract_id,
                         template_id,
                         method.clone(),
                         args.clone(),
@@ -219,28 +217,28 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
 {
     async fn invoke_method(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<(), DigitalAssetError> {
         // check if we are processing this asset
-        if self.db_factory.get_state_db(asset_public_key)?.is_some() {
+        if self.db_factory.get_state_db(contract_id)?.is_some() {
             let instruction = Instruction::new(
                 template_id,
                 method.clone(),
                 args.clone(),
-                /* TokenId(request.token_id.clone()),
-                 * TODO: put signature in here
-                 * ComSig::default()
-                 * create_com_sig_from_bytes(&request.signature)
-                 *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
+                // TokenId(request.token_id.clone()),
+                // TODO: put signature in here
+                // ComSig::default()
+                // create_com_sig_from_bytes(&request.signature)
+                //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
             );
             let mut mempool = self.mempool.clone();
             mempool.submit_instruction(instruction).await
         } else {
             let _result = self
-                .forward_to_committee(asset_public_key, InvokeType::InvokeMethod, template_id, method, args)
+                .forward_to_committee(*contract_id, InvokeType::InvokeMethod, template_id, method, args)
                 .await?;
             Ok(())
         }
@@ -248,18 +246,12 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
 
     async fn invoke_read_method(
         &self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        self.forward_to_committee(
-            asset_public_key,
-            InvokeType::InvokeReadMethod,
-            template_id,
-            method,
-            args,
-        )
-        .await
+        self.forward_to_committee(*contract_id, InvokeType::InvokeReadMethod, template_id, method, args)
+            .await
     }
 }

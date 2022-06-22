@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.5](https://github.com/tari-project/tari/compare/v0.32.4...v0.32.5) (2022-06-20)
+
+
+### Features
+
+* generate wallet ffi header file automatically ([#4183](https://github.com/tari-project/tari/issues/4183)) ([665f1f7](https://github.com/tari-project/tari/commit/665f1f7cb33b4639a83e7682926c319cdf2ea501))
+* **wallet_ffi:** wallet_get_utxos() ([#4209](https://github.com/tari-project/tari/issues/4209)) ([1b30524](https://github.com/tari-project/tari/commit/1b3052491f25efbd03249dd3300a296d7858c0f7))
+
+### [0.32.4](https://github.com/tari-project/tari/compare/v0.32.3...v0.32.4) (2022-06-10)
+
+
+### Features
+
+* **daily-tests:** use environment variable to set custom seed words ([#4086](https://github.com/tari-project/tari/issues/4086)) ([3773bba](https://github.com/tari-project/tari/commit/3773bba3572360492640036bd40916bc6cea1f6b))
+* **wallet-ffi:** adds FFI wallet_get_utxos() and test_wallet_get_utxos() ([#4180](https://github.com/tari-project/tari/issues/4180)) ([9770402](https://github.com/tari-project/tari/commit/9770402718d3a5e81aea1d88350cbc5abc07032b))
+
+
+### Bug Fixes
+
+* better message for failed software update check ([#4100](https://github.com/tari-project/tari/issues/4100)) ([f33a503](https://github.com/tari-project/tari/commit/f33a503cd5d0f49de9cb0e92b7eba893c39d9217))
+* **block-sync:** check coinbase maturity ([#4168](https://github.com/tari-project/tari/issues/4168)) ([38b4af7](https://github.com/tari-project/tari/commit/38b4af7104780373e4ff1eddf1e6b19f479b0ae2))
+* **dht:** optimisation, no decrypt if public key dest doesn't match ([#4131](https://github.com/tari-project/tari/issues/4131)) ([987972c](https://github.com/tari-project/tari/commit/987972cffd577b03a8395ce1d5e441c35fb6b109))
+
 ### [0.32.3](https://github.com/tari-project/tari/compare/v0.32.1...v0.32.2) (2022-05-23)
 
 

@@ -117,7 +117,7 @@ impl NodeId {
 
     /// Find and return the node ids of the K nearest neighbours from the provided node id list
     pub fn closest(&self, node_ids: &[NodeId], k: usize) -> Vec<NodeId> {
-        let nearest_node_indices = self.closest_indices(&node_ids.to_vec(), k);
+        let nearest_node_indices = self.closest_indices(node_ids, k);
         let mut nearest_node_ids: Vec<NodeId> = Vec::with_capacity(nearest_node_indices.len());
         for nearest in nearest_node_indices {
             nearest_node_ids.push(node_ids[nearest].clone());

@@ -86,7 +86,7 @@ impl OutputField {
         self as u8
     }
 
-    pub(super) fn get_field_value_ref<'a, T: 'static>(self, output: &'a TransactionOutput) -> Option<&'a T> {
+    pub(super) fn get_field_value_ref<T: 'static>(self, output: &TransactionOutput) -> Option<&T> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         let val = match self {

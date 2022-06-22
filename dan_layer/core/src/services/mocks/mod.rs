@@ -28,7 +28,7 @@ use std::{
 
 use async_trait::async_trait;
 use tari_common_types::types::{FixedHash, PublicKey};
-use tari_core::transactions::transaction_components::TransactionOutput;
+use tari_core::{chain_storage::UtxoMinedInfo, transactions::transaction_components::OutputType};
 
 use super::CommitteeManager;
 use crate::{
@@ -190,13 +190,12 @@ impl BaseNodeClient for MockBaseNodeClient {
         todo!();
     }
 
-    async fn get_current_checkpoint(
+    async fn get_constitutions(
         &mut self,
-        _height: u64,
-        _asset_public_key: PublicKey,
-        _checkpoint_unique_id: Vec<u8>,
-    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
-        todo!();
+        _start_block_hash: Option<FixedHash>,
+        _dan_node_public_key: &PublicKey,
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
+        todo!()
     }
 
     async fn check_if_in_committee(
@@ -207,12 +206,12 @@ impl BaseNodeClient for MockBaseNodeClient {
         todo!();
     }
 
-    async fn get_assets_for_dan_node(
-        &mut self,
-        _dan_node_public_key: PublicKey,
-    ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError> {
-        todo!();
-    }
+    // async fn get_assets_for_dan_node(
+    //     &mut self,
+    //     _dan_node_public_key: PublicKey,
+    // ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError> {
+    //     todo!();
+    // }
 
     async fn get_asset_registration(
         &mut self,
@@ -221,11 +220,13 @@ impl BaseNodeClient for MockBaseNodeClient {
         todo!()
     }
 
-    async fn get_constitutions(
+    async fn get_current_contract_outputs(
         &mut self,
-        _dan_node_public_key: PublicKey,
-    ) -> Result<Vec<TransactionOutput>, DigitalAssetError> {
-        todo!();
+        _height: u64,
+        _contract_id: FixedHash,
+        _output_type: OutputType,
+    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError> {
+        todo!()
     }
 }
 
@@ -243,7 +244,7 @@ impl<TAddr: NodeAddressable> CommitteeManager<TAddr> for MockCommitteeManager {
         todo!();
     }
 
-    fn read_from_checkpoint(&mut self, _output: BaseLayerOutput) -> Result<(), DigitalAssetError> {
+    fn read_from_constitution(&mut self, _output: BaseLayerOutput) -> Result<(), DigitalAssetError> {
         todo!();
     }
 }

@@ -213,6 +213,12 @@ pub enum ContractSubcommand {
     /// A generator for constitution files that can be edited and passed to other contract commands
     InitConstitution(InitConstitutionArgs),
 
+    /// A generator for update proposal files that can be edited and passed to other contract commands
+    InitUpdateProposal(InitUpdateProposalArgs),
+
+    /// A generator for amendment files that can be edited and passed to other contract commands
+    InitAmendment(InitAmendmentArgs),
+
     /// Creates and publishes a contract definition UTXO from the JSON spec file.
     PublishDefinition(PublishFileArgs),
 
@@ -256,6 +262,42 @@ pub struct InitConstitutionArgs {
     pub acceptance_period_expiry: Option<String>,
     #[clap(long, alias = "quorum_required")]
     pub minimum_quorum_required: Option<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct InitUpdateProposalArgs {
+    /// The destination path of the contract definition to create
+    pub dest_path: PathBuf,
+    /// Force overwrite the destination file if it already exists
+    #[clap(short = 'f', long)]
+    pub force: bool,
+    #[clap(long, alias = "id")]
+    pub contract_id: Option<String>,
+    #[clap(long, alias = "proposal_id")]
+    pub proposal_id: Option<String>,
+    #[clap(long, alias = "committee")]
+    pub validator_committee: Option<Vec<String>>,
+    #[clap(long, alias = "acceptance_period")]
+    pub acceptance_period_expiry: Option<String>,
+    #[clap(long, alias = "quorum_required")]
+    pub minimum_quorum_required: Option<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct InitAmendmentArgs {
+    /// The destination path of the contract amendment to create
+    pub dest_path: PathBuf,
+
+    /// Force overwrite the destination file if it already exists
+    #[clap(short = 'f', long)]
+    pub force: bool,
+
+    /// The source file path of the update proposal to amend
+    #[clap(short = 'p', long)]
+    pub proposal_file_path: PathBuf,
+
+    #[clap(long, alias = "activation_window")]
+    pub activation_window: Option<String>,
 }
 
 #[derive(Debug, Args, Clone)]

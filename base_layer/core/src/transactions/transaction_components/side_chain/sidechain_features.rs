@@ -34,7 +34,7 @@ use super::{
 };
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction_components::ContractConstitution,
+    transactions::transaction_components::{side_chain::contract_checkpoint::ContractCheckpoint, ContractConstitution},
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
@@ -46,6 +46,7 @@ pub struct SideChainFeatures {
     pub update_proposal: Option<ContractUpdateProposal>,
     pub update_proposal_acceptance: Option<ContractUpdateProposalAcceptance>,
     pub amendment: Option<ContractAmendment>,
+    pub checkpoint: Option<ContractCheckpoint>,
 }
 
 impl SideChainFeatures {
@@ -67,6 +68,7 @@ impl ConsensusEncoding for SideChainFeatures {
         self.update_proposal.consensus_encode(writer)?;
         self.update_proposal_acceptance.consensus_encode(writer)?;
         self.amendment.consensus_encode(writer)?;
+        self.checkpoint.consensus_encode(writer)?;
 
         Ok(())
     }
@@ -84,6 +86,7 @@ impl ConsensusDecoding for SideChainFeatures {
             update_proposal: ConsensusDecoding::consensus_decode(reader)?,
             update_proposal_acceptance: ConsensusDecoding::consensus_decode(reader)?,
             amendment: ConsensusDecoding::consensus_decode(reader)?,
+            checkpoint: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
 }
@@ -103,6 +106,7 @@ impl SideChainFeaturesBuilder {
                 update_proposal: None,
                 update_proposal_acceptance: None,
                 amendment: None,
+                checkpoint: None,
             },
         }
     }
@@ -137,6 +141,11 @@ impl SideChainFeaturesBuilder {
 
     pub fn with_contract_amendment(mut self, contract_amendment: ContractAmendment) -> Self {
         self.features.amendment = Some(contract_amendment);
+        self
+    }
+
+    pub fn with_contract_checkpoint(mut self, checkpoint: ContractCheckpoint) -> Self {
+        self.features.checkpoint = Some(checkpoint);
         self
     }
 
@@ -249,6 +258,10 @@ mod tests {
                     .unwrap(),
                 updated_constitution: constitution,
                 activation_window: 0_u64,
+            }),
+            checkpoint: Some(ContractCheckpoint {
+                merkle_root: FixedHash::zero(),
+                signatures: vec![Signature::default(); 512].try_into().unwrap(),
             }),
         };
 

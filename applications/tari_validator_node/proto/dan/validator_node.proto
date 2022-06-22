@@ -45,7 +45,7 @@ enum Status {
 
 
 message InvokeReadMethodRequest{
-  bytes asset_public_key = 1;
+  bytes contract_id = 1;
   uint32 template_id = 2;
   string method = 3;
   bytes args = 4;
@@ -57,7 +57,7 @@ message InvokeReadMethodResponse {
 
 
 message InvokeMethodRequest{
-  bytes asset_public_key = 1;
+  bytes contract_id = 1;
   uint32 template_id = 2;
   string method = 3;
   bytes args = 4;
@@ -69,7 +69,7 @@ message InvokeMethodResponse {
 }
 
 message GetSidechainBlocksRequest {
-  bytes asset_public_key = 1;
+  bytes contract_id = 1;
   bytes start_hash = 2;
   bytes end_hash = 3;
 }
@@ -79,7 +79,7 @@ message GetSidechainBlocksResponse {
 }
 
 message GetSidechainStateRequest {
-  bytes asset_public_key = 1;
+  bytes contract_id = 1;
 }
 
 message GetSidechainStateResponse {
@@ -95,7 +95,7 @@ message KeyValue {
 }
 
 message GetStateOpLogsRequest {
-  bytes asset_public_key = 1;
+  bytes contract_id = 1;
   uint64 height = 2;
 }
 
@@ -113,7 +113,7 @@ message StateOpLog {
 }
 
 message GetTipNodeRequest{
-  bytes asset_public_key = 1;
+  bytes contract_id = 1;
 }
 
 message GetTipNodeResponse {

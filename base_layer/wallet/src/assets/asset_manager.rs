@@ -23,9 +23,10 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, Signature, ASSET_CHECKPOINT_ID},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_core::transactions::transaction_components::{
+    CommitteeSignatures,
     ContractAmendment,
     ContractDefinition,
     ContractUpdateProposal,
@@ -83,7 +84,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .output_database
             .fetch_by_features_asset_public_key(public_key)
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
-        Ok(convert_to_asset(output)?)
+        convert_to_asset(output)
     }
 
     pub async fn create_registration_transaction(
@@ -159,20 +160,18 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
     pub async fn create_initial_asset_checkpoint(
         &mut self,
-        asset_pub_key: PublicKey,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
-        committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),
                 OutputFeatures::for_checkpoint(
-                    asset_pub_key,
-                    ASSET_CHECKPOINT_ID.into(),
+                    contract_id,
                     merkle_root,
-                    committee_pub_keys.clone(),
-                    true,
+                    // TODO: add vn signatures
+                    CommitteeSignatures::default(),
                 ),
             )
             .await?;
@@ -199,28 +198,33 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(
+                vec![output],
+                // TODO: Fee is proportional to tx weight, so does not need to be different for contract
+                //       transactions - should be chosen by the user
+                ASSET_FPG.into(),
+                // TODO: Spend previous checkpoint
+                None,
+                None,
+            )
             .await?;
         Ok((tx_id, transaction))
     }
 
     pub async fn create_follow_on_asset_checkpoint(
         &mut self,
-        asset_pub_key: PublicKey,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
-        committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),
                 OutputFeatures::for_checkpoint(
-                    asset_pub_key.clone(),
-                    unique_id.clone(),
+                    contract_id,
                     merkle_root,
-                    committee_pub_keys.clone(),
-                    false,
+                    // TODO: Add vn sigs
+                    CommitteeSignatures::default(),
                 ),
             )
             .await?;
@@ -247,7 +251,13 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), Some(unique_id), Some(asset_pub_key))
+            .create_send_to_self_with_output(
+                vec![output],
+                ASSET_FPG.into(),
+                // TODO: Spend previous checkpoint
+                None,
+                None,
+            )
             .await?;
         Ok((tx_id, transaction))
     }

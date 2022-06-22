@@ -24,7 +24,7 @@ use crate::error::CollectiblesError;
 use futures::StreamExt;
 use log::debug;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common_types::types::{PublicKey, COMMITTEE_DEFINITION_ID};
+use tari_common_types::types::PublicKey;
 use tari_utilities::{ByteArray, ByteArrayError};
 
 const LOG_TARGET: &str = "collectibles::base";
@@ -102,7 +102,7 @@ impl BaseNodeClient {
     let client = self.client_mut();
     let request = grpc::GetTokensRequest {
       asset_public_key: Vec::from(asset_public_key.as_bytes()),
-      unique_ids: vec![COMMITTEE_DEFINITION_ID.into()],
+      unique_ids: vec![],
     };
 
     debug!(target: LOG_TARGET, "get sidechain request {:?}", request);

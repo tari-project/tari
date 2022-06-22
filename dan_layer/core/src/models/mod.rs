@@ -217,7 +217,7 @@ impl ConsensusHash for String {
 
 pub trait Event: Clone + Send + Sync {}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsensusWorkerState {
     Starting,
     Synchronizing,
@@ -229,7 +229,7 @@ pub enum ConsensusWorkerState {
     Idle,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signature {}
 
 impl Signature {
