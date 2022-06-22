@@ -1,4 +1,9 @@
-import { Controller, Control, UseFormSetValue } from 'react-hook-form'
+import {
+  Controller,
+  Control,
+  UseFormSetValue,
+  FormState,
+} from 'react-hook-form'
 import { useTheme } from 'styled-components'
 import Button from '../../../components/Button'
 import IconButton from '../../../components/IconButton'
@@ -26,11 +31,13 @@ const isAuthenticationApplied = (values: SettingsInputs): boolean => {
 }
 
 const MiningSettings = ({
+  formState,
   control,
   values,
   setValue,
   setOpenMiningAuthForm,
 }: {
+  formState: FormState<SettingsInputs>
   control: Control<SettingsInputs>
   values: SettingsInputs
   setValue: UseFormSetValue<SettingsInputs>
@@ -50,7 +57,13 @@ const MiningSettings = ({
         <Controller
           name='mining.merged.address'
           control={control}
-          rules={{ required: true, minLength: 1 }}
+          rules={{
+            required: true,
+            minLength: {
+              value: 12,
+              message: t.mining.settings.moneroAddressError,
+            },
+          }}
           render={({ field }) => (
             <Input
               placeholder={t.mining.setup.addressPlaceholder}
@@ -59,6 +72,7 @@ const MiningSettings = ({
               value={field.value?.toString()}
               onChange={v => field.onChange(v)}
               autoFocus
+              error={formState.errors.mining?.merged?.address?.message}
             />
           )}
         />
@@ -100,6 +114,7 @@ const MiningSettings = ({
               }}
               value={field?.value?.toString() || ''}
               containerStyle={{ maxWidth: 96 }}
+              withError={false}
             />
           )}
         />

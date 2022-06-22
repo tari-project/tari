@@ -35,6 +35,7 @@ const renderSettings = (
     case Settings.Mining:
       return (
         <MiningSettings
+          formState={props.formState}
           control={props.control}
           values={props.values}
           setValue={props.setValue}
@@ -112,6 +113,7 @@ const SettingsComponent = ({
           </Sidebar>
           <MainContent>
             {renderSettings(activeSettings, {
+              formState,
               control,
               values,
               setValue,

@@ -1,8 +1,6 @@
 import styled from 'styled-components'
 
 export const AddressDescription = styled.div`
-  margin-top: ${({ theme }) => theme.spacingVertical(1)};
-
   & > p {
     color: ${({ theme }) => theme.secondary};
   }

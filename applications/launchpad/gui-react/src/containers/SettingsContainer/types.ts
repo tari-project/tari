@@ -4,6 +4,7 @@ import { Settings } from '../../store/settings/types'
 import { Network } from '../BaseNodeContainer/types'
 
 export type SettingsProps = {
+  formState: FormState<SettingsInputs>
   control: Control<SettingsInputs>
   values: SettingsInputs
   setValue: UseFormSetValue<SettingsInputs>

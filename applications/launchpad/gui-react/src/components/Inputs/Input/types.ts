@@ -17,4 +17,5 @@ export interface InputProps
   style?: CSSProperties
   containerStyle?: CSSProperties
   inverted?: boolean
+  withError?: boolean
 }

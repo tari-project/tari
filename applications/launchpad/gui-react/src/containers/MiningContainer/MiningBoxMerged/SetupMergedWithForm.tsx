@@ -69,12 +69,19 @@ const SetupMergedWithForm = ({
               name='address'
               control={control}
               defaultValue=''
-              rules={{ required: true, minLength: 1 }}
+              rules={{
+                required: true,
+                minLength: {
+                  value: 12,
+                  message: t.mining.settings.moneroAddressError,
+                },
+              }}
               render={({ field }) => (
                 <Input
                   placeholder={t.mining.setup.addressPlaceholder}
                   testId='address-input'
                   autoFocus
+                  error={formState.errors.address?.message}
                   {...field}
                 />
               )}

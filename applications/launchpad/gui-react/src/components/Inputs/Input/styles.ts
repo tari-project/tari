@@ -33,7 +33,11 @@ export const StyledInput = styled.input<InputHTMLAttributes<HTMLInputElement>>`
   }
 `
 
-export const InputContainer = styled.div<{ disabled?: boolean }>`
+export const InputContainer = styled.div<{
+  disabled?: boolean
+  $error: boolean
+  $withError: boolean
+}>`
   height: 42px;
   width: 369px;
   line-height: 42px;
@@ -45,6 +49,8 @@ export const InputContainer = styled.div<{ disabled?: boolean }>`
   border-color: ${({ theme }) => theme.borderColor};
   border-radius: 8px;
   font-family: 'AvenirMedium';
+  margin-bottom: ${({ $withError, $error, theme }) =>
+    $error || !$withError ? '0' : theme.spacingVertical(1.6)};
   :focus-within {
     outline: none;
     border-color: ${({ theme }) => theme.accent};

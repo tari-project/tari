@@ -5,7 +5,7 @@ export const StyledMoneroURL = styled.div`
   border-radius: ${({ theme }) => theme.borderRadius()};
   padding: ${({ theme }) => theme.spacingHorizontal(0.67)};
   margin-bottom: ${({ theme }) => theme.spacingVertical(1)};
-  padding-bottom: ${({ theme }) => theme.spacingHorizontal(2.3)};
+  padding-bottom: ${({ theme }) => theme.spacingHorizontal(1.8)};
 
   &:hover {
     background: ${({ theme }) => theme.backgroundSecondary};

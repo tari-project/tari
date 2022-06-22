@@ -30,6 +30,8 @@ import { useTheme } from 'styled-components'
  * @prop {CSSProperties} [style] - styles for actual input element
  * @prop {CSSProperties} [containerStyle] - styles for input container
  * @prop {boolean} [inverted] - use inverted styling
+ * @prop {boolean} [withError=true] - does the input uses the error props? 'true' value will preserve
+ *        the bottom spacing so the layout will not flicker when error message appears and disappears.
  */
 
 const Input = (
@@ -50,6 +52,7 @@ const Input = (
     style,
     containerStyle,
     inverted,
+    withError = true,
   }: InputProps,
   ref?: React.ForwardedRef<HTMLInputElement>,
 ) => {
@@ -77,7 +80,12 @@ const Input = (
           {label}
         </Label>
       )}
-      <InputContainer disabled={disabled} style={containerStyle}>
+      <InputContainer
+        disabled={disabled}
+        $error={Boolean(error)}
+        $withError={withError}
+        style={containerStyle}
+      >
         <StyledInput
           id={id}
           autoFocus={autoFocus}
