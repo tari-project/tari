@@ -85,38 +85,26 @@ pub fn validate_contract_acceptances<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryInto, sync::Arc};
-
-    use tari_common_types::types::{FixedHash, PublicKey, Signature};
     use tari_p2p::Network;
-    use tari_utilities::hex::Hex;
 
     use crate::{
         block_spec,
         consensus::ConsensusManagerBuilder,
         test_helpers::blockchain::TestBlockchain,
-        transactions::{
-            tari_amount::T,
-            test_helpers::{spend_utxos, TransactionSchema},
-            transaction_components::{
-                vec_into_fixed_string,
-                CheckpointParameters,
-                CommitteeMembers,
-                ConstitutionChangeFlags,
-                ConstitutionChangeRules,
-                ContractAcceptanceRequirements,
-                ContractConstitution,
-                ContractDefinition,
-                ContractSpecification,
-                OutputFeatures,
-                RequirementsForConstitutionChange,
-                SideChainConsensus,
-                Transaction,
-                UnblindedOutput,
-            },
-        },
+        transactions::tari_amount::T,
         txn_schema,
-        validation::{transaction_validators::TxConsensusValidator, MempoolTransactionValidation, ValidationError},
+        validation::{
+            dan_validators::test_helpers::{
+                create_block,
+                create_contract_acceptance_schema,
+                create_contract_constitution_schema,
+                create_contract_definition_schema,
+                schema_to_transaction,
+            },
+            transaction_validators::TxConsensusValidator,
+            MempoolTransactionValidation,
+            ValidationError,
+        },
     };
 
     #[test]
@@ -148,94 +136,5 @@ mod test {
             },
             _ => panic!("Expected a consensus error"),
         }
-    }
-
-    pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
-        let mut tx = Vec::new();
-        let mut utxos = Vec::new();
-        txns.iter().for_each(|schema| {
-            let (txn, mut output) = spend_utxos(schema.clone());
-            tx.push(Arc::new(txn));
-            utxos.append(&mut output);
-        });
-        (tx, utxos)
-    }
-
-    pub fn create_block(
-        blockchain: &mut TestBlockchain,
-        block_name: &'static str,
-        schema: TransactionSchema,
-    ) -> Vec<UnblindedOutput> {
-        let (txs, outputs) = schema_to_transaction(&[schema]);
-        let (_, _) = blockchain
-            .append_to_tip(block_spec!(block_name, transactions: txs.iter().map(|t| (**t).clone()).collect()))
-            .unwrap();
-
-        outputs
-    }
-
-    fn create_contract_definition_schema(input: UnblindedOutput) -> (FixedHash, TransactionSchema) {
-        let definition = ContractDefinition {
-            contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
-            contract_issuer: PublicKey::default(),
-            contract_spec: ContractSpecification {
-                runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
-                public_functions: vec![],
-            },
-        };
-        let contract_id = definition.calculate_contract_id();
-        let definition_features = OutputFeatures::for_contract_definition(definition);
-
-        let tx_schema =
-            txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: definition_features);
-
-        (contract_id, tx_schema)
-    }
-
-    fn create_contract_constitution_schema(contract_id: FixedHash, input: UnblindedOutput) -> TransactionSchema {
-        let validator_committee: CommitteeMembers = vec![PublicKey::default()].try_into().unwrap();
-        let constitution = ContractConstitution {
-            validator_committee,
-            acceptance_requirements: ContractAcceptanceRequirements {
-                acceptance_period_expiry: 100,
-                minimum_quorum_required: 5,
-            },
-            consensus: SideChainConsensus::MerkleRoot,
-            checkpoint_params: CheckpointParameters {
-                minimum_quorum_required: 5,
-                abandoned_interval: 100,
-            },
-            constitution_change_rules: ConstitutionChangeRules {
-                change_flags: ConstitutionChangeFlags::all(),
-                requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
-                    minimum_constitution_committee_signatures: 5,
-                    constitution_committee: Some(
-                        vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                            .try_into()
-                            .unwrap(),
-                    ),
-                }),
-            },
-            initial_reward: 100.into(),
-        };
-        let constitution_features = OutputFeatures::for_contract_constitution(contract_id, constitution);
-
-        txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: constitution_features)
-    }
-
-    fn create_contract_acceptance_schema(contract_id: FixedHash, input: UnblindedOutput) -> TransactionSchema {
-        // let validator_node_public_key = PublicKey::default();
-        let validator_node_public_key =
-            PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-        let signature = Signature::default();
-
-        let acceptance_features =
-            OutputFeatures::for_contract_acceptance(contract_id, validator_node_public_key, signature);
-
-        let mut tx =
-            txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features);
-        tx.output_version = None;
-
-        tx
     }
 }

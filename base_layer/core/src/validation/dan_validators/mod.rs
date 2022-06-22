@@ -29,6 +29,9 @@ use crate::{
 mod acceptance_validator;
 use acceptance_validator::validate_contract_acceptances;
 
+#[cfg(test)]
+mod test_helpers;
+
 pub fn validate_dan_transaction<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     tx: &Transaction,
