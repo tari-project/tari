@@ -5,6 +5,7 @@ import { WalletTransactionEvent, TransactionEvent } from '../useWalletEvents'
 import { Dictionary } from '../types/general'
 import { useAppSelector } from '../store/hooks'
 import { selectNetwork } from '../store/baseNode/selectors'
+import { toT } from '../utils/Format'
 
 import getDb from './db'
 
@@ -30,6 +31,13 @@ export interface TransactionsRepository {
   getLifelongMinedBalance: () => Promise<number>
   getMinedTransactionsDataSpan: () => Promise<{ from: Date; to: Date }>
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WithAmount = { amount: number } & any
+const toTariFromMicroTari = (result: WithAmount): WithAmount => ({
+  ...result,
+  amount: toT(result.amount),
+})
 
 const repositoryFactory: (
   network: string,
@@ -87,7 +95,10 @@ const repositoryFactory: (
       [DataResolution.Yearly]: ({ receivedAt }: { receivedAt: string }) =>
         receivedAt.substring(0, 4),
     }
-    const grouped = groupby(results, grouping[resolution])
+    const grouped = groupby(
+      results.map(toTariFromMicroTari),
+      grouping[resolution],
+    )
 
     return Object.fromEntries(
       Object.entries(grouped).map(([when, entries]) => [
@@ -122,7 +133,9 @@ const repositoryFactory: (
       [TransactionEvent.Mined],
     )
 
-    return results.reduce((accu, current) => accu + current.amount, 0)
+    return results
+      .map(toTariFromMicroTari)
+      .reduce((accu, current) => accu + current.amount, 0)
   },
   getMinedTransactionsDataSpan: async () => {
     const db = await getDb()
