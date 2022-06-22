@@ -37,16 +37,22 @@ Feature: Validator Node
         When I mine 8 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
 
-    @dan @broken
-    Scenario: Contract auto acceptance
+    @dan
+    Scenario: Contract constitution auto acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes
-        When I mine 9 blocks using wallet WALLET1 on NODE1
-        Then I wait for wallet WALLET1 to have at least 1000000 uT
-        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1 with "constitution_auto_accept" set to "true"
-        Then I create a "constitution-definition" from file "fixtures/constitution_definition.json" on wallet WALLET1 via command line
-        When I mine 8 blocks using wallet WALLET1 on NODE1
-        Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        And I mine 9 blocks using wallet WALLET1 on NODE1
+        And I wait for wallet WALLET1 to have at least 1000000 uT
+        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
+        And validator node VN1 has "constitution_auto_accept" set to true
+        And validator node VN1 has "constitution_management_polling_interval" set to 5
+        And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
+        And I mine 4 blocks using wallet WALLET1 on NODE1
+        When I create a contract constitution COM1 for contract DEF1 from file "fixtures/contract_constitution.json"
+        And I add VN1 to the validator committee on COM1
+        And I publish the contract constitution COM1 on wallet WALLET1 via command line
+        And I mine 4 blocks using wallet WALLET1 on NODE1
+        Then wallet WALLET1 will have a successfully mined constitution acceptance transaction for contract DEF1
 
     @dan @critical
     Scenario: Publish contract update proposal acceptance
