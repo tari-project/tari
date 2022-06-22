@@ -703,7 +703,7 @@ impl OutputManagerHandle {
         &mut self,
         target_amount: MicroTari,
         fee_per_gram: MicroTari,
-        commitments: Option<Vec<PublicKey>>,
+        commitments: Vec<PublicKey>,
     ) -> Result<CoinJoinResult, OutputManagerError> {
         match self
             .handle
