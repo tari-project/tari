@@ -23,7 +23,6 @@
 use log::*;
 use tari_utilities::hex::Hex;
 
-use super::dan_validators::validate_dan_transaction;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, PrunedOutput},
     consensus::ConsensusConstants,
@@ -266,9 +265,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
 
         self.validate_versions(tx, consensus_constants)?;
 
-        self.validate_unique_asset_rules(tx)?;
-
-        validate_dan_transaction(&self.db, tx)
+        self.validate_unique_asset_rules(tx)
     }
 }
 

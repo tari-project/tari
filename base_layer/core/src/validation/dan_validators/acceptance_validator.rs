@@ -26,7 +26,7 @@ use crate::{
     validation::ValidationError,
 };
 
-pub fn validate_contract_acceptances<B: BlockchainBackend>(
+pub fn validate_acceptance<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     tx: &Transaction,
 ) -> Result<(), ValidationError> {
@@ -94,14 +94,16 @@ mod test {
         transactions::tari_amount::T,
         txn_schema,
         validation::{
-            dan_validators::test_helpers::{
-                create_block,
-                create_contract_acceptance_schema,
-                create_contract_constitution_schema,
-                create_contract_definition_schema,
-                schema_to_transaction,
+            dan_validators::{
+                test_helpers::{
+                    create_block,
+                    create_contract_acceptance_schema,
+                    create_contract_constitution_schema,
+                    create_contract_definition_schema,
+                    schema_to_transaction,
+                },
+                TxDanLayerValidator,
             },
-            transaction_validators::TxConsensusValidator,
             MempoolTransactionValidation,
             ValidationError,
         },
@@ -127,7 +129,7 @@ mod test {
         let schema = create_contract_acceptance_schema(contract_id, change_outputs[2].clone());
         let (txs, _) = schema_to_transaction(&[schema]);
 
-        let validator = TxConsensusValidator::new(blockchain.db().clone());
+        let validator = TxDanLayerValidator::new(blockchain.db().clone());
         let err = validator.validate(txs.first().unwrap()).unwrap_err();
 
         match err {

@@ -43,7 +43,7 @@ pub use traits::{
 };
 
 pub mod block_validators;
-mod dan_validators;
+pub mod dan_validators;
 mod difficulty_calculator;
 pub use difficulty_calculator::*;
 pub mod header_validator;

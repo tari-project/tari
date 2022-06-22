@@ -20,28 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::ValidationError;
+use super::{MempoolTransactionValidation, ValidationError};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{OutputType, Transaction},
 };
 
 mod acceptance_validator;
-use acceptance_validator::validate_contract_acceptances;
+use acceptance_validator::validate_acceptance;
 
 #[cfg(test)]
 mod test_helpers;
 
-pub fn validate_dan_transaction<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    tx: &Transaction,
-) -> Result<(), ValidationError> {
-    for output in tx.body().outputs() {
-        match output.features.output_type {
-            OutputType::ContractValidatorAcceptance => return validate_contract_acceptances(db, tx),
-            _ => continue,
-        }
-    }
+#[derive(Clone)]
+pub struct TxDanLayerValidator<B> {
+    db: BlockchainDatabase<B>,
+}
 
-    Ok(())
+impl<B: BlockchainBackend> TxDanLayerValidator<B> {
+    pub fn new(db: BlockchainDatabase<B>) -> Self {
+        Self { db }
+    }
+}
+
+impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<B> {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        for output in tx.body().outputs() {
+            match output.features.output_type {
+                OutputType::ContractValidatorAcceptance => return validate_acceptance(&self.db, tx),
+                _ => continue,
+            }
+        }
+
+        Ok(())
+    }
 }
