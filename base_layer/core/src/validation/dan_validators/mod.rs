@@ -47,7 +47,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         for output in tx.body().outputs() {
             match output.features.output_type {
-                OutputType::ContractValidatorAcceptance => return validate_acceptance(&self.db, tx),
+                OutputType::ContractValidatorAcceptance => validate_acceptance(&self.db, output)?,
                 _ => continue,
             }
         }
