@@ -83,3 +83,31 @@ Then(
     console.log({ response });
   }
 );
+
+Then(
+    "wallet {word} will have a successfully mined constitution acceptance transaction for contract {word}",
+    { timeout: 20 * 1000 },
+    async function (wallet_name, contract_name) {
+        let wallet = await this.getWallet(wallet_name);
+        let contract_id = await this.fetchContract(contract_name);
+        let client = await wallet.connectClient();
+        let found = false;
+        let str = `Contract acceptance for contract with id=${contract_id}`
+        let accepted = [];
+
+        while (true) {
+            let found_txs = await client.getCompletedTransactions();
+            accepted = found_txs.filter((txo) => {
+                return txo.message == str;
+            });
+
+            if (accepted.length > 0) {
+                break
+            }
+
+            sleep(5000);
+        }
+
+        expect(accepted.length).to.equal(1);
+    }
+)
