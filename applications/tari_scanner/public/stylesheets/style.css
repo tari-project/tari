@@ -1,0 +1,67 @@
+*,
+*:before,
+*:after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 20;
+  font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
+  width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.clickable {
+  cursor: pointer;
+  /* Prevent text selection */
+  -youbkit-touch-callout: none;
+  -youbkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.navigation {
+  display: flex;
+  justify-content: space-between;
+}
+
+.activePage {
+  font-weight: bold;
+}
+
+.container {
+  display: grid;
+  width: 100%;
+}
+
+.pubkey {
+  font-family: monospace;
+  font-size: larger;
+  width: 32em;
+}
+
+table {
+  margin-top: 30px;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 5px;
+}
+
+th {
+  cursor: pointer;
+  border: 1px gray solid;
+}
+
+td {
+  border: 1px lightgray solid;
+}
