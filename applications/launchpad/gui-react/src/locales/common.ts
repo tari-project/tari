@@ -64,6 +64,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     startHere: 'Start here',
     readyToGo: 'Ready to go',
     readyToSet: 'Ready to set',
+    gotIt: 'Got it',
   },
   containers: {
     [Container.Tor]: 'Tor',

@@ -41,6 +41,16 @@ const translations = {
       message:
         'Only way to unlock access to your Tari wallet is by providing correct Tari wallet Password. Remember, unlike your social media account or bank account passwords, your Tari wallet password can never be recovered.',
     },
+    whyBalanceDiffers: {
+      title:
+        'Why is the amount you can send different from your account balance?',
+      message:
+        'It is because the balance includes the pending transactions that you have made.',
+    },
+    noteAboutVerificationPeriod: {
+      message:
+        'Also note that Tari coins are not available immediately after being mined. They show up in your balance, but it takes usually several days (a few hundred blocks to be mined within the network) to verify this transaction.',
+    },
   },
 }
 
