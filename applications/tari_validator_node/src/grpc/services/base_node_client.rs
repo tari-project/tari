@@ -188,59 +188,6 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         // }
     }
 
-    // TODO: Not used, remove
-    // async fn get_assets_for_dan_node(
-    //     &mut self,
-    //     dan_node_public_key: PublicKey,
-    // ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError> {
-    //     let inner = self.connection().await?;
-    //     // TODO: probably should use output mmr indexes here
-    //     let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 100 };
-    //     let mut result = inner.list_asset_registrations(request).await?.into_inner();
-    //     let mut assets: Vec<(AssetDefinition, u64)> = vec![];
-    //     let tip = self.get_tip_info().await?;
-    //     while let Some(r) = result.message().await? {
-    //         if let Ok(asset_public_key) = PublicKey::from_bytes(r.asset_public_key.as_bytes()) {
-    //             if let Some(checkpoint) = self
-    //                 .get_current_checkpoint(
-    //                     tip.height_of_longest_chain,
-    //                     asset_public_key.clone(),
-    //                     COMMITTEE_DEFINITION_ID.into(),
-    //                 )
-    //                 .await?
-    //             {
-    //                 if let Some(committee) = checkpoint.get_side_chain_committee() {
-    //                     if committee.contains(&dan_node_public_key) {
-    //                         info!(
-    //                             target: LOG_TARGET,
-    //                             "Node is on committee for asset : {}", asset_public_key
-    //                         );
-    //                         let committee = committee.iter().map(Hex::to_hex).collect::<Vec<String>>();
-    //                         assets.push((
-    //                             AssetDefinition {
-    //                                 committee,
-    //                                 contract_id: asset_public_key,
-    //                                 template_parameters: r
-    //                                     .features
-    //                                     .unwrap()
-    //                                     .asset
-    //                                     .unwrap()
-    //                                     .template_parameters
-    //                                     .into_iter()
-    //                                     .map(|tp| tp.into())
-    //                                     .collect(),
-    //                                 ..Default::default()
-    //                             },
-    //                             checkpoint.height,
-    //                         ));
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     Ok(assets)
-    // }
-
     async fn get_asset_registration(
         &mut self,
         asset_public_key: PublicKey,

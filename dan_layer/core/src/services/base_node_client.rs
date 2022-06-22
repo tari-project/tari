@@ -52,11 +52,6 @@ pub trait BaseNodeClient: Send + Sync {
         dan_node_public_key: PublicKey,
     ) -> Result<(bool, u64), DigitalAssetError>;
 
-    // async fn get_assets_for_dan_node(
-    //     &mut self,
-    //     dan_node_public_key: PublicKey,
-    // ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError>;
-
     async fn get_asset_registration(
         &mut self,
         asset_public_key: PublicKey,
