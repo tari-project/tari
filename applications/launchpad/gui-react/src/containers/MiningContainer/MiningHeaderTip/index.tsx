@@ -1,11 +1,6 @@
 import t from '../../../locales'
 
-import Button from '../../../components/Button'
-import Text from '../../../components/Text'
-
-import SvgStar from '../../../styles/Icons/Star'
-import SvgInfo1 from '../../../styles/Icons/Info1'
-import { StyledMiningHeaderTip } from './styles'
+import HelpTip from '../../../components/HelpTip'
 
 import { useAppDispatch } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
@@ -22,7 +17,6 @@ import { useAppSelector } from '../../../store/hooks'
 /**
  * Renders instructions above mining node boxes
  */
-
 const MiningHeaderTip = () => {
   const dispatch = useAppDispatch()
 
@@ -43,24 +37,11 @@ const MiningHeaderTip = () => {
   }
 
   return (
-    <StyledMiningHeaderTip data-testid='mining-header-tip-cmp'>
-      <SvgStar height={24} width={24} style={{ marginRight: 8 }} />
-      <Text type='defaultHeavy'>
-        {text}{' '}
-        <Text as='span' type='defaultMedium'>
-          <Button
-            variant='button-in-text'
-            rightIcon={<SvgInfo1 width='20px' height='20px' />}
-            autosizeIcons={false}
-            onClick={() =>
-              dispatch(tbotactions.push(MessagesConfig.CryptoMiningHelp))
-            }
-          >
-            {t.mining.headerTips.wantToKnowMore}
-          </Button>
-        </Text>
-      </Text>
-    </StyledMiningHeaderTip>
+    <HelpTip
+      text={text}
+      cta={t.mining.headerTips.wantToKnowMore}
+      onHelp={() => dispatch(tbotactions.push(MessagesConfig.CryptoMiningHelp))}
+    />
   )
 }
 
