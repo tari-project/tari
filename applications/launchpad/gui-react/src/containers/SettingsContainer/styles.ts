@@ -52,6 +52,7 @@ export const MenuItem = styled.button<{ active?: boolean }>`
 `
 
 export const MainContent = styled.main`
+  position: relative;
   flex-grow: 1;
   max-height: 100%;
   padding-top: ${({ theme }) => theme.spacing(2)};

@@ -25,12 +25,15 @@ pub struct WalletTransaction {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WalletIdentity {
     public_key: Vec<u8>,
     public_address: String,
     node_id: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WalletBalance {
     available_balance: u64,
     pending_incoming_balance: u64,

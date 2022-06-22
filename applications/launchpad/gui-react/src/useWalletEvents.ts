@@ -49,7 +49,6 @@ export const useWalletEvents = ({
     }
 
     let unsubscribe
-    isAlreadyInvoked = true
 
     const listenToEvents = async () => {
       unsubscribe = await listen(
@@ -78,6 +77,7 @@ export const useWalletEvents = ({
           // }
         },
       )
+      isAlreadyInvoked = true
     }
 
     listenToEvents()

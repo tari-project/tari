@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 
-import getTransactionsRepository, {
+import useTransactionsRepository, {
   DataResolution,
   MinedTariEntry,
 } from '../../../persistence/transactionsRepository'
 
 import { MiningStatisticsInterval } from './types'
-
-const transactionsRepository = getTransactionsRepository()
 
 const useStatisticsData = ({
   interval,
@@ -20,6 +18,7 @@ const useStatisticsData = ({
   from: Date
   to: Date
 }) => {
+  const transactionsRepository = useTransactionsRepository()
   const [data, setData] = useState<MinedTariEntry[]>([])
   useEffect(() => {
     const resolution = {

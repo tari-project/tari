@@ -1,6 +1,6 @@
 import styled from 'styled-components'
 
-export const StyledBox = styled.span`
+export const StyledBox = styled.div`
   background: ${({ theme }) => theme.backgroundImage};
   border: 1px solid ${({ theme }) => theme.borderColor};
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
@@ -11,6 +11,7 @@ export const StyledBox = styled.span`
   box-sizing: border-box;
   display: flex;
   justify-content: space-between;
+  column-gap: 0.25em;
 `
 
 export const FeedbackContainer = styled.div`

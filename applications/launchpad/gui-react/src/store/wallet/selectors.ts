@@ -1,4 +1,9 @@
+import { createSelector } from '@reduxjs/toolkit'
+
 import { RootState } from '../'
+import { Container } from '../containers/types'
+import { selectContainerStatus } from '../containers/selectors'
+
 import { WalletSetupRequired } from './types'
 
 export const selectState = (state: RootState) => state.wallet
@@ -17,9 +22,23 @@ export const selectWalletEmojiAddress = () => [
   '🐬💡🎳',
   '🚦🍹🎒',
 ]
-export const selectTariAmount = (state: RootState) => state.wallet.tari
-export const selectIsPending = (state: RootState) => state.wallet.pending
-export const selectIsRunning = (state: RootState) => state.wallet.running
+export const selectTariBalance = (state: RootState) => state.wallet.tari
 
 export const selectWalletSetupRequired = (state: RootState) =>
-  !state.wallet.unlocked ? WalletSetupRequired.MissingWalletAddress : undefined
+  !state.wallet.address ? WalletSetupRequired.MissingWalletAddress : undefined
+
+const requiredContainers = [Container.Tor, Container.BaseNode, Container.Wallet]
+export const selectContainerStatuses = (rootState: RootState) =>
+  requiredContainers.map(containerType =>
+    selectContainerStatus(containerType)(rootState),
+  )
+export const selectIsPending = createSelector(
+  selectContainerStatuses,
+  containers => containers.some(container => container.pending),
+)
+export const selectIsRunning = createSelector(
+  selectContainerStatuses,
+  containers =>
+    containers.every(container => container.running) ||
+    containers.some(container => container.running && container.pending),
+)

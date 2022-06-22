@@ -1,19 +1,25 @@
 import { useAppSelector, useAppDispatch } from '../../../store/hooks'
-import { selectState as selectWalletState } from '../../../store/wallet/selectors'
+import {
+  selectIsPending,
+  selectIsRunning,
+  selectState,
+} from '../../../store/wallet/selectors'
 import { actions as walletActions } from '../../../store/wallet'
 
 import WalletSettings from './WalletSettings'
 
 const WalletSettingsContainer = () => {
   const dispatch = useAppDispatch()
-  const { pending, running, address } = useAppSelector(selectWalletState)
+  const { address } = useAppSelector(selectState)
+  const running = useAppSelector(selectIsRunning)
+  const pending = useAppSelector(selectIsPending)
 
   return (
     <WalletSettings
       running={running}
       pending={pending}
       stop={() => dispatch(walletActions.stop())}
-      start={() => dispatch(walletActions.start())}
+      start={password => dispatch(walletActions.start(password))}
       address={address}
     />
   )

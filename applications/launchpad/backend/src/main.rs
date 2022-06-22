@@ -38,7 +38,7 @@ use tauri::{
 use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 use crate::{
-    api::{image_list, network_list, wallet_events},
+    api::{image_list, network_list, wallet_balance, wallet_events, wallet_identity},
     commands::{
         create_default_workspace,
         create_new_workspace,
@@ -114,6 +114,12 @@ fn main() {
             sql: include_str!("../migrations/2022-06-14.create-transactions-table.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "update transactions table",
+            sql: include_str!("../migrations/2022-06-21.include-event-in-transaction-id.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -131,7 +137,9 @@ fn main() {
             start_service,
             stop_service,
             shutdown,
-            wallet_events
+            wallet_events,
+            wallet_balance,
+            wallet_identity
         ])
         .on_window_event(on_event)
         .run(context)

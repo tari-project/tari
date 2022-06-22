@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
 
-import getTransactionsRepository from '../../../../persistence/transactionsRepository'
+import useTransactionsRepository from '../../../../persistence/transactionsRepository'
 
 import { MiningIntervalPickerComponentProps } from './types'
 import MiningIntervalPickerComponent from './MiningIntervalPickerComponent'
-
-const transactionsRepository = getTransactionsRepository()
 
 /**
  * @name MiningIntervalPicker
@@ -20,6 +18,8 @@ const MiningIntervalPicker = ({
   interval,
   onChange,
 }: Omit<MiningIntervalPickerComponentProps, 'dataFrom' | 'dataTo'>) => {
+  const transactionsRepository = useTransactionsRepository()
+
   const [{ from: dataFrom, to: dataTo }, setDates] = useState<{
     from: Date
     to: Date

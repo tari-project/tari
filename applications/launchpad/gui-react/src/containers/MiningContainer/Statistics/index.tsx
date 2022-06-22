@@ -1,14 +1,12 @@
 import { useMemo, useState, useEffect } from 'react'
 
 import * as DateUtils from '../../../utils/Date'
-import getTransactionsRepository from '../../../persistence/transactionsRepository'
+import useTransactionsRepository from '../../../persistence/transactionsRepository'
 
 import { MiningStatisticsInterval } from './types'
 import Statistics from './Statistics'
 import useStatisticsData from './useStatisticsData'
 import useAccountData from './useAccountData'
-
-const transactionsRepository = getTransactionsRepository()
 
 const getFrom = (
   interval: MiningStatisticsInterval,
@@ -52,6 +50,7 @@ const StatisticsContainer = ({
   onClose: () => void
   onReady?: () => void
 }) => {
+  const transactionsRepository = useTransactionsRepository()
   const [interval, setInterval] = useState<MiningStatisticsInterval>('monthly')
   const [intervalToShow, setIntervalToShow] = useState(new Date())
   useEffect(() => {

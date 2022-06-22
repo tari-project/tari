@@ -1,5 +1,7 @@
 /* eslint-disable quotes */
 const translations = {
+  setUpTariWalletTitle: 'Tari Wallet',
+  setUpTariWalletSubmitBtn: 'Set up Tari Wallet',
   password: {
     title: 'Enter Password',
     cta: 'to access your wallet:',

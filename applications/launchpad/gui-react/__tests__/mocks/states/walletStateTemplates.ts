@@ -14,7 +14,7 @@ export const initialWallet: WalletState = {
 export const unlockedWallet: WalletState = {
   running: false,
   pending: false,
-  address: '',
+  address: 'someWalletAddress',
   unlocked: true,
   tari: {
     balance: 0,

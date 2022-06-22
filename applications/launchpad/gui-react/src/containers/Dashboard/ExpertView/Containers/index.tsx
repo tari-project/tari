@@ -29,7 +29,7 @@ const ContainersContainer = () => {
 
   const start = async (container: Container) => {
     try {
-      await dispatch(actions.start(container)).unwrap()
+      await dispatch(actions.start({ service: container })).unwrap()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setError(e.toString())
