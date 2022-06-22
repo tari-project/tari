@@ -62,7 +62,7 @@ pub fn validate_acceptance<B: BlockchainBackend>(
 fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&ContractAcceptance, ValidationError> {
     match sidechain_feature.acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
-        None => Err(ValidationError::ConsensusError(
+        None => Err(ValidationError::DanLayerError(
             "Invalid contract acceptance: acceptance features not found".to_string(),
         )),
     }
@@ -81,7 +81,7 @@ fn validate_public_key(
             "Invalid contract acceptance: validator node public key is not in committee ({:?})",
             validator_node_public_key
         );
-        return Err(ValidationError::ConsensusError(msg));
+        return Err(ValidationError::DanLayerError(msg));
     }
 
     Ok(())
@@ -148,7 +148,7 @@ mod test {
         let validator = TxDanLayerValidator::new(blockchain.db().clone());
         let err = validator.validate(txs.first().unwrap()).unwrap_err();
         match err {
-            ValidationError::ConsensusError(message) => {
+            ValidationError::DanLayerError(message) => {
                 assert!(message.contains("Invalid contract acceptance: validator node public key is not in committee"))
             },
             _ => panic!("Expected a consensus error"),

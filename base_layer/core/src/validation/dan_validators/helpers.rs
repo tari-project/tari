@@ -38,7 +38,7 @@ pub fn validate_output_type(
             "Invalid output type: expected {:?} but got {:?}",
             expected_output_type, output_type
         );
-        return Err(ValidationError::ConsensusError(msg));
+        return Err(ValidationError::DanLayerError(msg));
     }
 
     Ok(())
@@ -47,7 +47,7 @@ pub fn validate_output_type(
 pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, ValidationError> {
     match output.features.sidechain_features.as_ref() {
         Some(features) => Ok(features),
-        None => Err(ValidationError::ConsensusError(
+        None => Err(ValidationError::DanLayerError(
             "Sidechain features not found".to_string(),
         )),
     }
@@ -62,16 +62,17 @@ pub fn get_contract_constitution<B: BlockchainBackend>(
         .unwrap();
 
     if contract_outputs.is_empty() {
-        return Err(ValidationError::ConsensusError(
+        return Err(ValidationError::DanLayerError(
             "Contract constitution not found".to_string(),
         ));
     }
 
     // we assume only one constution should be present in the blockchain
+    // TODO: create a validation to avoid duplicated constitution publishing
     let utxo_info = match contract_outputs.first() {
         Some(value) => value,
         None => {
-            return Err(ValidationError::ConsensusError(
+            return Err(ValidationError::DanLayerError(
                 "Contract constitution UtxoMindInfo not found".to_string(),
             ))
         },
@@ -80,7 +81,7 @@ pub fn get_contract_constitution<B: BlockchainBackend>(
     let constitution_output = match utxo_info.output.as_transaction_output() {
         Some(value) => value,
         None => {
-            return Err(ValidationError::ConsensusError(
+            return Err(ValidationError::DanLayerError(
                 "Contract constitution output not found".to_string(),
             ))
         },
@@ -89,7 +90,7 @@ pub fn get_contract_constitution<B: BlockchainBackend>(
     let constitution_features = match constitution_output.features.sidechain_features.as_ref() {
         Some(value) => value,
         None => {
-            return Err(ValidationError::ConsensusError(
+            return Err(ValidationError::DanLayerError(
                 "Contract constitution output features not found".to_string(),
             ))
         },
@@ -98,7 +99,7 @@ pub fn get_contract_constitution<B: BlockchainBackend>(
     let constitution = match constitution_features.constitution.as_ref() {
         Some(value) => value,
         None => {
-            return Err(ValidationError::ConsensusError(
+            return Err(ValidationError::DanLayerError(
                 "Contract constitution data not found in the output features".to_string(),
             ))
         },
