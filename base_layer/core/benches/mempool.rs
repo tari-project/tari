@@ -44,12 +44,14 @@ mod benches {
             CryptoFactories,
         },
         tx,
-        validation::transaction_validators::{
-            MempoolValidator,
-            TxConsensusValidator,
-            TxDanLayerValidator,
-            TxInputAndMaturityValidator,
-            TxInternalConsistencyValidator,
+        validation::{
+            dan_validators::TxDanLayerValidator,
+            transaction_validators::{
+                MempoolValidator,
+                TxConsensusValidator,
+                TxInputAndMaturityValidator,
+                TxInternalConsistencyValidator,
+            },
         },
     };
     use tokio::{runtime::Runtime, task};
