@@ -296,9 +296,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
-    fn fetch_with_features(&self, flags: OutputType) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    fn fetch_with_features(
+        &self,
+        output_type: OutputType,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
-        let mut outputs = OutputSql::index_by_feature_flags(flags, &conn)?;
+        let mut outputs = OutputSql::index_by_output_type(output_type, &conn)?;
         for o in &mut outputs {
             self.decrypt_if_necessary(o)?;
         }

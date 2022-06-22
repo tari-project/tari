@@ -127,7 +127,7 @@ table! {
         commitment -> Nullable<Binary>,
         spending_key -> Binary,
         value -> BigInt,
-        flags -> Integer,
+        output_type -> Integer,
         maturity -> BigInt,
         recovery_byte -> Integer,
         status -> Integer,
