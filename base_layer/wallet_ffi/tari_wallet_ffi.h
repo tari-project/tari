@@ -11,6 +11,12 @@
  */
 #define OutputFields_NUM_FIELDS 10
 
+enum TariTypeTag {
+  String = 0,
+  Utxo = 1,
+  PublicKey = 2,
+};
+
 enum TariUtxoSort {
   ValueAsc = 0,
   ValueDesc = 1,
@@ -285,6 +291,13 @@ struct TariOutputs {
   uintptr_t len;
   uintptr_t cap;
   struct TariUtxo *ptr;
+};
+
+struct TariVector {
+  enum TariTypeTag tag;
+  uintptr_t len;
+  uintptr_t cap;
+  void *ptr;
 };
 
 struct TariCoinJoinResult {
@@ -2218,10 +2231,24 @@ struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
  */
 void destroy_tari_outputs(struct TariOutputs *x);
 
+/**
+ * Frees memory for a `TariVector`
+ *
+ * ## Arguments
+ * `x` - The pointer to `TariVector`
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_tari_vector(struct TariVector *x);
+
 struct TariCoinJoinResult *wallet_coin_join(struct TariWallet *wallet,
                                             uint64_t target_amount,
                                             uint64_t fee_per_gram,
-                                            TariPublicKey *commitments,
+                                            struct TariVector commitments,
                                             int32_t *error_ptr);
 
 /**

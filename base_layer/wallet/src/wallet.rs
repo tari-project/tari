@@ -569,7 +569,7 @@ where
         &mut self,
         target_amount: MicroTari,
         fee_per_gram: MicroTari,
-        commitments: Option<Vec<PublicKey>>,
+        commitments: Vec<PublicKey>,
         msg: Option<String>,
     ) -> Result<TxId, WalletError> {
         let coin_join_tx = self

@@ -394,11 +394,11 @@ where
             } => self
                 .create_coin_join(target_amount, fee_per_gram, commitments)
                 .await
-                .map(|result| OutputManagerResponse::CoinJoinResult(result))
                 .map_err(|e| {
                     eprintln!("ERROR = {:#?}", e);
                     e
-                }),
+                })
+                .map(OutputManagerResponse::CoinJoinResult),
             OutputManagerRequest::ApplyEncryption(cipher) => self
                 .resources
                 .db
@@ -1724,7 +1724,7 @@ where
         &mut self,
         target_amount: MicroTari,
         fee_per_gram: MicroTari,
-        commitments: Option<Vec<PublicKey>>,
+        commitments: Vec<PublicKey>,
     ) -> Result<CoinJoinResult, OutputManagerError> {
         let covenant = Covenant::default();
         let noop_script = script!(Nop);
@@ -1761,47 +1761,58 @@ where
         eprintln!("aggregated_amount = {:#?}", aggregated_amount);
         eprintln!("target_amount = {:#?}", target_amount);
 
+        let base_metadata_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight()
+            .round_up_metadata_size(
+                script!(Nop).consensus_encode_exact_size() +
+                    covenant.consensus_encode_exact_size() +
+                    OutputFeatures::default().consensus_encode_exact_size(),
+            );
+
+        let mut fee_without_change =
+            self.get_fee_calc()
+                .calculate(fee_per_gram, 1, src_outputs.len(), 1, base_metadata_size);
+
         // checking whether a total output value is enough
-        if aggregated_amount < target_amount {
+        if aggregated_amount < (target_amount + fee_without_change) {
             error!(
                 target: LOG_TARGET,
-                "failed to join coins, not enough funds to fulfill target amount"
+                "failed to join coins, not enough funds to fulfill target amount plus the fee without change"
             );
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
-        // computing the fee based on whether there is leftover value
-        let computed_fee_amount = {
-            let base_metadata_size = self
-                .resources
-                .consensus_constants
-                .transaction_weight()
-                .round_up_metadata_size(
-                    script!(Nop).consensus_encode_exact_size() +
-                        covenant.consensus_encode_exact_size() +
-                        OutputFeatures::default().consensus_encode_exact_size(),
-                );
-
-            match aggregated_amount.saturating_sub(target_amount).as_u64() {
-                0 => self
-                    .get_fee_calc()
-                    .calculate(fee_per_gram, 1, src_outputs.len(), 1, base_metadata_size),
-                _ => self
-                    .get_fee_calc()
-                    .calculate(fee_per_gram, 1, src_outputs.len(), 2, base_metadata_size * 2),
-            }
+        let final_fee = match aggregated_amount
+            .saturating_sub(target_amount + fee_without_change)
+            .as_u64()
+        {
+            0 => fee_without_change,
+            _ => self
+                .get_fee_calc()
+                .calculate(fee_per_gram, 1, src_outputs.len(), 2, base_metadata_size * 2),
         };
 
-        eprintln!("computed_fee = {:#?}", computed_fee_amount);
+        // checking, again, whether a total output value is enough
+        if aggregated_amount < (target_amount + final_fee) {
+            error!(
+                target: LOG_TARGET,
+                "failed to join coins, not enough funds to fulfill target amount plus the final fee"
+            );
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        eprintln!("final_fee = {:#?}", final_fee);
         eprintln!("balance = {:#?}", self.get_balance(None)?);
 
         // preliminary balance check
-        if self.get_balance(None)?.available_balance < (target_amount + computed_fee_amount) {
+        if self.get_balance(None)?.available_balance < (target_amount + final_fee) {
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
         // NOTE: called `leftover` to remove possible brainlag by confusing `change` as a verb
-        let leftover_change = aggregated_amount.saturating_sub(target_amount + computed_fee_amount);
+        let leftover_change = aggregated_amount.saturating_sub(target_amount + final_fee);
 
         // ----------------------------------------------------------------------------
         // initializing new transaction
@@ -1958,13 +1969,13 @@ where
             tx_id,
             transaction: stp.take_transaction()?,
             target_amount,
-            total_expense_amount: target_amount + computed_fee_amount,
+            total_expense_amount: target_amount + final_fee,
             aggregated_amount,
             leftover_change_amount: leftover_change,
             primary_output,
             leftover_change_output: src_outputs[1].clone(),
             src_outputs,
-            computed_fee_amount,
+            computed_fee_amount: final_fee,
         })
     }
 

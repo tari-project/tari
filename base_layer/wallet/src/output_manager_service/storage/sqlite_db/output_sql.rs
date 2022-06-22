@@ -144,12 +144,12 @@ impl OutputSql {
         };
 
         // filtering by Commitment
-        if let Some(commitment) = q.commitment {
-            query = match commitment.len() {
+        if !q.commitment.is_empty() {
+            query = match q.commitment.len() {
                 0 => query,
-                1 => query.filter(outputs::commitment.eq(commitment[0].to_vec())),
+                1 => query.filter(outputs::commitment.eq(q.commitment[0].to_vec())),
                 _ => query.filter(
-                    outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitment.into_iter().map(|c| c.to_vec()).collect()),
+                    outputs::commitment.eq_any::<Vec<Vec<u8>>>(q.commitment.into_iter().map(|c| c.to_vec()).collect()),
                 ),
             };
         }
