@@ -26,37 +26,34 @@ const { sleep } = require("../../helpers/util");
 const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 
 Given(
-  "I have a validator node {word} connected to base node {word} and wallet {word} with {word} set to {word}",
+  "I have a validator node {word} connected to base node {word} and wallet {word}",
   { timeout: 20 * 1000 },
   async function (
     vn_name,
     base_node_name,
     wallet_name,
-    option_key,
-    option_value
   ) {
-    const baseNode = this.getNode(base_node_name);
-    const walletNode = this.getWallet(wallet_name);
-
-    const baseNodeGrpcAddress = `127.0.0.1:${baseNode.getGrpcPort()}`;
-    const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
-
-    const options = {};
-    options[option_key] = option_value;
-
-    const danNode = new ValidatorNodeProcess(
-      vn_name,
-      false,
-      options,
-      this.logFilePathBaseNode,
-      undefined,
-      baseNodeGrpcAddress,
-      walletGrpcAddress
-    );
-    await danNode.startNew();
-    await this.addDanNode(vn_name, danNode);
+    let vn = await this.createValidatorNode(vn_name, base_node_name, wallet_name);
+    await this.addDanNode(vn_name, vn);
   }
 );
+
+Then(
+  "validator node {word} has {string} set to {word}",
+  { timeout: 20 * 1000 },
+  async function (
+    vn_name,
+    option_name,
+    option_value,
+  ) {
+     let vn = this.getNode(vn_name);
+     await vn.stop();
+
+     vn.options['validator_node.' + option_name] = option_value;
+
+     await vn.startNew();
+  }
+)
 
 Then(
   "I publish a contract acceptance transaction for the validator node {word}",
