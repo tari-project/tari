@@ -1,16 +1,14 @@
+import { useTheme } from 'styled-components'
+
 import t from '../../../locales'
-
 import HelpTip from '../../../components/HelpTip'
-
 import { useAppDispatch } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
-
 import {
   selectTariContainers,
   selectTariMiningState,
   selectTariSetupRequired,
 } from '../../../store/mining/selectors'
-
 import MessagesConfig from '../../../config/helpMessagesConfig'
 import { useAppSelector } from '../../../store/hooks'
 
@@ -18,6 +16,7 @@ import { useAppSelector } from '../../../store/hooks'
  * Renders instructions above mining node boxes
  */
 const MiningHeaderTip = () => {
+  const theme = useTheme()
   const dispatch = useAppDispatch()
 
   const tariSetupRequired = useAppSelector(selectTariSetupRequired)
@@ -41,6 +40,10 @@ const MiningHeaderTip = () => {
       text={text}
       cta={t.mining.headerTips.wantToKnowMore}
       onHelp={() => dispatch(tbotactions.push(MessagesConfig.CryptoMiningHelp))}
+      style={{
+        marginTop: theme.spacingVertical(3),
+        marginBottom: theme.spacingVertical(2.392),
+      }}
     />
   )
 }

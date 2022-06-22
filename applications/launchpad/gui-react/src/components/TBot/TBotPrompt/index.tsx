@@ -176,6 +176,7 @@ const TBotPrompt = ({
   // Build messages list
   const renderedMessages = useMemo(() => {
     return messages?.slice(0, count).map((msg, idx) => {
+      console.debug({ count, currentIndex, messages })
       const progressBarFill = (messages[count - 1] as TBotMessage).barFill
       setProgressFill(progressBarFill)
       let skipButtonCheck

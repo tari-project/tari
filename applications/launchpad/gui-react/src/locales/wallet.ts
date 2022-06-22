@@ -30,6 +30,18 @@ const translations = {
       convert: 'To do this, you may need to convert the ID to emoji format.',
     },
   },
+  helpMessages: {
+    howItWorks: {
+      tip: {
+        text: 'Your Tari coins will be added here',
+        cta: 'How it works',
+      },
+      title:
+        'Tari wallet is a hardware app that allows you to manage your Tari balance.',
+      message:
+        'Only way to unlock access to your Tari wallet is by providing correct Tari wallet Password. Remember, unlike your social media account or bank account passwords, your Tari wallet password can never be recovered.',
+    },
+  },
 }
 
 export default translations

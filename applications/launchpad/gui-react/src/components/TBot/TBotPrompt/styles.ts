@@ -36,6 +36,7 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
  * @TODO: - wrong behaviour in non-$floating variant, open issue https://github.com/Altalogy/tari/issues/221
  */
 export const FadeOutSection = styled.div<{ $floating?: boolean }>`
+  pointer-events: none;
   position: absolute;
   height: ${({ $floating }) => ($floating ? '100px' : '250px')};
   ${({ $floating }) => ($floating ? '' : 'top: 0;')}

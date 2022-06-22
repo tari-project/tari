@@ -5,11 +5,13 @@ import WalletPasswordWizard from '../../containers/WalletPasswordWizard'
 import NodeBox from '../../components/NodeBox'
 import t from '../../locales'
 
+import WalletHelp from './WalletHelp'
+
 const WalletSetupBox = () => {
   const theme = useTheme()
 
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
           position: 'fixed',
@@ -39,7 +41,8 @@ const WalletSetupBox = () => {
           submitBtnText={t.wallet.setUpTariWalletSubmitBtn}
         />
       </NodeBox>
-    </>
+      <WalletHelp />
+    </div>
   )
 }
 
