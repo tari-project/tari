@@ -71,9 +71,3 @@ export const selectActiveMiningTypes = createSelector(
 
 export const selectOnboardingComplete = ({ app }: RootState) =>
   app.onboardingComplete
-
-export const selectDockerImages = ({ app }: RootState) =>
-  app.dockerImages.images
-
-export const selectDockerImagesLoading = ({ app }: RootState) =>
-  !app.dockerImages.loaded

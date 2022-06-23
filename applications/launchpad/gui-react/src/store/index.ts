@@ -11,6 +11,7 @@ import miningReducer from './mining'
 import walletReducer from './wallet'
 import containersReducer from './containers'
 import tbotReducer from './tbot'
+import dockerImagesReducer from './dockerImages'
 
 // exported for tests
 export const rootReducer = {
@@ -21,6 +22,7 @@ export const rootReducer = {
   settings: settingsReducer,
   containers: containersReducer,
   tbot: tbotReducer,
+  dockerImages: dockerImagesReducer,
 }
 const reducer = combineReducers(rootReducer)
 

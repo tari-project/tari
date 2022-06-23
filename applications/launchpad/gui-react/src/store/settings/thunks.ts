@@ -5,7 +5,7 @@ import { RootState } from '..'
 import { actions as baseNodeActions } from '../baseNode'
 import { actions as miningActions } from '../mining'
 import { actions as containersActions } from '../containers'
-import { getDockerImageList } from '../app'
+import { actions as dockerImagesActions } from '../dockerImages'
 
 import { SettingsInputs } from '../../containers/SettingsContainer/types'
 
@@ -55,7 +55,7 @@ export const saveSettings = createAsyncThunk<
 
   if ('docker' in newSettings) {
     dispatch({ type: 'settings/save', payload: { docker: newSettings.docker } })
-    await dispatch(getDockerImageList()).unwrap()
+    await dispatch(dockerImagesActions.getDockerImageList()).unwrap()
   }
 
   // Restart containers

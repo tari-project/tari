@@ -8,7 +8,7 @@ export const getDockerImageList = createAsyncThunk<
   DockerImage[],
   void,
   { state: RootState }
->('app/getDockerImageList', async (_, thunkApi) => {
+>('dockerImages/getDockerImageList', async (_, thunkApi) => {
   try {
     const state = thunkApi.getState()
 
@@ -24,11 +24,11 @@ export const getDockerImageList = createAsyncThunk<
 })
 
 export const pullImage = createAsyncThunk<void, { dockerImage: string }>(
-  'app/pullImage',
+  'dockerImages/pullImage',
   async ({ dockerImage }, thunkApi) => {
     try {
       thunkApi.dispatch({
-        type: 'app/setDockerProgress',
+        type: 'dockerImages/setProgress',
         payload: {
           dockerImage,
           status: DockerImagePullStatus.Waiting,
@@ -36,7 +36,7 @@ export const pullImage = createAsyncThunk<void, { dockerImage: string }>(
       })
       await new Promise(resolve => setTimeout(resolve, 1000))
       thunkApi.dispatch({
-        type: 'app/setDockerProgress',
+        type: 'dockerImages/setProgress',
         payload: {
           dockerImage,
           status: DockerImagePullStatus.Pulling,
@@ -45,7 +45,7 @@ export const pullImage = createAsyncThunk<void, { dockerImage: string }>(
       })
       await new Promise(resolve => setTimeout(resolve, 1000))
       thunkApi.dispatch({
-        type: 'app/setDockerProgress',
+        type: 'dockerImages/setProgress',
         payload: {
           dockerImage,
           progress: 20,
@@ -53,7 +53,7 @@ export const pullImage = createAsyncThunk<void, { dockerImage: string }>(
       })
       await new Promise(resolve => setTimeout(resolve, 1000))
       thunkApi.dispatch({
-        type: 'app/setDockerProgress',
+        type: 'dockerImages/setProgress',
         payload: {
           dockerImage,
           progress: 60,
@@ -61,7 +61,7 @@ export const pullImage = createAsyncThunk<void, { dockerImage: string }>(
       })
       await new Promise(resolve => setTimeout(resolve, 1000))
       thunkApi.dispatch({
-        type: 'app/setDockerProgress',
+        type: 'dockerImages/setProgress',
         payload: {
           dockerImage,
           progress: 80,
@@ -69,7 +69,7 @@ export const pullImage = createAsyncThunk<void, { dockerImage: string }>(
       })
       await new Promise(resolve => setTimeout(resolve, 1000))
       thunkApi.dispatch({
-        type: 'app/setDockerProgress',
+        type: 'dockerImages/setProgress',
         payload: {
           dockerImage,
           status: DockerImagePullStatus.Ready,

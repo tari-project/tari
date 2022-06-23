@@ -2,11 +2,11 @@ import { useEffect } from 'react'
 import { useTheme } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from '../../../../store/hooks'
-import { pullImage, getDockerImageList } from '../../../../store/app'
+import { actions } from '../../../../store/dockerImages'
 import {
   selectDockerImages,
   selectDockerImagesLoading,
-} from '../../../../store/app/selectors'
+} from '../../../../store/dockerImages/selectors'
 import Text from '../../../../components/Text'
 import Loading from '../../../../components/Loading'
 import LoadingOverlay from '../../../../components/LoadingOverlay'
@@ -22,7 +22,7 @@ const DockerImagesList = () => {
   const theme = useTheme()
   const dispatch = useAppDispatch()
   useEffect(() => {
-    dispatch(getDockerImageList())
+    dispatch(actions.getDockerImageList())
   }, [dispatch])
 
   const dockerImages = useAppSelector(selectDockerImages)
@@ -46,7 +46,9 @@ const DockerImagesList = () => {
                 style={{ color: theme.onTextLight }}
                 rightIcon={<QuestionMarkIcon />}
                 onClick={() =>
-                  dispatch(pullImage({ dockerImage: dockerImage.dockerImage }))
+                  dispatch(
+                    actions.pullImage({ dockerImage: dockerImage.dockerImage }),
+                  )
                 }
               >
                 {t.docker.settings.pullImage}

@@ -4,7 +4,7 @@ import styled, { ThemeProvider } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import useTransactionsRepository from './persistence/transactionsRepository'
-import { getDockerImageList } from './store/app'
+import { actions as dockerImagesActions } from './store/dockerImages'
 import {
   selectOnboardingComplete,
   selectThemeConfig,
@@ -37,7 +37,7 @@ const OnboardedAppContainer = ({ children }: { children: any }) => {
   useEffect(() => {
     const init = async () => {
       await dispatch(loadDefaultServiceSettings()).unwrap()
-      await dispatch(getDockerImageList()).unwrap()
+      await dispatch(dockerImagesActions.getDockerImageList()).unwrap()
       setInitialized(true)
     }
 

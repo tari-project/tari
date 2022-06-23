@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
 import { AppDispatch } from './store'
-import { setDockerProgress } from './store/app'
+import { actions } from './store/dockerImages'
 
 export type DockerImagePullStatusEvent = {
   dockerImage: string
@@ -30,7 +30,7 @@ export const useDockerEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
           payload: DockerImagePullStatusEvent
         }) => {
           // TODO fill this in properly when https://github.com/Altalogy/tari/issues/311 is done
-          dispatch(setDockerProgress(payload))
+          dispatch(actions.setProgress(payload))
         },
       )
       isAlreadyInvoked = true
