@@ -1,0 +1,16 @@
+<dl>
+  <dt>Proposal id</dt><dd>{{proposal_id}}</dd>
+  {{#if validator_committee}}
+    <dt>Validator committee</dt>
+    {{>CommitteeMembers validator_committee}}
+  {{/if}}
+  {{#if validator_signatures}}
+    <dt>Validator signatures</dt>
+    {{>CommitteeSignatures validator_signatures}}
+  {{/if}}
+  {{#if updated_constitution}}
+    <dt>Updated constitution</dt>
+    <dd>{{>ContractConstitution updated_constitution}}</dd>
+  {{/if}}
+  <dt>Activation window</dt><dd>{{activation_window}}</dd>
+</dl>

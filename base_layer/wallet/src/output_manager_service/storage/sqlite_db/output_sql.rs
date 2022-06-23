@@ -71,8 +71,7 @@ pub struct OutputSql {
     #[derivative(Debug = "ignore")]
     pub spending_key: Vec<u8>,
     pub value: i64,
-    // TODO: Rename this to output_type
-    pub flags: i32,
+    pub output_type: i32,
     pub maturity: i64,
     pub recovery_byte: i32,
     pub status: i32,
@@ -101,6 +100,7 @@ pub struct OutputSql {
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
+    pub contract_id: Option<Vec<u8>>,
 }
 
 impl OutputSql {
@@ -196,7 +196,11 @@ impl OutputSql {
                 .filter(outputs::maturity.le(tip_height))
                 .filter(outputs::features_unique_id.is_null())
                 .filter(outputs::features_parent_public_key.is_null())
-                .filter(outputs::flags.eq(no_flags).or(outputs::flags.eq(coinbase_flag)))
+                .filter(
+                    outputs::output_type
+                        .eq(no_flags)
+                        .or(outputs::output_type.eq(coinbase_flag)),
+                )
                 .order(outputs::value.desc())
                 .select(outputs::value)
                 .limit(1)
@@ -217,7 +221,11 @@ impl OutputSql {
             .filter(outputs::maturity.le(tip_height))
             .filter(outputs::features_unique_id.is_null())
             .filter(outputs::features_parent_public_key.is_null())
-            .filter(outputs::flags.eq(no_flags).or(outputs::flags.eq(coinbase_flag)))
+            .filter(
+                outputs::output_type
+                    .eq(no_flags)
+                    .or(outputs::output_type.eq(coinbase_flag)),
+            )
             .order_by(outputs::spending_priority.desc());
         match strategy {
             UTXOSelectionStrategy::Smallest => {
@@ -256,12 +264,12 @@ impl OutputSql {
             .load(conn)?)
     }
 
-    pub fn index_by_feature_flags(
-        flags: OutputType,
+    pub fn index_by_output_type(
+        output_type: OutputType,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        let res = diesel::sql_query("SELECT * FROM outputs where flags & $1 = $1 ORDER BY id;")
-            .bind::<diesel::sql_types::Integer, _>(i32::from(flags.as_byte()))
+        let res = diesel::sql_query("SELECT * FROM outputs where output_type & $1 = $1 ORDER BY id;")
+            .bind::<diesel::sql_types::Integer, _>(i32::from(output_type.as_byte()))
             .load(conn)?;
         Ok(res)
     }
@@ -569,15 +577,16 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
 
-        let flags = o
-            .flags
+        let output_type = o
+            .output_type
             .try_into()
             .map_err(|_| OutputManagerStorageError::ConversionError {
-                reason: format!("Unable to convert flag bits with value {} to OutputType", o.flags),
+                reason: format!("Unable to convert flag bits with value {} to OutputType", o.output_type),
             })?;
-        features.output_type = OutputType::from_byte(flags).ok_or(OutputManagerStorageError::ConversionError {
-            reason: "Flags could not be converted from bits".to_string(),
-        })?;
+        features.output_type =
+            OutputType::from_byte(output_type).ok_or(OutputManagerStorageError::ConversionError {
+                reason: "Flags could not be converted from bits".to_string(),
+            })?;
         features.maturity = o.maturity as u64;
         features.metadata = o.metadata.unwrap_or_default();
         features.sidechain_features = o
