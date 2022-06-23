@@ -180,6 +180,18 @@ class ValidatorNodeProcess {
           throw err;
         }
         console.log("Validator identity file was copied to destination");
+        fs.chmod(identity_destination_path, 0o600, (err) => {
+          if (err) {
+            console.log(
+              "Error Found while changing the permissions of the validator indentity file: ",
+              err
+            );
+            throw err;
+          }
+          console.log(
+            "Validator identity file permissions successfully modified"
+          );
+        });
       });
 
       let envs = [];
