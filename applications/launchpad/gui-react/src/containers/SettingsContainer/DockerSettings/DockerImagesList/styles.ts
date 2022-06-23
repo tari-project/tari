@@ -2,6 +2,8 @@ import styled from 'styled-components'
 
 export const DockerRow = styled.div`
   display: flex;
+  align-items: center;
+  height: 2em;
   padding: ${({ theme }) => theme.spacingVertical(1.25)};
   &:not(:last-of-type) {
     border-bottom: 1px solid ${({ theme }) => theme.borderColor};
