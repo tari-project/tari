@@ -27,7 +27,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tari_comms::types::CommsPublicKey;
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::{chain_storage::UtxoMinedInfo, transactions::transaction_components::OutputType};
@@ -339,12 +338,29 @@ pub struct MockWalletClient;
 impl WalletClient for MockWalletClient {
     async fn create_new_checkpoint(
         &mut self,
-        _asset_public_key: &PublicKey,
-        _checkpoint_unique_id: &[u8],
+        _contract_id: &FixedHash,
         _state_root: &StateRoot,
-        _next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError> {
         Ok(())
+    }
+
+    async fn submit_contract_acceptance(
+        &mut self,
+        _contract_id: &FixedHash,
+        _validator_node_public_key: &PublicKey,
+        _signature: &tari_common_types::types::Signature,
+    ) -> Result<u64, DigitalAssetError> {
+        Ok(0_u64)
+    }
+
+    async fn submit_contract_update_proposal_acceptance(
+        &mut self,
+        _contract_id: &FixedHash,
+        _proposal_id: u64,
+        _validator_node_public_key: &PublicKey,
+        _signature: &tari_common_types::types::Signature,
+    ) -> Result<u64, DigitalAssetError> {
+        Ok(0_u64)
     }
 }
 
@@ -362,7 +378,7 @@ pub struct MockValidatorNodeClient;
 impl ValidatorNodeRpcClient for MockValidatorNodeClient {
     async fn invoke_read_method(
         &mut self,
-        _asset_public_key: &PublicKey,
+        _contract_id: &FixedHash,
         _template_id: TemplateId,
         _method: String,
         _args: Vec<u8>,
@@ -372,7 +388,7 @@ impl ValidatorNodeRpcClient for MockValidatorNodeClient {
 
     async fn invoke_method(
         &mut self,
-        _asset_public_key: &PublicKey,
+        _contract_id: &FixedHash,
         _template_id: TemplateId,
         _method: String,
         _args: Vec<u8>,
@@ -382,7 +398,7 @@ impl ValidatorNodeRpcClient for MockValidatorNodeClient {
 
     async fn get_sidechain_blocks(
         &mut self,
-        _asset_public_key: &PublicKey,
+        _contract_id: &FixedHash,
         _start_hash: TreeNodeHash,
         _end_hash: Option<TreeNodeHash>,
     ) -> Result<Vec<SideChainBlock>, ValidatorNodeClientError> {
@@ -391,20 +407,20 @@ impl ValidatorNodeRpcClient for MockValidatorNodeClient {
 
     async fn get_sidechain_state(
         &mut self,
-        _asset_public_key: &PublicKey,
+        _contract_id: &FixedHash,
     ) -> Result<Vec<SchemaState>, ValidatorNodeClientError> {
         Ok(vec![])
     }
 
     async fn get_op_logs(
         &mut self,
-        _asset_public_key: &PublicKey,
+        _contract_id: &FixedHash,
         _height: u64,
     ) -> Result<Vec<StateOpLogEntry>, ValidatorNodeClientError> {
         Ok(vec![])
     }
 
-    async fn get_tip_node(&mut self, _asset_public_key: &PublicKey) -> Result<Option<Node>, ValidatorNodeClientError> {
+    async fn get_tip_node(&mut self, _contract_id: &FixedHash) -> Result<Option<Node>, ValidatorNodeClientError> {
         Ok(None)
     }
 }
@@ -471,4 +487,5 @@ impl ServiceSpecification for MockServiceSpecification {
     type StateDbBackendAdapter = MockStateDbBackupAdapter;
     type ValidatorNodeClientFactory = MockValidatorNodeClientFactory;
     type WalletClient = MockWalletClient;
+    type GlobalDbAdapter = crate::storage::mocks::global_db::MockGlobalDbBackupAdapter;
 }

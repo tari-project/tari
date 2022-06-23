@@ -396,6 +396,8 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
 mod test {
     use std::time::Duration;
 
+    use tari_common_types::types::FixedHash;
+
     use crate::{
         models::{AssetDefinition, Committee, HotStuffMessage, QuorumCertificate, TreeNodeHash, View, ViewId},
         services::{
@@ -419,13 +421,13 @@ mod test {
         // let mut inbound = mock_inbound();
         // let mut sender = inbound.create_sender();
         let locked_qc = QuorumCertificate::genesis(TreeNodeHash::zero());
-        let asset_public_key = create_public_key();
+        let contract_id = FixedHash::default();
         let address_a = create_public_key();
         let address_b = create_public_key();
         let address_c = create_public_key();
         let address_d = create_public_key();
 
-        let mut state = Prepare::<MockServiceSpecification>::new(address_b.clone(), asset_public_key.clone());
+        let mut state = Prepare::<MockServiceSpecification>::new(address_b.clone(), contract_id);
         let current_view = View {
             view_id: ViewId(1),
             is_leader: true,
@@ -446,10 +448,10 @@ mod test {
         let mut payload_processor = mock_payload_processor();
         let chain_storage_service = MockChainStorageService::default();
         let db_factory = MockDbFactory::default();
-        let chain_db = db_factory.get_or_create_chain_db(&asset_public_key.clone()).unwrap();
+        let chain_db = db_factory.get_or_create_chain_db(&contract_id.clone()).unwrap();
         let chain_tx = chain_db.new_unit_of_work();
         let mut state_tx = db_factory
-            .get_or_create_state_db(&asset_public_key)
+            .get_or_create_state_db(&contract_id)
             .unwrap()
             .new_unit_of_work(current_view.view_id.as_u64());
 
@@ -473,7 +475,7 @@ mod test {
             .send(
                 address_a.clone(),
                 address_b.clone(),
-                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), asset_public_key.clone()),
+                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), contract_id),
             )
             .await
             .unwrap();
@@ -482,7 +484,7 @@ mod test {
             .send(
                 address_c.clone(),
                 address_b.clone(),
-                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), asset_public_key.clone()),
+                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), contract_id),
             )
             .await
             .unwrap();
@@ -491,7 +493,7 @@ mod test {
             .send(
                 address_d.clone(),
                 address_b.clone(),
-                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), asset_public_key.clone()),
+                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), contract_id),
             )
             .await
             .unwrap();

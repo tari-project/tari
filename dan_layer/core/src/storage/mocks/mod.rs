@@ -23,7 +23,7 @@
 
 pub mod chain_db;
 pub mod state_db;
-mod global_db;
+pub mod global_db;
 
 use std::{
     collections::HashMap,
