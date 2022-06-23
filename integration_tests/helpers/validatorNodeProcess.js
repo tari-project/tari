@@ -271,7 +271,6 @@ class ValidatorNodeProcess {
 
   async createGrpcClient() {
     return await ValidatorNodeClient.create(this.grpcPort);
-    // return await ValidatorNodeClient.create(18144);
   }
 
   getOverrides() {

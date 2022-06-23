@@ -57,10 +57,10 @@ Feature: Validator Node
         And I have wallet WALLET1 connected to all seed nodes
         When I mine 9 blocks using wallet WALLET1 on NODE1
         Then I wait for wallet WALLET1 to have at least 1000000 uT
-        And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
+        And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
         When I mine 8 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
-        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1 with "constitiution_auto_accept" set to "false"
+        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
         Then I publish a contract update proposal acceptance transaction for the validator node VN1
         When I mine 8 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled

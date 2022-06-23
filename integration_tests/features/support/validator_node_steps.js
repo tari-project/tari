@@ -56,16 +56,16 @@ Then(
 )
 
 Then(
-  "I publish a contract acceptance transaction for the validator node {word}",
+  "I publish a contract acceptance transaction for contract {word} for the validator node {word}",
   { timeout: 20 * 1000 },
-  async function (vn_name) {
+  async function (contract_name, vn_name) {
     let dan_node = this.getNode(vn_name);
     let grpc_dan_node = await dan_node.createGrpcClient();
     let response = await grpc_dan_node.publishContractAcceptance(
-      "90b1da4524ea0e9479040d906db9194d8af90f28d05ff2d64c0a82eb93125177" // contract_id
+      await this.fetchContract(contract_name)
     );
     expect(response.status).to.be.equal("Accepted");
-    console.log({ response });
+    console.debug({ response });
   }
 );
 
@@ -80,7 +80,7 @@ Then(
       0 // proposal_id
     );
     expect(response.status).to.be.equal("Accepted");
-    console.log({ response });
+    console.debug({ response });
   }
 );
 
@@ -91,7 +91,6 @@ Then(
         let wallet = await this.getWallet(wallet_name);
         let contract_id = await this.fetchContract(contract_name);
         let client = await wallet.connectClient();
-        let found = false;
         let str = `Contract acceptance for contract with id=${contract_id}`
         let accepted = [];
 
@@ -101,10 +100,31 @@ Then(
                 return txo.message == str;
             });
 
-            if (accepted.length > 0) {
-                break
-            }
+            if (accepted.length > 0) { break };
+            sleep(5000);
+        }
 
+        expect(accepted.length).to.equal(1);
+    }
+)
+
+Then(
+    "wallet {word} will have a successfully mined contract acceptance transaction for contract {word}",
+    { timeout: 20 * 1000 },
+    async function (wallet_name, contract_name) {
+        let wallet = await this.getWallet(wallet_name);
+        let contract_id = await this.fetchContract(contract_name);
+        let client = await wallet.connectClient();
+        let str = `Contract acceptance for contract with id=${contract_id}`
+        let accepted = [];
+
+        while (true) {
+            let found_txs = await client.getCompletedTransactions();
+            accepted = found_txs.filter((txo) => {
+                return txo.message == str;
+            });
+
+            if (accepted.length > 0) { break };
             sleep(5000);
         }
 
