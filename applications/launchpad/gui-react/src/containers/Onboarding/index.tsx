@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import { isDockerInstalled } from '../../commands'
+
 import Button from '../../components/Button'
 import TBotPrompt from '../../components/TBot/TBotPrompt'
 import { TBotMessage } from '../../components/TBot/TBotPrompt/types'
-import Text from '../../components/Text'
 import {
   OnboardingMessagesIntro,
   OnboardingMessagesDockerInstall,
@@ -25,8 +26,17 @@ const OnboardingContainer = () => {
     undefined,
   )
   const [current, setCurrent] = useState(1)
+  const [tBotIndex, setTBotIndex] = useState(1)
 
   messagesRef.current = messages
+
+  const checkDocker = async () => {
+    setDockerInstalled(await isDockerInstalled())
+  }
+
+  useEffect(() => {
+    checkDocker()
+  }, [])
 
   const pushMessages = (msgs: TBotMessage[]) => {
     if (!messagesRef.current) {
@@ -79,8 +89,13 @@ const OnboardingContainer = () => {
   }
   /** END OF MOCK FOR DOCKER IMAGE DOWNLOAD */
 
-  /** MOCK FOR DOCKER INSTALLATION */
+  /** IS DOCKER INSTALLED */
   useEffect(() => {
+    // Do not push Docker related messages until the intro is done
+    if (tBotIndex !== 4) {
+      return
+    }
+
     if (dockerInstalled === false) {
       pushMessages(OnboardingMessagesDockerInstall(onDockerInstallDone))
     } else if (dockerInstalled === true) {
@@ -98,26 +113,10 @@ const OnboardingContainer = () => {
         },
       ])
     }
-  }, [dockerInstalled])
+  }, [dockerInstalled, tBotIndex])
 
   const onMessageRender = (index: number) => {
-    if (index === 4) {
-      setTimeout(() => {
-        pushMessages([
-          {
-            content: (
-              <>
-                <Text>Is docker installed?</Text>
-                <Button onClick={() => setDockerInstalled(true)}>Yes</Button>
-                <Button onClick={() => setDockerInstalled(false)}>No</Button>
-              </>
-            ),
-            barFill: 0.25,
-            noSkip: true,
-          },
-        ])
-      }, 500)
-    }
+    setTBotIndex(index)
   }
   /** END OF MOCK FOR DOCKER INSTALLATION */
 

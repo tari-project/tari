@@ -1,9 +1,18 @@
 /* eslint-disable react/jsx-key */
+import { useEffect, useState } from 'react'
+import { type } from '@tauri-apps/api/os'
+
 import Text from '../../Text'
 import t from '../../../locales'
 import Button from '../../Button'
 
 import LinksConfig from '../../../config/links'
+
+const OS_NAMES = {
+  Darwin: 'macOS',
+  Windows_NT: 'Windows',
+  Linux: 'Linux',
+}
 
 const messages = [
   <Text as='span' type='defaultMedium'>
@@ -16,14 +25,32 @@ const messages = [
   <Text as='span' type='defaultMedium'>
     {t.onboarding.dockerInstall.message2}
   </Text>,
-  <Text as='span' type='defaultMedium'>
-    {t.onboarding.dockerInstall.message3.part1}{' '}
-    <Text as='span' type='defaultHeavy'>
-      {t.onboarding.dockerInstall.message3.part2}
-    </Text>{' '}
-    {t.onboarding.dockerInstall.message3.part3}
-    &#128054;
-  </Text>,
+  () => {
+    const [osName, setOsName] = useState('')
+
+    const checkOs = async () => {
+      const osType = await type()
+      if (Object.keys(OS_NAMES).includes(osType)) {
+        setOsName(OS_NAMES[osType as 'Darwin' | 'Windows_NT' | 'Linux'])
+      }
+    }
+
+    useEffect(() => {
+      checkOs()
+    }, [])
+
+    return (
+      <Text as='span' type='defaultMedium'>
+        {t.onboarding.dockerInstall.message3.part1} {osName}{' '}
+        {t.onboarding.dockerInstall.message3.part2}{' '}
+        <Text as='span' type='defaultHeavy'>
+          {t.onboarding.dockerInstall.message3.part3}
+        </Text>{' '}
+        {t.onboarding.dockerInstall.message3.part4}
+        &#128054;
+      </Text>
+    )
+  },
   <>
     <Text as='span' type='defaultMedium'>
       {t.onboarding.dockerInstall.message4.part1}

@@ -24,9 +24,10 @@ const translations = {
     },
     message2: 'Docker is an open-source platform that allows you to easily install complex software configurations (like Tari Launchpad). You can use it on Linux, Windows 10, and macOS. It acts like a lightweight virtual machine that is sandboxed from your operating system.',
     message3: {
-      part1: 'Ok, I have already found the latest version of Docker compatible with the Windows operating system you are using.',
-      part2: 'Download the installation file, follow the instructions and run the Docker. ',
-      part3: 'When you are done, please come back to me so that we can continue the setup process. As a responsible bot, I promise to wait for you here.',
+      part1: 'Ok, I have already found the latest version of Docker compatible with the',
+      part2: 'operating system you are using.',
+      part3: 'Download the installation file, follow the instructions and run the Docker. ',
+      part4: 'When you are done, please come back to me so that we can continue the setup process. As a responsible bot, I promise to wait for you here.',
     },
     message4: {
       part1: '🆘 I almost forgot! If you have any problems or doubts',

@@ -23,12 +23,12 @@ export const OnboardingMessagesIntro: TBotMessage[] = [
   {
     content: introMessages[2],
     barFill: 0.188,
-    wait: 5000,
+    wait: 12000,
   },
   {
     content: introMessages[3],
     barFill: 0.25,
-    wait: 5000,
+    wait: 6000,
     noSkip: true,
   },
 ]
@@ -39,20 +39,22 @@ export const OnboardingMessagesDockerInstall: (
   {
     content: dockerInstallMessages[0],
     barFill: 0.3,
-    wait: 3000,
+    wait: 6000,
   },
   {
     content: dockerInstallMessages[1],
     barFill: 0.35,
-    wait: 3000,
+    wait: 7000,
   },
   {
     content: dockerInstallMessages[2],
     barFill: 0.4,
+    wait: 8000,
   },
   {
     content: dockerInstallMessages[3],
     barFill: 0.45,
+    wait: 10000,
   },
   {
     content: <DockerInstallDocs onDone={onDone} />,
