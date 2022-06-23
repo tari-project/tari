@@ -11,15 +11,17 @@ const GotItButton = () => {
   }
 
   return (
-    <Button
-      type='button'
-      variant='primary'
-      onClick={close}
-      size='medium'
-      testId='gotitbutton-cmp'
-    >
-      {t.common.phrases.gotIt}!
-    </Button>
+    <div>
+      <Button
+        type='button'
+        variant='primary'
+        onClick={close}
+        size='medium'
+        testId='gotitbutton-cmp'
+      >
+        {`${t.common.phrases.gotIt}!`}
+      </Button>
+    </div>
   )
 }
 

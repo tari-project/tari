@@ -10,6 +10,7 @@ import {
   WhyBalanceDiffers,
   NoteAboutVerificationPeriod,
 } from '../components/TBot/HelpComponents/Wallet'
+import { WhatIsBaseNode } from '../components/TBot/HelpComponents/BaseNode'
 import { TBotMessage } from '../components/TBot/TBotPrompt/types'
 import { TBotMessages } from '../store/tbot/types'
 
@@ -21,6 +22,7 @@ const MessagesConfig = {
     'whyBalanceDiffers',
     'noteAboutVerificationPeriod',
   ],
+  [TBotMessages.BaseNodeHelp]: ['whatIsBaseNode'],
 }
 
 export const HelpMessagesMap: {
@@ -37,6 +39,9 @@ export const HelpMessagesMap: {
   whyBalanceDiffers: WhyBalanceDiffers,
   noteAboutVerificationPeriod: {
     content: NoteAboutVerificationPeriod,
+  },
+  whatIsBaseNode: {
+    content: WhatIsBaseNode,
   },
 }
 

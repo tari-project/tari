@@ -8,11 +8,20 @@ import { ServiceDescriptor } from '../../src/store/containers/types'
 /**
  * Set of default values returned by `tauriIPCMock()`
  */
-export const defaultTauriMockValues: Record<string, unknown> = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const defaultTauriMockValues: Record<string, any> = {
   os: {
     arch: 'x86_64',
     platform: 'darwin',
     ostype: 'Darwin',
+  },
+  window: {
+    manage: {
+      innerSize: {
+        width: 1200,
+        height: 800,
+      },
+    },
   },
 }
 
@@ -60,10 +69,14 @@ export const tauriIPCMock = (props: Record<string, unknown> = {}) => {
 const tauriCmdMock = (
   cmd: string,
   args: Record<string, unknown>,
-  props: Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  props: Record<string, any>,
 ) => {
   const tauriModule = (args?.__tauriModule as string)?.toLowerCase()
   const messageCmd = (args?.message as { cmd?: string })?.cmd?.toLowerCase()
+  const messageDataCmd = (
+    args?.message as { cmd?: string; data?: { label?: string; cmd?: string } }
+  )?.data?.cmd
 
   if (tauriModule && messageCmd) {
     if (
@@ -71,11 +84,27 @@ const tauriCmdMock = (
       Object.keys(props).includes(tauriModule) &&
       Object.keys(props[tauriModule]).includes(messageCmd)
     ) {
+      if (
+        messageDataCmd &&
+        Object.keys(props[tauriModule][messageCmd]).includes(messageDataCmd)
+      ) {
+        return props[tauriModule][messageCmd][messageDataCmd]
+      }
+
       return props[tauriModule][messageCmd]
     } else if (
       Object.keys(defaultTauriMockValues).includes(tauriModule) &&
       Object.keys(defaultTauriMockValues[tauriModule]).includes(messageCmd)
     ) {
+      if (
+        messageDataCmd &&
+        Object.keys(defaultTauriMockValues[tauriModule][messageCmd]).includes(
+          messageDataCmd,
+        )
+      ) {
+        return defaultTauriMockValues[tauriModule][messageCmd][messageDataCmd]
+      }
+
       return defaultTauriMockValues[tauriModule][messageCmd]
     }
   }
