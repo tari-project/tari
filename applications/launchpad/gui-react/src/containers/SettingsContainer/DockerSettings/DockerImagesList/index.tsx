@@ -7,6 +7,7 @@ import {
   selectDockerImagesLoading,
 } from '../../../../store/app/selectors'
 import Text from '../../../../components/Text'
+import Loading from '../../../../components/Loading'
 import Tag from '../../../../components/Tag'
 import Button from '../../../../components/Button'
 import CheckIcon from '../../../../styles/Icons/CheckRound'
@@ -48,6 +49,7 @@ const DockerImagesList = () => {
           )}
           {!dockerImage.latest && dockerImage.pending && (
             <DockerStatusWrapper>
+              <Loading loading size='1em' />
               {dockerImage.status && (
                 <Text>{t.docker.settings.status[dockerImage.status]}</Text>
               )}
