@@ -28,7 +28,7 @@ use tari_mmr::MerkleMountainRange;
 
 use crate::models::{ConsensusHash, Instruction};
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct InstructionSetHash(FixedHash);
 
 impl InstructionSetHash {

@@ -44,7 +44,7 @@ pub struct NewOutputSql {
     #[derivative(Debug = "ignore")]
     pub spending_key: Vec<u8>,
     pub value: i64,
-    pub flags: i32,
+    pub output_type: i32,
     pub maturity: i64,
     pub recovery_byte: i32,
     pub status: i32,
@@ -65,6 +65,7 @@ pub struct NewOutputSql {
     pub features_json: String,
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
+    pub contract_id: Option<Vec<u8>>,
 }
 
 impl NewOutputSql {
@@ -79,7 +80,7 @@ impl NewOutputSql {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: output.unblinded_output.value.as_u64() as i64,
-            flags: i32::from(output.unblinded_output.features.output_type.as_byte()),
+            output_type: i32::from(output.unblinded_output.features.output_type.as_byte()),
             maturity: output.unblinded_output.features.maturity as i64,
             recovery_byte: i32::from(output.unblinded_output.features.recovery_byte),
             status: status as i32,
@@ -108,6 +109,7 @@ impl NewOutputSql {
             })?,
             covenant: output.unblinded_output.covenant.to_bytes(),
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
+            contract_id: output.unblinded_output.features.contract_id().map(|h| h.to_vec()),
         })
     }
 
@@ -138,7 +140,7 @@ impl From<OutputSql> for NewOutputSql {
             commitment: o.commitment,
             spending_key: o.spending_key,
             value: o.value,
-            flags: o.flags,
+            output_type: o.output_type,
             maturity: o.maturity,
             recovery_byte: o.recovery_byte,
             status: o.status,
@@ -158,6 +160,7 @@ impl From<OutputSql> for NewOutputSql {
             features_json: o.features_json,
             covenant: o.covenant,
             encrypted_value: o.encrypted_value,
+            contract_id: o.contract_id,
         }
     }
 }

@@ -39,6 +39,7 @@ use tari_dan_core::{
 use tari_dan_storage_sqlite::{
     SqliteChainBackendAdapter,
     SqliteDbFactory,
+    SqliteGlobalDbBackendAdapter,
     SqliteStateDbBackendAdapter,
     SqliteStorageService,
 };
@@ -66,6 +67,7 @@ impl ServiceSpecification for DefaultServiceSpecification {
     type CommitteeManager = ConcreteCommitteeManager;
     type DbFactory = SqliteDbFactory;
     type EventsPublisher = LoggingEventsPublisher<ConsensusWorkerDomainEvent>;
+    type GlobalDbAdapter = SqliteGlobalDbBackendAdapter;
     type InboundConnectionService = TariCommsInboundReceiverHandle;
     type MempoolService = MempoolServiceHandle;
     type OutboundService = TariCommsOutboundService<Self::Payload>;

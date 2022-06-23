@@ -54,7 +54,7 @@ pub enum OutputType {
     ContractConstitutionProposal = 6,
     /// Output that indicates acceptance of an existing contract constitution amendment proposal.
     ContractConstitutionChangeAcceptance = 7,
-    /// Output that defines and amendment of a contract constitution amendment
+    /// Output that defines an amendment of a contract constitution.
     ContractAmendment = 8,
 
     // TODO: Remove these deprecated flags
@@ -78,6 +78,20 @@ impl OutputType {
     /// None is returned.
     pub fn from_byte(value: u8) -> Option<Self> {
         FromPrimitive::from_u8(value)
+    }
+
+    pub fn is_contract_utxo(self) -> bool {
+        #[allow(clippy::enum_glob_use)]
+        use OutputType::*;
+        matches!(
+            self,
+            ContractDefinition |
+                ContractConstitution |
+                ContractValidatorAcceptance |
+                ContractCheckpoint |
+                ContractConstitutionProposal |
+                ContractConstitutionChangeAcceptance
+        )
     }
 }
 

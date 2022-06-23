@@ -33,6 +33,7 @@ use tari_core::transactions::transaction_components::{
     ContractAcceptance,
     ContractAcceptanceRequirements,
     ContractAmendment,
+    ContractCheckpoint,
     ContractConstitution,
     ContractDefinition,
     ContractSpecification,
@@ -58,6 +59,7 @@ impl From<SideChainFeatures> for grpc::SideChainFeatures {
             update_proposal: value.update_proposal.map(Into::into),
             update_proposal_acceptance: value.update_proposal_acceptance.map(Into::into),
             amendment: value.amendment.map(Into::into),
+            checkpoint: value.checkpoint.map(Into::into),
         }
     }
 }
@@ -78,6 +80,7 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
             .map(ContractUpdateProposalAcceptance::try_from)
             .transpose()?;
         let amendment = features.amendment.map(ContractAmendment::try_from).transpose()?;
+        let checkpoint = features.checkpoint.map(ContractCheckpoint::try_from).transpose()?;
 
         Ok(Self {
             contract_id: features.contract_id.try_into().map_err(|_| "Invalid contract_id")?,
@@ -87,6 +90,7 @@ impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
             update_proposal,
             update_proposal_acceptance,
             amendment,
+            checkpoint,
         })
     }
 }
@@ -130,6 +134,7 @@ impl TryFrom<grpc::CreateConstitutionDefinitionRequest> for SideChainFeatures {
             update_proposal: None,
             update_proposal_acceptance: None,
             amendment: None,
+            checkpoint: None,
         })
     }
 }
@@ -148,8 +153,7 @@ impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
         let contract_spec = value
             .contract_spec
             .map(ContractSpecification::try_from)
-            .ok_or_else(|| "contract_spec is missing".to_string())?
-            .map_err(|err| err)?;
+            .ok_or_else(|| "contract_spec is missing".to_string())??;
 
         Ok(Self {
             contract_name,
@@ -207,8 +211,7 @@ impl TryFrom<grpc::PublicFunction> for PublicFunction {
         let function = value
             .function
             .map(FunctionRef::try_from)
-            .ok_or_else(|| "function is missing".to_string())?
-            .map_err(|err| err)?;
+            .ok_or_else(|| "function is missing".to_string())??;
 
         Ok(Self {
             name: vec_into_fixed_string(value.name),
@@ -296,6 +299,29 @@ impl TryFrom<grpc::ContractConstitution> for ContractConstitution {
             checkpoint_params,
             constitution_change_rules,
             initial_reward,
+        })
+    }
+}
+
+//---------------------------------- ContractCheckpoint --------------------------------------------//
+impl From<ContractCheckpoint> for grpc::ContractCheckpoint {
+    fn from(value: ContractCheckpoint) -> Self {
+        Self {
+            merkle_root: value.merkle_root.to_vec(),
+            signatures: Some(value.signatures.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::ContractCheckpoint> for ContractCheckpoint {
+    type Error = String;
+
+    fn try_from(value: grpc::ContractCheckpoint) -> Result<Self, Self::Error> {
+        let merkle_root = value.merkle_root.try_into().map_err(|_| "Invalid merkle root")?;
+        let signatures = value.signatures.map(TryInto::try_into).transpose()?.unwrap_or_default();
+        Ok(Self {
+            merkle_root,
+            signatures,
         })
     }
 }

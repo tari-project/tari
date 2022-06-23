@@ -97,7 +97,7 @@ message GetTokenDataResponse {
 //}
 
 message InvokeReadMethodRequest{
-    bytes asset_public_key = 1;
+    bytes contract_id = 1;
     uint32 template_id = 2;
     string method = 3;
      bytes args = 4;
@@ -115,7 +115,7 @@ message Authority {
 }
 
 message InvokeMethodRequest{
-    bytes asset_public_key = 1;
+    bytes contract_id = 1;
     uint32 template_id = 2;
     string method = 3;
     bytes args = 4;

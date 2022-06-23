@@ -37,7 +37,7 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::sync_decide";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecideNextSync {
     sync_peers: Vec<SyncPeer>,
 }

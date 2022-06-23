@@ -23,12 +23,10 @@
 use std::convert::{TryFrom, TryInto};
 
 use log::*;
-use tari_common_types::types::PublicKey;
 use tari_comms::{
     protocol::rpc::{Request, Response, RpcStatus, Streaming},
     utils,
 };
-use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::{Instruction, TreeNodeHash},
     services::{AssetProcessor, MempoolService},
@@ -82,12 +80,14 @@ where
     ) -> Result<Response<proto::InvokeReadMethodResponse>, RpcStatus> {
         println!("{:?}", request);
         let request = request.into_message();
-        let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
+        let contract_id = request
+            .contract_id
+            .try_into()
             .map_err(|err| RpcStatus::bad_request(&format!("Asset public key was not a valid public key:{}", err)))?;
 
         let state = self
             .db_factory
-            .get_state_db(&asset_public_key)
+            .get_state_db(&contract_id)
             .map_err(|e| RpcStatus::general(&format!("Could not create state db: {}", e)))?
             .ok_or_else(|| RpcStatus::not_found(&"This node does not process this asset".to_string()))?;
 
@@ -124,11 +124,11 @@ where
                 .map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
             request.method.clone(),
             request.args.clone(),
-            /* TokenId(request.token_id.clone()),
-             * TODO: put signature in here
-             * ComSig::default()
-             * create_com_sig_from_bytes(&request.signature)
-             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
+            // TokenId(request.token_id.clone()),
+            // TODO: put signature in here
+            // ComSig::default()
+            // create_com_sig_from_bytes(&request.signature)
+            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
         );
         debug!(target: LOG_TARGET, "Submitting instruction {} to mempool", instruction);
         let mut mempool_service = self.mempool_service.clone();
@@ -156,8 +156,10 @@ where
     ) -> Result<Streaming<proto::GetSidechainBlocksResponse>, RpcStatus> {
         let msg = request.into_message();
 
-        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
-            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+        let contract_id = msg
+            .contract_id
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request("Invalid contract_id"))?;
         let start_hash =
             TreeNodeHash::try_from(msg.start_hash).map_err(|_| RpcStatus::bad_request("Invalid start hash"))?;
 
@@ -169,7 +171,7 @@ where
 
         let db = self
             .db_factory
-            .get_chain_db(&asset_public_key)
+            .get_chain_db(&contract_id)
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 
@@ -240,12 +242,14 @@ where
     ) -> Result<Streaming<proto::GetSidechainStateResponse>, RpcStatus> {
         let msg = request.into_message();
 
-        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
-            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+        let contract_id = msg
+            .contract_id
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request("Invalid contract_id"))?;
 
         let db = self
             .db_factory
-            .get_state_db(&asset_public_key)
+            .get_state_db(&contract_id)
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 
@@ -284,12 +288,14 @@ where
     ) -> Result<Response<proto::GetStateOpLogsResponse>, RpcStatus> {
         let msg = request.into_message();
 
-        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
-            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+        let contract_id = msg
+            .contract_id
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request("Invalid contract_id"))?;
 
         let db = self
             .db_factory
-            .get_state_db(&asset_public_key)
+            .get_state_db(&contract_id)
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 
@@ -311,12 +317,14 @@ where
     ) -> Result<Response<proto::GetTipNodeResponse>, RpcStatus> {
         let msg = request.into_message();
 
-        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
-            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+        let contract_id = msg
+            .contract_id
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request("Invalid contract_id"))?;
 
         let db = self
             .db_factory
-            .get_chain_db(&asset_public_key)
+            .get_chain_db(&contract_id)
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 

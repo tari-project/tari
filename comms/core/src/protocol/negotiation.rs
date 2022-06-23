@@ -207,8 +207,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             .try_into()
             .map(|v: u8| v.to_be_bytes())
             .map_err(|_| ProtocolError::ProtocolIdTooLong)?;
-        self.socket.write(&len_byte).await?;
-        self.socket.write(&flags.bits().to_be_bytes()).await?;
+        self.socket.write_all(&len_byte).await?;
+        self.socket.write_all(&flags.bits().to_be_bytes()).await?;
         self.socket.write_all(protocol).await?;
         self.socket.flush().await?;
         trace!(

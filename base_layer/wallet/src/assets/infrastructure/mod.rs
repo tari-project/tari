@@ -60,13 +60,12 @@ pub enum AssetManagerRequest {
         features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
     },
     CreateInitialCheckpoint {
-        asset_public_key: Box<PublicKey>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
     CreateFollowOnCheckpoint {
-        asset_public_key: Box<PublicKey>,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },

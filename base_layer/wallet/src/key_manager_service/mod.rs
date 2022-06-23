@@ -40,4 +40,4 @@ mod test;
 mod interface;
 pub mod storage;
 
-pub use interface::{AddResult, KeyManagerInterface};
+pub use interface::{AddResult, KeyManagerInterface, NextKeyResult};

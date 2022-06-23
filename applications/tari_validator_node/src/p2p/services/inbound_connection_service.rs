@@ -29,7 +29,7 @@ use std::{
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 use tari_comms::types::CommsPublicKey;
 use tari_dan_core::{
     models::{HotStuffMessage, HotStuffMessageType, TariDanPayload, ViewId},
@@ -69,7 +69,7 @@ pub struct TariCommsInboundConnectionService {
     receiver: TariCommsInboundReceiverHandle,
     // sender: Sender<(CommsPublicKey, HotStuffMessage<TariDanPayload>)>,
     request_channel: Receiver<TariCommsInboundRequest>,
-    asset_public_key: PublicKey,
+    contract_id: FixedHash,
     buffered_messages: VecDeque<(CommsPublicKey, HotStuffMessage<TariDanPayload>, Instant)>,
     expiry_time: Duration,
     #[allow(clippy::type_complexity)]
@@ -85,13 +85,13 @@ pub struct TariCommsInboundConnectionService {
 
 #[allow(dead_code)]
 impl TariCommsInboundConnectionService {
-    pub fn new(asset_public_key: PublicKey) -> Self {
+    pub fn new(contract_id: FixedHash) -> Self {
         let (sender, receiver) = channel(1000);
         let (loopback_sender, loopback_receiver) = channel(1);
         Self {
             receiver: TariCommsInboundReceiverHandle::new(sender),
             request_channel: receiver,
-            asset_public_key,
+            contract_id,
             buffered_messages: VecDeque::with_capacity(1000),
             expiry_time: Duration::new(90, 0),
             waiters: VecDeque::new(),
@@ -193,7 +193,9 @@ impl TariCommsInboundConnectionService {
                 }
                 match result_message {
                     Some(m) => {
-                        reply_channel.send(m).expect("Could not send");
+                        if let Err(m) = reply_channel.send(m) {
+                            error!(target: LOG_TARGET, "Failed to send result message! {:?}", m);
+                        }
                     },
                     None => {
                         self.waiters
@@ -212,7 +214,7 @@ impl TariCommsInboundConnectionService {
         let hot_stuff_message: HotStuffMessage<TariDanPayload> = proto_message
             .try_into()
             .map_err(DigitalAssetError::InvalidPeerMessage)?;
-        if hot_stuff_message.asset_public_key() == &self.asset_public_key {
+        if *hot_stuff_message.contract_id() == self.contract_id {
             println!("{:?}", hot_stuff_message);
             // self.sender.send((from, hot_stuff_message)).await.unwrap();
             self.process_message(from, hot_stuff_message).await?;

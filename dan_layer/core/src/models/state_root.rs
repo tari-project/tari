@@ -22,7 +22,7 @@
 
 use tari_common_types::types::FixedHash;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct StateRoot {
     root: FixedHash,
 }

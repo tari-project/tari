@@ -84,7 +84,7 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
@@ -170,31 +170,20 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Spend.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key())
-            .await?;
-        match key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key())
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(OutputManagerError::KeyManagerServiceError(e)),
+        const BRANCHES: &[OutputManagerKeyManagerBranch] = &[
+            OutputManagerKeyManagerBranch::Spend,
+            OutputManagerKeyManagerBranch::SpendScript,
+            OutputManagerKeyManagerBranch::Coinbase,
+            OutputManagerKeyManagerBranch::CoinbaseScript,
+            OutputManagerKeyManagerBranch::RecoveryViewOnly,
+            OutputManagerKeyManagerBranch::RecoveryByte,
+            OutputManagerKeyManagerBranch::RecoveryBlinding,
+            OutputManagerKeyManagerBranch::ContractIssuer,
+        ];
+        for branch in BRANCHES {
+            key_manager.add_new_branch(branch.get_branch_key()).await?;
         }
+        Ok(())
     }
 
     /// Return the public rewind keys
@@ -362,6 +351,10 @@ where
             OutputManagerRequest::GetUnspentOutputs => {
                 let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
+            },
+            OutputManagerRequest::GetOutputsBy(q) => {
+                let outputs = self.fetch_outputs_by(q)?.into_iter().map(|v| v.into()).collect();
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
@@ -1576,6 +1569,10 @@ where
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_outputs_by(q)?)
+    }
+
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
     }
@@ -2085,7 +2082,7 @@ where
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
     // is removing small UTXOs from the blockchain, con is that it costs more in fees

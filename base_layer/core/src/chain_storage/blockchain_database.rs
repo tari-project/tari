@@ -79,7 +79,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -423,12 +423,13 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    pub fn fetch_all_constitutions(
+    pub fn fetch_contract_outputs_for_block(
         &self,
-        dan_node_public_key: PublicKey,
-    ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+        block_hash: BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_all_constitutions(&dan_node_public_key)
+        db.fetch_contract_outputs_for_block(&block_hash, output_type)
     }
 
     pub fn fetch_kernel_by_excess(
@@ -1371,9 +1372,19 @@ pub fn fetch_chain_headers<T: BlockchainBackend>(
         ));
     }
 
-    (start..=end_inclusive)
-        .map(|h| db.fetch_chain_header_by_height(h))
-        .collect()
+    #[allow(clippy::cast_possible_truncation)]
+    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    for h in start..=end_inclusive {
+        match db.fetch_chain_header_by_height(h) {
+            Ok(header) => {
+                headers.push(header);
+            },
+            Err(ChainStorageError::ValueNotFound { .. }) => break,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(headers)
 }
 
 fn insert_headers<T: BlockchainBackend>(db: &mut T, headers: Vec<ChainHeader>) -> Result<(), ChainStorageError> {

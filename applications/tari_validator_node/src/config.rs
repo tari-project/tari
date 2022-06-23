@@ -73,6 +73,7 @@ pub struct ValidatorNodeConfig {
     pub data_dir: PathBuf,
     pub p2p: P2pConfig,
     pub constitution_auto_accept: bool,
+    /// Constitution polling interval in block height
     pub constitution_management_polling_interval: u64,
     pub constitution_management_confirmation_time: u64,
     pub grpc_address: Option<Multiaddr>,
@@ -111,10 +112,10 @@ impl Default for ValidatorNodeConfig {
             scan_for_assets: true,
             new_asset_scanning_interval: 10,
             assets_allow_list: None,
-            data_dir: PathBuf::from("/data/validator_node"),
+            data_dir: PathBuf::from("data/validator_node"),
             constitution_auto_accept: false,
-            constitution_management_confirmation_time: 10,
-            constitution_management_polling_interval: 5,
+            constitution_management_confirmation_time: 20,
+            constitution_management_polling_interval: 120,
             p2p,
             grpc_address: Some("/ip4/127.0.0.1/tcp/18144".parse().unwrap()),
         }

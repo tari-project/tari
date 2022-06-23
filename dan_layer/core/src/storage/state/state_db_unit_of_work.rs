@@ -28,7 +28,7 @@ use std::{
 
 use digest::Digest;
 use log::*;
-use tari_common_types::types::{HashDigest, PublicKey};
+use tari_common_types::types::{FixedHash, HashDigest};
 use tari_crypto::common::Blake256;
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::hex::Hex;
@@ -63,24 +63,21 @@ pub trait StateDbUnitOfWorkReader: Clone + Send + Sync {
 
 #[derive(Debug, Clone)]
 pub struct UnitOfWorkContext {
-    asset_public_key: PublicKey,
+    contract_id: FixedHash,
     height: u64,
 }
 
 impl UnitOfWorkContext {
-    pub fn new(height: u64, asset_public_key: PublicKey) -> Self {
-        Self {
-            height,
-            asset_public_key,
-        }
+    pub fn new(height: u64, contract_id: FixedHash) -> Self {
+        Self { height, contract_id }
     }
 
     pub fn height(&self) -> u64 {
         self.height
     }
 
-    pub fn asset_public_key(&self) -> &PublicKey {
-        &self.asset_public_key
+    pub fn contract_id(&self) -> &FixedHash {
+        &self.contract_id
     }
 }
 
