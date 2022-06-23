@@ -1,11 +1,10 @@
 import styled, { useTheme } from 'styled-components'
 
 import Loading from '../Loading'
-import Backdrop from '../Backdrop'
 
 const Overlay = styled.div`
   position: absolute;
-  padding: ${({ theme }) => theme.spacing()};
+  padding: ${({ theme }) => theme.spacing(2)};
   display: flex;
   justify-content: center;
   align-items: center;
@@ -17,12 +16,11 @@ const Overlay = styled.div`
   backdrop-filter: grayscale(90%);
 `
 
-const LoadingOverlay = ({ opacity = 0.1 }: { opacity?: number }) => {
+const LoadingOverlay = () => {
   const theme = useTheme()
 
   return (
     <Overlay>
-      <Backdrop opacity={opacity} borderRadius={theme.borderRadius()} />
       <Loading
         loading
         size='2em'
