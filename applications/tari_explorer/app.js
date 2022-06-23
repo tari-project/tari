@@ -70,6 +70,8 @@ hbs.registerHelper("json", function (obj) {
   return JSON.stringify(obj);
 });
 
+hbs.registerPartials(path.join(__dirname, "partials"));
+
 var app = express();
 
 // view engine setup
