@@ -3,7 +3,7 @@
 
 @dan
 Feature: Validator Node
-    @dan @critical
+    @critical
     Scenario: Publish contract acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes
@@ -16,7 +16,6 @@ Feature: Validator Node
         And I mine 9 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 will have a successfully mined contract acceptance transaction for contract DEF1
 
-    @dan
     Scenario: Contract constitution auto acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes
@@ -33,7 +32,7 @@ Feature: Validator Node
         And I mine 9 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 will have a successfully mined constitution acceptance transaction for contract DEF1
 
-    @dan @critical
+    @critical
     Scenario: Publish contract update proposal acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes
