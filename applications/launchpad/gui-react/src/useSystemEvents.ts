@@ -9,8 +9,14 @@ enum SystemEventType {
   Container = 'container',
 }
 
+let isAlreadyInvoked = false
+
 export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
   useEffect(() => {
+    if (isAlreadyInvoked) {
+      return
+    }
+
     let unsubscribe
 
     const listenToSystemEvents = async () => {
@@ -32,6 +38,7 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
           }
         },
       )
+      isAlreadyInvoked = true
     }
 
     listenToSystemEvents()

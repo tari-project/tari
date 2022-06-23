@@ -15,6 +15,10 @@ export interface SettingsInputs {
   mining: {
     merged: MiningSettingsInputs
   }
+  docker: {
+    tag: string
+    registry: string
+  }
   baseNode: BaseNodeSettingsInputs
 }
 

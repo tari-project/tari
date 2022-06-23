@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useForm, SubmitHandler } from 'react-hook-form'
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
@@ -7,6 +7,7 @@ import { actions } from '../../store/settings'
 import {
   selectSettingsOpen,
   selectActiveSettings,
+  selectServiceSettings,
 } from '../../store/settings/selectors'
 import { saveSettings } from '../../store/settings/thunks'
 
@@ -19,37 +20,38 @@ const SettingsContainer = () => {
   const activeSettings = useAppSelector(selectActiveSettings)
 
   const miningMerged = useAppSelector(selectMergedMiningState)
+  const serviceSettings = useAppSelector(selectServiceSettings)
 
   const [openMiningAuthForm, setOpenMiningAuthForm] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
 
+  const defaultValues = useMemo(
+    () => ({
+      mining: {
+        merged: {
+          address: miningMerged.address,
+          threads: miningMerged.threads,
+          urls: miningMerged.urls,
+          authentication: miningMerged.authentication,
+        },
+      },
+      docker: {
+        tag: serviceSettings.dockerTag,
+        registry: serviceSettings.dockerRegistry,
+      },
+    }),
+    [miningMerged, serviceSettings],
+  )
+
   const { control, handleSubmit, formState, reset, setValue, getValues } =
     useForm<SettingsInputs>({
       mode: 'onChange',
-      defaultValues: {
-        mining: {
-          merged: {
-            address: miningMerged.address,
-            threads: miningMerged.threads,
-            urls: miningMerged.urls,
-            authentication: miningMerged.authentication,
-          },
-        },
-      },
+      defaultValues: defaultValues,
     })
 
   useEffect(() => {
     if (settingsOpen === true) {
-      reset({
-        mining: {
-          merged: {
-            address: miningMerged.address,
-            threads: miningMerged.threads,
-            urls: miningMerged.urls,
-            authentication: miningMerged.authentication,
-          },
-        },
-      })
+      reset(defaultValues)
     }
   }, [settingsOpen])
 

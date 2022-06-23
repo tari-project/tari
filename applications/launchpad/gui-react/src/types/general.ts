@@ -36,3 +36,20 @@ export type CSSWithSpring =
   | CSSProperties
   | Record<string, SpringValue<number>>
   | Record<string, SpringValue<string>>
+
+export enum DockerImagePullStatus {
+  Waiting = 'waiting',
+  Pulling = 'pulling',
+  Ready = 'ready',
+}
+
+export type DockerImage = {
+  imageName: string
+  displayName: string
+  dockerImage: string
+  latest: boolean
+  pending?: boolean
+  error?: string
+  progress?: number
+  status?: DockerImagePullStatus
+}

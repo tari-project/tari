@@ -5,6 +5,7 @@ import { RootState } from '..'
 import { actions as baseNodeActions } from '../baseNode'
 import { actions as miningActions } from '../mining'
 import { actions as containersActions } from '../containers'
+import { actions as dockerImagesActions } from '../dockerImages'
 
 import { SettingsInputs } from '../../containers/SettingsContainer/types'
 
@@ -24,6 +25,7 @@ const getSettings = async () => ({
   moneroUseAuth: false,
   moneroUsername: '',
   moneroPassword: '',
+  rootFolder: 'asdf',
 })
 
 export const loadDefaultServiceSettings = createAsyncThunk<unknown>(
@@ -49,6 +51,11 @@ export const saveSettings = createAsyncThunk<
   // Set Mining config
   if ('mining' in newSettings && 'merged' in newSettings.mining) {
     dispatch(miningActions.setMergedConfig(newSettings.mining.merged))
+  }
+
+  if ('docker' in newSettings) {
+    dispatch({ type: 'settings/save', payload: { docker: newSettings.docker } })
+    await dispatch(dockerImagesActions.getDockerImageList()).unwrap()
   }
 
   // Restart containers

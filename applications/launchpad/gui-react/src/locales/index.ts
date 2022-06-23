@@ -18,6 +18,7 @@ import cryptoMiningHelpI18n from './cryptoMiningHelp'
 import mergedMiningHelpI18n from './mergedMiningHelp'
 import settingsI18n from './settings'
 import onboardingI18n from './onboarding'
+import dockerI18n from './docker'
 
 const translations = {
   common: commonI18n,
@@ -31,6 +32,7 @@ const translations = {
   mergedMiningHelp: mergedMiningHelpI18n,
   settings: settingsI18n,
   onboarding: onboardingI18n,
+  docker: dockerI18n,
 }
 
 export default translations

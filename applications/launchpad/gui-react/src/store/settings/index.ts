@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
+import { SettingsInputs } from '../../containers/SettingsContainer/types'
+
 import { SettingsState, Settings } from './types'
 import { loadDefaultServiceSettings } from './thunks'
 
@@ -25,6 +27,13 @@ const settingsSlice = createSlice({
     },
     goTo(state, action: PayloadAction<Settings>) {
       state.which = action.payload
+    },
+    save(state, action: PayloadAction<Pick<SettingsInputs, 'docker'>>) {
+      state.serviceSettings = {
+        ...state.serviceSettings,
+        dockerTag: action.payload.docker.tag,
+        dockerRegistry: action.payload.docker.registry,
+      }
     },
   },
   extraReducers: builder => {
