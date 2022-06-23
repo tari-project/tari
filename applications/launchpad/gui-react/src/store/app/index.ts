@@ -11,7 +11,6 @@ import {
   DockerImagePullStatus,
 } from './types'
 import { getDockerImageList } from './thunks'
-import DockerImagesList from '../../containers/SettingsContainer/DockerSettings/DockerImagesList'
 
 export const appInitialState: AppState = {
   expertView: 'hidden',
