@@ -415,11 +415,13 @@ const findUtxoWithOutputMessage = async (wallet, message) => {
     });
 
     if (accepted.length > 0) {
-      break
+      break;
     }
 
     await sleep(5000);
   }
+
+  console.log({ accepted });
 
   return accepted;
 };

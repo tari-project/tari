@@ -22,7 +22,7 @@
 
 const { Given, Then, When } = require("@cucumber/cucumber");
 const { expect } = require("chai");
-const fs = require('fs');
+const fs = require("fs");
 const { waitFor, sleep, byteArrayToHex } = require("../../helpers/util");
 const path = require("path");
 const uuid = require("uuid");
@@ -299,41 +299,41 @@ Then(
 );
 
 Then(
-    "I publish the contract constitution {word} on wallet {word} via command line",
-    { timeout: 120 * 1000 },
-    async function (constitution_name, wallet_name) {
-        let constitution = this.fetchContractConstitution(constitution_name);
-        let wallet = this.getWallet(wallet_name);
+  "I publish the contract constitution {word} on wallet {word} via command line",
+  { timeout: 120 * 1000 },
+  async function (constitution_name, wallet_name) {
+    let constitution = this.fetchContractConstitution(constitution_name);
+    let wallet = this.getWallet(wallet_name);
 
-        let absolute_path = await wallet.writeConstitutionFile(constitution);
-        let output = await wallet_run_command(
-            wallet,
-            `contract publish-constitution ${absolute_path}`
-        );
-        console.log(output.buffer);
-    }
+    let absolute_path = await wallet.writeConstitutionFile(constitution);
+    let output = await wallet_run_command(
+      wallet,
+      `contract publish-constitution ${absolute_path}`
+    );
+    console.log(output.buffer);
+  }
 );
 
 When(
-    "I create a contract constitution {word} for contract {word} from file {string}",
-    async function (constitution_name, contract_name, relative_file_path) {
-        let absolute_path = path.resolve(relative_file_path);
-        let contract_id = this.fetchContract(contract_name);
+  "I create a contract constitution {word} for contract {word} from file {string}",
+  async function (constitution_name, contract_name, relative_file_path) {
+    let absolute_path = path.resolve(relative_file_path);
+    let contract_id = this.fetchContract(contract_name);
 
-        let constitution = JSON.parse(fs.readFileSync(absolute_path, 'utf8'));
-        constitution['contract_id'] = contract_id;
+    let constitution = JSON.parse(fs.readFileSync(absolute_path, "utf8"));
+    constitution["contract_id"] = contract_id;
 
-        this.saveContractConstitution(constitution_name, constitution);
-    }
+    this.saveContractConstitution(constitution_name, constitution);
+  }
 );
 
 When(
-    'I add {word} to the validator committee on {word}',
-    async function (vn_name, constitution_name) {
-        let vn = this.getNode(vn_name);
-        let constitution = this.fetchContractConstitution(constitution_name);
-        constitution['validator_committee'] = [vn.getPubKey()];
-    }
+  "I add {word} to the validator committee on {word}",
+  async function (vn_name, constitution_name) {
+    let vn = this.getNode(vn_name);
+    let constitution = this.fetchContractConstitution(constitution_name);
+    constitution["validator_committee"] = [vn.getPubKey()];
+  }
 );
 
 Then(

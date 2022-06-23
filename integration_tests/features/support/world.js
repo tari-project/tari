@@ -132,13 +132,13 @@ class CustomWorld {
     const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
 
     let vn = new ValidatorNodeProcess(
-        vn_name,
-        false,
-        [],
-        this.logFilePathBaseNode,
-        undefined,
-        baseNodeGrpcAddress,
-        walletGrpcAddress
+      vn_name,
+      false,
+      [],
+      this.logFilePathBaseNode,
+      undefined,
+      baseNodeGrpcAddress,
+      walletGrpcAddress
     );
 
     await vn.startNew();

@@ -213,8 +213,8 @@ class ValidatorNodeProcess {
         customArgs["validator_node.grpc_address"] = this.getGrpcAddress();
       }
       Object.keys(this.options).forEach((k) => {
-        if (k.startsWith('validator_node.')) {
-          customArgs[k] = this.options[k]
+        if (k.startsWith("validator_node.")) {
+          customArgs[k] = this.options[k];
         }
       });
 
