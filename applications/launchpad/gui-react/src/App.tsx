@@ -11,6 +11,7 @@ import {
 } from './store/app/selectors'
 import { useSystemEvents } from './useSystemEvents'
 import { useWalletEvents } from './useWalletEvents'
+import { useDockerEvents } from './useDockerEvents'
 import HomePage from './pages/home'
 import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
@@ -45,6 +46,7 @@ const OnboardedAppContainer = ({ children }: { children: any }) => {
 
   useSystemEvents({ dispatch })
   useWalletEvents({ dispatch, transactionsRepository })
+  useDockerEvents({ dispatch })
   useMiningScheduling()
 
   if (!initialized) {

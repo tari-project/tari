@@ -1,0 +1,45 @@
+import { useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/tauri'
+import { listen } from '@tauri-apps/api/event'
+
+import { AppDispatch } from './store'
+import { setDockerProgress } from './store/app'
+
+export type DockerImagePullStatusEvent = {
+  dockerImage: string
+}
+
+let isAlreadyInvoked = false
+
+export const useDockerEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
+  useEffect(() => {
+    if (isAlreadyInvoked) {
+      return
+    }
+
+    let unsubscribe
+
+    const listenToEvents = async () => {
+      unsubscribe = await listen(
+        'tari://pull_image_progress',
+        async ({
+          event: _,
+          payload,
+        }: {
+          event: string
+          payload: DockerImagePullStatusEvent
+        }) => {
+          // TODO fill this in properly when https://github.com/Altalogy/tari/issues/311 is done
+          dispatch(setDockerProgress(payload))
+        },
+      )
+      isAlreadyInvoked = true
+    }
+
+    listenToEvents()
+
+    invoke('wallet_events')
+
+    return unsubscribe
+  }, [])
+}

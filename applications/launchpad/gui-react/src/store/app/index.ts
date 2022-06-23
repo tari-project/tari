@@ -107,6 +107,7 @@ const appSlice = createSlice({
 })
 
 export const {
+  setDockerProgress,
   setExpertView,
   setExpertSwitchDisabled,
   setTheme,
