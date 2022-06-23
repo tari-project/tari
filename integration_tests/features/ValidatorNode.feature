@@ -21,9 +21,7 @@ Feature: Validator Node
         And I create 40 NFTs
         And I mine 3 blocks
 
-    # Broken: needs a contract definition before publishing acceptance, however this is currently not easily done because
-    # GRPC methods need to be added and you cannot use the cli for a wallet while that wallet is already running
-    @dan @critical @broken
+    @dan @critical
     Scenario: Publish contract acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes

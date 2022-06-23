@@ -40,7 +40,7 @@ class ValidatorNodeProcess {
     this.port = await getFreePort();
     this.grpcPort = await getFreePort();
     this.name = `ValidatorNode${this.port}-${this.name}`;
-    this.nodeFile = this.nodeFile || "nodeid.json";
+    this.nodeFile = this.nodeFile || "validator_node_id.json";
 
     let instance = 0;
     do {
@@ -163,6 +163,25 @@ class ValidatorNodeProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
+      // to avoid writing permission errors, we copy the reference identity file to the temp folder
+      let identity_file_name = "validator_node_id.json";
+      let identity_source_path = path.resolve(
+        `./fixtures/${identity_file_name}`
+      );
+      let identity_destination_path = path.resolve(
+        `${this.baseDir}/${identity_file_name}`
+      );
+      fs.copyFile(identity_source_path, identity_destination_path, (err) => {
+        if (err) {
+          console.log(
+            "Error Found while copying validator identity file to temp folder: ",
+            err
+          );
+          throw err;
+        }
+        console.log("Validator identity file was copied to destination");
+      });
+
       let envs = [];
       if (!this.excludeTestEnvars) {
         envs = this.getOverrides();
@@ -170,9 +189,6 @@ class ValidatorNodeProcess {
 
       let customArgs = {
         "validator_node.p2p.transport.type": "tcp",
-        "validator_node.identity_file": path.resolve(
-          "./fixtures/validator_node_id.json"
-        ),
       };
       if (this.baseNodeAddress) {
         customArgs["validator_node.base_node_grpc_address"] =
