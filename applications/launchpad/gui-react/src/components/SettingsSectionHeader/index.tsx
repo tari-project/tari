@@ -1,4 +1,5 @@
 import Text from '../Text'
+
 import { HeaderContainer, HeaderLine } from './styles'
 import { SettingsSectionHeaderProps } from './types'
 
@@ -8,10 +9,12 @@ import { SettingsSectionHeaderProps } from './types'
 const SettingsSectionHeader = ({
   children,
   noBottomMargin,
+  noTopMargin,
 }: SettingsSectionHeaderProps) => {
   return (
     <HeaderContainer
       $noBottomMargin={noBottomMargin}
+      $noTopMargin={noTopMargin}
       data-testid='settings-section-header-cmp'
     >
       {children && (

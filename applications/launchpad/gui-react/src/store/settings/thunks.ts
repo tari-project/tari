@@ -51,6 +51,10 @@ export const saveSettings = createAsyncThunk<
     dispatch(miningActions.setMergedConfig(newSettings.mining.merged))
   }
 
+  if ('docker' in newSettings) {
+    dispatch({ type: 'settings/save', payload: { docker: newSettings.docker } })
+  }
+
   // Restart containers
   await dispatch(containersActions.restart())
 })

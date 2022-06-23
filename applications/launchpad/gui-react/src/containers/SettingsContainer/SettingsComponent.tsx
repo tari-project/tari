@@ -17,6 +17,7 @@ import {
 } from './styles'
 import BaseNodeSettings from './BaseNodeSettings'
 import MiningSettings from './MiningSettings'
+import DockerSettings from './DockerSettings'
 import WalletSettings from './WalletSettings'
 import {
   SettingsProps,
@@ -44,6 +45,16 @@ const renderSettings = (
       )
     case Settings.BaseNode:
       return <BaseNodeSettings control={props.control} />
+    case Settings.Docker:
+      return (
+        <DockerSettings
+          formState={props.formState}
+          control={props.control}
+          values={props.values}
+          setValue={props.setValue}
+          setOpenMiningAuthForm={props.setOpenMiningAuthForm}
+        />
+      )
     default:
       return null
   }

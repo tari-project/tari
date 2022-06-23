@@ -16,6 +16,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
   },
   nouns: {
     expert: 'Expert',
+    docker: 'Docker',
     expertView: 'Expert view',
     baseNode: 'Base Node',
     mining: 'Mining',

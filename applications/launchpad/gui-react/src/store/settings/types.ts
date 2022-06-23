@@ -10,6 +10,10 @@ export enum Settings {
 export type SettingsState = {
   open: boolean
   which: Settings
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  serviceSettings: any
+  serviceSettings: {
+    walletPassword: string
+    dockerRegistry: string
+    dockerTag: string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } & any
 }
