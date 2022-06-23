@@ -21,21 +21,18 @@ Feature: Validator Node
         And I create 40 NFTs
         And I mine 3 blocks
 
-    # Broken: needs a contract definition before publishing acceptance, however this is currently not easily done because
-    # GRPC methods need to be added and you cannot use the cli for a wallet while that wallet is already running
-    @dan @critical @broken
+    @dan @critical
     Scenario: Publish contract acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes
-        When I mine 9 blocks using wallet WALLET1 on NODE1
-        Then I wait for wallet WALLET1 to have at least 1000000 uT
-        And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
-        When I mine 8 blocks using wallet WALLET1 on NODE1
-        Then wallet WALLET1 has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
-        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1 with "constitiution_auto_accept" set to "false"
-        Then I publish a contract acceptance transaction for the validator node VN1
-        When I mine 8 blocks using wallet WALLET1 on NODE1
-        Then wallet WALLET1 has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        And I mine 9 blocks using wallet WALLET1 on NODE1
+        And I wait for wallet WALLET1 to have at least 1000000 uT
+        And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
+        And I mine 4 blocks using wallet WALLET1 on NODE1
+        And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
+        When I publish a contract acceptance transaction for contract DEF1 for the validator node VN1
+        And I mine 4 blocks using wallet WALLET1 on NODE1
+        Then wallet WALLET1 will have a successfully mined contract acceptance transaction for contract DEF1
 
     @dan
     Scenario: Contract constitution auto acceptance
