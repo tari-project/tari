@@ -1,20 +1,20 @@
 import { useEffect } from 'react'
 import { useTheme } from 'styled-components'
 
-import { useAppSelector, useAppDispatch } from '../../../../store/hooks'
-import { actions } from '../../../../store/dockerImages'
+import { useAppSelector, useAppDispatch } from '../../store/hooks'
+import { actions } from '../../store/dockerImages'
 import {
   selectDockerImages,
   selectDockerImagesLoading,
-} from '../../../../store/dockerImages/selectors'
-import Text from '../../../../components/Text'
-import Loading from '../../../../components/Loading'
-import LoadingOverlay from '../../../../components/LoadingOverlay'
-import Tag from '../../../../components/Tag'
-import Button from '../../../../components/Button'
-import CheckIcon from '../../../../styles/Icons/CheckRound'
-import QuestionMarkIcon from '../../../../styles/Icons/Info1'
-import t from '../../../../locales'
+} from '../../store/dockerImages/selectors'
+import Text from '../../components/Text'
+import Loading from '../../components/Loading'
+import LoadingOverlay from '../../components/LoadingOverlay'
+import Tag from '../../components/Tag'
+import Button from '../../components/Button'
+import CheckIcon from '../../styles/Icons/CheckRound'
+import QuestionMarkIcon from '../../styles/Icons/Info1'
+import t from '../../locales'
 
 import { DockerRow, DockerList, DockerStatusWrapper } from './styles'
 
