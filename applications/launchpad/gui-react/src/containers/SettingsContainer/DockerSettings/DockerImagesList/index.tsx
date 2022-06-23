@@ -1,13 +1,15 @@
+import { useEffect } from 'react'
 import { useTheme } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from '../../../../store/hooks'
-import { pullImage } from '../../../../store/app'
+import { pullImage, getDockerImageList } from '../../../../store/app'
 import {
   selectDockerImages,
   selectDockerImagesLoading,
 } from '../../../../store/app/selectors'
 import Text from '../../../../components/Text'
 import Loading from '../../../../components/Loading'
+import LoadingOverlay from '../../../../components/LoadingOverlay'
 import Tag from '../../../../components/Tag'
 import Button from '../../../../components/Button'
 import CheckIcon from '../../../../styles/Icons/CheckRound'
@@ -19,12 +21,16 @@ import { DockerRow, DockerList, DockerStatusWrapper } from './styles'
 const DockerImagesList = () => {
   const theme = useTheme()
   const dispatch = useAppDispatch()
+  useEffect(() => {
+    dispatch(getDockerImageList())
+  }, [dispatch])
+
   const dockerImages = useAppSelector(selectDockerImages)
   const dockerImagesLoading = useAppSelector(selectDockerImagesLoading)
 
   return (
     <DockerList>
-      {dockerImagesLoading && <p>LOADING</p>}
+      {dockerImagesLoading && <LoadingOverlay />}
       {dockerImages.map(dockerImage => (
         <DockerRow key={dockerImage.dockerImage}>
           <Text style={{ flexBasis: '40%' }}>{dockerImage.displayName}</Text>

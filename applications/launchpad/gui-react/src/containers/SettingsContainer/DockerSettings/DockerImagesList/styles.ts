@@ -9,7 +9,8 @@ export const DockerRow = styled.div`
 `
 
 export const DockerList = styled.div`
-  min-height: 3em;
+  position: relative;
+  margin-bottom: ${({ theme }) => theme.spacing()};
 `
 
 export const DockerStatusWrapper = styled.div`
