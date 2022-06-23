@@ -40,6 +40,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
         transaction_components::{
+            EncryptedValue,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -53,7 +54,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum CoinbaseBuildError {
     #[error("The block height for this coinbase transaction wasn't provided")]
     MissingBlockHeight,
@@ -205,6 +206,7 @@ impl CoinbaseBuilder {
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(total_reward);
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             total_reward,
@@ -213,6 +215,7 @@ impl CoinbaseBuilder {
             &output_features,
             &sender_offset_private_key,
             &covenant,
+            &encrypted_value,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
@@ -227,6 +230,7 @@ impl CoinbaseBuilder {
             metadata_sig,
             0,
             covenant,
+            encrypted_value,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
@@ -274,7 +278,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::uT,
             test_helpers::TestParams,
-            transaction_components::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
+            transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
@@ -344,7 +348,7 @@ mod test {
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
         utxo.verify_range_proof(&factories.range_proof).unwrap();
-        assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
+        assert_eq!(utxo.features.output_type, OutputType::Coinbase);
         tx.body
             .check_coinbase_output(
                 block_reward,

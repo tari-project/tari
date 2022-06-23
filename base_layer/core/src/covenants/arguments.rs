@@ -26,7 +26,7 @@ use std::{
 };
 
 use integer_encoding::VarIntWriter;
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
 use tari_utilities::hex::{to_hex, Hex};
 
@@ -45,11 +45,9 @@ use crate::{
 const MAX_COVENANT_ARG_SIZE: usize = 4096;
 const MAX_BYTES_ARG_SIZE: usize = 4096;
 
-pub type Hash = [u8; 32];
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CovenantArg {
-    Hash(Hash),
+    Hash(FixedHash),
     PublicKey(PublicKey),
     Commitment(Commitment),
     TariScript(TariScript),
@@ -71,7 +69,7 @@ impl CovenantArg {
             ARG_HASH => {
                 let mut hash = [0u8; 32];
                 reader.read_exact(&mut hash)?;
-                Ok(CovenantArg::Hash(hash))
+                Ok(CovenantArg::Hash(hash.into()))
             },
             ARG_PUBLIC_KEY => {
                 let pk = PublicKey::consensus_decode(reader)?;
@@ -124,7 +122,6 @@ impl CovenantArg {
         match self {
             Hash(hash) => {
                 writer.write_u8_fixed(ARG_HASH)?;
-                hash.len();
                 writer.write_all(&hash[..])?;
             },
             PublicKey(pk) => {
@@ -168,9 +165,9 @@ impl CovenantArg {
 }
 
 macro_rules! require_x_impl {
-    ($name:ident, $output:ident, $expected: expr) => {
+    ($name:ident, $output:ident, $expected: expr, $output_type:ident) => {
         #[allow(dead_code)]
-        pub(super) fn $name(self) -> Result<$output, CovenantError> {
+        pub(super) fn $name(self) -> Result<$output_type, CovenantError> {
             match self {
                 CovenantArg::$output(obj) => Ok(obj),
                 got => Err(CovenantError::UnexpectedArgument {
@@ -180,10 +177,13 @@ macro_rules! require_x_impl {
             }
         }
     };
+    ($name:ident, $output:ident, $expected:expr) => {
+        require_x_impl!($name, $output, $expected, $output);
+    };
 }
 
 impl CovenantArg {
-    require_x_impl!(require_hash, Hash, "hash");
+    require_x_impl!(require_hash, Hash, "hash", FixedHash);
 
     require_x_impl!(require_publickey, PublicKey, "publickey");
 
@@ -298,7 +298,7 @@ mod test {
                 &from_hex("020000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
             test_case(
-                CovenantArg::Hash([0u8; 32]),
+                CovenantArg::Hash(FixedHash::zero()),
                 &from_hex("010000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
             test_case(CovenantArg::TariScript(script!(Nop)), &[ARG_TARI_SCRIPT, 0x01, 0x73]);

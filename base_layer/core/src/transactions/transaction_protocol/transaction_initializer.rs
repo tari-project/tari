@@ -30,12 +30,11 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, HashOutput, PrivateKey, PublicKey},
+    types::{BlindingFactor, CommitmentFactory, HashOutput, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::pedersen::PedersenCommitmentFactory,
     tari_utilities::{fixed_set::FixedSet, hex::to_hex},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -49,6 +48,7 @@ use crate::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
+            EncryptedValue,
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
@@ -214,7 +214,7 @@ impl SenderTransactionInitializer {
         output: UnblindedOutput,
         sender_offset_private_key: PrivateKey,
     ) -> Result<&mut Self, BuildError> {
-        let commitment_factory = PedersenCommitmentFactory::default();
+        let commitment_factory = CommitmentFactory::default();
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
         if recovery_byte != output.features.recovery_byte {
@@ -235,6 +235,7 @@ impl SenderTransactionInitializer {
             output.metadata_signature.public_nonce(),
             &commitment,
             &output.covenant,
+            &output.encrypted_value,
         );
         if !output.metadata_signature.verify_challenge(
             &(&commitment + &output.sender_offset_public_key),
@@ -392,6 +393,7 @@ impl SenderTransactionInitializer {
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
                         output_features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
+                        let encrypted_value = EncryptedValue::todo_encrypt_from(v);
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
                             TransactionOutputVersion::get_current_version(),
                             v,
@@ -400,6 +402,7 @@ impl SenderTransactionInitializer {
                             &output_features,
                             &change_sender_offset_private_key,
                             &self.change_covenant,
+                            &encrypted_value,
                         )
                         .map_err(|e| e.to_string())?;
                         let change_unblinded_output = UnblindedOutput::new_current_version(
@@ -419,6 +422,7 @@ impl SenderTransactionInitializer {
                             metadata_signature,
                             0,
                             self.change_covenant.clone(),
+                            encrypted_value,
                         );
                         Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))
                     },
@@ -618,7 +622,7 @@ impl SenderTransactionInitializer {
         // Don't care about the fees when we are sending token.
         if self.amounts.size() > 0 &&
             total_fee > self.calculate_amount_to_others() &&
-            recipient_output_features[0].unique_id.is_none()
+            recipient_output_features[0].unique_asset_id().is_none()
         {
             warn!(
                 target: LOG_TARGET,

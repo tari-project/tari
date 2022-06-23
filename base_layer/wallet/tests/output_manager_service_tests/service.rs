@@ -41,7 +41,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         weight::TransactionWeight,
         CryptoFactories,
@@ -52,7 +52,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::REWIND_USER_MESSAGE_LENGTH,
+    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_script::{inputs, script, TariScript};
@@ -736,7 +736,7 @@ async fn test_utxo_selection_with_tx_priority() {
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 1);
 
-    assert!(!utxos[0].features.flags.contains(OutputFlags::COINBASE_OUTPUT));
+    assert_ne!(utxos[0].features.output_type, OutputType::Coinbase);
 }
 
 #[tokio::test]
@@ -1214,7 +1214,7 @@ async fn coin_split_no_change() {
 }
 
 #[tokio::test]
-async fn handle_coinbase() {
+async fn handle_coinbase_with_dalek_bulletproofs_rewinding() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
@@ -2048,6 +2048,7 @@ async fn test_get_status_by_tx_id() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn scan_for_recovery_test() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -2074,13 +2075,13 @@ async fn scan_for_recovery_test() {
             )
             .await
             .unwrap();
-        let commitment = factories
-            .commitment
-            .commit_value(&spending_key_result.key, 1000 * i as u64);
+        let amount = 1_000 * i as u64;
+        let commitment = factories.commitment.commit_value(&spending_key_result.key, amount);
         let mut features = OutputFeatures::default();
         features.update_recovery_byte(&commitment, Some(&oms.rewind_data));
+        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
         let uo = UnblindedOutput::new_current_version(
-            MicroTari::from(1000 * i as u64),
+            MicroTari::from(amount),
             spending_key_result.key,
             features,
             script!(Nop),
@@ -2090,6 +2091,7 @@ async fn scan_for_recovery_test() {
             ComSignature::default(),
             0,
             Covenant::new(),
+            encrypted_value,
         );
         rewindable_unblinded_outputs.push(uo);
     }

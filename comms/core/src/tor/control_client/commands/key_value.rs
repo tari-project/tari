@@ -94,8 +94,7 @@ impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
         Ok(responses
             .iter()
             .filter_map(|r| r.as_ref().ok())
-            .map(|(_, values)| values.iter().map(|value| Cow::from(value.clone().into_owned())))
-            .flatten()
+            .flat_map(|(_, values)| values.iter().map(|value| Cow::from(value.clone().into_owned())))
             .collect())
     }
 }

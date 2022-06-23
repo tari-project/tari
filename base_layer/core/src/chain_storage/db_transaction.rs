@@ -447,7 +447,7 @@ impl fmt::Display for WriteOperation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbKey {
     BlockHeader(u64),
     BlockHash(BlockHash),

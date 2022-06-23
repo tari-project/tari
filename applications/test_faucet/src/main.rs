@@ -15,6 +15,7 @@ use tari_core::{
         test_helpers,
         test_helpers::generate_keys,
         transaction_components::{
+            EncryptedValue,
             KernelFeatures,
             OutputFeatures,
             TransactionKernel,
@@ -160,6 +161,7 @@ fn create_utxo(
     let offset_keys = generate_keys();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
+    let encrypted_value = EncryptedValue::todo_encrypt_from(value);
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         value,
@@ -168,6 +170,7 @@ fn create_utxo(
         &features,
         &offset_keys.k,
         &covenant,
+        &encrypted_value,
     )
     .unwrap();
 
@@ -179,6 +182,7 @@ fn create_utxo(
         offset_keys.pk,
         metadata_sig,
         covenant,
+        encrypted_value,
     );
     (utxo, keys.k, offset_keys.k)
 }

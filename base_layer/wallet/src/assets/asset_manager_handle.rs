@@ -22,9 +22,17 @@
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    ContractAmendment,
+    ContractDefinition,
+    ContractUpdateProposal,
+    OutputFeatures,
+    SideChainFeatures,
+    TemplateParameter,
+    Transaction,
+};
 use tari_service_framework::{reply_channel::SenderService, Service};
 
 use crate::{
@@ -73,13 +81,13 @@ impl AssetManagerHandle {
 
     pub async fn create_initial_asset_checkpoint(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateInitialCheckpoint {
-                asset_public_key: Box::new(asset_public_key.clone()),
+                contract_id,
                 merkle_root,
                 committee_public_keys: Vec::new(),
             })
@@ -95,16 +103,14 @@ impl AssetManagerHandle {
 
     pub async fn create_follow_on_asset_checkpoint(
         &mut self,
-        public_key: &PublicKey,
-        unique_id: &[u8],
+        contract_id: FixedHash,
         merkle_root: FixedHash,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateFollowOnCheckpoint {
-                asset_public_key: Box::new(public_key.clone()),
+                contract_id,
                 merkle_root,
-                unique_id: unique_id.to_vec(),
                 committee_public_keys: Vec::new(),
             })
             .await??
@@ -117,26 +123,20 @@ impl AssetManagerHandle {
         }
     }
 
-    pub async fn create_committee_definition(
+    pub async fn create_constitution_definition(
         &mut self,
-        public_key: &PublicKey,
-        committee_public_keys: &[PublicKey],
-        effective_sidechain_height: u64,
-        is_initial: bool,
+        side_chain_features: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
-            .call(AssetManagerRequest::CreateCommitteeDefinition {
-                asset_public_key: Box::new(public_key.clone()),
-                committee_public_keys: committee_public_keys.to_vec(),
-                effective_sidechain_height,
-                is_initial,
+            .call(AssetManagerRequest::CreateConstitutionDefinition {
+                constitution_definition: Box::new(side_chain_features.clone()),
             })
             .await??
         {
-            AssetManagerResponse::CreateCommitteeDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
+            AssetManagerResponse::CreateConstitutionDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
-                method: "create_committee_definition".to_string(),
+                method: "create_constitution_definition".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }
@@ -189,6 +189,117 @@ impl AssetManagerHandle {
             AssetManagerResponse::CreateMintingTransaction { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_minting_transaction".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_definition(
+        &mut self,
+        contract_definition: &ContractDefinition,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractDefinition {
+                contract_definition: Box::new(contract_definition.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_definition".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_acceptance(
+        &mut self,
+        contract_id: &FixedHash,
+        validator_node_public_key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractAcceptance {
+                contract_id: *contract_id,
+                validator_node_public_key: Box::new(validator_node_public_key.clone()),
+                signature: Box::new(signature.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractAcceptance { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_acceptance".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_update_proposal_acceptance(
+        &mut self,
+        contract_id: &FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: &PublicKey,
+        signature: &Signature,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractUpdateProposalAcceptance {
+                contract_id: *contract_id,
+                proposal_id,
+                validator_node_public_key: Box::new(validator_node_public_key.clone()),
+                signature: Box::new(signature.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractUpdateProposalAcceptance { transaction, tx_id } => {
+                Ok((tx_id, *transaction))
+            },
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_update_proposal_acceptance".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_update_proposal(
+        &mut self,
+        contract_id: &FixedHash,
+        update_proposal: &ContractUpdateProposal,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractUpdateProposal {
+                contract_id: *contract_id,
+                update_proposal: Box::new(update_proposal.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractUpdateProposal { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_update_proposal".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_contract_amendment(
+        &mut self,
+        contract_id: &FixedHash,
+        amendment: &ContractAmendment,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateContractAmendment {
+                contract_id: *contract_id,
+                contract_amendment: Box::new(amendment.clone()),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateContractAmendment { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_contract_amendment".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

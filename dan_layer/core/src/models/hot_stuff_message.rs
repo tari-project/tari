@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 use tari_crypto::common::Blake256;
 
 use crate::models::{
@@ -42,7 +42,7 @@ pub struct HotStuffMessage<TPayload: Payload> {
     node: Option<HotStuffTreeNode<TPayload>>,
     node_hash: Option<TreeNodeHash>,
     partial_sig: Option<Signature>,
-    asset_public_key: PublicKey,
+    contract_id: FixedHash,
 }
 
 impl<TPayload: Payload> HotStuffMessage<TPayload> {
@@ -53,7 +53,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         node_hash: Option<TreeNodeHash>,
         partial_sig: Option<Signature>,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
     ) -> Self {
         HotStuffMessage {
             view_number,
@@ -62,11 +62,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node,
             node_hash,
             partial_sig,
-            asset_public_key,
+            contract_id,
         }
     }
 
-    pub fn new_view(prepare_qc: QuorumCertificate, view_number: ViewId, asset_public_key: PublicKey) -> Self {
+    pub fn new_view(prepare_qc: QuorumCertificate, view_number: ViewId, contract_id: FixedHash) -> Self {
         Self {
             message_type: HotStuffMessageType::NewView,
             view_number,
@@ -74,7 +74,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             node_hash: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
@@ -82,7 +82,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         proposal: HotStuffTreeNode<TPayload>,
         high_qc: Option<QuorumCertificate>,
         view_number: ViewId,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
     ) -> Self {
         Self {
             message_type: HotStuffMessageType::Prepare,
@@ -91,11 +91,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             partial_sig: None,
             node_hash: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
-    pub fn vote_prepare(node_hash: TreeNodeHash, view_number: ViewId, asset_public_key: PublicKey) -> Self {
+    pub fn vote_prepare(node_hash: TreeNodeHash, view_number: ViewId, contract_id: FixedHash) -> Self {
         Self {
             message_type: HotStuffMessageType::Prepare,
             node_hash: Some(node_hash),
@@ -103,7 +103,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             justify: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
@@ -111,7 +111,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         prepare_qc: Option<QuorumCertificate>,
         view_number: ViewId,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
     ) -> Self {
         Self {
             message_type: HotStuffMessageType::PreCommit,
@@ -120,11 +120,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             node_hash: None,
             partial_sig: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
-    pub fn vote_pre_commit(node_hash: TreeNodeHash, view_number: ViewId, asset_public_key: PublicKey) -> Self {
+    pub fn vote_pre_commit(node_hash: TreeNodeHash, view_number: ViewId, contract_id: FixedHash) -> Self {
         Self {
             message_type: HotStuffMessageType::PreCommit,
             node_hash: Some(node_hash),
@@ -132,7 +132,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             justify: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
@@ -140,7 +140,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         pre_commit_qc: Option<QuorumCertificate>,
         view_number: ViewId,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
     ) -> Self {
         Self {
             message_type: HotStuffMessageType::Commit,
@@ -149,11 +149,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             partial_sig: None,
             node_hash: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
-    pub fn vote_commit(node_hash: TreeNodeHash, view_number: ViewId, asset_public_key: PublicKey) -> Self {
+    pub fn vote_commit(node_hash: TreeNodeHash, view_number: ViewId, contract_id: FixedHash) -> Self {
         Self {
             message_type: HotStuffMessageType::Commit,
             node_hash: Some(node_hash),
@@ -161,7 +161,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             justify: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
@@ -169,16 +169,16 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         commit_qc: Option<QuorumCertificate>,
         view_number: ViewId,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
     ) -> Self {
         Self {
-            message_type: HotStuffMessageType::Commit,
+            message_type: HotStuffMessageType::Decide,
             node,
             justify: commit_qc,
             view_number,
             partial_sig: None,
             node_hash: None,
-            asset_public_key,
+            contract_id,
         }
     }
 
@@ -199,8 +199,8 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         self.view_number
     }
 
-    pub fn asset_public_key(&self) -> &PublicKey {
-        &self.asset_public_key
+    pub fn contract_id(&self) -> &FixedHash {
+        &self.contract_id
     }
 
     pub fn node(&self) -> Option<&HotStuffTreeNode<TPayload>> {

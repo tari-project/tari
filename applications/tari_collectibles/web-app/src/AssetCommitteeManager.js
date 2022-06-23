@@ -90,7 +90,7 @@ const AssetCommitteeManager = () => {
 
   const submit = (committee) => {
     binding
-      .command_asset_create_committee_definition(
+      .command_asset_create_constitution_definition(
         assetPublicKey,
         committee,
         false

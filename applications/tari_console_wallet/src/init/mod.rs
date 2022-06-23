@@ -41,6 +41,7 @@ use tari_p2p::{initialization::CommsInitializationError, peer_seeds::SeedPeer, T
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
+    output_manager_service::storage::database::OutputManagerDatabase,
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_utilities::initialize_sqlite_database_backends,
@@ -202,7 +203,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
         }
     }
 
-    match (cli.non_interactive_mode, cli.input_file.clone(), cli.command.clone()) {
+    match (cli.non_interactive_mode, cli.input_file.clone(), cli.command2.clone()) {
         // TUI mode
         (false, None, None) => WalletMode::Tui,
         // GRPC mode
@@ -210,7 +211,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
         // Script mode
         (_, Some(path), None) => WalletMode::Script(path),
         // Command mode
-        (_, None, Some(command)) => WalletMode::Command(command),
+        (_, None, Some(command)) => WalletMode::Command(Box::new(command)), // WalletMode::Command(command),
         // Invalid combinations
         _ => WalletMode::Invalid,
     }
@@ -241,7 +242,7 @@ pub async fn init_wallet(
     // test encryption by initializing with no passphrase...
     let db_path = &config.wallet.db_file;
 
-    let result = initialize_sqlite_database_backends(db_path, None, config.wallet.connection_manager_pool_size);
+    let result = initialize_sqlite_database_backends(db_path, None, config.wallet.db_connection_pool_size);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {
             // wallet is not encrypted
@@ -251,7 +252,7 @@ pub async fn init_wallet(
             // get supplied or prompt password
             let passphrase = get_or_prompt_password(arg_password.clone(), config.wallet.password.clone())?;
             let backends =
-                initialize_sqlite_database_backends(db_path, passphrase, config.wallet.connection_manager_pool_size)?;
+                initialize_sqlite_database_backends(db_path, passphrase, config.wallet.db_connection_pool_size)?;
             (backends, true)
         },
         Err(e) => {
@@ -260,6 +261,7 @@ pub async fn init_wallet(
     };
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) = backends;
     let wallet_db = WalletDatabase::new(wallet_backend);
+    let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
     debug!(
         target: LOG_TARGET,
@@ -306,6 +308,7 @@ pub async fn init_wallet(
         node_identity,
         factories,
         wallet_db,
+        output_db,
         transaction_backend,
         output_manager_backend,
         contacts_backend,

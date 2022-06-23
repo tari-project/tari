@@ -24,7 +24,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -40,7 +40,7 @@ use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::UtxoMinedInfo,
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
 };
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
@@ -315,6 +315,42 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::FetchAssetMetadataResponse { output } => Ok(*output),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_contract_outputs_for_block(
+        &mut self,
+        block_hash: BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchContractOutputsForBlock {
+                block_hash,
+                output_type,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchOutputsForBlockResponse { outputs } => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_outputs_for_contract(
+        &mut self,
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchContractOutputsByContractId {
+                contract_id,
+                output_type,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchOutputsByContractIdResponse { outputs } => Ok(outputs),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

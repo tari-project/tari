@@ -31,7 +31,7 @@ impl Filter for OutputHashEqFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let hash = context.next_arg()?.require_hash()?;
         // An output's hash is unique so the output set is either 1 or 0 outputs will match
-        output_set.find_inplace(|output| output.hash() == hash);
+        output_set.find_inplace(|output| *output.hash().as_slice() == hash);
         Ok(())
     }
 }
@@ -54,7 +54,7 @@ mod test {
         let output_hash = output.hash();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(output_hash.as_slice());
-        let covenant = covenant!(output_hash_eq(@hash(hash)));
+        let covenant = covenant!(output_hash_eq(@hash(hash.into())));
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, move |outputs| {
             outputs.insert(5, output);

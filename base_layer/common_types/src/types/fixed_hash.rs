@@ -22,12 +22,15 @@
 
 use std::{
     convert::TryFrom,
+    fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
 };
 
-use digest::{consts::U32, generic_array};
+use digest::{consts::U32, generic_array, Digest};
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::{Hex, HexError};
+
+use crate::types::HashDigest;
 
 const ZERO_HASH: [u8; FixedHash::byte_size()] = [0u8; FixedHash::byte_size()];
 
@@ -49,6 +52,12 @@ impl FixedHash {
 
     pub fn as_slice(&self) -> &[u8] {
         &self.0
+    }
+
+    /// Hashes the bytes and returns the resulting `FixedHash`. Generally only be used as a convenience function for
+    /// tests.
+    pub fn hash_bytes<T: AsRef<[u8]>>(bytes: T) -> Self {
+        HashDigest::default().chain(bytes).finalize().into()
     }
 }
 
@@ -81,7 +90,7 @@ impl TryFrom<&[u8]> for FixedHash {
 }
 
 impl From<generic_array::GenericArray<u8, U32>> for FixedHash {
-    fn from(hash: digest::generic_array::GenericArray<u8, U32>) -> Self {
+    fn from(hash: generic_array::GenericArray<u8, U32>) -> Self {
         Self(hash.into())
     }
 }
@@ -89,6 +98,24 @@ impl From<generic_array::GenericArray<u8, U32>> for FixedHash {
 impl PartialEq<[u8]> for FixedHash {
     fn eq(&self, other: &[u8]) -> bool {
         self.0[..].eq(other)
+    }
+}
+
+impl PartialEq<FixedHash> for [u8] {
+    fn eq(&self, other: &FixedHash) -> bool {
+        self[..].eq(&other.0)
+    }
+}
+
+impl PartialEq<Vec<u8>> for FixedHash {
+    fn eq(&self, other: &Vec<u8>) -> bool {
+        self == other.as_slice()
+    }
+}
+
+impl AsRef<[u8]> for FixedHash {
+    fn as_ref(&self) -> &[u8] {
+        self.as_slice()
     }
 }
 
@@ -115,5 +142,11 @@ impl Deref for FixedHash {
 impl DerefMut for FixedHash {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl Display for FixedHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_hex())
     }
 }

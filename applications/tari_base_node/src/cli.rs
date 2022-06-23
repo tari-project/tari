@@ -23,8 +23,6 @@
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 
-const DEFAULT_NETWORK: &str = "dibbler";
-
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
@@ -49,18 +47,20 @@ pub(crate) struct Cli {
     #[clap(long)]
     pub watch: Option<String>,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
-    pub network: String,
+    #[clap(long, env = "TARI_NETWORK")]
+    pub network: Option<String>,
 }
 
 impl Cli {
     pub fn config_property_overrides(&self) -> Vec<(String, String)> {
         let mut overrides = self.common.config_property_overrides();
-        overrides.push(("base_node.override_from".to_string(), self.network.clone()));
-        overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
-        overrides.push(("auto_update.override_from".to_string(), self.network.clone()));
-        #[cfg(features = "metrics")]
-        overrides.push(("metrics.override_from".to_string(), self.network.clone()));
+        if let Some(network) = &self.network {
+            overrides.push(("base_node.override_from".to_string(), network.clone()));
+            overrides.push(("p2p.seeds.override_from".to_string(), network.clone()));
+            overrides.push(("auto_update.override_from".to_string(), network.clone()));
+            #[cfg(features = "metrics")]
+            overrides.push(("metrics.override_from".to_string(), network.clone()));
+        }
         overrides
     }
 }

@@ -36,7 +36,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashDigest, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
@@ -79,7 +79,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -421,6 +421,15 @@ where B: BlockchainBackend
             result.push(output);
         }
         Ok(result)
+    }
+
+    pub fn fetch_contract_outputs_for_block(
+        &self,
+        block_hash: BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_contract_outputs_for_block(&block_hash, output_type)
     }
 
     pub fn fetch_kernel_by_excess(
@@ -1163,6 +1172,15 @@ where B: BlockchainBackend
         db.fetch_all_reorgs()
     }
 
+    pub fn fetch_contract_outputs_by_contract_id_and_type(
+        &self,
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
+    }
+
     pub fn clear_all_reorgs(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         let mut txn = DbTransaction::new();
@@ -1354,9 +1372,19 @@ pub fn fetch_chain_headers<T: BlockchainBackend>(
         ));
     }
 
-    (start..=end_inclusive)
-        .map(|h| db.fetch_chain_header_by_height(h))
-        .collect()
+    #[allow(clippy::cast_possible_truncation)]
+    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    for h in start..=end_inclusive {
+        match db.fetch_chain_header_by_height(h) {
+            Ok(header) => {
+                headers.push(header);
+            },
+            Err(ChainStorageError::ValueNotFound { .. }) => break,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(headers)
 }
 
 fn insert_headers<T: BlockchainBackend>(db: &mut T, headers: Vec<ChainHeader>) -> Result<(), ChainStorageError> {
@@ -1493,6 +1521,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
+                        output.encrypted_value,
                     );
                     Ok(compact_input)
                 },
@@ -3157,7 +3186,7 @@ mod test {
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
-        let (block_names, chain) = create_chained_blocks(blocks.into(), genesis_block);
+        let (block_names, chain) = create_chained_blocks(blocks, genesis_block);
 
         let mut results = vec![];
         for name in block_names {

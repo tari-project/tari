@@ -23,14 +23,16 @@
 use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    errors::RangeProofError,
     keys::PublicKey as PK,
-    range_proof::{RangeProofError, RangeProofService as RPS},
+    range_proof::RangeProofService as RPS,
+    rewindable_range_proof::RewindableRangeProofService,
     tari_utilities::byte_array::ByteArray,
 };
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion},
+    transaction_components::{EncryptedValue, OutputFeatures, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -74,7 +76,7 @@ impl SingleReceiverTransactionProtocol {
 
     /// Validates the sender info
     fn validate_sender_data(sender_info: &SD) -> Result<(), TPE> {
-        if sender_info.amount == 0.into() && sender_info.features.unique_id.is_none() {
+        if sender_info.amount == 0.into() && sender_info.features.unique_asset_id().is_none() {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
         Ok(())
@@ -110,6 +112,7 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.features.clone(),
         );
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(sender_info.amount);
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             sender_info.amount,
@@ -119,17 +122,22 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.sender_offset_public_key,
             &sender_info.public_commitment_nonce,
             &sender_info.covenant,
+            &encrypted_value,
         )?;
 
         let output = TransactionOutput::new_current_version(
             sender_features,
             commitment,
-            RangeProof::from_bytes(&proof)
-                .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
+            RangeProof::from_bytes(&proof).map_err(|_| {
+                TPE::RangeProofError(RangeProofError::ProofConstructionError(
+                    "Creating transaction output".to_string(),
+                ))
+            })?,
             sender_info.script.clone(),
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,
             sender_info.covenant.clone(),
+            encrypted_value,
         );
         Ok(output)
     }
@@ -148,7 +156,7 @@ mod test {
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction_components::OutputFeatures,
+        transaction_components::{OutputFeatures, OutputType},
         transaction_protocol::{
             build_challenge,
             sender::SingleRoundSenderData,
@@ -224,6 +232,10 @@ mod test {
             "Output commitment is invalid"
         );
         out.verify_range_proof(&factories.range_proof).unwrap();
-        assert!(out.features.flags.is_empty(), "Output features flags have changed");
+        assert_eq!(
+            out.features.output_type,
+            OutputType::Standard,
+            "Output features flags have changed"
+        );
     }
 }

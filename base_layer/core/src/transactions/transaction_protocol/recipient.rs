@@ -53,7 +53,7 @@ impl fmt::Display for RecipientState {
             Finalized(signed_message) => write!(
                 f,
                 "Finalized({:?}, maturity = {})",
-                signed_message.output.features.flags, signed_message.output.features.maturity
+                signed_message.output.features.output_type, signed_message.output.features.maturity
             ),
             Failed(err) => write!(f, "Failed({:?})", err),
         }
@@ -82,7 +82,7 @@ pub(super) struct MultiRecipientInfo {
 }
 
 /// This is the message containing the public data that the Receiver will send back to the Sender
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecipientSignedMessage {
     pub tx_id: TxId,
     pub output: TransactionOutput,
@@ -275,7 +275,7 @@ mod test {
     }
 
     #[test]
-    fn single_round_recipient_with_rewinding() {
+    fn single_round_recipient_with_rewinding_dalek_bulletproofs() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Rewind params

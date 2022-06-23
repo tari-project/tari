@@ -118,6 +118,7 @@ where
                         output.metadata_signature,
                         0,
                         output.covenant,
+                        output.encrypted_value,
                     ),
                     output.proof,
                 ))

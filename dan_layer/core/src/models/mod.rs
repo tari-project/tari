@@ -165,6 +165,7 @@ pub enum HotStuffMessageType {
     Prepare,
     PreCommit,
     Commit,
+    Decide,
     // Special type
     Genesis,
 }
@@ -176,6 +177,7 @@ impl HotStuffMessageType {
             HotStuffMessageType::Prepare => 2,
             HotStuffMessageType::PreCommit => 3,
             HotStuffMessageType::Commit => 4,
+            HotStuffMessageType::Decide => 5,
             HotStuffMessageType::Genesis => 255,
         }
     }
@@ -190,6 +192,7 @@ impl TryFrom<u8> for HotStuffMessageType {
             2 => Ok(HotStuffMessageType::Prepare),
             3 => Ok(HotStuffMessageType::PreCommit),
             4 => Ok(HotStuffMessageType::Commit),
+            5 => Ok(HotStuffMessageType::Decide),
             255 => Ok(HotStuffMessageType::Genesis),
             _ => Err("Not a value message type".to_string()),
         }
@@ -214,7 +217,7 @@ impl ConsensusHash for String {
 
 pub trait Event: Clone + Send + Sync {}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsensusWorkerState {
     Starting,
     Synchronizing,
@@ -226,7 +229,7 @@ pub enum ConsensusWorkerState {
     Idle,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signature {}
 
 impl Signature {

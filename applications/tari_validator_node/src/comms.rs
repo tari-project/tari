@@ -23,10 +23,7 @@
 use std::sync::Arc;
 
 use tari_app_utilities::{identity_management, identity_management::load_from_json};
-use tari_common::{
-    configuration::Network,
-    exit_codes::{ExitCode, ExitError},
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::Dht;
 use tari_dan_core::services::{ConcreteAssetProcessor, MempoolServiceHandle};
@@ -50,16 +47,15 @@ pub async fn build_service_and_comms_stack(
 ) -> Result<(ServiceHandles, SubscriptionFactory), ExitError> {
     let (publisher, peer_message_subscriptions) = pubsub_connector(100, 50);
 
-    let mut transport_config = config.validator_node.p2p.transport.clone();
-    transport_config.tor.identity = load_from_json(&config.validator_node.tor_identity_file)
+    let mut p2p_config = config.validator_node.p2p.clone();
+    p2p_config.transport.tor.identity = load_from_json(&config.validator_node.tor_identity_file)
         .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
 
     let mut handles = StackBuilder::new(shutdown.clone())
         .add_initializer(P2pInitializer::new(
-            config.validator_node.p2p.clone(),
+            p2p_config.clone(),
             config.peer_seeds.clone(),
-            // TODO: configurable
-            Network::Dibbler,
+            config.network,
             node_identity.clone(),
             publisher,
         ))
@@ -73,7 +69,7 @@ pub async fn build_service_and_comms_stack(
 
     let comms = setup_p2p_rpc(config, comms, &handles, mempool, db_factory, asset_processor);
 
-    let comms = spawn_comms_using_transport(comms, transport_config)
+    let comms = spawn_comms_using_transport(comms, p2p_config.transport.clone())
         .await
         .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport: {}", e)))?;
 

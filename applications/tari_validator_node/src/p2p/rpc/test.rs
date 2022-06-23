@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::{FixedHash, PublicKey};
+use tari_common_types::types::FixedHash;
 use tari_comms::{protocol::rpc::mock::RpcRequestMock, test_utils};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
@@ -61,8 +61,8 @@ mod get_sidechain_blocks {
     #[tokio::test]
     async fn it_fetches_matching_block() {
         let (service, mock, db_factory) = setup();
-        let asset_public_key = PublicKey::default();
-        let db = db_factory.get_or_create_chain_db(&asset_public_key).unwrap();
+        let contract_id = FixedHash::zero();
+        let db = db_factory.get_or_create_chain_db(&contract_id).unwrap();
         let mut uow = db.new_unit_of_work();
 
         // Some random parent hash to ensure stream does not last forever
@@ -72,7 +72,7 @@ mod get_sidechain_blocks {
         uow.commit().unwrap();
 
         let req = proto::validator_node::GetSidechainBlocksRequest {
-            asset_public_key: asset_public_key.to_vec(),
+            contract_id: contract_id.to_vec(),
             start_hash: TreeNodeHash::zero().as_bytes().to_vec(),
             end_hash: vec![],
         };
@@ -101,7 +101,7 @@ mod get_sidechain_blocks {
         let (service, mock, _) = setup();
 
         let req = proto::validator_node::GetSidechainBlocksRequest {
-            asset_public_key: PublicKey::default().to_vec(),
+            contract_id: FixedHash::zero().to_vec(),
             start_hash: FixedHash::zero().as_bytes().to_vec(),
             end_hash: vec![],
         };
@@ -114,12 +114,12 @@ mod get_sidechain_blocks {
     #[tokio::test]
     async fn it_errors_if_block_not_found() {
         let (service, mock, db_factory) = setup();
-        let asset_public_key = PublicKey::default();
-        let db = db_factory.get_or_create_chain_db(&asset_public_key).unwrap();
+        let contract_id = FixedHash::zero();
+        let db = db_factory.get_or_create_chain_db(&contract_id).unwrap();
         db.new_unit_of_work().commit().unwrap();
 
         let req = proto::validator_node::GetSidechainBlocksRequest {
-            asset_public_key: asset_public_key.to_vec(),
+            contract_id: contract_id.to_vec(),
             start_hash: FixedHash::zero().as_bytes().to_vec(),
             end_hash: vec![],
         };

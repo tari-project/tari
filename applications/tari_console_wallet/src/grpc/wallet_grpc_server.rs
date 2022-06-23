@@ -37,8 +37,8 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
-        CreateCommitteeDefinitionRequest,
-        CreateCommitteeDefinitionResponse,
+        CreateConstitutionDefinitionRequest,
+        CreateConstitutionDefinitionResponse,
         CreateFollowOnAssetCheckpointRequest,
         CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
@@ -70,6 +70,10 @@ use tari_app_grpc::{
         SendShaAtomicSwapResponse,
         SetBaseNodeRequest,
         SetBaseNodeResponse,
+        SubmitContractAcceptanceRequest,
+        SubmitContractAcceptanceResponse,
+        SubmitContractUpdateProposalAcceptanceRequest,
+        SubmitContractUpdateProposalAcceptanceResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -78,16 +82,12 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::{
-    array::copy_into_fixed_array,
-    types::{BlockHash, PublicKey, Signature},
-};
+use tari_common_types::types::{BlockHash, FixedHash, PublicKey, Signature};
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{OutputFeatures, UnblindedOutput},
+    transaction_components::{OutputFeatures, SideChainFeatures, UnblindedOutput},
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
@@ -203,11 +203,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
         let mut output_service = self.get_output_manager_service();
-        let balance;
-        match output_service.get_balance().await {
-            Ok(b) => balance = b,
+        let balance = match output_service.get_balance().await {
+            Ok(b) => b,
             Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
-        }
+        };
         Ok(Response::new(GetBalanceResponse {
             available_balance: balance.available_balance.0,
             pending_incoming_balance: balance.pending_incoming_balance.0,
@@ -220,11 +219,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
         let mut output_service = self.get_output_manager_service();
-        let unspent_amounts;
-        match output_service.get_unspent_outputs().await {
-            Ok(uo) => unspent_amounts = uo,
+        let unspent_amounts = match output_service.get_unspent_outputs().await {
+            Ok(uo) => uo,
             Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
-        }
+        };
         Ok(Response::new(GetUnspentAmountsResponse {
             amount: unspent_amounts
                 .into_iter()
@@ -656,6 +654,92 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
     }
 
+    async fn submit_contract_acceptance(
+        &self,
+        request: Request<SubmitContractAcceptanceRequest>,
+    ) -> Result<Response<SubmitContractAcceptanceResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let contract_id = FixedHash::try_from(message.contract_id)
+            .map_err(|err| Status::invalid_argument(format!("Invalid contract_id:{:?}", err)))?;
+
+        let validator_node_public_key =
+            PublicKey::from_bytes(message.validator_node_public_key.as_slice()).map_err(|e| {
+                Status::invalid_argument(format!("Validator node public key was not a valid pub key:{}", e))
+            })?;
+
+        let signature = message
+            .signature
+            .ok_or_else(|| Status::invalid_argument("signature not provided"))?;
+        let signature =
+            Signature::try_from(signature).map_err(|e| Status::invalid_argument(format!("Invalid signature:{}", e)))?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_contract_acceptance(&contract_id, &validator_node_public_key, &signature)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let contract_id_hex = contract_id.to_hex();
+        let message = format!("Contract acceptance for contract with id={}", contract_id_hex);
+        transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), message)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(SubmitContractAcceptanceResponse {
+            tx_id: tx_id.as_u64(),
+        }))
+    }
+
+    async fn submit_contract_update_proposal_acceptance(
+        &self,
+        request: Request<SubmitContractUpdateProposalAcceptanceRequest>,
+    ) -> Result<Response<SubmitContractUpdateProposalAcceptanceResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let contract_id = FixedHash::try_from(message.contract_id)
+            .map_err(|err| Status::invalid_argument(format!("Invalid contract_id:{:?}", err)))?;
+
+        let validator_node_public_key =
+            PublicKey::from_bytes(message.validator_node_public_key.as_slice()).map_err(|e| {
+                Status::invalid_argument(format!("Validator node public key was not a valid pub key:{}", e))
+            })?;
+
+        let signature = message
+            .signature
+            .ok_or_else(|| Status::invalid_argument("signature not provided"))?;
+        let signature =
+            Signature::try_from(signature).map_err(|e| Status::invalid_argument(format!("Invalid signature:{}", e)))?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_contract_update_proposal_acceptance(
+                &contract_id,
+                message.proposal_id,
+                &validator_node_public_key,
+                &signature,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let contract_id_hex = contract_id.to_vec().to_hex();
+        let message = format!(
+            "Contract update proposal acceptance for contract_id={} and proposal_id={}",
+            contract_id_hex, message.proposal_id
+        );
+        transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), message)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(SubmitContractUpdateProposalAcceptanceResponse {
+            tx_id: tx_id.as_u64(),
+        }))
+    }
+
     async fn register_asset(
         &self,
         request: Request<RegisterAssetRequest>,
@@ -725,18 +809,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
+        let contract_id = message
+            .contract_id
+            .try_into()
             .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
 
-        let merkle_root = copy_into_fixed_array(&message.merkle_root)
+        let merkle_root = message
+            .merkle_root
+            .try_into()
             .map_err(|_| Status::invalid_argument("Merkle root has an incorrect length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_initial_asset_checkpoint(&asset_public_key, merkle_root.into())
+            .create_initial_asset_checkpoint(contract_id, merkle_root)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let message = format!("Initial asset checkpoint for {}", asset_public_key);
+        let message = format!("Initial asset checkpoint for {}", contract_id);
         let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
@@ -753,18 +841,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
-            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
+        let contract_id = message
+            .contract_id
+            .try_into()
+            .map_err(|e| Status::invalid_argument(format!("Contract ID was not valid :{}", e)))?;
 
-        let merkle_root = copy_into_fixed_array(&message.merkle_root)
+        let merkle_root = message
+            .merkle_root
+            .try_into()
             .map_err(|_| Status::invalid_argument("Incorrect merkle root length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_follow_on_asset_checkpoint(&asset_public_key, message.unique_id.as_slice(), merkle_root.into())
+            .create_follow_on_asset_checkpoint(contract_id, merkle_root)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let message = format!("Asset state checkpoint for {}", asset_public_key);
+        let message = format!("Sidechain state checkpoint for {}", contract_id);
         let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
@@ -773,32 +865,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(CreateFollowOnAssetCheckpointResponse {}))
     }
 
-    async fn create_committee_definition(
+    async fn create_constitution_definition(
         &self,
-        request: Request<CreateCommitteeDefinitionRequest>,
-    ) -> Result<Response<CreateCommitteeDefinitionResponse>, Status> {
+        request: Request<CreateConstitutionDefinitionRequest>,
+    ) -> Result<Response<CreateConstitutionDefinitionResponse>, Status> {
         let mut asset_manager = self.wallet.asset_manager.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
-            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
-        let committee_public_keys: Vec<RistrettoPublicKey> = message
-            .committee
-            .iter()
-            .map(|c| PublicKey::from_bytes(c.as_slice()))
-            .collect::<Result<_, _>>()
-            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
-        let effective_sidechain_height = message.effective_sidechain_height;
-        let is_initial = message.is_initial;
+        let side_chain_features = SideChainFeatures::try_from(message).map_err(Status::internal)?;
 
         let (tx_id, transaction) = asset_manager
-            .create_committee_definition(
-                &asset_public_key,
-                &committee_public_keys,
-                effective_sidechain_height,
-                is_initial,
-            )
+            .create_constitution_definition(&side_chain_features)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -807,18 +885,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "Committee definition transaction: {:?}", transaction
         );
 
+        let committee_size = side_chain_features
+            .constitution
+            .map(|con| con.validator_committee.members().len())
+            .unwrap_or(0);
+
         let message = format!(
-            "{} member committee for asset {}... at sidechain height {}",
-            committee_public_keys.len(),
-            &asset_public_key.to_hex()[..7],
-            effective_sidechain_height
+            "Committee definition for {} members for {:?}",
+            committee_size, side_chain_features.contract_id,
         );
+
         let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(CreateCommitteeDefinitionResponse {}))
+        Ok(Response::new(CreateConstitutionDefinitionResponse {}))
     }
 
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {

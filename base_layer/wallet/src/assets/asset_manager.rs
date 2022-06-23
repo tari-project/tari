@@ -23,9 +23,19 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    CommitteeSignatures,
+    ContractAmendment,
+    ContractDefinition,
+    ContractUpdateProposal,
+    OutputFeatures,
+    OutputType,
+    SideChainFeatures,
+    TemplateParameter,
+    Transaction,
+};
 
 use crate::{
     assets::Asset,
@@ -57,7 +67,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
     pub async fn list_owned(&self) -> Result<Vec<Asset>, WalletError> {
         let outputs = self
             .output_database
-            .fetch_with_features(OutputFlags::ASSET_REGISTRATION)
+            .fetch_with_features(OutputType::AssetRegistration)
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
         debug!(
@@ -74,7 +84,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .output_database
             .fetch_by_features_asset_public_key(public_key)
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
-        Ok(convert_to_asset(output)?)
+        convert_to_asset(output)
     }
 
     pub async fn create_registration_transaction(
@@ -150,20 +160,18 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
     pub async fn create_initial_asset_checkpoint(
         &mut self,
-        asset_pub_key: PublicKey,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
-        committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),
                 OutputFeatures::for_checkpoint(
-                    asset_pub_key,
-                    ASSET_CHECKPOINT_ID.into(),
+                    contract_id,
                     merkle_root,
-                    committee_pub_keys.clone(),
-                    true,
+                    // TODO: add vn signatures
+                    CommitteeSignatures::default(),
                 ),
             )
             .await?;
@@ -190,28 +198,33 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(
+                vec![output],
+                // TODO: Fee is proportional to tx weight, so does not need to be different for contract
+                //       transactions - should be chosen by the user
+                ASSET_FPG.into(),
+                // TODO: Spend previous checkpoint
+                None,
+                None,
+            )
             .await?;
         Ok((tx_id, transaction))
     }
 
     pub async fn create_follow_on_asset_checkpoint(
         &mut self,
-        asset_pub_key: PublicKey,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
-        committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),
                 OutputFeatures::for_checkpoint(
-                    asset_pub_key.clone(),
-                    unique_id.clone(),
+                    contract_id,
                     merkle_root,
-                    committee_pub_keys.clone(),
-                    false,
+                    // TODO: Add vn sigs
+                    CommitteeSignatures::default(),
                 ),
             )
             .await?;
@@ -238,30 +251,134 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), Some(unique_id), Some(asset_pub_key))
+            .create_send_to_self_with_output(
+                vec![output],
+                ASSET_FPG.into(),
+                // TODO: Spend previous checkpoint
+                None,
+                None,
+            )
             .await?;
         Ok((tx_id, transaction))
     }
 
-    pub async fn create_committee_definition(
+    pub async fn create_constitution_definition(
         &mut self,
-        asset_public_key: PublicKey,
-        committee_pub_keys: Vec<PublicKey>,
-        effective_sidechain_height: u64,
-        is_initial: bool,
+        constitution_definition: &SideChainFeatures,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(0.into(), OutputFeatures {
+                output_type: OutputType::ContractConstitution,
+                sidechain_features: Some(constitution_definition.clone()),
+                ..Default::default()
+            })
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_contract_definition(
+        &mut self,
+        contract_definition: ContractDefinition,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition(contract_definition))
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_contract_acceptance(
+        &mut self,
+        contract_id: FixedHash,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),
-                OutputFeatures::for_committee(
-                    asset_public_key.clone(),
-                    COMMITTEE_DEFINITION_ID.into(),
-                    committee_pub_keys.clone(),
-                    effective_sidechain_height,
-                    is_initial,
+                OutputFeatures::for_contract_acceptance(contract_id, validator_node_public_key, signature),
+            )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_contract_update_proposal_acceptance(
+        &mut self,
+        contract_id: FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: PublicKey,
+        signature: Signature,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_contract_update_proposal_acceptance(
+                    contract_id,
+                    proposal_id,
+                    validator_node_public_key,
+                    signature,
                 ),
             )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_update_proposal(
+        &mut self,
+        contract_id: FixedHash,
+        update_proposal: ContractUpdateProposal,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_contract_update_proposal(contract_id, update_proposal),
+            )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_contract_amendment(
+        &mut self,
+        contract_id: FixedHash,
+        amendment: ContractAmendment,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(0.into(), OutputFeatures::for_contract_amendment(contract_id, amendment))
             .await?;
 
         let (tx_id, transaction) = self

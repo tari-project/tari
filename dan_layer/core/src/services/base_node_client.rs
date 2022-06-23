@@ -21,34 +21,36 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
+use tari_core::{chain_storage::UtxoMinedInfo, transactions::transaction_components::OutputType};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
+    models::{BaseLayerMetadata, BaseLayerOutput},
 };
 
 #[async_trait]
 pub trait BaseNodeClient: Send + Sync {
     async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError>;
 
-    async fn get_current_checkpoint(
+    async fn get_current_contract_outputs(
         &mut self,
         height: u64,
-        asset_public_key: PublicKey,
-        checkpoint_unique_id: Vec<u8>,
-    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError>;
+
+    async fn get_constitutions(
+        &mut self,
+        start_block_hash: Option<FixedHash>,
+        dan_node_public_key: &PublicKey,
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
 
     async fn check_if_in_committee(
         &mut self,
         asset_public_key: PublicKey,
         dan_node_public_key: PublicKey,
     ) -> Result<(bool, u64), DigitalAssetError>;
-
-    async fn get_assets_for_dan_node(
-        &mut self,
-        dan_node_public_key: PublicKey,
-    ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError>;
 
     async fn get_asset_registration(
         &mut self,

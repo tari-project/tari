@@ -57,7 +57,7 @@ pub struct WalletConfig {
     pub auto_update: AutoUpdateConfig,
     pub data_dir: PathBuf,
     pub db_file: PathBuf,
-    pub connection_manager_pool_size: usize,
+    pub db_connection_pool_size: usize,
     pub password: Option<String>, // TODO: Make clear on drop
     #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
@@ -78,9 +78,13 @@ pub struct WalletConfig {
 
 impl Default for WalletConfig {
     fn default() -> Self {
+        let p2p = P2pConfig {
+            datastore_path: PathBuf::from("peer_db/wallet"),
+            ..Default::default()
+        };
         Self {
             override_from: None,
-            p2p: Default::default(),
+            p2p,
             transaction_service_config: Default::default(),
             output_manager_service_config: Default::default(),
             buffer_size: 100,
@@ -90,7 +94,7 @@ impl Default for WalletConfig {
             auto_update: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             db_file: PathBuf::from_str("console_wallet").unwrap(),
-            connection_manager_pool_size: 5, // TODO: get actual default
+            db_connection_pool_size: 5, // TODO: get actual default
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,

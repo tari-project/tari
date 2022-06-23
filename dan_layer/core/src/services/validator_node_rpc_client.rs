@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 use tari_comms::{
     connectivity::ConnectivityError,
     protocol::rpc::{RpcError, RpcStatus},
@@ -44,7 +44,7 @@ pub trait ValidatorNodeClientFactory: Send + Sync {
 pub trait ValidatorNodeRpcClient: Send + Sync {
     async fn invoke_read_method(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
@@ -52,7 +52,7 @@ pub trait ValidatorNodeRpcClient: Send + Sync {
 
     async fn invoke_method(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
@@ -60,23 +60,23 @@ pub trait ValidatorNodeRpcClient: Send + Sync {
 
     async fn get_sidechain_blocks(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         start_hash: TreeNodeHash,
         end_hash: Option<TreeNodeHash>,
     ) -> Result<Vec<SideChainBlock>, ValidatorNodeClientError>;
 
     async fn get_sidechain_state(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<Vec<SchemaState>, ValidatorNodeClientError>;
 
     async fn get_op_logs(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         height: u64,
     ) -> Result<Vec<StateOpLogEntry>, ValidatorNodeClientError>;
 
-    async fn get_tip_node(&mut self, asset_public_key: &PublicKey) -> Result<Option<Node>, ValidatorNodeClientError>;
+    async fn get_tip_node(&mut self, contract_id: &FixedHash) -> Result<Option<Node>, ValidatorNodeClientError>;
 }
 
 #[derive(Debug, thiserror::Error)]

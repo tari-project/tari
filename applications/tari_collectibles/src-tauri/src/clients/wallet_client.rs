@@ -119,7 +119,8 @@ impl WalletClient {
     let inner = self.get_inner_mut()?;
     let committee = vec![];
     let request = grpc::CreateInitialAssetCheckpointRequest {
-      asset_public_key: Vec::from_hex(asset_public_key)?,
+      // TODO: contract id
+      contract_id: Vec::from_hex(asset_public_key)?,
       merkle_root,
       committee,
     };
@@ -134,30 +135,31 @@ impl WalletClient {
     Ok(result.into_inner())
   }
 
-  pub async fn create_committee_definition(
+  pub async fn create_constitution_definition(
     &mut self,
     asset_public_key: &str,
-    committee: &[String],
-    effective_sidechain_height: u64,
-    is_initial: bool,
-  ) -> Result<grpc::CreateCommitteeDefinitionResponse, CollectiblesError> {
+    committee: Vec<String>,
+    acceptance_period_expiry: u64,
+    minimum_quorum_required: u64,
+  ) -> Result<grpc::CreateConstitutionDefinitionResponse, CollectiblesError> {
     let inner = self.get_inner_mut()?;
-    let committee = committee
-      .iter()
-      .map(|s| Vec::from_hex(s))
-      .collect::<Result<Vec<_>, _>>()?;
 
-    let request = grpc::CreateCommitteeDefinitionRequest {
-      asset_public_key: Vec::from_hex(asset_public_key)?,
-      committee,
-      effective_sidechain_height,
-      is_initial,
+    let committee = tari_app_grpc::tari_rpc::CommitteeMembers {
+      members: committee.into_iter().map(|s| s.into_bytes()).collect(),
     };
+
+    let request = grpc::CreateConstitutionDefinitionRequest {
+      contract_id: Vec::from_hex(asset_public_key)?,
+      validator_committee: Some(committee),
+      acceptance_period_expiry,
+      minimum_quorum_required,
+    };
+
     let result = inner
-      .create_committee_definition(request)
+      .create_constitution_definition(request)
       .await
       .map_err(|source| CollectiblesError::ClientRequest {
-        request: "create_committee_definition".to_string(),
+        request: "create_constitution_definition".to_string(),
         source,
       })?;
     debug!(target: LOG_TARGET, "result {:?}", result);

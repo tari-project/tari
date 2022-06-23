@@ -20,23 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![allow(clippy::too_many_arguments)]
 mod asset;
 mod cli;
 mod cmd_args;
 mod comms;
 mod config;
+mod contract_worker_manager;
 mod dan_node;
 mod default_service_specification;
 mod grpc;
-mod monitoring;
 mod p2p;
 
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    process,
-    sync::Arc,
-};
+use std::{process, sync::Arc};
 
 use clap::Parser;
 use futures::FutureExt;
@@ -45,12 +40,21 @@ use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
+    initialize_logging,
     load_configuration,
 };
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::PeerFeatures,
+    utils::multiaddr::multiaddr_to_socketaddr,
+    NodeIdentity,
+};
 use tari_comms_dht::Dht;
-use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
-use tari_dan_storage_sqlite::SqliteDbFactory;
+use tari_dan_core::{
+    services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification},
+    storage::{global::GlobalDb, DbFactory},
+};
+use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteGlobalDbBackendAdapter};
 use tari_p2p::comms_connector::SubscriptionFactory;
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -62,7 +66,10 @@ use crate::{
     config::{ApplicationConfig, ValidatorNodeConfig},
     dan_node::DanNode,
     default_service_specification::DefaultServiceSpecification,
-    grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
+    grpc::{
+        services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
+        validator_node_grpc_server::ValidatorNodeGrpcServer,
+    },
     p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
 };
 
@@ -85,9 +92,13 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
+    println!("Starting validator node on network {}", cli.network);
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
-
+    initialize_logging(
+        &cli.common.log_config_path("validator"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
     let config = ApplicationConfig::load_from(&cfg)?;
     let runtime = build_runtime()?;
     runtime.block_on(run_node(&config))?;
@@ -105,6 +116,9 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         PeerFeatures::NONE,
     )?;
     let db_factory = SqliteDbFactory::new(config.validator_node.data_dir.clone());
+    let global_db = db_factory
+        .get_or_create_global_db()
+        .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
     let mempool_service = MempoolServiceHandle::default();
 
     info!(
@@ -134,18 +148,23 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         mempool_service.clone(),
         db_factory.clone(),
     );
-
+    let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
     let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
         node_identity.as_ref().clone(),
         db_factory.clone(),
         asset_processor,
         asset_proxy,
+        wallet_client,
     );
-    let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 18144);
 
-    task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
+    if let Some(address) = config.validator_node.grpc_address.clone() {
+        println!("Started GRPC server on {}", address);
+        task::spawn(run_grpc(grpc_server, address, shutdown.to_signal()));
+    }
+
     println!("🚀 Validator node started!");
     println!("{}", node_identity);
+
     run_dan_node(
         shutdown.to_signal(),
         config.validator_node.clone(),
@@ -154,8 +173,10 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         handles,
         subscription_factory,
         node_identity,
+        global_db,
     )
     .await?;
+
     Ok(())
 }
 
@@ -175,11 +196,11 @@ async fn run_dan_node(
     handles: ServiceHandles,
     subscription_factory: SubscriptionFactory,
     node_identity: Arc<NodeIdentity>,
+    global_db: GlobalDb<SqliteGlobalDbBackendAdapter>,
 ) -> Result<(), ExitError> {
-    let node = DanNode::new(config);
+    let node = DanNode::new(config, node_identity, global_db);
     node.start(
         shutdown_signal,
-        node_identity,
         mempool_service,
         db_factory,
         handles,
@@ -190,10 +211,13 @@ async fn run_dan_node(
 
 async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
     grpc_server: ValidatorNodeGrpcServer<TServiceSpecification>,
-    grpc_address: SocketAddr,
+    grpc_address: Multiaddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
+    println!("Starting GRPC on {}", grpc_address);
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
+
+    let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
 
     Server::builder()
         .add_service(ValidatorNodeServer::new(grpc_server))
@@ -204,6 +228,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
             err
         })?;
 
+    info!("Stopping GRPC");
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
 }

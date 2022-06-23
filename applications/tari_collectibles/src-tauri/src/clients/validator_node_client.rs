@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 //  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -55,7 +56,8 @@ impl GrpcValidatorNodeClient {
     args: Vec<u8>,
   ) -> Result<Vec<u8>, CollectiblesError> {
     let req = grpc::InvokeReadMethodRequest {
-      asset_public_key: Vec::from(asset_public_key.as_bytes()),
+      // TODO: contract id
+      contract_id: asset_public_key.to_vec(),
       template_id,
       method,
       args,
@@ -86,7 +88,8 @@ impl GrpcValidatorNodeClient {
     args: Vec<u8>,
   ) -> Result<Vec<u8>, CollectiblesError> {
     let req = grpc::InvokeMethodRequest {
-      asset_public_key: Vec::from(asset_public_key.as_bytes()),
+      // TODO: contract id
+      contract_id: asset_public_key.as_bytes().try_into().unwrap(),
       template_id,
       method,
       args,

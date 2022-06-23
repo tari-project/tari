@@ -24,7 +24,7 @@ use std::convert::TryInto;
 
 use async_trait::async_trait;
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_comms::PeerConnection;
 use tari_comms_dht::DhtRequester;
 use tari_crypto::tari_utilities::ByteArray;
@@ -54,19 +54,19 @@ impl TariCommsValidatorNodeRpcClient {
 impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
     async fn invoke_read_method(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         debug!(
             target: LOG_TARGET,
-            r#"Invoking read method "{}" for asset '{}'"#, method, asset_public_key
+            r#"Invoking read method "{}" for asset '{}'"#, method, contract_id
         );
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::InvokeReadMethodRequest {
-            asset_public_key: asset_public_key.to_vec(),
+            contract_id: contract_id.to_vec(),
             template_id: template_id as u32,
             method,
             args,
@@ -82,19 +82,19 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
 
     async fn invoke_method(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         debug!(
             target: LOG_TARGET,
-            r#"Invoking method "{}" for asset '{}'"#, method, asset_public_key
+            r#"Invoking method "{}" for asset '{}'"#, method, contract_id
         );
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::InvokeMethodRequest {
-            asset_public_key: asset_public_key.to_vec(),
+            contract_id: contract_id.to_vec(),
             template_id: template_id as u32,
             method,
             args,
@@ -103,7 +103,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
 
         debug!(
             target: LOG_TARGET,
-            "Validator node '{}' returned status '{}' for asset '{}'", self.address, response.status, asset_public_key
+            "Validator node '{}' returned status '{}' for asset '{}'", self.address, response.status, contract_id
         );
         if response.result.is_empty() {
             Ok(None)
@@ -114,14 +114,14 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
 
     async fn get_sidechain_blocks(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         start_hash: TreeNodeHash,
         end_hash: Option<TreeNodeHash>,
     ) -> Result<Vec<SideChainBlock>, ValidatorNodeClientError> {
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::GetSidechainBlocksRequest {
-            asset_public_key: asset_public_key.to_vec(),
+            contract_id: contract_id.to_vec(),
             start_hash: start_hash.as_bytes().to_vec(),
             end_hash: end_hash.map(|h| h.as_bytes().to_vec()).unwrap_or_default(),
         };
@@ -152,12 +152,12 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
 
     async fn get_sidechain_state(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
     ) -> Result<Vec<SchemaState>, ValidatorNodeClientError> {
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::GetSidechainStateRequest {
-            asset_public_key: asset_public_key.to_vec(),
+            contract_id: contract_id.to_vec(),
         };
 
         let mut stream = client.get_sidechain_state(request).await?;
@@ -204,13 +204,13 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
 
     async fn get_op_logs(
         &mut self,
-        asset_public_key: &PublicKey,
+        contract_id: &FixedHash,
         height: u64,
     ) -> Result<Vec<StateOpLogEntry>, ValidatorNodeClientError> {
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::GetStateOpLogsRequest {
-            asset_public_key: asset_public_key.as_bytes().to_vec(),
+            contract_id: contract_id.as_bytes().to_vec(),
             height,
         };
 
@@ -225,11 +225,11 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         Ok(op_logs)
     }
 
-    async fn get_tip_node(&mut self, asset_public_key: &PublicKey) -> Result<Option<Node>, ValidatorNodeClientError> {
+    async fn get_tip_node(&mut self, contract_id: &FixedHash) -> Result<Option<Node>, ValidatorNodeClientError> {
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::GetTipNodeRequest {
-            asset_public_key: asset_public_key.as_bytes().to_vec(),
+            contract_id: contract_id.to_vec(),
         };
         let resp = client.get_tip_node(request).await?;
         resp.tip_node

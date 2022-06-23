@@ -29,7 +29,7 @@ use digest::{consts::U32, generic_array};
 use tari_common_types::types::{FixedHash, FixedHashSizeError};
 use tari_utilities::hex::{Hex, HexError};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TreeNodeHash(FixedHash);
 
 impl TreeNodeHash {

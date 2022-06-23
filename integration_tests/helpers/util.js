@@ -252,8 +252,8 @@ const getTransactionOutputHash = function (output) {
     Buffer.from([0]),
     // features.maturity
     Buffer.from([parseInt(output.features.maturity)]),
-    // features.flags
-    Buffer.from(toLittleEndian(output.features.flags, 16)),
+    // features.output_type
+    Buffer.from([output.features.output_type]),
   ]);
   // features.parent_public_key
   features = Buffer.concat([
@@ -265,7 +265,11 @@ const getTransactionOutputHash = function (output) {
     Buffer.from(features),
     encodeOption(output.features.unique_id),
   ]);
-  // features.asset
+  // features.sidechain_features
+  features = Buffer.concat([
+    Buffer.from(features),
+    encodeOption(output.features.sidechain_features),
+  ]); // features.asset
   features = Buffer.concat([
     Buffer.from(features),
     encodeOption(output.features.asset),
@@ -305,6 +309,9 @@ const getTransactionOutputHash = function (output) {
   ]);
   encodedBytesLength += covenant.length;
   blake2bUpdate(context, covenant);
+  // encrypted_value
+  encodedBytesLength += output.encrypted_value.length;
+  blake2bUpdate(context, output.encrypted_value);
 
   expect(context.c).to.equal(encodedBytesLength);
   const hash = blake2bFinal(context);

@@ -29,7 +29,7 @@ use std::{
 use anyhow::anyhow;
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct DnsNameServer {
     pub addr: SocketAddr,
     pub dns_name: String,
@@ -60,5 +60,28 @@ impl FromStr for DnsNameServer {
             addr: addr.parse()?,
             dns_name: dns_name.to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    use super::*;
+
+    #[test]
+    fn dns_name_server_test() {
+        // create dns name server
+        let ipv4 = Ipv4Addr::new(127, 0, 0, 1);
+        let ip = IpAddr::V4(ipv4);
+        let socket = SocketAddr::new(ip, 8080);
+        let dns = DnsNameServer::new(socket, String::from("my_dns"));
+
+        // test formatting
+        assert_eq!(format!("{}", dns), "127.0.0.1:8080/my_dns");
+
+        // from str
+        let new_dns = DnsNameServer::from_str("127.0.0.1:8080/my_dns").unwrap();
+        assert_eq!(new_dns, dns);
     }
 }

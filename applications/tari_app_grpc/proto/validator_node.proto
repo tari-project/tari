@@ -31,11 +31,36 @@ service ValidatorNode {
 //    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
     rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
     rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
+    rpc GetConstitutionRequests(GetConstitutionRequestsRequest) returns (stream TransactionOutput);
+    rpc PublishContractAcceptance(PublishContractAcceptanceRequest) returns (PublishContractAcceptanceResponse);
+    rpc PublishContractUpdateProposalAcceptance(PublishContractUpdateProposalAcceptanceRequest) returns (PublishContractUpdateProposalAcceptanceResponse);
 }
 
+message GetConstitutionRequestsRequest {
+    // empty
+}
 
 message GetMetadataRequest {
     // empty
+}
+
+message PublishContractAcceptanceRequest {
+    bytes contract_id = 1;
+}
+
+message PublishContractAcceptanceResponse {
+    string status = 1;
+    uint64 tx_id = 2;
+}
+
+message PublishContractUpdateProposalAcceptanceRequest {
+    bytes contract_id = 1;
+    uint64 proposal_id = 2;
+}
+
+message PublishContractUpdateProposalAcceptanceResponse {
+    string status = 1;
+    uint64 tx_id = 2;
 }
 
 message GetMetadataResponse {
@@ -72,7 +97,7 @@ message GetTokenDataResponse {
 //}
 
 message InvokeReadMethodRequest{
-    bytes asset_public_key = 1;
+    bytes contract_id = 1;
     uint32 template_id = 2;
     string method = 3;
      bytes args = 4;
@@ -90,7 +115,7 @@ message Authority {
 }
 
 message InvokeMethodRequest{
-    bytes asset_public_key = 1;
+    bytes contract_id = 1;
     uint32 template_id = 2;
     string method = 3;
     bytes args = 4;

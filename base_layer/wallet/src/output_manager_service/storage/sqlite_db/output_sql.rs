@@ -28,13 +28,13 @@ use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, FixedHash, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, OutputFlags, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, SideChainFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -47,6 +47,7 @@ use crate::{
         error::OutputManagerStorageError,
         service::{Balance, UTXOSelectionStrategy},
         storage::{
+            database::{OutputBackendQuery, SortDirection},
             models::DbUnblindedOutput,
             sqlite_db::{UpdateOutput, UpdateOutputSql},
             OutputStatus,
@@ -70,7 +71,7 @@ pub struct OutputSql {
     #[derivative(Debug = "ignore")]
     pub spending_key: Vec<u8>,
     pub value: i64,
-    pub flags: i32,
+    pub output_type: i32,
     pub maturity: i64,
     pub recovery_byte: i32,
     pub status: i32,
@@ -98,6 +99,8 @@ pub struct OutputSql {
     pub features_json: String,
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
+    pub encrypted_value: Vec<u8>,
+    pub contract_id: Option<Vec<u8>>,
 }
 
 impl OutputSql {
@@ -114,6 +117,66 @@ impl OutputSql {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
     }
 
+    /// Retrieves UTXOs by a set of given rules
+    // TODO: maybe use a shorthand macros
+    #[allow(clippy::cast_sign_loss)]
+    pub fn fetch_outputs_by(
+        q: OutputBackendQuery,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::script_lock_height.le(q.tip_height))
+            .filter(outputs::maturity.le(q.tip_height))
+            .filter(outputs::features_unique_id.is_null())
+            .filter(outputs::features_parent_public_key.is_null());
+
+        if let Some((offset, limit)) = q.pagination {
+            query = query.offset(offset).limit(limit);
+        }
+
+        // filtering by OutputStatus
+        query = match q.status.len() {
+            0 => query,
+            1 => query.filter(outputs::status.eq(q.status[0] as i32)),
+            _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
+        };
+
+        // if set, filtering by minimum value
+        if let Some((min, is_inclusive)) = q.value_min {
+            query = if is_inclusive {
+                query.filter(outputs::value.ge(min))
+            } else {
+                query.filter(outputs::value.gt(min))
+            };
+        }
+
+        // if set, filtering by max value
+        if let Some((max, is_inclusive)) = q.value_max {
+            query = if is_inclusive {
+                query.filter(outputs::value.le(max))
+            } else {
+                query.filter(outputs::value.lt(max))
+            };
+        }
+
+        use SortDirection::{Asc, Desc};
+        Ok(q.sorting
+            .into_iter()
+            .fold(query, |query, s| match s {
+                ("value", d) => match d {
+                    Asc => query.then_order_by(outputs::value.asc()),
+                    Desc => query.then_order_by(outputs::value.desc()),
+                },
+                ("mined_height", d) => match d {
+                    Asc => query.then_order_by(outputs::mined_height.asc()),
+                    Desc => query.then_order_by(outputs::mined_height.desc()),
+                },
+                _ => query,
+            })
+            .load(conn)?)
+    }
+
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     #[allow(clippy::cast_sign_loss)]
     pub fn fetch_unspent_outputs_for_spending(
@@ -122,6 +185,9 @@ impl OutputSql {
         tip_height: i64,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let no_flags = i32::from(OutputType::Standard.as_byte());
+        let coinbase_flag = i32::from(OutputType::Coinbase.as_byte());
+
         if strategy == UTXOSelectionStrategy::Default {
             // lets get the max value for all utxos
             let max: Vec<i64> = outputs::table
@@ -130,6 +196,11 @@ impl OutputSql {
                 .filter(outputs::maturity.le(tip_height))
                 .filter(outputs::features_unique_id.is_null())
                 .filter(outputs::features_parent_public_key.is_null())
+                .filter(
+                    outputs::output_type
+                        .eq(no_flags)
+                        .or(outputs::output_type.eq(coinbase_flag)),
+                )
                 .order(outputs::value.desc())
                 .select(outputs::value)
                 .limit(1)
@@ -150,6 +221,11 @@ impl OutputSql {
             .filter(outputs::maturity.le(tip_height))
             .filter(outputs::features_unique_id.is_null())
             .filter(outputs::features_parent_public_key.is_null())
+            .filter(
+                outputs::output_type
+                    .eq(no_flags)
+                    .or(outputs::output_type.eq(coinbase_flag)),
+            )
             .order_by(outputs::spending_priority.desc());
         match strategy {
             UTXOSelectionStrategy::Smallest => {
@@ -188,12 +264,12 @@ impl OutputSql {
             .load(conn)?)
     }
 
-    pub fn index_by_feature_flags(
-        flags: OutputFlags,
+    pub fn index_by_output_type(
+        output_type: OutputType,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        let res = diesel::sql_query("SELECT * FROM outputs where flags & $1 = $1 ORDER BY id;")
-            .bind::<diesel::sql_types::Integer, _>(i32::from(flags.bits()))
+        let res = diesel::sql_query("SELECT * FROM outputs where output_type & $1 = $1 ORDER BY id;")
+            .bind::<diesel::sql_types::Integer, _>(i32::from(output_type.as_byte()))
             .load(conn)?;
         Ok(res)
     }
@@ -501,23 +577,34 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
 
-        let flags = o
-            .flags
+        let output_type = o
+            .output_type
             .try_into()
             .map_err(|_| OutputManagerStorageError::ConversionError {
-                reason: format!("Unable to convert flag bits with value {} to OutputFlags", o.flags),
+                reason: format!("Unable to convert flag bits with value {} to OutputType", o.output_type),
             })?;
-        features.flags = OutputFlags::from_bits(flags).ok_or(OutputManagerStorageError::ConversionError {
-            reason: "Flags could not be converted from bits".to_string(),
-        })?;
+        features.output_type =
+            OutputType::from_byte(output_type).ok_or(OutputManagerStorageError::ConversionError {
+                reason: "Flags could not be converted from bits".to_string(),
+            })?;
         features.maturity = o.maturity as u64;
         features.metadata = o.metadata.unwrap_or_default();
-        features.unique_id = o.features_unique_id.clone();
+        features.sidechain_features = o
+            .features_unique_id
+            .as_ref()
+            .map(|v| FixedHash::try_from(v.as_slice()))
+            .transpose()
+            .map_err(|_| OutputManagerStorageError::ConversionError {
+                reason: "Invalid contract ID".to_string(),
+            })?
+            // TODO: Add side chain features to wallet db
+            .map(SideChainFeatures::new);
         features.parent_public_key = o
             .features_parent_public_key
             .map(|p| PublicKey::from_bytes(&p))
             .transpose()?;
         features.recovery_byte = u8::try_from(o.recovery_byte).unwrap();
+        let encrypted_value = EncryptedValue::from_bytes(&o.encrypted_value)?;
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -589,6 +676,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     reason: "Covenant could not be converted from bytes".to_string(),
                 }
             })?,
+            encrypted_value,
         );
 
         let hash = match o.hash {

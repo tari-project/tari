@@ -22,7 +22,7 @@
 
 mod backend;
 use std::{
-    fmt::{Display, Error, Formatter},
+    fmt::{Debug, Display, Error, Formatter},
     sync::Arc,
 };
 
@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{OutputFlags, TransactionOutput},
+    transaction_components::{OutputType, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
 
@@ -49,6 +49,35 @@ use crate::output_manager_service::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
+
+#[derive(Debug, Copy, Clone)]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Clone)]
+pub struct OutputBackendQuery {
+    pub tip_height: i64,
+    pub status: Vec<OutputStatus>,
+    pub pagination: Option<(i64, i64)>,
+    pub value_min: Option<(i64, bool)>,
+    pub value_max: Option<(i64, bool)>,
+    pub sorting: Vec<(&'static str, SortDirection)>,
+}
+
+impl Default for OutputBackendQuery {
+    fn default() -> Self {
+        Self {
+            tip_height: i64::MAX,
+            status: vec![OutputStatus::Spent],
+            pagination: None,
+            value_min: None,
+            value_max: None,
+            sorting: vec![],
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
@@ -206,7 +235,7 @@ where T: OutputManagerBackend + 'static
 
     pub fn fetch_with_features(
         &self,
-        feature: OutputFlags,
+        feature: OutputType,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         self.db.fetch_with_features(feature)
     }
@@ -419,6 +448,10 @@ where T: OutputManagerBackend + 'static
         let outputs = self.db.fetch_outputs_by_tx_id(tx_id)?;
         Ok(outputs)
     }
+
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        self.db.fetch_outputs_by(q)
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStorageError> {
@@ -430,11 +463,11 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStor
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::SpentOutput(_) => f.write_str(&"Spent Output Key".to_string()),
-            DbKey::UnspentOutput(_) => f.write_str(&"Unspent Output Key".to_string()),
-            DbKey::UnspentOutputHash(_) => f.write_str(&"Unspent Output Hash Key".to_string()),
-            DbKey::UnspentOutputs => f.write_str(&"Unspent Outputs Key".to_string()),
-            DbKey::SpentOutputs => f.write_str(&"Spent Outputs Key".to_string()),
+            DbKey::SpentOutput(_) => f.write_str("Spent Output Key"),
+            DbKey::UnspentOutput(_) => f.write_str("Unspent Output Key"),
+            DbKey::UnspentOutputHash(_) => f.write_str("Unspent Output Hash Key"),
+            DbKey::UnspentOutputs => f.write_str("Unspent Outputs Key"),
+            DbKey::SpentOutputs => f.write_str("Spent Outputs Key"),
             DbKey::InvalidOutputs => f.write_str("Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str("Timelocked Outputs"),
             DbKey::KnownOneSidedPaymentScripts => f.write_str("Known claiming scripts"),

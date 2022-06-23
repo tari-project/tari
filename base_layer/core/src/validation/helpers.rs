@@ -52,7 +52,7 @@ use crate::{
         tari_amount::MicroTari,
         transaction_components::{
             KernelSum,
-            OutputFlags,
+            OutputType,
             TransactionError,
             TransactionInput,
             TransactionKernel,
@@ -348,7 +348,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 .take(2)
                 .collect::<Result<Vec<_>, TransactionError>>()?;
             // Unless a burn flag is present
-            if input.features()?.flags.contains(OutputFlags::BURN_NON_FUNGIBLE) {
+            if input.features()?.output_type == OutputType::BurnNonFungible {
                 if !exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
                 }
@@ -415,6 +415,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
+                        output.encrypted_value,
                     );
                     let input_hash = input.canonical_hash()?;
                     if compact.canonical_hash()? != input_hash {
@@ -683,12 +684,12 @@ pub fn validate_covenants(block: &Block) -> Result<(), ValidationError> {
 pub fn check_coinbase_reward(
     factory: &CommitmentFactory,
     rules: &ConsensusManager,
-    header: &BlockHeader,
+    height: u64,
     total_fees: MicroTari,
     coinbase_kernel: &TransactionKernel,
     coinbase_output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    let reward = rules.emission_schedule().block_reward(header.height) + total_fees;
+    let reward = rules.emission_schedule().block_reward(height) + total_fees;
     let rhs = &coinbase_kernel.excess + &factory.commit_value(&Default::default(), reward.into());
     if rhs != coinbase_output.commitment {
         warn!(
@@ -696,6 +697,24 @@ pub fn check_coinbase_reward(
             "Coinbase {} amount validation failed", coinbase_output
         );
         return Err(ValidationError::TransactionError(TransactionError::InvalidCoinbase));
+    }
+    Ok(())
+}
+
+pub fn check_coinbase_maturity(
+    rules: &ConsensusManager,
+    height: u64,
+    coinbase_output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    let constants = rules.consensus_constants(height);
+    if coinbase_output.features.maturity < height + constants.coinbase_lock_height() {
+        warn!(
+            target: LOG_TARGET,
+            "Coinbase {} found with maturity set too low", coinbase_output
+        );
+        return Err(ValidationError::TransactionError(
+            TransactionError::InvalidCoinbaseMaturity,
+        ));
     }
     Ok(())
 }
@@ -774,7 +793,15 @@ pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) ->
 
 #[cfg(test)]
 mod test {
+
+    use tari_test_utils::unpack_enum;
+
     use super::*;
+    use crate::transactions::{
+        test_helpers,
+        test_helpers::TestParams,
+        transaction_components::{OutputFeatures, TransactionInputVersion},
+    };
 
     mod is_all_unique_and_sorted {
         use super::*;
@@ -843,7 +870,6 @@ mod test {
 
     mod check_lock_height {
         use super::*;
-        use crate::transactions::test_helpers;
 
         #[test]
         fn it_checks_the_kernel_timelock() {
@@ -861,7 +887,6 @@ mod test {
 
     mod check_maturity {
         use super::*;
-        use crate::transactions::transaction_components::{OutputFeatures, TransactionInputVersion};
 
         #[test]
         fn it_checks_the_input_maturity() {
@@ -871,6 +896,7 @@ mod test {
                     maturity: 5,
                     ..Default::default()
                 },
+                Default::default(),
                 Default::default(),
                 Default::default(),
                 Default::default(),
@@ -891,6 +917,76 @@ mod test {
 
             check_maturity(5, &[input.clone()]).unwrap();
             check_maturity(6, &[input]).unwrap();
+        }
+    }
+
+    mod check_coinbase_maturity {
+
+        use super::*;
+
+        #[test]
+        fn it_succeeds_for_valid_coinbase() {
+            let test_params = TestParams::new();
+            let rules = test_helpers::create_consensus_manager();
+            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
+            check_coinbase_maturity(&rules, 1, &coinbase_output).unwrap();
+        }
+
+        #[test]
+        fn it_returns_error_for_invalid_coinbase_maturity() {
+            let test_params = TestParams::new();
+            let rules = test_helpers::create_consensus_manager();
+            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            coinbase.features.maturity = 0;
+            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
+            let err = check_coinbase_maturity(&rules, 1, &coinbase_output).unwrap_err();
+            unpack_enum!(ValidationError::TransactionError(err) = err);
+            unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
+        }
+    }
+
+    mod check_coinbase_reward {
+
+        use super::*;
+
+        #[test]
+        fn it_succeeds_for_valid_coinbase() {
+            let test_params = TestParams::new();
+            let rules = test_helpers::create_consensus_manager();
+            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            check_coinbase_reward(
+                &CommitmentFactory::default(),
+                &rules,
+                1,
+                0.into(),
+                &coinbase_kernel,
+                &coinbase_output,
+            )
+            .unwrap();
+        }
+
+        #[test]
+        fn it_returns_error_for_invalid_coinbase_reward() {
+            let test_params = TestParams::new();
+            let rules = test_helpers::create_consensus_manager();
+            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, 1);
+            coinbase.value = 123.into();
+            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            let err = check_coinbase_reward(
+                &CommitmentFactory::default(),
+                &rules,
+                1,
+                0.into(),
+                &coinbase_kernel,
+                &coinbase_output,
+            )
+            .unwrap_err();
+            unpack_enum!(ValidationError::TransactionError(err) = err);
+            unpack_enum!(TransactionError::InvalidCoinbase = err);
         }
     }
 }

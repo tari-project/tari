@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 use tokio::time::{sleep, Duration};
 
@@ -44,7 +44,7 @@ const LOG_TARGET: &str = "tari::dan::workers::states::decide";
 // TODO: This is very similar to pre-commit, and commit state
 pub struct DecideState<TSpecification: ServiceSpecification> {
     node_id: TSpecification::Addr,
-    asset_public_key: PublicKey,
+    contract_id: FixedHash,
     committee: Committee<TSpecification::Addr>,
     received_new_view_messages: HashMap<TSpecification::Addr, HotStuffMessage<TSpecification::Payload>>,
 }
@@ -52,12 +52,12 @@ pub struct DecideState<TSpecification: ServiceSpecification> {
 impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
     pub fn new(
         node_id: TSpecification::Addr,
-        asset_public_key: PublicKey,
+        contract_id: FixedHash,
         committee: Committee<TSpecification::Addr>,
     ) -> Self {
         Self {
             node_id,
-            asset_public_key,
+            contract_id,
             committee,
             received_new_view_messages: HashMap::new(),
         }
@@ -85,7 +85,7 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
                       }
                   }
                 },
-              r = inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
+              r = inbound_services.wait_for_qc(HotStuffMessageType::Commit, current_view.view_id()) => {
                     let (from, message) = r?;
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
                       if let Some(event) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {
@@ -148,7 +148,7 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
         commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number, self.asset_public_key.clone());
+        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number, self.contract_id);
         outbound
             .broadcast(self.node_id.clone(), self.committee.members.as_slice(), message)
             .await

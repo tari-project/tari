@@ -351,25 +351,21 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         connectivity,
     );
     let script = script!(Nop);
-    let (utxo, key, offset) = create_utxo(
-        MicroTari(10_000),
-        &factories,
-        &Default::default(),
-        &script,
-        &Covenant::default(),
-    );
+    let amount = MicroTari(10_000);
+    let (utxo, key, offset) = create_utxo(amount, &factories, &Default::default(), &script, &Covenant::default());
     let metadata_signature = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
-        MicroTari(10_000),
+        amount,
         &key,
         &script,
         &OutputFeatures::default(),
         &offset,
         &Covenant::default(),
+        &utxo.encrypted_value,
     )
     .unwrap();
     let unblinded_output = UnblindedOutput::new_current_version(
-        MicroTari(10_000),
+        amount,
         key.clone(),
         Default::default(),
         script,
@@ -379,6 +375,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         metadata_signature,
         0,
         Covenant::default(),
+        utxo.encrypted_value.clone(),
     );
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002);

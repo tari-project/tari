@@ -19,24 +19,32 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::convert::TryInto;
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
-use tari_app_grpc::tari_rpc as rpc;
-use tari_common_types::types::PublicKey;
+use futures::channel::mpsc;
+use tari_app_grpc::tari_rpc::{self as rpc, TransactionOutput};
+use tari_common_types::types::{FixedHash, Signature};
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::Instruction,
-    services::{AssetProcessor, AssetProxy, ServiceSpecification},
+    services::{AssetProcessor, AssetProxy, ServiceSpecification, WalletClient},
     storage::DbFactory,
 };
+use tokio::{task, time};
 use tonic::{Request, Response, Status};
+
+const LOG_TARGET: &str = "tari::validator_node::grpc";
 
 pub struct ValidatorNodeGrpcServer<TServiceSpecification: ServiceSpecification> {
     node_identity: NodeIdentity,
     db_factory: TServiceSpecification::DbFactory,
     asset_processor: TServiceSpecification::AssetProcessor,
     asset_proxy: TServiceSpecification::AssetProxy,
+    wallet_client: TServiceSpecification::WalletClient,
 }
 
 impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServiceSpecification> {
@@ -45,12 +53,14 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
         db_factory: TServiceSpecification::DbFactory,
         asset_processor: TServiceSpecification::AssetProcessor,
         asset_proxy: TServiceSpecification::AssetProxy,
+        wallet_client: TServiceSpecification::WalletClient,
     ) -> Self {
         Self {
             node_identity,
             db_factory,
             asset_processor,
             asset_proxy,
+            wallet_client,
         }
     }
 }
@@ -59,6 +69,86 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
 impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_server::ValidatorNode
     for ValidatorNodeGrpcServer<TServiceSpecification>
 {
+    type GetConstitutionRequestsStream = mpsc::Receiver<Result<TransactionOutput, tonic::Status>>;
+
+    async fn publish_contract_acceptance(
+        &self,
+        request: tonic::Request<rpc::PublishContractAcceptanceRequest>,
+    ) -> Result<Response<rpc::PublishContractAcceptanceResponse>, tonic::Status> {
+        let mut wallet_client = self.wallet_client.clone();
+        let request = request.into_inner();
+        let contract_id =
+            FixedHash::try_from(request.contract_id).map_err(|err| tonic::Status::invalid_argument(err.to_string()))?;
+        let validator_node_public_key = self.node_identity.public_key();
+        let signature = Signature::default();
+
+        match wallet_client
+            .submit_contract_acceptance(&contract_id, validator_node_public_key, &signature)
+            .await
+        {
+            Ok(tx_id) => Ok(Response::new(rpc::PublishContractAcceptanceResponse {
+                tx_id,
+                status: "Accepted".to_string(),
+            })),
+            Err(err) => {
+                log::error!(target: LOG_TARGET, "publish_contract_acceptance: {}", err);
+                Ok(Response::new(rpc::PublishContractAcceptanceResponse {
+                    status: "Errored".to_string(),
+                    tx_id: 0_u64,
+                }))
+            },
+        }
+    }
+
+    async fn publish_contract_update_proposal_acceptance(
+        &self,
+        request: tonic::Request<rpc::PublishContractUpdateProposalAcceptanceRequest>,
+    ) -> Result<Response<rpc::PublishContractUpdateProposalAcceptanceResponse>, tonic::Status> {
+        let mut wallet_client = self.wallet_client.clone();
+        let request = request.into_inner();
+        let contract_id = FixedHash::try_from(request.contract_id).unwrap_or_default();
+        let validator_node_public_key = self.node_identity.public_key();
+        let signature = Signature::default();
+
+        match wallet_client
+            .submit_contract_update_proposal_acceptance(
+                &contract_id,
+                request.proposal_id,
+                validator_node_public_key,
+                &signature,
+            )
+            .await
+        {
+            Ok(tx_id) => Ok(Response::new(rpc::PublishContractUpdateProposalAcceptanceResponse {
+                tx_id,
+                status: "Accepted".to_string(),
+            })),
+            Err(_) => Ok(Response::new(rpc::PublishContractUpdateProposalAcceptanceResponse {
+                status: "Errored".to_string(),
+                tx_id: 0_u64,
+            })),
+        }
+    }
+
+    async fn get_constitution_requests(
+        &self,
+        _request: tonic::Request<rpc::GetConstitutionRequestsRequest>,
+    ) -> Result<Response<Self::GetConstitutionRequestsStream>, tonic::Status> {
+        let (mut _sender, receiver) = mpsc::channel(100);
+        task::spawn(async move {
+            let mut _test = 1u64;
+            loop {
+                let _ = time::sleep(Duration::from_secs(1)).await;
+                // if let Err(err) = sender.send(Ok(ContractConstitution { test })).await {
+                //     info!(target: LOG_TARGET, "The request was aborted, {}", err);
+                //     break;
+                // }
+                _test += 1;
+            }
+        });
+        Ok(Response::new(receiver))
+    }
+
     async fn get_identity(
         &self,
         _request: tonic::Request<rpc::GetIdentityRequest>,
@@ -83,13 +173,15 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         request: Request<rpc::InvokeMethodRequest>,
     ) -> Result<Response<rpc::InvokeMethodResponse>, Status> {
         let request = request.into_inner();
-        let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
-            .map_err(|_err| Status::invalid_argument("asset_public_key was not a valid public key"))?;
+        let contract_id = request
+            .contract_id
+            .try_into()
+            .map_err(|_err| Status::invalid_argument("contract_id was not valid"))?;
 
         match self
             .asset_proxy
             .invoke_method(
-                &asset_public_key,
+                &contract_id,
                 request
                     .template_id
                     .try_into()
@@ -129,17 +221,20 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         &self,
         request: Request<rpc::InvokeReadMethodRequest>,
     ) -> Result<Response<rpc::InvokeReadMethodResponse>, Status> {
+        println!("invoke_read_method grpc call");
         println!("{:?}", request);
         let request = request.into_inner();
-        let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
-            .map_err(|err| Status::invalid_argument(format!("Asset public key was not a valid public key:{}", err)))?;
+        let contract_id = request
+            .contract_id
+            .try_into()
+            .map_err(|err| Status::invalid_argument(format!("Contract ID was not valid: {}", err)))?;
         let template_id = request
             .template_id
             .try_into()
             .map_err(|_| Status::invalid_argument("Invalid template_id"))?;
         if let Some(state) = self
             .db_factory
-            .get_state_db(&asset_public_key)
+            .get_state_db(&contract_id)
             .map_err(|e| Status::internal(format!("Could not create state db: {}", e)))?
         {
             let state_db_reader = state.reader();
@@ -160,7 +255,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
             // Forward to proxy
             let response_bytes = self
                 .asset_proxy
-                .invoke_read_method(&asset_public_key, template_id, request.method, request.args)
+                .invoke_read_method(&contract_id, template_id, request.method, request.args)
                 .await
                 .map_err(|err| Status::internal(format!("Error calling proxied method:{}", err)))?;
             // TODO: Populate authority

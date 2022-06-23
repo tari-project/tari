@@ -6,7 +6,7 @@ use std::ops::Range;
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::Hash;
 
@@ -33,7 +33,7 @@ use crate::{
         Reorg,
         UtxoMinedInfo,
     },
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel},
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -138,6 +138,13 @@ pub trait BlockchainBackend: Send + Sync {
         range: Range<usize>,
     ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError>;
 
+    /// Fetches contract UTXOs mined within the given block.
+    fn fetch_contract_outputs_for_block(
+        &self,
+        block_hash: &BlockHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError>;
+
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
 
@@ -210,4 +217,11 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches all tracked reorgs
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError>;
+
+    /// Fetch all contract UTXOs for the given contract ID and output type. An empty Vec is returned if none are found.
+    fn fetch_contract_outputs_by_contract_id_and_type(
+        &self,
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError>;
 }

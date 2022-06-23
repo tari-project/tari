@@ -33,7 +33,7 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::starting_state";
 
 // The data structure handling Base Node Startup
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Starting;
 
 impl Starting {

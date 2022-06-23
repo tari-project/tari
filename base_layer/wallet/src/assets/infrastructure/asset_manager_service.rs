@@ -82,6 +82,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&mut self, request: AssetManagerRequest) -> Result<AssetManagerResponse, WalletError> {
         trace!(target: LOG_TARGET, "Handling Service API Request {:?}", request);
         match request {
@@ -131,13 +132,13 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                 })
             },
             AssetManagerRequest::CreateInitialCheckpoint {
-                asset_public_key,
+                contract_id,
                 merkle_root,
-                committee_public_keys,
+                committee_public_keys: _pks,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_initial_asset_checkpoint(*asset_public_key, merkle_root, committee_public_keys)
+                    .create_initial_asset_checkpoint(contract_id, merkle_root)
                     .await?;
                 Ok(AssetManagerResponse::CreateInitialCheckpoint {
                     transaction: Box::new(transaction),
@@ -145,36 +146,94 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                 })
             },
             AssetManagerRequest::CreateFollowOnCheckpoint {
-                asset_public_key,
-                unique_id,
+                contract_id,
                 merkle_root,
-                committee_public_keys,
+                committee_public_keys: _pks,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_follow_on_asset_checkpoint(*asset_public_key, unique_id, merkle_root, committee_public_keys)
+                    .create_follow_on_asset_checkpoint(contract_id, merkle_root)
                     .await?;
                 Ok(AssetManagerResponse::CreateFollowOnCheckpoint {
                     transaction: Box::new(transaction),
                     tx_id,
                 })
             },
-            AssetManagerRequest::CreateCommitteeDefinition {
-                asset_public_key,
-                committee_public_keys,
-                effective_sidechain_height,
-                is_initial,
+            AssetManagerRequest::CreateConstitutionDefinition {
+                constitution_definition,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_committee_definition(
-                        *asset_public_key,
-                        committee_public_keys,
-                        effective_sidechain_height,
-                        is_initial,
+                    .create_constitution_definition(&constitution_definition)
+                    .await?;
+                Ok(AssetManagerResponse::CreateConstitutionDefinition {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractDefinition { contract_definition } => {
+                let (tx_id, transaction) = self.manager.create_contract_definition(*contract_definition).await?;
+                Ok(AssetManagerResponse::CreateContractDefinition {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractAcceptance {
+                contract_id,
+                validator_node_public_key,
+                signature,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_acceptance(contract_id, *validator_node_public_key, *signature)
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractAcceptance {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractUpdateProposalAcceptance {
+                contract_id,
+                proposal_id,
+                validator_node_public_key,
+                signature,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_update_proposal_acceptance(
+                        contract_id,
+                        proposal_id,
+                        *validator_node_public_key,
+                        *signature,
                     )
                     .await?;
-                Ok(AssetManagerResponse::CreateCommitteeDefinition {
+                Ok(AssetManagerResponse::CreateContractUpdateProposalAcceptance {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractUpdateProposal {
+                contract_id,
+                update_proposal,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_update_proposal(contract_id, *update_proposal)
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractUpdateProposal {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
+            AssetManagerRequest::CreateContractAmendment {
+                contract_id,
+                contract_amendment,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_contract_amendment(contract_id, *contract_amendment)
+                    .await?;
+                Ok(AssetManagerResponse::CreateContractAmendment {
                     transaction: Box::new(transaction),
                     tx_id,
                 })

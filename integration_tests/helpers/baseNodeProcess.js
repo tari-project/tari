@@ -133,6 +133,10 @@ class BaseNodeProcess {
     return address;
   }
 
+  getGrpcPort() {
+    return this.grpcPort;
+  }
+
   run(cmd, args) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir + "/log")) {

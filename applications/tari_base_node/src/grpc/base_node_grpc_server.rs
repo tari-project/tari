@@ -33,7 +33,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::{Commitment, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -48,7 +48,10 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction_components::{OutputType, Transaction},
+    },
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
@@ -129,11 +132,17 @@ pub async fn get_heights(
 ) -> Result<(u64, u64), Status> {
     block_heights(handler, request.start_height, request.end_height, request.from_tip).await
 }
+impl BaseNodeGrpcServer {
+    fn report_error(&self, status: Status) -> Status {
+        report_error(self.report_grpc_error, status)
+    }
+}
 
 #[tonic::async_trait]
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type GetConstitutionsStream = mpsc::Receiver<Result<tari_rpc::GetConstitutionsResponse, Status>>;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
@@ -448,6 +457,50 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    async fn get_current_contract_outputs(
+        &self,
+        request: Request<tari_rpc::GetCurrentContractOutputsRequest>,
+    ) -> Result<Response<tari_rpc::GetCurrentContractOutputsResponse>, Status> {
+        let request = request.into_inner();
+
+        let contract_id = FixedHash::try_from(request.contract_id.as_slice())
+            .map_err(|err| Status::invalid_argument(format!("Contract ID is not a valid: {}", err)))?;
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for GetCurrentContractOutputs: contract_id: {}", contract_id
+        );
+
+        let output_type = u8::try_from(request.output_type)
+            .ok()
+            .and_then(OutputType::from_byte)
+            .ok_or_else(|| Status::invalid_argument("Invalid output_type"))?;
+
+        let mut node_service = self.node_service.clone();
+        let outputs = node_service
+            .get_outputs_for_contract(contract_id, output_type)
+            .await
+            .map_err(|err| self.report_error(Status::internal(err.to_string())))?;
+
+        let outputs = outputs
+            .into_iter()
+            .map(|output| {
+                let unpruned = output
+                    .output
+                    .as_transaction_output()
+                    .ok_or_else(|| Status::failed_precondition("Checkpoint output has been pruned"))?;
+
+                Ok(tari_rpc::UtxoMinedInfo {
+                    output: Some(unpruned.clone().into()),
+                    mmr_position: output.mmr_position,
+                    mined_height: output.mined_height,
+                    header_hash: output.header_hash,
+                })
+            })
+            .collect::<Result<_, Status>>()?;
+
+        Ok(Response::new(tari_rpc::GetCurrentContractOutputsResponse { outputs }))
+    }
+
     async fn get_tokens(
         &self,
         request: Request<tari_rpc::GetTokensRequest>,
@@ -456,14 +509,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "Incoming GRPC request for GetTokens: asset_pub_key: {}, unique_ids: [{}]",
+            "Incoming GRPC request for GetTokens: asset_pub_key: {}",
             request.asset_public_key.to_hex(),
-            request
-                .unique_ids
-                .iter()
-                .map(|s| s.to_hex())
-                .collect::<Vec<_>>()
-                .join(",")
         );
 
         let pub_key = PublicKey::from_bytes(&request.asset_public_key).map_err(|err| {
@@ -1824,6 +1871,134 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         Ok(Response::new(response))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn get_constitutions(
+        &self,
+        request: Request<tari_rpc::GetConstitutionsRequest>,
+    ) -> Result<Response<Self::GetConstitutionsStream>, Status> {
+        let report_error_flag = self.report_error_flag();
+        let request = request.into_inner();
+        println!("{:?}", request);
+        let dan_node_public_key = PublicKey::from_bytes(&request.dan_node_public_key)
+            .map_err(|_| Status::invalid_argument("Dan node public key is not a valid public key"))?;
+
+        let start_hash = Some(request.start_block_hash)
+            .filter(|h| !h.is_empty())
+            .map(FixedHash::try_from)
+            .transpose()
+            .map_err(|_| Status::invalid_argument("Block hash has an invalid length"))?;
+
+        println!("{:?}", start_hash);
+        let mut node_service = self.node_service.clone();
+        // Check the start_hash is correct, or if not provided, start from genesis
+        let start_header = match start_hash {
+            Some(hash) => node_service
+                .get_header_by_hash(hash.to_vec())
+                .await
+                .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
+                .ok_or_else(|| Status::not_found(format!("No block found with hash {}", hash)))?,
+            None => node_service
+                .get_header(0)
+                .await
+                .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
+                .ok_or_else(|| Status::internal("Node does not have a genesis block!?"))?,
+        };
+        // The number of headers to load at once to query for UTXOs
+        const BATCH_SIZE: u64 = 50;
+        let (mut sender, receiver) = mpsc::channel(50);
+        task::spawn(async move {
+            let dan_node_public_key_hex = dan_node_public_key.to_hex();
+            debug!(
+                target: LOG_TARGET,
+                "Starting thread to process GetConstitutions: dan_node_public_key: {}", dan_node_public_key_hex,
+            );
+            let mut current_height = start_header.height();
+
+            loop {
+                let headers = match node_service
+                    .get_headers((current_height + 1)..=current_height + BATCH_SIZE)
+                    .await
+                {
+                    Ok(h) => h,
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Error fetching headers: {}", err);
+                        let _err = sender
+                            .send(Err(report_error(report_error_flag, Status::internal(err.to_string()))))
+                            .await;
+                        return;
+                    },
+                };
+
+                if headers.is_empty() {
+                    break;
+                }
+                let num_headers = headers.len();
+
+                for header in headers {
+                    let block_hash_hex = header.hash().to_hex();
+                    match node_service
+                        .get_contract_outputs_for_block(header.hash().clone(), OutputType::ContractConstitution)
+                        .await
+                    {
+                        Ok(constitutions) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Found {} constitutions in block {}",
+                                constitutions.len(),
+                                block_hash_hex
+                            );
+
+                            let constitutions = constitutions.into_iter().filter(|utxo| {
+                                // Filter for constitutions containing the dan_node_public_key
+                                utxo.output
+                                    .as_transaction_output()
+                                    .and_then(|output| output.features.sidechain_features.as_ref())
+                                    .and_then(|sidechain| sidechain.constitution.as_ref())
+                                    .filter(|constitution| {
+                                        constitution.validator_committee.contains(&dan_node_public_key)
+                                    })
+                                    .is_some()
+                            });
+
+                            for utxo in constitutions {
+                                if sender
+                                    .send(Ok(tari_rpc::GetConstitutionsResponse {
+                                        header_hash: utxo.header_hash,
+                                        mined_height: utxo.mined_height,
+                                        mmr_position: utxo.mmr_position,
+                                        output: utxo.output.into_unpruned_output().map(Into::into),
+                                    }))
+                                    .await
+                                    .is_err()
+                                {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Client disconnected while sending constitution via GRPC"
+                                    );
+                                    break;
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            warn!(target: LOG_TARGET, "Error fetching contract outputs for block: {}", err);
+                            let _err = sender
+                                .send(Err(report_error(report_error_flag, Status::internal("Internal error"))))
+                                .await;
+                            return;
+                        },
+                    }
+                }
+
+                if num_headers < BATCH_SIZE as usize {
+                    break;
+                }
+
+                current_height += BATCH_SIZE + 1;
+            }
+        });
+        Ok(Response::new(receiver))
     }
 }
 

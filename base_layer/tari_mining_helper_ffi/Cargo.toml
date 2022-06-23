@@ -8,15 +8,20 @@ edition = "2018"
 
 [dependencies]
 tari_comms = { version = "^0.32", path = "../../comms/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", rev = "a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312" }
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
 libc = "0.2.65"
 thiserror = "1.0.26"
 hex = "0.4.2"
 serde = { version="1.0.106", features = ["derive"] }
 serde_json = "1.0.57"
+
+[dev-dependencies]
+tari_core = { path = "../core", features = ["transactions", "base_node"]}
+
+rand = "0.8.1"
 
 [lib]
 crate-type = ["staticlib","cdylib"]

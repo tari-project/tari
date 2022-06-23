@@ -22,3 +22,6 @@ peer_seeds = [
     # 4444a0efd8388739d563bdd979
     "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189"
 ]
+
+[igor.p2p.seeds]
+peer_seeds = ["bc1e742c3af35e4e6998169b9bf8f102a6c0f54e207842a6a2c659e67d938077::/onion3/mmdxq25om5optfjnhd7yry75px6pdom2nqcmbiqmy6xwozjpil3mhkid:18141"]

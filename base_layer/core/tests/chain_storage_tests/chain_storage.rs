@@ -47,7 +47,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::spend_utxos,
-        transaction_components::{OutputFeatures, OutputFlags},
+        transaction_components::{OutputFeatures, OutputType},
         CryptoFactories,
     },
     tx,
@@ -928,10 +928,10 @@ fn handle_reorg_failure_recovery() {
     // Block B3 (Incorrect height)
     let double_spend_block = {
         let schemas = vec![
-                txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
-                // Double spend
-                //txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
-            ];
+            txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+            // Double spend
+            // txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+        ];
         let mut txns = Vec::new();
         let mut block_utxos = Vec::new();
         for schema in schemas {
@@ -1029,7 +1029,7 @@ fn asset_unique_id() {
     // create a new NFT
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let mut features = OutputFeatures {
-        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        output_type: OutputType::MintNonFungible,
         parent_public_key: Some(asset.clone()),
         unique_id: Some(unique_id1.clone()),
         ..Default::default()
@@ -1083,7 +1083,7 @@ fn asset_unique_id() {
     // new unique id, does not exist yet
     let unique_id2 = vec![2u8; 3];
     let mut features = OutputFeatures {
-        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        output_type: OutputType::MintNonFungible,
         parent_public_key: Some(asset.clone()),
         unique_id: Some(unique_id2.clone()),
         ..Default::default()
@@ -1123,7 +1123,7 @@ fn asset_unique_id() {
     // same id for a different asset is fine
     let (_, asset2) = PublicKey::random_keypair(&mut rng);
     let mut features = OutputFeatures {
-        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        output_type: OutputType::MintNonFungible,
         parent_public_key: Some(asset2.clone()),
         unique_id: Some(unique_id1.clone()),
         ..Default::default()
@@ -1890,6 +1890,7 @@ mod malleability {
                     output.script.clone(),
                     output.sender_offset_public_key.clone(),
                     output.covenant.clone(),
+                    output.encrypted_value.clone(),
                 );
             });
         }

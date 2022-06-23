@@ -1,19 +1,19 @@
 [package]
 name = "tari_app_utilities"
-version = "0.32.0"
+version = "0.32.5"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
 
 [dependencies]
 tari_comms = { path = "../../comms/core" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", rev = "a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
 
-clap = { version = "3.1.1", features = ["derive", "env"] }
+clap = { version = "3.2.0", features = ["derive", "env"] }
 config = { version = "0.13.0" }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 dirs-next = "1.0.2"

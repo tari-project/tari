@@ -13,7 +13,15 @@ const JSON5 = require("json5");
 
 let outputProcess;
 class ValidatorNodeProcess {
-  constructor(name, excludeTestEnvars, options, logFilePath, nodeFile) {
+  constructor(
+    name,
+    excludeTestEnvars,
+    options,
+    logFilePath,
+    nodeFile,
+    baseNodeAddress,
+    walletAddress
+  ) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
@@ -24,11 +32,13 @@ class ValidatorNodeProcess {
       options || {}
     );
     this.excludeTestEnvars = excludeTestEnvars;
+    this.baseNodeAddress = baseNodeAddress;
+    this.walletAddress = walletAddress;
   }
 
   async init() {
     this.port = await getFreePort();
-    this.grpcPort = 18080; // Currently it's constant
+    this.grpcPort = await getFreePort();
     this.name = `ValidatorNode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
 
@@ -47,26 +57,51 @@ class ValidatorNodeProcess {
         break;
       }
     } while (fs.existsSync(this.baseDir));
-    const args = ["--base-path", ".", "--init"];
+    const args = ["--base-path", "."];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
 
-    await this.run(await this.compile(), args);
+    await this.compile();
+    // await this.run(cmd, args);
   }
 
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
-        "build",
-        "--release",
-        "--bin",
-        "tari_validator_node",
-        "-Z",
-        "unstable-options",
-        "--out-dir",
-        process.cwd() + "/temp/out",
-      ]);
+      await new Promise((resolve, reject) => {
+        const ps = spawn(
+          "cargo",
+          [
+            "build",
+            "--release",
+            "--bin",
+            "tari_validator_node",
+            "-Z",
+            "unstable-options",
+            "--out-dir",
+            process.cwd() + "/temp/out",
+          ],
+          {
+            cwd: this.baseDir,
+            // shell: true,
+            env: { ...process.env },
+          }
+        );
+
+        ps.on("close", (code) => {
+          const ps = this.ps;
+          this.ps = null;
+          if (code) {
+            reject(`child process exited with code ${code}`);
+          } else {
+            resolve(ps);
+          }
+        });
+
+        expect(ps.error).to.be.an("undefined");
+        this.ps = ps;
+      });
+
       outputProcess = process.cwd() + "/temp/out/tari_validator_node";
     }
     return outputProcess;
@@ -117,8 +152,8 @@ class ValidatorNodeProcess {
   }
 
   getGrpcAddress() {
-    const address = "127.0.0.1:" + this.grpcPort;
-    // console.log("Base Node GRPC Address:",address);
+    const address = "/ip4/127.0.0.1/tcp/" + this.grpcPort;
+    console.log("Validator Node GRPC Address:", address);
     return address;
   }
 
@@ -130,13 +165,28 @@ class ValidatorNodeProcess {
 
       let envs = [];
       if (!this.excludeTestEnvars) {
-        envs = createEnv({
-          nodeFile: this.nodeFile,
-          options: this.options,
-          peerSeeds: this.peerSeeds,
-          forceSyncPeers: this.forceSyncPeers,
-        });
+        envs = this.getOverrides();
       }
+
+      let customArgs = {
+        "validator_node.p2p.transport.type": "tcp",
+      };
+      if (this.baseNodeAddress) {
+        customArgs["validator_node.base_node_grpc_address"] =
+          this.baseNodeAddress;
+      }
+      if (this.baseNodeAddress) {
+        customArgs["validator_node.wallet_grpc_address"] = this.walletAddress;
+      }
+      if (this.baseNodeAddress) {
+        customArgs["validator_node.grpc_address"] = this.getGrpcAddress();
+      }
+
+      Object.keys(customArgs).forEach((k) => {
+        args.push("-p");
+        args.push(`${k}=${customArgs[k]}`);
+      });
+
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
@@ -144,20 +194,18 @@ class ValidatorNodeProcess {
       });
 
       ps.stdout.on("data", (data) => {
-        // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
           data
             .toString()
             .toUpperCase()
-            .match(/STATE CHANGED FROM STARTING TO PREPARE/)
+            .match(/STARTING GRPC/)
         ) {
           resolve(ps);
         }
       });
-
       ps.stderr.on("data", (data) => {
-        // console.error(`stderr: ${data}`);
+        console.error(`stderr: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
       });
 
@@ -218,6 +266,20 @@ class ValidatorNodeProcess {
 
   async createGrpcClient() {
     return await ValidatorNodeClient.create(this.grpcPort);
+    // return await ValidatorNodeClient.create(18144);
+  }
+
+  getOverrides() {
+    return createEnv({
+      network: "localnet",
+      validatorNodeGrpcAddress: this.getGrpcAddress(),
+      baseNodeGrpcAddress: this.baseNodeAddress,
+      walletGrpcAddress: this.walletAddress,
+      nodeFile: this.nodeFile,
+      options: this.options,
+      peerSeeds: this.peerSeeds,
+      forceSyncPeers: this.forceSyncPeers,
+    });
   }
 }
 

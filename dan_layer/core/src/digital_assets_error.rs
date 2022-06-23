@@ -103,6 +103,8 @@ pub enum DigitalAssetError {
     DecodeError(#[from] DecodeError),
     #[error("Failed to send message: {0}")]
     SendError(#[from] Box<SendError<(RistrettoPublicKey, HotStuffMessage<TariDanPayload>)>>),
+    #[error("Invalid committee public key hex")]
+    InvalidCommitteePublicKeyHex,
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

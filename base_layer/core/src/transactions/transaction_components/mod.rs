@@ -25,6 +25,7 @@
 
 pub use asset_output_features::AssetOutputFeatures;
 pub use committee_definition_features::CommitteeDefinitionFeatures;
+pub use encrypted_value::EncryptedValue;
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;
@@ -33,9 +34,9 @@ pub use kernel_sum::KernelSum;
 pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
-pub use output_flags::OutputFlags;
+pub use output_type::OutputType;
 pub use rewind_result::RewindResult;
-pub use side_chain::ContractConstitution;
+pub use side_chain::*;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::Commitment;
 use tari_script::TariScript;
@@ -53,6 +54,7 @@ pub use unblinded_output_builder::UnblindedOutputBuilder;
 
 mod asset_output_features;
 mod committee_definition_features;
+mod encrypted_value;
 mod error;
 mod full_rewind_result;
 mod kernel_builder;
@@ -61,7 +63,7 @@ mod kernel_sum;
 mod mint_non_fungible_features;
 mod output_features;
 mod output_features_version;
-mod output_flags;
+mod output_type;
 mod rewind_result;
 mod side_chain;
 mod side_chain_checkpoint_features;
@@ -101,6 +103,7 @@ pub(super) fn hash_output(
     commitment: &Commitment,
     script: &TariScript,
     covenant: &Covenant,
+    encrypted_value: &EncryptedValue,
 ) -> [u8; 32] {
     match version {
         TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
@@ -109,6 +112,7 @@ pub(super) fn hash_output(
             .chain(commitment)
             .chain(script)
             .chain(covenant)
+            .chain(encrypted_value)
             .finalize(),
     }
 }

@@ -20,12 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io;
+use std::{
+    convert::{TryFrom, TryInto},
+    io,
+};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PublicKey;
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec};
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec},
+    transactions::transaction_components::TransactionError,
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, Default)]
 pub struct CommitteeMembers {
@@ -37,6 +43,29 @@ impl CommitteeMembers {
 
     pub fn new(members: MaxSizeVec<PublicKey, { Self::MAX_MEMBERS }>) -> Self {
         Self { members }
+    }
+
+    pub fn members(&self) -> &[PublicKey] {
+        &self.members
+    }
+
+    pub fn contains(&self, x: &PublicKey) -> bool {
+        self.members.contains(x)
+    }
+}
+
+impl TryFrom<Vec<PublicKey>> for CommitteeMembers {
+    type Error = TransactionError;
+
+    fn try_from(members: Vec<PublicKey>) -> Result<Self, Self::Error> {
+        let len = members.len();
+        let members = members
+            .try_into()
+            .map_err(|_| TransactionError::InvalidCommitteeLength {
+                len,
+                max: Self::MAX_MEMBERS,
+            })?;
+        Ok(Self { members })
     }
 }
 

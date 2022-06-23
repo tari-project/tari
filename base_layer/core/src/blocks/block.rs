@@ -45,7 +45,7 @@ use crate::{
         tari_amount::MicroTari,
         transaction_components::{
             KernelFeatures,
-            OutputFlags,
+            OutputType,
             Transaction,
             TransactionError,
             TransactionInput,
@@ -77,7 +77,7 @@ pub enum BlockValidationError {
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,
@@ -309,7 +309,7 @@ impl From<&Block> for NewBlock {
             .body
             .outputs()
             .iter()
-            .find(|o| o.features.flags.contains(OutputFlags::COINBASE_OUTPUT))
+            .find(|o| o.features.output_type == OutputType::Coinbase)
             .cloned()
             .expect("Invalid block given to NewBlock::from, no coinbase output");
 

@@ -56,7 +56,7 @@ impl<TSpecification: ServiceSpecification> NextViewState<TSpecification> {
         payload_provider: &TSpecification::PayloadProvider,
         _shutdown: &ShutdownSignal,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        let chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
+        let chain_db = db_factory.get_or_create_chain_db(&asset_definition.contract_id)?;
         if chain_db.is_empty()? {
             info!(target: LOG_TARGET, "Database is empty. Proposing genesis block");
             let node = HotStuffTreeNode::genesis(
@@ -66,7 +66,7 @@ impl<TSpecification: ServiceSpecification> NextViewState<TSpecification> {
             let genesis_qc = QuorumCertificate::genesis(*node.hash());
             let genesis_view_no = genesis_qc.view_number();
             let leader = committee.leader_for_view(genesis_view_no);
-            let message = HotStuffMessage::new_view(genesis_qc, genesis_view_no, asset_definition.public_key.clone());
+            let message = HotStuffMessage::new_view(genesis_qc, genesis_view_no, asset_definition.contract_id);
             broadcast.send(node_id, leader.clone(), message).await?;
             Ok(ConsensusWorkerStateEvent::NewView {
                 new_view: genesis_view_no,
@@ -76,7 +76,7 @@ impl<TSpecification: ServiceSpecification> NextViewState<TSpecification> {
             debug!(target: LOG_TARGET, "--------------------------------");
             let prepare_qc = chain_db.find_highest_prepared_qc()?;
             let next_view = current_view.view_id.next();
-            let message = HotStuffMessage::new_view(prepare_qc, next_view, asset_definition.public_key.clone());
+            let message = HotStuffMessage::new_view(prepare_qc, next_view, asset_definition.contract_id);
             let leader = committee.leader_for_view(next_view);
             broadcast.send(node_id, leader.clone(), message).await?;
             Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })

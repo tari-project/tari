@@ -19,28 +19,35 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::sync::Arc;
 
 use rand::rngs::OsRng;
-use tari_common_types::types::PublicKey;
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_common_types::types::{CommitmentFactory, FixedHash, PublicKey};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::RistrettoPublicKey,
+};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
+use super::helpers;
 use crate::{
+    block_spec,
+    block_specs,
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
-        blockchain::{create_new_blockchain, TempDatabase},
+        blockchain::{create_new_blockchain, TempDatabase, TestBlockchain},
         create_block,
         BlockSpec,
     },
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction_components::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputType, Transaction, UnblindedOutput},
+        CryptoFactories,
     },
     txn_schema,
 };
@@ -377,7 +384,6 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-
     use super::*;
 
     #[test]
@@ -472,7 +478,7 @@ mod add_block {
         let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
         let unique_id = vec![1; 3];
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id),
             ..Default::default()
@@ -485,7 +491,7 @@ mod add_block {
 
         let unique_id = vec![2; 3];
         let features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(asset_pk),
             unique_id: Some(unique_id),
             ..Default::default()
@@ -710,11 +716,7 @@ mod clear_all_pending_headers {
 }
 
 mod fetch_utxo_by_unique_id {
-    use tari_common_types::types::CommitmentFactory;
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoPublicKey};
-
     use super::*;
-    use crate::transactions::transaction_components::OutputFlags;
 
     #[test]
     fn it_returns_none_if_empty() {
@@ -734,7 +736,7 @@ mod fetch_utxo_by_unique_id {
         let (blocks, outputs) = add_many_chained_blocks(1, &db);
 
         let mut features = OutputFeatures {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            output_type: OutputType::MintNonFungible,
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -770,7 +772,6 @@ mod fetch_utxo_by_unique_id {
         );
 
         let mut features = OutputFeatures {
-            flags: OutputFlags::empty(),
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -848,5 +849,253 @@ mod fetch_utxo_by_unique_id {
             assert_utxo_found(asset_utxo1, Some(i));
         });
         assert_utxo_found(asset_utxo2, Some(11));
+    }
+}
+
+mod with_contract_utxos {
+    use super::*;
+
+    mod add_block {
+        use super::*;
+
+        #[test]
+        fn it_adds_the_contract_definition_to_the_index() {
+            // Don't validate because we're testing the behaviour of the DB contract index
+            let blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.create_next_tip(block_spec!("A", parent: "GB"));
+            let (contract_definition, _) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![T], FixedHash::zero());
+            let _block = blockchain.create_next_tip(block_spec!("B", transactions: vec![contract_definition]));
+        }
+
+        #[test]
+        fn it_errors_if_adding_duplicate_contract_definition() {
+            let contract_id = FixedHash::zero();
+            // Don't validate because we're testing the behaviour of the DB contract index
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A", parent: "GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, outputs) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
+            let _output = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+
+            let change = outputs
+                .iter()
+                .find(|output| !output.features.is_sidechain_contract())
+                .unwrap()
+                .clone();
+            let (contract_definition, _) =
+                helpers::create_contract_definition_transaction(vec![change], vec![T], contract_id);
+            let err = blockchain
+                .append_to_tip(block_spec!("C", transactions: vec![contract_definition]))
+                .unwrap_err();
+            unpack_enum!(ChainStorageError::KeyExists { table_name, .. } = err);
+            assert_eq!(table_name, "contract_index");
+        }
+
+        #[test]
+        fn it_allows_spend_of_contract_definition_without_dependent_utxos() {
+            let contract_id = FixedHash::zero();
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A->GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, outputs) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
+            let _output = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+
+            let contract_definition = outputs
+                .iter()
+                .find(|output| output.features.is_sidechain_contract())
+                .unwrap()
+                .clone();
+            let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![contract_definition], to: vec![T])]);
+            blockchain
+                .append_to_tip(
+                    block_spec!("C", transactions: txns.into_iter().map(|tx| Arc::try_unwrap(tx).unwrap()).collect()),
+                )
+                .unwrap();
+        }
+
+        #[test]
+        fn it_errors_on_spend_of_contract_definition_with_dependent_utxos() {
+            let contract_id = FixedHash::zero();
+            // Don't validate because we're testing the behaviour of the DB contract index
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A", parent: "GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, outputs) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
+            let _output = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+            let (contract_definition, change) = outputs
+                .into_iter()
+                .partition::<Vec<_>, _>(|output| output.features.is_sidechain_contract());
+
+            let (constitution, _) = helpers::create_contract_constitution_transaction(change, contract_id);
+            blockchain
+                .append_to_tip(block_spec!("C", transactions: vec![constitution]))
+                .unwrap();
+            let (txns, _) = schema_to_transaction(&[txn_schema!(from: contract_definition, to: vec![T])]);
+            let err = blockchain
+                .append_to_tip(block_spec!("D", transactions: txns.into_iter().map(|tx| (*tx).clone()).collect()))
+                .unwrap_err();
+            unpack_enum!(ChainStorageError::UnspendableDueToDependentUtxos { .. } = err);
+        }
+    }
+
+    mod fetch_contract_outputs_for_block {
+        use super::*;
+
+        #[test]
+        fn it_returns_none_if_block_does_not_exist() {
+            let blockchain = TestBlockchain::default();
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(vec![0u8; 32], OutputType::ContractDefinition)
+                .unwrap();
+            assert!(utxo.is_empty());
+        }
+
+        #[test]
+        fn it_returns_none_if_contract_does_not_exist() {
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (block_a, coinbase_a) = blockchain.append_to_tip(block_spec!("A->GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, _) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], [0u8; 32].into());
+
+            let _block = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(block_a.hash().clone(), OutputType::ContractDefinition)
+                .unwrap();
+            assert!(utxo.is_empty());
+        }
+
+        #[test]
+        fn it_finds_contract_utxos_by_block_hash_and_type() {
+            let contract_id = FixedHash::from([1u8; 32]);
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A->GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, outputs) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
+
+            let (block, _) = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+            let (contract_definition, change) = outputs
+                .into_iter()
+                .partition::<Vec<_>, _>(|output| output.features.is_sidechain_contract());
+            let contract_def_hash = contract_definition[0].hash(&CryptoFactories::default());
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(block.hash().clone(), OutputType::ContractDefinition)
+                .unwrap();
+            assert_eq!(utxo[0].output.hash(), contract_def_hash);
+
+            let (constitution, outputs) = helpers::create_contract_constitution_transaction(change, contract_id);
+            let (block, _) = blockchain
+                .append_to_tip(block_spec!("C", transactions: vec![constitution]))
+                .unwrap();
+            let contract_const_hash = outputs
+                .into_iter()
+                .find(|o| o.features.is_sidechain_contract())
+                .map(|o| o.hash(&CryptoFactories::default()))
+                .unwrap();
+            let utxos = blockchain
+                .db()
+                .fetch_contract_outputs_for_block(block.hash().clone(), OutputType::ContractConstitution)
+                .unwrap();
+            assert_eq!(utxos[0].output.hash(), contract_const_hash);
+        }
+    }
+
+    mod fetch_contract_outputs_by_contract_id_and_type {
+        use super::*;
+
+        #[test]
+        fn it_returns_none_if_contract_does_not_exist() {
+            let blockchain = TestBlockchain::default();
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_by_contract_id_and_type(FixedHash::zero(), OutputType::ContractDefinition)
+                .unwrap();
+            assert!(utxo.is_empty());
+        }
+
+        #[test]
+        fn it_finds_contract_utxos_by_contract_id_and_type() {
+            let contract_id = FixedHash::zero();
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("A", parent: "GB")).unwrap();
+            // Spend coinbase_a to new contract definition
+            let (contract_definition, outputs) =
+                helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
+
+            let _block = blockchain
+                .append_to_tip(block_spec!("B", transactions: vec![contract_definition]))
+                .unwrap();
+            let (contract_definition, change) = outputs
+                .into_iter()
+                .partition::<Vec<_>, _>(|output| output.features.is_sidechain_contract());
+            let contract_def_hash = contract_definition[0].hash(&CryptoFactories::default());
+            let utxo = blockchain
+                .db()
+                .fetch_contract_outputs_by_contract_id_and_type(FixedHash::zero(), OutputType::ContractDefinition)
+                .unwrap();
+            assert_eq!(utxo[0].output.hash(), contract_def_hash);
+
+            let (constitution, outputs) = helpers::create_contract_constitution_transaction(change, contract_id);
+            blockchain
+                .append_to_tip(block_spec!("C", transactions: vec![constitution]))
+                .unwrap();
+            let contract_const_hash = outputs
+                .into_iter()
+                .find(|o| o.features.is_sidechain_contract())
+                .map(|o| o.hash(&CryptoFactories::default()))
+                .unwrap();
+            let utxos = blockchain
+                .db()
+                .fetch_contract_outputs_by_contract_id_and_type(FixedHash::zero(), OutputType::ContractConstitution)
+                .unwrap();
+            assert_eq!(utxos[0].output.hash(), contract_const_hash);
+        }
+    }
+
+    mod reorgs {
+        use super::*;
+
+        #[test]
+        fn it_removes_contract_utxo_from_index_on_reorg() {
+            let contract_id = FixedHash::zero();
+            let mut blockchain = helpers::create_blockchain_without_validation();
+            let (_, coinbase_a) = blockchain.append_to_tip(block_spec!("1->GB")).unwrap();
+            let (txn, _) = helpers::create_contract_definition_transaction(vec![coinbase_a], vec![2 * T], contract_id);
+            blockchain
+                .append_chain(block_specs!(["1a->GB"], ["2a->1a", transactions: vec![txn]]))
+                .unwrap();
+            let utxos = blockchain
+                .db()
+                .fetch_contract_outputs_by_contract_id_and_type(FixedHash::zero(), OutputType::ContractDefinition)
+                .unwrap();
+            assert_eq!(utxos.len(), 1);
+            // Reorg out
+            blockchain
+                .append_chain(block_specs!(["1b->GB"], ["2b->1b"], ["3b->2b", difficulty: 10]))
+                .unwrap();
+            let utxos = blockchain
+                .db()
+                .fetch_contract_outputs_by_contract_id_and_type(FixedHash::zero(), OutputType::ContractDefinition)
+                .unwrap();
+            assert_eq!(utxos.len(), 0);
+        }
     }
 }

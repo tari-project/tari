@@ -21,21 +21,25 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
+    fs,
     fs::File,
     io::{LineWriter, Write},
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{FixedHash, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -45,15 +49,32 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{TransactionOutput, UnblindedOutput},
+    transaction_components::{
+        CheckpointParameters,
+        ContractAcceptanceRequirements,
+        ContractAmendment,
+        ContractDefinition,
+        ContractUpdateProposal,
+        SideChainConsensus,
+        SideChainFeatures,
+        TransactionOutput,
+        UnblindedOutput,
+    },
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
-    assets::KEY_MANAGER_ASSET_BRANCH,
+    assets::{
+        ConstitutionChangeRulesFileFormat,
+        ConstitutionDefinitionFileFormat,
+        ContractAmendmentFileFormat,
+        ContractDefinitionFileFormat,
+        ContractSpecificationFileFormat,
+        ContractUpdateProposalFileFormat,
+        SignatureFileFormat,
+    },
     error::WalletError,
-    key_manager_service::KeyManagerInterface,
-    output_manager_service::handle::OutputManagerHandle,
+    key_manager_service::{KeyManagerInterface, NextKeyResult},
+    output_manager_service::{handle::OutputManagerHandle, resources::OutputManagerKeyManagerBranch},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
     WalletConfig,
@@ -66,7 +87,17 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
-    automation::command_parser::{ParsedArgument, ParsedCommand},
+    automation::prompt::{HexArg, Optional, Prompt, YesNo},
+    cli::{
+        CliCommands,
+        ContractCommand,
+        ContractSubcommand,
+        InitAmendmentArgs,
+        InitConstitutionArgs,
+        InitDefinitionArgs,
+        InitUpdateProposalArgs,
+        PublishFileArgs,
+    },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
@@ -95,62 +126,20 @@ pub enum WalletCommand {
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
-    CreateCommitteeDefinition,
     RevalidateWalletDb,
 }
 
 #[derive(Debug)]
 pub struct SentTransaction {}
 
-fn get_transaction_parameters(args: Vec<ParsedArgument>) -> Result<(MicroTari, PublicKey, String), CommandError> {
-    use ParsedArgument::{Amount, PublicKey, Text};
-    let amount = match args[0].clone() {
-        Amount(mtari) => Ok(mtari),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let dest_pubkey = match args[1].clone() {
-        PublicKey(key) => Ok(key),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let message = match args[2].clone() {
-        Text(msg) => Ok(msg),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    Ok((amount, dest_pubkey, message))
-}
-
-fn get_init_sha_atomic_swap_parameters(
-    args: Vec<ParsedArgument>,
-) -> Result<(MicroTari, PublicKey, String), CommandError> {
-    use ParsedArgument::{Amount, PublicKey, Text};
-    let amount = match args[0].clone() {
-        Amount(mtari) => Ok(mtari),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let dest_pubkey = match args[1].clone() {
-        PublicKey(key) => Ok(key),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let message = match args[2].clone() {
-        Text(msg) => Ok(msg),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    Ok((amount, dest_pubkey, message))
-}
-
 /// Send a normal negotiated transaction to a recipient
 pub async fn send_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    args: Vec<ParsedArgument>,
+    amount: MicroTari,
+    dest_pubkey: PublicKey,
+    message: String,
 ) -> Result<TxId, CommandError> {
-    let (amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
         .send_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
         .await
@@ -161,10 +150,10 @@ pub async fn send_tari(
 pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    args: Vec<ParsedArgument>,
+    amount: MicroTari,
+    dest_pubkey: PublicKey,
+    message: String,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
-    let (amount, dest_pubkey, message) = get_init_sha_atomic_swap_parameters(args)?;
-
     let (tx_id, pre_image, output) = wallet_transaction_service
         .send_sha_atomic_swap_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
         .await
@@ -176,23 +165,16 @@ pub async fn init_sha_atomic_swap(
 pub async fn finalise_sha_atomic_swap(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    args: Vec<ParsedArgument>,
+    output_hash: Vec<u8>,
+    pre_image: PublicKey,
+    fee_per_gram: MicroTari,
+    message: String,
 ) -> Result<TxId, CommandError> {
-    use ParsedArgument::{Hash, PublicKey};
-    let output = match args[0].clone() {
-        Hash(output) => Ok(output),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let pre_image = match args[1].clone() {
-        PublicKey(key) => Ok(key),
-        _ => Err(CommandError::Argument),
-    }?;
     let (tx_id, _fee, amount, tx) = output_service
-        .create_claim_sha_atomic_swap_transaction(output, pre_image, MicroTari(25))
+        .create_claim_sha_atomic_swap_transaction(output_hash, pre_image, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, "Claimed HTLC atomic swap".into())
+        .submit_transaction(tx_id, tx, amount, message)
         .await?;
     Ok(tx_id)
 }
@@ -201,19 +183,15 @@ pub async fn finalise_sha_atomic_swap(
 pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    args: Vec<ParsedArgument>,
+    output_hash: Vec<u8>,
+    fee_per_gram: MicroTari,
+    message: String,
 ) -> Result<TxId, CommandError> {
-    use ParsedArgument::Hash;
-    let output = match args[0].clone() {
-        Hash(output) => Ok(output),
-        _ => Err(CommandError::Argument),
-    }?;
-
     let (tx_id, _fee, amount, tx) = output_service
-        .create_htlc_refund_transaction(output, MicroTari(25))
+        .create_htlc_refund_transaction(output_hash, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, "Claimed HTLC refund".into())
+        .submit_transaction(tx_id, tx, amount, message)
         .await?;
     Ok(tx_id)
 }
@@ -222,9 +200,10 @@ pub async fn claim_htlc_refund(
 pub async fn send_one_sided(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    args: Vec<ParsedArgument>,
+    amount: MicroTari,
+    dest_pubkey: PublicKey,
+    message: String,
 ) -> Result<TxId, CommandError> {
-    let (amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
         .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
         .await
@@ -232,31 +211,18 @@ pub async fn send_one_sided(
 }
 
 pub async fn coin_split(
-    args: &[ParsedArgument],
+    amount_per_split: MicroTari,
+    num_splits: usize,
+    fee_per_gram: MicroTari,
+    message: String,
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
-    use ParsedArgument::{Amount, Int};
-    let amount_per_split = match args[0] {
-        Amount(s) => Ok(s),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let num_splits = match args[1] {
-        Int(s) => Ok(s),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let fee_per_gram = match args[2] {
-        Amount(s) => Ok(s),
-        _ => Err(CommandError::Argument),
-    }?;
-
     let (tx_id, tx, amount) = output_service
         .create_coin_split(amount_per_split, num_splits as usize, fee_per_gram, None)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, "Coin split".into())
+        .submit_transaction(tx_id, tx, amount, message)
         .await?;
 
     Ok(tx_id)
@@ -287,36 +253,19 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
 
 async fn set_base_node_peer(
     mut wallet: WalletSqlite,
-    args: &[ParsedArgument],
+    public_key: PublicKey,
+    address: Multiaddr,
 ) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
-    let public_key = match args[0].clone() {
-        ParsedArgument::PublicKey(s) => Ok(s),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let net_address = match args[1].clone() {
-        ParsedArgument::Address(a) => Ok(a),
-        _ => Err(CommandError::Argument),
-    }?;
-
     println!("Setting base node peer...");
-    println!("{}::{}", public_key, net_address);
-    wallet
-        .set_base_node_peer(public_key.clone(), net_address.clone())
-        .await?;
-    Ok((public_key, net_address))
+    println!("{}::{}", public_key, address);
+    wallet.set_base_node_peer(public_key.clone(), address.clone()).await?;
+    Ok((public_key, address))
 }
 
 pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
-    args: Vec<ParsedArgument>,
+    dest_public_key: PublicKey,
 ) -> Result<(), CommandError> {
-    use ParsedArgument::PublicKey;
-    let dest_public_key = match args[0].clone() {
-        PublicKey(key) => Ok(key),
-        _ => Err(CommandError::Argument),
-    }?;
-
     let start = Instant::now();
     println!("🌎 Peer discovery started.");
     match dht_service
@@ -342,50 +291,15 @@ pub async fn discover_peer(
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    args: Vec<ParsedArgument>,
+    transactions_per_second: u32,
+    duration: Duration,
+    start_amount: MicroTari,
+    increase_amount: MicroTari,
+    start_time: DateTime<Utc>,
+    destination: PublicKey,
+    negotiated: bool,
+    message: String,
 ) -> Result<(), CommandError> {
-    use ParsedArgument::{Amount, Date, Float, Int, Negotiated, PublicKey, Text};
-
-    let txps = match args[0].clone() {
-        Float(r) => Ok(r),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let duration = match args[1].clone() {
-        Int(s) => Ok(s),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let start_amount = match args[2].clone() {
-        Amount(mtari) => Ok(mtari),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let inc_amount = match args[3].clone() {
-        Amount(mtari) => Ok(mtari),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let start_time = match args[4].clone() {
-        Date(dt) => Ok(dt),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let public_key = match args[5].clone() {
-        PublicKey(pk) => Ok(pk),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let negotiated = match args[6].clone() {
-        Negotiated(val) => Ok(val),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let message = match args[7].clone() {
-        Text(m) => Ok(m),
-        _ => Err(CommandError::Argument),
-    }?;
-
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time
@@ -406,7 +320,7 @@ pub async fn make_it_rain(
         );
         sleep(Duration::from_millis(delay_ms)).await;
 
-        let num_txs = (txps * duration as f64) as usize;
+        let num_txs = (f64::from(transactions_per_second) * duration.as_secs() as f64) as usize;
         let started_at = Utc::now();
 
         struct TransactionSendStats {
@@ -434,15 +348,11 @@ pub async fn make_it_rain(
                 let loop_started_at = Instant::now();
                 let tx_service = wallet_transaction_service.clone();
                 // Transaction details
-                let amount = start_amount + inc_amount * (i as u64);
-                let send_args = vec![
-                    ParsedArgument::Amount(amount),
-                    ParsedArgument::PublicKey(public_key.clone()),
-                    ParsedArgument::Text(message.clone()),
-                ];
+                let amount = start_amount + increase_amount * (i as u64);
+
                 // Manage transaction submission rate
                 let actual_ms = (Utc::now() - started_at).num_milliseconds();
-                let target_ms = (i as f64 / (txps / 1000.0)) as i64;
+                let target_ms = (i as f64 / f64::from(transactions_per_second) / 1000.0) as i64;
                 if target_ms - actual_ms > 0 {
                     // Maximum delay between Txs set to 120 s
                     sleep(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
@@ -450,13 +360,15 @@ pub async fn make_it_rain(
                 let delayed_for = Instant::now();
                 let sender_clone = sender.clone();
                 let fee = fee_per_gram;
+                let pk = destination.clone();
+                let msg = message.clone();
                 tokio::task::spawn(async move {
                     let spawn_start = Instant::now();
                     // Send transaction
                     let tx_id = if negotiated {
-                        send_tari(tx_service, fee, send_args).await
+                        send_tari(tx_service, fee, amount, pk.clone(), msg.clone()).await
                     } else {
-                        send_one_sided(tx_service, fee, send_args).await
+                        send_one_sided(tx_service, fee, amount, pk.clone(), msg.clone()).await
                     };
                     let submit_time = Instant::now();
                     tokio::task::spawn(async move {
@@ -620,7 +532,7 @@ pub async fn monitor_transactions(
 #[allow(clippy::too_many_lines)]
 pub async fn command_runner(
     config: &WalletConfig,
-    commands: Vec<ParsedCommand>,
+    commands: Vec<CliCommands>,
     wallet: WalletSqlite,
 ) -> Result<(), CommandError> {
     let wait_stage = config.command_send_wait_stage;
@@ -638,78 +550,106 @@ pub async fn command_runner(
     println!("==============");
 
     #[allow(clippy::enum_glob_use)]
-    use WalletCommand::*;
     for (idx, parsed) in commands.into_iter().enumerate() {
-        println!("\n{}. {}\n", idx + 1, parsed);
-
-        match parsed.command {
+        println!("\n{}. {:?}\n", idx + 1, parsed);
+        use crate::cli::CliCommands::*;
+        match parsed {
             GetBalance => match output_service.clone().get_balance().await {
                 Ok(balance) => {
                     println!("{}", balance);
                 },
                 Err(e) => eprintln!("GetBalance error! {}", e),
             },
-            DiscoverPeer => {
+            DiscoverPeer(args) => {
                 if !online {
                     wait_for_comms(&connectivity_requester).await?;
                     online = true;
                 }
-                discover_peer(dht_service.clone(), parsed.args).await?
+                discover_peer(dht_service.clone(), args.dest_public_key.into()).await?
             },
-            SendTari => {
-                let tx_id = send_tari(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
+            SendTari(args) => {
+                let tx_id = send_tari(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.destination.into(),
+                    args.message,
+                )
+                .await?;
                 debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
-            SendOneSided => {
-                let tx_id = send_one_sided(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
+            SendOneSided(args) => {
+                let tx_id = send_one_sided(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.destination.into(),
+                    args.message,
+                )
+                .await?;
                 debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
-            MakeItRain => {
-                make_it_rain(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
+            MakeItRain(args) => {
+                make_it_rain(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.transactions_per_second,
+                    args.duration,
+                    args.start_amount,
+                    args.increase_amount,
+                    args.start_time.unwrap_or_else(Utc::now),
+                    args.destination.into(),
+                    !args.one_sided,
+                    args.message,
+                )
+                .await?;
             },
-            CoinSplit => {
-                let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
+            CoinSplit(args) => {
+                let tx_id = coin_split(
+                    args.amount_per_split,
+                    args.num_splits,
+                    args.fee_per_gram,
+                    args.message,
+                    &mut output_service,
+                    &mut transaction_service.clone(),
+                )
+                .await?;
                 tx_ids.push(tx_id);
                 println!("Coin split succeeded");
             },
-            Whois => {
-                let public_key = match parsed.args[0].clone() {
-                    ParsedArgument::PublicKey(key) => Ok(Box::new(key)),
-                    _ => Err(CommandError::Argument),
-                }?;
+            Whois(args) => {
+                let public_key = args.public_key.into();
                 let emoji_id = EmojiId::from_pubkey(&public_key);
 
                 println!("Public Key: {}", public_key.to_hex());
                 println!("Emoji ID  : {}", emoji_id);
             },
-            ExportUtxos => {
+            ExportUtxos(args) => {
                 let utxos = output_service.get_unspent_outputs().await?;
                 let count = utxos.len();
                 let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
-                if parsed.args.is_empty() {
+                if let Some(file) = args.output_file {
+                    write_utxos_to_csv_file(utxos, file)?;
+                } else {
                     for (i, utxo) in utxos.iter().enumerate() {
                         println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
                     }
-                } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
-                    write_utxos_to_csv_file(utxos, file)?;
-                } else {
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);
             },
-            ExportSpentUtxos => {
+            ExportSpentUtxos(args) => {
                 let utxos = output_service.get_spent_outputs().await?;
                 let count = utxos.len();
                 let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
-                if parsed.args.is_empty() {
+                if let Some(file) = args.output_file {
+                    write_utxos_to_csv_file(utxos, file)?;
+                } else {
                     for (i, utxo) in utxos.iter().enumerate() {
                         println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
                     }
-                } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
-                    write_utxos_to_csv_file(utxos, file)?;
-                } else {
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);
@@ -733,11 +673,12 @@ pub async fn command_runner(
                     println!("Maximum value UTXO   : {}", max);
                 }
             },
-            SetBaseNode => {
-                set_base_node_peer(wallet.clone(), &parsed.args).await?;
+            SetBaseNode(args) => {
+                set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await?;
             },
-            SetCustomBaseNode => {
-                let (public_key, net_address) = set_base_node_peer(wallet.clone(), &parsed.args).await?;
+            SetCustomBaseNode(args) => {
+                let (public_key, net_address) =
+                    set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await?;
                 wallet
                     .db
                     .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
@@ -759,9 +700,15 @@ pub async fn command_runner(
                     .await?;
                 println!("Custom base node peer cleared from wallet database.");
             },
-            InitShaAtomicSwap => {
-                let (tx_id, pre_image, output) =
-                    init_sha_atomic_swap(transaction_service.clone(), config.fee_per_gram, parsed.clone().args).await?;
+            InitShaAtomicSwap(args) => {
+                let (tx_id, pre_image, output) = init_sha_atomic_swap(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.destination.into(),
+                    args.message,
+                )
+                .await?;
                 debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
                 let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
                 println!("pre_image hex: {}", pre_image.to_hex());
@@ -769,134 +716,30 @@ pub async fn command_runner(
                 println!("Output hash: {}", output.hash().to_hex());
                 tx_ids.push(tx_id);
             },
-            FinaliseShaAtomicSwap => {
-                let tx_id =
-                    finalise_sha_atomic_swap(output_service.clone(), transaction_service.clone(), parsed.args).await?;
+            FinaliseShaAtomicSwap(args) => {
+                let tx_id = finalise_sha_atomic_swap(
+                    output_service.clone(),
+                    transaction_service.clone(),
+                    args.output_hash[0].clone(),
+                    args.pre_image.into(),
+                    config.fee_per_gram.into(),
+                    args.message,
+                )
+                .await?;
                 debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
-            ClaimShaAtomicSwapRefund => {
-                let tx_id = claim_htlc_refund(output_service.clone(), transaction_service.clone(), parsed.args).await?;
+            ClaimShaAtomicSwapRefund(args) => {
+                let tx_id = claim_htlc_refund(
+                    output_service.clone(),
+                    transaction_service.clone(),
+                    args.output_hash[0].clone(),
+                    config.fee_per_gram.into(),
+                    args.message,
+                )
+                .await?;
                 debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                 tx_ids.push(tx_id);
-            },
-            RegisterAsset => {
-                let name = parsed.args[0].to_string();
-                let message = format!("Register asset: {}", name);
-                let mut manager = wallet.asset_manager.clone();
-                let key_manager = wallet.key_manager_service.clone();
-                key_manager.add_new_branch(KEY_MANAGER_ASSET_BRANCH).await?;
-                let result = key_manager.get_next_key(KEY_MANAGER_ASSET_BRANCH).await?;
-                let public_key = PublicKey::from_secret_key(&result.key);
-                let public_key_hex = public_key.to_hex();
-                println!("Registering asset named: {name}");
-                println!("with public key: {public_key_hex}");
-                let (tx_id, transaction) = manager
-                    .create_registration_transaction(name, public_key, vec![], None, None, vec![])
-                    .await?;
-                transaction_service
-                    .submit_transaction(tx_id, transaction, 0.into(), message)
-                    .await?;
-                println!("Done!");
-            },
-            MintTokens => {
-                println!("Minting tokens for asset");
-                let public_key = match parsed.args.get(0) {
-                    Some(ParsedArgument::PublicKey(ref key)) => Ok(key.clone()),
-                    _ => Err(CommandError::Argument),
-                }?;
-
-                let unique_ids = parsed.args[1..]
-                    .iter()
-                    .map(|arg| {
-                        let s = arg.to_string();
-                        if let Some(s) = s.strip_prefix("0x") {
-                            Hex::from_hex(s).map_err(|_| CommandError::Argument)
-                        } else {
-                            Ok(s.into_bytes())
-                        }
-                    })
-                    .collect::<Result<Vec<Vec<u8>>, _>>()?;
-
-                let mut asset_manager = wallet.asset_manager.clone();
-                let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
-                println!("Asset name: {}", asset.name());
-
-                let message = format!("Minting {} tokens for asset {}", unique_ids.len(), asset.name());
-                let (tx_id, transaction) = asset_manager
-                    .create_minting_transaction(
-                        &public_key,
-                        asset.owner_commitment(),
-                        unique_ids.into_iter().map(|id| (id, None)).collect(),
-                    )
-                    .await?;
-                transaction_service
-                    .submit_transaction(tx_id, transaction, 0.into(), message)
-                    .await?;
-            },
-            CreateInitialCheckpoint => {
-                println!("Creating Initial Checkpoint for Asset");
-                let asset_public_key = match parsed.args.get(0) {
-                    Some(ParsedArgument::PublicKey(ref key)) => Ok(key.clone()),
-                    _ => Err(CommandError::Argument),
-                }?;
-
-                let merkle_root = match parsed.args.get(1) {
-                    Some(ParsedArgument::Text(ref root)) => match &root[0..2] {
-                        "0x" => FixedHash::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
-                        _ => FixedHash::from_hex(root).map_err(|_| CommandError::Argument)?,
-                    },
-                    _ => return Err(CommandError::Argument),
-                };
-
-                let message = format!("Initial asset checkpoint for {}", asset_public_key);
-
-                let mut asset_manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = asset_manager
-                    .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
-                    .await?;
-                transaction_service
-                    .submit_transaction(tx_id, transaction, 0.into(), message)
-                    .await?;
-            },
-            CreateCommitteeDefinition => {
-                let asset_public_key = match parsed.args.get(0) {
-                    Some(ParsedArgument::PublicKey(ref key)) => Ok(key.clone()),
-                    _ => Err(CommandError::Argument),
-                }?;
-                let public_key_hex = asset_public_key.to_hex();
-                println!("Creating Committee Definition for Asset");
-                println!("with public key {public_key_hex}");
-
-                let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
-                    .iter()
-                    .map(|pk| match pk {
-                        ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
-                        _ => Err(CommandError::Argument),
-                    })
-                    .collect::<Result<_, _>>()?;
-
-                let num_members = committee_public_keys.len();
-                if num_members < 1 {
-                    return Err(CommandError::Config("Committee has no members!".into()));
-                }
-                let message = format!(
-                    "Committee definition with {} members for {}",
-                    num_members, asset_public_key
-                );
-                println!("with {num_members} committee members");
-
-                let mut asset_manager = wallet.asset_manager.clone();
-                // todo: effective sidechain height...
-                // todo: updating
-                let (tx_id, transaction) = asset_manager
-                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
-                    .await?;
-
-                transaction_service
-                    .submit_transaction(tx_id, transaction, 0.into(), message)
-                    .await?;
-                println!("Done!");
             },
             RevalidateWalletDb => {
                 output_service
@@ -907,6 +750,9 @@ pub async fn command_runner(
                     .revalidate_all_transactions()
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
+            },
+            Contract(command) => {
+                handle_contract_command(&wallet, command).await?;
             },
         }
     }
@@ -949,8 +795,380 @@ pub async fn command_runner(
     Ok(())
 }
 
-fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Result<(), CommandError> {
-    let factory = PedersenCommitmentFactory::default();
+async fn handle_contract_command(wallet: &WalletSqlite, command: ContractCommand) -> Result<(), CommandError> {
+    match command.subcommand {
+        ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(wallet, args).await,
+        ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
+        ContractSubcommand::InitUpdateProposal(args) => init_contract_update_proposal_spec(args),
+        ContractSubcommand::InitAmendment(args) => init_contract_amendment_spec(args),
+        ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
+        ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
+        ContractSubcommand::PublishUpdateProposal(args) => publish_contract_update_proposal(wallet, args).await,
+        ContractSubcommand::PublishAmendment(args) => publish_contract_amendment(wallet, args).await,
+    }
+}
+
+async fn init_contract_definition_spec(wallet: &WalletSqlite, args: InitDefinitionArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let mut dest = args.dest_path;
+    if dest.extension().is_none() {
+        dest = dest.join("contract.json");
+    }
+
+    let contract_name = Prompt::new("Contract name (max 32 characters):")
+        .skip_if_some(args.contract_name)
+        .ask()?;
+    if contract_name.as_bytes().len() > 32 {
+        return Err(CommandError::InvalidArgument(
+            "Contract name must be at most 32 bytes.".to_string(),
+        ));
+    }
+    println!(
+        "Wallet public key: {}",
+        wallet.comms.node_identity().public_key().to_hex()
+    );
+    let use_wallet_pk = Prompt::new("Use wallet public key as issuer public key? (Y/N):")
+        .skip_if_some(args.contract_issuer.as_ref().map(|_| "y".to_string()))
+        .ask_parsed::<YesNo>()
+        .map(|yn| yn.as_bool())?;
+
+    let contract_issuer = if use_wallet_pk {
+        args.contract_issuer
+            .map(|s| PublicKey::from_hex(&s))
+            .transpose()
+            .map_err(|_| CommandError::InvalidArgument("Issuer public key hex is invalid.".to_string()))?
+            .unwrap_or_else(|| wallet.comms.node_identity().public_key().clone())
+    } else {
+        let contract_issuer = Prompt::new("Issuer public Key (hex): (Press enter to generate a new one)")
+            .with_default("")
+            .skip_if_some(args.contract_issuer)
+            .ask_parsed::<Optional<HexArg<PublicKey>>>()?
+            .into_inner()
+            .map(|v| v.into_inner());
+        match contract_issuer {
+            Some(pk) => pk,
+            None => {
+                let issuer_key_path = dest.parent().unwrap_or(dest.as_path()).join("issuer_keys.json");
+                let issuer_public_key_path = Prompt::new("Enter path to generate new issuer public key:")
+                    .with_default(issuer_key_path.to_string_lossy())
+                    .ask_parsed::<PathBuf>()?;
+                let key_result = wallet
+                    .key_manager_service
+                    .get_next_key(OutputManagerKeyManagerBranch::ContractIssuer.get_branch_key())
+                    .await?;
+
+                let public_key = key_result.to_public_key();
+                write_to_issuer_key_file(&issuer_public_key_path, key_result)?;
+                println!("Wrote to key file {}", issuer_public_key_path.to_string_lossy());
+                public_key
+            },
+        }
+    };
+
+    let runtime = Prompt::new("Contract runtime:")
+        .skip_if_some(args.runtime)
+        .with_default("/tari/wasm/v0.1")
+        .ask_parsed()?;
+
+    let contract_definition = ContractDefinitionFileFormat {
+        contract_name,
+        contract_issuer,
+        contract_spec: ContractSpecificationFileFormat {
+            runtime,
+            public_functions: vec![],
+        },
+    };
+    write_json_file(&dest, &contract_definition).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    let contract_id = Prompt::new("Contract id (hex):")
+        .skip_if_some(args.contract_id)
+        .ask_parsed()?;
+    let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
+    let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
+        .skip_if_some(args.acceptance_period_expiry)
+        .with_default("50")
+        .ask_parsed()?;
+    let minimum_quorum_required = Prompt::new("Minimum quorum:")
+        .skip_if_some(args.minimum_quorum_required)
+        .with_default(committee.len().to_string())
+        .ask_parsed()?;
+
+    let constitution = ConstitutionDefinitionFileFormat {
+        contract_id,
+        validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
+        consensus: SideChainConsensus::MerkleRoot,
+        initial_reward: 0,
+        acceptance_parameters: ContractAcceptanceRequirements {
+            acceptance_period_expiry,
+            minimum_quorum_required,
+        },
+        checkpoint_parameters: CheckpointParameters {
+            minimum_quorum_required: 0,
+            abandoned_interval: 0,
+        },
+        constitution_change_rules: ConstitutionChangeRulesFileFormat {
+            change_flags: 0,
+            requirements_for_constitution_change: None,
+        },
+    };
+
+    write_json_file(&dest, &constitution).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    let contract_id = Prompt::new("Contract id (hex):").skip_if_some(args.contract_id).ask()?;
+    let proposal_id = Prompt::new("Proposal id (integer, unique inside the contract scope):")
+        .skip_if_some(args.proposal_id)
+        .with_default("0".to_string())
+        .ask_parsed()?;
+    let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
+    let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
+        .skip_if_some(args.acceptance_period_expiry)
+        .with_default("50".to_string())
+        .ask_parsed()?;
+    let minimum_quorum_required = Prompt::new("Minimum quorum:")
+        .skip_if_some(args.minimum_quorum_required)
+        .with_default(committee.len().to_string())
+        .ask_parsed()?;
+
+    let updated_constitution = ConstitutionDefinitionFileFormat {
+        contract_id,
+        validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
+        consensus: SideChainConsensus::MerkleRoot,
+        initial_reward: 0,
+        acceptance_parameters: ContractAcceptanceRequirements {
+            acceptance_period_expiry,
+            minimum_quorum_required,
+        },
+        checkpoint_parameters: CheckpointParameters {
+            minimum_quorum_required: 0,
+            abandoned_interval: 0,
+        },
+        constitution_change_rules: ConstitutionChangeRulesFileFormat {
+            change_flags: 0,
+            requirements_for_constitution_change: None,
+        },
+    };
+
+    let update_proposal = ContractUpdateProposalFileFormat {
+        proposal_id,
+        // TODO: use a private key to sign the proposal
+        signature: SignatureFileFormat::default(),
+        updated_constitution,
+    };
+
+    write_json_file(&dest, &update_proposal)?;
+    println!("Wrote {}", dest.to_string_lossy());
+    Ok(())
+}
+
+fn init_contract_amendment_spec(args: InitAmendmentArgs) -> Result<(), CommandError> {
+    if args.dest_path.exists() {
+        if args.force {
+            println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
+        } else {
+            println!(
+                "{} exists. Use `--force` to overwrite.",
+                args.dest_path.to_string_lossy()
+            );
+            return Ok(());
+        }
+    }
+    let dest = args.dest_path;
+
+    // check that the proposal file exists
+    if !args.proposal_file_path.exists() {
+        println!(
+            "Proposal file path {} not found",
+            args.proposal_file_path.to_string_lossy()
+        );
+        return Ok(());
+    }
+    // parse the JSON file with the proposal
+    let update_proposal: ContractUpdateProposalFileFormat = read_json_file(&args.proposal_file_path)?;
+
+    // read the activation_window value from the user
+    let activation_window = Prompt::new("Activation window (in blocks, integer):")
+        .skip_if_some(args.activation_window)
+        .with_default("50".to_string())
+        .ask_parsed()?;
+
+    // create the amendment from the proposal
+    let amendment = ContractAmendmentFileFormat {
+        proposal_id: update_proposal.proposal_id,
+        validator_committee: update_proposal.updated_constitution.validator_committee.clone(),
+        // TODO: import the real signatures for all the proposal acceptances
+        validator_signatures: Vec::new(),
+        updated_constitution: update_proposal.updated_constitution,
+        activation_window,
+    };
+
+    // write the amendment to the destination file
+    write_json_file(&dest, &amendment)?;
+    println!("Wrote {}", dest.to_string_lossy());
+
+    Ok(())
+}
+
+async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    // open and parse the JSON file with the contract definition values
+    let contract_definition: ContractDefinitionFileFormat =
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let contract_definition_features = ContractDefinition::from(contract_definition);
+    let contract_id_hex = contract_definition_features.calculate_contract_id().to_vec().to_hex();
+
+    // create the contract definition transaction
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_contract_definition(&contract_definition_features)
+        .await?;
+
+    // publish the contract definition transaction
+    let message = format!("Contract definition for contract {}", contract_id_hex);
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
+    println!(
+        "Contract definition submitted: contract_id is {} (TxID: {})",
+        contract_id_hex, tx_id,
+    );
+    println!("Done!");
+    Ok(())
+}
+
+async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    // parse the JSON file
+    let constitution_definition: ConstitutionDefinitionFileFormat =
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let side_chain_features = SideChainFeatures::try_from(constitution_definition.clone()).unwrap();
+
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_constitution_definition(&side_chain_features)
+        .await?;
+
+    let message = format!(
+        "Contract constitution with {} members for {}",
+        constitution_definition.validator_committee.len(),
+        constitution_definition.contract_id
+    );
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
+    Ok(())
+}
+
+async fn publish_contract_update_proposal(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    // parse the JSON file
+    let update_proposal: ContractUpdateProposalFileFormat =
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+
+    let contract_id_hex = update_proposal.updated_constitution.contract_id.clone();
+    let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let update_proposal_features = ContractUpdateProposal::try_from(update_proposal).map_err(CommandError::JsonFile)?;
+
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_update_proposal(&contract_id, &update_proposal_features)
+        .await?;
+
+    let message = format!(
+        "Contract update proposal {} for contract {}",
+        update_proposal_features.proposal_id, contract_id_hex
+    );
+
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
+    println!(
+        "Contract update proposal transaction submitted with tx_id={} for contract with contract_id={}",
+        tx_id, contract_id_hex
+    );
+
+    Ok(())
+}
+
+async fn publish_contract_amendment(wallet: &WalletSqlite, args: PublishFileArgs) -> Result<(), CommandError> {
+    // parse the JSON file
+    let amendment: ContractAmendmentFileFormat =
+        read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let contract_id_hex = amendment.updated_constitution.contract_id.clone();
+    let contract_id = FixedHash::from_hex(&contract_id_hex).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let amendment_features = ContractAmendment::try_from(amendment).map_err(CommandError::JsonFile)?;
+
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager
+        .create_contract_amendment(&contract_id, &amendment_features)
+        .await?;
+
+    let message = format!(
+        "Contract amendment {} for contract {}",
+        amendment_features.proposal_id, contract_id_hex
+    );
+
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
+
+    println!(
+        "Contract amendment transaction submitted with tx_id={} for contract with contract_id={}",
+        tx_id, contract_id_hex
+    );
+
+    Ok(())
+}
+
+fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> Result<(), CommandError> {
+    let factory = CommitmentFactory::default();
     let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
     let mut csv_file = LineWriter::new(file);
     writeln!(
@@ -969,7 +1187,7 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Re
                 .commitment()
                 .map_err(|e| CommandError::WalletError(WalletError::TransactionError(e)))?
                 .to_hex(),
-            utxo.features.flags,
+            utxo.features.output_type,
             utxo.features.maturity,
             utxo.script.to_hex(),
             utxo.input_data.to_hex(),
@@ -981,5 +1199,34 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Re
         )
         .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     }
+    Ok(())
+}
+
+fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, data: &T) -> Result<(), CommandError> {
+    fs::create_dir_all(path.as_ref().parent().unwrap()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    let file = File::create(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    serde_json::to_writer_pretty(file, data).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    Ok(())
+}
+
+fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, CommandError> {
+    let file = File::open(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
+    serde_json::from_reader(file).map_err(|e| CommandError::JsonFile(e.to_string()))
+}
+
+fn write_to_issuer_key_file<P: AsRef<Path>>(path: P, key_result: NextKeyResult) -> Result<(), CommandError> {
+    let file_exists = path.as_ref().exists();
+    let mut root = if file_exists {
+        read_json_file::<_, Vec<serde_json::Value>>(&path).map_err(|e| CommandError::JsonFile(e.to_string()))?
+    } else {
+        vec![]
+    };
+    let json = serde_json::json!({
+        "name": format!("issuer-key-{}", key_result.index),
+        "public_key": key_result.to_public_key().to_hex(),
+        "secret_key": key_result.key.to_hex(),
+    });
+    root.push(json);
+    write_json_file(path, &root).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     Ok(())
 }

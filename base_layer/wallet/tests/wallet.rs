@@ -190,12 +190,14 @@ async fn create_wallet(
         ..Default::default()
     };
 
-    let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0);
 
     let _db_value = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
     let wallet_db = WalletDatabase::new(wallet_backend);
     let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
+
+    let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
     Wallet::start(
         config,
@@ -203,6 +205,7 @@ async fn create_wallet(
         Arc::new(node_identity.clone()),
         factories,
         wallet_db,
+        output_db,
         transaction_backend,
         output_manager_backend,
         contacts_backend,
@@ -700,14 +703,17 @@ async fn test_import_utxo() {
         ..Default::default()
     };
 
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
+
     let mut alice_wallet = Wallet::start(
         config,
         PeerSeedsConfig::default(),
         alice_identity.clone(),
         factories.clone(),
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
+        OutputManagerDatabase::new(output_manager_backend.clone()),
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
-        OutputManagerSqliteDatabase::new(connection.clone(), None),
+        output_manager_backend,
         ContactsServiceSqliteDatabase::new(connection.clone()),
         KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap(),
         shutdown.to_signal(),
@@ -740,6 +746,7 @@ async fn test_import_utxo() {
             &p.sender_offset_public_key,
             0,
             Covenant::default(),
+            output.encrypted_value,
         )
         .await
         .unwrap();

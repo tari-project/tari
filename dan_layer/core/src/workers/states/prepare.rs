@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use log::*;
-use tari_common_types::types::PublicKey;
-use tokio::time::{sleep, Duration};
+use tari_common_types::types::FixedHash;
+use tokio::time::sleep;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -54,15 +54,15 @@ const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
 
 pub struct Prepare<TSpecification: ServiceSpecification> {
     node_id: TSpecification::Addr,
-    asset_public_key: PublicKey,
+    contract_id: FixedHash,
     received_new_view_messages: HashMap<TSpecification::Addr, HotStuffMessage<TSpecification::Payload>>,
 }
 
 impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
-    pub fn new(node_id: TSpecification::Addr, asset_public_key: PublicKey) -> Self {
+    pub fn new(node_id: TSpecification::Addr, contract_id: FixedHash) -> Self {
         Self {
             node_id,
-            asset_public_key,
+            contract_id,
             received_new_view_messages: HashMap::new(),
         }
     }
@@ -186,7 +186,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
             let high_qc = self.find_highest_qc();
 
             let temp_state_tx = db_factory
-                .get_or_create_state_db(&self.asset_public_key)?
+                .get_or_create_state_db(&self.contract_id)?
                 .new_unit_of_work(current_view.view_id.as_u64());
             let proposal = self
                 .create_proposal(
@@ -357,7 +357,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
         high_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::prepare(proposal, Some(high_qc), view_number, self.asset_public_key.clone());
+        let message = HotStuffMessage::prepare(proposal, Some(high_qc), view_number, self.contract_id);
         outbound
             .broadcast(self.node_id.clone(), committee.members.as_slice(), message)
             .await
@@ -386,7 +386,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
         signing_service: &TSpecification::SigningService,
     ) -> Result<(), DigitalAssetError> {
         // TODO: Only send node hash, not the full node
-        let mut message = HotStuffMessage::vote_prepare(node, view_number, self.asset_public_key.clone());
+        let mut message = HotStuffMessage::vote_prepare(node, view_number, self.contract_id);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

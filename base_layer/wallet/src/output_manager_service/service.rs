@@ -40,6 +40,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
+            EncryptedValue,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -58,7 +59,7 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::REWIND_USER_MESSAGE_LENGTH,
+    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
 };
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
@@ -83,7 +84,7 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
@@ -169,31 +170,20 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Spend.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key())
-            .await?;
-        key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key())
-            .await?;
-        match key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key())
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(OutputManagerError::KeyManagerServiceError(e)),
+        const BRANCHES: &[OutputManagerKeyManagerBranch] = &[
+            OutputManagerKeyManagerBranch::Spend,
+            OutputManagerKeyManagerBranch::SpendScript,
+            OutputManagerKeyManagerBranch::Coinbase,
+            OutputManagerKeyManagerBranch::CoinbaseScript,
+            OutputManagerKeyManagerBranch::RecoveryViewOnly,
+            OutputManagerKeyManagerBranch::RecoveryByte,
+            OutputManagerKeyManagerBranch::RecoveryBlinding,
+            OutputManagerKeyManagerBranch::ContractIssuer,
+        ];
+        for branch in BRANCHES {
+            key_manager.add_new_branch(branch.get_branch_key()).await?;
         }
+        Ok(())
     }
 
     /// Return the public rewind keys
@@ -361,6 +351,10 @@ where
             OutputManagerRequest::GetUnspentOutputs => {
                 let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
+            },
+            OutputManagerRequest::GetOutputsBy(q) => {
+                let outputs = self.fetch_outputs_by(q)?.into_iter().map(|v| v.into()).collect();
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
@@ -754,6 +748,7 @@ where
             Some(&self.resources.rewind_data),
             &single_round_sender_data.features.clone(),
         );
+        let encrypted_value = EncryptedValue::todo_encrypt_from(single_round_sender_data.amount);
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
@@ -774,9 +769,11 @@ where
                     &single_round_sender_data.sender_offset_public_key,
                     &single_round_sender_data.public_commitment_nonce,
                     &single_round_sender_data.covenant,
+                    &encrypted_value,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
+                encrypted_value,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -1304,6 +1301,7 @@ where
             unique_id: unique_id.clone(),
             ..Default::default()
         };
+        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             amount,
@@ -1312,6 +1310,7 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
+            &encrypted_value,
         )?;
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
@@ -1325,6 +1324,7 @@ where
                 metadata_signature,
                 0,
                 covenant,
+                encrypted_value,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -1569,6 +1569,10 @@ where
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_outputs_by(q)?)
+    }
+
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
     }
@@ -1653,6 +1657,7 @@ where
 
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+            let encrypted_value = EncryptedValue::todo_encrypt_from(output_amount);
             let metadata_signature = TransactionOutput::create_final_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 output_amount,
@@ -1661,6 +1666,7 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
+                &encrypted_value,
             )?;
             let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
                 UnblindedOutput::new_current_version(
@@ -1674,6 +1680,7 @@ where
                     metadata_signature,
                     0,
                     covenant.clone(),
+                    encrypted_value,
                 ),
                 &self.resources.factories,
                 &self.resources.rewind_data.clone(),
@@ -1802,6 +1809,7 @@ where
             // as we are claiming the Hashed part which has a 0 time lock
             0,
             output.covenant,
+            output.encrypted_value,
         );
         let amount = rewound.committed_value;
 
@@ -2019,6 +2027,7 @@ where
                         output.metadata_signature,
                         known_one_sided_payment_scripts[i].script_lock_height,
                         output.covenant,
+                        output.encrypted_value,
                     );
 
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
@@ -2073,7 +2082,7 @@ where
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
     // is removing small UTXOs from the blockchain, con is that it costs more in fees

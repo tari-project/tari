@@ -24,13 +24,13 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use tari_common_types::types::BlindingFactor;
-use tari_crypto::range_proof::{FullRewindResult as CryptoFullRewindResult, REWIND_USER_MESSAGE_LENGTH};
+use tari_crypto::rewindable_range_proof::{FullRewindResult as CryptoFullRewindResult, REWIND_USER_MESSAGE_LENGTH};
 
 use crate::transactions::tari_amount::MicroTari;
 
 /// A wrapper struct to hold the result of a successful range proof full rewinding to reveal the committed value, proof
 /// message and blinding factor
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FullRewindResult {
     pub committed_value: MicroTari,
     pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],

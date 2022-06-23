@@ -74,8 +74,7 @@ pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpe
             &spec
                 .transactions
                 .iter()
-                .map(|tx| tx.body.kernels().clone())
-                .flatten()
+                .flat_map(|tx| tx.body.kernels().clone())
                 .collect::<Vec<_>>(),
         )
     });

@@ -10,7 +10,8 @@ const { expect } = require("chai");
 const { createEnv } = require("./config");
 const WalletClient = require("./walletClient");
 const csvParser = require("csv-parser");
-var tari_crypto = require("tari_crypto");
+const tari_crypto = require("tari_crypto");
+const { OutputType } = require("./types");
 
 let outputProcess;
 
@@ -45,6 +46,10 @@ class WalletProcess {
 
   getGrpcAddress() {
     return "/ip4/127.0.0.1/tcp/" + this.grpcPort;
+  }
+
+  getGrpcPort() {
+    return this.grpcPort;
   }
 
   async connectClient() {
@@ -92,11 +97,13 @@ class WalletProcess {
           this.options["grpc_console_wallet_address"].match(/tcp\/(\d+)/);
         this.grpcPort = parseInt(regexMatch[1]);
       }
+
       console.log(`--------------------- ${this.name} ----------------------`);
       console.log(overrides);
+      const configArgs = [];
       Object.keys(overrides).forEach((k) => {
-        args.push("-p");
-        args.push(`${k}=${overrides[k]}`);
+        configArgs.push("-p");
+        configArgs.push(`${k}=${overrides[k]}`);
       });
       if (saveFile) {
         // clear the .env file
@@ -109,7 +116,7 @@ class WalletProcess {
         });
       }
 
-      const ps = spawn(cmd, args, {
+      const ps = spawn(cmd, [...configArgs, ...args], {
         cwd: this.baseDir,
         // shell: true,
         env: { ...process.env },
@@ -274,21 +281,29 @@ class WalletProcess {
       ".",
       "--password",
       "kensentme",
-      "--command",
-      command,
       "--non-interactive",
+      "--network",
       "localnet",
     ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+
     const overrides = this.getOverrides();
     Object.keys(overrides).forEach((k) => {
-      args.push("-p");
-      args.push(`${k}=${overrides[k]}`);
+      let v = overrides[k];
+      if (typeof v !== "undefined") {
+        args.push("-p");
+        args.push(`${k}=${v}`);
+      }
     });
+
+    // Append command arguments
+    args.push(...command.split(" "));
+
     let output = { buffer: "" };
     // In case we killed the wallet fast send enter. Because it will ask for the logs again (e.g. whois test)
+
     await this.run(await this.compile(), args, true, "\n", output, true);
     return output;
   }
@@ -387,7 +402,7 @@ class WalletProcess {
             value: parseInt(row.value),
             spending_key: Buffer.from(row.spending_key, "hex"),
             features: {
-              flags: 0,
+              output_type: OutputType.STANDARD,
               maturity: parseInt(row.maturity) || 0,
               recovery_byte: parseInt(row.recovery_byte),
             },

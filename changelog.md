@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.5](https://github.com/tari-project/tari/compare/v0.32.4...v0.32.5) (2022-06-20)
+
+
+### Features
+
+* generate wallet ffi header file automatically ([#4183](https://github.com/tari-project/tari/issues/4183)) ([665f1f7](https://github.com/tari-project/tari/commit/665f1f7cb33b4639a83e7682926c319cdf2ea501))
+* **wallet_ffi:** wallet_get_utxos() ([#4209](https://github.com/tari-project/tari/issues/4209)) ([1b30524](https://github.com/tari-project/tari/commit/1b3052491f25efbd03249dd3300a296d7858c0f7))
+
+### [0.32.4](https://github.com/tari-project/tari/compare/v0.32.3...v0.32.4) (2022-06-10)
+
+
+### Features
+
+* **daily-tests:** use environment variable to set custom seed words ([#4086](https://github.com/tari-project/tari/issues/4086)) ([3773bba](https://github.com/tari-project/tari/commit/3773bba3572360492640036bd40916bc6cea1f6b))
+* **wallet-ffi:** adds FFI wallet_get_utxos() and test_wallet_get_utxos() ([#4180](https://github.com/tari-project/tari/issues/4180)) ([9770402](https://github.com/tari-project/tari/commit/9770402718d3a5e81aea1d88350cbc5abc07032b))
+
+
+### Bug Fixes
+
+* better message for failed software update check ([#4100](https://github.com/tari-project/tari/issues/4100)) ([f33a503](https://github.com/tari-project/tari/commit/f33a503cd5d0f49de9cb0e92b7eba893c39d9217))
+* **block-sync:** check coinbase maturity ([#4168](https://github.com/tari-project/tari/issues/4168)) ([38b4af7](https://github.com/tari-project/tari/commit/38b4af7104780373e4ff1eddf1e6b19f479b0ae2))
+* **dht:** optimisation, no decrypt if public key dest doesn't match ([#4131](https://github.com/tari-project/tari/issues/4131)) ([987972c](https://github.com/tari-project/tari/commit/987972cffd577b03a8395ce1d5e441c35fb6b109))
+
+### [0.32.3](https://github.com/tari-project/tari/compare/v0.32.1...v0.32.2) (2022-05-23)
+
+
+### Features
+
+* loosen ffi import utxo requirements ([#4126](https://github.com/tari-project/tari/issues/4126)) ([83a6fd9](https://github.com/tari-project/tari/commit/83a6fd97fbb137d9d8a1eb21466c3dbdcc16aec2))
+
+### [0.32.1](https://github.com/tari-project/tari/compare/v0.32.0...v0.32.1) (2022-05-20)
+
+
+### Features
+
+* add FeePerGramStats to ffi library ([#4114](https://github.com/tari-project/tari/issues/4114)) ([6f14034](https://github.com/tari-project/tari/commit/6f14034d89356a2b634e89a7e61c63332c206feb))
+* add mempool fee per gram stats to transaction service ([#4105](https://github.com/tari-project/tari/issues/4105)) ([34fd58a](https://github.com/tari-project/tari/commit/34fd58a2ae1399b19956828bf71bab7469662977))
+* **dht:** add feature to optionally bundle sqlite ([#4104](https://github.com/tari-project/tari/issues/4104)) ([498248e](https://github.com/tari-project/tari/commit/498248e2603fc3105bdb1c1233de522a82cf74a5))
+* **wallet_ffi:** new ffi method to create covenant ([#4115](https://github.com/tari-project/tari/issues/4115)) ([121149a](https://github.com/tari-project/tari/commit/121149a72f33fae4853fa6dab746eae8485c161c))
+* **wallet_ffi:** new ffi method to create output features (fixed flag size for dibbler) ([#4118](https://github.com/tari-project/tari/issues/4118)) ([cf3a1e6](https://github.com/tari-project/tari/commit/cf3a1e6e16ba3acf65d09e497a93091697130c46))
+
+
+### Bug Fixes
+
+* **core:** set reorg metrics on header sync rewind ([#4087](https://github.com/tari-project/tari/issues/4087)) ([354bae2](https://github.com/tari-project/tari/commit/354bae285630bc503abd856d27f87a6275f1f6e0))
+* possible overflow in difficulty calculation (fixes [#3923](https://github.com/tari-project/tari/issues/3923)) ([#4090](https://github.com/tari-project/tari/issues/4090)) ([e8d1091](https://github.com/tari-project/tari/commit/e8d1091bc3200a304d5527eb47f97a7cf6b561c4))
+* single allocation for block header consensus encoding ([#4101](https://github.com/tari-project/tari/issues/4101)) ([aa85738](https://github.com/tari-project/tari/commit/aa857383c5a32be84c269fde1703070e074ef2de))
+* tx importing status to correctly reflect the origin ([#4119](https://github.com/tari-project/tari/issues/4119)) ([63a0df6](https://github.com/tari-project/tari/commit/63a0df62a2d4ed5edf910b039443cd697e6c03ab))
+* **wallet header:** remove function argument ([#4092](https://github.com/tari-project/tari/issues/4092)) ([cf91e91](https://github.com/tari-project/tari/commit/cf91e915fafd6dd7319d0981b07832ef3cc58d35))
+* **wallet:** add default value for wait stage ([#4089](https://github.com/tari-project/tari/issues/4089)) ([810d9ff](https://github.com/tari-project/tari/commit/810d9ff60ccc512419f5d42030ac13d6fe9af405))
+* **wallet:** use network specified by cli/envvar in console wallet ([#4096](https://github.com/tari-project/tari/issues/4096)) ([7f2252a](https://github.com/tari-project/tari/commit/7f2252a453c86914e04afa836b0d1597fb453db8))
+
 ## [0.32.0](https://github.com/tari-project/tari/compare/v0.31.1...v0.32.0) (2022-05-10)
 
 

@@ -27,7 +27,12 @@ use std::{
 
 use config::Config;
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader, SubConfigPath};
+use tari_common::{
+    configuration::{CommonConfig, Network},
+    ConfigurationError,
+    DefaultConfigLoader,
+    SubConfigPath,
+};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::{P2pConfig, PeerSeedsConfig};
 
@@ -36,6 +41,7 @@ pub struct ApplicationConfig {
     pub common: CommonConfig,
     pub validator_node: ValidatorNodeConfig,
     pub peer_seeds: PeerSeedsConfig,
+    pub network: Network,
 }
 
 impl ApplicationConfig {
@@ -44,6 +50,7 @@ impl ApplicationConfig {
             common: CommonConfig::load_from(cfg)?,
             validator_node: ValidatorNodeConfig::load_from(cfg)?,
             peer_seeds: PeerSeedsConfig::load_from(cfg)?,
+            network: cfg.get("network")?,
         };
         config.validator_node.set_base_path(config.common.base_path());
         Ok(config)
@@ -65,14 +72,20 @@ pub struct ValidatorNodeConfig {
     pub assets_allow_list: Option<Vec<String>>,
     pub data_dir: PathBuf,
     pub p2p: P2pConfig,
-    pub committee_management_polling_interval: u64,
-    pub committee_management_confirmation_time: u64,
+    pub constitution_auto_accept: bool,
+    /// Constitution polling interval in block height
+    pub constitution_management_polling_interval: u64,
+    pub constitution_management_confirmation_time: u64,
+    pub grpc_address: Option<Multiaddr>,
 }
 
 impl ValidatorNodeConfig {
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         if !self.identity_file.is_absolute() {
             self.identity_file = base_path.as_ref().join(&self.identity_file);
+        }
+        if !self.tor_identity_file.is_absolute() {
+            self.tor_identity_file = base_path.as_ref().join(&self.tor_identity_file);
         }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(&self.data_dir);
@@ -83,6 +96,11 @@ impl ValidatorNodeConfig {
 
 impl Default for ValidatorNodeConfig {
     fn default() -> Self {
+        let p2p = P2pConfig {
+            datastore_path: PathBuf::from("peer_db/validator_node"),
+            ..Default::default()
+        };
+
         Self {
             override_from: None,
             identity_file: PathBuf::from("validator_node_id.json"),
@@ -94,10 +112,12 @@ impl Default for ValidatorNodeConfig {
             scan_for_assets: true,
             new_asset_scanning_interval: 10,
             assets_allow_list: None,
-            data_dir: PathBuf::from("/data/validator_node"),
-            committee_management_confirmation_time: 10,
-            committee_management_polling_interval: 5,
-            p2p: P2pConfig::default(),
+            data_dir: PathBuf::from("data/validator_node"),
+            constitution_auto_accept: false,
+            constitution_management_confirmation_time: 20,
+            constitution_management_polling_interval: 120,
+            p2p,
+            grpc_address: Some("/ip4/127.0.0.1/tcp/18144".parse().unwrap()),
         }
     }
 }

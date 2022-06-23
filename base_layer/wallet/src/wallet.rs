@@ -43,7 +43,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -86,7 +86,10 @@ use crate::{
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
-        storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::KnownOneSidedPaymentScript,
+        },
         OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
@@ -121,6 +124,7 @@ pub struct Wallet<T, U, V, W, X> {
     pub token_manager: TokenManagerHandle,
     pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
+    pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
@@ -142,6 +146,7 @@ where
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
+        output_manager_database: OutputManagerDatabase<V>,
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
@@ -290,6 +295,7 @@ where
             updater_service: updater_handle,
             wallet_connectivity,
             db: wallet_database,
+            output_db: output_manager_database,
             factories,
             asset_manager: asset_manager_handle,
             token_manager: token_manager_handle,
@@ -421,6 +427,7 @@ where
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
         covenant: Covenant,
+        encrypted_value: EncryptedValue,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -433,6 +440,7 @@ where
             metadata_signature,
             script_lock_height,
             covenant,
+            encrypted_value,
         );
 
         let tx_id = self

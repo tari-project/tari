@@ -49,11 +49,11 @@ impl ByteArray for BulletRangeProof {
     }
 
     fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError> {
-        Ok(BulletRangeProof { 0: v.clone() })
+        Ok(BulletRangeProof(v.clone()))
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        Ok(BulletRangeProof { 0: bytes.to_vec() })
+        Ok(BulletRangeProof(bytes.to_vec()))
     }
 
     fn as_bytes(&self) -> &[u8] {

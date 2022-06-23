@@ -33,7 +33,7 @@ use tari_crypto::{
 };
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
-use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
+use super::transaction_components::{EncryptedValue, TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusManager},
     covenants::Covenant,
@@ -45,7 +45,7 @@ use crate::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
-            OutputFlags,
+            OutputType,
             Transaction,
             TransactionInput,
             TransactionKernel,
@@ -178,6 +178,7 @@ impl TestParams {
         let updated_features =
             OutputFeatures::features_with_updated_recovery_byte(&commitment, rewind_data, &params.features);
 
+        let encrypted_value = EncryptedValue::todo_encrypt_from(params.value);
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             params.value,
@@ -186,6 +187,7 @@ impl TestParams {
             &updated_features,
             &self.sender_offset_private_key,
             &params.covenant,
+            &encrypted_value,
         )
         .unwrap();
 
@@ -205,6 +207,7 @@ impl TestParams {
             metadata_signature,
             0,
             params.covenant,
+            encrypted_value,
         )
     }
 
@@ -221,6 +224,7 @@ impl TestParams {
             &updated_features,
             &self.sender_offset_private_key,
             &uo.covenant,
+            &uo.encrypted_value,
         )
         .unwrap();
 
@@ -235,6 +239,7 @@ impl TestParams {
             metadata_signature,
             uo.script_lock_height,
             uo.covenant,
+            uo.encrypted_value,
         )
     }
 
@@ -311,6 +316,20 @@ pub fn create_random_signature_from_s_key(
     let tx_meta = TransactionMetadata { fee, lock_height };
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     (p, Signature::sign(s_key, r, &e).unwrap())
+}
+
+pub fn create_consensus_manager() -> ConsensusManager {
+    ConsensusManager::builder(Network::LocalNet).build()
+}
+
+pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64) -> UnblindedOutput {
+    let rules = create_consensus_manager();
+    let constants = rules.consensus_constants(height);
+    test_params.create_unblinded_output(UtxoTestParams {
+        value: rules.get_block_reward_at(height),
+        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), 0x00),
+        ..Default::default()
+    })
 }
 
 pub fn create_unblinded_output(
@@ -526,7 +545,7 @@ pub fn create_unblinded_txos(
                 amount_for_last_output
             };
             let test_params = TestParams::new();
-            let script_offset_pvt_key = if output_features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+            let script_offset_pvt_key = if output_features.output_type == OutputType::Coinbase {
                 PrivateKey::default()
             } else {
                 test_params.sender_offset_private_key.clone()
@@ -695,6 +714,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             &utxo.features,
             &test_params.sender_offset_private_key,
             &utxo.covenant,
+            &utxo.encrypted_value,
         )
         .unwrap();
         utxo.sender_offset_public_key = test_params.sender_offset_public_key;
@@ -719,6 +739,9 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         recovery_byte,
         ..Default::default()
     };
+
+    // TODO: Get it using `something.encrypt_value(change)`
+    let encrypted_value = EncryptedValue::todo_encrypt_from(change);
     let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
         output_version,
         change,
@@ -727,6 +750,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         &change_features,
         &test_params_change_and_txn.sender_offset_private_key,
         &covenant,
+        &encrypted_value,
     )
     .unwrap();
 
@@ -743,9 +767,21 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         change_metadata_sig,
         0,
         covenant,
+        encrypted_value,
     );
     outputs.push(change_output);
     (stx_protocol, outputs)
+}
+
+pub fn create_coinbase_kernel(excess: &PrivateKey) -> TransactionKernel {
+    let public_excess = PublicKey::from_secret_key(excess);
+    let s = create_signature(excess.clone(), 0.into(), 0);
+    KernelBuilder::new()
+        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .with_excess(&Commitment::from_public_key(&public_excess))
+        .with_signature(&s)
+        .build()
+        .unwrap()
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
@@ -775,6 +811,7 @@ pub fn create_utxo(
 
     let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, features);
 
+    let encrypted_value = EncryptedValue::todo_encrypt_from(value);
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         value,
@@ -783,6 +820,7 @@ pub fn create_utxo(
         &updated_features,
         &offset_keys.k,
         covenant,
+        &encrypted_value,
     )
     .unwrap();
 
@@ -794,6 +832,7 @@ pub fn create_utxo(
         offset_keys.pk,
         metadata_sig,
         covenant.clone(),
+        encrypted_value,
     );
     (utxo, keys.k, offset_keys.k)
 }

@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{fs, io::Stdout, path::PathBuf};
+use std::{io::Stdout, path::PathBuf};
 
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
@@ -31,8 +31,8 @@ use tonic::transport::Server;
 use tui::backend::CrosstermBackend;
 
 use crate::{
-    automation::{command_parser::parse_command, commands::command_runner},
-    cli::Cli,
+    automation::commands::command_runner,
+    cli::{Cli, CliCommands},
     grpc::WalletGrpcServer,
     notifier::Notifier,
     recovery::wallet_recovery,
@@ -48,7 +48,7 @@ pub enum WalletMode {
     Tui,
     Grpc,
     Script(PathBuf),
-    Command(String),
+    Command(Box<CliCommands>),
     RecoveryDaemon,
     RecoveryTui,
     Invalid,
@@ -136,9 +136,9 @@ pub(crate) fn command_mode(
     config: &WalletConfig,
     base_node_config: &PeerConfig,
     wallet: WalletSqlite,
-    command: String,
+    command: CliCommands,
 ) -> Result<(), ExitError> {
-    let commands = vec![parse_command(&command)?];
+    let commands = vec![command];
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Command mode started)";
@@ -157,47 +157,48 @@ pub(crate) fn command_mode(
 }
 
 pub(crate) fn script_mode(
-    handle: Handle,
-    cli: &Cli,
-    config: &WalletConfig,
-    base_node_config: &PeerConfig,
-    wallet: WalletSqlite,
-    path: PathBuf,
+    _handle: Handle,
+    _cli: &Cli,
+    _config: &WalletConfig,
+    _base_node_config: &PeerConfig,
+    _wallet: WalletSqlite,
+    _path: PathBuf,
 ) -> Result<(), ExitError> {
-    info!(target: LOG_TARGET, "Starting wallet script mode");
-    println!("Starting wallet script mode");
-    let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
-
-    if script.is_empty() {
-        return Err(ExitError::new(ExitCode::InputError, "Input file is empty!"));
-    };
-
-    let mut commands = Vec::new();
-
-    println!("Parsing commands...");
-    for command in script.lines() {
-        // skip empty lines and 'comments' starting with #
-        if !command.is_empty() && !command.starts_with('#') {
-            // parse the command
-            commands.push(parse_command(command)?);
-        }
-    }
-    println!("{} commands parsed successfully.", commands.len());
-
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Script mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER_A);
-
-    println!("Starting the command runner!");
-    handle.block_on(command_runner(config, commands, wallet.clone()))?;
-
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Script mode completed)";
-    println!("{}", CUCUMBER_TEST_MARKER_B);
-
-    info!(target: LOG_TARGET, "Completed wallet script mode");
-
-    wallet_or_exit(handle, cli, config, base_node_config, wallet)
+    todo!("To be removed")
+    // info!(target: LOG_TARGET, "Starting wallet script mode");
+    // println!("Starting wallet script mode");
+    // let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
+    //
+    // if script.is_empty() {
+    //     return Err(ExitError::new(ExitCode::InputError, "Input file is empty!"));
+    // };
+    //
+    // let mut commands = Vec::new();
+    //
+    // println!("Parsing commands...");
+    // for command in script.lines() {
+    //     // skip empty lines and 'comments' starting with #
+    //     if !command.is_empty() && !command.starts_with('#') {
+    //         // parse the command
+    //         commands.push(parse_command(command)?);
+    //     }
+    // }
+    // println!("{} commands parsed successfully.", commands.len());
+    //
+    // // Do not remove this println!
+    // const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Script mode started)";
+    // println!("{}", CUCUMBER_TEST_MARKER_A);
+    //
+    // println!("Starting the command runner!");
+    // handle.block_on(command_runner(config, commands, wallet.clone()))?;
+    //
+    // // Do not remove this println!
+    // const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Script mode completed)";
+    // println!("{}", CUCUMBER_TEST_MARKER_B);
+    //
+    // info!(target: LOG_TARGET, "Completed wallet script mode");
+    //
+    // wallet_or_exit(handle, cli, config, base_node_config, wallet)
 }
 
 /// Prompts the user to continue to the wallet, or exit.

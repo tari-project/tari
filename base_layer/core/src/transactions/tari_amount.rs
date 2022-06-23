@@ -49,7 +49,7 @@ use super::format_currency;
 #[derive(Copy, Default, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct MicroTari(pub u64);
 
-#[derive(Debug, Clone, ThisError, PartialEq)]
+#[derive(Debug, Clone, ThisError, PartialEq, Eq)]
 pub enum MicroTariError {
     #[error("Failed to parse value: {0}")]
     ParseError(String),
@@ -146,7 +146,7 @@ impl std::str::FromStr for MicroTari {
     type Err = MicroTariError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let processed = s.replace(",", "").replace(" ", "").to_ascii_lowercase();
+        let processed = s.replace(',', "").replace(' ', "").to_ascii_lowercase();
         // Is this Tari or MicroTari
         let is_micro_tari = if processed.ends_with("ut") || processed.ends_with("µt") {
             true
@@ -154,7 +154,7 @@ impl std::str::FromStr for MicroTari {
             !processed.ends_with('t')
         };
 
-        let processed = processed.replace("ut", "").replace("µt", "").replace("t", "");
+        let processed = processed.replace("ut", "").replace("µt", "").replace('t', "");
         if is_micro_tari {
             processed
                 .parse::<u64>()
@@ -223,7 +223,7 @@ impl Sub<Tari> for MicroTari {
 }
 
 /// A convenience struct for representing full Tari.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd)]
 pub struct Tari(MicroTari);
 
 newtype_ops! { [Tari] {add sub mul div} {:=} Self Self }

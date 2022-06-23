@@ -24,9 +24,17 @@ mod asset_manager_service;
 pub use asset_manager_service::AssetManagerService;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{
+    ContractAmendment,
+    ContractDefinition,
+    ContractUpdateProposal,
+    OutputFeatures,
+    SideChainFeatures,
+    TemplateParameter,
+    Transaction,
+};
 
 use crate::assets::Asset;
 
@@ -52,21 +60,39 @@ pub enum AssetManagerRequest {
         features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
     },
     CreateInitialCheckpoint {
-        asset_public_key: Box<PublicKey>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
     CreateFollowOnCheckpoint {
-        asset_public_key: Box<PublicKey>,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
-    CreateCommitteeDefinition {
-        asset_public_key: Box<PublicKey>,
-        committee_public_keys: Vec<PublicKey>,
-        effective_sidechain_height: u64,
-        is_initial: bool,
+    CreateConstitutionDefinition {
+        constitution_definition: Box<SideChainFeatures>,
+    },
+    CreateContractDefinition {
+        contract_definition: Box<ContractDefinition>,
+    },
+    CreateContractAcceptance {
+        contract_id: FixedHash,
+        validator_node_public_key: Box<PublicKey>,
+        signature: Box<Signature>,
+    },
+    CreateContractUpdateProposalAcceptance {
+        contract_id: FixedHash,
+        proposal_id: u64,
+        validator_node_public_key: Box<PublicKey>,
+        signature: Box<Signature>,
+    },
+    CreateContractUpdateProposal {
+        contract_id: FixedHash,
+        update_proposal: Box<ContractUpdateProposal>,
+    },
+    CreateContractAmendment {
+        contract_id: FixedHash,
+        contract_amendment: Box<ContractAmendment>,
     },
 }
 
@@ -77,5 +103,10 @@ pub enum AssetManagerResponse {
     CreateMintingTransaction { transaction: Box<Transaction>, tx_id: TxId },
     CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
     CreateFollowOnCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
-    CreateCommitteeDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateConstitutionDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractDefinition { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractAcceptance { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractUpdateProposalAcceptance { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractUpdateProposal { transaction: Box<Transaction>, tx_id: TxId },
+    CreateContractAmendment { transaction: Box<Transaction>, tx_id: TxId },
 }

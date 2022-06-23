@@ -124,14 +124,14 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
     ) -> Result<(), DigitalAssetError> {
         let chain_db = self
             .db_factory
-            .get_or_create_chain_db(&self.asset_definition.public_key)?;
+            .get_or_create_chain_db(&self.asset_definition.contract_id)?;
         self.current_view_id = chain_db
             .get_tip_node()?
             .map(|n| ViewId(u64::from(n.height())))
             .unwrap_or_else(|| ViewId(0));
         info!(
             target: LOG_TARGET,
-            "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.public_key, self.current_view_id
+            "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.contract_id, self.current_view_id
         );
         let starting_view = self.current_view_id;
         while !stop.load(Ordering::Relaxed) {
@@ -218,13 +218,13 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         let mut state_tx = self
             .worker
             .db_factory
-            .get_state_db(&self.worker.asset_definition.public_key)?
+            .get_state_db(&self.worker.asset_definition.contract_id)?
             .ok_or(DigitalAssetError::MissingDatabase)?
             .new_unit_of_work(self.worker.current_view_id.as_u64());
 
         let mut prepare = states::Prepare::<T>::new(
             self.worker.node_address.clone(),
-            self.worker.asset_definition.public_key.clone(),
+            self.worker.asset_definition.contract_id,
         );
         let res = prepare
             .next_event(
@@ -254,7 +254,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         let mut state = states::PreCommitState::<T>::new(
             self.worker.node_address.clone(),
             self.worker.committee_manager.current_committee()?.clone(),
-            self.worker.asset_definition.public_key.clone(),
+            self.worker.asset_definition.contract_id,
         );
         let res = state
             .next_event(
@@ -274,7 +274,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         let mut unit_of_work = self.chain_db.new_unit_of_work();
         let mut state = states::CommitState::<T>::new(
             self.worker.node_address.clone(),
-            self.worker.asset_definition.public_key.clone(),
+            self.worker.asset_definition.contract_id,
             self.worker.committee_manager.current_committee()?.clone(),
         );
         let res = state
@@ -295,7 +295,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         let mut unit_of_work = self.chain_db.new_unit_of_work();
         let mut state = states::DecideState::<T>::new(
             self.worker.node_address.clone(),
-            self.worker.asset_definition.public_key.clone(),
+            self.worker.asset_definition.contract_id,
             self.worker.committee_manager.current_committee()?.clone(),
         );
         let res = state
@@ -313,10 +313,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
             state_tx.commit()?;
             self.worker
                 .checkpoint_manager
-                .create_checkpoint(
-                    state_tx.calculate_root()?,
-                    self.worker.committee_manager.current_committee()?.members.clone(),
-                )
+                .create_checkpoint(state_tx.calculate_root()?)
                 .await?;
             Ok(res)
         } else {
@@ -383,6 +380,10 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             (PreCommit, PreCommitted) => Commit,
             (Commit, Committed) => Decide,
             (Decide, Decided) => NextView,
+            (Synchronizing, BaseLayerCheckpointNotFound | BaseLayerAssetRegistrationNotFound) => {
+                info!(target: LOG_TARGET, "No initial checkpoint.");
+                NextView
+            },
             (_, BaseLayerCheckpointNotFound | BaseLayerAssetRegistrationNotFound) => {
                 unimplemented!("Base layer checkpoint not found!")
             },
