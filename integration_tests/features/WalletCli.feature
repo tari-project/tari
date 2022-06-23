@@ -140,18 +140,6 @@ Feature: Wallet CLI
         And I have wallet WALLET connected to base node BASE
         Then I run whois BASE on wallet WALLET via command line
     
-    @broken
-    Scenario: As a user I want to set sidechain committee via command line
-        Given I have a base node BASE
-        And I have wallet WALLET connected to base node BASE
-        And I have mining node MINE connected to base node BASE and wallet WALLET
-        And mining node MINE mines 4 blocks
-        Then I wait for wallet WALLET to have at least 1000000 uT
-        And I register asset ONE on wallet WALLET via command line
-        And I create committee definition for asset on wallet WALLET via command line
-        And mining node MINE mines 1 blocks
-        Then WALLET is connected to BASE
-
     @dan @critical
     Scenario: As a user I want to publish a contract definition via command line
         Given I have a base node BASE
@@ -159,7 +147,7 @@ Feature: Wallet CLI
         And I have mining node MINE connected to base node BASE and wallet WALLET
         And mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
-        And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET via command line
+        And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET via command line
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         Then WALLET is connected to BASE
@@ -171,7 +159,7 @@ Feature: Wallet CLI
         And I have mining node MINE connected to base node BASE and wallet WALLET
         And mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
-        And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET via command line
+        And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET via command line
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I publish a contract constitution from file "fixtures/contract_constitution.json" on wallet WALLET via command line
@@ -186,10 +174,10 @@ Feature: Wallet CLI
         And I have mining node MINE connected to base node BASE and wallet WALLET
         And mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
-        And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET via command line
+        And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET via command line
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
-        And I publish a contract constitution from file "fixtures/contract_constitution.json" on wallet WALLET via command line
+        When I publish a contract constitution from file "fixtures/contract_constitution.json" on wallet WALLET via command line
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I publish a contract update proposal from file "fixtures/contract_update_proposal.json" on wallet WALLET via command line
@@ -204,7 +192,7 @@ Feature: Wallet CLI
         And I have mining node MINE connected to base node BASE and wallet WALLET
         And mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
-        And I publish a contract definition from file "fixtures/contract_definition.json" on wallet WALLET via command line
+        And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET via command line
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I publish a contract amendment from file "fixtures/contract_amendment.json" on wallet WALLET via command line

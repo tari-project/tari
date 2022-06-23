@@ -40,7 +40,7 @@ class ValidatorNodeProcess {
     this.port = await getFreePort();
     this.grpcPort = await getFreePort();
     this.name = `ValidatorNode${this.port}-${this.name}`;
-    this.nodeFile = this.nodeFile || "nodeid.json";
+    this.nodeFile = this.nodeFile || "validator_node_id.json";
 
     let instance = 0;
     do {
@@ -119,7 +119,7 @@ class ValidatorNodeProcess {
     }
     if (!fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
       throw new Error(
-        `Node id file node found ${this.baseDir}/${this.nodeFile}`
+        `Node id file not found ${this.baseDir}/${this.nodeFile}`
       );
     }
 
@@ -181,6 +181,11 @@ class ValidatorNodeProcess {
       if (this.baseNodeAddress) {
         customArgs["validator_node.grpc_address"] = this.getGrpcAddress();
       }
+      Object.keys(this.options).forEach((k) => {
+        if (k.startsWith('validator_node.')) {
+          customArgs[k] = this.options[k]
+        }
+      });
 
       Object.keys(customArgs).forEach((k) => {
         args.push("-p");
@@ -266,7 +271,6 @@ class ValidatorNodeProcess {
 
   async createGrpcClient() {
     return await ValidatorNodeClient.create(this.grpcPort);
-    // return await ValidatorNodeClient.create(18144);
   }
 
   getOverrides() {

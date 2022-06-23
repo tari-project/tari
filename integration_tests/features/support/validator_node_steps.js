@@ -22,150 +22,50 @@
 
 const { When, Given, Then } = require("@cucumber/cucumber");
 const { expect } = require("chai");
-const { sleep } = require("../../helpers/util");
+const { sleep, findUtxoWithOutputMessage } = require("../../helpers/util");
 const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 
-When(
-  "I register an NFT asset with committee of {int}",
-  async function (committeeSize) {
-    // Create committeeSize validator nodes
-    for (let i = 0; i < committeeSize; i++) {
-      await this.createAndAddDanNode(`danNode${i}`);
-    }
-
-    let committee = Object.values(this.dan_nodes).map(async (node) => {
-      let pk = node.getPubKey();
-      await node.stop();
-      return pk;
-    });
-
-    console.log(committee);
-    console.log(this);
-
-    let wallet = this.currentWallet();
-    let client = await wallet.connectClient();
-    console.log(await client.getBalance());
-    await client.registerAsset("Asset 1");
-
-    return "pending";
-  }
-);
-
-When("I create {int} NFT(s)", function () {
-  return "pending";
-});
-
 Given(
-  "I have committee from {int} validator nodes connected",
-  { timeout: 20 * 1000 },
-  async function (nodes_cnt) {
-    console.log(`Starting ${nodes_cnt} validator nodes`);
-    const promises = [];
-    for (let i = 0; i < nodes_cnt; i++) {
-      promises.push(this.createAndAddDanNode(`DanNode${i}`));
-    }
-    await Promise.all(promises);
-    let committee = Array(nodes_cnt)
-      .fill()
-      .map((_, i) => this.getNode(`DanNode${i}`).getPubKey());
-    let peers = Array(nodes_cnt)
-      .fill()
-      .map((_, i) => this.getNode(`DanNode${i}`).peerAddress());
-    for (let i = 0; i < nodes_cnt; ++i) {
-      let dan_node = this.getNode(`DanNode${i}`);
-      dan_node.setCommittee(committee);
-      dan_node.setPeerSeeds(peers.filter((_, j) => i != j));
-      promises.push(dan_node.start());
-    }
-    await Promise.all(promises);
-  }
-);
-
-Then(
-  /I send instruction successfully with metadata (.*)/,
-  { timeout: 20 * 1000 },
-  async function (metadata) {
-    console.log("metadata", metadata);
-    let dan_node = this.getNode("DanNode0"); // Only the first node has GRPC
-    let grpc_dan_node = await dan_node.createGrpcClient();
-    let response = await grpc_dan_node.executeInstruction(
-      "f665775dbbf4e428e5c8c2bb1c5e7d2e508e93c83250c495ac617a0a1fb2d76d", // asset
-      "update", // method
-      metadata,
-      "eee280877ef836f1026d8a848a5da3eb6364cd0343372235e6ca10e2a697fc6f" // token
-    );
-    expect(response.status).to.be.equal("Accepted");
-  }
-);
-
-Then(
-  "At least {int} out of {int} validator nodes have filled asset data",
-  { timeout: 1200 * 1000 },
-  async function (at_least, total) {
-    let retries = 1;
-    let success = false;
-    let retries_limit = 239;
-    while (retries < retries_limit) {
-      let count = 0;
-      for (let i = 0; i < total; ++i) {
-        let node = this.getNode(`DanNode${i}`);
-        if (node.hasAssetData()) {
-          count += 1;
-        }
-      }
-      success = count >= at_least;
-      if (success) break;
-      ++retries;
-      await sleep(5000);
-    }
-    expect(success).to.be.true;
-  }
-);
-
-Given(
-  "I have a validator node {word} connected to base node {word} and wallet {word} with {word} set to {word}",
+  "I have a validator node {word} connected to base node {word} and wallet {word}",
   { timeout: 20 * 1000 },
   async function (
     vn_name,
     base_node_name,
     wallet_name,
-    option_key,
-    option_value
   ) {
-    const baseNode = this.getNode(base_node_name);
-    const walletNode = this.getWallet(wallet_name);
-
-    const baseNodeGrpcAddress = `127.0.0.1:${baseNode.getGrpcPort()}`;
-    const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
-
-    const options = {};
-    options[option_key] = option_value;
-
-    const danNode = new ValidatorNodeProcess(
-      vn_name,
-      false,
-      options,
-      this.logFilePathBaseNode,
-      undefined,
-      baseNodeGrpcAddress,
-      walletGrpcAddress
-    );
-    await danNode.startNew();
-    await this.addDanNode(vn_name, danNode);
+    let vn = await this.createValidatorNode(vn_name, base_node_name, wallet_name);
+    await this.addDanNode(vn_name, vn);
   }
 );
 
 Then(
-  "I publish a contract acceptance transaction for the validator node {word}",
+  "validator node {word} has {string} set to {word}",
   { timeout: 20 * 1000 },
-  async function (vn_name) {
+  async function (
+    vn_name,
+    option_name,
+    option_value,
+  ) {
+     let vn = this.getNode(vn_name);
+     await vn.stop();
+
+     vn.options['validator_node.' + option_name] = option_value;
+
+     await vn.startNew();
+  }
+)
+
+Then(
+  "I publish a contract acceptance transaction for contract {word} for the validator node {word}",
+  { timeout: 20 * 1000 },
+  async function (contract_name, vn_name) {
     let dan_node = this.getNode(vn_name);
     let grpc_dan_node = await dan_node.createGrpcClient();
     let response = await grpc_dan_node.publishContractAcceptance(
-      "90b1da4524ea0e9479040d906db9194d8af90f28d05ff2d64c0a82eb93125177" // contract_id
+      await this.fetchContract(contract_name)
     );
     expect(response.status).to.be.equal("Accepted");
-    console.log({ response });
+    console.debug({ response });
   }
 );
 
@@ -180,6 +80,46 @@ Then(
       0 // proposal_id
     );
     expect(response.status).to.be.equal("Accepted");
-    console.log({ response });
+    console.debug({ response });
   }
 );
+
+Then(
+    "wallet {word} will have a successfully mined constitution acceptance transaction for contract {word}",
+    { timeout: 40 * 1000 },
+    async function (wallet_name, contract_name) {
+        let wallet = await this.getWallet(wallet_name);
+        let contract_id = await this.fetchContract(contract_name);
+        let message = `Contract acceptance for contract with id=${contract_id}`
+
+        let utxos = await findUtxoWithOutputMessage(wallet, message);
+        expect(utxos.length).to.equal(1);
+    }
+)
+
+Then(
+    "wallet {word} will have a successfully mined contract acceptance transaction for contract {word}",
+    { timeout: 40 * 1000 },
+    async function (wallet_name, contract_name) {
+        let wallet = await this.getWallet(wallet_name);
+        let contract_id = await this.fetchContract(contract_name);
+        let message = `Contract acceptance for contract with id=${contract_id}`
+
+        let utxos = await findUtxoWithOutputMessage(wallet, message);
+        expect(utxos.length).to.equal(1);
+    }
+)
+
+Then(
+    "wallet {word} will have a successfully mined contract update proposal for contract {word}",
+    { timeout: 40 * 1000 },
+    async function (wallet_name, contract_name) {
+        let wallet = await this.getWallet(wallet_name);
+        let contract_id = await this.fetchContract(contract_name);
+        let message = `Contract update proposal acceptance for contract_id=${contract_id} and proposal_id=0`
+
+        let utxos = await findUtxoWithOutputMessage(wallet, message);
+        expect(utxos.length).to.equal(1);
+    }
+)
+
