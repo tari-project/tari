@@ -24,6 +24,7 @@ const getSettings = async () => ({
   moneroUseAuth: false,
   moneroUsername: '',
   moneroPassword: '',
+  rootFolder: 'asdf',
 })
 
 export const loadDefaultServiceSettings = createAsyncThunk<unknown>(

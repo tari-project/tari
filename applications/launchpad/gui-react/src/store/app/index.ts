@@ -5,6 +5,7 @@ import { Schedule } from '../../types/general'
 import { startOfUTCDay } from '../../utils/Date'
 
 import { AppState, ExpertViewType, ViewType } from './types'
+import { getDockerImageList } from './thunks'
 
 export const appInitialState: AppState = {
   expertView: 'hidden',
@@ -13,6 +14,10 @@ export const appInitialState: AppState = {
   theme: 'light',
   schedules: {},
   onboardingComplete: false,
+  dockerImages: {
+    loaded: false,
+    images: [],
+  },
 }
 
 const appSlice = createSlice({
@@ -57,6 +62,12 @@ const appSlice = createSlice({
       state.onboardingComplete = payload
     },
   },
+  extraReducers: builder => {
+    builder.addCase(getDockerImageList.fulfilled, (state, action) => {
+      state.dockerImages.loaded = true
+      state.dockerImages.images = action.payload
+    })
+  },
 })
 
 export const {
@@ -69,6 +80,8 @@ export const {
   updateSchedule,
   setOnboardingComplete,
 } = appSlice.actions
+
+export * from './thunks'
 
 const reducer = appSlice.reducer
 export default reducer

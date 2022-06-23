@@ -14,12 +14,10 @@ import t from '../../../locales'
 import { SettingsHeader } from '../styles'
 import { SettingsInputs } from '../types'
 
+import DockerImagesList from './DockerImagesList'
+
 const DockerSettings = ({
-  formState,
   control,
-  values,
-  setValue,
-  setOpenMiningAuthForm,
 }: {
   formState: FormState<SettingsInputs>
   control: Control<SettingsInputs>
@@ -92,6 +90,8 @@ const DockerSettings = ({
       <SettingsSectionHeader>
         {t.docker.settings.imageStatuses}
       </SettingsSectionHeader>
+
+      <DockerImagesList />
     </>
   )
 }
