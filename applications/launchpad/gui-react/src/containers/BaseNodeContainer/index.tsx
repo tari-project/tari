@@ -8,9 +8,11 @@ import {
 } from '../../store/baseNode/selectors'
 import { actions } from '../../store/baseNode'
 import Alert from '../../components/Alert'
+import CenteredLayout from '../../components/CenteredLayout'
 import t from '../../locales'
 
 import BaseNode from './BaseNode'
+import BaseNodeHelp from './BaseNodeHelp'
 
 const BaseNodeContainer = () => {
   const [error, setError] = useState('')
@@ -38,14 +40,21 @@ const BaseNodeContainer = () => {
 
   return (
     <>
-      <BaseNode
-        running={running}
-        pending={pending}
-        startNode={startNode}
-        stopNode={stopNode}
-        tariNetwork={network}
-        setTariNetwork={network => dispatch(actions.setTariNetwork(network))}
-      />
+      <CenteredLayout horizontally>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <BaseNodeHelp />
+          <BaseNode
+            running={running}
+            pending={pending}
+            startNode={startNode}
+            stopNode={stopNode}
+            tariNetwork={network}
+            setTariNetwork={network =>
+              dispatch(actions.setTariNetwork(network))
+            }
+          />
+        </div>
+      </CenteredLayout>
       <Alert
         title='Error'
         open={Boolean(error)}

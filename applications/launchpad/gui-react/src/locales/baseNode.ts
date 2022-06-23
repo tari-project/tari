@@ -17,6 +17,23 @@ const translations = {
   settings: {
     title: 'Base Node Settings',
   },
+  helpMessages: {
+    howItWorks: {
+      tip: {
+        text: 'Begin by starting the Base Node',
+        cta: 'How it works',
+      },
+      allowsYou: 'Running Tari Base Node allows you to:',
+      affordances: [
+        'Mine Tari (XTR)',
+        'Transact using the Tari Wallet',
+        ' Query and analyze chain data using your local copy of the ledger',
+      ],
+      thankYou: '👊 Thank you for mining Tari Base Node.',
+      yourContribution:
+        'Every new node increases the size of the Tari network and contributes to network security.',
+    },
+  },
 }
 
 export default translations
