@@ -16,7 +16,9 @@ export const DockerList = styled.div`
 `
 
 export const DockerStatusWrapper = styled.div`
+  flex-grow: 1;
   display: flex;
+  width: 70%;
   align-items: center;
   column-gap: ${({ theme }) => theme.spacingHorizontal(0.5)};
 `

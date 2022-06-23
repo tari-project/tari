@@ -33,13 +33,41 @@ const DockerImagesList = () => {
       {dockerImagesLoading && <LoadingOverlay />}
       {dockerImages.map(dockerImage => (
         <DockerRow key={dockerImage.dockerImage}>
-          <Text style={{ flexBasis: '40%' }}>{dockerImage.displayName}</Text>
+          <Text style={{ flexBasis: '30%' }}>{dockerImage.displayName}</Text>
           {dockerImage.latest && (
-            <CheckIcon color={theme.onTextLight} height='1.25em' width='auto' />
+            <DockerStatusWrapper>
+              <CheckIcon
+                color={theme.onTextLight}
+                height='1.25em'
+                width='1.25em'
+                style={{
+                  flexShrink: 0,
+                  flexBasis: '2em',
+                }}
+              />
+              <Text
+                type='smallMedium'
+                as='span'
+                style={{
+                  flexShrink: 1,
+                  overflowX: 'hidden',
+                  textOverflow: 'ellipsis',
+                  wordBreak: 'keep-all',
+                }}
+              >
+                {t.docker.imageUpToDate}{' '}
+                <span
+                  style={{ color: theme.secondary }}
+                  title={dockerImage.dockerImage}
+                >
+                  {dockerImage.dockerImage}
+                </span>
+              </Text>
+            </DockerStatusWrapper>
           )}
           {!dockerImage.latest && !dockerImage.pending && (
             <DockerStatusWrapper>
-              <Tag type='warning'>{t.docker.settings.newerVersion}</Tag>
+              <Tag type='warning'>{t.docker.newerVersion}</Tag>
               <Button
                 variant='button-in-text'
                 type='link'
@@ -51,7 +79,7 @@ const DockerImagesList = () => {
                   )
                 }
               >
-                {t.docker.settings.pullImage}
+                {t.docker.pullImage}
               </Button>
             </DockerStatusWrapper>
           )}
@@ -59,7 +87,7 @@ const DockerImagesList = () => {
             <DockerStatusWrapper>
               <Loading loading size='1em' />
               {dockerImage.status && (
-                <Text>{t.docker.settings.status[dockerImage.status]}</Text>
+                <Text>{t.docker.status[dockerImage.status]}</Text>
               )}
               {dockerImage.progress !== undefined && (
                 <Text>{dockerImage.progress}%</Text>
