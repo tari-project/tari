@@ -48,7 +48,9 @@ const DockerImagesList = () => {
           )}
           {!dockerImage.latest && dockerImage.pending && (
             <DockerStatusWrapper>
-              <Text>{dockerImage.status}</Text>
+              {dockerImage.status && (
+                <Text>{t.docker.settings.status[dockerImage.status]}</Text>
+              )}
               {dockerImage.progress !== undefined && (
                 <Text>{dockerImage.progress}%</Text>
               )}

@@ -1,15 +1,10 @@
 import { createSlice } from '@reduxjs/toolkit'
 
 import { ThemeType } from '../../styles/themes/types'
-import { Schedule } from '../../types/general'
+import { Schedule, DockerImagePullStatus } from '../../types/general'
 import { startOfUTCDay } from '../../utils/Date'
 
-import {
-  AppState,
-  ExpertViewType,
-  ViewType,
-  DockerImagePullStatus,
-} from './types'
+import { AppState, ExpertViewType, ViewType } from './types'
 import { getDockerImageList } from './thunks'
 
 export const appInitialState: AppState = {

@@ -2,8 +2,7 @@ import { createAsyncThunk } from '@reduxjs/toolkit'
 import { invoke } from '@tauri-apps/api/tauri'
 
 import { RootState } from '../'
-
-import { DockerImage, DockerImagePullStatus } from './types'
+import { DockerImage, DockerImagePullStatus } from '../../types/general'
 
 export const getDockerImageList = createAsyncThunk<
   DockerImage[],
