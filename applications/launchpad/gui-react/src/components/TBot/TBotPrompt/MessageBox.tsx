@@ -21,11 +21,13 @@ const MessageBox = (
     animate,
     children,
     skipButton,
+    onSkip,
     floating,
   }: {
     animate: boolean
     children: ReactNode
     skipButton?: boolean
+    onSkip?: () => void
     floating?: boolean
   },
   ref?: ForwardedRef<HTMLDivElement>,
@@ -71,6 +73,7 @@ const MessageBox = (
                   variant='button-in-text'
                   rightIcon={<SvgArrowRight fontSize={24} />}
                   autosizeIcons={false}
+                  onClick={onSkip}
                 >
                   {t.onboarding.actions.skipChatting}
                 </Button>

@@ -16,7 +16,7 @@ const ProgressIndicator = ({ overallFill }: ProgressIndicatorProps) => {
       }
       if (overallFill > 0.25 && overallFill <= 0.5) {
         setFillOne(1)
-        setFillTwo((overallFill - 0.25) * 5)
+        setFillTwo((overallFill - 0.25) * 4)
       }
       if (overallFill > 0.5 && overallFill <= 0.75) {
         setFillOne(1)
@@ -26,7 +26,7 @@ const ProgressIndicator = ({ overallFill }: ProgressIndicatorProps) => {
         setFillOne(1)
         setFillTwo(1)
         setFillThree(1)
-        setFillFour((overallFill - 0.75) * 3)
+        setFillFour((overallFill - 0.75) * 4)
       }
     }
   }, [overallFill])
