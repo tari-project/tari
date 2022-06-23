@@ -4,8 +4,14 @@ import { ThemeType } from '../../styles/themes/types'
 import { Schedule } from '../../types/general'
 import { startOfUTCDay } from '../../utils/Date'
 
-import { AppState, ExpertViewType, ViewType } from './types'
+import {
+  AppState,
+  ExpertViewType,
+  ViewType,
+  DockerImagePullStatus,
+} from './types'
 import { getDockerImageList } from './thunks'
+import DockerImagesList from '../../containers/SettingsContainer/DockerSettings/DockerImagesList'
 
 export const appInitialState: AppState = {
   expertView: 'hidden',
@@ -61,8 +67,39 @@ const appSlice = createSlice({
     setOnboardingComplete(state, { payload }: { payload: boolean }) {
       state.onboardingComplete = payload
     },
+    setDockerProgress(
+      state,
+      {
+        payload,
+      }: {
+        payload: {
+          dockerImage: string
+          error?: string
+          progress?: number
+          status?: DockerImagePullStatus
+        }
+      },
+    ) {
+      const image = state.dockerImages.images.find(
+        img => img.dockerImage === payload.dockerImage,
+      )
+
+      if (!image) {
+        return
+      }
+
+      image.latest = payload.status === DockerImagePullStatus.Ready
+      image.pending = payload.status !== DockerImagePullStatus.Ready
+      image.error = payload.error || image.error
+      image.progress =
+        payload.progress === undefined ? image.progress : payload.progress
+      image.status = payload.status || image.status
+    },
   },
   extraReducers: builder => {
+    builder.addCase(getDockerImageList.pending, state => {
+      state.dockerImages.loaded = false
+    })
     builder.addCase(getDockerImageList.fulfilled, (state, action) => {
       state.dockerImages.loaded = true
       state.dockerImages.images = action.payload
