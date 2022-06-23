@@ -157,7 +157,7 @@ Given(
 
 Then(
   "I publish a contract acceptance transaction for the validator node {word}",
-  { timeout: 20 * 1000 },
+  { timeout: 120 * 1000 },
   async function (vn_name) {
     let dan_node = this.getNode(vn_name);
     let grpc_dan_node = await dan_node.createGrpcClient();
@@ -171,7 +171,7 @@ Then(
 
 Then(
   "I publish a contract update proposal acceptance transaction for the validator node {word}",
-  { timeout: 20 * 1000 },
+  { timeout: 120 * 1000 },
   async function (vn_name) {
     let dan_node = this.getNode(vn_name);
     let grpc_dan_node = await dan_node.createGrpcClient();
