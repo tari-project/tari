@@ -16,6 +16,7 @@ Feature: Validator Node
         And I mine 9 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 will have a successfully mined contract acceptance transaction for contract DEF1
 
+    @broken
     Scenario: Contract constitution auto acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes

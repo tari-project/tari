@@ -85,7 +85,7 @@ jobs:
       - name: npm ci
         run: cd integration_tests && npm ci && cd node_modules/wallet-grpc-client && npm ci
       - name: Run integration tests
-        run: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "non-critical" --tags "@dan"  --format json:cucumber_output/tests.cucumber --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
+        run: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "non-critical" --tags "@dan and not @broken"  --format json:cucumber_output/tests.cucumber --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
       - name: Generate report
         if: always()
         run: cd integration_tests && node ./generate_report.js
