@@ -404,6 +404,26 @@ const convertStringToVec = (string) =>
     .fill()
     .map((_, i) => string.charCodeAt(i));
 
+const findUtxoWithOutputMessage = async (wallet, message) => {
+  let client = await wallet.connectClient();
+  let accepted = [];
+
+  while (true) {
+    let found_txs = await client.getCompletedTransactions();
+    accepted = found_txs.filter((txo) => {
+      return txo.message == message;
+    });
+
+    if (accepted.length > 0) {
+      break
+    }
+
+    await sleep(5000);
+  }
+
+  return accepted;
+};
+
 module.exports = {
   getRandomInt,
   sleep,
@@ -426,4 +446,5 @@ module.exports = {
   waitForIterate,
   NO_CONNECTION,
   multiAddrToSocket,
+  findUtxoWithOutputMessage,
 };
