@@ -45,13 +45,16 @@ use tari_utilities::hash::Hashable;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        service::{Balance, UTXOSelectionStrategy},
+        input_selection::UtxoSelectionCriteria,
+        service::Balance,
         storage::{
             database::{OutputBackendQuery, SortDirection},
             models::DbUnblindedOutput,
             sqlite_db::{UpdateOutput, UpdateOutputSql},
             OutputStatus,
         },
+        UtxoSelectionFilter,
+        UtxoSelectionOrdering,
     },
     schema::outputs,
     util::{
@@ -178,54 +181,84 @@ impl OutputSql {
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     #[allow(clippy::cast_sign_loss)]
     pub fn fetch_unspent_outputs_for_spending(
-        mut strategy: UTXOSelectionStrategy,
+        selection_criteria: UtxoSelectionCriteria,
         amount: u64,
-        tip_height: i64,
+        tip_height: Option<u64>,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        if strategy == UTXOSelectionStrategy::Default {
-            // lets get the max value for all utxos
-            let max: Vec<i64> = outputs::table
-                .filter(outputs::status.eq(OutputStatus::Unspent as i32))
-                .filter(outputs::script_lock_height.le(tip_height))
-                .filter(outputs::maturity.le(tip_height))
-                .filter(outputs::features_unique_id.is_null())
-                .filter(outputs::features_parent_public_key.is_null())
-                .order(outputs::value.desc())
-                .select(outputs::value)
-                .limit(1)
-                .load(conn)?;
-            if max.is_empty() {
-                strategy = UTXOSelectionStrategy::Smallest
-            } else if amount > max[0] as u64 {
-                strategy = UTXOSelectionStrategy::Largest
-            } else {
-                strategy = UTXOSelectionStrategy::MaturityThenSmallest
-            }
-        }
-
         let mut query = outputs::table
             .into_boxed()
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
-            .filter(outputs::script_lock_height.le(tip_height))
-            .filter(outputs::maturity.le(tip_height))
-            .filter(outputs::features_unique_id.is_null())
-            .filter(outputs::features_parent_public_key.is_null())
             .order_by(outputs::spending_priority.desc());
-        match strategy {
-            UTXOSelectionStrategy::Smallest => {
+
+        match selection_criteria.filter {
+            UtxoSelectionFilter::Standard => {
+                query = query
+                    .filter(outputs::features_unique_id.is_null())
+                    .filter(outputs::features_parent_public_key.is_null());
+            },
+            UtxoSelectionFilter::TokenOutput {
+                parent_public_key,
+                unique_id,
+            } => {
+                query = query
+                    .filter(outputs::features_unique_id.eq(unique_id))
+                    .filter(outputs::features_parent_public_key.eq(parent_public_key.as_ref().map(|pk| pk.to_vec())));
+            },
+            UtxoSelectionFilter::SpecificOutputs { outputs } => {
+                query = query.filter(outputs::hash.eq_any(outputs.into_iter().map(|o| o.hash)))
+            },
+        }
+
+        match selection_criteria.ordering {
+            UtxoSelectionOrdering::SmallestFirst => {
                 query = query.then_order_by(outputs::value.asc());
             },
-            UTXOSelectionStrategy::MaturityThenSmallest => {
-                query = query
-                    .then_order_by(outputs::maturity.asc())
-                    .then_order_by(outputs::value.asc());
-            },
-            UTXOSelectionStrategy::Largest => {
+            UtxoSelectionOrdering::LargestFirst => {
                 query = query.then_order_by(outputs::value.desc());
             },
-            UTXOSelectionStrategy::Default => {},
+            UtxoSelectionOrdering::Default => {
+                let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+                // lets get the max value for all utxos
+                let max: Option<i64> = outputs::table
+                    .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                    .filter(outputs::script_lock_height.le(i64_tip_height))
+                    .filter(outputs::maturity.le(i64_tip_height))
+                    .filter(outputs::features_unique_id.is_null())
+                    .filter(outputs::features_parent_public_key.is_null())
+                    .order(outputs::value.desc())
+                    .select(outputs::value)
+                    .first(conn)
+                    .optional()?;
+                match max {
+                    Some(max) if amount > max as u64 => {
+                        // Want to reduce the number of inputs to reduce fees
+                        query = query.then_order_by(outputs::value.desc());
+                    },
+                    Some(_) => {
+                        // Use the smaller utxos to make up this transaction.
+                        query = query.then_order_by(outputs::value.asc());
+                    },
+                    None => {
+                        // No spendable UTXOs?
+                        query = query.then_order_by(outputs::value.asc());
+                    },
+                }
+            },
         };
+        match tip_height {
+            Some(tip_height) => {
+                let i64_tip_height = i64::try_from(tip_height).unwrap_or(i64::MAX);
+                query = query
+                    .filter(outputs::script_lock_height.le(i64_tip_height))
+                    .filter(outputs::maturity.le(i64_tip_height));
+            },
+            None => {
+                // If we don't know the current tip height, order by maturity ASC to reduce the chances of a locked
+                // output being used.
+                query = query.then_order_by(outputs::maturity.asc());
+            },
+        }
         Ok(query.load(conn)?)
     }
 
