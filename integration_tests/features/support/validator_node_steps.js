@@ -20,10 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-const { When, Given, Then } = require("@cucumber/cucumber");
+const { Given, Then } = require("@cucumber/cucumber");
 const { expect } = require("chai");
-const { sleep, findUtxoWithOutputMessage } = require("../../helpers/util");
-const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
+const { findUtxoWithOutputMessage } = require("../../helpers/util");
 
 Given(
   "I have a validator node {word} connected to base node {word} and wallet {word}",

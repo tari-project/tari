@@ -23,10 +23,8 @@
 const { Given, Then, When } = require("@cucumber/cucumber");
 const { expect } = require("chai");
 const fs = require("fs");
-const { waitFor, sleep, byteArrayToHex } = require("../../helpers/util");
+const { waitFor, sleep } = require("../../helpers/util");
 const path = require("path");
-const uuid = require("uuid");
-const dateFormat = require("dateformat");
 
 Given(
   /I change the password of wallet (.*) to (.*) via command line/,
