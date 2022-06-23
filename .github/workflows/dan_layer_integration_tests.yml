@@ -1,4 +1,4 @@
-name: CI
+name: DAN
 on:
   push:
   pull_request:
@@ -11,7 +11,7 @@ env:
 
 jobs:
   dan-layer-integration-tests:
-    name: dan layer integration tests
+    name: integration tests
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
     steps:
       - name: checkout
