@@ -195,9 +195,11 @@ impl OutputSql {
 
         match selection_criteria.filter {
             UtxoSelectionFilter::Standard => {
-                query = query
-                    .filter(outputs::features_unique_id.is_null())
-                    .filter(outputs::features_parent_public_key.is_null());
+                query = query.filter(
+                    outputs::output_type
+                        .eq(i32::from(OutputType::Standard.as_byte()))
+                        .or(outputs::output_type.eq(i32::from(OutputType::Coinbase.as_byte()))),
+                )
             },
             UtxoSelectionFilter::TokenOutput {
                 parent_public_key,
