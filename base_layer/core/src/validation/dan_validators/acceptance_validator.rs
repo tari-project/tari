@@ -46,7 +46,7 @@ pub fn validate_acceptance<B: BlockchainBackend>(
     let contract_id = sidechain_features.contract_id;
 
     let acceptance_features = get_contract_acceptance(sidechain_features)?;
-    let validator_node_public_key = acceptance_features.validator_node_public_key.clone();
+    let validator_node_public_key = &acceptance_features.validator_node_public_key;
 
     let constitution = get_contract_constitution(db, contract_id)?;
 
@@ -73,12 +73,12 @@ fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&Con
 /// Checks that the validator public key is present as part of the proposed committee in the constitution
 fn validate_public_key(
     constitution: ContractConstitution,
-    validator_node_public_key: PublicKey,
+    validator_node_public_key: &PublicKey,
 ) -> Result<(), ValidationError> {
     let is_validator_in_committee = constitution
         .validator_committee
         .members()
-        .contains(&validator_node_public_key);
+        .contains(validator_node_public_key);
     if !is_validator_in_committee {
         let msg = format!(
             "Invalid contract acceptance: validator node public key is not in committee ({:?})",
