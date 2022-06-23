@@ -41,6 +41,7 @@ use tari_p2p::{initialization::CommsInitializationError, peer_seeds::SeedPeer, T
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
+    output_manager_service::storage::database::OutputManagerDatabase,
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_utilities::initialize_sqlite_database_backends,
@@ -260,6 +261,7 @@ pub async fn init_wallet(
     };
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) = backends;
     let wallet_db = WalletDatabase::new(wallet_backend);
+    let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
     debug!(
         target: LOG_TARGET,
@@ -306,6 +308,7 @@ pub async fn init_wallet(
         node_identity,
         factories,
         wallet_db,
+        output_db,
         transaction_backend,
         output_manager_backend,
         contacts_backend,

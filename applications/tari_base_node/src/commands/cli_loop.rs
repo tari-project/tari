@@ -93,7 +93,7 @@ impl CliLoop {
         }
     }
 
-    fn is_interrupted(&mut self, event: Option<Result<Event, io::Error>>) -> bool {
+    fn is_interrupted(&self, event: Option<Result<Event, io::Error>>) -> bool {
         if let Some(Ok(Event::Key(key))) = event {
             match key {
                 KeyEvent {

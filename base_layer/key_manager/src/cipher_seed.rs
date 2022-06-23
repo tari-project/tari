@@ -84,7 +84,7 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 /// blockchain.
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
@@ -398,7 +398,7 @@ mod test {
             .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
             .expect("Couldn't convert CipherSeed to Mnemonic");
         assert!(
-            !CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_ok(),
+            CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_err(),
             "Should not be able to derive seed with wrong passphrase"
         );
     }

@@ -475,8 +475,7 @@ impl StoreAndForwardService {
         use SafResponseType::{Anonymous, Discovery, ForMe, Join};
         let limit = i64::try_from(self.config.max_returned_messages)
             .ok()
-            .or(Some(std::i64::MAX))
-            .unwrap();
+            .unwrap_or(std::i64::MAX);
         let db = &self.database;
         let messages = match query.response_type {
             ForMe => db.find_messages_for_peer(&query.public_key, &query.node_id, query.since, limit)?,

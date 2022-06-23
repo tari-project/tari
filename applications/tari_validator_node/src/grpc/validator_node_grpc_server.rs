@@ -26,7 +26,7 @@ use std::{
 
 use futures::channel::mpsc;
 use tari_app_grpc::tari_rpc::{self as rpc, TransactionOutput};
-use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use tari_common_types::types::{FixedHash, Signature};
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
@@ -173,13 +173,15 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         request: Request<rpc::InvokeMethodRequest>,
     ) -> Result<Response<rpc::InvokeMethodResponse>, Status> {
         let request = request.into_inner();
-        let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
-            .map_err(|_err| Status::invalid_argument("asset_public_key was not a valid public key"))?;
+        let contract_id = request
+            .contract_id
+            .try_into()
+            .map_err(|_err| Status::invalid_argument("contract_id was not valid"))?;
 
         match self
             .asset_proxy
             .invoke_method(
-                &asset_public_key,
+                &contract_id,
                 request
                     .template_id
                     .try_into()
@@ -222,15 +224,17 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         println!("invoke_read_method grpc call");
         println!("{:?}", request);
         let request = request.into_inner();
-        let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
-            .map_err(|err| Status::invalid_argument(format!("Asset public key was not a valid public key:{}", err)))?;
+        let contract_id = request
+            .contract_id
+            .try_into()
+            .map_err(|err| Status::invalid_argument(format!("Contract ID was not valid: {}", err)))?;
         let template_id = request
             .template_id
             .try_into()
             .map_err(|_| Status::invalid_argument("Invalid template_id"))?;
         if let Some(state) = self
             .db_factory
-            .get_state_db(&asset_public_key)
+            .get_state_db(&contract_id)
             .map_err(|e| Status::internal(format!("Could not create state db: {}", e)))?
         {
             let state_db_reader = state.reader();
@@ -251,7 +255,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
             // Forward to proxy
             let response_bytes = self
                 .asset_proxy
-                .invoke_read_method(&asset_public_key, template_id, request.method, request.args)
+                .invoke_read_method(&contract_id, template_id, request.method, request.args)
                 .await
                 .map_err(|err| Status::internal(format!("Error calling proxied method:{}", err)))?;
             // TODO: Populate authority

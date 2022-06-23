@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
-use tari_dan_core::storage::global::GlobalDbBackendAdapter;
+use tari_dan_core::storage::global::{GlobalDbBackendAdapter, GlobalDbMetadataKey};
 
 use crate::{error::SqliteStorageError, models::metadata::Metadata, SqliteTransaction};
 
@@ -59,14 +59,14 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         Ok(SqliteTransaction::new(connection))
     }
 
-    fn set_data(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+    fn set_data(&self, key: GlobalDbMetadataKey, value: &[u8]) -> Result<(), Self::Error> {
         use crate::schema::metadata;
         let row = self.get_data(key)?;
         let tx = self.create_transaction()?;
 
         match row {
             Some(r) => diesel::update(&Metadata {
-                key_name: key.into(),
+                key_name: key.as_key_bytes().to_vec(),
                 value: r,
             })
             .set(metadata::value.eq(value))
@@ -76,7 +76,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
                 operation: "update::metadata".to_string(),
             })?,
             None => diesel::insert_into(metadata::table)
-                .values((metadata::key_name.eq(key), metadata::value.eq(value)))
+                .values((metadata::key_name.eq(key.as_key_bytes()), metadata::value.eq(value)))
                 .execute(tx.connection())
                 .map_err(|source| SqliteStorageError::DieselError {
                     source,
@@ -89,12 +89,12 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         Ok(())
     }
 
-    fn get_data(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get_data(&self, key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error> {
         use crate::schema::metadata::dsl;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
 
         let row: Option<Metadata> = dsl::metadata
-            .find(key)
+            .find(key.as_key_bytes())
             .first(&connection)
             .optional()
             .map_err(|source| SqliteStorageError::DieselError {

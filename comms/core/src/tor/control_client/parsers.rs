@@ -76,11 +76,10 @@ pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Vec<Cow<'_, str>>), ParseE
     let lines = rest.split('\n');
     let parts = lines
         .filter(|s| !s.is_empty())
-        .map(|line| {
+        .flat_map(|line| {
             // TODO: this doesnt correctly handle responses with inner quotes i.e "Hello\" world"
             line.split('"').filter(|part| !part.trim().is_empty()).map(Cow::from)
         })
-        .flatten()
         .collect();
     Ok((identifier.trim().into(), parts))
 }

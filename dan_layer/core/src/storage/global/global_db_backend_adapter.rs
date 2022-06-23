@@ -28,6 +28,21 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
     fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
-    fn get_data(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
-    fn set_data(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error>;
+    fn get_data(&self, key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn set_data(&self, key: GlobalDbMetadataKey, value: &[u8]) -> Result<(), Self::Error>;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum GlobalDbMetadataKey {
+    LastScannedConstitutionHash,
+    LastScannedConstitutionHeight,
+}
+
+impl GlobalDbMetadataKey {
+    pub fn as_key_bytes(self) -> &'static [u8] {
+        match self {
+            GlobalDbMetadataKey::LastScannedConstitutionHash => b"last_scanned_constitution_hash",
+            GlobalDbMetadataKey::LastScannedConstitutionHeight => b"last_scanned_constitution_height",
+        }
+    }
 }

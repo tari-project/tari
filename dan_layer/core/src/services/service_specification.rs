@@ -37,7 +37,13 @@ use crate::{
         SigningService,
         ValidatorNodeClientFactory,
     },
-    storage::{chain::ChainDbBackendAdapter, state::StateDbBackendAdapter, ChainStorageService, DbFactory},
+    storage::{
+        chain::ChainDbBackendAdapter,
+        global::GlobalDbBackendAdapter,
+        state::StateDbBackendAdapter,
+        ChainStorageService,
+        DbFactory,
+    },
 };
 
 /// A trait to describe a specific configuration of services. This type allows other services to
@@ -50,13 +56,15 @@ pub trait ServiceSpecification: Default + Clone {
     type BaseNodeClient: BaseNodeClient + Clone;
     type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type ChainStorageService: ChainStorageService<Self::Payload>;
-    type CheckpointManager: CheckpointManager<Self::Addr>;
+    type CheckpointManager: CheckpointManager;
     type CommitteeManager: CommitteeManager<Self::Addr>;
     type DbFactory: DbFactory<
             StateDbBackendAdapter = Self::StateDbBackendAdapter,
             ChainDbBackendAdapter = Self::ChainDbBackendAdapter,
+            GlobalDbBackendAdapter = Self::GlobalDbAdapter,
         > + Clone;
     type EventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>;
+    type GlobalDbAdapter: GlobalDbBackendAdapter;
     type InboundConnectionService: InboundConnectionService<Addr = Self::Addr, Payload = Self::Payload>;
     type MempoolService: MempoolService + Clone;
     type OutboundService: OutboundService<Addr = Self::Addr, Payload = Self::Payload>;

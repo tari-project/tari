@@ -426,11 +426,11 @@ impl InnerService {
 
         let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, &mut grpc_wallet_client);
 
-        let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace("\"", ""))
+        let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;
         let blocktemplate_blob = monerod_resp["result"]["blocktemplate_blob"]
             .to_string()
-            .replace("\"", "");
+            .replace('\"', "");
         let difficulty = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
         let monero_mining_data = MoneroMiningData {
             seed_hash,
@@ -703,11 +703,9 @@ impl InnerService {
             );
         }
 
-        let json_response;
-
         // If the request is a block submission and we are not submitting blocks
         // to the origin (self-select mode, see next comment for a full explanation)
-        if submit_block && !self.config.submit_to_origin {
+        let json_response = if submit_block && !self.config.submit_to_origin {
             debug!(
                 target: LOG_TARGET,
                 "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, submitting to \
@@ -730,8 +728,8 @@ impl InnerService {
             // NB!: This is by design, do not change this without understanding
             // it's implications.
             let accept_response = json_rpc::default_block_accept_response(json["id"].as_i64());
-            json_response =
-                convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone()).await?;
+
+            convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone()).await?
         } else {
             let resp = builder
                 // This is a cheap clone of the request body
@@ -739,7 +737,7 @@ impl InnerService {
                 .send()
                 .await
                 .map_err(MmProxyError::MonerodRequestFailed)?;
-            json_response = convert_reqwest_response_to_hyper_json_response(resp).await?
+            convert_reqwest_response_to_hyper_json_response(resp).await?
         };
 
         let rpc_status = if json_response.body()["error"].is_null() {

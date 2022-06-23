@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 
 use crate::{
@@ -33,11 +35,11 @@ pub trait SigningService<TAddr: NodeAddressable> {
 }
 
 pub struct NodeIdentitySigningService {
-    node_identity: NodeIdentity,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl NodeIdentitySigningService {
-    pub fn new(node_identity: NodeIdentity) -> Self {
+    pub fn new(node_identity: Arc<NodeIdentity>) -> Self {
         Self { node_identity }
     }
 }

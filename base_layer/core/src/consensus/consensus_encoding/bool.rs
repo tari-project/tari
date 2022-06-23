@@ -26,7 +26,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 
 impl ConsensusEncoding for bool {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        writer.write_all(&[*self as u8])?;
+        writer.write_all(&[u8::from(*self)])?;
         Ok(())
     }
 }

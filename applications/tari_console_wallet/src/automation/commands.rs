@@ -858,7 +858,7 @@ async fn init_contract_definition_spec(wallet: &WalletSqlite, args: InitDefiniti
         match contract_issuer {
             Some(pk) => pk,
             None => {
-                let issuer_key_path = dest.parent().unwrap_or_else(|| dest.as_path()).join("issuer_keys.json");
+                let issuer_key_path = dest.parent().unwrap_or(dest.as_path()).join("issuer_keys.json");
                 let issuer_public_key_path = Prompt::new("Enter path to generate new issuer public key:")
                     .with_default(issuer_key_path.to_string_lossy())
                     .ask_parsed::<PathBuf>()?;

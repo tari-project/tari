@@ -240,6 +240,7 @@ message SideChainFeatures {
     ContractUpdateProposal update_proposal = 5;
     ContractUpdateProposalAcceptance update_proposal_acceptance = 6;
     ContractAmendment amendment = 7;
+    ContractCheckpoint checkpoint = 8;
 }
 
 message ContractConstitution {
@@ -258,6 +259,11 @@ message ContractAcceptanceRequirements {
 
 message CommitteeMembers {
     repeated bytes members = 1;
+}
+
+message ContractCheckpoint {
+    bytes merkle_root = 1;
+    CommitteeSignatures signatures = 2;
 }
 
 message CheckpointParameters {

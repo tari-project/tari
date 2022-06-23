@@ -50,8 +50,8 @@ impl Instruction {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
-        /* from: TokenId,
-         * _signature: ComSig, */
+        // from: TokenId,
+        // _signature: ComSig,
     ) -> Self {
         let mut s = Self {
             template_id,

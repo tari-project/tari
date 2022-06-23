@@ -26,7 +26,7 @@ use thiserror::Error;
 
 use crate::{HashValue, TariScript};
 
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum ScriptCommitmentError {
     #[error("The digest function must produce output of exactly 32 bytes")]
     InvalidDigestLength,

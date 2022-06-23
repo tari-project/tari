@@ -1,0 +1,33 @@
+<dd>
+  <dl>
+    <dt>Contract id</dt><dd>{{hex contract_id}}</dd>
+    {{#if definition}}
+      <dt>Definition</dt>
+      <dd>{{>ContractDefinition definition}}</dd>
+    {{/if}}
+    {{#if constitution}}
+      <dt>Constitution</dt>
+      <dd>{{>ContractConstitution constitution}}</dd>
+    {{/if}}
+    {{#if acceptance}}
+      <dt>Acceptance</dt>
+      <dd>{{>ContractAcceptance acceptance}}</dd>
+    {{/if}}
+    {{#if update_proposal}}
+      <dt>Update proposal</dt>
+      <dd>{{>ContractUpdateProposal update_proposal}}</dd>
+    {{/if}}
+    {{#if update_proposal_acceptance}}
+      <dt>Update proposal acceptance</dt>
+      <dd>{{>ContractUpdateProposalAcceptance update_proposal_acceptance}}</dd>
+    {{/if}}
+    {{#if amendment}}
+      <dt>amendment</dt>
+      <dd>{{>ContractAmendment amendment}}</dd>
+    {{/if}}
+    {{#if checkpoint}}
+      <dt>Checkpoint</dt>
+      <dd>{{>ContractCheckpoint checkpoint}}</dd>
+    {{/if}}
+  </dl>
+</dd>

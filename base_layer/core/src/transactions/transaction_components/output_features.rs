@@ -53,6 +53,9 @@ use crate::{
             side_chain::SideChainFeatures,
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
+            CommitteeMembers,
+            CommitteeSignatures,
+            ContractCheckpoint,
             MintNonFungibleFeatures,
             OutputType,
             SideChainCheckpointFeatures,
@@ -244,21 +247,20 @@ impl OutputFeatures {
     }
 
     pub fn for_checkpoint(
-        parent_public_key: PublicKey,
-        unique_id: Vec<u8>,
+        contract_id: FixedHash,
         merkle_root: FixedHash,
-        committee: Vec<PublicKey>,
-        is_initial: bool,
+        signatures: CommitteeSignatures,
     ) -> OutputFeatures {
+        let features = SideChainFeatures::builder(contract_id)
+            .with_contract_checkpoint(ContractCheckpoint {
+                merkle_root,
+                signatures,
+            })
+            .finish();
+
         Self {
-            output_type: if is_initial {
-                OutputType::SidechainInitialCheckpoint
-            } else {
-                OutputType::SidechainCheckpoint
-            },
-            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
-            parent_public_key: Some(parent_public_key),
-            unique_id: Some(unique_id),
+            output_type: OutputType::ContractCheckpoint,
+            sidechain_features: Some(features),
             ..Default::default()
         }
     }
@@ -402,6 +404,13 @@ impl OutputFeatures {
     pub fn is_sidechain_contract(&self) -> bool {
         self.sidechain_features.is_some()
     }
+
+    pub fn constitution_committee(&self) -> Option<&CommitteeMembers> {
+        self.sidechain_features
+            .as_ref()
+            .and_then(|f| f.constitution.as_ref())
+            .map(|c| &c.validator_committee)
+    }
 }
 
 impl ConsensusEncoding for OutputFeatures {
@@ -518,7 +527,11 @@ impl Display for OutputFeatures {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryInto, io::ErrorKind, iter};
+    use std::{
+        convert::{TryFrom, TryInto},
+        io::ErrorKind,
+        iter,
+    };
 
     use tari_common_types::types::Signature;
 
@@ -638,6 +651,10 @@ mod test {
                         .unwrap(),
                     updated_constitution: constitution,
                     activation_window: 0_u64,
+                }),
+                checkpoint: Some(ContractCheckpoint {
+                    merkle_root: FixedHash::zero(),
+                    signatures: vec![Signature::default(); 512].try_into().unwrap(),
                 }),
             }),
             // Deprecated
@@ -769,37 +786,23 @@ mod test {
 
     #[test]
     fn test_for_checkpoint() {
-        let unique_id = vec![7, 2, 3, 4];
+        let contract_id = FixedHash::hash_bytes("CONTRACT");
         let hash = FixedHash::hash_bytes("MERKLE");
-        let committee = vec![PublicKey::default()];
-        // Initial
+        let signatures = CommitteeSignatures::try_from(vec![Signature::default()]).unwrap();
         assert_eq!(
             OutputFeatures {
-                output_type: OutputType::SidechainInitialCheckpoint,
-                sidechain_checkpoint: Some(SideChainCheckpointFeatures {
-                    merkle_root: hash,
-                    committee: committee.clone()
-                }),
-                parent_public_key: Some(PublicKey::default()),
-                unique_id: Some(unique_id.clone()),
+                output_type: OutputType::ContractCheckpoint,
+                sidechain_features: Some(
+                    SideChainFeatures::builder(contract_id)
+                        .with_contract_checkpoint(ContractCheckpoint {
+                            merkle_root: hash,
+                            signatures: signatures.clone()
+                        })
+                        .finish()
+                ),
                 ..Default::default()
             },
-            OutputFeatures::for_checkpoint(PublicKey::default(), unique_id.clone(), hash, committee.clone(), true)
-        );
-
-        // Not initial
-        assert_eq!(
-            OutputFeatures {
-                output_type: OutputType::SidechainCheckpoint,
-                sidechain_checkpoint: Some(SideChainCheckpointFeatures {
-                    merkle_root: hash,
-                    committee: committee.clone()
-                }),
-                parent_public_key: Some(PublicKey::default()),
-                unique_id: Some(unique_id.clone()),
-                ..Default::default()
-            },
-            OutputFeatures::for_checkpoint(PublicKey::default(), unique_id, hash, committee, false)
+            OutputFeatures::for_checkpoint(contract_id, hash, signatures)
         );
     }
 

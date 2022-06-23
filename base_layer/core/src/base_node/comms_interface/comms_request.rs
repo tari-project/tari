@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -77,6 +77,10 @@ pub enum NodeCommsRequest {
     },
     FetchContractOutputsForBlock {
         block_hash: HashOutput,
+        output_type: OutputType,
+    },
+    FetchContractOutputsByContractId {
+        contract_id: FixedHash,
         output_type: OutputType,
     },
 }
@@ -131,6 +135,7 @@ impl Display for NodeCommsRequest {
             FetchContractOutputsForBlock { .. } => {
                 write!(f, "FetchConstitutions")
             },
+            FetchContractOutputsByContractId { .. } => write!(f, "FetchContractOutputsByContractId"),
         }
     }
 }

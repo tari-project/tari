@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{global::GlobalDbBackendAdapter, StorageError};
+use crate::storage::{
+    global::{GlobalDbBackendAdapter, GlobalDbMetadataKey},
+    StorageError,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct MockGlobalDbBackupAdapter;
@@ -33,11 +36,11 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
         todo!()
     }
 
-    fn get_data(&self, _key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get_data(&self, _key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error> {
         todo!()
     }
 
-    fn set_data(&self, _key: &[u8], _value: &[u8]) -> Result<(), Self::Error> {
+    fn set_data(&self, _key: GlobalDbMetadataKey, _value: &[u8]) -> Result<(), Self::Error> {
         todo!()
     }
 

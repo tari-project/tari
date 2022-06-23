@@ -69,6 +69,9 @@ pub enum NodeCommsResponse {
     FetchOutputsForBlockResponse {
         outputs: Vec<UtxoMinedInfo>,
     },
+    FetchOutputsByContractIdResponse {
+        outputs: Vec<UtxoMinedInfo>,
+    },
 }
 
 impl Display for NodeCommsResponse {
@@ -107,6 +110,7 @@ impl Display for NodeCommsResponse {
                 resp.not_found.len()
             ),
             FetchOutputsForBlockResponse { .. } => write!(f, "FetchConstitutionsResponse"),
+            FetchOutputsByContractIdResponse { .. } => write!(f, "FetchOutputsByContractIdResponse"),
         }
     }
 }
