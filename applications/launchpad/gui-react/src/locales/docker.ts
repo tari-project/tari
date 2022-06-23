@@ -6,6 +6,8 @@ export default {
     imageStatuses: 'Image Statuses',
     newerVersion: 'A newer version is available',
     pullImage: 'Pull image',
+    tagLabel: 'Docker Tag',
+    registryLabel: 'Docker Registry',
     status: {
       [DockerImagePullStatus.Ready]: 'ready',
       [DockerImagePullStatus.Pulling]: 'pulling image',

@@ -47,7 +47,7 @@ const DockerSettings = ({
           margin: `${theme.spacingVertical(0.5)} 0`,
         }}
       >
-        <Label>Docker Tag</Label>
+        <Label>{t.docker.settings.tagLabel}</Label>
         <Controller
           name='docker.tag'
           control={control}
@@ -71,7 +71,7 @@ const DockerSettings = ({
           margin: `${theme.spacingVertical(0.5)} 0`,
         }}
       >
-        <Label>Docker Registry</Label>
+        <Label>{t.docker.settings.registryLabel}</Label>
         <Controller
           name='docker.registry'
           control={control}
