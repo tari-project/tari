@@ -43,12 +43,13 @@ use tokio::time::Instant;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        service::{Balance, UTXOSelectionStrategy},
+        service::Balance,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, OutputBackendQuery, OutputManagerBackend, WriteOperation},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
             OutputStatus,
         },
+        UtxoSelectionCriteria,
     },
     schema::{known_one_sided_payment_scripts, outputs, outputs::columns},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
@@ -1191,18 +1192,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     fn fetch_unspent_outputs_for_spending(
         &self,
-        strategy: UTXOSelectionStrategy,
+        selection_criteria: UtxoSelectionCriteria,
         amount: u64,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let tip = match tip_height {
-            Some(v) => v as i64,
-            None => i64::MAX,
-        };
-        let mut outputs = OutputSql::fetch_unspent_outputs_for_spending(strategy, amount, tip, &conn)?;
+        let mut outputs = OutputSql::fetch_unspent_outputs_for_spending(selection_criteria, amount, tip_height, &conn)?;
         for o in &mut outputs {
             self.decrypt_if_necessary(o)?;
         }
