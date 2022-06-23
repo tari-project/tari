@@ -39,7 +39,7 @@ pub enum PowError {
     MergeMineError(#[from] MergeMineError),
 }
 
-#[derive(Debug, Error, Clone, PartialEq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum DifficultyAdjustmentError {
     #[error("Accumulated difficulty values can only strictly increase")]
     DecreasingAccumulatedDifficulty,

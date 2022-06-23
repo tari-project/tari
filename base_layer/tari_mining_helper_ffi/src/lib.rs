@@ -183,15 +183,13 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
 pub unsafe extern "C" fn public_key_hex_validate(hex: *const c_char, error_out: *mut c_int) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let native;
 
     if hex.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("hex".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
-    } else {
-        native = CString::from_raw(hex as *mut i8).to_str().unwrap().to_owned();
     }
+    let native = CString::from_raw(hex as *mut i8).to_str().unwrap().to_owned();
     let pk = TariPublicKey::from_hex(&native);
     match pk {
         Ok(_pk) => true,
@@ -219,14 +217,12 @@ pub unsafe extern "C" fn public_key_hex_validate(hex: *const c_char, error_out: 
 pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglong, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let mut bytes;
     if header.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("header".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
-    } else {
-        bytes = (*header).0.as_slice();
     }
+    let mut bytes = (*header).0.as_slice();
     let mut block_header = match BlockHeader::consensus_decode(&mut bytes) {
         Ok(v) => v,
         Err(e) => {
@@ -254,14 +250,12 @@ pub unsafe extern "C" fn inject_nonce(header: *mut ByteVector, nonce: c_ulonglon
 pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let mut bytes;
     if header.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("header".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 1;
-    } else {
-        bytes = (*header).0.as_slice();
     }
+    let mut bytes = (*header).0.as_slice();
     let block_header = match BlockHeader::consensus_decode(&mut bytes) {
         Ok(v) => v,
         Err(e) => {
@@ -303,14 +297,12 @@ pub unsafe extern "C" fn share_validate(
 ) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let mut bytes;
     if header.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("header".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 2;
-    } else {
-        bytes = (*header).0.as_slice();
     }
+    let mut bytes = (*header).0.as_slice();
     let block_header = match BlockHeader::consensus_decode(&mut bytes) {
         Ok(v) => v,
         Err(e) => {
@@ -320,14 +312,12 @@ pub unsafe extern "C" fn share_validate(
         },
     };
 
-    let block_hash_string;
     if hash.is_null() {
         error = MiningHelperError::from(InterfaceError::NullError("hash".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 2;
-    } else {
-        block_hash_string = CString::from_raw(hash as *mut i8).to_str().unwrap().to_owned();
     }
+    let block_hash_string = CString::from_raw(hash as *mut i8).to_str().unwrap().to_owned();
     if block_header.hash().to_hex() != block_hash_string {
         error = MiningHelperError::from(InterfaceError::InvalidHash(block_hash_string)).code;
         ptr::swap(error_out, &mut error as *mut c_int);

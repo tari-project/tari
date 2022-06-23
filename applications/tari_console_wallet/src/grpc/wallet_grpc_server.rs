@@ -203,11 +203,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
         let mut output_service = self.get_output_manager_service();
-        let balance;
-        match output_service.get_balance().await {
-            Ok(b) => balance = b,
+        let balance = match output_service.get_balance().await {
+            Ok(b) => b,
             Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
-        }
+        };
         Ok(Response::new(GetBalanceResponse {
             available_balance: balance.available_balance.0,
             pending_incoming_balance: balance.pending_incoming_balance.0,
@@ -220,11 +219,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
         let mut output_service = self.get_output_manager_service();
-        let unspent_amounts;
-        match output_service.get_unspent_outputs().await {
-            Ok(uo) => unspent_amounts = uo,
+        let unspent_amounts = match output_service.get_unspent_outputs().await {
+            Ok(uo) => uo,
             Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
-        }
+        };
         Ok(Response::new(GetUnspentAmountsResponse {
             amount: unspent_amounts
                 .into_iter()

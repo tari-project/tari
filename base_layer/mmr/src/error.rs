@@ -22,7 +22,7 @@
 
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq, Clone)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum MerkleMountainRangeError {
     #[error("The next position was not a leaf node as expected")]
     CorruptDataStructure,

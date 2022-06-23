@@ -83,7 +83,7 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
@@ -361,6 +361,10 @@ where
             OutputManagerRequest::GetUnspentOutputs => {
                 let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
+            },
+            OutputManagerRequest::GetOutputsBy(q) => {
+                let outputs = self.fetch_outputs_by(q)?.into_iter().map(|v| v.into()).collect();
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
@@ -1569,6 +1573,10 @@ where
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_outputs_by(q)?)
+    }
+
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
     }
@@ -2073,7 +2081,7 @@ where
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
     // is removing small UTXOs from the blockchain, con is that it costs more in fees

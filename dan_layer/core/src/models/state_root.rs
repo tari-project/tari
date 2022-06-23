@@ -22,7 +22,7 @@
 
 use crate::fixed_hash::FixedHash;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct StateRoot {
     root: FixedHash,
 }

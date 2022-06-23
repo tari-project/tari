@@ -45,7 +45,7 @@ use crate::{
         error::OutputManagerStorageError,
         service::{Balance, UTXOSelectionStrategy},
         storage::{
-            database::{DbKey, DbKeyValuePair, DbValue, OutputManagerBackend, WriteOperation},
+            database::{DbKey, DbKeyValuePair, DbValue, OutputBackendQuery, OutputManagerBackend, WriteOperation},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
             OutputStatus,
         },
@@ -1226,6 +1226,29 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .iter()
             .map(|o| DbUnblindedOutput::try_from(o.clone()))
             .collect::<Result<Vec<_>, _>>()
+    }
+
+    fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        Ok(OutputSql::fetch_outputs_by(q, &conn)?
+            .into_iter()
+            .filter_map(|mut x| {
+                if let Err(e) = self.decrypt_if_necessary(&mut x) {
+                    error!(target: LOG_TARGET, "failed to `decrypt_if_necessary`: {:#?}", e);
+                    return None;
+                }
+
+                DbUnblindedOutput::try_from(x)
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "failed to convert `OutputSql` to `DbUnblindedOutput`: {:#?}", e
+                        );
+                        e
+                    })
+                    .ok()
+            })
+            .collect())
     }
 }
 

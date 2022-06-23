@@ -11,6 +11,13 @@
  */
 #define OutputFields_NUM_FIELDS 10
 
+enum TariUtxoSort {
+  ValueAsc,
+  ValueDesc,
+  MinedHeightAsc,
+  MinedHeightDesc,
+};
+
 /**
  * This struct holds the detailed balance of the Output Manager Service.
  */
@@ -55,8 +62,6 @@ struct EmojiSet;
 struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
-
-struct GetUtxosView;
 
 struct InboundTransaction;
 
@@ -270,6 +275,17 @@ typedef struct TransportConfig TariTransportConfig;
 typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
+
+struct TariUtxo {
+  char *commitment;
+  uint64_t value;
+};
+
+struct TariOutputs {
+  uintptr_t len;
+  uintptr_t cap;
+  struct TariUtxo *ptr;
+};
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
@@ -2151,29 +2167,44 @@ TariBalance *wallet_get_balance(struct TariWallet *wallet,
  * This function returns a list of unspent UTXO values and commitments.
  *
  * ## Arguments
- * `wallet` - The TariWallet pointer
- * `page` - Page offset
- * `page_size` - A number of items per page
- * `sort_ascending` - Sorting order
- * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold`, are not listed in the
- * result, but are added to the `GetUtxosView.unlisted_dust_sum`.
- * `error_out` - Pointer to an int which will be modified to an error
+ * `wallet` - The TariWallet pointer,
+ * `page` - Page offset,
+ * `page_size` - A number of items per page,
+ * `sorting` - An enum representing desired sorting,
+ * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
+ * result.
+ * `error_out` - A pointer to an int which will be modified to an error
  * code should one occur, may not be null. Functions as an out parameter.
  *
  * ## Returns
- * `*mut GetUtxosView` - Returns a struct with a list of unspent `outputs` and an `unlisted_dust_sum` holding a sum of
- * values that were filtered out by `dust_threshold`.
+ * `*mut TariOutputs` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+ * after use).
  *
  * # Safety
+ * `destroy_tari_outputs()` must be called after use.
  * Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
  * LOG_TARGET.
  */
-struct GetUtxosView *wallet_get_utxos(struct TariWallet *wallet,
-                                      unsigned int page,
-                                      unsigned int page_size,
-                                      bool sort_ascending,
-                                      unsigned long long dust_threshold,
-                                      int *error_out);
+struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
+                                     uintptr_t page,
+                                     uintptr_t page_size,
+                                     enum TariUtxoSort sorting,
+                                     uint64_t dust_threshold,
+                                     int32_t *error_out);
+
+/**
+ * Frees memory for a `TariOutputs`
+ *
+ * ## Arguments
+ * `x` - The pointer to `TariOutputs`
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_tari_outputs(struct TariOutputs *x);
 
 /**
  * Signs a message using the public key of the TariWallet

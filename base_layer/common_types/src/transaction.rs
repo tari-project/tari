@@ -11,7 +11,7 @@ use thiserror::Error;
 
 pub use crate::tx_id::TxId;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionStatus {
     /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
     Completed,
@@ -99,7 +99,7 @@ impl Display for TransactionStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportStatus {
     /// This transaction import status is used when importing a spendable UTXO
     Imported,
@@ -134,7 +134,7 @@ impl TryFrom<TransactionStatus> for ImportStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransactionDirection {
     Inbound,
     Outbound,
