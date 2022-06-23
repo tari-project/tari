@@ -4,7 +4,7 @@ import styled, { ThemeProvider } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import useTransactionsRepository from './persistence/transactionsRepository'
-import { actions as dockerImagesActions } from './store/dockerImages'
+import { init } from './store/app'
 import {
   selectOnboardingComplete,
   selectThemeConfig,
@@ -13,7 +13,6 @@ import { useSystemEvents } from './useSystemEvents'
 import { useWalletEvents } from './useWalletEvents'
 import { useDockerEvents } from './useDockerEvents'
 import HomePage from './pages/home'
-import { loadDefaultServiceSettings } from './store/settings/thunks'
 import './styles/App.css'
 
 import useMiningScheduling from './useMiningScheduling'
@@ -35,18 +34,17 @@ const OnboardedAppContainer = ({ children }: { children: any }) => {
   const dispatch = useAppDispatch()
 
   useEffect(() => {
-    const init = async () => {
-      await dispatch(loadDefaultServiceSettings()).unwrap()
-      await dispatch(dockerImagesActions.getDockerImageList()).unwrap()
+    const callInitActionInStore = async () => {
+      await dispatch(init()).unwrap()
       setInitialized(true)
     }
 
-    init()
+    callInitActionInStore()
   }, [])
 
+  useDockerEvents({ dispatch })
   useSystemEvents({ dispatch })
   useWalletEvents({ dispatch, transactionsRepository })
-  useDockerEvents({ dispatch })
   useMiningScheduling()
 
   if (!initialized) {

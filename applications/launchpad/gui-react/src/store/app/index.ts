@@ -69,6 +69,7 @@ export const {
   updateSchedule,
   setOnboardingComplete,
 } = appSlice.actions
+export * from './thunks'
 
 const reducer = appSlice.reducer
 export default reducer
