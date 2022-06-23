@@ -27,9 +27,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::{chain_storage::UtxoMinedInfo, transactions::transaction_components::OutputType};
+use tari_crypto::ristretto::RistrettoPublicKey;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -477,6 +477,7 @@ impl ServiceSpecification for MockServiceSpecification {
     type CommitteeManager = MockCommitteeManager;
     type DbFactory = MockDbFactory;
     type EventsPublisher = MockEventsPublisher<ConsensusWorkerDomainEvent>;
+    type GlobalDbAdapter = crate::storage::mocks::global_db::MockGlobalDbBackupAdapter;
     type InboundConnectionService = MockInboundConnectionService<Self::Addr, Self::Payload>;
     type MempoolService = MockMempoolService;
     type OutboundService = MockOutboundService<Self::Addr, Self::Payload>;
@@ -487,5 +488,4 @@ impl ServiceSpecification for MockServiceSpecification {
     type StateDbBackendAdapter = MockStateDbBackupAdapter;
     type ValidatorNodeClientFactory = MockValidatorNodeClientFactory;
     type WalletClient = MockWalletClient;
-    type GlobalDbAdapter = crate::storage::mocks::global_db::MockGlobalDbBackupAdapter;
 }
