@@ -421,8 +421,6 @@ const findUtxoWithOutputMessage = async (wallet, message) => {
     await sleep(5000);
   }
 
-  console.log({ accepted });
-
   return accepted;
 };
 
