@@ -41,7 +41,8 @@ use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
-    service::{Balance, UTXOSelectionStrategy},
+    input_selection::UtxoSelectionCriteria,
+    service::Balance,
     storage::{
         models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         OutputStatus,
@@ -250,13 +251,13 @@ where T: OutputManagerBackend + 'static
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     pub fn fetch_unspent_outputs_for_spending(
         &self,
-        strategy: UTXOSelectionStrategy,
+        selection_criteria: UtxoSelectionCriteria,
         amount: MicroTari,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let utxos = self
             .db
-            .fetch_unspent_outputs_for_spending(strategy, amount.as_u64(), tip_height)?;
+            .fetch_unspent_outputs_for_spending(selection_criteria, amount.as_u64(), tip_height)?;
         Ok(utxos)
     }
 
