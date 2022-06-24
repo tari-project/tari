@@ -13,13 +13,17 @@ import {
   OnboardingMessagesLastSteps,
 } from '../../config/onboardingMessagesConfig'
 import { setOnboardingComplete } from '../../store/app'
-import { useAppDispatch } from '../../store/hooks'
+import { selectOnboardingCheckpoint } from '../../store/app/selectors'
+import { OnboardingCheckpoints } from '../../store/app/types'
+import { useAppDispatch, useAppSelector } from '../../store/hooks'
 import { StyledOnboardingContainer } from './styles'
 
 const OnboardingContainer = () => {
   const dispatch = useAppDispatch()
 
   const messagesRef = useRef<TBotMessage[]>()
+
+  const lastOnboardingCheckpoint = useAppSelector(selectOnboardingCheckpoint)
 
   const [messages, setMessages] = useState(OnboardingMessagesIntro)
   const [dockerInstalled, setDockerInstalled] = useState<boolean | undefined>(
@@ -31,7 +35,31 @@ const OnboardingContainer = () => {
   messagesRef.current = messages
 
   const checkDocker = async () => {
-    setDockerInstalled(await isDockerInstalled())
+    const isDocker = await isDockerInstalled()
+    setDockerInstalled(isDocker)
+    if (
+      isDocker &&
+      lastOnboardingCheckpoint === OnboardingCheckpoints.DOCKER_INSTALL
+    ) {
+      setMessages(
+        OnboardingMessagesDockerInstallAfter.concat([
+          {
+            content: () => (
+              <DownloadImagesMessage
+                key='dim'
+                onError={onDockerImageDownloadError}
+                onSuccess={onImagesDowloadSuccess}
+              />
+            ),
+            barFill: 0.625,
+            noSkip: true,
+          },
+        ]),
+      )
+    }
+    /**
+     * @TODO - it's a perfect spot for the splashscreen invoke
+     */
   }
 
   useEffect(() => {
@@ -91,8 +119,8 @@ const OnboardingContainer = () => {
 
   /** IS DOCKER INSTALLED */
   useEffect(() => {
-    // Do not push Docker related messages until the intro is done
-    if (tBotIndex !== 4) {
+    // Do not push Docker related messages to queue until the intro is done
+    if (tBotIndex !== 4 || (dockerInstalled && lastOnboardingCheckpoint)) {
       return
     }
 

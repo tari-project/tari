@@ -33,6 +33,9 @@ const translations = {
       part1: '🆘 I almost forgot! If you have any problems or doubts',
       part2: 'contact our awsome Tari community on Discord.',
     },
+    message5: {
+      link: 'Take me to installation page',
+    },
     afterInstall: 'Easy peasy, lemon squeezy! Congratulations! 👏 Docker is installed on your computer. I knew you could handle it. Now it\'s time for the final stretch.',
   },
   dockerImages: {

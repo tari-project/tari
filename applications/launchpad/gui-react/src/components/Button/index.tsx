@@ -8,6 +8,7 @@ import {
   StyledButton,
   StyledButtonText,
   StyledLink,
+  StyledLinkLikeButton,
 } from './styles'
 import { ButtonProps } from './types'
 
@@ -118,6 +119,21 @@ const Button = ({
   }
 
   if (type === 'link' || href) {
+    if (variant && variant !== 'text') {
+      return (
+        <StyledLinkLikeButton
+          href={href}
+          onClick={onClick}
+          style={style}
+          target='_blank'
+          variant={variant}
+          data-testid={testId}
+        >
+          {btnContent}
+        </StyledLinkLikeButton>
+      )
+    }
+
     return (
       <StyledLink
         href={href}

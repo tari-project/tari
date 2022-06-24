@@ -46,6 +46,7 @@ const ICONS = [
   'Cpu',
   'Cup',
   'Discovery',
+  'Docker',
   'Document',
   'Dollar',
   'Edit',

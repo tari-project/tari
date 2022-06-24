@@ -4,7 +4,12 @@ import { ThemeType } from '../../styles/themes/types'
 import { Schedule } from '../../types/general'
 import { startOfUTCDay } from '../../utils/Date'
 
-import { AppState, ExpertViewType, ViewType } from './types'
+import {
+  AppState,
+  ExpertViewType,
+  OnboardingCheckpoints,
+  ViewType,
+} from './types'
 
 export const appInitialState: AppState = {
   expertView: 'hidden',
@@ -13,6 +18,7 @@ export const appInitialState: AppState = {
   theme: 'light',
   schedules: {},
   onboardingComplete: false,
+  onboardingCheckpoint: undefined,
 }
 
 const appSlice = createSlice({
@@ -56,6 +62,12 @@ const appSlice = createSlice({
     setOnboardingComplete(state, { payload }: { payload: boolean }) {
       state.onboardingComplete = payload
     },
+    setOnboardingCheckpoint(
+      state,
+      { payload }: { payload: OnboardingCheckpoints },
+    ) {
+      state.onboardingCheckpoint = payload
+    },
   },
 })
 
@@ -68,6 +80,7 @@ export const {
   removeSchedule,
   updateSchedule,
   setOnboardingComplete,
+  setOnboardingCheckpoint,
 } = appSlice.actions
 
 const reducer = appSlice.reducer
