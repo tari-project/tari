@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
+use tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -44,59 +45,51 @@ pub fn validate_output_type(
     Ok(())
 }
 
-pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, ValidationError> {
-    match output.features.sidechain_features.as_ref() {
-        Some(features) => Ok(features),
-        None => Err(ValidationError::DanLayerError(
-            "Sidechain features not found".to_string(),
-        )),
+pub fn fetch_contract_features<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+    output_type: OutputType,
+) -> Result<Option<SideChainFeatures>, ValidationError> {
+    let outputs = db
+        .fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
+        .map_err(|err| ValidationError::DanLayerError(format!("Could not search outputs: {}", err)))?;
+    if outputs.is_empty() {
+        return Ok(None);
+    }
+
+    let utxo_info = match outputs.first() {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+
+    let transaction_output = match utxo_info.output.as_transaction_output() {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+
+    match transaction_output.features.sidechain_features.as_ref() {
+        Some(value) => Ok(Some(value.clone())),
+        None => Ok(None),
     }
 }
 
-pub fn get_contract_constitution<B: BlockchainBackend>(
+pub fn fetch_contract_constitution<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<ContractConstitution, ValidationError> {
-    let contract_outputs = db
-        .fetch_contract_outputs_by_contract_id_and_type(contract_id, OutputType::ContractConstitution)
-        .unwrap();
+    let features_result = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
 
-    if contract_outputs.is_empty() {
-        return Err(ValidationError::DanLayerError(
-            "Contract constitution not found".to_string(),
-        ));
-    }
-
-    // we assume that only one constitution should be present in the blockchain for any given contract
-    // TODO: create a validation to avoid duplicated constitution publishing
-    let utxo_info = match contract_outputs.first() {
+    let features = match features_result {
         Some(value) => value,
         None => {
-            return Err(ValidationError::DanLayerError(
-                "Contract constitution UtxoMindInfo not found".to_string(),
-            ))
+            return Err(ValidationError::DanLayerError(format!(
+                "Contract constitution not found for contract_id {}",
+                contract_id.to_hex()
+            )))
         },
     };
 
-    let constitution_output = match utxo_info.output.as_transaction_output() {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::DanLayerError(
-                "Contract constitution output not found".to_string(),
-            ))
-        },
-    };
-
-    let constitution_features = match constitution_output.features.sidechain_features.as_ref() {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::DanLayerError(
-                "Contract constitution output features not found".to_string(),
-            ))
-        },
-    };
-
-    let constitution = match constitution_features.constitution.as_ref() {
+    let constitution = match features.constitution.as_ref() {
         Some(value) => value,
         None => {
             return Err(ValidationError::DanLayerError(
@@ -106,4 +99,13 @@ pub fn get_contract_constitution<B: BlockchainBackend>(
     };
 
     Ok(constitution.clone())
+}
+
+pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, ValidationError> {
+    match output.features.sidechain_features.as_ref() {
+        Some(features) => Ok(features),
+        None => Err(ValidationError::DanLayerError(
+            "Sidechain features not found".to_string(),
+        )),
+    }
 }

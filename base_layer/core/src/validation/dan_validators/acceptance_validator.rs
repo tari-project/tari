@@ -22,7 +22,7 @@
 
 use tari_common_types::types::PublicKey;
 
-use super::helpers::{get_contract_constitution, get_sidechain_features, validate_output_type};
+use super::helpers::{fetch_contract_constitution, get_sidechain_features, validate_output_type};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
@@ -48,7 +48,7 @@ pub fn validate_acceptance<B: BlockchainBackend>(
     let acceptance_features = get_contract_acceptance(sidechain_features)?;
     let validator_node_public_key = &acceptance_features.validator_node_public_key;
 
-    let constitution = get_contract_constitution(db, contract_id)?;
+    let constitution = fetch_contract_constitution(db, contract_id)?;
 
     validate_public_key(constitution, validator_node_public_key)?;
 

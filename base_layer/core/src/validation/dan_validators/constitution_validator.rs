@@ -23,7 +23,7 @@
 use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
-use super::helpers::{get_sidechain_features, validate_output_type};
+use super::helpers::{fetch_contract_features, get_sidechain_features, validate_output_type};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{OutputType, TransactionOutput},
@@ -49,39 +49,32 @@ fn validate_definition_existence<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
-    let outputs = db
-        .fetch_contract_outputs_by_contract_id_and_type(contract_id, OutputType::ContractDefinition)
-        .map_err(|err| ValidationError::DanLayerError(format!("Could not search outputs: {}", err)))?;
-
-    if outputs.is_empty() {
-        let msg = format!(
-            "Contract definition not found for contract_id ({:?})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+    match fetch_contract_features(db, contract_id, OutputType::ContractDefinition)? {
+        Some(_) => Ok(()),
+        None => {
+            let msg = format!(
+                "Contract definition not found for contract_id ({:?})",
+                contract_id.to_hex()
+            );
+            Err(ValidationError::DanLayerError(msg))
+        },
     }
-
-    Ok(())
 }
 
 fn validate_duplication<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
-    let outputs = db
-        .fetch_contract_outputs_by_contract_id_and_type(contract_id, OutputType::ContractConstitution)
-        .map_err(|err| ValidationError::DanLayerError(format!("Could not search outputs: {}", err)))?;
-
-    let is_duplicated = !outputs.is_empty();
-    if is_duplicated {
-        let msg = format!(
-            "Duplicated contract constitution for contract_id ({:?})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+    match fetch_contract_features(db, contract_id, OutputType::ContractConstitution)? {
+        Some(_) => {
+            let msg = format!(
+                "Duplicated contract constitution for contract_id ({:?})",
+                contract_id.to_hex()
+            );
+            Err(ValidationError::DanLayerError(msg))
+        },
+        None => Ok(()),
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
