@@ -20,12 +20,31 @@ export const Sidebar = styled.aside`
   min-width: 160px;
   height: 100%;
   border-right: 1px solid ${({ theme }) => theme.borderColor};
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+`
+
+export const SidebarTabs = styled.div`
+  width: 160px;
+  min-width: 160px;
+  border-right: 1px solid ${({ theme }) => theme.borderColor};
   padding-top: ${({ theme }) => theme.spacing(2)};
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   row-gap: ${({ theme }) => theme.spacing(0.75)};
+  justify-content: space-between;
   align-items: flex-end;
+`
+
+export const SidebarSelectTheme = styled.div`
+  padding: ${({ theme }) => theme.spacingVertical(0.67)} 0;
+  padding-left: ${({ theme }) => theme.spacingHorizontal()};
+  box-sizing: border-box;
+  width: 136px;
+  align-self: flex-end;
 `
 
 export const MenuItem = styled.button<{ active?: boolean }>`
@@ -40,10 +59,11 @@ export const MenuItem = styled.button<{ active?: boolean }>`
   background: ${({ theme, active }) =>
     active ? theme.backgroundImage : 'none'};
   box-sizing: border-box;
-  padding: ${({ theme }) => theme.spacingVertical()} 0;
+  padding: ${({ theme }) => theme.spacingVertical(0.67)} 0;
   padding-left: ${({ theme }) => theme.spacingHorizontal()};
   width: 136px;
   color: ${({ theme, active }) => (active ? theme.accent : theme.accentDark)};
+  height: 39px;
 
   &:hover {
     background: ${({ theme }) => theme.backgroundImage};
@@ -93,4 +113,13 @@ export const RowSpacedBetween = styled.div`
   justify-content: space-between;
   align-items: center;
   margin: ${({ theme }) => theme.spacingVertical(0.6)} 0;
+`
+
+export const SwitchBg = styled.div<{ $transparent?: boolean }>`
+  display: inline-flex;
+  background: ${({ theme, $transparent }) =>
+    $transparent ? 'transparent' : theme.backgroundImage};
+  margin-top: ${({ theme }) => theme.spacingVertical(0.67)};
+  padding: ${({ theme }) => theme.spacingVertical(0.5)};
+  border-radius: ${({ theme }) => theme.borderRadius(0.67)};
 `

@@ -1,6 +1,7 @@
 import { Control, FormState, UseFormSetValue } from 'react-hook-form'
 import { MergedMiningNodeState, MoneroUrl } from '../../store/mining/types'
 import { Settings } from '../../store/settings/types'
+import { ThemeType } from '../../styles/themes/types'
 import { Network } from '../BaseNodeContainer/types'
 
 export type SettingsProps = {
@@ -54,4 +55,6 @@ export type SettingsComponentProps = {
   discardChanges: () => void
   openMiningAuthForm: boolean
   setOpenMiningAuthForm: (value: boolean) => void
+  currentTheme: ThemeType
+  changeTheme: (theme: ThemeType) => void
 }

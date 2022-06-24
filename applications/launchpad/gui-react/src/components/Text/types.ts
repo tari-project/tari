@@ -28,7 +28,9 @@ export interface TextProps {
   type?: TextType
   children: ReactNode
   color?: string
-  style?: CSSProperties | Record<string, SpringValue<string>>
+  style?:
+    | CSSProperties
+    | Record<string, SpringValue<string> | SpringValue<number>>
   as?:
     | 'h1'
     | 'h2'

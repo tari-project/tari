@@ -1,5 +1,7 @@
 import { useMemo, useEffect, useState } from 'react'
 import { useForm, SubmitHandler } from 'react-hook-form'
+import { setTheme } from '../../store/app'
+import { selectTheme } from '../../store/app/selectors'
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import { selectMergedMiningState } from '../../store/mining/selectors'
@@ -10,6 +12,7 @@ import {
   selectServiceSettings,
 } from '../../store/settings/selectors'
 import { saveSettings } from '../../store/settings/thunks'
+import { ThemeType } from '../../styles/themes/types'
 
 import SettingsComponent from './SettingsComponent'
 import { SettingsInputs } from './types'
@@ -21,6 +24,8 @@ const SettingsContainer = () => {
 
   const miningMerged = useAppSelector(selectMergedMiningState)
   const serviceSettings = useAppSelector(selectServiceSettings)
+
+  const currentTheme = useAppSelector(selectTheme)
 
   const [openMiningAuthForm, setOpenMiningAuthForm] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
@@ -74,6 +79,10 @@ const SettingsContainer = () => {
     setConfirmCancel(true)
   }
 
+  const changeTheme = (theme: ThemeType) => {
+    dispatch(setTheme(theme))
+  }
+
   const closeAndDiscard = () => {
     setConfirmCancel(false)
     if (formState.isDirty) {
@@ -99,6 +108,8 @@ const SettingsContainer = () => {
       discardChanges={closeAndDiscard}
       openMiningAuthForm={openMiningAuthForm}
       setOpenMiningAuthForm={setOpenMiningAuthForm}
+      currentTheme={currentTheme}
+      changeTheme={changeTheme}
     />
   )
 }
