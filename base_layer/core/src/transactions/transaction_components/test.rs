@@ -22,15 +22,7 @@
 
 use digest::Digest;
 use rand::{self, rngs::OsRng, Rng};
-use tari_common_types::types::{
-    BlindingFactor,
-    ComSignature,
-    CommitmentFactory,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-    Signature,
-};
+use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_comms::types::Challenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -113,14 +105,12 @@ fn range_proof_verification() {
     // Directly test the tx_output verification
     let test_params_1 = TestParams::new();
     let test_params_2 = TestParams::new();
-    let output_features = OutputFeatures::default();
 
     // For testing the max range has been limited to 2^32 so this value is too large.
     let unblinded_output1 = test_params_1.create_unblinded_output(UtxoTestParams {
         value: (2u64.pow(32) - 1u64).into(),
         ..Default::default()
     });
-    let script = unblinded_output1.script.clone();
     let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
@@ -137,36 +127,28 @@ fn range_proof_verification() {
         },
     }
 
-    let value = 2u64.pow(32);
-    let v = PrivateKey::from(value);
-    let c = factories.commitment.commit(&test_params_2.spend_key, &v);
-    let proof = factories
+    // Test that proofs with values encroaching on the bit length cannot be constructed
+    if factories
         .range_proof
         .construct_proof(&test_params_2.spend_key, 2u64.pow(32) - 1)
-        .unwrap();
-
-    let encrypted_value = EncryptedValue::todo_encrypt_from(value);
-    let tx_output3 = TransactionOutput::new_current_version(
-        output_features.clone(),
-        c,
-        RangeProof::from_bytes(&proof).unwrap(),
-        script.clone(),
-        test_params_2.sender_offset_public_key,
-        TransactionOutput::create_final_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            value.into(),
-            &test_params_2.spend_key,
-            &script,
-            &output_features,
-            &test_params_2.sender_offset_private_key,
-            &Covenant::default(),
-            &encrypted_value,
-        )
-        .unwrap(),
-        Covenant::default(),
-        encrypted_value,
-    );
-    tx_output3.verify_range_proof(&factories.range_proof).unwrap_err();
+        .is_err()
+    {
+        panic!("Range proof construction should have succeeded")
+    };
+    if factories
+        .range_proof
+        .construct_proof(&test_params_2.spend_key, 2u64.pow(32))
+        .is_ok()
+    {
+        panic!("Range proof construction should have failed")
+    };
+    if factories
+        .range_proof
+        .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
+        .is_ok()
+    {
+        panic!("Range proof construction should have failed")
+    };
 }
 
 #[test]

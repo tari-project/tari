@@ -93,8 +93,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
 fn get_igor_genesis_block_raw() -> Block {
     let sig = Signature::new(
-        PublicKey::from_hex("241ccf966ae42c350fca8848cf31f999054125b88b057a25742f91ceb9aac777").unwrap(),
-        PrivateKey::from_hex("e7c7308ab867afd781ee7051be2c7fd7abd5f580935fad32219bfffb8b56640e").unwrap(),
+        PublicKey::from_hex("aa8ae9b04d87a8e864ff8dfb1d37dc1b7ea0e7b8ec314c0d4172e228b7b6966f").unwrap(),
+        PrivateKey::from_hex("fff382bba64848ed7a15b97be2b9e3e7f0d8752b551ea794d08070f53e044309").unwrap(),
     );
     let mut body = AggregateBody::new(
         vec![],
@@ -105,10 +105,10 @@ fn get_igor_genesis_block_raw() -> Block {
                 .. Default::default()
             },
             Commitment::from_hex(
-                "d097d496c74f8542d02fa0fe1a7bf8861548f895fae1dbf7c95a746f06b1f004",
+                "e29d3838b35425b4bd2dc51bc1b6761652b08302c942a14c9557991c83a0cc75",
             )
                 .unwrap(),
-            BulletRangeProof::from_hex("013a682cfb99bc6d72899d79dd94b7f6738d9120417e7779517259668ab9e09c2198e213732818f52fe5eb5f0100b6446ac02e6527189d8309c13e2441c9749f0caad4621f700d5f23d6f31980e1269d3dd9dadcff4a27b6b77e78e1308554f62f602aba7e370d2ffa3c46a0b4f46c44501c1ac7fc44f3c8d9de2ff50268366740dcccea7aacc754cd7dfde918703ce512b899e68a323c064ba31a0008d16ea83ea669c4507405bcc8c29195c0f479d2b35afe15a05a72ab84b9180873b25f2908f4e286f6860bb17245634587d563164fee262d037568564bf774388e72fe6c4ad83a6fd4c1abc4d195090c14c9c6aade00e696aab5115d8e55848936dfe50e6ec4e87cd4366eae7191976f0a2f30576538a91412466dc97192e92f693a77ba272ca7d6794487c681642529fe3123cb52adaa7872ed279e0b52d4c93d07ffd00e5cdc36b5ca5fb70f0f69105aee5151833ab85bbc9dc86c609cdeb17921fc8e3f744fe41f1adb00f1395c8665b840fc2e7349bf74e03f429567c48c09e9be8f1462d4e0daa5c56ab51b10503b7f295c94c4c5a83c3fd2928c519dced92acac12eecef5fb95981f1cdccef7f3736c5b01ea87e2928ae5530eb5dccb762f319f9466638ecca082374cd9039fb4cbc3e297f424a91898c4daed2cf2c84942526854bdee2cf022cbec5750f0527d4bd117bb0972e5e8f4c5371b33a185012eb67590dec6d5eadc8b952970b8f7340c14b885753fc4edf466108e7ce2a42760bb5e304dd36c60e270fa26827f578ffc90e0538149461d9ed03240c66d69e9ca1e19d0c").unwrap(),
+            BulletRangeProof::from_hex("01800de4e1880d93a37ba64c3ea89d4a0ae80e2eb13246fce934afb1137b76dc11e63844aa27ecea714e8dbc2ce493b570d400021e56e06f7a1c6282bf6691c36b1ccb13c90f9ae3c1d465b15df837f7aa80dc1588a710b025bfdf7e0f644dd11980546fc6818b5d743bccfb445dfd204595acbf12b55fa48af94c2d0c440d2a0d5a504ef2f187153d9858f36c70220a4664e14c63ba5eb61b5f29f5919ee55b04382997b9a5da0a9ecf73a87bdd62df5e940cc6920203ed052e9e5a8593d895045e060ad5ccdc09589764df8548b74aac78638aaec2f5b5a6a8059a655a014051e2de4a7cec5f1cea4eed03e284d8b4016bba1c01df28366048675b69edc9a111aad822eb2480f60f8a47e69a8dbe5da81d6fce2db1f8693a19ef7bd3874aef6c66808cf659248d2c1318ea10a3879d90c1e72e35f4ab2fa54a96cace0750cc0c243db3b9ea0d4689710e9b5333f8a2afe1498d858563d854ded157ac8edc387b34c17264fa732073f0cc84f3059b21ce56a36e365e9c8870f8cd04ab6954691784548aa91291866e22f63e075b7d6cd3e716b2a00ca54b8a97fe2d7849c11150b452eaf1e0e6c0d2dc47784cb40f9b3760fef866de67ea0fe6806bb1f9157f7286572aad2df06898c60812b296f7fb32780869f05df1317baf5061688b2d6a0616ace1b57ba77fd77550909beaa1aed0be964fc074d7fea017de081258c1da0febeca59e34cdf2f88c48052d8cfe8d504eb0bea91d95ad229cb37a06b1e5e20339aa4d5a6e2899a99e0ec40f83152839da49db9ade865ca9de305bb7f20d4d0c").unwrap(),
             // For genesis block: A default script can never be spent, intentionally
             TariScript::default(),
             // Script offset never checked for coinbase, thus can use default
@@ -123,7 +123,7 @@ fn get_igor_genesis_block_raw() -> Block {
             MicroTari(0),
             0,
             Commitment::from_hex(
-                "0cdfb637574c7b163095077e099a6599a63c9b8201781d2cfee170c08d8ad605",
+                "9474ba70976e2fa06f970bb83f7d0a4d4b45e6e29f834847b659d32102f90b51",
             )
                 .unwrap(),
             sig,
@@ -140,10 +140,10 @@ fn get_igor_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
-            output_mr: from_hex("d321d92a6f321444eb0e4805bbd341b4f7dd321797ac051b18f396c769c93ad7").unwrap(),
-            witness_mr: from_hex("1d1dac0c3b712dc3fc824e63969731258c5f5f62ea6c23dca0581681bc56ddf3").unwrap(),
+            output_mr: from_hex("3cf274cea5e77c5b259f0bf0e63b2d4dcc1eaa0bb96c1497524f71ff84430815").unwrap(),
+            witness_mr: from_hex("0897676242cdb559647e12a2b416c518d4a5b737d66d72eb31cf24cc025700ad").unwrap(),
             output_mmr_size: 1,
-            kernel_mr: from_hex("b3231893fa5c497c9bd53999b740db78f67e0b8f3d0278e98350ae963d8bfdbc").unwrap(),
+            kernel_mr: from_hex("d6db311096294e468177f294c4398275e843278274ba97a4e7d01f1a90cab86d").unwrap(),
             kernel_mmr_size: 1,
             input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: PrivateKey::from_hex(
@@ -214,9 +214,9 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     // println!("output mr: {}", block.header.output_mr.to_hex());
 
     // Hardcode the Merkle roots once they've been computed above
-    block.header.kernel_mr = from_hex("c2c248c913cc352c8e0bc3e556e749d6dc9c141c3be21c907de07d9666c9bce1").unwrap();
-    block.header.witness_mr = from_hex("8c76b516f156eea99c9ef8b999428b5a0b5955336dcd69626d06d4b677e61fde").unwrap();
-    block.header.output_mr = from_hex("f59571be572410f108d5415a1e14e7ef02fad872cffe8d52b0b074dc32761f17").unwrap();
+    block.header.kernel_mr = from_hex("79762ea3b7aeb45e932ad4a1def59744ebfd7b85b84269bd5ec2f3d1c4da8c00").unwrap();
+    block.header.witness_mr = from_hex("e84e9735700147a4dcbb2bb3161b6df91411cb71c0974c08f2e1e965936412d3").unwrap();
+    block.header.output_mr = from_hex("f4a6a58046dc15b446b572f559c112c5173b9c24a234c7c2059aaed99ac496e1").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -233,8 +233,8 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
 fn get_dibbler_genesis_block_raw() -> Block {
     // Note: Use print_new_genesis_block in block_builders.rs to generate the required fields below
     let excess_sig = Signature::new(
-        PublicKey::from_hex("48b45d1a3c9d8daec78d14b228d3d718c4066a774df5f114f8e6a46d9a4c0232").unwrap(),
-        PrivateKey::from_hex("dcfc85add0315d11ea21e3d65cb848f43ffc176cc207e6ff25d55ecde5dc7908").unwrap(),
+        PublicKey::from_hex("024008ec92ab04b039fcdef2d20e4a7a72f5088797cc16855d30b91d5cfbcb16").unwrap(),
+        PrivateKey::from_hex("5d37ce54fe8beeff5330cfca82997878f1263d76331114a9030a383bcdc9e901").unwrap(),
     );
     let coinbase = TransactionOutput::new(
             TransactionOutputVersion::get_current_version(),
@@ -252,8 +252,8 @@ fn get_dibbler_genesis_block_raw() -> Block {
                 sidechain_checkpoint: None,
                 committee_definition: None,
             },
-            Commitment::from_hex("82123f9b9118c29a407d36d3896f188bef34545ffcdcb0d927d39cafc04fcb69").unwrap(),
-            BulletRangeProof::from_hex("01e2db56bf110a57743363419f0cac81f8fe321d3313cca346af48b0ad8be8035a48be82a4f3a4c5bf60771cec692b39cbc8d8283b3598758ad8d6a946dc08482d98d185702776b53fc22a915fc520376c58fbea716035b340a39d173c5621b4491e3d646968947ed1971e139605c041c8fefe6dca7a92a9d16d66bc7774ed045c1cc264b2338a2c803523f0c39b2e85e9fe79de2de934d77219a54b93f2aa2571e4c29332b89c64f105154f87c90a293a176573ee3577d152821178099e241c25c061f0ef48fd719f7e8c5b0d935d6fd38570bb284c7adeb2637d0b9fc3690766fc1863d8128a58f913c146a471ce3ee80e1c46800309062671de046070fd642c12949afde0678aacc80ebde85075f92b0910a1c2ea43cb56fe4bef4827cfe01b725edb09aa07d25742afb107dfa4655d20f7a1a75bf3b8e936f7c2cb86a6b90bca4643a7d4da44ef1f7cf8cc4e70c3825162db4a585567fe86c171f77e4ad87e66d04e70553a39470717149a9f9b5915f1e9481cd1bb62a6666653cf0bfaf12f0ea61f616a37f26a56ced1279e3493f79be9ed59129a223c8f9af3ed0b90587fdcae2975b1740426f927be31af91efc60b84bbf2c26633045f75521e194524716085e1ecd85cce1cb903f2072de422371fea666997ddef80878e0da0ad4cf00c768dc8b8749cdf0682eba1ff91577076bce5ad5acc7182ab59185e37961b5f05ba67589a853817188dd61d169eab692e6ef70a03b9b0ed1f8a630733ba626c08dc5496462b338ab9a2d52ca17e55bc671c6558d4c17f1a14e4daa8ce62cac907").unwrap(),
+            Commitment::from_hex("b699aba9a294d2e654bcd076cc2a6f8fb4ea5de880615a7e536267199da71c0f").unwrap(),
+            BulletRangeProof::from_hex("01ee67e6b49742e37a1db8649728f96d59e8f0568a28fbf6f98768db0084681a2776f0f43b1593b4aa18dc0d6d5648e25c44a20224ca5df8196928472720140a4356f7d057b873997de9b163f3377f8c96b061ccdeb0df3c7a2375ceeb8984af3104ff189b0f6f2ce1d774e0a2b48beb8f83d5484650084812cb0d47d3c0bc297790e40d9a5e8e03cc53cf9198ea7408984f663c7f24d9407b0603d7088d3dcd37d295b8350602cbd25e591d7a2db4693357f01af104079d2741dcb5c60424f7255c814e9d1f808ae6f40983c006a94012827c6c485f9fa1fe5fa0e3db8af34c4502ce691fbb08b06adb7c9ebfea63c968fb5995accbbcf3cbaef364c56cf1551646dc4cd6f2f062614daa7b957f1e163c0306e00d2fb055381c8182a63dd2d65cda0bd869da7c6a8b1b564a9376b1d46d40624ebb728443d34c4a0722fbcc152d4a5a1a19e35795b5283985958fd324525fe2f3ad7d8b799cd6ecb4811a8da42290e13d02454adfdcd9f0cc1b65fd8d1e10f6327e57537ebbc5515b0fc176c447ecbd1aebce5cd14a591572a73a3e4a2d964a96458dfa97da7efc0e8297e7f62400d264d2367621433dad037da65b48c568a920ed34645fb9efb6f0c47c27235e8c6750e139177bc2c911ceb40e5fa85359aa6389e404c6ba2e01fcd40cdee41b72f351a29627333cbec5d5842bcb092a6c23180dac2eb04420c09deaae05830b75836ab9c8a9a0991ed29b17eded69e024c9a7e4850d7e1ea275f7c7530a12080467f938e7fc72a59be21603d1a271d11f60f6370a850ce553a97284e4a0740f").unwrap(),
             // A default script can never be spent, intentionally
             TariScript::default(),
             // The Sender offset public key is not checked for coinbase outputs
@@ -269,7 +269,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
         KernelFeatures::COINBASE_KERNEL,
         MicroTari(0),
         0,
-        Commitment::from_hex("da7779147cb54b086651fad2916e8d8fbf7a9c72d036b94c2b5d23900b990f44").unwrap(),
+        Commitment::from_hex("0cff7e89fa0468aa68f777cf600ae6f9e46fdc6e4e33540077e7303e8929295c").unwrap(),
         excess_sig,
     );
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
@@ -284,10 +284,10 @@ fn get_dibbler_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
-            output_mr: from_hex("e0724cd00725c8150ad7d1a20fbc2e17176b1a9f568f97a063569e6785bfb8f4").unwrap(),
-            witness_mr: from_hex("8b959e4ae1e5d817cd4926579c53713089aa679bec49881aeb9a543a71ff5b2d").unwrap(),
+            output_mr: from_hex("cfe91b83e0d8b5190671e9db7cf3129cb163b2812b862776bcd7f42aee58eecf").unwrap(),
+            witness_mr: from_hex("71a1fdcf3da037f786e3874b0f49a7720b35b978cbc78d284f20d140317f89bb").unwrap(),
             output_mmr_size: 1,
-            kernel_mr: from_hex("ea5435af163bbec819c2558aa36616e8bf54c3c66bdbbe96708e44324c134d79").unwrap(),
+            kernel_mr: from_hex("55bb9a3369ede6c4e04bab54dd4f2345531e559fc6d72d9f62adad1d49898c15").unwrap(),
             kernel_mmr_size: 1,
             input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: PrivateKey::from_hex(

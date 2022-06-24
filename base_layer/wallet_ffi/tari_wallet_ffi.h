@@ -216,11 +216,11 @@ typedef PrivateKey TariPrivateKey;
  * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
  *
  * let commitment =
- *     HomomorphicCommitment::from_hex("d6cca5cc4cc302c1854a118221d6cf64d100b7da76665dae5199368f3703c665").unwrap();
+ *     HomomorphicCommitment::from_hex("167c6df11bf8106e89328c297e57423dc2a9be53df1ee63f6e50b4610104ab4a").unwrap();
  * let r_nonce =
- *     HomomorphicCommitment::from_hex("9607f72d84d704825864a4455c2325509ecc290eb9419bbce7ff05f1f578284c").unwrap();
- * let u = RistrettoSecretKey::from_hex("0fd60e6479507fec35a46d2ec9da0ae300e9202e613e99b8f2b01d7ef6eccc02").unwrap();
- * let v = RistrettoSecretKey::from_hex("9ae6621dd99ecc252b90a0eb69577c6f3d2e1e8abcdd43bfd0297afadf95fb0b").unwrap();
+ *     HomomorphicCommitment::from_hex("4033e00996e61df2ea1abd1494b751b946663e21a20e2729c6592712beb15356").unwrap();
+ * let u = RistrettoSecretKey::from_hex("f44bbc3374b172f77ffa8b904ddf0ad9f879b3e6183f9e440c57e7f01e851300").unwrap();
+ * let v = RistrettoSecretKey::from_hex("fd54afb2d8008c8a3af10272b24161247b2b7ae11687813fe9fb03e34dd7f009").unwrap();
  * let sig = RistrettoComSig::new(r_nonce, u, v);
  * let e = Blake256::digest(b"Maskerade");
  * let factory = PedersenCommitmentFactory::default();
