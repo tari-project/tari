@@ -116,6 +116,8 @@ pub enum ValidationError {
     InvalidBlockchainVersion { version: u16 },
     #[error("Standard transaction contains coinbase output")]
     ErroneousCoinbaseOutput,
+    #[error("Digital Asset Network Error: {0}")]
+    DanLayerError(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

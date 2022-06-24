@@ -163,6 +163,37 @@ class ValidatorNodeProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
+      // to avoid writing permission errors, we copy the reference identity file to the temp folder
+      let identity_file_name = "validator_node_id.json";
+      let identity_source_path = path.resolve(
+        `./fixtures/${identity_file_name}`
+      );
+      let identity_destination_path = path.resolve(
+        `${this.baseDir}/${identity_file_name}`
+      );
+      fs.copyFile(identity_source_path, identity_destination_path, (err) => {
+        if (err) {
+          console.log(
+            "Error Found while copying validator identity file to temp folder: ",
+            err
+          );
+          throw err;
+        }
+        console.log("Validator identity file was copied to destination");
+        fs.chmod(identity_destination_path, 0o600, (err) => {
+          if (err) {
+            console.log(
+              "Error Found while changing the permissions of the validator indentity file: ",
+              err
+            );
+            throw err;
+          }
+          console.log(
+            "Validator identity file permissions successfully modified"
+          );
+        });
+      });
+
       let envs = [];
       if (!this.excludeTestEnvars) {
         envs = this.getOverrides();
@@ -182,8 +213,8 @@ class ValidatorNodeProcess {
         customArgs["validator_node.grpc_address"] = this.getGrpcAddress();
       }
       Object.keys(this.options).forEach((k) => {
-        if (k.startsWith('validator_node.')) {
-          customArgs[k] = this.options[k]
+        if (k.startsWith("validator_node.")) {
+          customArgs[k] = this.options[k];
         }
       });
 

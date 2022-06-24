@@ -44,11 +44,14 @@ mod benches {
             CryptoFactories,
         },
         tx,
-        validation::transaction_validators::{
-            MempoolValidator,
-            TxConsensusValidator,
-            TxInputAndMaturityValidator,
-            TxInternalConsistencyValidator,
+        validation::{
+            dan_validators::TxDanLayerValidator,
+            transaction_validators::{
+                MempoolValidator,
+                TxConsensusValidator,
+                TxInputAndMaturityValidator,
+                TxInternalConsistencyValidator,
+            },
         },
     };
     use tokio::{runtime::Runtime, task};
@@ -85,7 +88,8 @@ mod benches {
                 db.clone(),
             )),
             Box::new(TxInputAndMaturityValidator::new(db.clone())),
-            Box::new(TxConsensusValidator::new(db)),
+            Box::new(TxConsensusValidator::new(db.clone())),
+            Box::new(TxDanLayerValidator::new(db)),
         ]);
         let mempool = Mempool::new(config, rules, Box::new(mempool_validator));
         const NUM_TXNS: usize = 100;
