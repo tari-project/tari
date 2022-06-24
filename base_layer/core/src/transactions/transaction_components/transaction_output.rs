@@ -46,9 +46,9 @@ use tari_common_types::types::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    extended_range_proof::ExtendedRangeProofService,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService as RangeProofServiceTrait,
-    rewindable_range_proof::RewindableRangeProofService,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 use tari_script::TariScript;
@@ -60,15 +60,7 @@ use crate::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components,
-        transaction_components::{
-            full_rewind_result::FullRewindResult,
-            rewind_result::RewindResult,
-            EncryptedValue,
-            OutputFeatures,
-            OutputType,
-            TransactionError,
-            TransactionInput,
-        },
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionError, TransactionInput},
     },
 };
 
@@ -193,33 +185,23 @@ impl TransactionOutput {
         Ok(())
     }
 
-    /// Attempt to rewind the range proof to reveal the proof message and committed value
-    pub fn rewind_range_proof_value_only(
+    /// Attempt to rewind the range proof to reveal the mask (blinding factor)
+    pub fn recover_mask(
         &self,
         prover: &RangeProofService,
-        rewind_public_key: &PublicKey,
-        rewind_blinding_public_key: &PublicKey,
-    ) -> Result<RewindResult, TransactionError> {
-        Ok(prover
-            .rewind_proof_value_only(
-                &self.proof.0,
-                &self.commitment,
-                rewind_public_key,
-                rewind_blinding_public_key,
-            )?
-            .into())
+        rewind_blinding_key: &PrivateKey,
+    ) -> Result<BlindingFactor, TransactionError> {
+        Ok(prover.recover_mask(&self.proof.0, &self.commitment, rewind_blinding_key)?)
     }
 
-    /// Attempt to fully rewind the range proof to reveal the proof message, committed value and blinding factor
-    pub fn full_rewind_range_proof(
+    /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
+    pub fn verify_mask(
         &self,
         prover: &RangeProofService,
-        rewind_key: &PrivateKey,
-        rewind_blinding_key: &PrivateKey,
-    ) -> Result<FullRewindResult, TransactionError> {
-        Ok(prover
-            .rewind_proof_commitment_data(&self.proof.0, &self.commitment, rewind_key, rewind_blinding_key)?
-            .into())
+        blinding_factor: &PrivateKey,
+        value: u64,
+    ) -> Result<bool, TransactionError> {
+        Ok(prover.verify_mask(&self.commitment, blinding_factor, value)?)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.

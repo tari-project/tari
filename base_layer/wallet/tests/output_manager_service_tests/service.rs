@@ -52,7 +52,6 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_script::{inputs, script, TariScript};
@@ -227,10 +226,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
 
-    let rewind_key = key_manager
-        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
-        .await
-        .unwrap();
     let rewind_blinding_key = key_manager
         .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
         .await
@@ -240,9 +235,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         .await
         .unwrap();
     let rewind_data = RewindData {
-        rewind_key,
         rewind_blinding_key,
-        proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
         recovery_byte_key,
     };
 
@@ -1214,8 +1207,7 @@ async fn coin_split_no_change() {
 }
 
 #[tokio::test]
-async fn handle_coinbase_with_dalek_bulletproofs_rewinding() {
-    let factories = CryptoFactories::default();
+async fn handle_coinbase_with_bulletproofs_rewinding() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
@@ -1276,15 +1268,7 @@ async fn handle_coinbase_with_dalek_bulletproofs_rewinding() {
 
     let output = tx3.body.outputs()[0].clone();
 
-    let rewind_public_keys = oms.output_manager_handle.get_rewind_public_keys().await.unwrap();
-    let rewind_result = output
-        .rewind_range_proof_value_only(
-            &factories.range_proof,
-            &rewind_public_keys.rewind_public_key,
-            &rewind_public_keys.rewind_blinding_public_key,
-        )
-        .unwrap();
-    assert_eq!(rewind_result.committed_value, value3);
+    assert_eq!(output.encrypted_value.todo_decrypt(), value3.as_u64());
 }
 
 #[tokio::test]
@@ -2124,10 +2108,8 @@ async fn scan_for_recovery_test() {
         .await
         .unwrap();
     let other_rewind_data = RewindData {
-        rewind_key: PrivateKey::random(&mut OsRng),
         rewind_blinding_key: PrivateKey::random(&mut OsRng),
         recovery_byte_key,
-        proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
     };
 
     let non_rewindable_outputs: Vec<TransactionOutput> = non_rewindable_unblinded_outputs

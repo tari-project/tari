@@ -24,7 +24,7 @@ tari_common_types = { version = "^0.32", path = "../../base_layer/common_types" 
 tari_comms = { version = "^0.32", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.32", path = "../../comms/dht" }
 tari_comms_rpc_macros = { version = "^0.32", path = "../../comms/rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", rev = "a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.14.0" }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = { version = "^0.32", path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = { version = "^0.32", path = "../../base_layer/p2p" }

@@ -105,16 +105,28 @@ fn genesis_template(
 }
 
 #[test]
-// #[ignore = "used to generate a new genesis block"]
+// #[ignore = "used to generate a new dibbler genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Pick a network
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block --exact
-/// --nocapture --ignored`
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_dibbler
+/// --exact --nocapture --ignored`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-fn print_new_genesis_block() {
-    let network = Network::Dibbler;
+fn print_new_genesis_block_dibbler() {
+    print_new_genesis_block(Network::Dibbler);
+}
 
+#[test]
+// #[ignore = "used to generate a new igor genesis block"]
+/// This is a helper function to generate and print out a block that can be used as the genesis block.
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_igor
+/// --exact --nocapture --ignored`
+/// 1. The block and range proof will be printed
+/// 1. Profit!
+fn print_new_genesis_block_igor() {
+    print_new_genesis_block(Network::Igor);
+}
+
+fn print_new_genesis_block(network: Network) {
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
@@ -126,7 +138,7 @@ fn print_new_genesis_block() {
         &script![Nop],
         &Covenant::default(),
     );
-    let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
+    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
@@ -142,9 +154,38 @@ fn print_new_genesis_block() {
     header.output_mmr_size += 1;
 
     let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
-    println!("{}", block);
-    println!("spending key: {}", key.to_hex());
-    println!("range proof: {}", block.body.outputs()[0].proof.to_hex());
+
+    for kernel in block.body.kernels() {
+        kernel.verify_signature().unwrap();
+    }
+    for output in block.body.outputs() {
+        output.verify_metadata_signature().unwrap();
+        output
+            .verify_range_proof(&CryptoFactories::default().range_proof)
+            .unwrap();
+    }
+
+    // Note: This is printed in the same order as needed for 'fn get_dibbler_genesis_block_raw()'
+    println!();
+    println!(
+        "kernel excess_sig: public_nonce {}, signature {}",
+        block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
+        block.body.kernels()[0].excess_sig.get_signature().to_hex()
+    );
+    println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
+    println!("UTXO range_proof: {}", block.body.outputs()[0].proof.to_hex());
+    println!("kernel excess: {}", block.body.kernels()[0].excess.to_hex());
+    println!("header output_mr: {}", block.header.output_mr.to_hex());
+    println!("header witness_mr: {}", block.header.witness_mr.to_hex());
+    println!("header kernel_mr: {}", block.header.kernel_mr.to_hex());
+    println!(
+        "header total_kernel_offset: {}",
+        block.header.total_kernel_offset.to_hex()
+    );
+    println!(
+        "header total_script_offset: {}",
+        block.header.total_script_offset.to_hex()
+    );
 }
 
 /// Create a genesis block returning it with the spending key for the coinbase utxo

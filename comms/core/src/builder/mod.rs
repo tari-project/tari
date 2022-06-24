@@ -66,13 +66,14 @@ use crate::{
 /// #    peer_manager::{PeerStorage, PeerFeatures},
 /// #    transports::TcpTransport,
 /// # };
+/// # #[tokio::main]
+/// # async fn main() {
+/// use std::env::temp_dir;
+///
 /// use tari_storage::{
 ///     lmdb_store::{LMDBBuilder, LMDBConfig},
 ///     LMDBWrapper,
 /// };
-///
-/// # #[tokio::main]
-/// # async fn main() {
 /// let node_identity = Arc::new(NodeIdentity::random(
 ///     &mut OsRng,
 ///     "/dns4/basenodezforhire.com/tcp/18000".parse().unwrap(),
@@ -81,7 +82,7 @@ use crate::{
 /// node_identity.sign();
 /// let mut shutdown = Shutdown::new();
 /// let datastore = LMDBBuilder::new()
-///     .set_path("/tmp")
+///     .set_path(temp_dir())
 ///     .set_env_config(LMDBConfig::default())
 ///     .set_max_number_of_databases(1)
 ///     .add_database("peers", lmdb_zero::db::CREATE)

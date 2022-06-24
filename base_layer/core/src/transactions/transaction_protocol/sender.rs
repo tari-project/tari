@@ -777,6 +777,7 @@ mod test {
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         common::Blake256,
+        errors::RangeProofError::ProofConstructionError,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
         tari_utilities::{hex::Hex, ByteArray},
@@ -795,7 +796,6 @@ mod test {
                 EncryptedValue,
                 KernelFeatures,
                 OutputFeatures,
-                TransactionError,
                 TransactionOutput,
                 TransactionOutputVersion,
             },
@@ -804,6 +804,7 @@ mod test {
                 single_receiver::SingleReceiverTransactionProtocol,
                 RewindData,
                 TransactionProtocolError,
+                TransactionProtocolError::RangeProofError,
             },
         },
     };
@@ -1152,13 +1153,14 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
-        match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None); // Alice gets message back, deserializes it, etc
+        match bob_info {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
-                TransactionProtocolError::TransactionBuildError(TransactionError::ValidationError(
-                    "Recipient output range proof failed to verify".into()
+                RangeProofError(ProofConstructionError(
+                    "Invalid array/vector length error: `Value too large, bit vector capacity will be exceeded`"
+                        .to_string()
                 ))
             ),
         }
@@ -1232,7 +1234,7 @@ mod test {
     }
 
     #[test]
-    fn single_recipient_with_rewindable_change_and_receiver_outputs_dalek_bulletproofs() {
+    fn single_recipient_with_rewindable_change_and_receiver_outputs_bulletproofs() {
         let factories = CryptoFactories::default();
         // Alice's parameters
         let a = TestParams::new();
@@ -1242,17 +1244,11 @@ mod test {
         let (utxo, input) = create_test_input(alice_value, 0, &factories.commitment);
 
         // Rewind params
-        let rewind_key = PrivateKey::random(&mut OsRng);
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
-        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
-        let proof_message = b"alice__12345678910111";
 
         let rewind_data = RewindData {
-            rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key: PrivateKey::random(&mut OsRng),
-            proof_message: proof_message.to_owned(),
         };
 
         let script = script!(Nop);
@@ -1312,39 +1308,20 @@ mod test {
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.body.outputs().len(), 2);
 
-        match tx.body.outputs()[0].rewind_range_proof_value_only(
-            &factories.range_proof,
-            &rewind_public_key,
-            &rewind_blinding_public_key,
-        ) {
-            Ok(rr) => {
-                assert_eq!(rr.committed_value, change);
-                assert_eq!(&rr.proof_message, proof_message);
-                let full_rewind_result = tx.body.outputs()[0]
-                    .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
-                    .unwrap();
-
-                assert_eq!(full_rewind_result.committed_value, change);
-                assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_spend_key);
-            },
-            Err(_) => {
-                let rr = tx.body.outputs()[1]
-                    .rewind_range_proof_value_only(
-                        &factories.range_proof,
-                        &rewind_public_key,
-                        &rewind_blinding_public_key,
-                    )
-                    .expect("If the first output isn't alice's then the second must be");
-                assert_eq!(rr.committed_value, change);
-                assert_eq!(&rr.proof_message, proof_message);
-                let full_rewind_result = tx.body.outputs()[1]
-                    .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
-                    .unwrap();
-                assert_eq!(full_rewind_result.committed_value, change);
-                assert_eq!(&full_rewind_result.proof_message, proof_message);
-                assert_eq!(full_rewind_result.blinding_factor, a.change_spend_key);
-            },
-        }
+        // If the first output isn't alice's then the second must be
+        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
+        let committed_value_0 = MicroTari::from(tx.body.outputs()[0].encrypted_value.todo_decrypt());
+        let committed_value_1 = MicroTari::from(tx.body.outputs()[1].encrypted_value.todo_decrypt());
+        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
+        let blinding_factor_0 = tx.body.outputs()[0]
+            .recover_mask(&factories.range_proof, &rewind_blinding_key)
+            .unwrap();
+        let blinding_factor_1 = tx.body.outputs()[1]
+            .recover_mask(&factories.range_proof, &rewind_blinding_key)
+            .unwrap();
+        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
+        assert!(committed_value_0 == change || committed_value_1 == change);
+        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
+        assert!(blinding_factor_0 == a.change_spend_key || blinding_factor_1 == a.change_spend_key);
     }
 }
