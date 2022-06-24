@@ -29,6 +29,9 @@ use crate::{
 mod acceptance_validator;
 use acceptance_validator::validate_acceptance;
 
+mod definition_validator;
+use definition_validator::validate_definition;
+
 mod helpers;
 
 #[cfg(test)]
@@ -50,6 +53,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         for output in tx.body().outputs() {
             match output.features.output_type {
+                OutputType::ContractDefinition => validate_definition(&self.db, output)?,
                 OutputType::ContractValidatorAcceptance => validate_acceptance(&self.db, output)?,
                 _ => continue,
             }
