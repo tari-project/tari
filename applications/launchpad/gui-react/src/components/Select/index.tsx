@@ -6,7 +6,6 @@ import Text from '../Text'
 import ArrowBottom from '../../styles/Icons/ArrowBottom1'
 
 import {
-  StyledListbox,
   Label,
   SelectButton,
   SelectorIcon,
@@ -57,7 +56,7 @@ const Select = ({
 }) => {
   return (
     <div>
-      <StyledListbox value={value} onChange={onChange} disabled={disabled}>
+      <Listbox value={value} onChange={onChange} disabled={disabled}>
         {({ open }: { open: boolean }) => (
           <>
             {label && <Label inverted={inverted}>{label}</Label>}
@@ -97,7 +96,7 @@ const Select = ({
             </OptionsContainer>
           </>
         )}
-      </StyledListbox>
+      </Listbox>
     </div>
   )
 }
