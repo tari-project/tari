@@ -23,11 +23,14 @@
 use std::{convert::TryInto, sync::Arc};
 
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use tari_p2p::Network;
 
 use crate::{
     block_spec,
+    consensus::ConsensusManagerBuilder,
     test_helpers::blockchain::TestBlockchain,
     transactions::{
+        tari_amount::T,
         test_helpers::{spend_utxos, TransactionSchema},
         transaction_components::{
             vec_into_fixed_string,
@@ -48,6 +51,19 @@ use crate::{
     },
     txn_schema,
 };
+
+pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
+    // initialize a brand new taest blockchain with a genesis block
+    let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+    let mut blockchain = TestBlockchain::create(consensus_manager);
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("genesis")).unwrap();
+
+    // create a block with some UTXOs to spend later at contract transactions
+    let schema = txn_schema!(from: vec![coinbase_a], to: vec![50 * T; 10]);
+    let change_outputs = create_block(&mut blockchain, "change", schema);
+
+    (blockchain, change_outputs)
+}
 
 pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
     let mut tx = Vec::new();
