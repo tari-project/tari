@@ -66,37 +66,27 @@ fn validate_duplication<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
-    use crate::validation::{
-        dan_validators::{
-            test_helpers::{
-                create_contract_definition_schema,
-                init_test_blockchain,
-                publish_definition,
-                schema_to_transaction,
-            },
-            TxDanLayerValidator,
-        },
-        MempoolTransactionValidation,
-        ValidationError,
+    use crate::validation::dan_validators::test_helpers::{
+        assert_dan_error,
+        create_contract_definition_schema,
+        init_test_blockchain,
+        publish_definition,
+        schema_to_transaction,
     };
 
     #[test]
     fn it_rejects_duplicated_definitions() {
+        // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
         let _contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // construct a transaction for the duplicated contract definition
         let (_, schema) = create_contract_definition_schema(change[1].clone());
-        let (txs, _) = schema_to_transaction(&[schema]);
+        let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated definition transaction and check that we get the error
-        let validator = TxDanLayerValidator::new(blockchain.db().clone());
-        let err = validator.validate(txs.first().unwrap()).unwrap_err();
-        match err {
-            ValidationError::DanLayerError(message) => {
-                assert!(message.contains("Duplicated contract definition"))
-            },
-            _ => panic!("Expected a consensus error"),
-        }
+        assert_dan_error(&blockchain, &tx, "Duplicated contract definition");
     }
 }

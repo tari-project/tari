@@ -95,25 +95,22 @@ mod test {
     use tari_common_types::types::PublicKey;
     use tari_utilities::hex::Hex;
 
-    use crate::validation::{
-        dan_validators::{
-            test_helpers::{
-                create_block,
-                create_contract_acceptance_schema,
-                create_contract_constitution_schema,
-                init_test_blockchain,
-                publish_definition,
-                schema_to_transaction,
-            },
-            TxDanLayerValidator,
-        },
-        MempoolTransactionValidation,
-        ValidationError,
+    use crate::validation::dan_validators::test_helpers::{
+        assert_dan_error,
+        create_block,
+        create_contract_acceptance_schema,
+        create_contract_constitution_schema,
+        init_test_blockchain,
+        publish_definition,
+        schema_to_transaction,
     };
 
     #[test]
     fn it_rejects_contract_acceptances_of_non_committee_members() {
+        // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
         let contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // publish the contract constitution into a block
@@ -127,16 +124,9 @@ mod test {
         let validator_node_public_key =
             PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
         let schema = create_contract_acceptance_schema(contract_id, change[2].clone(), validator_node_public_key);
-        let (txs, _) = schema_to_transaction(&[schema]);
+        let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the committee error
-        let validator = TxDanLayerValidator::new(blockchain.db().clone());
-        let err = validator.validate(txs.first().unwrap()).unwrap_err();
-        match err {
-            ValidationError::DanLayerError(message) => {
-                assert!(message.contains("Invalid contract acceptance: validator node public key is not in committee"))
-            },
-            _ => panic!("Expected a consensus error"),
-        }
+        assert_dan_error(&blockchain, &tx, "validator node public key is not in committee");
     }
 }

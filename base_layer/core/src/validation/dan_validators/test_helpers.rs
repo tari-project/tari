@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc};
+use std::convert::TryInto;
 
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_p2p::Network;
 
+use super::TxDanLayerValidator;
 use crate::{
     block_spec,
     consensus::ConsensusManagerBuilder,
@@ -50,6 +51,7 @@ use crate::{
         },
     },
     txn_schema,
+    validation::{MempoolTransactionValidation, ValidationError},
 };
 
 pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
@@ -72,14 +74,12 @@ pub fn publish_definition(blockchain: &mut TestBlockchain, change: UnblindedOutp
     contract_id
 }
 
-pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
-    let mut tx = Vec::new();
+pub fn schema_to_transaction(schema: &TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
     let mut utxos = Vec::new();
-    txns.iter().for_each(|schema| {
-        let (txn, mut output) = spend_utxos(schema.clone());
-        tx.push(Arc::new(txn));
-        utxos.append(&mut output);
-    });
+
+    let (tx, mut output) = spend_utxos(schema.clone());
+    utxos.append(&mut output);
+
     (tx, utxos)
 }
 
@@ -88,9 +88,9 @@ pub fn create_block(
     block_name: &'static str,
     schema: TransactionSchema,
 ) -> Vec<UnblindedOutput> {
-    let (txs, outputs) = schema_to_transaction(&[schema]);
+    let (tx, outputs) = schema_to_transaction(&schema);
     let (_, _) = blockchain
-        .append_to_tip(block_spec!(block_name, transactions: txs.iter().map(|t| (**t).clone()).collect()))
+        .append_to_tip(block_spec!(block_name, transactions: vec![tx]))
         .unwrap();
 
     outputs
@@ -156,4 +156,15 @@ pub fn create_contract_acceptance_schema(
         OutputFeatures::for_contract_acceptance(contract_id, validator_node_public_key, signature);
 
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
+pub fn assert_dan_error(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
+    let validator = TxDanLayerValidator::new(blockchain.db().clone());
+    let err = validator.validate(transaction).unwrap_err();
+    match err {
+        ValidationError::DanLayerError(message) => {
+            assert!(message.contains(expected_message))
+        },
+        _ => panic!("Expected a consensus error"),
+    }
 }
