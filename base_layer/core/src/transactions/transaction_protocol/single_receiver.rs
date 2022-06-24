@@ -24,9 +24,9 @@ use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signatur
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
+    extended_range_proof::ExtendedRangeProofService,
     keys::PublicKey as PK,
     range_proof::RangeProofService as RPS,
-    rewindable_range_proof::RewindableRangeProofService,
     tari_utilities::byte_array::ByteArray,
 };
 
@@ -93,12 +93,10 @@ impl SingleReceiverTransactionProtocol {
             .commit_value(spending_key, sender_info.amount.into());
 
         let proof = if let Some(rewind_data) = rewind_data {
-            factories.range_proof.construct_proof_with_rewind_key(
+            factories.range_proof.construct_proof_with_recovery_seed_nonce(
                 spending_key,
                 sender_info.amount.into(),
-                &rewind_data.rewind_key,
                 &rewind_data.rewind_blinding_key,
-                &rewind_data.proof_message,
             )?
         } else {
             factories

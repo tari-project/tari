@@ -90,12 +90,7 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::types::Challenge;
-use tari_crypto::{
-    errors::RangeProofError,
-    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
-    signatures::SchnorrSignatureError,
-    tari_utilities::byte_array::ByteArray,
-};
+use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError, tari_utilities::byte_array::ByteArray};
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
@@ -149,11 +144,8 @@ pub struct TransactionMetadata {
 #[derivative(Debug)]
 pub struct RewindData {
     #[derivative(Debug = "ignore")]
-    pub rewind_key: PrivateKey,
-    #[derivative(Debug = "ignore")]
     pub rewind_blinding_key: PrivateKey,
     pub recovery_byte_key: PrivateKey,
-    pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures

@@ -1022,14 +1022,11 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
 
         let rewind_data = RewindData {
-            rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key: recovery_byte_key.clone(),
-            proof_message: [0u8; 21],
         };
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
@@ -1190,13 +1187,10 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
         let rewind_data = RewindData {
-            rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key: recovery_byte_key.clone(),
-            proof_message: [0u8; 21],
         };
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(

@@ -408,8 +408,7 @@ const findUtxoWithOutputMessage = async (wallet, message) => {
   let client = await wallet.connectClient();
   let accepted = [];
 
-  /* eslint-disable no-constant-condition */
-  while (true) {
+  do {
     let found_txs = await client.getCompletedTransactions();
     accepted = found_txs.filter((txo) => {
       return txo.message == message;
@@ -420,7 +419,7 @@ const findUtxoWithOutputMessage = async (wallet, message) => {
     }
 
     await sleep(5000);
-  }
+  } while (accepted.length <= 0);
 
   return accepted;
 };

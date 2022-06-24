@@ -276,7 +276,7 @@ mod test {
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             crypto_factories::CryptoFactories,
-            tari_amount::uT,
+            tari_amount::{uT, MicroTari},
             test_helpers::TestParams,
             transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError},
             transaction_protocol::RewindData,
@@ -361,15 +361,11 @@ mod test {
 
     #[test]
     fn valid_coinbase_with_rewindable_output() {
-        let rewind_key = PrivateKey::random(&mut OsRng);
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let proof_message = b"alice__12345678910111";
 
         let rewind_data = RewindData {
-            rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key: PrivateKey::random(&mut OsRng),
-            proof_message: proof_message.to_owned(),
         };
 
         let p = TestParams::new();
@@ -385,12 +381,12 @@ mod test {
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
-        let rewind_result = tx.body.outputs()[0]
-            .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
+        let committed_value = MicroTari::from(tx.body.outputs()[0].encrypted_value.todo_decrypt());
+        assert_eq!(committed_value, block_reward);
+        let blinding_factor = tx.body.outputs()[0]
+            .recover_mask(&factories.range_proof, &rewind_blinding_key)
             .unwrap();
-        assert_eq!(rewind_result.committed_value, block_reward);
-        assert_eq!(&rewind_result.proof_message, proof_message);
-        assert_eq!(rewind_result.blinding_factor, p.spend_key);
+        assert_eq!(blinding_factor, p.spend_key);
     }
 
     #[test]
