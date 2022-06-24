@@ -101,8 +101,8 @@ mod test {
                 create_block,
                 create_contract_acceptance_schema,
                 create_contract_constitution_schema,
-                create_contract_definition_schema,
                 init_test_blockchain,
+                publish_definition,
                 schema_to_transaction,
             },
             TxDanLayerValidator,
@@ -114,10 +114,7 @@ mod test {
     #[test]
     fn it_rejects_contract_acceptances_of_non_committee_members() {
         let (mut blockchain, change) = init_test_blockchain();
-
-        // publish the contract definition into a block
-        let (contract_id, schema) = create_contract_definition_schema(change[0].clone());
-        create_block(&mut blockchain, "definition", schema);
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // publish the contract constitution into a block
         // we deliberately use a committee with only a defult public key to be able to trigger the committee error later

@@ -69,9 +69,9 @@ mod test {
     use crate::validation::{
         dan_validators::{
             test_helpers::{
-                create_block,
                 create_contract_definition_schema,
                 init_test_blockchain,
+                publish_definition,
                 schema_to_transaction,
             },
             TxDanLayerValidator,
@@ -83,10 +83,7 @@ mod test {
     #[test]
     fn it_rejects_duplicated_definitions() {
         let (mut blockchain, change) = init_test_blockchain();
-
-        // publish the contract definition into a block
-        let (_, schema) = create_contract_definition_schema(change[0].clone());
-        create_block(&mut blockchain, "definition", schema);
+        let _contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // construct a transaction for the duplicated contract definition
         let (_, schema) = create_contract_definition_schema(change[1].clone());

@@ -65,6 +65,13 @@ pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
     (blockchain, change_outputs)
 }
 
+pub fn publish_definition(blockchain: &mut TestBlockchain, change: UnblindedOutput) -> FixedHash {
+    let (contract_id, schema) = create_contract_definition_schema(change);
+    create_block(blockchain, "definition", schema);
+
+    contract_id
+}
+
 pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
     let mut tx = Vec::new();
     let mut utxos = Vec::new();
