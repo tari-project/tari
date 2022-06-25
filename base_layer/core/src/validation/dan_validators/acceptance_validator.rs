@@ -93,68 +93,40 @@ fn validate_public_key(
 #[cfg(test)]
 mod test {
     use tari_common_types::types::PublicKey;
-    use tari_p2p::Network;
     use tari_utilities::hex::Hex;
 
-    use crate::{
-        block_spec,
-        consensus::ConsensusManagerBuilder,
-        test_helpers::blockchain::TestBlockchain,
-        transactions::tari_amount::T,
-        txn_schema,
-        validation::{
-            dan_validators::{
-                test_helpers::{
-                    create_block,
-                    create_contract_acceptance_schema,
-                    create_contract_constitution_schema,
-                    create_contract_definition_schema,
-                    schema_to_transaction,
-                },
-                TxDanLayerValidator,
-            },
-            MempoolTransactionValidation,
-            ValidationError,
-        },
+    use crate::validation::dan_validators::test_helpers::{
+        assert_dan_error,
+        create_block,
+        create_contract_acceptance_schema,
+        create_contract_constitution_schema,
+        init_test_blockchain,
+        publish_definition,
+        schema_to_transaction,
     };
 
     #[test]
     fn it_rejects_contract_acceptances_of_non_committee_members() {
-        // initialize a brand new taest blockchain with a genesis block
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-        let mut blockchain = TestBlockchain::create(consensus_manager);
-        let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("1")).unwrap();
-
-        // create a block with some UTXOs to spend later at contract transactions
-        let schema = txn_schema!(from: vec![coinbase_a], to: vec![50 * T, 50 * T, 50 * T]);
-        let change_outputs = create_block(&mut blockchain, "2", schema);
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let (contract_id, schema) = create_contract_definition_schema(change_outputs[0].clone());
-        create_block(&mut blockchain, "3", schema);
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // publish the contract constitution into a block
         // we deliberately use a committee with only a defult public key to be able to trigger the committee error later
         let committee = vec![PublicKey::default()];
-        let schema = create_contract_constitution_schema(contract_id, change_outputs[1].clone(), committee);
-        create_block(&mut blockchain, "4", schema);
+        let schema = create_contract_constitution_schema(contract_id, change[1].clone(), committee);
+        create_block(&mut blockchain, "constitution", schema);
 
         // create a contract acceptance transaction
         // we use a public key that is not included in the constitution committee, to trigger the error
         let validator_node_public_key =
             PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-        let schema =
-            create_contract_acceptance_schema(contract_id, change_outputs[2].clone(), validator_node_public_key);
-        let (txs, _) = schema_to_transaction(&[schema]);
+        let schema = create_contract_acceptance_schema(contract_id, change[2].clone(), validator_node_public_key);
+        let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the committee error
-        let validator = TxDanLayerValidator::new(blockchain.db().clone());
-        let err = validator.validate(txs.first().unwrap()).unwrap_err();
-        match err {
-            ValidationError::DanLayerError(message) => {
-                assert!(message.contains("Invalid contract acceptance: validator node public key is not in committee"))
-            },
-            _ => panic!("Expected a consensus error"),
-        }
+        assert_dan_error(&blockchain, &tx, "validator node public key is not in committee");
     }
 }
