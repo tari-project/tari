@@ -30,6 +30,11 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
     fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn get_data(&self, key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error>;
     fn set_data(&self, key: GlobalDbMetadataKey, value: &[u8]) -> Result<(), Self::Error>;
+    fn get_data_with_connection(
+        &self,
+        key: &GlobalDbMetadataKey,
+        connection: &Self::BackendTransaction,
+    ) -> Result<Option<Vec<u8>>, Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy)]
