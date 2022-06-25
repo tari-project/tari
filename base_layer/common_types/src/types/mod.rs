@@ -27,7 +27,7 @@ pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     common::Blake256,
     ristretto::{
-        dalek_range_proof::DalekRangeProofService,
+        bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
         RistrettoComSig,
         RistrettoPublicKey,
@@ -73,11 +73,11 @@ pub type MessageHash = Vec<u8>;
 /// Define the data type that is used to store results of `HashDigest`
 pub type HashOutput = Vec<u8>;
 
-pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
+pub const RANGE_PROOF_BIT_LENGTH: usize = 64; // 2^64
+pub const RANGE_PROOF_AGGREGATION_FACTOR: usize = 1;
 
 /// Specify the range proof type
-// TODO: Replace `DalekRangeProofService` with `BulletproofsPlusService` when 'bulletproofs_plus'
-pub type RangeProofService = DalekRangeProofService;
+pub type RangeProofService = BulletproofsPlusService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;

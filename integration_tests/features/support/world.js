@@ -38,6 +38,8 @@ class CustomWorld {
     this.clients = {};
     this.headers = {};
     this.outputs = {};
+    this.contract_definitions = {};
+    this.constitutions = {};
     this.transactionOutputs = {};
     this.testrun = `run${Date.now()}`;
     this.lastResult = null;
@@ -77,10 +79,32 @@ class CustomWorld {
     return res;
   }
 
+  saveContractDefinition(contract_definition_name, contract_id) {
+    this.contract_definitions[contract_definition_name] = contract_id;
+  }
+
+  fetchContract(contract_name) {
+    return this.contract_definitions[contract_name];
+  }
+
+  saveContractConstitution(constitution_name, constitution_data) {
+    this.constitutions[constitution_name] = constitution_data;
+  }
+
+  fetchContractConstitution(constitution_name) {
+    return this.constitutions[constitution_name];
+  }
+
   getRandomSeedName() {
     let keys = Object.keys(this.seeds);
     let r = Math.random() * keys.length;
     return keys[r];
+  }
+
+  async parseContractId(output) {
+    let regex = /contract_id is (\w*) \(TxID/;
+    let matches = output.match(regex);
+    return matches[1];
   }
 
   currentBaseNodeName() {
@@ -100,19 +124,26 @@ class CustomWorld {
     return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
   }
 
-  createDanNode(name, options) {
-    return new ValidatorNodeProcess(
-      name,
-      false,
-      options,
-      this.logFilePathBaseNode
-    );
-  }
+  async createValidatorNode(vn_name, base_node_name, wallet_name) {
+    const baseNode = this.getNode(base_node_name);
+    const walletNode = this.getWallet(wallet_name);
 
-  async createAndAddDanNode(name) {
-    const node = this.createDanNode(name);
-    await node.init();
-    await this.addDanNode(name, node);
+    const baseNodeGrpcAddress = `127.0.0.1:${baseNode.getGrpcPort()}`;
+    const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
+
+    let vn = new ValidatorNodeProcess(
+      vn_name,
+      false,
+      [],
+      this.logFilePathBaseNode,
+      undefined,
+      baseNodeGrpcAddress,
+      walletGrpcAddress
+    );
+
+    await vn.startNew();
+
+    return vn;
   }
 
   async createAndAddNode(name, addresses) {

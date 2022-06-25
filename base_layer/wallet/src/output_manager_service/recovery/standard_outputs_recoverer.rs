@@ -29,6 +29,7 @@ use tari_common_types::{
     types::{BulletRangeProof, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
+    tari_amount::MicroTari,
     transaction_components::{TransactionOutput, UnblindedOutput},
     transaction_protocol::RewindData,
     CryptoFactories,
@@ -88,28 +89,24 @@ where
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
-        let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = outputs
-            .into_iter()
-            .filter_map(|output| {
-                output
-                    .full_rewind_range_proof(
-                        &self.factories.range_proof,
-                        &self.rewind_data.rewind_key,
-                        &self.rewind_data.rewind_blinding_key,
-                    )
-                    .ok()
-                    .map(|v| (v, output))
-            })
-            .filter_map(|(rewind_result, output)| {
-                if output.script != script!(Nop) {
-                    return None;
-                }
-                let script_key = PrivateKey::random(&mut OsRng);
-                Some((
-                    UnblindedOutput::new(
+
+        let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = Vec::new();
+        for output in outputs {
+            // TODO: Only outputs with scripts `== script!(Nop)` is recover-able - can this be improved?
+            if output.script != script!(Nop) {
+                continue;
+            }
+            // TODO: Fix this logic when 'todo_decrypt' - only commence if the tag is recognized
+            let committed_value = output.encrypted_value.todo_decrypt();
+            if committed_value == output.encrypted_value.todo_decrypt() {
+                let blinding_factor =
+                    output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
+                if output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value)? {
+                    let script_key = PrivateKey::random(&mut OsRng);
+                    let uo = UnblindedOutput::new(
                         output.version,
-                        rewind_result.committed_value,
-                        rewind_result.blinding_factor,
+                        MicroTari::from(committed_value),
+                        blinding_factor,
                         output.features,
                         output.script,
                         inputs!(PublicKey::from_secret_key(&script_key)),
@@ -119,11 +116,12 @@ where
                         0,
                         output.covenant,
                         output.encrypted_value,
-                    ),
-                    output.proof,
-                ))
-            })
-            .collect();
+                    );
+                    rewound_outputs.push((uo, output.proof));
+                }
+            }
+        }
+
         let rewind_time = start.elapsed();
         trace!(
             target: LOG_TARGET,

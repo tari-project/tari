@@ -20,7 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+pub mod config;
+pub mod error;
+pub mod handle;
+
+mod input_selection;
+pub use input_selection::{UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
+
+mod recovery;
+pub mod resources;
+pub mod service;
+pub mod storage;
+mod tasks;
+
+use std::{marker::PhantomData, sync::Arc};
 
 use futures::future;
 use log::*;
@@ -46,16 +59,6 @@ use crate::{
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
 };
-
-pub mod config;
-pub mod error;
-pub mod handle;
-mod recovery;
-pub mod resources;
-pub mod service;
-pub mod storage;
-mod tasks;
-use std::marker::PhantomData;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 

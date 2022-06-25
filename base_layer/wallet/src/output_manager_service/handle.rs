@@ -111,7 +111,6 @@ pub enum OutputManagerRequest {
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
-    GetPublicRewindKeys,
     // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
     CalculateRecoveryByte {
         spending_key: PrivateKey,
@@ -176,7 +175,6 @@ impl fmt::Display for OutputManagerRequest {
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
-            GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
             CalculateRecoveryByte {
                 spending_key, value, ..
             } => write!(
@@ -289,7 +287,6 @@ impl fmt::Display for OutputManagerEvent {
 
 #[derive(Debug, Clone)]
 pub struct PublicRewindKeys {
-    pub rewind_public_key: PublicKey,
     pub rewind_blinding_public_key: PublicKey,
 }
 
@@ -610,23 +607,10 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_outputs_by(&mut self, q: OutputBackendQuery) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetOutputsBy(q)).await?? {
-            OutputManagerResponse::Outputs(s) => Ok(s),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
+    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
     pub async fn get_invalid_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
             OutputManagerResponse::InvalidOutputs(s) => Ok(s),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_rewind_public_keys(&mut self) -> Result<PublicRewindKeys, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetPublicRewindKeys).await?? {
-            OutputManagerResponse::PublicRewindKeys(rk) => Ok(*rk),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

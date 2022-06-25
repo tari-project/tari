@@ -22,7 +22,8 @@
 
 const { Given, Then, When } = require("@cucumber/cucumber");
 const { expect } = require("chai");
-const { waitFor, sleep, byteArrayToHex } = require("../../helpers/util");
+const fs = require("fs");
+const { waitFor, sleep } = require("../../helpers/util");
 const path = require("path");
 
 Given(
@@ -263,53 +264,19 @@ Then(
 );
 
 Then(
-  "I create committee definition for asset on wallet {word} via command line",
-  { timeout: 20 * 1000 },
-  async function (wallet_name) {
-    // scenario needs "I register asset..." first to populate asset public key
-    expect(this.asset_public_key).to.exist;
-    const member =
-      "3ef702f33925dc65143f7bebcbe0c53902e8772a8fe7f5ddb703587c0203267d";
-    let wallet = this.getWallet(wallet_name);
-    let output = await wallet_run_command(
-      wallet,
-      `create-committee-definition ${this.asset_public_key} ${member}`
-    );
-    // console.log(output.buffer);
-    expect(output.buffer).to.have.string(" committee members");
-    let regex = /with \d+ committee members/;
-    let match = output.buffer.match(regex);
-    expect(match[0]).to.equal("with 1 committee members");
-  }
-);
-
-Then(
-  "I mint tokens {string} for asset {word} on wallet {word} via command line",
-  { timeout: 20 * 1000 },
-  async function (token_names, asset_name, wallet_name) {
-    let wallet = this.getWallet(wallet_name);
-    const walletClient = await wallet.connectClient();
-    const assets = await walletClient.getOwnedAssets();
-    const asset = assets.find((asset) => asset.name === asset_name);
-    let output = await wallet_run_command(
-      wallet,
-      `mint-tokens ${byteArrayToHex(asset.public_key)} ${token_names}`
-    );
-    // console.log(output.buffer);
-    expect(output.buffer).to.have.string("Minting tokens for asset");
-  }
-);
-
-Then(
-  "I publish a contract definition from file {string} on wallet {word} via command line",
+  "I publish a contract definition {word} from file {string} on wallet {word} via command line",
   { timeout: 120 * 1000 },
-  async function (relative_file_path, wallet_name) {
+  async function (definition_name, relative_file_path, wallet_name) {
     let absolute_path = path.resolve(relative_file_path);
     let wallet = this.getWallet(wallet_name);
     let output = await wallet_run_command(
       wallet,
       `contract publish-definition ${absolute_path}`
     );
+
+    let contract_id = await this.parseContractId(output.buffer);
+    this.saveContractDefinition(definition_name, contract_id);
+
     console.log(output.buffer);
   }
 );
@@ -326,6 +293,44 @@ Then(
       `contract publish-constitution ${absolute_path}`
     );
     console.log(output.buffer);
+  }
+);
+
+Then(
+  "I publish the contract constitution {word} on wallet {word} via command line",
+  { timeout: 120 * 1000 },
+  async function (constitution_name, wallet_name) {
+    let constitution = this.fetchContractConstitution(constitution_name);
+    let wallet = this.getWallet(wallet_name);
+
+    let absolute_path = await wallet.writeConstitutionFile(constitution);
+    let output = await wallet_run_command(
+      wallet,
+      `contract publish-constitution ${absolute_path}`
+    );
+    console.log(output.buffer);
+  }
+);
+
+When(
+  "I create a contract constitution {word} for contract {word} from file {string}",
+  async function (constitution_name, contract_name, relative_file_path) {
+    let absolute_path = path.resolve(relative_file_path);
+    let contract_id = this.fetchContract(contract_name);
+
+    let constitution = JSON.parse(fs.readFileSync(absolute_path, "utf8"));
+    constitution["contract_id"] = contract_id;
+
+    this.saveContractConstitution(constitution_name, constitution);
+  }
+);
+
+When(
+  "I add {word} to the validator committee on {word}",
+  async function (vn_name, constitution_name) {
+    let vn = this.getNode(vn_name);
+    let constitution = this.fetchContractConstitution(constitution_name);
+    constitution["validator_committee"] = [vn.getPubKey()];
   }
 );
 

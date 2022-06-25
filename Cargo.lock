@@ -4304,9 +4304,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-src"
-version = "111.18.0+1.1.1n"
+version = "111.20.0+1.1.1o"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7897a926e1e8d00219127dc020130eca4292e5ca666dd592480d72c3eca2ff6c"
+checksum = "92892c4f87d56e376e469ace79f1128fdaded07646ddf73aa0be4706ff712dec"
 dependencies = [
  "cc",
 ]
@@ -6591,8 +6591,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs"
-version = "4.1.2"
-source = "git+https://github.com/tari-project/bulletproofs#efb763c6c9ff52f9445ce98594af52d1dc01c53b"
+version = "4.2.1"
+source = "git+https://github.com/tari-project/bulletproofs?tag=v4.2.1#b7118625aeaf1a5f42301ca293fd89e5e783a2a8"
 dependencies = [
  "blake2 0.9.2",
  "byteorder",
@@ -6611,8 +6611,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs_plus"
-version = "0.0.5"
-source = "git+https://github.com/tari-project/bulletproofs-plus#28725cdd7d753478c9508cae629a8063fc46be37"
+version = "0.0.6"
+source = "git+https://github.com/tari-project/bulletproofs-plus?tag=v0.0.6#1af8e5102cca178f7de0f0c4ed73e8f31f00e95c"
 dependencies = [
  "blake2 0.9.2",
  "byteorder",
@@ -6936,8 +6936,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.13.0"
-source = "git+https://github.com/tari-project/tari-crypto.git?rev=a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312#a564ba8f15ea37f0e26f9e13d3ad7ed8e397d312"
+version = "0.14.0"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.14.0#60c7673ecde85f4cd155b3232e0b9994df88a536"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",

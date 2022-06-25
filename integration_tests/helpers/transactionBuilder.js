@@ -249,7 +249,7 @@ class TransactionBuilder {
     let nopScriptBytes = Buffer.from([0x73]);
     let covenantBytes = Buffer.from([]);
 
-    let rangeproofFactory = tari_crypto.RangeProofFactory.new();
+    let rangeproofFactory = tari_crypto.ExtendedRangeProofFactory.new();
     let rangeproof = rangeproofFactory.create_proof(
       privateKey,
       BigInt(amount)
@@ -436,7 +436,7 @@ class TransactionBuilder {
       scriptOffsetPrivateKey.toString("hex")
     );
 
-    let rangeproofFactory = tari_crypto.RangeProofFactory.new();
+    let rangeproofFactory = tari_crypto.ExtendedRangeProofFactory.new();
     let rangeproof = rangeproofFactory.create_proof(
       privateKey.toString("hex"),
       BigInt(value + fee)
