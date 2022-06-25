@@ -47,4 +47,12 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
     fn commit(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
         todo!()
     }
+
+    fn get_data_with_connection(
+        &self,
+        _key: &GlobalDbMetadataKey,
+        _tx: &Self::BackendTransaction,
+    ) -> Result<Option<Vec<u8>>, Self::Error> {
+        todo!()
+    }
 }
