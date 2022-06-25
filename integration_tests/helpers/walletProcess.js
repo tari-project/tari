@@ -469,9 +469,9 @@ class WalletProcess {
 
   async writeConstitutionFile(constitution) {
     let data = JSON.stringify(constitution);
-    let absolute_path = path.resolve(this.baseDir + '/' + uuid.v4() + '.json');
+    let absolute_path = path.resolve(this.baseDir + "/" + uuid.v4() + ".json");
 
-    fs.writeFile(absolute_path, data, 'utf8',(err) => {
+    fs.writeFile(absolute_path, data, "utf8", (err) => {
       if (err) {
         console.log(`Error writing file: ${err}`);
       } else {

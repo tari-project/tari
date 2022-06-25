@@ -10,7 +10,8 @@ use tari_core::transactions::transaction_components::{OutputType, TransactionOut
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
-    service::{Balance, UTXOSelectionStrategy},
+    input_selection::UtxoSelectionCriteria,
+    service::Balance,
     storage::{
         database::{DbKey, DbValue, OutputBackendQuery, WriteOperation},
         models::DbUnblindedOutput,
@@ -109,7 +110,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     fn fetch_unspent_outputs_for_spending(
         &self,
-        strategy: UTXOSelectionStrategy,
+        selection_criteria: UtxoSelectionCriteria,
         amount: u64,
         current_tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;

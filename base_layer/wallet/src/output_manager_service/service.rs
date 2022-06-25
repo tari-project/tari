@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, fmt, fmt::Display, sync::Arc};
+use std::{convert::TryInto, fmt, sync::Arc};
 
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
@@ -44,6 +44,7 @@ use tari_core::{
             KernelFeatures,
             OutputFeatures,
             Transaction,
+            TransactionError,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
@@ -58,8 +59,8 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    errors::RangeProofError,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    rewindable_range_proof::REWIND_USER_MESSAGE_LENGTH,
 };
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
@@ -81,6 +82,7 @@ use crate::{
             PublicRewindKeys,
             RecoveredOutput,
         },
+        input_selection::UtxoSelectionCriteria,
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
@@ -132,9 +134,6 @@ where
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
         Self::initialise_key_manager(&key_manager).await?;
-        let rewind_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
-            .await?;
         let rewind_blinding_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
             .await?;
@@ -142,10 +141,8 @@ where
             .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
-            rewind_key,
             rewind_blinding_key,
             recovery_byte_key,
-            proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
         };
 
         let resources = OutputManagerResources {
@@ -175,7 +172,6 @@ where
             OutputManagerKeyManagerBranch::SpendScript,
             OutputManagerKeyManagerBranch::Coinbase,
             OutputManagerKeyManagerBranch::CoinbaseScript,
-            OutputManagerKeyManagerBranch::RecoveryViewOnly,
             OutputManagerKeyManagerBranch::RecoveryByte,
             OutputManagerKeyManagerBranch::RecoveryBlinding,
             OutputManagerKeyManagerBranch::ContractIssuer,
@@ -189,7 +185,6 @@ where
     /// Return the public rewind keys
     pub fn get_rewind_public_keys(&self) -> PublicRewindKeys {
         PublicRewindKeys {
-            rewind_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_key),
             rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
         }
     }
@@ -383,9 +378,6 @@ where
                 .map(|_| OutputManagerResponse::EncryptionRemoved)
                 .map_err(OutputManagerError::OutputManagerStorageError),
 
-            OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
-                self.get_rewind_public_keys(),
-            ))),
             OutputManagerRequest::CalculateRecoveryByte {
                 spending_key,
                 value,
@@ -833,9 +825,7 @@ where
                 fee_per_gram,
                 num_outputs,
                 metadata_byte_size * num_outputs,
-                None,
-                None,
-                None,
+                UtxoSelectionCriteria::default(),
             )
             .await?;
 
@@ -880,16 +870,15 @@ where
                     recipient_covenant.consensus_encode_exact_size(),
             );
 
+        // TODO: Some(unique_id) means select the unique_id AND use the features of UTXOs with the unique_id. These
+        //       should be able to be specified independently.
+        let selection_criteria = match unique_id.as_ref() {
+            Some(unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), parent_public_key.as_ref().cloned()),
+            None => UtxoSelectionCriteria::default(),
+        };
+
         let input_selection = self
-            .select_utxos(
-                amount,
-                fee_per_gram,
-                1,
-                metadata_byte_size,
-                None,
-                unique_id.as_ref(),
-                parent_public_key.as_ref(),
-            )
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, selection_criteria)
             .await?;
 
         // TODO: improve this logic #LOGGED
@@ -1093,15 +1082,19 @@ where
                             .consensus_encode_exact_size()
                 })
         });
+
+        let selection_criteria = match spending_unique_id {
+            Some(unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), spending_parent_public_key.cloned()),
+            None => UtxoSelectionCriteria::default(),
+        };
+
         let input_selection = self
             .select_utxos(
                 total_value,
                 fee_per_gram,
                 outputs.len(),
                 metadata_byte_size,
-                None,
-                spending_unique_id,
-                spending_parent_public_key,
+                selection_criteria,
             )
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
@@ -1258,16 +1251,13 @@ where
                     covenant.consensus_encode_exact_size(),
             );
 
+        let selection_criteria = match unique_id {
+            Some(ref unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), parent_public_key),
+            None => UtxoSelectionCriteria::default(),
+        };
+
         let input_selection = self
-            .select_utxos(
-                amount,
-                fee_per_gram,
-                1,
-                metadata_byte_size,
-                None,
-                unique_id.as_ref(),
-                parent_public_key.as_ref(),
-            )
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, selection_criteria)
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1422,47 +1412,23 @@ where
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
     /// selection strategy to choose the outputs. It also determines if a change output is required.
-    #[allow(clippy::too_many_lines)]
     async fn select_utxos(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         num_outputs: usize,
         output_metadata_byte_size: usize,
-        strategy: Option<UTXOSelectionStrategy>,
-        unique_id: Option<&Vec<u8>>,
-        parent_public_key: Option<&PublicKey>,
+        selection_criteria: UtxoSelectionCriteria,
     ) -> Result<UtxoSelection, OutputManagerError> {
-        let token = match unique_id {
-            Some(unique_id) => {
-                debug!(target: LOG_TARGET, "Looking for {:?}", unique_id);
-                // todo: new method to fetch by unique asset id
-                let uo = self.resources.db.fetch_all_unspent_outputs()?;
-                if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
-                    Some(token_unique_id) => {
-                        debug!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
-                        token_unique_id == unique_id &&
-                            x.unblinded_output.features.parent_public_key.as_ref() == parent_public_key
-                    },
-                    _ => false,
-                }) {
-                    Some(token_id)
-                } else {
-                    return Err(OutputManagerError::TokenUniqueIdNotFound);
-                }
-            },
-            _ => None,
-        };
         debug!(
             target: LOG_TARGET,
-            "select_utxos amount: {}, token : {:?}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
-             strategy: {:?}",
+            "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
+             selection_criteria: {:?}",
             amount,
-            token,
             fee_per_gram,
             num_outputs,
             output_metadata_byte_size,
-            strategy
+            selection_criteria
         );
         let mut utxos = Vec::new();
 
@@ -1470,44 +1436,19 @@ where
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
         let fee_calc = self.get_fee_calc();
-        if let Some(token) = token {
-            utxos_total_value = token.unblinded_output.value;
-            utxos.push(token);
-        }
 
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
-        let (connected, tip_height) = match &chain_metadata {
-            Some(metadata) => (true, Some(metadata.height_of_longest_chain())),
-            None => (false, None),
-        };
 
-        // If no strategy was specified and no metadata is available, then make sure to use MaturitythenSmallest
-        let strategy = match (strategy, connected) {
-            (Some(s), _) => s,
-            (None, false) => UTXOSelectionStrategy::MaturityThenSmallest,
-            (None, true) => UTXOSelectionStrategy::Default, // use the selection heuristic next
-        };
-
-        // Heuristic for selection strategy: Default to MaturityThenSmallest, but if the amount is greater than
-        // the largest UTXO, use Largest UTXOs first.
-        // let strategy = match (strategy, uo.is_empty()) {
-        //     (Some(s), _) => s,
-        //     (None, true) => UTXOSelectionStrategy::Smallest,
-        //     (None, false) => {
-        //         let largest_utxo = &uo[uo.len() - 1];
-        //         if amount > largest_utxo.unblinded_output.value {
-        //             UTXOSelectionStrategy::Largest
-        //         } else {
-        //             UTXOSelectionStrategy::MaturityThenSmallest
-        //         }
-        //     },
-        // };
-        warn!(target: LOG_TARGET, "select_utxos selection strategy: {}", strategy);
+        warn!(
+            target: LOG_TARGET,
+            "select_utxos selection criteria: {}", selection_criteria
+        );
+        let tip_height = chain_metadata.as_ref().map(|m| m.height_of_longest_chain());
         let uo = self
             .resources
             .db
-            .fetch_unspent_outputs_for_spending(strategy, amount, tip_height)?;
+            .fetch_unspent_outputs_for_spending(selection_criteria, amount, tip_height)?;
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         // Assumes that default Outputfeatures are used for change utxo
@@ -1615,9 +1556,7 @@ where
                 fee_per_gram,
                 output_count,
                 output_count * metadata_byte_size,
-                Some(UTXOSelectionStrategy::Largest),
-                None,
-                None,
+                UtxoSelectionCriteria::largest_first(),
             )
             .await?;
 
@@ -1791,94 +1730,111 @@ where
             .as_bytes(),
         )?;
         let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
-        let rewound =
-            output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key)?;
+        // TODO: This may be usefull for the encrypted value decryption since this is an atomic swap -
+        // TODO: when fixing 'todo_decrypt'
+        let _rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+        // TODO: Fix this logic when 'todo_decrypt' - only commence if the tag is recognized
+        let amount = MicroTari::from(output.encrypted_value.todo_decrypt());
+        if amount == MicroTari::from(output.encrypted_value.todo_decrypt()) {
+            let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
+            if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, amount.as_u64())? {
+                let rewound_output = UnblindedOutput::new(
+                    output.version,
+                    amount,
+                    blinding_factor,
+                    output.features,
+                    output.script,
+                    inputs!(pre_image),
+                    self.node_identity.as_ref().secret_key().clone(),
+                    output.sender_offset_public_key,
+                    output.metadata_signature,
+                    // Although the technically the script does have a script lock higher than 0, this does not apply
+                    // to to us as we are claiming the Hashed part which has a 0 time lock
+                    0,
+                    output.covenant,
+                    output.encrypted_value,
+                );
 
-        let rewound_output = UnblindedOutput::new(
-            output.version,
-            rewound.committed_value,
-            rewound.blinding_factor.clone(),
-            output.features,
-            output.script,
-            inputs!(pre_image),
-            self.node_identity.as_ref().secret_key().clone(),
-            output.sender_offset_public_key,
-            output.metadata_signature,
-            // Although the technically the script does have a script lock higher than 0, this does not apply to to us
-            // as we are claiming the Hashed part which has a 0 time lock
-            0,
-            output.covenant,
-            output.encrypted_value,
-        );
-        let amount = rewound.committed_value;
+                let offset = PrivateKey::random(&mut OsRng);
+                let nonce = PrivateKey::random(&mut OsRng);
+                let message = "SHA-XTR atomic swap".to_string();
 
-        let offset = PrivateKey::random(&mut OsRng);
-        let nonce = PrivateKey::random(&mut OsRng);
-        let message = "SHA-XTR atomic swap".to_string();
+                // Create builder with no recipients (other than ourselves)
+                let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+                builder
+                    .with_lock_height(0)
+                    .with_fee_per_gram(fee_per_gram)
+                    .with_offset(offset.clone())
+                    .with_private_nonce(nonce.clone())
+                    .with_message(message)
+                    .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+                    .with_input(
+                        rewound_output.as_transaction_input(&self.resources.factories.commitment)?,
+                        rewound_output,
+                    );
 
-        // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
-        builder
-            .with_lock_height(0)
-            .with_fee_per_gram(fee_per_gram)
-            .with_offset(offset.clone())
-            .with_private_nonce(nonce.clone())
-            .with_message(message)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_input(
-                rewound_output.as_transaction_input(&self.resources.factories.commitment)?,
-                rewound_output,
-            );
+                let mut outputs = Vec::new();
 
-        let mut outputs = Vec::new();
+                let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+                builder.with_change_secret(spending_key);
+                builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+                builder.with_change_script(
+                    script!(Nop),
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    script_private_key,
+                );
 
-        let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        builder.with_change_secret(spending_key);
-        builder.with_rewindable_outputs(self.resources.rewind_data.clone());
-        builder.with_change_script(
-            script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
-            script_private_key,
-        );
+                let factories = CryptoFactories::default();
+                let mut stp = builder
+                    .build::<HashDigest>(
+                        &self.resources.factories,
+                        None,
+                        self.last_seen_tip_height.unwrap_or(u64::MAX),
+                    )
+                    .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
-        let factories = CryptoFactories::default();
-        let mut stp = builder
-            .build::<HashDigest>(
-                &self.resources.factories,
-                None,
-                self.last_seen_tip_height.unwrap_or(u64::MAX),
-            )
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+                let tx_id = stp.get_tx_id()?;
 
-        let tx_id = stp.get_tx_id()?;
+                let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+                    OutputManagerError::BuildError(
+                        "There should be a change output metadata signature available".to_string(),
+                    )
+                })?;
+                let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                    unblinded_output,
+                    &self.resources.factories,
+                    &self.resources.rewind_data,
+                    None,
+                    None,
+                )?;
+                outputs.push(change_output);
 
-        let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
-            OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
-        })?;
-        let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
-            unblinded_output,
-            &self.resources.factories,
-            &self.resources.rewind_data,
-            None,
-            None,
-        )?;
-        outputs.push(change_output);
+                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
+                self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
+                self.confirm_encumberance(tx_id)?;
+                let fee = stp.get_fee_amount()?;
+                trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+                stp.finalize(
+                    KernelFeatures::empty(),
+                    &factories,
+                    None,
+                    self.last_seen_tip_height.unwrap_or(u64::MAX),
+                )?;
+                let tx = stp.take_transaction()?;
 
-        trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
-        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
-        self.confirm_encumberance(tx_id)?;
-        let fee = stp.get_fee_amount()?;
-        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(
-            KernelFeatures::empty(),
-            &factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
-        let tx = stp.take_transaction()?;
-
-        Ok((tx_id, fee, amount - fee, tx))
+                Ok((tx_id, fee, amount - fee, tx))
+            } else {
+                Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
+                    RangeProofError::InvalidRewind(
+                        "Atomic swap: Blinding factor could not open the commitment!".to_string(),
+                    ),
+                )))
+            }
+        } else {
+            Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
+                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decryptes!".to_string()),
+            )))
+        }
     }
 
     pub async fn create_htlc_refund_transaction(
@@ -2006,70 +1962,67 @@ where
                     .as_bytes(),
                 )?;
                 let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-                let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-                let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
-                let rewound = output.full_rewind_range_proof(
-                    &self.resources.factories.range_proof,
-                    &rewind_key,
-                    &rewind_blinding_key,
-                );
+                let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+                // TODO: Fix this logic when 'todo_decrypt' - only commence if the tag is recognized
+                let committed_value = output.encrypted_value.todo_decrypt();
+                if committed_value == output.encrypted_value.todo_decrypt() {
+                    let blinding_factor =
+                        output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
+                    if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, committed_value)? {
+                        let rewound_output = UnblindedOutput::new(
+                            output.version,
+                            MicroTari::from(committed_value),
+                            blinding_factor.clone(),
+                            output.features,
+                            known_one_sided_payment_scripts[i].script.clone(),
+                            known_one_sided_payment_scripts[i].input.clone(),
+                            known_one_sided_payment_scripts[i].private_key.clone(),
+                            output.sender_offset_public_key,
+                            output.metadata_signature,
+                            known_one_sided_payment_scripts[i].script_lock_height,
+                            output.covenant,
+                            output.encrypted_value,
+                        );
 
-                if let Ok(rewound_result) = rewound {
-                    let rewound_output = UnblindedOutput::new(
-                        output.version,
-                        rewound_result.committed_value,
-                        rewound_result.blinding_factor.clone(),
-                        output.features,
-                        known_one_sided_payment_scripts[i].script.clone(),
-                        known_one_sided_payment_scripts[i].input.clone(),
-                        known_one_sided_payment_scripts[i].private_key.clone(),
-                        output.sender_offset_public_key,
-                        output.metadata_signature,
-                        known_one_sided_payment_scripts[i].script_lock_height,
-                        output.covenant,
-                        output.encrypted_value,
-                    );
+                        let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                            rewound_output.clone(),
+                            &self.resources.factories,
+                            &RewindData {
+                                rewind_blinding_key,
+                                recovery_byte_key,
+                            },
+                            None,
+                            Some(&output.proof),
+                        )?;
 
-                    let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
-                        rewound_output.clone(),
-                        &self.resources.factories,
-                        &RewindData {
-                            rewind_key,
-                            rewind_blinding_key,
-                            recovery_byte_key,
-                            proof_message: [0u8; 21],
-                        },
-                        None,
-                        Some(&output.proof),
-                    )?;
+                        let output_hex = output.commitment.to_hex();
+                        let tx_id = TxId::new_random();
 
-                    let output_hex = output.commitment.to_hex();
-                    let tx_id = TxId::new_random();
-
-                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
-                        Ok(_) => {
-                            rewound_outputs.push(RecoveredOutput {
-                                output: rewound_output,
-                                tx_id,
-                            });
-                        },
-                        Err(OutputManagerStorageError::DuplicateOutput) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Attempt to add scanned output {} that already exists. Ignoring the output.",
-                                output_hex
-                            );
-                        },
-                        Err(err) => {
-                            return Err(err.into());
-                        },
+                        match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
+                            Ok(_) => {
+                                rewound_outputs.push(RecoveredOutput {
+                                    output: rewound_output,
+                                    tx_id,
+                                });
+                            },
+                            Err(OutputManagerStorageError::DuplicateOutput) => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Attempt to add scanned output {} that already exists. Ignoring the output.",
+                                    output_hex
+                                );
+                            },
+                            Err(err) => {
+                                return Err(err.into());
+                            },
+                        }
+                        trace!(
+                            target: LOG_TARGET,
+                            "One-sided payment Output {} with value {} recovered",
+                            output_hex,
+                            committed_value,
+                        );
                     }
-                    trace!(
-                        target: LOG_TARGET,
-                        "One-sided payment Output {} with value {} recovered",
-                        output_hex,
-                        rewound_result.committed_value,
-                    );
                 }
             }
         }
@@ -2078,32 +2031,6 @@ where
 
     fn get_fee_calc(&self) -> Fee {
         Fee::new(*self.resources.consensus_constants.transaction_weight())
-    }
-}
-
-/// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
-#[derive(Debug, PartialEq, Eq)]
-pub enum UTXOSelectionStrategy {
-    // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
-    // is removing small UTXOs from the blockchain, con is that it costs more in fees
-    Smallest,
-    // Start from oldest maturity to reduce the likelihood of grabbing locked up UTXOs
-    MaturityThenSmallest,
-    // A strategy that selects the largest UTXOs first. Preferred when the amount is large
-    Largest,
-    // Heuristic for selection strategy: MaturityThenSmallest, but if the amount is greater than
-    // the largest UTXO, use Largest UTXOs first
-    Default,
-}
-
-impl Display for UTXOSelectionStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UTXOSelectionStrategy::Smallest => write!(f, "Smallest"),
-            UTXOSelectionStrategy::MaturityThenSmallest => write!(f, "MaturityThenSmallest"),
-            UTXOSelectionStrategy::Largest => write!(f, "Largest"),
-            UTXOSelectionStrategy::Default => write!(f, "Default"),
-        }
     }
 }
 
