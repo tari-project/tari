@@ -4,6 +4,8 @@ import { ContainerName } from '../../types/general'
 
 export type ContainerId = string
 
+// TODO this should be removed from here and any usages should be got from backend
+// this refers to container_name in backend/src/docker/models.rs
 export enum Container {
   Tor = 'tor',
   BaseNode = 'base_node',
