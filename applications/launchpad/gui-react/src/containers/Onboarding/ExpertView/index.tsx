@@ -3,6 +3,7 @@ import { useTheme } from 'styled-components'
 import Text from '../../../components/Text'
 import Box from '../../../components/Box'
 import DockerImagesList from '../../../components/DockerImagesList'
+import t from '../../../locales'
 
 import { Wrapper, ScrollContainer } from './styles'
 
@@ -14,7 +15,9 @@ const ExpertView = () => {
 
   return (
     <Wrapper>
-      <Text color={theme.inverted.primary}>Pulling images</Text>
+      <Text color={theme.inverted.primary}>
+        {t.onboarding.expertView.title}
+      </Text>
       <ScrollContainer>
         <Box
           style={{
@@ -23,7 +26,7 @@ const ExpertView = () => {
           }}
           border={false}
         >
-          <DockerImagesList inverted headers disableIcons />
+          <DockerImagesList inverted header disableIcons />
         </Box>
       </ScrollContainer>
     </Wrapper>

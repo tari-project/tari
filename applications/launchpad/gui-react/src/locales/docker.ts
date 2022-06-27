@@ -15,4 +15,8 @@ export default {
     registryLabel: 'Docker Registry',
     imageStatuses: 'Image Statuses',
   },
+  header: {
+    image: 'Image',
+    status: 'Status',
+  },
 }

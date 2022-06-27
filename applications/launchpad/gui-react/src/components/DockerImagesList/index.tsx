@@ -20,12 +20,12 @@ import { DockerRow, DockerList, DockerStatusWrapper } from './styles'
 
 const DockerImagesList = ({
   inverted,
-  headers,
+  header,
   disableIcons,
   style,
 }: {
   inverted?: boolean
-  headers?: boolean
+  header?: boolean
   disableIcons?: boolean
   style?: CSSProperties
 }) => {
@@ -41,17 +41,17 @@ const DockerImagesList = ({
   return (
     <DockerList style={style}>
       {dockerImagesLoading && <LoadingOverlay inverted={inverted} />}
-      {headers && (
+      {header && (
         <DockerRow key='headers'>
           <Text
             style={{ flexBasis: '30%' }}
             type='smallMedium'
             color={theme.inverted.secondary}
           >
-            Image
+            {t.docker.header.image}
           </Text>
           <Text type='smallMedium' color={theme.inverted.secondary}>
-            Status
+            {t.docker.header.status}
           </Text>
         </DockerRow>
       )}
@@ -59,7 +59,7 @@ const DockerImagesList = ({
         <DockerRow key={dockerImage.dockerImage} $inverted={inverted}>
           <Text
             style={{ flexBasis: '30%' }}
-            type={headers ? 'smallMedium' : 'defaultMedium'}
+            type={header ? 'smallMedium' : 'defaultMedium'}
             color={inverted ? theme.inverted.disabledText : theme.primary}
           >
             {dockerImage.displayName}
