@@ -35,6 +35,9 @@ use constitution_validator::validate_constitution;
 mod definition_validator;
 use definition_validator::validate_definition;
 
+mod update_proposal_validator;
+use update_proposal_validator::validate_update_proposal;
+
 mod helpers;
 
 #[cfg(test)]
@@ -59,6 +62,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<
                 OutputType::ContractDefinition => validate_definition(&self.db, output)?,
                 OutputType::ContractConstitution => validate_constitution(&self.db, output)?,
                 OutputType::ContractValidatorAcceptance => validate_acceptance(&self.db, output)?,
+                OutputType::ContractConstitutionProposal => validate_update_proposal(&self.db, output)?,
                 _ => continue,
             }
         }

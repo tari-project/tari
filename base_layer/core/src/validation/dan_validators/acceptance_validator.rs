@@ -71,7 +71,7 @@ fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&Con
     match sidechain_feature.acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
         None => Err(ValidationError::DanLayerError(
-            "Invalid contract acceptance: acceptance features not found".to_string(),
+            "Contract acceptance features not found".to_string(),
         )),
     }
 }
@@ -177,7 +177,7 @@ mod test {
         let schema = create_contract_acceptance_schema(contract_id, change[3].clone(), validator_node_public_key);
         let (tx, _) = schema_to_transaction(&schema);
 
-        // try to validate the duplicated accepntace transaction and check that we get the error
+        // try to validate the duplicated acceptance transaction and check that we get the error
         assert_dan_error(&blockchain, &tx, "Duplicated contract acceptance");
     }
 
