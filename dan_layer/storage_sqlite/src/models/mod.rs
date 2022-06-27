@@ -22,7 +22,6 @@
 
 pub mod instruction;
 pub mod locked_qc;
-pub mod metadata;
 pub mod node;
 pub mod prepare_qc;
 pub mod state_key;

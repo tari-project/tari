@@ -23,6 +23,9 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use tari_common_types::types::PublicKey;
+use tari_utilities::ByteArray;
+
 use crate::{error::SqliteStorageError, schema::*};
 
 #[derive(Debug, Identifiable, Queryable)]
@@ -33,6 +36,7 @@ pub struct Instruction {
     pub template_id: i32,
     pub method: String,
     pub args: Vec<u8>,
+    pub sender: Vec<u8>,
 }
 
 impl TryFrom<Instruction> for tari_dan_core::models::Instruction {
@@ -40,7 +44,12 @@ impl TryFrom<Instruction> for tari_dan_core::models::Instruction {
 
     fn try_from(instruction: Instruction) -> Result<Self, Self::Error> {
         let template_id = instruction.template_id.try_into()?;
-        Ok(Self::new(template_id, instruction.method, instruction.args))
+        Ok(Self::new(
+            template_id,
+            instruction.method,
+            instruction.args,
+            PublicKey::from_bytes(&instruction.sender).expect("invalid public key"),
+        ))
     }
 }
 
@@ -52,4 +61,5 @@ pub struct NewInstruction {
     pub template_id: i32,
     pub method: String,
     pub args: Vec<u8>,
+    pub sender: Vec<u8>,
 }

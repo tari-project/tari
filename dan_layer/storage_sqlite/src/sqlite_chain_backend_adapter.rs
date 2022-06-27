@@ -28,6 +28,7 @@ use tari_dan_core::{
     models::{HotStuffMessageType, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
     storage::chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
 };
+use tari_utilities::ByteArray;
 
 use crate::{
     error::SqliteStorageError,
@@ -425,6 +426,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             template_id: item.instruction.template_id() as i32,
             method: item.instruction.method().to_string(),
             args: Vec::from(item.instruction.args()),
+            sender: item.instruction.sender().to_vec(),
         };
         diesel::insert_into(instructions::table)
             .values(new_instruction)
