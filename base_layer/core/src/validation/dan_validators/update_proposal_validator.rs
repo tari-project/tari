@@ -101,6 +101,27 @@ mod test {
     };
 
     #[test]
+    fn constitution_must_exist() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+
+        // skip the contract constitution publication
+
+        // create a contract proposal transaction
+        let validator_node_public_key = PublicKey::default();
+        let committee = vec![validator_node_public_key];
+        let proposal_id: u64 = 1;
+        let schema = create_contract_proposal_schema(contract_id, change[3].clone(), proposal_id, committee);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the acceptance transaction and check that we get the error
+        assert_dan_error(&blockchain, &tx, "Contract constitution not found");
+    }
+
+    #[test]
     fn it_rejects_duplicated_proposals() {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
