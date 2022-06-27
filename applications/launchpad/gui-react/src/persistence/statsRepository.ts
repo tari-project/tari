@@ -1,16 +1,13 @@
 import groupby from 'lodash.groupby'
 
 import { Dictionary, ContainerName } from '../types/general'
-import {
-  Container,
-  SerializableContainerStats,
-} from '../store/containers/types'
+import { SerializableContainerStats } from '../store/containers/types'
 import getDb from './db'
 
 export interface StatsEntry {
   timestamp: string
   network: string
-  service: Container
+  service: ContainerName
   cpu: number
   memory: number
   upload: number

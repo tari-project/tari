@@ -6,6 +6,7 @@ import getStatsRepository, {
   StatsEntry,
 } from '../../../../persistence/statsRepository'
 import { Container } from '../../../../store/containers/types'
+import { selectDockerImages } from '../../../../store/dockerImages/selectors'
 import { Dictionary } from '../../../../types/general'
 
 import { UsePerformanceStatsType } from './types'
@@ -26,6 +27,7 @@ const usePerformanceStats: UsePerformanceStatsType = ({
   extractor,
 }) => {
   const configuredNetwork = useAppSelector(selectNetwork)
+  const dockerImages = useAppSelector(selectDockerImages)
   const repository = useMemo(getStatsRepository, [])
   const [stats, setStats] = useState<Dictionary<StatsEntry[]>>()
 
@@ -48,12 +50,15 @@ const usePerformanceStats: UsePerformanceStatsType = ({
   }, [enabled, from, to])
 
   const extracted = useMemo(() => {
-    const r = Object.values(Container)
-      .filter(container => Boolean(stats && stats[container]))
+    const r = dockerImages
+      .filter(container => Boolean(stats && stats[container.containerName]))
       .reduce(
         (accu, current) => ({
           ...accu,
-          [current]: ((stats && stats[current]) || []).map(extractor),
+          [current.containerName]: (
+            (stats && stats[current.containerName]) ||
+            []
+          ).map(extractor),
         }),
         {} as Record<Container, { timestamp: string; value: number }[]>,
       )
