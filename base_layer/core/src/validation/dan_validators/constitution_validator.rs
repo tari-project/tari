@@ -30,28 +30,45 @@ use crate::{
     validation::ValidationError,
 };
 
-pub fn validate_definition<B: BlockchainBackend>(
+pub fn validate_constitution<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    validate_output_type(output, OutputType::ContractDefinition)?;
+    validate_output_type(output, OutputType::ContractConstitution)?;
 
     let sidechain_features = get_sidechain_features(output)?;
     let contract_id = sidechain_features.contract_id;
 
+    validate_definition_existence(db, contract_id)?;
     validate_duplication(db, contract_id)?;
 
     Ok(())
+}
+
+fn validate_definition_existence<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+) -> Result<(), ValidationError> {
+    match fetch_contract_features(db, contract_id, OutputType::ContractDefinition)? {
+        Some(_) => Ok(()),
+        None => {
+            let msg = format!(
+                "Contract definition not found for contract_id ({:?})",
+                contract_id.to_hex()
+            );
+            Err(ValidationError::DanLayerError(msg))
+        },
+    }
 }
 
 fn validate_duplication<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
-    match fetch_contract_features(db, contract_id, OutputType::ContractDefinition)? {
+    match fetch_contract_features(db, contract_id, OutputType::ContractConstitution)? {
         Some(_) => {
             let msg = format!(
-                "Duplicated contract definition for contract_id ({:?})",
+                "Duplicated contract constitution for contract_id ({:?})",
                 contract_id.to_hex()
             );
             Err(ValidationError::DanLayerError(msg))
@@ -62,27 +79,45 @@ fn validate_duplication<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::FixedHash;
+
     use crate::validation::dan_validators::test_helpers::{
         assert_dan_error,
-        create_contract_definition_schema,
+        create_contract_constitution_schema,
         init_test_blockchain,
+        publish_constitution,
         publish_definition,
         schema_to_transaction,
     };
 
     #[test]
-    fn it_rejects_duplicated_definitions() {
+    fn definition_must_exist() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (blockchain, change) = init_test_blockchain();
+
+        // construct a transaction for a constitution, without a prior definition
+        let contract_id = FixedHash::default();
+        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), Vec::new());
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the constitution transaction and check that we get the error
+        assert_dan_error(&blockchain, &tx, "Contract definition not found");
+    }
+
+    #[test]
+    fn it_rejects_duplicated_constitutions() {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
 
-        // publish the contract definition into a block
-        let _contract_id = publish_definition(&mut blockchain, change[0].clone());
+        // publish the contract definition and constitution into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id);
 
-        // construct a transaction for the duplicated contract definition
-        let (_, schema) = create_contract_definition_schema(change[1].clone());
+        // construct a transaction for the duplicated contract constitution
+        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), Vec::new());
         let (tx, _) = schema_to_transaction(&schema);
 
-        // try to validate the duplicated definition transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated contract definition");
+        // try to validate the duplicated constitution transaction and check that we get the error
+        assert_dan_error(&blockchain, &tx, "Duplicated contract constitution");
     }
 }

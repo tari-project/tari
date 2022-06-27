@@ -74,6 +74,11 @@ pub fn publish_definition(blockchain: &mut TestBlockchain, change: UnblindedOutp
     contract_id
 }
 
+pub fn publish_constitution(blockchain: &mut TestBlockchain, change: UnblindedOutput, contract_id: FixedHash) {
+    let schema = create_contract_constitution_schema(contract_id, change, Vec::new());
+    create_block(blockchain, "constitution", schema);
+}
+
 pub fn schema_to_transaction(schema: &TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
     let mut utxos = Vec::new();
 
