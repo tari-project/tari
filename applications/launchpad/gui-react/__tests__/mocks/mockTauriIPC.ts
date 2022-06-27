@@ -60,6 +60,8 @@ export const tauriIPCMock = (props: Record<string, unknown> = {}) => {
         } as ServiceDescriptor
       case 'stop_service':
         return true
+      case 'image_list':
+        return []
       default:
         return
     }
