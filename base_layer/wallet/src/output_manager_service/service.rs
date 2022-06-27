@@ -25,15 +25,12 @@ use std::{convert::TryInto, fmt, sync::Arc};
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
-use itertools::{
-    FoldWhile::{Continue, Done},
-    Itertools,
-};
+use itertools::Itertools;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -89,12 +86,11 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase, SortDirection},
+            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
         tasks::TxoValidationTask,
-        types::CoinJoinResult,
     },
     types::HashDigest,
 };
@@ -383,22 +379,25 @@ where
                 let outputs = self.fetch_invalid_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
             },
-            OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
-                .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
-                .await
-                .map(OutputManagerResponse::Transaction),
-            OutputManagerRequest::CreateCoinJoin {
-                target_amount,
-                fee_per_gram,
-                commitments,
-            } => self
-                .create_coin_join(target_amount, fee_per_gram, commitments)
+            OutputManagerRequest::CreateCoinSplit((commitments, amount_per_split, split_count, fee_per_gram)) => self
+                .create_coin_split(commitments, amount_per_split, split_count, fee_per_gram)
                 .await
                 .map_err(|e| {
-                    eprintln!("ERROR = {:#?}", e);
+                    eprintln!("COIN SPLIT ERROR = {:#?}", e);
                     e
                 })
-                .map(OutputManagerResponse::CoinJoinResult),
+                .map(OutputManagerResponse::Transaction),
+            OutputManagerRequest::CreateCoinJoin {
+                commitments,
+                fee_per_gram,
+            } => self
+                .create_coin_join(commitments, fee_per_gram)
+                .await
+                .map_err(|e| {
+                    eprintln!("COIN JOIN ERROR = {:#?}", e);
+                    e
+                })
+                .map(OutputManagerResponse::Transaction),
             OutputManagerRequest::ApplyEncryption(cipher) => self
                 .resources
                 .db
@@ -1555,17 +1554,17 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn create_coin_split(
+    async fn create_coin_split_old(
         &mut self,
         amount_per_split: MicroTari,
         split_count: usize,
         fee_per_gram: MicroTari,
-        lock_height: Option<u64>,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
         trace!(
             target: LOG_TARGET,
             "Select UTXOs and estimate coin split transaction fee."
         );
+
         let output_count = split_count;
         let script = script!(Nop);
         let covenant = Covenant::default();
@@ -1597,7 +1596,7 @@ where
 
         let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
         builder
-            .with_lock_height(lock_height.unwrap_or(0))
+            .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
@@ -1718,50 +1717,292 @@ where
         Ok((tx_id, tx, utxos_total_value))
     }
 
+    #[allow(clippy::too_many_lines)]
+    pub async fn create_coin_split(
+        &mut self,
+        commitments: Vec<Commitment>,
+        amount_per_split: MicroTari,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        if commitments.is_empty() {
+            return Err(OutputManagerError::NoCommitmentsProvided);
+        }
+
+        if number_of_splits == 0 {
+            return Err(OutputManagerError::InvalidArgument(
+                "number_of_splits must be greater than 0".to_string(),
+            ));
+        }
+
+        let covenant = Covenant::default();
+
+        // container for resulting outputs
+        let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
+
+        // fetching source outputs by specific commitments
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
+
+        let total_split_amount = MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64);
+
+        // accumulated value amount from given source outputs
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        if total_split_amount >= accumulated_amount {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // TODO: determine whether covenant size must be included below
+        let default_metadata_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight()
+            .round_up_metadata_size(
+                script!(Nop).consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+            );
+
+        let fee_without_change = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            src_outputs.len(),
+            number_of_splits,
+            default_metadata_size,
+        );
+
+        // checking whether a total output value is enough
+        if accumulated_amount < (total_split_amount + fee_without_change) {
+            error!(
+                target: LOG_TARGET,
+                "failed to split coins, not enough funds with `fee_without_change` included"
+            );
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        let final_fee = match accumulated_amount
+            .saturating_sub(total_split_amount + fee_without_change)
+            .as_u64()
+        {
+            0 => fee_without_change,
+            _ => self.get_fee_calc().calculate(
+                fee_per_gram,
+                1,
+                src_outputs.len(),
+                number_of_splits + 1,
+                default_metadata_size,
+            ),
+        };
+
+        // checking, again, whether a total output value is enough
+        if accumulated_amount < (total_split_amount + final_fee) {
+            error!(
+                target: LOG_TARGET,
+                "failed to split coins, not enough funds with `final_fee` included"
+            );
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        eprintln!("final_fee = {:#?}", final_fee);
+        eprintln!("balance = {:#?}", self.get_balance(None)?);
+
+        // preliminary balance check
+        if self.get_balance(None)?.available_balance < (total_split_amount + final_fee) {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // NOTE: called `leftover` to remove possible brainlag by confusing `change` as a verb
+        let leftover_change = accumulated_amount.saturating_sub(total_split_amount + final_fee);
+
+        // ----------------------------------------------------------------------------
+        // initializing new transaction
+
+        trace!(target: LOG_TARGET, "initializing new split transaction");
+
+        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(PrivateKey::random(&mut OsRng))
+            .with_private_nonce(PrivateKey::random(&mut OsRng))
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
+
+        // collecting inputs from source outputs
+        let inputs: Vec<TransactionInput> = src_outputs
+            .iter()
+            .map(|src_out| {
+                src_out
+                    .unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)
+            })
+            .try_collect()?;
+
+        // adding inputs to the transaction
+        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+            trace!(
+                target: LOG_TARGET,
+                "adding transaction input: output_hash=: {:?}",
+                src_output.hash
+            );
+            tx_builder.with_input(input, src_output.unblinded_output.clone());
+        });
+
+        // ----------------------------------------------------------------------------
+        // initializing primary outputs
+
+        for _ in 0..number_of_splits {
+            let noop_script = script!(Nop);
+            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let output_features = OutputFeatures {
+                recovery_byte: self.calculate_recovery_byte(spending_key.clone(), total_split_amount.as_u64(), true)?,
+                ..Default::default()
+            };
+
+            // generating sender's keypair
+            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+            let commitment_signature = TransactionOutput::create_final_metadata_signature(
+                TransactionOutputVersion::get_current_version(),
+                amount_per_split,
+                &spending_key,
+                &noop_script,
+                &output_features,
+                &sender_offset_private_key,
+                &covenant,
+            )?;
+
+            let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                UnblindedOutput::new_current_version(
+                    amount_per_split,
+                    spending_key,
+                    output_features,
+                    noop_script,
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    script_private_key,
+                    sender_offset_public_key,
+                    commitment_signature,
+                    0,
+                    covenant.clone(),
+                ),
+                &self.resources.factories,
+                &self.resources.rewind_data.clone(),
+                None,
+                None,
+            )?;
+
+            tx_builder
+                .with_output(output.unblinded_output.clone(), sender_offset_private_key)
+                .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+            dest_outputs.push(output);
+        }
+
+        // extending transaction if there is some `change` left over
+        if leftover_change > MicroTari::zero() {
+            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            tx_builder.with_change_secret(spending_key);
+            tx_builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            tx_builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+            );
+        }
+
+        let mut stp = tx_builder
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
+        // store them until the transaction times out OR is confirmed
+        let tx_id = stp.get_tx_id()?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Encumber coin split transaction (tx_id={}) outputs",
+            tx_id
+        );
+
+        // again, to obtain output for leftover change
+        if leftover_change > MicroTari::zero() {
+            // obtaining output for the `change`
+            let unblinded_output_for_change = stp.get_change_unblinded_output()?.ok_or_else(|| {
+                OutputManagerError::BuildError(
+                    "There should be a `change` output metadata signature available".to_string(),
+                )
+            })?;
+
+            // appending `change` output to the result
+            dest_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
+                unblinded_output_for_change,
+                &self.resources.factories,
+                &self.resources.rewind_data.clone(),
+                None,
+                None,
+            )?);
+        }
+
+        // encumbering transaction
+        self.resources
+            .db
+            .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
+        self.confirm_encumberance(tx_id)?;
+
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin split transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
+
+        eprintln!("balance_after = {:#?}", self.get_balance(None)?);
+
+        Ok((tx_id, stp.take_transaction()?, total_split_amount))
+    }
+
     // TODO: manual input list or auto (pick best fitting combination)
     #[allow(clippy::too_many_lines)]
     pub async fn create_coin_join(
         &mut self,
-        target_amount: MicroTari,
+        commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
-        commitments: Vec<PublicKey>,
-    ) -> Result<CoinJoinResult, OutputManagerError> {
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
         let covenant = Covenant::default();
         let noop_script = script!(Nop);
 
-        // container for resulting outputs
+        // container for resulting output
         let mut outputs = Vec::with_capacity(2);
 
-        // collecting UTXOs sufficient to cover the target amount
-        let (aggregated_amount, src_outputs) = self
-            .resources
-            .db
-            .fetch_outputs_by(OutputBackendQuery {
-                tip_height: i64::MAX,
-                status: vec![OutputStatus::Unspent],
-                commitment: commitments,
-                pagination: None,
-                value_min: None,
-                value_max: None,
-                sorting: vec![("value", SortDirection::Asc)],
-            })?
-            .into_iter()
-            .fold_while((MicroTari::zero(), Vec::<DbUnblindedOutput>::new()), |mut acc, out| {
-                let next = acc.0 + out.unblinded_output.value;
-                if next < target_amount || acc.0 < target_amount && next >= target_amount {
-                    acc.0 = next;
-                    acc.1.push(out);
-                    Continue(acc)
-                } else {
-                    Done(acc)
-                }
-            })
-            .into_inner();
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
 
-        eprintln!("aggregated_amount = {:#?}", aggregated_amount);
-        eprintln!("target_amount = {:#?}", target_amount);
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
 
-        let base_metadata_size = self
+        eprintln!("accumulated_amount = {:#?}", accumulated_amount);
+        eprintln!("target_amount = {:#?}", accumulated_amount);
+
+        let metadata_size_of_change = self
             .resources
             .consensus_constants
             .transaction_weight()
@@ -1771,12 +2012,12 @@ where
                     OutputFeatures::default().consensus_encode_exact_size(),
             );
 
-        let mut fee_without_change =
+        let fee_without_change =
             self.get_fee_calc()
-                .calculate(fee_per_gram, 1, src_outputs.len(), 1, base_metadata_size);
+                .calculate(fee_per_gram, 1, src_outputs.len(), 1, metadata_size_of_change);
 
         // checking whether a total output value is enough
-        if aggregated_amount < (target_amount + fee_without_change) {
+        if accumulated_amount < (accumulated_amount + fee_without_change) {
             error!(
                 target: LOG_TARGET,
                 "failed to join coins, not enough funds to fulfill target amount plus the fee without change"
@@ -1784,18 +2025,18 @@ where
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
-        let final_fee = match aggregated_amount
-            .saturating_sub(target_amount + fee_without_change)
+        let final_fee = match accumulated_amount
+            .saturating_sub(accumulated_amount + fee_without_change)
             .as_u64()
         {
             0 => fee_without_change,
             _ => self
                 .get_fee_calc()
-                .calculate(fee_per_gram, 1, src_outputs.len(), 2, base_metadata_size * 2),
+                .calculate(fee_per_gram, 1, src_outputs.len(), 2, metadata_size_of_change * 2),
         };
 
         // checking, again, whether a total output value is enough
-        if aggregated_amount < (target_amount + final_fee) {
+        if accumulated_amount < (accumulated_amount + final_fee) {
             error!(
                 target: LOG_TARGET,
                 "failed to join coins, not enough funds to fulfill target amount plus the final fee"
@@ -1807,12 +2048,12 @@ where
         eprintln!("balance = {:#?}", self.get_balance(None)?);
 
         // preliminary balance check
-        if self.get_balance(None)?.available_balance < (target_amount + final_fee) {
+        if self.get_balance(None)?.available_balance < (accumulated_amount + final_fee) {
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
         // NOTE: called `leftover` to remove possible brainlag by confusing `change` as a verb
-        let leftover_change = aggregated_amount.saturating_sub(target_amount + final_fee);
+        let leftover_change = accumulated_amount.saturating_sub(accumulated_amount + final_fee);
 
         // ----------------------------------------------------------------------------
         // initializing new transaction
@@ -1850,7 +2091,11 @@ where
         // initializing primary output
         let (primary_spending_key, primary_script_private_key) = self.get_spend_and_script_keys().await?;
         let output_features = OutputFeatures {
-            recovery_byte: self.calculate_recovery_byte(primary_spending_key.clone(), target_amount.as_u64(), true)?,
+            recovery_byte: self.calculate_recovery_byte(
+                primary_spending_key.clone(),
+                accumulated_amount.as_u64(),
+                true,
+            )?,
             ..Default::default()
         };
 
@@ -1860,7 +2105,7 @@ where
 
         let commitment_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
-            target_amount,
+            accumulated_amount,
             &primary_spending_key,
             &noop_script,
             &output_features,
@@ -1870,7 +2115,7 @@ where
 
         let primary_output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
-                target_amount,
+                accumulated_amount,
                 primary_spending_key,
                 output_features,
                 noop_script,
@@ -1965,18 +2210,7 @@ where
 
         eprintln!("balance_after = {:#?}", self.get_balance(None)?);
 
-        Ok(CoinJoinResult {
-            tx_id,
-            transaction: stp.take_transaction()?,
-            target_amount,
-            total_expense_amount: target_amount + final_fee,
-            aggregated_amount,
-            leftover_change_amount: leftover_change,
-            primary_output,
-            leftover_change_output: src_outputs[1].clone(),
-            src_outputs,
-            computed_fee_amount: final_fee,
-        })
+        Ok((tx_id, stp.take_transaction()?, accumulated_amount))
     }
 
     async fn fetch_outputs_from_node(

@@ -27,7 +27,7 @@ use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::{ComSignature, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -539,15 +539,15 @@ where
     /// Do a coin split
     pub async fn coin_split(
         &mut self,
+        commitments: Vec<Commitment>,
         amount_per_split: MicroTari,
         split_count: usize,
         fee_per_gram: MicroTari,
         message: String,
-        lock_height: Option<u64>,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
-            .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+            .create_coin_split(commitments, amount_per_split, split_count, fee_per_gram)
             .await;
 
         match coin_split_tx {
@@ -567,30 +567,24 @@ where
 
     pub async fn coin_join(
         &mut self,
-        target_amount: MicroTari,
+        commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
-        commitments: Vec<PublicKey>,
         msg: Option<String>,
     ) -> Result<TxId, WalletError> {
         let coin_join_tx = self
             .output_manager_service
-            .create_coin_join(target_amount, fee_per_gram, commitments)
+            .create_coin_join(commitments, fee_per_gram)
             .await;
 
         match coin_join_tx {
-            Ok(result) => {
+            Ok((tx_id, tx, output_value)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(
-                        result.tx_id,
-                        result.transaction,
-                        result.target_amount,
-                        msg.unwrap_or(String::new()),
-                    )
+                    .submit_transaction(tx_id, tx, output_value, msg.unwrap_or(String::new()))
                     .await;
 
                 match coin_tx {
-                    Ok(_) => Ok(result.tx_id),
+                    Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
                 }
             },

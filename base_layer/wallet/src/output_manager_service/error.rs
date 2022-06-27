@@ -126,6 +126,10 @@ pub enum OutputManagerError {
     InvalidMessageError(String),
     #[error("Key manager service error : {0}")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+    #[error("No commitments were provided")]
+    NoCommitmentsProvided,
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 #[derive(Debug, Error)]
