@@ -6,10 +6,58 @@ import Button from '../../Button'
 import { useAppDispatch } from '../../../store/hooks'
 import { setExpertView } from '../../../store/app'
 import { setExpertSwitchDisabled } from '../../../store/app'
+import { ActionStatusContainer, CtaButtonContainer, StatusRow } from './styles'
+import Loading from '../../Loading'
 
 /**
  * @TODO - temporary components for Docker Images Download - #309
  */
+
+type StatusType =
+  | 'not_started'
+  | 'in_progress'
+  | 'no_space_error'
+  | 'server_error'
+  | 'success'
+
+const Processing = () => (
+  <ActionStatusContainer>
+    <Loading loading />
+    <Text type='defaultMedium'>{t.onboarding.status.processing}</Text>
+  </ActionStatusContainer>
+)
+
+const Done = () => (
+  <ActionStatusContainer>
+    <StatusRow>
+      <Text type='microMedium'>✅</Text>
+      <Text type='defaultMedium'>{t.onboarding.status.done}</Text>
+    </StatusRow>
+  </ActionStatusContainer>
+)
+
+const Fail = () => (
+  <ActionStatusContainer>
+    <StatusRow>
+      <Text type='microMedium'>❌</Text>
+      <Text type='defaultMedium'>{t.onboarding.status.fail}</Text>
+    </StatusRow>
+  </ActionStatusContainer>
+)
+
+const Status = ({ status }: { status: StatusType }) => {
+  switch (status) {
+    case 'in_progress':
+      return <Processing />
+    case 'no_space_error':
+    case 'server_error':
+      return <Fail />
+    case 'success':
+      return <Done />
+    default:
+      return null
+  }
+}
 
 export const DownloadImagesMessage = ({
   onError,
@@ -19,9 +67,7 @@ export const DownloadImagesMessage = ({
   onSuccess: () => void
 }) => {
   const dispatch = useAppDispatch()
-  const [status, setStatus] = useState<
-    'inprogress' | 'no_space_error' | 'server_error' | 'success'
-  >('inprogress')
+  const [status, setStatus] = useState<StatusType>('in_progress')
 
   useEffect(() => {
     dispatch(setExpertSwitchDisabled(false))
@@ -46,7 +92,9 @@ export const DownloadImagesMessage = ({
           </Text>
         </Button>
       </Text>
-      <Text>{status}</Text>
+
+      <Status status={status} />
+
       <Button
         onClick={() => {
           setStatus('success')
@@ -82,9 +130,7 @@ export const DownloadImagesErrorMessage = ({
   onError: (type: 'no_space_error' | 'server_error') => void
   onSuccess: () => void
 }) => {
-  const [status, setStatus] = useState<
-    'notstarted' | 'inprogress' | 'no_space_error' | 'server_error' | 'success'
-  >('notstarted')
+  const [status, setStatus] = useState<StatusType>('not_started')
 
   useEffect(() => {
     if (['no_space_error', 'server_error'].includes(status)) {
@@ -92,23 +138,45 @@ export const DownloadImagesErrorMessage = ({
     }
   }, [status])
 
+  const text =
+    errorType === 'no_space_error' ? (
+      <Text as='span'>{t.onboarding.dockerImages.errors.noSpace}</Text>
+    ) : (
+      <>
+        <Text as='span'>
+          {t.onboarding.dockerImages.errors.serverError.part1}
+        </Text>{' '}
+        <Text as='span' type='defaultHeavy'>
+          {t.onboarding.dockerImages.errors.serverError.part2}
+        </Text>{' '}
+        <Text as='span' type='defaultHeavy'>
+          (#NUMBER)
+        </Text>{' '}
+        <Text as='span' type='defaultHeavy'>
+          {t.onboarding.dockerImages.errors.serverError.part3}
+        </Text>{' '}
+        <Text as='span'>
+          {t.onboarding.dockerImages.errors.serverError.part4}
+        </Text>
+      </>
+    )
+
   return (
     <>
-      <Text as='span' type='defaultMedium'>
-        Error : {errorType}
-      </Text>
+      <Text>{text}</Text>
 
-      {status === 'notstarted' && (
-        <Button onClick={() => setStatus('inprogress')}>
-          <Text as='span' type='defaultUnder'>
-            Try again
-          </Text>
-        </Button>
+      {status === 'not_started' && (
+        <CtaButtonContainer>
+          <Button onClick={() => setStatus('in_progress')}>
+            <Text as='span'>{t.common.verbs.tryAgain}</Text>
+          </Button>
+        </CtaButtonContainer>
       )}
 
-      {status === 'inprogress' && (
+      <Status status={status} />
+
+      {status === 'in_progress' && (
         <>
-          <Text>In progress...</Text>
           <Button
             onClick={() => {
               setStatus('success')

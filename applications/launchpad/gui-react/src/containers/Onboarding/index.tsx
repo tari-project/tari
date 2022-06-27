@@ -112,6 +112,7 @@ const OnboardingContainer = () => {
         ),
         barFill: 0.625,
         noSkip: true,
+        wait: 100,
       },
     ])
   }
