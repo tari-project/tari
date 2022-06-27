@@ -47,6 +47,7 @@ export type DockerImage = {
   imageName: string
   displayName: string
   dockerImage: string
+  containerName: string
   latest: boolean
   pending?: boolean
   error?: string

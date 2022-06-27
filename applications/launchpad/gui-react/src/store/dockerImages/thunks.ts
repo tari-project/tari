@@ -16,6 +16,8 @@ export const getDockerImageList = createAsyncThunk<
       settings: state.settings.serviceSettings,
     })
 
+    console.debug({ images })
+
     // TODO get status from backend after https://github.com/Altalogy/tari/issues/311
     return images.map(img => ({ ...img, latest: true }))
   } catch (e) {

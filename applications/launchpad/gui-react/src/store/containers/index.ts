@@ -91,7 +91,7 @@ const containersSlice = createSlice({
       }
 
       state.pending = state.pending.filter(p => p !== action.meta.arg.service)
-      state.containers[action.payload.id].type = action.meta.arg.service
+      state.containers[action.payload.id].name = action.meta.arg.service
       state.stats[action.payload.id].unsubscribe =
         action.payload.unsubscribeStats
       state.errors[action.meta.arg.service] = undefined
@@ -108,7 +108,7 @@ const containersSlice = createSlice({
     builder.addCase(stop.fulfilled, (state, { meta }) => {
       state.pending = state.pending.filter(p => p !== meta.arg)
       state.containers[meta.arg].error = undefined
-      const type = state.containers[meta.arg].type
+      const type = state.containers[meta.arg].name
       if (type) {
         state.errors[type] = undefined
       }

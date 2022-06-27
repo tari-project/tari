@@ -1,4 +1,5 @@
 import { Container, ContainerId } from '../../../../store/containers/types'
+import { DockerImage } from '../../../../types/general'
 
 type ContainerDto = {
   id: ContainerId
@@ -9,7 +10,7 @@ type ContainerDto = {
   memory: number
   pending: boolean
   running: boolean
-}
+} & Pick<DockerImage, 'imageName' | 'displayName'>
 
 export type ContainersProps = {
   containers: ContainerDto[]

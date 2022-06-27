@@ -15,15 +15,19 @@ const ContainersContainer = () => {
   const containerStatuses = useAppSelector(selectContainersStatusesWithStats)
   const containers = useMemo(
     () =>
-      containerStatuses.map(({ container, status }) => ({
-        id: status.id,
-        container: container as Container,
-        error: status.error,
-        cpu: status.stats.cpu,
-        memory: status.stats.memory,
-        pending: status.pending,
-        running: status.running,
-      })),
+      containerStatuses.map(
+        ({ container, imageName, displayName, status }) => ({
+          id: status.id,
+          container: container as Container,
+          imageName,
+          displayName,
+          error: status.error,
+          cpu: status.stats.cpu,
+          memory: status.stats.memory,
+          pending: status.pending,
+          running: status.running,
+        }),
+      ),
     [containerStatuses],
   )
 

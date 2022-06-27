@@ -1,4 +1,7 @@
+import { createSelector } from '@reduxjs/toolkit'
+
 import { RootState } from '../'
+import { selectDockerImages } from '../dockerImages/selectors'
 
 import {
   ContainerStatusDto,
@@ -12,9 +15,9 @@ export const selectState = (rootState: RootState) => rootState.containers
 export const selectPendingContainers = (rootState: RootState) =>
   rootState.containers.pending
 
-export const selectContainerByType = (c: Container) => (r: RootState) => {
+export const selectContainer = (c: string | Container) => (r: RootState) => {
   const containers = Object.entries(r.containers.containers).filter(
-    ([, value]) => value.type === c,
+    ([, value]) => value.name === c,
   )
   containers.sort(([, a], [, b]) => b.timestamp - a.timestamp)
   const [containerId, containerStatus] = containers[0] || []
@@ -26,23 +29,23 @@ export const selectContainerStats = (containerId: string) => (r: RootState) =>
   r.containers.stats[containerId]
 
 type ContainerStatusSelector = (
-  c: Container,
+  c: string | Container,
 ) => (r: RootState) => ContainerStatusDto
 export const selectContainerStatus: ContainerStatusSelector =
-  containerType => rootState => {
+  containerName => rootState => {
     const { containerId, containerStatus } =
-      selectContainerByType(containerType)(rootState)
+      selectContainer(containerName)(rootState)
 
     const pending =
-      rootState.containers.pending.includes(containerType) ||
+      rootState.containers.pending.includes(containerName) ||
       rootState.containers.pending.includes(containerId)
 
-    const typeError = rootState.containers.errors[containerType]
+    const typeError = undefined // rootState.containers.errors[containerType]
 
     if (!containerId) {
       return {
         id: '',
-        type: containerType,
+        type: containerName,
         error: typeError,
         running: false,
         pending,
@@ -57,17 +60,17 @@ export const selectContainerStatus: ContainerStatusSelector =
         (containerStatus.status !== SystemEventAction.Start &&
           containerStatus.status !== SystemEventAction.Destroy),
       running: containerStatus.status === SystemEventAction.Start,
-      type: containerType,
+      type: containerName,
       error: containerStatus.error || typeError,
     }
   }
 
 type ContainerStatusSelectorWithStats = (
-  c: Container,
+  c: string | Container,
 ) => (r: RootState) => ContainerStatusDtoWithStats
 export const selectContainerStatusWithStats: ContainerStatusSelectorWithStats =
-  containerType => rootState => {
-    const container = selectContainerStatus(containerType)(rootState)
+  containerName => rootState => {
+    const container = selectContainerStatus(containerName)(rootState)
 
     if (!container.id) {
       return {
@@ -96,19 +99,31 @@ export const selectContainerStatusWithStats: ContainerStatusSelectorWithStats =
 export const selectRunningContainers = (rootState: RootState): Container[] =>
   Object.entries(rootState.containers.containers)
     .map(([, containerStatus]) =>
-      selectContainerStatus(containerStatus.type as Container)(rootState),
+      selectContainerStatus(containerStatus.name as Container)(rootState),
     )
     .filter(status => status.running)
-    .map(status => rootState.containers.containers[status.id].type as Container)
+    .map(status => rootState.containers.containers[status.id].name as Container)
 
-export const selectContainersStatuses = (rootState: RootState) =>
-  Object.values(Container).map(type => ({
-    container: type,
-    status: selectContainerStatus(type as Container)(rootState),
-  }))
+export const selectContainersStatuses = createSelector(
+  selectDockerImages,
+  (rootState: RootState) => rootState,
+  (dockerImages, rootState) =>
+    dockerImages.map(dockerImage => ({
+      ...dockerImage,
+      container: dockerImage.imageName,
+      status: selectContainerStatus(dockerImage.imageName)(rootState),
+    })),
+)
 
-export const selectContainersStatusesWithStats = (rootState: RootState) =>
-  Object.values(Container).map(type => ({
-    container: type,
-    status: selectContainerStatusWithStats(type as Container)(rootState),
-  }))
+export const selectContainersStatusesWithStats = createSelector(
+  selectDockerImages,
+  (rootState: RootState) => rootState,
+  (dockerImages, rootState) =>
+    dockerImages.map(dockerImage => ({
+      ...dockerImage,
+      container: dockerImage.containerName,
+      status: selectContainerStatusWithStats(dockerImage.containerName)(
+        rootState,
+      ),
+    })),
+)

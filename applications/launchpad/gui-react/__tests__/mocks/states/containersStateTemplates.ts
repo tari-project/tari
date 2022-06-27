@@ -24,7 +24,7 @@ const runningContainers = (cs: Container[]) => {
 
   cs.forEach(c => {
     containers[`${c.toLowerCase()}-id`] = {
-      type: c,
+      name: c,
       error: undefined,
       status: SystemEventAction.Start,
       timestamp: Number(Date.now()),

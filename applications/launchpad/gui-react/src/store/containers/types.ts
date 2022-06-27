@@ -43,14 +43,14 @@ export type SerializableContainerStats = Omit<ContainerStats, 'unsubscribe'>
 export type ContainerStatus = {
   status: SystemEventAction
   timestamp: number
-  type?: Container
+  name?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
 }
 
 export type ContainerStatusDto = {
   id: ContainerId
-  type: Container
+  type: string | Container
   running: boolean
   pending: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,8 +71,8 @@ export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
 
 export type ContainersState = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  errors: Record<Container, any>
-  pending: Array<Container | ContainerId>
+  errors: Record<string | Container, any>
+  pending: Array<string | Container | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
   stats: Record<ContainerId, ContainerStats>
 }

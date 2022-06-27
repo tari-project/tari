@@ -51,6 +51,7 @@ pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork:
 #[serde(rename_all = "camelCase")]
 pub struct ImageInfo {
     image_name: String,
+    container_name: String,
     display_name: String,
     docker_image: String,
 }
@@ -73,6 +74,7 @@ pub fn image_list(settings: ServiceSettings) -> Vec<ImageInfo> {
         .iter()
         .map(|value| ImageInfo {
             image_name: value.image_name().to_string(),
+            container_name: value.container_name().to_string(),
             display_name: value.display_name().to_string(),
             docker_image: TariWorkspace::fully_qualified_image(*value, registry, tag),
         })

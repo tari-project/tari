@@ -16,7 +16,7 @@ import {
   ServiceDescriptor,
   SerializableContainerStats,
 } from './types'
-import { selectContainerByType, selectRunningContainers } from './selectors'
+import { selectContainer, selectRunningContainers } from './selectors'
 
 export const persistStats = createAsyncThunk<
   void,
@@ -101,10 +101,13 @@ export const start = createAsyncThunk<
     const rootState = thunkApi.getState()
     const settings = { ...selectServiceSettings(rootState), ...serviceSettings }
 
+    console.log({ service })
     const descriptor: ServiceDescriptor = await invoke('start_service', {
       serviceName: service.toString(),
       settings,
     })
+
+    console.debug({ descriptor })
 
     const unsubscribe = await listen(
       descriptor.statsEventsName,
@@ -134,13 +137,15 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
     try {
       const rootState = thunkApi.getState()
       const containerStatus = rootState.containers.containers[containerId]
+      console.debug({ containerStatus })
       const containerStats = rootState.containers.stats[containerId]
 
       containerStats.unsubscribe()
       await invoke('stop_service', {
-        serviceName: (containerStatus.type || '').toString(),
+        serviceName: (containerStatus.name || '').toString(),
       })
     } catch (error) {
+      console.debug(error)
       return thunkApi.rejectWithValue(error)
     }
   },
@@ -150,10 +155,10 @@ export const stopByType = createAsyncThunk<
   void,
   Container,
   { state: RootState }
->('containers/stopByType', async (containerType, thunkApi) => {
+>('containers/stopByType', async (containerName, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
-    const container = selectContainerByType(containerType)(rootState)
+    const container = selectContainer(containerName)(rootState)
 
     if (container && container.containerId) {
       await thunkApi.dispatch(stop(container.containerId))
