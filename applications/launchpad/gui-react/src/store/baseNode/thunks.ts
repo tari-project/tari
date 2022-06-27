@@ -19,7 +19,7 @@ export const startNode = createAsyncThunk<void, void, { state: RootState }>(
 
       if (!torStatus.running && !torStatus.pending) {
         await thunkApi
-          .dispatch(containersActions.start({ service: Container.Tor }))
+          .dispatch(containersActions.start({ container: Container.Tor }))
           .unwrap()
       }
 
@@ -28,7 +28,7 @@ export const startNode = createAsyncThunk<void, void, { state: RootState }>(
       )
       if (!baseNodeStatus.running && !baseNodeStatus.pending) {
         await thunkApi
-          .dispatch(containersActions.start({ service: Container.BaseNode }))
+          .dispatch(containersActions.start({ container: Container.BaseNode }))
           .unwrap()
       }
     } catch (e) {

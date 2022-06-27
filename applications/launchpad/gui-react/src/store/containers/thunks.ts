@@ -8,6 +8,7 @@ import { selectServiceSettings } from '../settings/selectors'
 import { selectNetwork } from '../baseNode/selectors'
 import { startOfSecond } from '../../utils/Date'
 import getStatsRepository from '../../persistence/statsRepository'
+import { ContainerName } from '../../types/general'
 
 import {
   StatsEventPayload,
@@ -21,19 +22,19 @@ import { selectContainer, selectRunningContainers } from './selectors'
 export const persistStats = createAsyncThunk<
   void,
   {
-    service: Container
+    container: ContainerName
     timestamp: string
     stats: SerializableContainerStats
   },
   { state: RootState }
 >('containers/persistStats', async (payload, thunkApi) => {
-  const { service, timestamp, stats } = payload
+  const { container, timestamp, stats } = payload
 
   const rootState = thunkApi.getState()
   const configuredNetwork = selectNetwork(rootState)
 
   const repository = getStatsRepository()
-  await repository.add(configuredNetwork, service, timestamp, stats)
+  await repository.add(configuredNetwork, container, timestamp, stats)
 })
 
 export const addStats = createAsyncThunk<
@@ -43,12 +44,12 @@ export const addStats = createAsyncThunk<
   },
   {
     containerId: ContainerId
-    service: Container
+    container: ContainerName
     stats: StatsEventPayload
   },
   { state: RootState }
 >('containers/stats', async (payload, thunkApi) => {
-  const { stats, containerId, service } = payload
+  const { stats, containerId, container } = payload
   const rootState = thunkApi.getState()
 
   if (!rootState.containers.stats || !rootState.containers.stats[containerId]) {
@@ -80,7 +81,7 @@ export const addStats = createAsyncThunk<
   const secondTimestamp = startOfSecond(new Date(stats.read)).toISOString()
   thunkApi.dispatch(
     persistStats({
-      service,
+      container,
       timestamp: secondTimestamp,
       stats: currentStats,
     }),
@@ -94,20 +95,17 @@ export const addStats = createAsyncThunk<
 
 export const start = createAsyncThunk<
   { id: ContainerId; unsubscribeStats: UnlistenFn },
-  { service: Container; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  { container: ContainerName; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
   { state: RootState }
->('containers/start', async ({ service, serviceSettings }, thunkApi) => {
+>('containers/start', async ({ container, serviceSettings }, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
     const settings = { ...selectServiceSettings(rootState), ...serviceSettings }
 
-    console.log({ service })
     const descriptor: ServiceDescriptor = await invoke('start_service', {
-      serviceName: service.toString(),
+      serviceName: container,
       settings,
     })
-
-    console.debug({ descriptor })
 
     const unsubscribe = await listen(
       descriptor.statsEventsName,
@@ -115,7 +113,7 @@ export const start = createAsyncThunk<
         thunkApi.dispatch(
           addStats({
             containerId: descriptor.id,
-            service,
+            container,
             stats: statsEvent.payload,
           }),
         )
@@ -137,7 +135,6 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
     try {
       const rootState = thunkApi.getState()
       const containerStatus = rootState.containers.containers[containerId]
-      console.debug({ containerStatus })
       const containerStats = rootState.containers.stats[containerId]
 
       containerStats.unsubscribe()
@@ -145,7 +142,6 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
         serviceName: (containerStatus.name || '').toString(),
       })
     } catch (error) {
-      console.debug(error)
       return thunkApi.rejectWithValue(error)
     }
   },
@@ -185,7 +181,7 @@ export const restart = createAsyncThunk<void, void, { state: RootState }>(
 
       // Start containers:
       const startPromises = runningContainers.map(c => {
-        return dispatch(start({ service: c }))
+        return dispatch(start({ container: c }))
       })
 
       await Promise.all(startPromises)

@@ -1,6 +1,6 @@
 import groupby from 'lodash.groupby'
 
-import { Dictionary } from '../types/general'
+import { Dictionary, ContainerName } from '../types/general'
 import {
   Container,
   SerializableContainerStats,
@@ -20,7 +20,7 @@ export interface StatsEntry {
 export interface StatsRepository {
   add: (
     network: string,
-    service: Container,
+    container: ContainerName,
     secondTimestamp: string,
     stats: SerializableContainerStats,
   ) => Promise<void>
@@ -33,7 +33,7 @@ export interface StatsRepository {
 
 const repositoryFactory: () => StatsRepository = () => {
   return {
-    add: async (network, service, secondTimestamp, stats) => {
+    add: async (network, container, secondTimestamp, stats) => {
       const db = await getDb()
 
       await db.execute(
@@ -48,7 +48,7 @@ const repositoryFactory: () => StatsRepository = () => {
         [
           secondTimestamp,
           network,
-          service,
+          container,
           stats.cpu,
           stats.memory,
           stats.network.upload,

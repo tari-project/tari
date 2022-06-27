@@ -74,7 +74,7 @@ describe('containers/thunks', () => {
       // when
       const action = addStats({
         containerId: expectedContainerId,
-        service: Container.Tor,
+        container: Container.Tor,
         stats: standardStats(),
       })
       const result = await action(() => null, getState, undefined)
@@ -109,7 +109,7 @@ describe('containers/thunks', () => {
       // when
       const action = addStats({
         containerId: 'someContainerId',
-        service: Container.Tor,
+        container: Container.Tor,
         stats: standardStats(),
       })
       const result = await action(() => null, getState, undefined)

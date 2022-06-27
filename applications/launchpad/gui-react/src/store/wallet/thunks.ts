@@ -33,7 +33,7 @@ export const unlockWallet = createAsyncThunk<
       await thunkApi
         .dispatch(
           containersActions.start({
-            service: Container.Tor,
+            container: Container.Tor,
           }),
         )
         .unwrap()
@@ -45,7 +45,7 @@ export const unlockWallet = createAsyncThunk<
       await thunkApi
         .dispatch(
           containersActions.start({
-            service: Container.BaseNode,
+            container: Container.BaseNode,
           }),
         )
         .unwrap()
@@ -56,7 +56,7 @@ export const unlockWallet = createAsyncThunk<
       await thunkApi
         .dispatch(
           containersActions.start({
-            service: Container.Wallet,
+            container: Container.Wallet,
             serviceSettings: { walletPassword },
           }),
         )

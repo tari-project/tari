@@ -80,8 +80,8 @@ const containersSlice = createSlice({
   },
   extraReducers: builder => {
     builder.addCase(start.pending, (state, { meta }) => {
-      state.pending.push(meta.arg.service)
-      state.errors[meta.arg.service] = undefined
+      state.pending.push(meta.arg.container)
+      state.errors[meta.arg.container] = undefined
     })
     builder.addCase(start.fulfilled, (state, action) => {
       if (!state.containers[action.payload.id]) {
@@ -90,15 +90,15 @@ const containersSlice = createSlice({
         return
       }
 
-      state.pending = state.pending.filter(p => p !== action.meta.arg.service)
-      state.containers[action.payload.id].name = action.meta.arg.service
+      state.pending = state.pending.filter(p => p !== action.meta.arg.container)
+      state.containers[action.payload.id].name = action.meta.arg.container
       state.stats[action.payload.id].unsubscribe =
         action.payload.unsubscribeStats
-      state.errors[action.meta.arg.service] = undefined
+      state.errors[action.meta.arg.container] = undefined
     })
     builder.addCase(start.rejected, (state, action) => {
-      state.errors[action.meta.arg.service] = action.payload
-      state.pending = state.pending.filter(p => p !== action.meta.arg.service)
+      state.errors[action.meta.arg.container] = action.payload
+      state.pending = state.pending.filter(p => p !== action.meta.arg.container)
     })
 
     builder.addCase(stop.pending, (state, { meta }) => {

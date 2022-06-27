@@ -1,5 +1,7 @@
 import type { UnlistenFn } from '@tauri-apps/api/event'
 
+import { ContainerName } from '../../types/general'
+
 export type ContainerId = string
 
 export enum Container {
@@ -71,8 +73,8 @@ export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
 
 export type ContainersState = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  errors: Record<string | Container, any>
-  pending: Array<string | Container | ContainerId>
+  errors: Record<ContainerName, any>
+  pending: Array<ContainerName | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
   stats: Record<ContainerId, ContainerStats>
 }
