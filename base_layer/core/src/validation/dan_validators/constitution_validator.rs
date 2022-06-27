@@ -49,32 +49,33 @@ fn validate_definition_existence<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
-    match fetch_contract_features(db, contract_id, OutputType::ContractDefinition)? {
-        Some(_) => Ok(()),
-        None => {
-            let msg = format!(
-                "Contract definition not found for contract_id ({:?})",
-                contract_id.to_hex()
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
+    let features = fetch_contract_features(db, contract_id, OutputType::ContractDefinition)?;
+    if features.is_empty() {
+        let msg = format!(
+            "Contract definition not found for contract_id ({:?})",
+            contract_id.to_hex()
+        );
+        return Err(ValidationError::DanLayerError(msg));
     }
+
+    Ok(())
 }
 
 fn validate_duplication<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
-    match fetch_contract_features(db, contract_id, OutputType::ContractConstitution)? {
-        Some(_) => {
-            let msg = format!(
-                "Duplicated contract constitution for contract_id ({:?})",
-                contract_id.to_hex()
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
-        None => Ok(()),
+    let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
+    let is_duplicated = !features.is_empty();
+    if is_duplicated {
+        let msg = format!(
+            "Duplicated contract constitution for contract_id ({:?})",
+            contract_id.to_hex()
+        );
+        return Err(ValidationError::DanLayerError(msg));
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -111,7 +112,7 @@ mod test {
 
         // publish the contract definition and constitution into a block
         let contract_id = publish_definition(&mut blockchain, change[0].clone());
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id);
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, vec![]);
 
         // construct a transaction for the duplicated contract constitution
         let schema = create_contract_constitution_schema(contract_id, change[2].clone(), Vec::new());

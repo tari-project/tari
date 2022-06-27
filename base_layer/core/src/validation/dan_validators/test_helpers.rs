@@ -74,8 +74,13 @@ pub fn publish_definition(blockchain: &mut TestBlockchain, change: UnblindedOutp
     contract_id
 }
 
-pub fn publish_constitution(blockchain: &mut TestBlockchain, change: UnblindedOutput, contract_id: FixedHash) {
-    let schema = create_contract_constitution_schema(contract_id, change, Vec::new());
+pub fn publish_constitution(
+    blockchain: &mut TestBlockchain,
+    change: UnblindedOutput,
+    contract_id: FixedHash,
+    committee: Vec<PublicKey>,
+) {
+    let schema = create_contract_constitution_schema(contract_id, change, committee);
     create_block(blockchain, "constitution", schema);
 }
 
