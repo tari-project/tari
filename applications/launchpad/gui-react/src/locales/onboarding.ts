@@ -3,6 +3,11 @@ const translations = {
   actions: {
     skipChatting: 'Skip Chatting',
   },
+  status: {
+    processing: 'processing',
+    done: 'done!',
+    fail: 'fail!',
+  },
   intro: {
     message1: {
       part1: 'Hi! My name is T-Bot.',
@@ -33,12 +38,24 @@ const translations = {
       part1: '🆘 I almost forgot! If you have any problems or doubts',
       part2: 'contact our awsome Tari community on Discord.',
     },
+    message5: {
+      link: 'Take me to installation page',
+    },
     afterInstall: 'Easy peasy, lemon squeezy! Congratulations! 👏 Docker is installed on your computer. I knew you could handle it. Now it\'s time for the final stretch.',
   },
   dockerImages: {
     message1: {
       part1: 'I need a few minutes for further configuration. If you want to know exactly what I am doing now, open ',
       part2: 'Expert view.'
+    },
+    errors: {
+      noSpace: 'Yikes! It looks like there is not enough space on your hard drive. It\'s time to get rid of your old vacation photos so you can start digging Tari. Let\'s be honest, the most important ones are already on your Instagram. When you are done deleting the data, hit the button below to try to download the necessary elements again.',
+      serverError: {
+        part1: 'Houston, we have a problem!',
+        part2: 'It looks like a server error',
+        part3: 'has occurred.',
+        part4: 'Don’t worry – it is very possible that this is a one-off situation. Trying again will allow you to pull the images successfully. If the problem persists, please contact Tari community on Discord.',
+      }
     },
   },
   lastSteps: {

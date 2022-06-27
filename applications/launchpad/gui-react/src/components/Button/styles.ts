@@ -1,5 +1,5 @@
 /* eslint-disable indent */
-import styled, { DefaultTheme } from 'styled-components'
+import styled, { DefaultTheme, css } from 'styled-components'
 
 import { ButtonProps, ButtonVariantType } from './types'
 
@@ -22,80 +22,91 @@ const getButtonBackgroundColor = ({
   }
 }
 
-export const StyledButton = styled.button<
-  Pick<ButtonProps, 'variant' | 'type'>
->`
-  display: flex;
-  position: relative;
-  justify-content: space-between;
-  align-items: center;
-  column-gap: 0.25em;
-  margin: 0;
-  border-radius: ${({ theme }) => theme.tightBorderRadius()};
-  border: ${({ disabled, theme, variant }) => {
-    if (variant === 'text') {
-      return 'none'
-    }
+const ButtonCSS = css`
+display: flex;
+position: relative;
+justify-content: space-between;
+align-items: center;
+column-gap: 0.25em;
+margin: 0;
+border-radius: ${({ theme }) => theme.tightBorderRadius()};
+border: ${({ disabled, theme, variant }) => {
+  if (variant === 'text') {
+    return 'none'
+  }
 
-    if (disabled) {
-      return `1px solid ${getButtonBackgroundColor({
-        disabled,
-        theme,
-        variant,
-      })}`
+  if (disabled) {
+    return `1px solid ${getButtonBackgroundColor({
+      disabled,
+      theme,
+      variant,
+    })}`
+  }
+
+  if (variant === 'secondary') {
+    return `1px solid ${theme.borderColor}`
+  }
+
+  if (variant === 'warning') {
+    return `1px solid ${theme.warning}`
+  }
+
+  return `1px solid ${theme.accent}`
+}};
+box-shadow: none;
+padding: ${({ theme }) => theme.spacingVertical(0.5)}
+  ${({ theme }) => theme.spacingHorizontal()};
+cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
+background: ${getButtonBackgroundColor};
+color: ${({ disabled, variant, theme }) => {
+  if (disabled) {
+    return theme.disabledText
+  }
+
+  if (variant === 'secondary') {
+    return theme.primary
+  }
+
+  return variant === 'text' ? theme.secondary : theme.inverted.primary
+}};
+outline: none;
+text-decoration: none;
+
+& * {
+  color: inherit;
+}
+
+&:hover {
+  background: ${({ disabled, variant, theme }) => {
+    if (disabled || variant === 'text') {
+      return 'auto'
     }
 
     if (variant === 'secondary') {
-      return `1px solid ${theme.borderColor}`
+      return theme.backgroundSecondary
     }
 
     if (variant === 'warning') {
-      return `1px solid ${theme.warning}`
+      return theme.warningDark
     }
 
-    return `1px solid ${theme.accent}`
+    return theme.accent
   }};
-  box-shadow: none;
-  padding: ${({ theme }) => theme.spacingVertical(0.5)}
-    ${({ theme }) => theme.spacingHorizontal()};
-  cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
-  background: ${getButtonBackgroundColor};
-  color: ${({ disabled, variant, theme }) => {
-    if (disabled) {
-      return theme.disabledText
-    }
 
-    if (variant === 'secondary') {
-      return theme.primary
-    }
+  ${({ variant, disabled }) =>
+    variant === 'text' && !disabled ? 'opacity: 0.7;' : ''}
+`
 
-    return variant === 'text' ? theme.secondary : theme.inverted.primary
-  }};
-  outline: none;
+export const StyledButton = styled.button<
+  Pick<ButtonProps, 'variant' | 'type'>
+>`
+  ${ButtonCSS}
+`
 
-  & * {
-    color: inherit;
-  }
-
-  &:hover {
-    background: ${({ disabled, variant, theme }) => {
-      if (disabled || variant === 'text') {
-        return 'auto'
-      }
-
-      if (variant === 'secondary') {
-        return theme.backgroundSecondary
-      }
-
-      if (variant === 'warning') {
-        return theme.warningDark
-      }
-
-      return theme.accent
-    }};
-
-    ${({ variant, disabled }) =>
-      variant === 'text' && !disabled ? 'opacity: 0.7;' : ''}
+export const StyledLinkLikeButton = styled.a<
+  Pick<ButtonProps, 'variant' | 'type'>
+>`
+  ${ButtonCSS}
 `
 
 export const StyledLink = styled.a<Pick<ButtonProps, 'variant' | 'disabled'>>`

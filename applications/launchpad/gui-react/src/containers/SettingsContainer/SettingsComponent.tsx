@@ -3,7 +3,12 @@ import { ReactNode } from 'react'
 import { Settings } from '../../store/settings/types'
 import Modal from '../../components/Modal'
 import Button from '../../components/Button'
+import Switch from '../../components/Switch'
 import Text from '../../components/Text'
+
+import SvgSun from '../../styles/Icons/Sun'
+import SvgMoon from '../../styles/Icons/Moon'
+
 import t from '../../locales'
 
 import {
@@ -14,6 +19,9 @@ import {
   MainContent,
   Footer,
   DiscardWarning,
+  SidebarTabs,
+  SidebarSelectTheme,
+  SwitchBg,
 } from './styles'
 import BaseNodeSettings from './BaseNodeSettings'
 import MiningSettings from './MiningSettings'
@@ -25,6 +33,7 @@ import {
   AuthenticationInputs,
 } from './types'
 import MoneroAuthentication from './MiningSettings/MoneroAuthentication'
+import { useTheme } from 'styled-components'
 
 const renderSettings = (
   settings: Settings,
@@ -76,7 +85,11 @@ const SettingsComponent = ({
   discardChanges,
   openMiningAuthForm,
   setOpenMiningAuthForm,
+  currentTheme,
+  changeTheme,
 }: SettingsComponentProps) => {
+  const theme = useTheme()
+
   // Render Monero Authentication form if open:
   if (openMiningAuthForm) {
     return (
@@ -102,25 +115,42 @@ const SettingsComponent = ({
       <MainContainer data-testid='settings-modal-container'>
         <MainContentContainer>
           <Sidebar>
-            {Object.values(Settings)
-              .filter(settingPage => t.common.nouns[settingPage])
-              .map(settingPage => (
-                <MenuItem
-                  key={settingPage}
-                  active={settingPage === activeSettings}
-                  onClick={() => goToSettings(settingPage)}
-                >
-                  <Text
-                    type={
-                      settingPage === activeSettings
-                        ? 'defaultHeavy'
-                        : undefined
-                    }
+            <SidebarTabs>
+              {Object.values(Settings)
+                .filter(settingPage => t.common.nouns[settingPage])
+                .map(settingPage => (
+                  <MenuItem
+                    key={settingPage}
+                    active={settingPage === activeSettings}
+                    onClick={() => goToSettings(settingPage)}
                   >
-                    {t.common.nouns[settingPage]}
-                  </Text>
-                </MenuItem>
-              ))}
+                    <Text
+                      as='span'
+                      type={
+                        settingPage === activeSettings
+                          ? 'smallHeavy'
+                          : 'smallMedium'
+                      }
+                      style={{ paddingTop: 2 }}
+                    >
+                      {t.common.nouns[settingPage]}
+                    </Text>
+                  </MenuItem>
+                ))}
+            </SidebarTabs>
+            <SidebarSelectTheme>
+              <Text type='microMedium' color={theme.secondary}>
+                {t.settings.selectTheme}
+              </Text>
+              <SwitchBg $transparent={currentTheme === 'dark'}>
+                <Switch
+                  leftLabel={<SvgSun width='1.4em' height='1.4em' />}
+                  rightLabel={<SvgMoon width='1.4em' height='1.4em' />}
+                  value={currentTheme === 'dark'}
+                  onClick={v => changeTheme(v ? 'dark' : 'light')}
+                />
+              </SwitchBg>
+            </SidebarSelectTheme>
           </Sidebar>
           <MainContent>
             {renderSettings(activeSettings, {

@@ -71,3 +71,6 @@ export const selectActiveMiningTypes = createSelector(
 
 export const selectOnboardingComplete = ({ app }: RootState) =>
   app.onboardingComplete
+
+export const selectOnboardingCheckpoint = ({ app }: RootState) =>
+  app.onboardingCheckpoint

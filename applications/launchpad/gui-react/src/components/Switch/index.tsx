@@ -47,8 +47,14 @@ const Switch = ({
     left: value ? 10 : -1,
   })
 
-  const labelColorAnim = useSpring({
+  const leftLabelColorAnim = useSpring({
     color: disable ? themeStyle.disabledText : themeStyle.primary,
+    opacity: value && leftLabel && rightLabel ? 0.5 : 1,
+  })
+
+  const rightLabelColorAnim = useSpring({
+    color: disable ? themeStyle.disabledText : themeStyle.primary,
+    opacity: value || !leftLabel || !rightLabel ? 1 : 0.5,
   })
 
   const controllerAnim = useSpring({
@@ -57,7 +63,11 @@ const Switch = ({
 
   const leftLabelEl =
     leftLabel && typeof leftLabel === 'string' ? (
-      <Text as={animated.span} type='smallMedium' style={{ ...labelColorAnim }}>
+      <Text
+        as={animated.span}
+        type='smallMedium'
+        style={{ ...leftLabelColorAnim }}
+      >
         {leftLabel}
       </Text>
     ) : (
@@ -65,7 +75,11 @@ const Switch = ({
     )
   const rightLabelEl =
     rightLabel && typeof rightLabel === 'string' ? (
-      <Text as={animated.span} type='smallMedium' style={{ ...labelColorAnim }}>
+      <Text
+        as={animated.span}
+        type='smallMedium'
+        style={{ ...rightLabelColorAnim }}
+      >
         {rightLabel}
       </Text>
     ) : (
@@ -82,7 +96,7 @@ const Switch = ({
         <LabelText
           style={{
             marginRight: 12,
-            ...labelColorAnim,
+            ...leftLabelColorAnim,
           }}
         >
           {leftLabelEl}
@@ -97,7 +111,7 @@ const Switch = ({
         <LabelText
           style={{
             marginLeft: 12,
-            ...labelColorAnim,
+            ...rightLabelColorAnim,
           }}
         >
           {rightLabelEl}

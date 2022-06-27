@@ -4,8 +4,6 @@ import { Listbox } from '@headlessui/react'
 
 import { SelectInternalProps } from './types'
 
-export const StyledListbox = styled(Listbox)``
-
 export const SelectorIcon = styled.div<SelectInternalProps>`
   position: absolute;
   top: 0;

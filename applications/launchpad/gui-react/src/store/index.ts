@@ -1,6 +1,5 @@
 import { combineReducers } from 'redux'
 import { configureStore } from '@reduxjs/toolkit'
-import devToolsEnhancer from 'remote-redux-devtools'
 import { persistStore, persistReducer } from 'redux-persist'
 import storage from 'redux-persist/lib/storage'
 
@@ -38,28 +37,12 @@ export const store =
   process.env.NODE_ENV === 'test'
     ? configureStore({
         reducer,
-        enhancers: [
-          devToolsEnhancer({
-            name: 'Tari Launchpad',
-            // realtime: true, // enables devtools on production
-            hostname: 'localhost',
-            port: 8000,
-          }),
-        ],
       })
     : configureStore({
         reducer: persistedReducer,
         middleware: getDefaultMiddleware => [
           // Silent console errors about non-serializable data
           ...getDefaultMiddleware({ serializableCheck: false }),
-        ],
-        enhancers: [
-          devToolsEnhancer({
-            name: 'Tari Launchpad',
-            // realtime: true, // enables devtools on production
-            hostname: 'localhost',
-            port: 8000,
-          }),
         ],
       })
 

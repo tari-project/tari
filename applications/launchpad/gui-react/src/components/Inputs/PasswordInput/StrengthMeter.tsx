@@ -15,7 +15,7 @@ const StrengthMeter = ({ password }: { password?: string }) => {
   const [strength, setStrength] = useState<number>(1)
 
   useEffect(() => {
-    if (pathRef.current && pathRef.current.getTotalLength) {
+    if (pathRef.current?.getTotalLength) {
       setOffset((pathRef.current as SVGCircleElement).getTotalLength())
     }
   }, [])
