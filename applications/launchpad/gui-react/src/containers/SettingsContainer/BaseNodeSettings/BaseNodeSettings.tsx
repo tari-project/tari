@@ -2,12 +2,16 @@ import { Controller, Control } from 'react-hook-form'
 
 import Select from '../../../components/Select'
 import Text from '../../../components/Text'
+import SettingsSectionHeader from '../../../components/SettingsSectionHeader'
 
 import t from '../../../locales'
 import { Network } from '../../BaseNodeContainer/types'
 import { networkOptions } from '../../BaseNodeContainer/constants'
 
 import { SettingsInputs } from '../types'
+import { useTheme } from 'styled-components'
+import { Label } from '../../../components/Inputs/Input/styles'
+import { SelectRow } from './styles'
 
 const BaseNodeSettings = ({
   control,
@@ -16,24 +20,36 @@ const BaseNodeSettings = ({
   control: Control<SettingsInputs>
   network: Network
 }) => {
+  const theme = useTheme()
   return (
     <>
-      <Text type='header'>{t.baseNode.settings.title}</Text>
-
+      <Text type='subheader' as='h2'>
+        {t.baseNode.settings.title}
+      </Text>
       <Controller
         name='baseNode.network'
         control={control}
         defaultValue={network}
         rules={{ required: true, minLength: 1 }}
         render={({ field }) => (
-          <Select
-            value={networkOptions.find(({ value }) => value === field.value)}
-            options={networkOptions}
-            onChange={({ value }) => field.onChange(value as Network)}
-            label={t.baseNode.tari_network_label}
-          />
+          <SelectRow>
+            <Label>{t.baseNode.tari_network_label}</Label>
+            <div style={{ width: '50%' }}>
+              <Select
+                value={networkOptions.find(
+                  ({ value }) => value === field.value,
+                )}
+                options={networkOptions}
+                onChange={({ value }) => field.onChange(value as Network)}
+                fullWidth
+              />
+            </div>
+          </SelectRow>
         )}
       />
+      <SettingsSectionHeader noBottomMargin>
+        {t.common.nouns.expert}
+      </SettingsSectionHeader>
     </>
   )
 }
