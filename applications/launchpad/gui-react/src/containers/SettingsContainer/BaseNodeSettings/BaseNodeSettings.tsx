@@ -11,7 +11,8 @@ import { networkOptions } from '../../BaseNodeContainer/constants'
 import { SettingsInputs } from '../types'
 import { useTheme } from 'styled-components'
 import { Label } from '../../../components/Inputs/Input/styles'
-import { SelectRow } from './styles'
+import { InputRow, SelectRow } from './styles'
+import Input from '../../../components/Inputs/Input'
 
 const BaseNodeSettings = ({
   control,
@@ -47,9 +48,26 @@ const BaseNodeSettings = ({
           </SelectRow>
         )}
       />
-      <SettingsSectionHeader noBottomMargin>
+      <SettingsSectionHeader noBottomMargin noTopMargin>
         {t.common.nouns.expert}
       </SettingsSectionHeader>
+      <Controller
+        name='baseNode.rootFolder'
+        control={control}
+        defaultValue={network}
+        rules={{ required: true, minLength: 1 }}
+        render={({ field }) => (
+          <InputRow>
+            <Label>{t.baseNode.settings.rootFolder}</Label>
+            <Input
+              onChange={field.onChange}
+              value={field?.value?.toString() || ''}
+              containerStyle={{ width: '75%' }}
+              withError={false}
+            />
+          </InputRow>
+        )}
+      />
     </>
   )
 }

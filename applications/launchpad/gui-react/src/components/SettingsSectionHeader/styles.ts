@@ -7,9 +7,9 @@ export const HeaderContainer = styled.div<{
   display: flex;
   align-items: center;
   margin-top: ${({ theme, $noTopMargin }) =>
-    $noTopMargin ? '0' : theme.spacingVertical(2.7)};
+    $noTopMargin ? theme.spacingVertical(1) : theme.spacingVertical(2.7)};
   margin-bottom: ${({ theme, $noBottomMargin }) =>
-    $noBottomMargin ? '0' : theme.spacingVertical(2.7)};
+    $noBottomMargin ? theme.spacingVertical(1) : theme.spacingVertical(2.7)};
 
   & > h2 {
     ${({ theme }) => theme.tariTextGradient};

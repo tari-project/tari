@@ -16,6 +16,7 @@ const translations = {
   },
   settings: {
     title: 'Base Node Settings',
+    rootFolder: 'Root folder',
   },
   helpMessages: {
     howItWorks: {
