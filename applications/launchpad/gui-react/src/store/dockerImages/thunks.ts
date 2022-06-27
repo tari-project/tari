@@ -17,7 +17,7 @@ export const getDockerImageList = createAsyncThunk<
     })
 
     // TODO get status from backend after https://github.com/Altalogy/tari/issues/311
-    return images.map(img => ({ ...img, latest: img.displayName === 'Wallet' }))
+    return images.map(img => ({ ...img, latest: true }))
   } catch (e) {
     return thunkApi.rejectWithValue(e)
   }

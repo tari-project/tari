@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, CSSProperties } from 'react'
 import { useTheme } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
@@ -18,7 +18,17 @@ import t from '../../locales'
 
 import { DockerRow, DockerList, DockerStatusWrapper } from './styles'
 
-const DockerImagesList = () => {
+const DockerImagesList = ({
+  inverted,
+  headers,
+  disableIcons,
+  style,
+}: {
+  inverted?: boolean
+  headers?: boolean
+  disableIcons?: boolean
+  style?: CSSProperties
+}) => {
   const theme = useTheme()
   const dispatch = useAppDispatch()
   useEffect(() => {
@@ -29,22 +39,44 @@ const DockerImagesList = () => {
   const dockerImagesLoading = useAppSelector(selectDockerImagesLoading)
 
   return (
-    <DockerList>
-      {dockerImagesLoading && <LoadingOverlay />}
+    <DockerList style={style}>
+      {dockerImagesLoading && <LoadingOverlay inverted={inverted} />}
+      {headers && (
+        <DockerRow key='headers'>
+          <Text
+            style={{ flexBasis: '30%' }}
+            type='smallMedium'
+            color={theme.inverted.secondary}
+          >
+            Image
+          </Text>
+          <Text type='smallMedium' color={theme.inverted.secondary}>
+            Status
+          </Text>
+        </DockerRow>
+      )}
       {dockerImages.map(dockerImage => (
-        <DockerRow key={dockerImage.dockerImage}>
-          <Text style={{ flexBasis: '30%' }}>{dockerImage.displayName}</Text>
+        <DockerRow key={dockerImage.dockerImage} $inverted={inverted}>
+          <Text
+            style={{ flexBasis: '30%' }}
+            type={headers ? 'smallMedium' : 'defaultMedium'}
+            color={inverted ? theme.inverted.disabledText : theme.primary}
+          >
+            {dockerImage.displayName}
+          </Text>
           {dockerImage.latest && (
             <DockerStatusWrapper>
-              <CheckIcon
-                color={theme.onTextLight}
-                height='1.25em'
-                width='1.25em'
-                style={{
-                  flexShrink: 0,
-                  flexBasis: '2em',
-                }}
-              />
+              {!disableIcons && (
+                <CheckIcon
+                  color={theme.onTextLight}
+                  height='1.25em'
+                  width='1.25em'
+                  style={{
+                    flexShrink: 0,
+                    flexBasis: '2em',
+                  }}
+                />
+              )}
               <Text
                 type='smallMedium'
                 as='span'
@@ -54,10 +86,13 @@ const DockerImagesList = () => {
                   textOverflow: 'ellipsis',
                   wordBreak: 'keep-all',
                 }}
+                color={inverted ? theme.inverted.secondary : theme.primary}
               >
                 {t.docker.imageUpToDate}{' '}
                 <span
-                  style={{ color: theme.secondary }}
+                  style={{
+                    color: inverted ? theme.inverted.primary : theme.secondary,
+                  }}
                   title={dockerImage.dockerImage}
                 >
                   {dockerImage.dockerImage}
@@ -85,12 +120,24 @@ const DockerImagesList = () => {
           )}
           {!dockerImage.latest && dockerImage.pending && (
             <DockerStatusWrapper>
-              <Loading loading size='1em' />
+              <Loading
+                loading
+                size='1em'
+                color={inverted ? theme.inverted.primary : theme.primary}
+              />
               {dockerImage.status && (
-                <Text>{t.docker.status[dockerImage.status]}</Text>
+                <Text
+                  color={inverted ? theme.inverted.primary : theme.secondary}
+                >
+                  {t.docker.status[dockerImage.status]}
+                </Text>
               )}
               {dockerImage.progress !== undefined && (
-                <Text>{dockerImage.progress}%</Text>
+                <Text
+                  color={inverted ? theme.inverted.primary : theme.secondary}
+                >
+                  {dockerImage.progress}%
+                </Text>
               )}
             </DockerStatusWrapper>
           )}

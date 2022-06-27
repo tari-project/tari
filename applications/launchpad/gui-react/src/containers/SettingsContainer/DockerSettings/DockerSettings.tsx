@@ -90,7 +90,7 @@ const DockerSettings = ({
         {t.docker.settings.imageStatuses}
       </SettingsSectionHeader>
 
-      <DockerImagesList />
+      <DockerImagesList style={{ marginBottom: theme.spacing() }} />
     </>
   )
 }

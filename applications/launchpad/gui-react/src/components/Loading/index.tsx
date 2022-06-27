@@ -15,17 +15,19 @@ import { StyledSpan } from './styles'
 const Loading = ({
   loading,
   size = '20px',
+  color,
   testId,
   style,
 }: {
   loading?: boolean
   size?: string
   testId?: string
+  color?: string
   style?: CSSProperties
 }) =>
   loading ? (
     <StyledSpan data-testid={testId || 'loading-indicator'} style={style}>
-      <LoadingIcon width={size} height={size} />
+      <LoadingIcon width={size} height={size} color={color} />
     </StyledSpan>
   ) : null
 

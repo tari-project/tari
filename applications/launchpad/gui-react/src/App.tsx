@@ -26,11 +26,28 @@ const AppContainer = styled.div`
   overflow: hidden;
   border-radius: 10;
 `
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const OnboardedAppContainer = ({ children }: { children: any }) => {
-  const [initialized, setInitialized] = useState(false)
+const OnboardedAppContainer = ({
+  children,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  children: any
+}) => {
   const transactionsRepository = useTransactionsRepository()
   const dispatch = useAppDispatch()
+
+  useSystemEvents({ dispatch })
+  useWalletEvents({ dispatch, transactionsRepository })
+  useMiningScheduling()
+
+  return children
+}
+
+const App = () => {
+  const dispatch = useAppDispatch()
+  const themeConfig = useAppSelector(selectThemeConfig)
+  const onboardingComplete = useAppSelector(selectOnboardingComplete)
+
+  const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
     const callInitActionInStore = async () => {
@@ -42,33 +59,21 @@ const OnboardedAppContainer = ({ children }: { children: any }) => {
   }, [])
 
   useDockerEvents({ dispatch })
-  useSystemEvents({ dispatch })
-  useWalletEvents({ dispatch, transactionsRepository })
-  useMiningScheduling()
-
-  if (!initialized) {
-    return null
-  }
-
-  return children
-}
-
-const App = () => {
-  const themeConfig = useAppSelector(selectThemeConfig)
-  const onboardingComplete = useAppSelector(selectOnboardingComplete)
 
   return (
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
         {!onboardingComplete ? (
-          <Onboarding />
-        ) : (
+          initialized ? (
+            <Onboarding />
+          ) : null
+        ) : initialized ? (
           <OnboardedAppContainer>
             <HomePage />
             <TBotContainer />
             <MiningNotifications />
           </OnboardedAppContainer>
-        )}
+        ) : null}
       </AppContainer>
     </ThemeProvider>
   )
