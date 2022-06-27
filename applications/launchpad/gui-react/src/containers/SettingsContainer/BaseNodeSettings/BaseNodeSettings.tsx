@@ -11,8 +11,10 @@ import { networkOptions } from '../../BaseNodeContainer/constants'
 import { SettingsInputs } from '../types'
 import { useTheme } from 'styled-components'
 import { Label } from '../../../components/Inputs/Input/styles'
-import { InputRow, SelectRow } from './styles'
+import { ConnectionRow, InputRow, SelectRow, TextWrapper } from './styles'
 import Input from '../../../components/Inputs/Input'
+import Button from '../../../components/Button'
+import SvgInfo1 from '../../../styles/Icons/Info1'
 
 const BaseNodeSettings = ({
   control,
@@ -62,12 +64,26 @@ const BaseNodeSettings = ({
             <Input
               onChange={field.onChange}
               value={field?.value?.toString() || ''}
-              containerStyle={{ width: '75%' }}
+              containerStyle={{ width: '50%' }}
               withError={false}
             />
           </InputRow>
         )}
       />
+      <ConnectionRow>
+        <TextWrapper>
+          <Text type='smallMedium'>
+            <Button
+              variant='button-in-text'
+              style={{ color: theme.onTextLight, fontSize: '14px' }}
+            >
+              <Text type='smallMedium'>{t.common.verbs.connect}</Text>
+            </Button>{' '}
+            {t.baseNode.settings.aurora}
+          </Text>
+        </TextWrapper>
+        <SvgInfo1 fontSize={22} />
+      </ConnectionRow>
     </>
   )
 }

@@ -17,6 +17,7 @@ const translations = {
   settings: {
     title: 'Base Node Settings',
     rootFolder: 'Root folder',
+    aurora: 'your Aurora app to the Base Node to increase the security',
   },
   helpMessages: {
     howItWorks: {
