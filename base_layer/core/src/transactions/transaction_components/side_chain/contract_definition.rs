@@ -22,26 +22,16 @@
 
 use std::io::{Error, Read, Write};
 
-use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    array::copy_into_fixed_array_lossy,
-    types::{FixedHash, PublicKey},
-};
-use tari_utilities::Hashable;
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter, MaxSizeVec};
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter, MaxSizeVec},
+    transactions::transaction_components::FixedString,
+};
 
 // Maximum number of functions allowed in a contract specification
 const MAX_FUNCTIONS: usize = u16::MAX as usize;
-
-// Fixed length of all string fields in the contract definition
-pub const STR_LEN: usize = 32;
-type FixedString = [u8; STR_LEN];
-
-pub fn vec_into_fixed_string(value: Vec<u8>) -> FixedString {
-    copy_into_fixed_array_lossy::<_, STR_LEN>(&value)
-}
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, Hash)]
 pub struct ContractDefinition {
@@ -51,9 +41,7 @@ pub struct ContractDefinition {
 }
 
 impl ContractDefinition {
-    pub fn new(contract_name: Vec<u8>, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
-        let contract_name = vec_into_fixed_string(contract_name);
-
+    pub fn new(contract_name: FixedString, contract_issuer: PublicKey, contract_spec: ContractSpecification) -> Self {
         Self {
             contract_name,
             contract_issuer,
@@ -61,22 +49,12 @@ impl ContractDefinition {
         }
     }
 
-    pub fn calculate_contract_id(&self) -> FixedHash {
+    pub fn calculate_contract_id(&self, commitment: &Commitment) -> FixedHash {
         ConsensusHashWriter::default()
-            .chain(&self.contract_name)
-            .chain(&self.contract_spec)
+            .chain(commitment)
+            .chain(self)
             .finalize()
             .into()
-    }
-
-    pub const fn str_byte_size() -> usize {
-        STR_LEN
-    }
-}
-
-impl Hashable for ContractDefinition {
-    fn hash(&self) -> Vec<u8> {
-        ConsensusHashWriter::default().chain(self).finalize().to_vec()
     }
 }
 
@@ -92,7 +70,9 @@ impl ConsensusEncoding for ContractDefinition {
 
 impl ConsensusEncodingSized for ContractDefinition {
     fn consensus_encode_exact_size(&self) -> usize {
-        STR_LEN + self.contract_issuer.consensus_encode_exact_size() + self.contract_spec.consensus_encode_exact_size()
+        self.contract_name.consensus_encode_exact_size() +
+            self.contract_issuer.consensus_encode_exact_size() +
+            self.contract_spec.consensus_encode_exact_size()
     }
 }
 
@@ -116,12 +96,6 @@ pub struct ContractSpecification {
     pub public_functions: Vec<PublicFunction>,
 }
 
-impl Hashable for ContractSpecification {
-    fn hash(&self) -> Vec<u8> {
-        ConsensusHashWriter::default().chain(self).finalize().to_vec()
-    }
-}
-
 impl ConsensusEncoding for ContractSpecification {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.runtime.consensus_encode(writer)?;
@@ -131,16 +105,7 @@ impl ConsensusEncoding for ContractSpecification {
     }
 }
 
-impl ConsensusEncodingSized for ContractSpecification {
-    fn consensus_encode_exact_size(&self) -> usize {
-        let public_function_size = match self.public_functions.first() {
-            None => 0,
-            Some(function) => function.consensus_encode_exact_size(),
-        };
-
-        STR_LEN + self.public_functions.len().required_space() + self.public_functions.len() * public_function_size
-    }
-}
+impl ConsensusEncodingSized for ContractSpecification {}
 
 impl ConsensusDecoding for ContractSpecification {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
@@ -160,12 +125,6 @@ pub struct PublicFunction {
     pub function: FunctionRef,
 }
 
-impl Hashable for PublicFunction {
-    fn hash(&self) -> Vec<u8> {
-        ConsensusHashWriter::default().chain(self).finalize().to_vec()
-    }
-}
-
 impl ConsensusEncoding for PublicFunction {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.name.consensus_encode(writer)?;
@@ -177,7 +136,7 @@ impl ConsensusEncoding for PublicFunction {
 
 impl ConsensusEncodingSized for PublicFunction {
     fn consensus_encode_exact_size(&self) -> usize {
-        STR_LEN + self.function.consensus_encode_exact_size()
+        self.name.consensus_encode_exact_size() + self.function.consensus_encode_exact_size()
     }
 }
 
@@ -194,12 +153,6 @@ impl ConsensusDecoding for PublicFunction {
 pub struct FunctionRef {
     pub template_id: FixedHash,
     pub function_id: u16,
-}
-
-impl Hashable for FunctionRef {
-    fn hash(&self) -> Vec<u8> {
-        ConsensusHashWriter::default().chain(self).finalize().to_vec()
-    }
 }
 
 impl ConsensusEncoding for FunctionRef {
@@ -232,24 +185,27 @@ impl ConsensusDecoding for FunctionRef {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
+    use crate::{
+        consensus::check_consensus_encoding_correctness,
+        transactions::transaction_components::bytes_into_fixed_string,
+    };
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
-        let contract_name = str_to_fixed_string("contract_name");
+        let contract_name = bytes_into_fixed_string("contract_name");
         let contract_issuer = PublicKey::default();
         let contract_spec = ContractSpecification {
-            runtime: str_to_fixed_string("runtime value"),
+            runtime: bytes_into_fixed_string("runtime value"),
             public_functions: vec![
                 PublicFunction {
-                    name: str_to_fixed_string("foo"),
+                    name: bytes_into_fixed_string("foo"),
                     function: FunctionRef {
                         template_id: FixedHash::zero(),
                         function_id: 0_u16,
                     },
                 },
                 PublicFunction {
-                    name: str_to_fixed_string("bar"),
+                    name: bytes_into_fixed_string("bar"),
                     function: FunctionRef {
                         template_id: FixedHash::zero(),
                         function_id: 1_u16,
@@ -258,12 +214,8 @@ mod test {
             ],
         };
 
-        let contract_definition = ContractDefinition::new(contract_name.to_vec(), contract_issuer, contract_spec);
+        let contract_definition = ContractDefinition::new(contract_name, contract_issuer, contract_spec);
 
         check_consensus_encoding_correctness(contract_definition).unwrap();
-    }
-
-    fn str_to_fixed_string(s: &str) -> FixedString {
-        vec_into_fixed_string(s.as_bytes().to_vec())
     }
 }

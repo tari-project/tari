@@ -676,8 +676,6 @@ where
         features: OutputFeatures,
     ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-        let script = script!(Nop);
 
         Ok(UnblindedOutputBuilder::new(value, spending_key)
             .with_features(features)
@@ -1030,19 +1028,15 @@ where
         fee_per_gram: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
-        let total_value = MicroTari(outputs.iter().fold(0u64, |running, out| running + out.value.as_u64()));
+        let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
         let weighting = self.resources.consensus_constants.transaction_weight();
         let metadata_byte_size = outputs.iter().fold(0usize, |total, output| {
             total +
                 weighting.round_up_metadata_size({
-                    output.features.consensus_encode_exact_size() +
+                    output.features().consensus_encode_exact_size() +
                         output.covenant().consensus_encode_exact_size() +
-                        output
-                            .script
-                            .as_ref()
-                            .unwrap_or(&nop_script)
-                            .consensus_encode_exact_size()
+                        output.script().unwrap_or(&nop_script).consensus_encode_exact_size()
                 })
         });
 

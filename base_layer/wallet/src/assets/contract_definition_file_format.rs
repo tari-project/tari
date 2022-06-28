@@ -40,7 +40,7 @@ pub struct ContractDefinitionFileFormat {
 
 impl From<ContractDefinitionFileFormat> for ContractDefinition {
     fn from(value: ContractDefinitionFileFormat) -> Self {
-        let contract_name = value.contract_name.into_bytes();
+        let contract_name = bytes_into_fixed_string(value.contract_name);
         let contract_issuer = value.contract_issuer;
         let contract_spec = value.contract_spec.into();
 
