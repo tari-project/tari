@@ -25,7 +25,8 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_core::transactions::transaction_components::OutputType;
 
 use crate::output_manager_service::storage::models::DbUnblindedOutput;
 
@@ -33,13 +34,23 @@ use crate::output_manager_service::storage::models::DbUnblindedOutput;
 pub struct UtxoSelectionCriteria {
     pub filter: UtxoSelectionFilter,
     pub ordering: UtxoSelectionOrdering,
+    pub excluding: Vec<Commitment>,
 }
 
 impl UtxoSelectionCriteria {
+    pub fn smallest_first() -> Self {
+        Self {
+            filter: UtxoSelectionFilter::Standard,
+            ordering: UtxoSelectionOrdering::SmallestFirst,
+            ..Default::default()
+        }
+    }
+
     pub fn largest_first() -> Self {
         Self {
             filter: UtxoSelectionFilter::Standard,
             ordering: UtxoSelectionOrdering::LargestFirst,
+            ..Default::default()
         }
     }
 
@@ -49,7 +60,17 @@ impl UtxoSelectionCriteria {
                 unique_id,
                 parent_public_key,
             },
-            ordering: UtxoSelectionOrdering::Default,
+            ..Default::default()
+        }
+    }
+
+    pub fn for_contract(contract_id: FixedHash, output_type: OutputType) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::ContractOutput {
+                contract_id,
+                output_type,
+            },
+            ..Default::default()
         }
     }
 }
@@ -99,8 +120,24 @@ pub enum UtxoSelectionFilter {
         unique_id: Vec<u8>,
         parent_public_key: Option<PublicKey>,
     },
+    /// Select matching contract outputs. Additional Standard outputs may be included if necessary.
+    ContractOutput {
+        /// Contract ID to select
+        contract_id: FixedHash,
+        /// Type of contract output to select.
+        output_type: OutputType,
+    },
     /// Selects specific outputs. All outputs must be exist and be spendable.
     SpecificOutputs { outputs: Vec<DbUnblindedOutput> },
+}
+impl UtxoSelectionFilter {
+    pub fn is_standard(&self) -> bool {
+        matches!(self, UtxoSelectionFilter::Standard)
+    }
+
+    pub fn is_contract_output(&self) -> bool {
+        matches!(self, UtxoSelectionFilter::ContractOutput { .. })
+    }
 }
 
 impl Default for UtxoSelectionFilter {
@@ -120,6 +157,9 @@ impl Display for UtxoSelectionFilter {
             },
             UtxoSelectionFilter::SpecificOutputs { outputs } => {
                 write!(f, "Specific({} output(s))", outputs.len())
+            },
+            UtxoSelectionFilter::ContractOutput { contract_id, .. } => {
+                write!(f, "ContractOutput({})", contract_id)
             },
         }
     }
