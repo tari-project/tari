@@ -23,7 +23,7 @@
 use std::fmt::{Display, Formatter};
 
 use digest::Digest;
-use tari_common_types::types::FixedHash;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_crypto::common::Blake256;
 use tari_utilities::hex::Hex;
 
@@ -34,6 +34,7 @@ pub struct Instruction {
     template_id: TemplateId,
     method: String,
     args: Vec<u8>,
+    sender: PublicKey,
     // from: TokenId,
     // signature: ComSig,
     hash: FixedHash,
@@ -50,6 +51,7 @@ impl Instruction {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: PublicKey,
         // from: TokenId,
         // _signature: ComSig,
     ) -> Self {
@@ -57,6 +59,7 @@ impl Instruction {
             template_id,
             method,
             args,
+            sender,
             // from,
             // TODO: this is obviously wrong
             // signature: ComSig::default(),
@@ -76,6 +79,10 @@ impl Instruction {
 
     pub fn args(&self) -> &[u8] {
         &self.args
+    }
+
+    pub fn sender(&self) -> PublicKey {
+        self.sender.clone()
     }
 
     // // TODO: rename to avoid use of from

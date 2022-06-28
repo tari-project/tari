@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::FixedHash;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_comms::{
     connectivity::ConnectivityError,
     protocol::rpc::{RpcError, RpcStatus},
@@ -48,6 +48,7 @@ pub trait ValidatorNodeRpcClient: Send + Sync {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError>;
 
     async fn invoke_method(
@@ -56,6 +57,7 @@ pub trait ValidatorNodeRpcClient: Send + Sync {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError>;
 
     async fn get_sidechain_blocks(
