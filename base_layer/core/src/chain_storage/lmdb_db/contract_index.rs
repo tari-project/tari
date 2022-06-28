@@ -77,13 +77,15 @@ where T: Deref<Target = ConstTransaction<'a>>
     ) -> Result<Vec<FixedHash>, ChainStorageError> {
         let key = ContractIndexKey::new(contract_id, output_type);
         match output_type {
-            OutputType::ContractDefinition | OutputType::ContractCheckpoint | OutputType::ContractConstitution => {
-                Ok(self
-                    .get::<_, ContractIndexValue>(&key)?
-                    .into_iter()
-                    .map(|v| v.output_hash)
-                    .collect())
-            },
+            OutputType::ContractAmendment |
+            OutputType::ContractDefinition |
+            OutputType::ContractCheckpoint |
+            OutputType::ContractConstitution => Ok(self
+                .get::<_, ContractIndexValue>(&key)?
+                .into_iter()
+                .map(|v| v.output_hash)
+                .collect()),
+
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
             OutputType::ContractConstitutionChangeAcceptance => Ok(self
@@ -106,9 +108,11 @@ where T: Deref<Target = ConstTransaction<'a>>
     ) -> Result<Vec<FixedHash>, ChainStorageError> {
         let key = BlockContractIndexKey::prefixed(block_hash, output_type);
         match output_type {
-            OutputType::ContractDefinition | OutputType::ContractCheckpoint | OutputType::ContractConstitution => {
-                self.get_all_matching::<_, FixedHash>(&key)
-            },
+            OutputType::ContractDefinition |
+            OutputType::ContractCheckpoint |
+            OutputType::ContractConstitution |
+            OutputType::ContractAmendment => self.get_all_matching::<_, FixedHash>(&key),
+
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
             OutputType::ContractConstitutionChangeAcceptance => Ok(self
@@ -227,7 +231,7 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
             },
             // Only one contract checkpoint and constitution can exist at a time and can be overwritten. Consensus rules
             // decide whether this is valid but we just assume this is valid here.
-            OutputType::ContractConstitution | OutputType::ContractCheckpoint => {
+            OutputType::ContractAmendment | OutputType::ContractConstitution | OutputType::ContractCheckpoint => {
                 self.assert_definition_exists(contract_id)?;
                 self.set(&contract_key, &ContractIndexValue {
                     block_hash,
@@ -239,8 +243,7 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
             // These are collections of output hashes
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
-            OutputType::ContractConstitutionChangeAcceptance |
-            OutputType::ContractAmendment => {
+            OutputType::ContractConstitutionChangeAcceptance => {
                 self.assert_definition_exists(contract_id)?;
                 self.add_to_set(&contract_key, ContractIndexValue {
                     block_hash,
@@ -280,7 +283,7 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
                 self.delete(&block_key)?;
                 Ok(())
             },
-            OutputType::ContractConstitution | OutputType::ContractCheckpoint => {
+            OutputType::ContractAmendment | OutputType::ContractConstitution | OutputType::ContractCheckpoint => {
                 let contract = self.get_and_delete::<_, ContractIndexValue>(&contract_key)?;
                 let block_key = BlockContractIndexKey::new(contract.block_hash, output_type, contract_id);
                 self.delete(&block_key)?;
