@@ -262,6 +262,10 @@ impl ContractWorkerManager {
                     constitution.acceptance_requirements.acceptance_period_expiry,
                     tip.height_of_longest_chain
                 );
+
+                self.global_db
+                    .save_contract(contract_id, mined_height, ContractStatus::Expired)?;
+
                 continue;
             }
 
