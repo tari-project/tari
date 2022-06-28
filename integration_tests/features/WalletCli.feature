@@ -195,7 +195,13 @@ Feature: Wallet CLI
         And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET via command line
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
-        And I publish a contract amendment from file "fixtures/contract_amendment.json" on wallet WALLET via command line
+        When I publish a contract constitution from file "fixtures/contract_constitution.json" on wallet WALLET via command line
         And mining node MINE mines 8 blocks
         Then wallet WALLET has at least 2 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        And I publish a contract update proposal from file "fixtures/contract_update_proposal.json" on wallet WALLET via command line
+        And mining node MINE mines 8 blocks
+        Then wallet WALLET has at least 3 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        And I publish a contract amendment from file "fixtures/contract_amendment.json" on wallet WALLET via command line
+        And mining node MINE mines 8 blocks
+        Then wallet WALLET has at least 4 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         Then WALLET is connected to BASE
