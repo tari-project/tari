@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
-use tari_dan_core::storage::global::{GlobalDbBackendAdapter, GlobalDbMetadataKey};
+use tari_common_types::types::FixedHash;
+use tari_dan_core::storage::global::{ConstitutionStatus, GlobalDbBackendAdapter, GlobalDbMetadataKey};
 
 use crate::{error::SqliteStorageError, global::models::metadata::Metadata, SqliteTransaction};
 
@@ -132,5 +133,14 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
                 operation: "commit::state".to_string(),
             })?;
         Ok(())
+    }
+
+    fn save_contract(
+        &self,
+        contract_id: FixedHash,
+        mined_height: u64,
+        status: ConstitutionStatus,
+    ) -> Result<(), Self::Error> {
+        todo!()
     }
 }

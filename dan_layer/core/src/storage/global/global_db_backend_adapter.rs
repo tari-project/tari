@@ -22,6 +22,7 @@
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use tari_common_types::types::FixedHash;
 
 use crate::storage::StorageError;
 
@@ -38,6 +39,12 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
         key: &GlobalDbMetadataKey,
         connection: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn save_contract(
+        &self,
+        contract: FixedHash,
+        mined_height: u64,
+        status: ConstitutionStatus,
+    ) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy)]

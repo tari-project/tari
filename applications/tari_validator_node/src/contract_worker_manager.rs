@@ -49,7 +49,7 @@ use tari_dan_core::{
         WalletClient,
     },
     storage::{
-        global::{GlobalDb, GlobalDbMetadataKey},
+        global::{ConstitutionStatus, GlobalDb, GlobalDbMetadataKey},
         StorageError,
     },
     workers::ConsensusWorker,
@@ -170,6 +170,9 @@ impl ContractWorkerManager {
             info!(target: LOG_TARGET, "{} new contract(s) found", active_contracts.len());
 
             for contract in active_contracts {
+                self.global_db
+                    .save_contract(contract.contract_id, contract.mined_height, ConstitutionStatus::Pending);
+
                 info!(
                     target: LOG_TARGET,
                     "Posting acceptance transaction for contract {}", contract.contract_id
@@ -234,6 +237,7 @@ impl ContractWorkerManager {
         let mut new_contracts = vec![];
         for utxo in outputs {
             let output = some_or_continue!(utxo.output.into_unpruned_output());
+            let mined_height = utxo.mined_height;
             let sidechain_features = some_or_continue!(output.features.sidechain_features);
             let contract_id = sidechain_features.contract_id;
             let constitution = some_or_continue!(sidechain_features.constitution);
@@ -264,6 +268,7 @@ impl ContractWorkerManager {
             new_contracts.push(ActiveContract {
                 contract_id,
                 constitution,
+                mined_height,
             });
         }
 
@@ -435,4 +440,5 @@ pub enum WorkerManagerError {
 struct ActiveContract {
     pub contract_id: FixedHash,
     pub constitution: ContractConstitution,
+    pub mined_height: u64,
 }
