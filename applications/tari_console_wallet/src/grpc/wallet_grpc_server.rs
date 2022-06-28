@@ -599,12 +599,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
         let message = request.into_inner();
 
-        // let lock_height = if message.lock_height == 0 {
-        // None
-        // } else {
-        // Some(message.lock_height)
-        // };
-
         let mut wallet = self.wallet.clone();
 
         let tx_id = wallet

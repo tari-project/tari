@@ -290,6 +290,7 @@ pub struct TariVector {
     pub ptr: *mut c_void,
 }
 
+#[allow(dead_code)]
 impl TariVector {
     fn from_string_vec(v: Vec<String>) -> Result<Self, InterfaceError> {
         let mut strings = ManuallyDrop::new(
@@ -306,7 +307,6 @@ impl TariVector {
         })
     }
 
-    #[allow(dead_code)]
     fn from_commitment_vec(v: &mut Vec<Commitment>) -> Result<Self, InterfaceError> {
         Ok(Self {
             tag: TariTypeTag::Commitment,
@@ -333,20 +333,19 @@ impl TariVector {
         Ok(unsafe {
             Vec::from_raw_parts(self.ptr as *mut *mut c_char, self.len, self.cap)
                 .into_iter()
-                .map(|x| String::from(CString::from_raw(x).into_string().unwrap()))
+                .map(|x| CString::from_raw(x).into_string().unwrap())
                 .collect()
         })
     }
 
     fn to_commitment_vec(&self) -> Result<Vec<Commitment>, InterfaceError> {
-        Ok(self
-            .to_string_vec()?
+        self.to_string_vec()?
             .into_iter()
             .map(|x| {
                 Commitment::from_hex(x.as_str())
                     .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {:?}", e)))
             })
-            .try_collect::<Commitment, Vec<Commitment>, InterfaceError>()?)
+            .try_collect::<Commitment, Vec<Commitment>, InterfaceError>()
     }
 
     #[allow(dead_code)]
@@ -4400,7 +4399,7 @@ pub unsafe extern "C" fn destroy_tari_vector(x: *mut TariVector) {
 /// `c_ulonglong` - Returns the transaction id.
 ///
 /// # Safety
-/// None
+/// `TariVector` must be freed after use with `destroy_tari_vector()`
 #[no_mangle]
 pub unsafe extern "C" fn wallet_coin_split(
     wallet: *mut TariWallet,
@@ -4457,6 +4456,23 @@ pub unsafe extern "C" fn wallet_coin_split(
     }
 }
 
+/// This function will tell the wallet to do a coin join, resulting in a new coin worth a sum of the joined coins minus
+/// the fee.
+///
+/// ## Arguments
+/// * `wallet` - The TariWallet pointer
+/// * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+///   (see `Commitment::to_hex()`)
+/// * `fee_per_gram` - The transaction fee
+/// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+///   Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the transaction id.
+///
+/// # Safety
+/// `TariVector` must be freed after use with `destroy_tari_vector()`
 #[no_mangle]
 pub unsafe extern "C" fn wallet_coin_join(
     wallet: *mut TariWallet,
@@ -9156,7 +9172,7 @@ mod test {
 
             let payload = utxos[0..3]
                 .iter()
-                .map(|x| String::from(CString::from_raw(x.commitment).into_string().unwrap().clone()))
+                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
                 .collect::<Vec<String>>();
 
             let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
@@ -9175,7 +9191,7 @@ mod test {
                 .unwrap()
                 .into_iter()
                 .map(|x| x.unblinded_output.value)
-                .collect::<Vec<_>>();
+                .collect::<Vec<MicroTari>>();
 
             let new_pending_outputs = (*alice_wallet)
                 .wallet
@@ -9187,7 +9203,7 @@ mod test {
                 .unwrap()
                 .into_iter()
                 .map(|x| x.unblinded_output.value)
-                .collect::<Vec<_>>();
+                .collect::<Vec<MicroTari>>();
 
             let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, 0, error_ptr);
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
@@ -9286,7 +9302,7 @@ mod test {
 
             let payload = utxos[0..3]
                 .iter()
-                .map(|x| String::from(CString::from_raw(x.commitment).into_string().unwrap().clone()))
+                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
                 .collect::<Vec<String>>();
 
             let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;

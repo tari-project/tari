@@ -2252,7 +2252,7 @@ void destroy_tari_vector(struct TariVector *x);
  * `c_ulonglong` - Returns the transaction id.
  *
  * # Safety
- * None
+ * `TariVector` must be freed after use with `destroy_tari_vector()`
  */
 uint64_t wallet_coin_split(struct TariWallet *wallet,
                            struct TariVector *commitments,
@@ -2261,6 +2261,25 @@ uint64_t wallet_coin_split(struct TariWallet *wallet,
                            uint64_t fee_per_gram,
                            int32_t *error_ptr);
 
+/**
+ * This function will tell the wallet to do a coin join, resulting in a new coin worth a sum of the joined coins minus
+ * the fee.
+ *
+ * ## Arguments
+ * * `wallet` - The TariWallet pointer
+ * * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+ *   (see `Commitment::to_hex()`)
+ * * `fee_per_gram` - The transaction fee
+ * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+ *   Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Returns the transaction id.
+ *
+ * # Safety
+ * `TariVector` must be freed after use with `destroy_tari_vector()`
+ */
 uint64_t wallet_coin_join(struct TariWallet *wallet,
                           struct TariVector *commitments,
                           uint64_t fee_per_gram,

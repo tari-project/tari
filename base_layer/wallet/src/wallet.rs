@@ -580,7 +580,7 @@ where
             Ok((tx_id, tx, output_value)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, tx, output_value, msg.unwrap_or(String::new()))
+                    .submit_transaction(tx_id, tx, output_value, msg.unwrap_or_default())
                     .await;
 
                 match coin_tx {

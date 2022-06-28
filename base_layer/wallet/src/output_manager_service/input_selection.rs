@@ -41,6 +41,13 @@ impl UtxoSelectionCriteria {
         }
     }
 
+    pub fn smallest_first() -> Self {
+        Self {
+            filter: UtxoSelectionFilter::Standard,
+            ordering: UtxoSelectionOrdering::SmallestFirst,
+        }
+    }
+
     pub fn for_token(unique_id: Vec<u8>, parent_public_key: Option<PublicKey>) -> Self {
         Self {
             filter: UtxoSelectionFilter::TokenOutput {

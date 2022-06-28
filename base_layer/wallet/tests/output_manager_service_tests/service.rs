@@ -105,9 +105,10 @@ use crate::support::{
 };
 
 fn default_metadata_byte_size() -> usize {
-    let output_features = OutputFeatures { ..Default::default() };
     TransactionWeight::latest().round_up_metadata_size(
-        output_features.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+        Covenant::default().consensus_encode_exact_size() +
+            OutputFeatures::default().consensus_encode_exact_size() +
+            script![Nop].consensus_encode_exact_size(),
     )
 }
 
@@ -519,7 +520,7 @@ async fn test_utxo_selection_no_chain_metadata() {
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
     // coin split uses the "Largest" selection strategy
-    let (_, tx, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
+    let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
     let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
     assert_eq!(utxos_total_value, MicroTari::from(10_000));
@@ -604,7 +605,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
     // test coin split is maturity aware
-    let (_, tx, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
+    let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
     assert_eq!(utxos_total_value, MicroTari::from(6_000));
     let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
@@ -1154,23 +1155,25 @@ async fn coin_split_with_change() {
 
     let fee_per_gram = MicroTari::from(5);
     let split_count = 8;
-    let (_tx_id, coin_split_tx, amount) = oms
-        .output_manager_handle
-        .create_coin_split(1000.into(), split_count, fee_per_gram, None)
-        .await
-        .unwrap();
-    assert_eq!(coin_split_tx.body.inputs().len(), 2);
-    assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
     let expected_fee = fee_calc.calculate(
         fee_per_gram,
         1,
-        2,
+        3,
         split_count + 1,
         (split_count + 1) * default_metadata_byte_size(),
     );
+
+    let (_tx_id, coin_split_tx, amount) = oms
+        .output_manager_handle
+        .create_coin_split(vec![], 1000.into(), split_count, fee_per_gram)
+        .await
+        .unwrap();
+
+    assert_eq!(coin_split_tx.body.inputs().len(), 3);
+    assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
     assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
-    assert_eq!(amount, val2 + val3);
+    assert_eq!(amount, val3);
 }
 
 #[tokio::test]
@@ -1192,6 +1195,7 @@ async fn coin_split_no_change() {
         split_count,
         split_count * default_metadata_byte_size(),
     );
+
     let val1 = 4_000 * uT;
     let val2 = 5_000 * uT;
     let val3 = 6_000 * uT + expected_fee;
@@ -1204,7 +1208,7 @@ async fn coin_split_no_change() {
 
     let (_tx_id, coin_split_tx, amount) = oms
         .output_manager_handle
-        .create_coin_split(1000.into(), split_count, fee_per_gram, None)
+        .create_coin_split(vec![], 1000.into(), split_count, fee_per_gram)
         .await
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 3);
