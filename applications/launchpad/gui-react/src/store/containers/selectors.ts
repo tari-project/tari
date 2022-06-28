@@ -41,7 +41,7 @@ export const selectContainerStatus: ContainerStatusSelector =
       rootState.containers.pending.includes(containerName) ||
       rootState.containers.pending.includes(containerId)
 
-    const typeError = undefined // rootState.containers.errors[containerType]
+    const typeError = rootState.containers.errors[containerName]
 
     if (!containerId) {
       return {
