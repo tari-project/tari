@@ -19,8 +19,13 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-mod global_db;
-pub use global_db::GlobalDb;
 
-mod global_db_backend_adapter;
-pub use global_db_backend_adapter::{ConstitutionStatus, GlobalDbBackendAdapter, GlobalDbMetadataKey};
+use crate::global::schema::*;
+
+#[derive(Queryable, Insertable, Identifiable)]
+#[primary_key(contract_id)]
+pub struct Constitution {
+    pub contract_id: Vec<u8>,
+    pub state: i32,
+    pub height: i32,
+}
