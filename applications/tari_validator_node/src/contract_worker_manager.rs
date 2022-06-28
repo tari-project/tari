@@ -134,6 +134,9 @@ impl ContractWorkerManager {
         // TODO: Uncomment line to scan from previous block height once we can
         //       start up asset workers for existing contracts.
         // self.load_initial_state()?;
+        if self.config.constitution_auto_accept {
+            info!("constitution_auto_accept is true")
+        }
 
         if !self.config.scan_for_assets {
             info!(
@@ -173,15 +176,21 @@ impl ContractWorkerManager {
                 self.global_db
                     .save_contract(contract.contract_id, contract.mined_height, ContractStatus::Pending)?;
 
-                info!(
-                    target: LOG_TARGET,
-                    "Posting acceptance transaction for contract {}", contract.contract_id
-                );
-                self.post_contract_acceptance(&contract).await?;
-                // TODO: Scan for acceptances and once enough are present, start working on the contract
-                //       for now, we start working immediately.
-                let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
-                self.active_workers.insert(contract.contract_id, kill);
+                if self.config.constitution_auto_accept {
+                    info!(
+                        target: LOG_TARGET,
+                        "Posting acceptance transaction for contract {}", contract.contract_id
+                    );
+                    self.post_contract_acceptance(&contract).await?;
+
+                    self.global_db
+                        .update_contract_state(contract.contract_id, ContractStatus::Accepted)?;
+
+                    // TODO: Scan for acceptances and once enough are present, start working on the contract
+                    //       for now, we start working immediately.
+                    let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
+                    self.active_workers.insert(contract.contract_id, kill);
+                }
             }
             self.set_last_scanned_block(tip)?;
 
