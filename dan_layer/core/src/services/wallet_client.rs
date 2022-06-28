@@ -31,6 +31,7 @@ pub trait WalletClient: Send + Sync {
         &mut self,
         contract_id: &FixedHash,
         state_root: &StateRoot,
+        is_initial: bool,
     ) -> Result<(), DigitalAssetError>;
 
     async fn submit_contract_acceptance(

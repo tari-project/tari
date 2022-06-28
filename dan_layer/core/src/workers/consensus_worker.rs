@@ -308,6 +308,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
                 &mut self.worker.payload_provider,
             )
             .await?;
+
         unit_of_work.commit()?;
         if let Some(mut state_tx) = self.worker.state_db_unit_of_work.take() {
             state_tx.commit()?;
