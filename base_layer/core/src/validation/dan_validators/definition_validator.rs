@@ -48,16 +48,17 @@ fn validate_duplication<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
-    match fetch_contract_features(db, contract_id, OutputType::ContractDefinition)? {
-        Some(_) => {
-            let msg = format!(
-                "Duplicated contract definition for contract_id ({:?})",
-                contract_id.to_hex()
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
-        None => Ok(()),
+    let features = fetch_contract_features(db, contract_id, OutputType::ContractDefinition)?;
+    let is_duplicated = !features.is_empty();
+    if is_duplicated {
+        let msg = format!(
+            "Duplicated contract definition for contract_id ({:?})",
+            contract_id.to_hex()
+        );
+        return Err(ValidationError::DanLayerError(msg));
     }
+
+    Ok(())
 }
 
 #[cfg(test)]

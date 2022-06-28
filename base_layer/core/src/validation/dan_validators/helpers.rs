@@ -24,7 +24,7 @@ use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::{BlockchainBackend, BlockchainDatabase, UtxoMinedInfo},
     transactions::transaction_components::{ContractConstitution, OutputType, SideChainFeatures, TransactionOutput},
     validation::ValidationError,
 };
@@ -49,47 +49,44 @@ pub fn fetch_contract_features<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
     output_type: OutputType,
-) -> Result<Option<SideChainFeatures>, ValidationError> {
-    let outputs = db
+) -> Result<Vec<SideChainFeatures>, ValidationError> {
+    let features = fetch_contract_utxos(db, contract_id, output_type)?
+        .iter()
+        .filter_map(|utxo| utxo.output.as_transaction_output())
+        .filter_map(|output| output.features.sidechain_features.as_ref())
+        .cloned()
+        .collect();
+
+    Ok(features)
+}
+
+pub fn fetch_contract_utxos<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+    output_type: OutputType,
+) -> Result<Vec<UtxoMinedInfo>, ValidationError> {
+    let utxos = db
         .fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
         .map_err(|err| ValidationError::DanLayerError(format!("Could not search outputs: {}", err)))?;
-    if outputs.is_empty() {
-        return Ok(None);
-    }
 
-    let utxo_info = match outputs.first() {
-        Some(value) => value,
-        None => return Ok(None),
-    };
-
-    let transaction_output = match utxo_info.output.as_transaction_output() {
-        Some(value) => value,
-        None => return Ok(None),
-    };
-
-    match transaction_output.features.sidechain_features.as_ref() {
-        Some(value) => Ok(Some(value.clone())),
-        None => Ok(None),
-    }
+    Ok(utxos)
 }
 
 pub fn fetch_contract_constitution<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<ContractConstitution, ValidationError> {
-    let features_result = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
+    let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
+    if features.is_empty() {
+        return Err(ValidationError::DanLayerError(format!(
+            "Contract constitution not found for contract_id {}",
+            contract_id.to_hex()
+        )));
+    }
 
-    let features = match features_result {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::DanLayerError(format!(
-                "Contract constitution not found for contract_id {}",
-                contract_id.to_hex()
-            )))
-        },
-    };
+    let feature = &features[0];
 
-    let constitution = match features.constitution.as_ref() {
+    let constitution = match feature.constitution.as_ref() {
         Some(value) => value,
         None => {
             return Err(ValidationError::DanLayerError(
