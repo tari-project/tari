@@ -74,7 +74,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .output_database
             .fetch_by_features_asset_public_key(public_key)
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
-        Ok(convert_to_asset(output)?)
+        convert_to_asset(output)
     }
 
     pub async fn create_registration_transaction(

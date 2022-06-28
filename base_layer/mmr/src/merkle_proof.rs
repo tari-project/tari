@@ -39,7 +39,7 @@ use crate::{
 };
 
 /// Merkle proof errors.
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum MerkleProofError {
     #[error("Merkle proof root hash does not match when attempting to verify.")]
     RootMismatch,

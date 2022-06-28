@@ -29,7 +29,7 @@ use tari_utilities::hex::{Hex, HexError};
 
 use crate::fixed_hash::{FixedHash, FixedHashSizeError};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TreeNodeHash(FixedHash);
 
 impl TreeNodeHash {

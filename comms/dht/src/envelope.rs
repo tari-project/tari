@@ -189,8 +189,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
     fn try_from(header: DhtHeader) -> Result<Self, Self::Error> {
         let destination = header
             .destination
-            .map(|destination| destination.try_into().ok())
-            .flatten()
+            .and_then(|destination| destination.try_into().ok())
             .ok_or(DhtMessageError::InvalidDestination)?;
 
         let ephemeral_public_key = if header.ephemeral_public_key.is_empty() {

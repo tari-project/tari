@@ -1323,7 +1323,7 @@ impl InboundTransactionSenderInfoSql {
     ) -> Result<Vec<InboundTransactionSenderInfoSql>, TransactionStorageError> {
         let query_result = inbound_transactions::table
             .select((inbound_transactions::tx_id, inbound_transactions::source_public_key))
-            .filter(inbound_transactions::cancelled.eq(false as i32))
+            .filter(inbound_transactions::cancelled.eq(i32::from(false)))
             .load::<InboundTransactionSenderInfoSql>(conn)?;
         Ok(query_result)
     }
@@ -1361,7 +1361,7 @@ impl InboundTransactionSql {
         cancelled: bool,
     ) -> Result<Vec<InboundTransactionSql>, TransactionStorageError> {
         Ok(inbound_transactions::table
-            .filter(inbound_transactions::cancelled.eq(cancelled as i32))
+            .filter(inbound_transactions::cancelled.eq(i32::from(cancelled)))
             .load::<InboundTransactionSql>(conn)?)
     }
 
@@ -1378,7 +1378,7 @@ impl InboundTransactionSql {
     ) -> Result<InboundTransactionSql, TransactionStorageError> {
         Ok(inbound_transactions::table
             .filter(inbound_transactions::tx_id.eq(tx_id.as_u64() as i64))
-            .filter(inbound_transactions::cancelled.eq(cancelled as i32))
+            .filter(inbound_transactions::cancelled.eq(i32::from(cancelled)))
             .first::<InboundTransactionSql>(conn)?)
     }
 
@@ -1416,7 +1416,7 @@ impl InboundTransactionSql {
     pub fn set_cancelled(&self, cancelled: bool, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateInboundTransactionSql {
-                cancelled: Some(cancelled as i32),
+                cancelled: Some(i32::from(cancelled)),
                 direct_send_success: None,
                 receiver_protocol: None,
                 send_count: None,
@@ -1470,8 +1470,8 @@ impl TryFrom<InboundTransaction> for InboundTransactionSql {
             receiver_protocol: serde_json::to_string(&i.receiver_protocol)?,
             message: i.message,
             timestamp: i.timestamp,
-            cancelled: i.cancelled as i32,
-            direct_send_success: i.direct_send_success as i32,
+            cancelled: i32::from(i.cancelled),
+            direct_send_success: i32::from(i.direct_send_success),
             send_count: i.send_count as i32,
             last_send_timestamp: i.last_send_timestamp,
         })
@@ -1542,7 +1542,7 @@ impl OutboundTransactionSql {
         cancelled: bool,
     ) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError> {
         Ok(outbound_transactions::table
-            .filter(outbound_transactions::cancelled.eq(cancelled as i32))
+            .filter(outbound_transactions::cancelled.eq(i32::from(cancelled)))
             .load::<OutboundTransactionSql>(conn)?)
     }
 
@@ -1559,7 +1559,7 @@ impl OutboundTransactionSql {
     ) -> Result<OutboundTransactionSql, TransactionStorageError> {
         Ok(outbound_transactions::table
             .filter(outbound_transactions::tx_id.eq(tx_id.as_u64() as i64))
-            .filter(outbound_transactions::cancelled.eq(cancelled as i32))
+            .filter(outbound_transactions::cancelled.eq(i32::from(cancelled)))
             .first::<OutboundTransactionSql>(conn)?)
     }
 
@@ -1586,7 +1586,7 @@ impl OutboundTransactionSql {
     pub fn set_cancelled(&self, cancelled: bool, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateOutboundTransactionSql {
-                cancelled: Some(cancelled as i32),
+                cancelled: Some(i32::from(cancelled)),
                 direct_send_success: None,
                 sender_protocol: None,
                 send_count: None,
@@ -1641,8 +1641,8 @@ impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
             sender_protocol: serde_json::to_string(&o.sender_protocol)?,
             message: o.message,
             timestamp: o.timestamp,
-            cancelled: o.cancelled as i32,
-            direct_send_success: o.direct_send_success as i32,
+            cancelled: i32::from(o.cancelled),
+            direct_send_success: i32::from(o.direct_send_success),
             send_count: o.send_count as i32,
             last_send_timestamp: o.last_send_timestamp,
         })

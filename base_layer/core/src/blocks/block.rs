@@ -77,7 +77,7 @@ pub enum BlockValidationError {
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Block {
     pub header: BlockHeader,
     pub body: AggregateBody,

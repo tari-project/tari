@@ -908,7 +908,7 @@ mod test {
             partial_metadata_signature.clone(),
             covenant,
         );
-        assert!(!output.verify_metadata_signature().is_ok());
+        assert!(output.verify_metadata_signature().is_err());
         assert!(partial_metadata_signature.verify_challenge(
             &commitment,
             &output

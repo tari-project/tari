@@ -79,7 +79,7 @@ use crate::{
     transactions::{tari_amount::MicroTari, transaction_components::Transaction},
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatsResponse {
     pub total_txs: u64,
     pub unconfirmed_txs: u64,
@@ -97,13 +97,13 @@ impl Display for StatsResponse {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StateResponse {
     pub unconfirmed_pool: Vec<Arc<Transaction>>,
     pub reorg_pool: Vec<Signature>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TxStorageResponse {
     UnconfirmedPool,
     ReorgPool,
@@ -135,7 +135,7 @@ impl Display for TxStorageResponse {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeePerGramStat {
     pub order: u64,
     pub min_fee_per_gram: MicroTari,

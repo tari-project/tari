@@ -200,7 +200,7 @@ mod test {
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: u64, result: bool) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.callback_txo_validation_complete += result as u32;
+        lock.callback_txo_validation_complete += u32::from(result);
         drop(lock);
     }
 
