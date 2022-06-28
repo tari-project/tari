@@ -92,7 +92,7 @@ pub fn image_info(settings: ServiceSettings) -> ImageListDto {
         [ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
         [ImageType::Wallet, ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
         [ImageType::Sha3Miner, ImageType::Wallet, ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
-        [ImageType::MmProxy, ImageType::XmRig, ImageType::Monerod, ImageType::Wallet, ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
+        [ImageType::MmProxy, ImageType::XmRig, ImageType::Wallet, ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
     ].to_vec();
 
     ImageListDto {
