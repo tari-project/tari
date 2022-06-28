@@ -66,4 +66,8 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
     ) -> Result<(), Self::Error> {
         todo!()
     }
+
+    fn update_contract_state(&self, _contract_id: FixedHash, _state: ContractStatus) -> Result<(), Self::Error> {
+        todo!()
+    }
 }

@@ -61,4 +61,10 @@ impl<TGlobalDbBackendAdapter: GlobalDbBackendAdapter> GlobalDb<TGlobalDbBackendA
             .save_contract(contract_id, mined_height, state)
             .map_err(TGlobalDbBackendAdapter::Error::into)
     }
+
+    pub fn update_contract_state(&self, contract_id: FixedHash, state: ContractStatus) -> Result<(), StorageError> {
+        self.adapter
+            .update_contract_state(contract_id, state)
+            .map_err(TGlobalDbBackendAdapter::Error::into)
+    }
 }

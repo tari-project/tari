@@ -25,6 +25,6 @@ use crate::global::schema::*;
 #[derive(Queryable, Insertable, Identifiable)]
 pub struct Contract {
     pub id: Vec<u8>,
-    pub state: u64,
-    pub height: u64,
+    pub state: i32,
+    pub height: i64,
 }

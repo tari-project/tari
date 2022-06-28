@@ -43,8 +43,9 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
         &self,
         contract_id: FixedHash,
         mined_height: u64,
-        status: ContractStatus,
+        state: ContractStatus,
     ) -> Result<(), Self::Error>;
+    fn update_contract_state(&self, contract_id: FixedHash, state: ContractStatus) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy)]
