@@ -211,7 +211,7 @@ export const stopRecipe = createAsyncThunk<
     )
 
     tail
-      .filter(tailPart => !containersRequiredByOtherServices.has(tailPart))
+      .filter(tailPart => !containersRequiredByOtherServices.has(tailPart.type))
       .forEach(tailPartToStop => thunkApi.dispatch(stop(tailPartToStop.id)))
   } catch (e) {
     return thunkApi.rejectWithValue(e)

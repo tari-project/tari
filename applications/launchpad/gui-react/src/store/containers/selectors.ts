@@ -30,7 +30,7 @@ export const selectContainerStats = (containerId: string) => (r: RootState) =>
   r.containers.stats[containerId]
 
 type ContainerStatusSelector = (
-  c: string | Container,
+  c: ContainerName,
 ) => (r: RootState) => ContainerStatusDto
 export const selectContainerStatus: ContainerStatusSelector =
   containerName => rootState => {
@@ -61,13 +61,14 @@ export const selectContainerStatus: ContainerStatusSelector =
         (containerStatus.status !== SystemEventAction.Start &&
           containerStatus.status !== SystemEventAction.Destroy),
       running: containerStatus.status === SystemEventAction.Start,
+      // TODO rename
       type: containerName,
       error: containerStatus.error || typeError,
     }
   }
 
 type ContainerStatusSelectorWithStats = (
-  c: string | Container,
+  c: ContainerName,
 ) => (r: RootState) => ContainerStatusDtoWithStats
 export const selectContainerStatusWithStats: ContainerStatusSelectorWithStats =
   containerName => rootState => {
