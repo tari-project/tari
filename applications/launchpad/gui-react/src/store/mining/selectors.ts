@@ -33,7 +33,7 @@ export const selectTariContainers = createSelector(
       }))
 
     return {
-      running: !containers.some(c => !c.running),
+      running: containers.every(c => c.running),
       pending: containers.some(c => c.pending),
       miningPending: sha3.pending,
       error: errors.length > 0 ? errors : undefined,

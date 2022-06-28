@@ -13,7 +13,7 @@ import {
 
 export const selectState = (rootState: RootState) => rootState.containers
 
-export const selectContainer = (c: string | Container) => (r: RootState) => {
+export const selectContainer = (c: ContainerName) => (r: RootState) => {
   const containers = Object.entries(r.containers.containers).filter(
     ([, value]) => value.name === c,
   )
@@ -50,8 +50,9 @@ export const selectContainerStatus: ContainerStatusSelector =
       }
     }
 
+    const { name: _, ...containerStatusWithoutName } = containerStatus
     return {
-      ...containerStatus,
+      ...containerStatusWithoutName,
       id: containerId,
       pending:
         pending ||

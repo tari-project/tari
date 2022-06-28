@@ -61,7 +61,7 @@ export const tauriIPCMock = (props: Record<string, unknown> = {}) => {
       case 'stop_service':
         return true
       case 'image_info':
-        return []
+        return { imageInfo: [], serviceRecipes: [] }
       default:
         return
     }
@@ -69,7 +69,7 @@ export const tauriIPCMock = (props: Record<string, unknown> = {}) => {
 }
 
 const tauriCmdMock = (
-  cmd: string,
+  _cmd: string,
   args: Record<string, unknown>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   props: Record<string, any>,

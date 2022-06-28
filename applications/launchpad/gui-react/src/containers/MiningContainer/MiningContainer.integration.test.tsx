@@ -16,11 +16,13 @@ import {
   allStopped,
   initialMining,
   unlockedWallet,
+  defaultDockerImages,
 } from '../../../__tests__/mocks/states'
 import { act } from 'react-dom/test-utils'
 import { Container, SystemEventAction } from '../../store/containers/types'
 
 const rootStateTemplate = {
+  dockerImages: defaultDockerImages,
   wallet: unlockedWallet,
   mining: initialMining,
   containers: allStopped,
@@ -69,7 +71,7 @@ describe('MiningContainer with Redux', () => {
       </Provider>,
     )
 
-    // 2. MiningContainer should by in 'paused' status and render the 'start' button
+    // 2. MiningContainer should be in 'paused' status and render the 'start' button
     let elRunBtn = screen.getByTestId('tari-run-btn')
     expect(elRunBtn).toBeInTheDocument()
 
@@ -87,6 +89,18 @@ describe('MiningContainer with Redux', () => {
           payload: {
             containerId: `${c}-id`,
             action: SystemEventAction.Start,
+          },
+        })
+        store.dispatch({
+          type: 'containers/start/fulfilled',
+          payload: {
+            id: `${c}-id`,
+            unsubscribeStats: () => null,
+          },
+          meta: {
+            arg: {
+              container: c,
+            },
           },
         })
       })
