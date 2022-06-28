@@ -119,6 +119,7 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
         OutputManagerServiceInitializer,
+        UtxoSelectionCriteria,
     },
     storage::{
         database::WalletDatabase,
@@ -546,6 +547,7 @@ fn manage_single_transaction() {
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
             value,
+            OutputFeatures::default(),
             MicroTari::from(4),
             "".to_string()
         ))
@@ -557,6 +559,7 @@ fn manage_single_transaction() {
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
             value,
+            OutputFeatures::default(),
             MicroTari::from(4),
             message,
         ))
@@ -681,6 +684,7 @@ fn single_transaction_to_self() {
             .send_transaction(
                 alice_node_identity.public_key().clone(),
                 value,
+                OutputFeatures::default(),
                 20.into(),
                 message.clone(),
             )
@@ -772,6 +776,7 @@ fn send_one_sided_transaction_to_other() {
             .send_one_sided_transaction(
                 bob_node_identity.public_key().clone(),
                 value,
+                OutputFeatures::default(),
                 20.into(),
                 message.clone(),
             )
@@ -911,6 +916,7 @@ fn recover_one_sided_transaction() {
             .send_one_sided_transaction(
                 bob_node_identity.public_key().clone(),
                 value,
+                OutputFeatures::default(),
                 20.into(),
                 message.clone(),
             )
@@ -1137,6 +1143,7 @@ fn send_one_sided_transaction_to_self() {
             .send_one_sided_transaction(
                 alice_node_identity.public_key().clone(),
                 value,
+                OutputFeatures::default(),
                 20.into(),
                 message.clone(),
             )
@@ -1275,6 +1282,7 @@ fn manage_multiple_transactions() {
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
             value_a_to_b_1,
+            OutputFeatures::default(),
             MicroTari::from(20),
             "a to b 1".to_string(),
         ))
@@ -1285,6 +1293,7 @@ fn manage_multiple_transactions() {
         .block_on(alice_ts.send_transaction(
             carol_node_identity.public_key().clone(),
             value_a_to_c_1,
+            OutputFeatures::default(),
             MicroTari::from(20),
             "a to c 1".to_string(),
         ))
@@ -1297,6 +1306,7 @@ fn manage_multiple_transactions() {
         .block_on(bob_ts.send_transaction(
             alice_node_identity.public_key().clone(),
             value_b_to_a_1,
+            OutputFeatures::default(),
             MicroTari::from(20),
             "b to a 1".to_string(),
         ))
@@ -1305,6 +1315,7 @@ fn manage_multiple_transactions() {
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
             value_a_to_b_2,
+            OutputFeatures::default(),
             MicroTari::from(20),
             "a to b 2".to_string(),
         ))
@@ -1436,6 +1447,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             MicroTari::from(5000),
+            OutputFeatures::default(),
             MicroTari::from(20),
             "".to_string(),
         ))
@@ -1543,8 +1555,8 @@ fn finalize_tx_with_incorrect_pubkey() {
                 .prepare_transaction_to_send(
                     TxId::new_random(),
                     MicroTari::from(5000),
-                    None,
-                    None,
+                    UtxoSelectionCriteria::default(),
+                    OutputFeatures::default(),
                     MicroTari::from(25),
                     None,
                     "".to_string(),
@@ -1664,8 +1676,8 @@ fn finalize_tx_with_missing_output() {
                 .prepare_transaction_to_send(
                     TxId::new_random(),
                     MicroTari::from(5000),
-                    None,
-                    None,
+                    UtxoSelectionCriteria::default(),
+                    OutputFeatures::default(),
                     MicroTari::from(20),
                     None,
                     "".to_string(),
@@ -1840,6 +1852,7 @@ fn discovery_async_return_test() {
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
             value_a_to_c_1,
+            OutputFeatures::default(),
             MicroTari::from(20),
             "Discovery Tx!".to_string(),
         ))
@@ -1876,6 +1889,7 @@ fn discovery_async_return_test() {
         .block_on(alice_ts.send_transaction(
             carol_node_identity.public_key().clone(),
             value_a_to_c_1,
+            OutputFeatures::default(),
             MicroTari::from(20),
             "Discovery Tx2!".to_string(),
         ))
@@ -2150,6 +2164,7 @@ fn test_transaction_cancellation() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
         ))
@@ -2497,6 +2512,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
         ))
@@ -2679,6 +2695,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
         ))
@@ -2800,6 +2817,7 @@ fn test_tx_direct_send_behaviour() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message1".to_string(),
         ))
@@ -2841,6 +2859,7 @@ fn test_tx_direct_send_behaviour() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message2".to_string(),
         ))
@@ -2886,6 +2905,7 @@ fn test_tx_direct_send_behaviour() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message3".to_string(),
         ))
@@ -2931,6 +2951,7 @@ fn test_tx_direct_send_behaviour() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message4".to_string(),
         ))
@@ -4152,6 +4173,7 @@ fn test_transaction_resending() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
         ))
@@ -4653,6 +4675,7 @@ fn test_replying_to_cancelled_tx() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
         ))
@@ -4775,6 +4798,7 @@ fn test_transaction_timeout_cancellation() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent,
+            OutputFeatures::default(),
             20 * uT,
             "Testing Message".to_string(),
         ))
@@ -5027,6 +5051,7 @@ fn transaction_service_tx_broadcast() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent1,
+            OutputFeatures::default(),
             100 * uT,
             "Testing Message".to_string(),
         ))
@@ -5084,6 +5109,7 @@ fn transaction_service_tx_broadcast() {
         .block_on(alice_ts_interface.transaction_service_handle.send_transaction(
             bob_node_identity.public_key().clone(),
             amount_sent2,
+            OutputFeatures::default(),
             20 * uT,
             "Testing Message2".to_string(),
         ))

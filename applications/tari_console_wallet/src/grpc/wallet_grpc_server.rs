@@ -458,7 +458,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_transaction(
+                                pk,
+                                amount.into(),
+                                OutputFeatures::default(),
+                                fee_per_gram.into(),
+                                message,
+                            )
                             .await,
                     )
                 });
@@ -467,7 +473,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message)
+                            .send_one_sided_transaction(
+                                pk,
+                                amount.into(),
+                                OutputFeatures::default(),
+                                fee_per_gram.into(),
+                                message,
+                            )
                             .await,
                     )
                 });
@@ -857,8 +869,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         let message = format!("Sidechain state checkpoint for {}", contract_id);
-        let _ = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), message)
+        transaction_service
+            .submit_transaction(tx_id, transaction, 10.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

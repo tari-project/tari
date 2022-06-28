@@ -45,6 +45,7 @@ use tari_comms::{
 };
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
+    transaction_components::OutputFeatures,
     weight::TransactionWeight,
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
@@ -295,13 +296,18 @@ impl AppState {
             Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
         };
 
+        let output_features = OutputFeatures {
+            unique_id,
+            parent_public_key,
+            ..Default::default()
+        };
+
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_transaction_task(
             public_key,
             MicroTari::from(amount),
-            unique_id,
-            parent_public_key,
+            output_features,
             message,
             fee_per_gram,
             tx_service_handle,
@@ -327,13 +333,18 @@ impl AppState {
             Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
         };
 
+        let output_features = OutputFeatures {
+            unique_id,
+            parent_public_key,
+            ..Default::default()
+        };
+
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_one_sided_transaction_task(
             public_key,
             MicroTari::from(amount),
-            unique_id,
-            parent_public_key,
+            output_features,
             message,
             fee_per_gram,
             tx_service_handle,

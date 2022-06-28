@@ -28,13 +28,13 @@ use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, FixedHash, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, OutputFeatures, OutputType, SideChainFeatures, UnblindedOutput},
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -183,7 +183,7 @@ impl OutputSql {
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     #[allow(clippy::cast_sign_loss)]
     pub fn fetch_unspent_outputs_for_spending(
-        selection_criteria: UtxoSelectionCriteria,
+        selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
         tip_height: Option<u64>,
         conn: &SqliteConnection,
@@ -193,7 +193,7 @@ impl OutputSql {
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .order_by(outputs::spending_priority.desc());
 
-        match selection_criteria.filter {
+        match &selection_criteria.filter {
             UtxoSelectionFilter::Standard => {
                 query = query.filter(
                     outputs::output_type
@@ -209,9 +209,21 @@ impl OutputSql {
                     .filter(outputs::features_unique_id.eq(unique_id))
                     .filter(outputs::features_parent_public_key.eq(parent_public_key.as_ref().map(|pk| pk.to_vec())));
             },
-            UtxoSelectionFilter::SpecificOutputs { outputs } => {
-                query = query.filter(outputs::hash.eq_any(outputs.into_iter().map(|o| o.hash)))
+            UtxoSelectionFilter::ContractOutput {
+                contract_id,
+                output_type,
+            } => {
+                query = query
+                    .filter(outputs::contract_id.eq(contract_id.as_slice()))
+                    .filter(outputs::output_type.eq(i32::from(output_type.as_byte())));
             },
+            UtxoSelectionFilter::SpecificOutputs { outputs } => {
+                query = query.filter(outputs::hash.eq_any(outputs.iter().map(|o| &o.hash)))
+            },
+        }
+
+        for exclude in &selection_criteria.excluding {
+            query = query.filter(outputs::commitment.ne(exclude.as_bytes()));
         }
 
         match selection_criteria.ordering {
@@ -250,6 +262,7 @@ impl OutputSql {
                 }
             },
         };
+
         match tip_height {
             Some(tip_height) => {
                 let i64_tip_height = i64::try_from(tip_height).unwrap_or(i64::MAX);
@@ -263,6 +276,11 @@ impl OutputSql {
                 query = query.then_order_by(outputs::maturity.asc());
             },
         }
+        // debug!(
+        //     target: LOG_TARGET,
+        //     "Executing UTXO select query: {}",
+        //     diesel::debug_query(&query)
+        // );
         Ok(query.load(conn)?)
     }
 
@@ -594,38 +612,11 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 
     #[allow(clippy::too_many_lines)]
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        let mut features: OutputFeatures =
+        let features: OutputFeatures =
             serde_json::from_str(&o.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
 
-        let output_type = o
-            .output_type
-            .try_into()
-            .map_err(|_| OutputManagerStorageError::ConversionError {
-                reason: format!("Unable to convert flag bits with value {} to OutputType", o.output_type),
-            })?;
-        features.output_type =
-            OutputType::from_byte(output_type).ok_or(OutputManagerStorageError::ConversionError {
-                reason: "Flags could not be converted from bits".to_string(),
-            })?;
-        features.maturity = o.maturity as u64;
-        features.metadata = o.metadata.unwrap_or_default();
-        features.sidechain_features = o
-            .features_unique_id
-            .as_ref()
-            .map(|v| FixedHash::try_from(v.as_slice()))
-            .transpose()
-            .map_err(|_| OutputManagerStorageError::ConversionError {
-                reason: "Invalid contract ID".to_string(),
-            })?
-            // TODO: Add side chain features to wallet db
-            .map(SideChainFeatures::new);
-        features.parent_public_key = o
-            .features_parent_public_key
-            .map(|p| PublicKey::from_bytes(&p))
-            .transpose()?;
-        features.recovery_byte = u8::try_from(o.recovery_byte).unwrap();
         let encrypted_value = EncryptedValue::from_bytes(&o.encrypted_value)?;
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),

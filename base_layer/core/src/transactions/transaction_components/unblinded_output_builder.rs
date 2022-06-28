@@ -183,6 +183,10 @@ impl UnblindedOutputBuilder {
         self.script_private_key = Some(script_private_key);
         self
     }
+
+    pub fn covenant(&self) -> &Covenant {
+        &self.covenant
+    }
 }
 
 #[cfg(test)]

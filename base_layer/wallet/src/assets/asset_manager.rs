@@ -46,6 +46,7 @@ use crate::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::DbUnblindedOutput,
         },
+        UtxoSelectionCriteria,
     },
 };
 
@@ -122,7 +123,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         debug!(target: LOG_TARGET, "Created output: {:?}", output);
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
         Ok((tx_id, transaction))
     }
@@ -153,7 +154,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(outputs, ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(outputs, ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
         Ok((tx_id, transaction))
     }
@@ -166,7 +167,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         let output = self
             .output_manager
             .create_output_with_features(
-                0.into(),
+                10.into(),
                 OutputFeatures::for_checkpoint(
                     contract_id,
                     merkle_root,
@@ -203,15 +204,13 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 // TODO: Fee is proportional to tx weight, so does not need to be different for contract
                 //       transactions - should be chosen by the user
                 ASSET_FPG.into(),
-                // TODO: Spend previous checkpoint
-                None,
-                None,
+                UtxoSelectionCriteria::default(),
             )
             .await?;
         Ok((tx_id, transaction))
     }
 
-    pub async fn create_follow_on_asset_checkpoint(
+    pub async fn create_follow_on_contract_checkpoint(
         &mut self,
         contract_id: FixedHash,
         merkle_root: FixedHash,
@@ -219,7 +218,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         let output = self
             .output_manager
             .create_output_with_features(
-                0.into(),
+                10.into(),
                 OutputFeatures::for_checkpoint(
                     contract_id,
                     merkle_root,
@@ -254,15 +253,13 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .create_send_to_self_with_output(
                 vec![output],
                 ASSET_FPG.into(),
-                // TODO: Spend previous checkpoint
-                None,
-                None,
+                UtxoSelectionCriteria::for_contract(contract_id, OutputType::ContractCheckpoint),
             )
             .await?;
         Ok((tx_id, transaction))
     }
 
-    pub async fn create_constitution_definition(
+    pub async fn create_contract_constitution(
         &mut self,
         constitution_definition: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
@@ -277,7 +274,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
 
         Ok((tx_id, transaction))
@@ -294,7 +291,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
 
         Ok((tx_id, transaction))
@@ -316,7 +313,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
 
         Ok((tx_id, transaction))
@@ -344,7 +341,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
 
         Ok((tx_id, transaction))
@@ -365,7 +362,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
 
         Ok((tx_id, transaction))
@@ -383,7 +380,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), UtxoSelectionCriteria::default())
             .await?;
 
         Ok((tx_id, transaction))
