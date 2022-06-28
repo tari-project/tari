@@ -92,11 +92,11 @@ mod test {
 
     use crate::validation::dan_validators::test_helpers::{
         assert_dan_error,
-        create_block,
         create_contract_proposal_schema,
         init_test_blockchain,
         publish_constitution,
         publish_definition,
+        publish_update_proposal,
         schema_to_transaction,
     };
 
@@ -136,8 +136,13 @@ mod test {
 
         // publish a contract update proposal into a block
         let proposal_id: u64 = 1;
-        let schema = create_contract_proposal_schema(contract_id, change[2].clone(), proposal_id, committee.clone());
-        create_block(&mut blockchain, "proposal", schema);
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            committee.clone(),
+        );
 
         // create a (duplicated) contract proposal transaction
         let schema = create_contract_proposal_schema(contract_id, change[3].clone(), proposal_id, committee);

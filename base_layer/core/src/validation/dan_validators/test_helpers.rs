@@ -84,6 +84,17 @@ pub fn publish_constitution(
     create_block(blockchain, "constitution", schema);
 }
 
+pub fn publish_update_proposal(
+    blockchain: &mut TestBlockchain,
+    change: UnblindedOutput,
+    contract_id: FixedHash,
+    proposal_id: u64,
+    committee: Vec<PublicKey>,
+) {
+    let schema = create_contract_proposal_schema(contract_id, change, proposal_id, committee);
+    create_block(blockchain, "proposal", schema);
+}
+
 pub fn schema_to_transaction(schema: &TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
     let mut utxos = Vec::new();
 
@@ -188,12 +199,35 @@ pub fn create_contract_proposal_schema(
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: proposal_features)
 }
 
+pub fn create_contract_update_proposal_acceptance_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    proposal_id: u64,
+    validator_node_public_key: PublicKey,
+) -> TransactionSchema {
+    let signature = Signature::default();
+
+    let acceptance_features = OutputFeatures::for_contract_update_proposal_acceptance(
+        contract_id,
+        proposal_id,
+        validator_node_public_key,
+        signature,
+    );
+
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
 pub fn assert_dan_error(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
     let validator = TxDanLayerValidator::new(blockchain.db().clone());
     let err = validator.validate(transaction).unwrap_err();
     match err {
         ValidationError::DanLayerError(message) => {
-            assert!(message.contains(expected_message))
+            assert!(
+                message.contains(expected_message),
+                "Message \"{}\" does not contain \"{}\"",
+                message,
+                expected_message
+            )
         },
         _ => panic!("Expected a consensus error"),
     }

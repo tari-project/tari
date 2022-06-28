@@ -25,7 +25,13 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, UtxoMinedInfo},
-    transactions::transaction_components::{ContractConstitution, OutputType, SideChainFeatures, TransactionOutput},
+    transactions::transaction_components::{
+        ContractConstitution,
+        ContractUpdateProposal,
+        OutputType,
+        SideChainFeatures,
+        TransactionOutput,
+    },
     validation::ValidationError,
 };
 
@@ -96,6 +102,26 @@ pub fn fetch_contract_constitution<B: BlockchainBackend>(
     };
 
     Ok(constitution.clone())
+}
+
+pub fn fetch_contract_update_proposal<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+    proposal_id: u64,
+) -> Result<ContractUpdateProposal, ValidationError> {
+    let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitutionProposal)?;
+    match features
+        .into_iter()
+        .filter_map(|feature| feature.update_proposal)
+        .find(|proposal| proposal.proposal_id == proposal_id)
+    {
+        Some(proposal) => Ok(proposal),
+        None => Err(ValidationError::DanLayerError(format!(
+            "Contract update proposal not found for contract_id {} and proposal_id {}",
+            contract_id.to_hex(),
+            proposal_id
+        ))),
+    }
 }
 
 pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, ValidationError> {
