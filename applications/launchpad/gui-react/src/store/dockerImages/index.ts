@@ -59,7 +59,6 @@ const slice = createSlice({
         }),
         {},
       )
-      console.debug(JSON.parse(JSON.stringify(state)))
     })
   },
 })
