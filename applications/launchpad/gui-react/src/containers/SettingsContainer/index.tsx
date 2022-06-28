@@ -44,6 +44,9 @@ const SettingsContainer = () => {
         tag: serviceSettings.dockerTag,
         registry: serviceSettings.dockerRegistry,
       },
+      baseNode: {
+        rootFolder: serviceSettings.rootFolder,
+      },
     }),
     [miningMerged, serviceSettings],
   )

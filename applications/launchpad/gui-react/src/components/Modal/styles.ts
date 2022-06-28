@@ -9,7 +9,7 @@ export const ModalContainer = styled.div<Pick<ModalProps, 'local'>>`
   left: 0;
   right: 0;
   width: 100% !important;
-  z-index: 9001;
+  z-index: 100;
   display: flex;
   justify-content: center;
   align-items: center;

@@ -30,3 +30,16 @@ export const WhatIsBaseNode = () => {
     </>
   )
 }
+
+export const ConnectAurora = () => {
+  return (
+    <>
+      <StyledTextContainer>
+        <Text type='defaultMedium' as='span'>
+          {t.baseNode.helpMessages.aurora}
+        </Text>
+      </StyledTextContainer>
+      <GotItButton />
+    </>
+  )
+}

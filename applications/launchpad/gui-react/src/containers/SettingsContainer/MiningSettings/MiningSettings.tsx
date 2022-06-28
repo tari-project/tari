@@ -48,7 +48,7 @@ const MiningSettings = ({
   return (
     <>
       <SettingsHeader>
-        <Text type='header' as='h1'>
+        <Text type='subheader' as='h2'>
           {t.mining.settings.title}
         </Text>
       </SettingsHeader>
