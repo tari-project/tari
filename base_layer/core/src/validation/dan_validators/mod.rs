@@ -41,6 +41,9 @@ use update_proposal_validator::validate_update_proposal;
 mod update_proposal_acceptance_validator;
 use update_proposal_acceptance_validator::validate_update_proposal_acceptance;
 
+mod amendment_validator;
+use amendment_validator::validate_amendment;
+
 mod helpers;
 
 #[cfg(test)]
@@ -69,6 +72,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<
                 OutputType::ContractConstitutionChangeAcceptance => {
                     validate_update_proposal_acceptance(&self.db, output)?
                 },
+                OutputType::ContractAmendment => validate_amendment(&self.db, output)?,
                 _ => continue,
             }
         }

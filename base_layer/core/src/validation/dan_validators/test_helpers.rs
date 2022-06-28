@@ -39,6 +39,7 @@ use crate::{
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
+            ContractAmendment,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
@@ -215,6 +216,25 @@ pub fn create_contract_update_proposal_acceptance_schema(
     );
 
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
+pub fn create_contract_amendment_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    proposal_id: u64,
+    committee: Vec<PublicKey>,
+) -> TransactionSchema {
+    let amendment = ContractAmendment {
+        proposal_id,
+        updated_constitution: create_contract_constitution(committee.clone()),
+        validator_committee: committee.try_into().unwrap(),
+        validator_signatures: vec![Signature::default()].try_into().unwrap(),
+        activation_window: 100,
+    };
+
+    let amendment_features = OutputFeatures::for_contract_amendment(contract_id, amendment);
+
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: amendment_features)
 }
 
 pub fn assert_dan_error(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {

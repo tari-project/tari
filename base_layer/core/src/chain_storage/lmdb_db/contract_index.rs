@@ -86,7 +86,8 @@ where T: Deref<Target = ConstTransaction<'a>>
             },
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
-            OutputType::ContractConstitutionChangeAcceptance => Ok(self
+            OutputType::ContractConstitutionChangeAcceptance |
+            OutputType::ContractAmendment => Ok(self
                 .get::<_, ContractValueHashSet>(&key)?
                 .into_iter()
                 .flatten()

@@ -24,41 +24,47 @@ use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use super::helpers::{
-    fetch_contract_constitution,
     fetch_contract_features,
+    fetch_contract_update_proposal,
     get_sidechain_features,
     validate_output_type,
 };
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transactions::transaction_components::{ContractUpdateProposal, OutputType, SideChainFeatures, TransactionOutput},
+    transactions::transaction_components::{
+        ContractAmendment,
+        ContractUpdateProposal,
+        OutputType,
+        SideChainFeatures,
+        TransactionOutput,
+    },
     validation::ValidationError,
 };
 
-pub fn validate_update_proposal<B: BlockchainBackend>(
+pub fn validate_amendment<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    validate_output_type(output, OutputType::ContractConstitutionProposal)?;
+    validate_output_type(output, OutputType::ContractAmendment)?;
 
     let sidechain_features = get_sidechain_features(output)?;
     let contract_id = sidechain_features.contract_id;
 
-    let proposal_features = get_update_proposal(sidechain_features)?;
-    let proposal_id = proposal_features.proposal_id;
-
-    fetch_contract_constitution(db, contract_id)?;
+    let amendment = get_contract_amendment(sidechain_features)?;
+    let proposal_id = amendment.proposal_id;
+    let proposal = fetch_contract_update_proposal(db, contract_id, proposal_id)?;
 
     validate_duplication(db, contract_id, proposal_id)?;
+    validate_updated_constiution(amendment, &proposal)?;
 
     Ok(())
 }
 
-fn get_update_proposal(sidechain_feature: &SideChainFeatures) -> Result<&ContractUpdateProposal, ValidationError> {
-    match sidechain_feature.update_proposal.as_ref() {
-        Some(proposal) => Ok(proposal),
+fn get_contract_amendment(sidechain_feature: &SideChainFeatures) -> Result<&ContractAmendment, ValidationError> {
+    match sidechain_feature.amendment.as_ref() {
+        Some(amendment) => Ok(amendment),
         None => Err(ValidationError::DanLayerError(
-            "Contract update proposal features not found".to_string(),
+            "Contract amendment features not found".to_string(),
         )),
     }
 }
@@ -68,15 +74,15 @@ fn validate_duplication<B: BlockchainBackend>(
     contract_id: FixedHash,
     proposal_id: u64,
 ) -> Result<(), ValidationError> {
-    let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitutionProposal)?;
+    let features = fetch_contract_features(db, contract_id, OutputType::ContractAmendment)?;
     match features
         .into_iter()
-        .filter_map(|feature| feature.update_proposal)
-        .find(|proposal| proposal.proposal_id == proposal_id)
+        .filter_map(|feature| feature.amendment)
+        .find(|amendment| amendment.proposal_id == proposal_id)
     {
         Some(_) => {
             let msg = format!(
-                "Duplicated contract update proposal for contract_id ({:?}) and proposal_id ({:?})",
+                "Duplicated amendment for contract_id ({:?}) and proposal_id ({:?})",
                 contract_id.to_hex(),
                 proposal_id,
             );
@@ -86,13 +92,27 @@ fn validate_duplication<B: BlockchainBackend>(
     }
 }
 
+fn validate_updated_constiution(
+    amendment: &ContractAmendment,
+    proposal: &ContractUpdateProposal,
+) -> Result<(), ValidationError> {
+    if amendment.updated_constitution != proposal.updated_constitution {
+        return Err(ValidationError::DanLayerError(
+            "The updated_constitution of the amendment does not match the one in the update proposal".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use tari_common_types::types::PublicKey;
 
     use crate::validation::dan_validators::test_helpers::{
         assert_dan_error,
-        create_contract_proposal_schema,
+        create_block,
+        create_contract_amendment_schema,
         init_test_blockchain,
         publish_constitution,
         publish_definition,
@@ -101,28 +121,31 @@ mod test {
     };
 
     #[test]
-    fn constitution_must_exist() {
+    fn proposal_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
 
         // publish the contract definition into a block
         let contract_id = publish_definition(&mut blockchain, change[0].clone());
 
-        // skip the contract constitution publication
-
-        // create a contract proposal transaction
+        // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key];
-        let proposal_id: u64 = 1;
-        let schema = create_contract_proposal_schema(contract_id, change[3].clone(), proposal_id, committee);
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+
+        // skip the publication of the contract update proposal
+
+        // create an amendment transaction
+        let proposal_id = 1;
+        let schema = create_contract_amendment_schema(contract_id, change[1].clone(), proposal_id, committee);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Contract constitution not found");
+        assert_dan_error(&blockchain, &tx, "Contract update proposal not found");
     }
 
     #[test]
-    fn it_rejects_duplicated_proposals() {
+    fn it_rejects_duplicated_amendments() {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
 
@@ -144,11 +167,51 @@ mod test {
             committee.clone(),
         );
 
-        // create a (duplicated) contract proposal transaction
-        let schema = create_contract_proposal_schema(contract_id, change[3].clone(), proposal_id, committee);
+        // publish the contract amendment into a block
+        let schema = create_contract_amendment_schema(contract_id, change[3].clone(), proposal_id, committee.clone());
+        create_block(&mut blockchain, "amendment", schema);
+
+        // create a (duplicated) contract amendment transaction
+        let schema = create_contract_amendment_schema(contract_id, change[4].clone(), proposal_id, committee);
         let (tx, _) = schema_to_transaction(&schema);
 
-        // try to validate the duplicated proposal transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated contract update proposal");
+        // try to validate the duplicated amendment transaction and check that we get the error
+        assert_dan_error(&blockchain, &tx, "Duplicated amendment");
+    }
+
+    #[test]
+    fn it_rejects_altered_updated_constitution() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+
+        // publish the contract constitution into a block
+        let validator_node_public_key = PublicKey::default();
+        let committee = vec![validator_node_public_key];
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+
+        // publish a contract update proposal into a block
+        let proposal_id: u64 = 1;
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            committee,
+        );
+
+        // create an amendment with an altered committee (compared to the proposal)
+        let altered_committee = vec![];
+        let schema = create_contract_amendment_schema(contract_id, change[4].clone(), proposal_id, altered_committee);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the amendment transaction and check that we get the error
+        assert_dan_error(
+            &blockchain,
+            &tx,
+            "The updated_constitution of the amendment does not match the one in the update proposal",
+        );
     }
 }
