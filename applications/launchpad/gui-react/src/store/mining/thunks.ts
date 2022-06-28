@@ -6,7 +6,6 @@ import {
 } from '@tauri-apps/api/notification'
 
 import { MiningNodeType, ScheduleId, CoinType } from '../../types/general'
-import { selectContainerStatus } from '../containers/selectors'
 import { actions as containersActions } from '../containers'
 import { Container } from '../containers/types'
 import t from '../../locales'
@@ -60,55 +59,23 @@ export const startMiningNode = createAsyncThunk<
       return
     }
 
-    const torStatus = selectContainerStatus(Container.Tor)(rootState)
-    const baseNodeStatus = selectContainerStatus(Container.BaseNode)(rootState)
-    const walletStatus = selectContainerStatus(Container.Wallet)(rootState)
-
-    if (!torStatus.running && !torStatus.pending) {
-      await thunkApi
-        .dispatch(containersActions.start({ container: Container.Tor }))
-        .unwrap()
-    }
-
-    if (!baseNodeStatus.running && !baseNodeStatus.pending) {
-      await thunkApi
-        .dispatch(containersActions.start({ container: Container.BaseNode }))
-        .unwrap()
-    }
-
-    if (!walletStatus.running && !walletStatus.pending) {
-      await thunkApi
-        .dispatch(containersActions.start({ container: Container.Wallet }))
-        .unwrap()
-    }
-
     if (node === 'tari') {
-      const minerStatus = selectContainerStatus(Container.SHA3Miner)(rootState)
-      if (!minerStatus.running && !minerStatus.pending) {
-        await thunkApi
-          .dispatch(containersActions.start({ container: Container.SHA3Miner }))
-          .unwrap()
-        thunkApi.dispatch(
-          miningActions.startNewSession({ node, reason, schedule }),
+      await thunkApi
+        .dispatch(
+          containersActions.startRecipe({ containerName: Container.SHA3Miner }),
         )
-      }
+        .unwrap()
     }
 
-    switch (node) {
-      case 'merged':
-        await thunkApi
-          .dispatch(containersActions.start({ container: Container.MMProxy }))
-          .unwrap()
-        await thunkApi
-          .dispatch(containersActions.start({ container: Container.XMrig }))
-          .unwrap()
-        thunkApi.dispatch(
-          miningActions.startNewSession({ node, reason, schedule }),
+    if (node === 'merged') {
+      await thunkApi
+        .dispatch(
+          containersActions.startRecipe({ containerName: Container.MMProxy }),
         )
-        break
-      default:
-        break
+        .unwrap()
     }
+
+    thunkApi.dispatch(miningActions.startNewSession({ node, reason, schedule }))
   } catch (e) {
     return thunkApi.rejectWithValue(e)
   }
@@ -147,18 +114,16 @@ export const stopMiningNode = createAsyncThunk<
     switch (node) {
       case 'tari':
         promises.push(
-          thunkApi.dispatch(containersActions.stopByType(Container.SHA3Miner)),
+          thunkApi
+            .dispatch(containersActions.stopRecipe(Container.SHA3Miner))
+            .unwrap(),
         )
         break
       case 'merged':
         promises.push(
-          thunkApi.dispatch(containersActions.stopByType(Container.MMProxy)),
-        )
-        promises.push(
-          thunkApi.dispatch(containersActions.stopByType(Container.XMrig)),
-        )
-        promises.push(
-          thunkApi.dispatch(containersActions.stopByType(Container.Monerod)),
+          thunkApi
+            .dispatch(containersActions.stopRecipe(Container.MMProxy))
+            .unwrap(),
         )
         break
     }

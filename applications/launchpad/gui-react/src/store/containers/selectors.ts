@@ -13,9 +13,6 @@ import {
 
 export const selectState = (rootState: RootState) => rootState.containers
 
-export const selectPendingContainers = (rootState: RootState) =>
-  rootState.containers.pending
-
 export const selectContainer = (c: string | Container) => (r: RootState) => {
   const containers = Object.entries(r.containers.containers).filter(
     ([, value]) => value.name === c,
@@ -26,7 +23,7 @@ export const selectContainer = (c: string | Container) => (r: RootState) => {
   return { containerId, containerStatus }
 }
 
-export const selectContainerStats = (containerId: string) => (r: RootState) =>
+const selectContainerStats = (containerId: string) => (r: RootState) =>
   r.containers.stats[containerId]
 
 type ContainerStatusSelector = (
@@ -105,17 +102,6 @@ export const selectRunningContainers = (rootState: RootState): Container[] =>
     )
     .filter(status => status.running)
     .map(status => rootState.containers.containers[status.id].name as Container)
-
-export const selectContainersStatuses = createSelector(
-  selectDockerImages,
-  (rootState: RootState) => rootState,
-  (dockerImages, rootState) =>
-    dockerImages.map(dockerImage => ({
-      ...dockerImage,
-      container: dockerImage.imageName,
-      status: selectContainerStatus(dockerImage.imageName)(rootState),
-    })),
-)
 
 export const selectContainersStatusesWithStats = createSelector(
   selectDockerImages,
