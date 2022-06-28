@@ -36,6 +36,9 @@ use tokio::{sync::mpsc, task};
 
 const LOG_TARGET: &str = "vn::p2p::rpc";
 
+use tari_common_types::types::PublicKey;
+use tari_crypto::tari_utilities::ByteArray;
+
 use crate::p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService};
 
 pub struct ValidatorNodeRpcServiceImpl<TMempoolService, TDbFactory: DbFactory, TAssetProcessor> {
@@ -100,6 +103,8 @@ where
                 .map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
             request.method,
             request.args,
+            PublicKey::from_bytes(&request.sender)
+                .map_err(|_| RpcStatus::bad_request("Invalid public key for sender"))?,
         );
         let response_bytes = self
             .asset_processor
@@ -124,11 +129,11 @@ where
                 .map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
             request.method.clone(),
             request.args.clone(),
-            // TokenId(request.token_id.clone()),
-            // TODO: put signature in here
-            // ComSig::default()
-            // create_com_sig_from_bytes(&request.signature)
-            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
+            PublicKey::from_bytes(&request.sender).map_err(|_| RpcStatus::bad_request("invalid sender"))?, /* TokenId(request.token_id.clone()),
+                                                                                                            * TODO: put signature in here
+                                                                                                            * ComSig::default()
+                                                                                                            * create_com_sig_from_bytes(&request.signature)
+                                                                                                            *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
         );
         debug!(target: LOG_TARGET, "Submitting instruction {} to mempool", instruction);
         let mut mempool_service = self.mempool_service.clone();

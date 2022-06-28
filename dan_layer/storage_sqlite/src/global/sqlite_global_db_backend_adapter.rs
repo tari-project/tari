@@ -23,7 +23,7 @@
 use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
 use tari_dan_core::storage::global::{GlobalDbBackendAdapter, GlobalDbMetadataKey};
 
-use crate::{error::SqliteStorageError, models::metadata::Metadata, SqliteTransaction};
+use crate::{error::SqliteStorageError, global::models::metadata::Metadata, SqliteTransaction};
 
 #[derive(Clone)]
 pub struct SqliteGlobalDbBackendAdapter {
@@ -60,7 +60,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
     }
 
     fn set_data(&self, key: GlobalDbMetadataKey, value: &[u8]) -> Result<(), Self::Error> {
-        use crate::schema::metadata;
+        use crate::global::schema::metadata;
         let tx = self.create_transaction()?;
 
         match self.get_data_with_connection(&key, &tx) {
@@ -90,7 +90,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
     }
 
     fn get_data(&self, key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error> {
-        use crate::schema::metadata::dsl;
+        use crate::global::schema::metadata::dsl;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
 
         let row: Option<Metadata> = dsl::metadata
@@ -110,7 +110,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         key: &GlobalDbMetadataKey,
         tx: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error> {
-        use crate::schema::metadata::dsl;
+        use crate::global::schema::metadata::dsl;
 
         let row: Option<Metadata> = dsl::metadata
             .find(key.as_key_bytes())

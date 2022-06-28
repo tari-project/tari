@@ -58,6 +58,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         debug!(
             target: LOG_TARGET,
@@ -70,6 +71,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             template_id: template_id as u32,
             method,
             args,
+            sender: sender.to_vec(),
         };
         let response = client.invoke_read_method(request).await?;
 
@@ -86,6 +88,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
+        sender: PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         debug!(
             target: LOG_TARGET,
@@ -98,6 +101,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             template_id: template_id as u32,
             method,
             args,
+            sender: sender.to_vec(),
         };
         let response = client.invoke_method(request).await?;
 
