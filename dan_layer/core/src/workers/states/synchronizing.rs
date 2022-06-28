@@ -25,11 +25,12 @@ use std::{convert::TryFrom, marker::PhantomData};
 use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::transaction_components::OutputType;
+use tari_dan_engine::state::StateDbUnitOfWorkReader;
 
 use crate::{
     models::{AssetDefinition, CheckpointOutput},
     services::{BaseNodeClient, ServiceSpecification},
-    storage::{state::StateDbUnitOfWorkReader, DbFactory},
+    storage::DbFactory,
     workers::{state_sync::StateSynchronizer, states::ConsensusWorkerStateEvent},
     DigitalAssetError,
 };

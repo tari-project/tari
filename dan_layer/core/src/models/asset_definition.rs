@@ -23,6 +23,11 @@
 use serde::{self, Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
 use tari_core::transactions::transaction_components::TemplateParameter;
+use tari_dan_engine::{
+    function_definitions::{FlowFunctionDefinition, WasmFunctionDefinition},
+    state::models::SchemaState,
+    wasm::WasmModuleDefinition,
+};
 
 use crate::helpers::deserialize_from_hex;
 
@@ -40,6 +45,9 @@ pub struct AssetDefinition {
     pub checkpoint_unique_id: Vec<u8>,
     pub initial_state: InitialState,
     pub template_parameters: Vec<TemplateParameter>,
+    pub wasm_modules: Vec<WasmModuleDefinition>,
+    pub wasm_functions: Vec<WasmFunctionDefinition>,
+    pub flow_functions: Vec<FlowFunctionDefinition>,
 }
 
 impl Default for AssetDefinition {
@@ -52,6 +60,9 @@ impl Default for AssetDefinition {
             phase_timeout: 30,
             initial_state: Default::default(),
             template_parameters: vec![],
+            wasm_modules: vec![],
+            wasm_functions: vec![],
+            flow_functions: vec![],
         }
     }
 }
@@ -65,27 +76,4 @@ impl AssetDefinition {
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct InitialState {
     pub schemas: Vec<SchemaState>,
-}
-
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
-pub struct SchemaState {
-    pub name: String,
-    pub items: Vec<KeyValue>,
-}
-
-impl SchemaState {
-    pub fn new(name: String, items: Vec<KeyValue>) -> Self {
-        Self { name, items }
-    }
-
-    pub fn push_key_value(&mut self, key_value: KeyValue) -> &mut Self {
-        self.items.push(key_value);
-        self
-    }
-}
-
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
-pub struct KeyValue {
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
 }

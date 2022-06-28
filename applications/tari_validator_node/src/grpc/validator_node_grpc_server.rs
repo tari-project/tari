@@ -30,10 +30,10 @@ use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    models::Instruction,
     services::{AssetProcessor, AssetProxy, ServiceSpecification, WalletClient},
     storage::DbFactory,
 };
+use tari_dan_engine::instructions::Instruction;
 use tokio::{task, time};
 use tonic::{Request, Response, Status};
 

@@ -23,14 +23,14 @@
 use prost::Message;
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::TemplateParameter;
-use tari_dan_common_types::proto::tips::tip002;
+use tari_dan_common_types::{proto::tips::tip002, TemplateId};
+use tari_dan_engine::{
+    instructions::Instruction,
+    state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+};
 use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::{
-    models::{Instruction, InstructionSet, TemplateId},
-    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
-    DigitalAssetError,
-};
+use crate::{models::InstructionSet, DigitalAssetError};
 
 pub fn initial_instructions(template_param: &TemplateParameter) -> InstructionSet {
     InstructionSet::from_vec(vec![Instruction::new(

@@ -24,6 +24,7 @@ use std::{collections::HashMap, time::Duration};
 
 use log::*;
 use tari_common_types::types::FixedHash;
+use tari_dan_engine::state::StateDbUnitOfWork;
 use tokio::time::sleep;
 
 use crate::{
@@ -46,7 +47,7 @@ use crate::{
         ServiceSpecification,
         SigningService,
     },
-    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, DbFactory, StorageError},
+    storage::{chain::ChainDbUnitOfWork, ChainStorageService, DbFactory, StorageError},
     workers::states::ConsensusWorkerStateEvent,
 };
 

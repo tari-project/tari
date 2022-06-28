@@ -1,0 +1,22 @@
+[package]
+name = "tari_dan_engine"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_common_types = {path = "../../base_layer/common_types"}
+tari_dan_common_types = {path = "../common_types"}
+tari_mmr = { path = "../../base_layer/mmr" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.14.0" }
+
+wasmer = "2.2.1"
+digest = "0.9.0"
+d3ne = { git="https://github.com/stringhandler/d3ne-rs.git", branch="st-fixes2"}
+anyhow = "1.0.53"
+serde = "1.0.126"
+log = { version = "0.4.8", features = ["std"] }
+serde_json ="1.0.81"
+thiserror = "^1.0.20"

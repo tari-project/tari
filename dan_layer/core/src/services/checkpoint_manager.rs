@@ -22,12 +22,9 @@
 
 use async_trait::async_trait;
 use log::*;
+use tari_dan_engine::state::models::StateRoot;
 
-use crate::{
-    models::{AssetDefinition, StateRoot},
-    services::wallet_client::WalletClient,
-    DigitalAssetError,
-};
+use crate::{models::AssetDefinition, services::wallet_client::WalletClient, DigitalAssetError};
 
 const LOG_TARGET: &str = "tari::dan::checkpoint_manager";
 

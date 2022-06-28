@@ -23,11 +23,12 @@
 use std::marker::PhantomData;
 
 use log::*;
+use tari_dan_engine::state::models::StateRoot;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Committee, HotStuffMessage, HotStuffTreeNode, QuorumCertificate, StateRoot, View},
+    models::{AssetDefinition, Committee, HotStuffMessage, HotStuffTreeNode, QuorumCertificate, View},
     services::{infrastructure_services::OutboundService, PayloadProvider, ServiceSpecification},
     storage::DbFactory,
     workers::states::ConsensusWorkerStateEvent,
