@@ -6,6 +6,8 @@ import { listen } from '@tauri-apps/api/event'
 import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 import { selectNetwork } from '../baseNode/selectors'
+import { selectContainerStatus } from '../containers/selectors'
+import { selectRecipe } from '../dockerImages/selectors'
 import { startOfSecond } from '../../utils/Date'
 import getStatsRepository from '../../persistence/statsRepository'
 import { ContainerName } from '../../types/general'
@@ -129,6 +131,38 @@ export const start = createAsyncThunk<
   }
 })
 
+export const startRecipe = createAsyncThunk<
+  void,
+  { containerName: ContainerName; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  { state: RootState }
+>(
+  'containers/startRecipe',
+  async ({ containerName, serviceSettings }, thunkApi) => {
+    try {
+      const rootState = thunkApi.getState()
+      const recipe = selectRecipe(containerName)(rootState)
+
+      const recipePromises = [...recipe]
+        .reverse()
+        .map(part => {
+          const status = selectContainerStatus(part)(rootState)
+          if (!status.running && !status.pending) {
+            return thunkApi
+              .dispatch(start({ container: part, serviceSettings }))
+              .unwrap()
+          }
+
+          return false
+        })
+        .filter(Boolean)
+
+      await Promise.all(recipePromises)
+    } catch (e) {
+      return thunkApi.rejectWithValue(e)
+    }
+  },
+)
+
 export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
   'containers/stop',
   async (containerId, thunkApi) => {
@@ -146,6 +180,43 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
     }
   },
 )
+
+export const stopRecipe = createAsyncThunk<
+  void,
+  ContainerName,
+  { state: RootState }
+>('containers/stopRecipe', async (containerName, thunkApi) => {
+  try {
+    const rootState = thunkApi.getState()
+    const recipe = selectRecipe(containerName)(rootState)
+
+    const [head, ...tail] = recipe.map(part =>
+      selectContainerStatus(part)(rootState),
+    )
+
+    thunkApi.dispatch(stop(head.id))
+
+    const runningContainers = selectRunningContainers(rootState)
+    const containersOutsideRecipe = runningContainers.filter(
+      rc => !recipe.includes(rc),
+    )
+    const containersRequiredByOtherServices = containersOutsideRecipe.reduce(
+      (accu, current) => {
+        const currentRecipe = selectRecipe(current)(rootState)
+        currentRecipe.forEach(cr => accu.add(cr))
+
+        return accu
+      },
+      new Set(),
+    )
+
+    tail
+      .filter(tailPart => !containersRequiredByOtherServices.has(tailPart))
+      .forEach(tailPartToStop => thunkApi.dispatch(stop(tailPartToStop.id)))
+  } catch (e) {
+    return thunkApi.rejectWithValue(e)
+  }
+})
 
 export const stopByType = createAsyncThunk<
   void,

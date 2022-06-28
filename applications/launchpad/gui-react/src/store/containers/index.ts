@@ -6,7 +6,15 @@ import {
   Container,
   SystemEventAction,
 } from './types'
-import { addStats, start, stop, stopByType, restart } from './thunks'
+import {
+  addStats,
+  start,
+  startRecipe,
+  stop,
+  stopRecipe,
+  stopByType,
+  restart,
+} from './thunks'
 
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
@@ -129,6 +137,14 @@ const containersSlice = createSlice({
 })
 
 const { actions: syncActions } = containersSlice
-export const actions = { start, stop, stopByType, restart, ...syncActions }
+export const actions = {
+  start,
+  startRecipe,
+  stop,
+  stopRecipe,
+  stopByType,
+  restart,
+  ...syncActions,
+}
 
 export default containersSlice.reducer
