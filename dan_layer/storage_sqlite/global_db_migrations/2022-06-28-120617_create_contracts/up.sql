@@ -20,10 +20,10 @@
 --  // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 --  // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-create table constitutions (
-                               contract_id  blob    primary key  not null,
-                               height       bigint               not null,
-                               state        bigint               not null
+create table contracts (
+                               id       blob    primary key  not null,
+                               height   bigint               not null,
+                               state    integer              not null
 );
 
-create index constitutions_state_index on constitutions (state);
+create index contracts_state_index on contracts (state);

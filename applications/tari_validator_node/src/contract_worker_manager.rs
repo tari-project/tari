@@ -49,7 +49,7 @@ use tari_dan_core::{
         WalletClient,
     },
     storage::{
-        global::{ConstitutionStatus, GlobalDb, GlobalDbMetadataKey},
+        global::{ContractStatus, GlobalDb, GlobalDbMetadataKey},
         StorageError,
     },
     workers::ConsensusWorker,
@@ -171,7 +171,7 @@ impl ContractWorkerManager {
 
             for contract in active_contracts {
                 self.global_db
-                    .save_contract(contract.contract_id, contract.mined_height, ConstitutionStatus::Pending);
+                    .save_contract(contract.contract_id, contract.mined_height, ContractStatus::Pending);
 
                 info!(
                     target: LOG_TARGET,

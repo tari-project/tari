@@ -23,9 +23,8 @@
 use crate::global::schema::*;
 
 #[derive(Queryable, Insertable, Identifiable)]
-#[primary_key(contract_id)]
-pub struct Constitution {
-    pub contract_id: Vec<u8>,
-    pub state: i32,
-    pub height: i32,
+pub struct Contract {
+    pub id: Vec<u8>,
+    pub state: u64,
+    pub height: u64,
 }

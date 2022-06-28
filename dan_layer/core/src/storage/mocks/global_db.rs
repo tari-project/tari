@@ -23,7 +23,7 @@
 use tari_common_types::types::FixedHash;
 
 use crate::storage::{
-    global::{ConstitutionStatus, GlobalDbBackendAdapter, GlobalDbMetadataKey},
+    global::{ContractStatus, GlobalDbBackendAdapter, GlobalDbMetadataKey},
     StorageError,
 };
 
@@ -62,7 +62,7 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
         &self,
         _contract_id: FixedHash,
         _mined_height: u64,
-        _status: ConstitutionStatus,
+        _status: ContractStatus,
     ) -> Result<(), Self::Error> {
         todo!()
     }

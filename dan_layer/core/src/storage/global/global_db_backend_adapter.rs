@@ -41,9 +41,9 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
     ) -> Result<Option<Vec<u8>>, Self::Error>;
     fn save_contract(
         &self,
-        contract: FixedHash,
+        contract_id: FixedHash,
         mined_height: u64,
-        status: ConstitutionStatus,
+        status: ContractStatus,
     ) -> Result<(), Self::Error>;
 }
 
@@ -64,13 +64,13 @@ impl GlobalDbMetadataKey {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, FromPrimitive)]
 #[repr(u8)]
-pub enum ConstitutionStatus {
+pub enum ContractStatus {
     Pending = 0,
     Accepted = 1,
     Expired = 2,
 }
 
-impl ConstitutionStatus {
+impl ContractStatus {
     pub fn as_byte(self) -> u8 {
         self as u8
     }
