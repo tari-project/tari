@@ -1,7 +1,8 @@
 import { createSelector } from '@reduxjs/toolkit'
 
 import { RootState } from '../'
-import { selectDockerImages } from '../dockerImages/selectors'
+import { ContainerName } from '../../types/general'
+import { selectDockerImages, selectRecipe } from '../dockerImages/selectors'
 
 import {
   ContainerStatusDto,
@@ -127,3 +128,24 @@ export const selectContainersStatusesWithStats = createSelector(
       ),
     })),
 )
+
+const selectContainerStatusesByRecipe =
+  (containerName: ContainerName) => (rootState: RootState) => {
+    const recipe = selectRecipe(containerName)(rootState)
+    return recipe.map(containerType =>
+      selectContainerStatus(containerType)(rootState),
+    )
+  }
+
+export const selectRecipeRunning = (containerName: ContainerName) =>
+  createSelector(
+    selectContainerStatusesByRecipe(containerName),
+    containers =>
+      containers.every(container => container.running) ||
+      containers.some(container => container.running && container.pending),
+  )
+
+export const selectRecipePending = (containerName: ContainerName) =>
+  createSelector(selectContainerStatusesByRecipe(containerName), containers =>
+    containers.some(container => container.pending),
+  )
