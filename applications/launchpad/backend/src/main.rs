@@ -38,7 +38,7 @@ use tauri::{
 use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 use crate::{
-    api::{image_list, network_list, wallet_balance, wallet_events, wallet_identity},
+    api::{image_info, network_list, wallet_balance, wallet_events, wallet_identity},
     commands::{
         create_default_workspace,
         create_new_workspace,
@@ -127,7 +127,7 @@ fn main() {
         .manage(AppState::new(docker, workspaces, package_info))
         .menu(menu)
         .invoke_handler(tauri::generate_handler![
-            image_list,
+            image_info,
             network_list,
             pull_images,
             create_new_workspace,

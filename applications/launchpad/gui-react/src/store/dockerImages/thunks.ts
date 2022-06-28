@@ -19,7 +19,7 @@ export const getDockerImageList = createAsyncThunk<
     const { imageInfo, serviceRecipes } = await invoke<{
       imageInfo: DockerImage[]
       serviceRecipes: ServiceRecipe[]
-    }>('image_list', {
+    }>('image_info', {
       settings: state.settings.serviceSettings,
     })
 
