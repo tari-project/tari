@@ -7,6 +7,7 @@ import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 import { selectNetwork } from '../baseNode/selectors'
 import { selectContainerStatus } from '../containers/selectors'
+import { ContainerStatusDto } from '../containers/types'
 import { selectRecipe } from '../dockerImages/selectors'
 import { startOfSecond } from '../../utils/Date'
 import getStatsRepository from '../../persistence/statsRepository'
@@ -190,32 +191,36 @@ export const stopRecipe = createAsyncThunk<
     const rootState = thunkApi.getState()
     const recipe = selectRecipe(containerName)(rootState)
 
-    const [head, ...tail] = recipe.map(part =>
-      selectContainerStatus(part)(rootState),
-    )
-
-    thunkApi.dispatch(stop(head.id))
-
     const runningContainers = selectRunningContainers(rootState)
     const containersOutsideRecipe = runningContainers.filter(
       rc => !recipe.includes(rc),
     )
-    const containersRequiredByOtherServices = containersOutsideRecipe.reduce(
-      (accu, current) => {
+    const containersToRemoveFromOtherServicesRecipes = containersOutsideRecipe
+      .reduce((accu, current) => {
         const currentRecipe = selectRecipe(current)(rootState)
-        currentRecipe.forEach(cr => accu.add(cr))
+
+        const dependedOnAnythingInRecipe = currentRecipe.some(cr =>
+          recipe.includes(cr),
+        )
+        if (dependedOnAnythingInRecipe) {
+          return [...accu, ...currentRecipe]
+        }
 
         return accu
-      },
-      new Set(),
+      }, [] as ContainerName[])
+      .map(part => selectContainerStatus(part)(rootState))
+    const currentRecipeContainers = recipe.map(part =>
+      selectContainerStatus(part)(rootState),
     )
 
-    tail
-      .filter(
-        tailPart =>
-          !containersRequiredByOtherServices.has(tailPart.containerName),
-      )
-      .forEach(tailPartToStop => thunkApi.dispatch(stop(tailPartToStop.id)))
+    const deduplicatedContainersToRemove = new Set<ContainerStatusDto>([
+      ...containersToRemoveFromOtherServicesRecipes,
+      ...currentRecipeContainers,
+    ])
+
+    Array.from(deduplicatedContainersToRemove.values()).forEach(
+      (toRemove: ContainerStatusDto) => thunkApi.dispatch(stop(toRemove.id)),
+    )
   } catch (e) {
     return thunkApi.rejectWithValue(e)
   }
