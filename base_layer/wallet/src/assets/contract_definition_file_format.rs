@@ -23,7 +23,7 @@
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::{
-    vec_into_fixed_string,
+    bytes_into_fixed_string,
     ContractDefinition,
     ContractSpecification,
     FunctionRef,
@@ -57,7 +57,7 @@ pub struct ContractSpecificationFileFormat {
 impl From<ContractSpecificationFileFormat> for ContractSpecification {
     fn from(value: ContractSpecificationFileFormat) -> Self {
         Self {
-            runtime: vec_into_fixed_string(value.runtime.into_bytes()),
+            runtime: bytes_into_fixed_string(value.runtime.into_bytes()),
             public_functions: value.public_functions.into_iter().map(|f| f.into()).collect(),
         }
     }
@@ -72,7 +72,7 @@ pub struct PublicFunctionFileFormat {
 impl From<PublicFunctionFileFormat> for PublicFunction {
     fn from(value: PublicFunctionFileFormat) -> Self {
         Self {
-            name: vec_into_fixed_string(value.name.into_bytes()),
+            name: bytes_into_fixed_string(value.name.into_bytes()),
             function: value.function.into(),
         }
     }
