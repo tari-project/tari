@@ -37,6 +37,7 @@ export interface MiningSettingsInputs {
 
 export interface BaseNodeSettingsInputs {
   network: Network
+  rootFolder: string
 }
 
 export type SettingsComponentProps = {

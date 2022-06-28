@@ -13,6 +13,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     pause: 'Pause',
     continue: 'Continue',
     close: 'Close',
+    connect: 'Connect',
   },
   nouns: {
     expert: 'Expert',

@@ -29,7 +29,7 @@ const DockerSettings = ({
   return (
     <>
       <SettingsHeader>
-        <Text type='header' as='h1'>
+        <Text type='subheader' as='h2'>
           {t.docker.settings.title}
         </Text>
       </SettingsHeader>

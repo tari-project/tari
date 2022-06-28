@@ -29,7 +29,9 @@ const WalletSettings = ({
 
   return (
     <>
-      <Text type='header'>{t.wallet.settings.title}</Text>
+      <Text type='subheader' as='h2'>
+        {t.wallet.settings.title}
+      </Text>
       <IsWalletRunningRow>
         <WalletRunningContainer>
           <Text>{t.common.nouns.wallet}</Text>

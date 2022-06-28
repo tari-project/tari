@@ -1,8 +1,10 @@
 import { animated } from 'react-spring'
 import styled from 'styled-components'
 
+export const TITLE_BAR_HEIGHT = 60
+
 export const TitleBar = styled(animated.header)`
-  height: 60px;
+  height: ${TITLE_BAR_HEIGHT}px;
   user-select: none;
   display: flex;
   justify-content: space-between;

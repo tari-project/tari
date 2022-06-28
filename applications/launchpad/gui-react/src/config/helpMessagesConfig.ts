@@ -10,7 +10,10 @@ import {
   WhyBalanceDiffers,
   NoteAboutVerificationPeriod,
 } from '../components/TBot/HelpComponents/Wallet'
-import { WhatIsBaseNode } from '../components/TBot/HelpComponents/BaseNode'
+import {
+  WhatIsBaseNode,
+  ConnectAurora,
+} from '../components/TBot/HelpComponents/BaseNode'
 import { TBotMessage } from '../components/TBot/TBotPrompt/types'
 import { TBotMessages } from '../store/tbot/types'
 
@@ -23,6 +26,7 @@ const MessagesConfig = {
     'noteAboutVerificationPeriod',
   ],
   [TBotMessages.BaseNodeHelp]: ['whatIsBaseNode'],
+  [TBotMessages.ConnectAurora]: ['connectAurora'],
 }
 
 export const HelpMessagesMap: {
@@ -42,6 +46,9 @@ export const HelpMessagesMap: {
   },
   whatIsBaseNode: {
     content: WhatIsBaseNode,
+  },
+  connectAurora: {
+    content: ConnectAurora,
   },
 }
 
