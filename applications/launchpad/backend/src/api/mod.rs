@@ -56,6 +56,13 @@ pub struct ImageInfo {
     docker_image: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageList {
+    image_info: Vec<ImageInfo>,
+    service_recipes: Vec<Vec<String>>,
+}
+
 pub fn enum_to_list<T: Sized + ToString + Clone>(enums: &[T]) -> Vec<String> {
     enums.iter().map(|enum_value| enum_value.to_string()).collect()
 }
@@ -67,9 +74,10 @@ pub fn network_list() -> Vec<String> {
 
 /// Provide a list of image names in the Tari "ecosystem"
 #[tauri::command]
-pub fn image_list(settings: ServiceSettings) -> Vec<ImageInfo> {
+pub fn image_list(settings: ServiceSettings) -> ImageList {
     let registry = settings.docker_registry.as_ref().map(String::as_str);
     let tag = settings.docker_tag.as_ref().map(String::as_str);
+
     let images: Vec<ImageInfo> = DEFAULT_IMAGES
         .iter()
         .map(|value| ImageInfo {
@@ -79,7 +87,15 @@ pub fn image_list(settings: ServiceSettings) -> Vec<ImageInfo> {
             docker_image: TariWorkspace::fully_qualified_image(*value, registry, tag),
         })
         .collect();
-    images
+
+    let recipes: Vec<Vec<String>> = [
+        [ImageType::BaseNode.container_name().to_string(), ImageType::Tor.container_name().to_string()].to_vec()
+    ].to_vec();
+
+    ImageList {
+        image_info: images,
+        service_recipes: recipes
+    }
 }
 
 pub fn event_list() -> Vec<String> {

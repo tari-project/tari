@@ -44,6 +44,7 @@ export enum DockerImagePullStatus {
 }
 
 export type ContainerName = string
+export type ServiceRecipe = ContainerName[]
 export type DockerImage = {
   imageName: string
   displayName: string
