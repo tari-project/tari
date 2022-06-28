@@ -16,13 +16,11 @@ import {
   allStopped,
   initialMining,
   unlockedWallet,
-  defaultDockerImages,
 } from '../../../__tests__/mocks/states'
 import { act } from 'react-dom/test-utils'
 import { Container, SystemEventAction } from '../../store/containers/types'
 
 const rootStateTemplate = {
-  dockerImages: defaultDockerImages,
   wallet: unlockedWallet,
   mining: initialMining,
   containers: allStopped,
