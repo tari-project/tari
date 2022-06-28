@@ -89,15 +89,39 @@ pub fn image_info(settings: ServiceSettings) -> ImageListDto {
         .collect();
 
     let recipes: Vec<Vec<String>> = [
-        [ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
-        [ImageType::Wallet, ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
-        [ImageType::Sha3Miner, ImageType::Wallet, ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
-        [ImageType::MmProxy, ImageType::XmRig, ImageType::Wallet, ImageType::BaseNode, ImageType::Tor].iter().map(|image_type| image_type.container_name().to_string()).collect(),
-    ].to_vec();
+        [ImageType::BaseNode, ImageType::Tor]
+            .iter()
+            .map(|image_type| image_type.container_name().to_string())
+            .collect(),
+        [ImageType::Wallet, ImageType::BaseNode, ImageType::Tor]
+            .iter()
+            .map(|image_type| image_type.container_name().to_string())
+            .collect(),
+        [
+            ImageType::Sha3Miner,
+            ImageType::Wallet,
+            ImageType::BaseNode,
+            ImageType::Tor,
+        ]
+        .iter()
+        .map(|image_type| image_type.container_name().to_string())
+        .collect(),
+        [
+            ImageType::MmProxy,
+            ImageType::XmRig,
+            ImageType::Wallet,
+            ImageType::BaseNode,
+            ImageType::Tor,
+        ]
+        .iter()
+        .map(|image_type| image_type.container_name().to_string())
+        .collect(),
+    ]
+    .to_vec();
 
     ImageListDto {
         image_info: images,
-        service_recipes: recipes
+        service_recipes: recipes,
     }
 }
 
