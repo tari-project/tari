@@ -42,7 +42,11 @@ impl BaseLayerOutput {
     }
 
     pub fn get_checkpoint_merkle_root(&self) -> Option<FixedHash> {
-        self.features.sidechain_checkpoint.as_ref().map(|cp| cp.merkle_root)
+        self.features
+            .sidechain_features
+            .as_ref()
+            .and_then(|cp| cp.checkpoint.as_ref())
+            .map(|cp| cp.merkle_root)
     }
 
     pub fn get_parent_public_key(&self) -> Option<&PublicKey> {
@@ -65,7 +69,7 @@ impl TryFrom<BaseLayerOutput> for CheckpointOutput {
     type Error = ModelError;
 
     fn try_from(output: BaseLayerOutput) -> Result<Self, Self::Error> {
-        if output.features.output_type != OutputType::SidechainCheckpoint {
+        if output.features.output_type != OutputType::ContractCheckpoint {
             return Err(ModelError::NotCheckpointOutput);
         }
 
