@@ -10,11 +10,10 @@ import Input from '../../../components/Inputs/Input'
 import { Label } from '../../../components/Inputs/Input/styles'
 import SettingsSectionHeader from '../../../components/SettingsSectionHeader'
 import Text from '../../../components/Text'
+import DockerImagesList from '../../../components/DockerImagesList'
 import t from '../../../locales'
 import { SettingsHeader } from '../styles'
 import { SettingsInputs } from '../types'
-
-import DockerImagesList from './DockerImagesList'
 
 const DockerSettings = ({
   control,
@@ -91,7 +90,7 @@ const DockerSettings = ({
         {t.docker.settings.imageStatuses}
       </SettingsSectionHeader>
 
-      <DockerImagesList />
+      <DockerImagesList style={{ marginBottom: theme.spacing() }} />
     </>
   )
 }

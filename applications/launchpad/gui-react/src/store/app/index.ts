@@ -82,6 +82,7 @@ export const {
   setOnboardingComplete,
   setOnboardingCheckpoint,
 } = appSlice.actions
+export * from './thunks'
 
 const reducer = appSlice.reducer
 export default reducer

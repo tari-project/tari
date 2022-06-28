@@ -61,6 +61,9 @@ const translations = {
   lastSteps: {
     message1: 'Awesome, everything went smoothly. You are one step away from starting mining.'
   },
+  expertView: {
+    title: 'Pulling images',
+  },
 }
 
 export default translations

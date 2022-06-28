@@ -16,7 +16,7 @@ const Overlay = styled.div`
   backdrop-filter: grayscale(90%);
 `
 
-const LoadingOverlay = () => {
+const LoadingOverlay = ({ inverted }: { inverted?: boolean }) => {
   const theme = useTheme()
 
   return (
@@ -24,6 +24,7 @@ const LoadingOverlay = () => {
       <Loading
         loading
         size='2em'
+        color={inverted ? theme.inverted.primary : theme.primary}
         style={{
           position: 'sticky',
           top: theme.spacing(2),
