@@ -194,13 +194,7 @@ mod test {
 
         // publish a contract update proposal into a block
         let proposal_id: u64 = 1;
-        publish_update_proposal(
-            &mut blockchain,
-            change[2].clone(),
-            contract_id,
-            proposal_id,
-            committee,
-        );
+        publish_update_proposal(&mut blockchain, change[2].clone(), contract_id, proposal_id, committee);
 
         // create an amendment with an altered committee (compared to the proposal)
         let altered_committee = vec![];
