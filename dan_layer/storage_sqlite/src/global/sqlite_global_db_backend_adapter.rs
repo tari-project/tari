@@ -139,8 +139,25 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         &self,
         contract_id: FixedHash,
         mined_height: u64,
-        status: ContractStatus,
+        state: ContractStatus,
     ) -> Result<(), Self::Error> {
-        todo!()
+        use crate::global::schema::contracts;
+        let tx = self.create_transaction()?;
+
+        diesel::insert_into(contracts::table)
+            .values((
+                contracts::id.eq(contract_id.to_vec()),
+                contracts::height.eq(mined_height as i64),
+                contracts::state.eq(state.as_byte() as i32),
+            ))
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert::contract".to_string(),
+            })?;
+
+        self.commit(&tx)?;
+
+        Ok(())
     }
 }
