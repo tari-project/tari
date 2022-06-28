@@ -43,7 +43,7 @@ export const selectContainerStatus: ContainerStatusSelector =
     if (!containerId) {
       return {
         id: '',
-        type: containerName,
+        containerName,
         error: typeError,
         running: false,
         pending,
@@ -58,8 +58,7 @@ export const selectContainerStatus: ContainerStatusSelector =
         (containerStatus.status !== SystemEventAction.Start &&
           containerStatus.status !== SystemEventAction.Destroy),
       running: containerStatus.status === SystemEventAction.Start,
-      // TODO rename
-      type: containerName,
+      containerName,
       error: containerStatus.error || typeError,
     }
   }

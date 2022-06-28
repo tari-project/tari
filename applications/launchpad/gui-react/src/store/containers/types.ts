@@ -4,8 +4,9 @@ import { ContainerName } from '../../types/general'
 
 export type ContainerId = string
 
-// TODO this should be removed from here and any usages should be got from backend
-// this refers to container_name in backend/src/docker/models.rs
+// WARNING - be careful about using this directly,
+// you should be using dockerImages.images from state if you work with docker images etc
+// this *couples fronted to backend* with container_name in backend/src/docker/models.rs
 export enum Container {
   Tor = 'tor',
   BaseNode = 'base_node',
@@ -54,7 +55,7 @@ export type ContainerStatus = {
 
 export type ContainerStatusDto = {
   id: ContainerId
-  type: string | Container
+  containerName: ContainerName
   running: boolean
   pending: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,7 +72,7 @@ export type ContainerStateFields = Pick<
 >
 
 export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
-  Pick<ContainerStatusDto, 'id' | 'type'>
+  Pick<ContainerStatusDto, 'id' | 'containerName'>
 
 export type ContainersState = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

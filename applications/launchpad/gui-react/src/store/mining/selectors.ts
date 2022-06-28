@@ -27,7 +27,7 @@ export const selectTariContainers = createSelector(
     const errors = containers
       .filter(c => c.error)
       .map(c => ({
-        type: c.type,
+        containerName: c.containerName,
         id: c.id,
         error: c.error,
       }))
@@ -70,7 +70,7 @@ export const selectMergedContainers = createSelector(
     const errors = containers
       .filter(c => c.error)
       .map(c => ({
-        type: c.type,
+        containerName: c.containerName,
         id: c.id,
         error: c.error,
       }))
