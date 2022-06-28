@@ -285,6 +285,7 @@ typedef struct Balance TariBalance;
 struct TariUtxo {
   char *commitment;
   uint64_t value;
+  uint64_t mined_height;
 };
 
 struct TariOutputs {
