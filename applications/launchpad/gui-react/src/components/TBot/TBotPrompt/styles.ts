@@ -24,7 +24,7 @@ export const PromptContainer = styled(animated.div)<{ $floating?: boolean }>`
   position: ${({ $floating }) => ($floating ? 'fixed' : 'static')};
   right: 40px;
   bottom: 40px;
-  z-index: 1;
+  z-index: 200;
   width: ${({ $floating }) =>
     $floating
       ? addPx(TBotContainerSizes.sm.containerWidth)
