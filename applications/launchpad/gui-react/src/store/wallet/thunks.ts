@@ -2,14 +2,9 @@ import { createAsyncThunk } from '@reduxjs/toolkit'
 
 import { RootState } from '..'
 import { Container } from '../containers/types'
-import {
-  selectContainerStatus,
-  selectRunningContainers,
-} from '../containers/selectors'
 import { actions as containersActions } from '../containers'
 
 import * as walletService from './walletService'
-import { selectContainerStatuses } from './selectors'
 
 type WalletPassword = string
 
@@ -26,42 +21,14 @@ export const unlockWallet = createAsyncThunk<
   { state: RootState }
 >('wallet/unlock', async (walletPassword, thunkApi) => {
   try {
-    const rootState = thunkApi.getState()
-    const torStatus = selectContainerStatus(Container.Tor)(rootState)
-
-    if (!torStatus.running && !torStatus.pending) {
-      await thunkApi
-        .dispatch(
-          containersActions.start({
-            container: Container.Tor,
-          }),
-        )
-        .unwrap()
-    }
-
-    const baseNodeStatus = selectContainerStatus(Container.Tor)(rootState)
-
-    if (!baseNodeStatus.running && !baseNodeStatus.pending) {
-      await thunkApi
-        .dispatch(
-          containersActions.start({
-            container: Container.BaseNode,
-          }),
-        )
-        .unwrap()
-    }
-
-    const walletStatus = selectContainerStatus(Container.Wallet)(rootState)
-    if (!walletStatus.running && !walletStatus.pending) {
-      await thunkApi
-        .dispatch(
-          containersActions.start({
-            container: Container.Wallet,
-            serviceSettings: { walletPassword },
-          }),
-        )
-        .unwrap()
-    }
+    await thunkApi
+      .dispatch(
+        containersActions.startRecipe({
+          containerName: Container.Wallet,
+          serviceSettings: { walletPassword },
+        }),
+      )
+      .unwrap()
 
     await waitForWalletToBeResponsive()
 
@@ -92,30 +59,8 @@ export const start = unlockWallet
 
 export const stop = createAsyncThunk<void, void, { state: RootState }>(
   'wallet/stop',
-  async (_, thunkApi) => {
-    try {
-      const rootState = thunkApi.getState()
-      const [
-        torContainerStatus,
-        baseNodeContainerStatus,
-        walletContainerStatus,
-      ] = selectContainerStatuses(rootState)
-
-      thunkApi.dispatch(containersActions.stop(walletContainerStatus.id))
-
-      const runningContainers = selectRunningContainers(rootState)
-      const otherServicesRunning = runningContainers.some(
-        rc =>
-          ![Container.Tor, Container.BaseNode, Container.Wallet].includes(rc),
-      )
-      if (!otherServicesRunning) {
-        thunkApi.dispatch(containersActions.stop(torContainerStatus.id))
-        thunkApi.dispatch(containersActions.stop(baseNodeContainerStatus.id))
-      }
-    } catch (e) {
-      return thunkApi.rejectWithValue(e)
-    }
-  },
+  (_, thunkApi) =>
+    thunkApi.dispatch(containersActions.stopRecipe(Container.Wallet)).unwrap(),
 )
 
 export const updateWalletBalance = createAsyncThunk<{

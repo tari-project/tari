@@ -89,7 +89,8 @@ pub fn image_list(settings: ServiceSettings) -> ImageList {
         .collect();
 
     let recipes: Vec<Vec<String>> = [
-        [ImageType::BaseNode.container_name().to_string(), ImageType::Tor.container_name().to_string()].to_vec()
+        [ImageType::BaseNode.container_name().to_string(), ImageType::Tor.container_name().to_string()].to_vec(),
+        [ImageType::Wallet.container_name().to_string(), ImageType::BaseNode.container_name().to_string(), ImageType::Tor.container_name().to_string()].to_vec(),
     ].to_vec();
 
     ImageList {
