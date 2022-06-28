@@ -35,6 +35,11 @@ const translations = {
       yourContribution:
         'Every new node increases the size of the Tari network and contributes to network security.',
     },
+    aurora:
+      'If you have an Aurora wallet on your smartphone, you can increase its security by connecting to the Tari Base Node.',
+  },
+  viewActions: {
+    baseNodeSettings: 'Base Node settings',
   },
 }
 

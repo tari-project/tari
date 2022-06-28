@@ -24,7 +24,7 @@ const SettingsContainer = () => {
 
   const miningMerged = useAppSelector(selectMergedMiningState)
   const serviceSettings = useAppSelector(selectServiceSettings)
-  console.log('SERVICE_SETTINGS: ', serviceSettings)
+
   const currentTheme = useAppSelector(selectTheme)
 
   const [openMiningAuthForm, setOpenMiningAuthForm] = useState(false)
