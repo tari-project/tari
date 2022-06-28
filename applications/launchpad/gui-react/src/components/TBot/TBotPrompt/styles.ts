@@ -1,7 +1,10 @@
 import styled from 'styled-components'
 import { animated } from 'react-spring'
+import { TITLE_BAR_HEIGHT } from '../../TitleBar/styles'
 
 export const PROMPT_HEIGHT_SPACING = 250
+export const CLOSE_BTN_HEIGHT = 72
+export const TBOT_CONTAINER_TOP_PADDING = 20
 
 export const TBotContainerSizes = {
   sm: {
@@ -12,7 +15,7 @@ export const TBotContainerSizes = {
   md: {
     containerWidth: 692,
     messageWidth: 622,
-    fadeOutHeight: 250,
+    fadeOutHeight: 220,
   },
 }
 
@@ -67,7 +70,7 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
   backdrop-filter: blur(9px);
   padding-bottom: 12px;
   overflow: hidden;
-  padding-top: 72px;
+  padding-top: ${CLOSE_BTN_HEIGHT}px;
 `
 
 export const FadeOutSection = styled(animated.div)<{
@@ -80,19 +83,24 @@ export const FadeOutSection = styled(animated.div)<{
     $floating
       ? addPx(TBotContainerSizes.sm.fadeOutHeight)
       : addPx(TBotContainerSizes.md.fadeOutHeight)};
-  ${({ $floating }) => ($floating ? '' : 'top: 0;')}
   width: ${({ $floating }) =>
     $floating
       ? addPx(TBotContainerSizes.sm.containerWidth - 12)
       : addPx(TBotContainerSizes.md.containerWidth)};
   max-width: 100%;
-  top: ${({ $floating }) => ($floating ? '70px' : '0')};
+  top: ${({ $floating }) =>
+    $floating
+      ? `${CLOSE_BTN_HEIGHT - 1}px`
+      : `${
+          TITLE_BAR_HEIGHT + CLOSE_BTN_HEIGHT - TBOT_CONTAINER_TOP_PADDING - 50
+        }px`};
   left: 0;
-  z-index: 20;
-  background-image: ${({ $onDarkBg }) => {
+  z-index: 2;
+  background-image: ${({ $onDarkBg, $floating }) => {
     const bgBase = $onDarkBg ? '0, 0, 0' : '250, 250, 250'
+    const firstStop = $floating ? '10%' : '20%'
 
-    return `linear-gradient(to bottom, rgba(${bgBase}, 1) 10%, rgba(${bgBase}, 0) 100%)`
+    return `linear-gradient(to bottom, rgba(${bgBase}, 1) ${firstStop}, rgba(${bgBase}, 0) 100%)`
   }};
 `
 
@@ -112,7 +120,7 @@ export const ScrollWrapper = styled.div`
   z-index: 1;
   position: relative;
   padding-bottom: 20px;
-  padding-top: 20px;
+  padding-top: ${TBOT_CONTAINER_TOP_PADDING}px;
   padding-right: 8px;
 
   ::-webkit-scrollbar {
@@ -153,7 +161,7 @@ export const StyledCloseContainer = styled.div`
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  height: 72px;
+  height: ${CLOSE_BTN_HEIGHT}px;
   top: 0;
   position: absolute;
   right: 48px;
