@@ -1,5 +1,8 @@
 import React, { useCallback, useContext, useState } from 'react'
 
+import { useAppSelector, useAppDispatch } from '../../../store/hooks'
+import { actions as settingsActions } from '../../../store/settings'
+import { selectIsParoleSet } from '../../../store/settings/selectors'
 import Modal from '../../../components/Modal'
 import PasswordBox from '../../../containers/WalletContainer/PasswordBox'
 
@@ -14,13 +17,15 @@ export const WalletPasswordPrompt = ({
   children: JSX.Element
   local?: boolean
 }) => {
+  const dispatch = useAppDispatch()
+  const isParoleSet = useAppSelector(selectIsParoleSet)
+
   const [modalOpen, setModalOpen] = useState(false)
   const [action, setAction] = useState<() => void>(() => null)
-  const passwordAlreadySet = false
 
   const ensureWalletPasswordInStore = useCallback(
     (callback: () => void) => {
-      if (!passwordAlreadySet) {
+      if (!isParoleSet) {
         setAction(() => callback)
         setModalOpen(true)
         return
@@ -29,7 +34,7 @@ export const WalletPasswordPrompt = ({
       // TODO await and error handling?
       callback()
     },
-    [passwordAlreadySet],
+    [isParoleSet],
   )
 
   return (
@@ -48,8 +53,8 @@ export const WalletPasswordPrompt = ({
         <PasswordBox
           pending={false}
           // TODO make async, loader indicator, error indicator (in passwordbox)
-          onSubmit={password => {
-            // save password in the store
+          onSubmit={parole => {
+            dispatch(settingsActions.setParole(parole))
             setModalOpen(false)
             action()
           }}

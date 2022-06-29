@@ -35,6 +35,9 @@ const settingsSlice = createSlice({
         dockerRegistry: action.payload.docker.registry,
       }
     },
+    setParole(state, { payload: parole }: { payload: string }) {
+      state.serviceSettings.parole = parole
+    },
   },
   extraReducers: builder => {
     builder.addCase(loadDefaultServiceSettings.fulfilled, (state, action) => {

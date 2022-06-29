@@ -72,15 +72,15 @@ const appSlice = createSlice({
 })
 
 export const {
-  setExpertView,
-  setExpertSwitchDisabled,
-  setTheme,
-  setPage,
-  toggleSchedule,
   removeSchedule,
-  updateSchedule,
-  setOnboardingComplete,
+  setExpertSwitchDisabled,
+  setExpertView,
   setOnboardingCheckpoint,
+  setOnboardingComplete,
+  setPage,
+  setTheme,
+  toggleSchedule,
+  updateSchedule,
 } = appSlice.actions
 export { init } from './thunks'
 

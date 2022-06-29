@@ -26,3 +26,5 @@ export const selectServiceSettings = (state: RootState) => ({
     sep +
     state.baseNode.network,
 })
+export const selectIsParoleSet = ({ settings }: RootState) =>
+  Boolean(settings.serviceSettings.parole)
