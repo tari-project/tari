@@ -158,7 +158,7 @@ impl ContractWorkerManager {
                     next_scan_height
                 );
                 tokio::select! {
-                    _ = time::sleep(Duration::from_secs(60)) => {},
+                    _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
                     _ = &mut self.shutdown => break,
                 }
                 continue;
@@ -195,7 +195,7 @@ impl ContractWorkerManager {
             self.set_last_scanned_block(tip)?;
 
             tokio::select! {
-                _ = time::sleep(Duration::from_secs(60)) => {},
+                _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
                 _ = &mut self.shutdown => break,
             }
         }
