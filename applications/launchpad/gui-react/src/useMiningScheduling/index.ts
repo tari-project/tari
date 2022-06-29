@@ -7,6 +7,7 @@ import { actions as miningActions } from '../store/mining'
 
 import useMiningScheduling from './useMiningScheduling'
 import { MiningActionReason } from '../store/mining/types'
+import { useWithWalletPassword } from '../useWithWalletPassword'
 
 /**
  * @name useMiningSchedulingContainer
@@ -38,6 +39,8 @@ const useMiningSchedulingContainer = () => {
     },
     [],
   )
+  const startMiningWithPasswordPrompt = useWithWalletPassword(startMining)
+
   const stopMining = useCallback(
     (node: MiningNodeType) =>
       dispatch(
@@ -51,7 +54,7 @@ const useMiningSchedulingContainer = () => {
 
   useMiningScheduling({
     schedules,
-    startMining,
+    startMining: startMiningWithPasswordPrompt,
     stopMining,
   })
 }

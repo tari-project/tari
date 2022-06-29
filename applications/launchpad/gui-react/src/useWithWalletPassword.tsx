@@ -7,7 +7,8 @@ import Modal from './components/Modal'
 import PasswordBox from './containers/WalletContainer/PasswordBox'
 
 const EnsureWalletPasswordContext = React.createContext<{
-  ensureWalletPasswordInStore: (callback: () => void) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ensureWalletPasswordInStore: (callback: (...a: any[]) => void) => void
 }>({ ensureWalletPasswordInStore: () => null })
 
 export const WalletPasswordPrompt = ({
@@ -52,7 +53,7 @@ export const WalletPasswordPrompt = ({
       >
         <PasswordBox
           pending={false}
-          // TODO make async, loader indicator, error indicator (in passwordbox)
+          // TODO make async, loader indicator, error indicator (in passwordbox) ??
           onSubmit={parole => {
             dispatch(settingsActions.setParole(parole))
             setModalOpen(false)
@@ -65,10 +66,12 @@ export const WalletPasswordPrompt = ({
   )
 }
 
-export const useWithWalletPassword = (action: () => void) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const useWithWalletPassword = (action: (...args: any[]) => void) => {
   const { ensureWalletPasswordInStore } = useContext(
     EnsureWalletPasswordContext,
   )
 
-  return () => ensureWalletPasswordInStore(action)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (...args: any[]) => ensureWalletPasswordInStore(() => action(...args))
 }
