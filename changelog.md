@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.6](https://github.com/tari-project/tari/compare/v0.32.5...v0.32.6) (2022-06-29)
+
+
+### Features
+
+* **ci:** build both x86/arm64 docker images from GHA  ([#4204](https://github.com/tari-project/tari/issues/4204)) ([28a8f8b](https://github.com/tari-project/tari/commit/28a8f8b541f96d2bee4bd7f46cc1625dfeb0d323))
+* **wallet_ffi:** add coin join and split ([#4218](https://github.com/tari-project/tari/issues/4218)) ([af6c834](https://github.com/tari-project/tari/commit/af6c834c9e38984135152e664823a02857d09656))
+* **wallet:** allow UTXO selection by specific outputs and by token ([#4227](https://github.com/tari-project/tari/issues/4227)) ([f2a7e18](https://github.com/tari-project/tari/commit/f2a7e1846341a69ddea6eb3541467e82e1bf2e47))
+
 ### [0.32.5](https://github.com/tari-project/tari/compare/v0.32.4...v0.32.5) (2022-06-20)
 
 
