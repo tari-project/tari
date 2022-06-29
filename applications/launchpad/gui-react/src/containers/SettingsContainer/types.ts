@@ -10,6 +10,7 @@ export type SettingsProps = {
   values: SettingsInputs
   setValue: UseFormSetValue<SettingsInputs>
   setOpenMiningAuthForm: (value: boolean) => void
+  onBaseNodeConnectClick: () => void
 }
 
 export interface SettingsInputs {
@@ -56,6 +57,8 @@ export type SettingsComponentProps = {
   discardChanges: () => void
   openMiningAuthForm: boolean
   setOpenMiningAuthForm: (value: boolean) => void
+  openBaseNodeConnect: boolean
+  setOpenBaseNodeConnect: (value: boolean) => void
   currentTheme: ThemeType
   changeTheme: (theme: ThemeType) => void
 }

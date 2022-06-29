@@ -41,6 +41,21 @@ const translations = {
   viewActions: {
     baseNodeSettings: 'Base Node settings',
   },
+  qrModal: {
+    heading: 'Connect your Aurora app',
+    description: 'Open Aurora app on your smartphone.',
+    step1: 'Go to Settings',
+    step2: 'Choose: Connect to Tari Launchpad Base Node',
+    step3: 'Scan the QR code below',
+    step4: 'Then follow the directions in the Aurora app',
+    submitBtn: 'Got it!',
+  },
+  aurora: {
+    connectYourAurora: 'Connect your Aurora app',
+    withBaseNode: 'with the Base Node',
+    description:
+      'If you have an Aurora Wallet on your smartphone, you can increase its security by connecting to the Tari Base Node.',
+  },
 }
 
 export default translations

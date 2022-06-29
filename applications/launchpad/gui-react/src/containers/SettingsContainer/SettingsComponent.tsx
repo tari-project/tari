@@ -34,6 +34,7 @@ import {
 } from './types'
 import MoneroAuthentication from './MiningSettings/MoneroAuthentication'
 import { useTheme } from 'styled-components'
+import BaseNodeQRModal from '../BaseNodeQRModal'
 
 const renderSettings = (
   settings: Settings,
@@ -53,7 +54,12 @@ const renderSettings = (
         />
       )
     case Settings.BaseNode:
-      return <BaseNodeSettings control={props.control} />
+      return (
+        <BaseNodeSettings
+          control={props.control}
+          onBaseNodeConnectClick={props.onBaseNodeConnectClick}
+        />
+      )
     case Settings.Docker:
       return (
         <DockerSettings
@@ -85,6 +91,8 @@ const SettingsComponent = ({
   discardChanges,
   openMiningAuthForm,
   setOpenMiningAuthForm,
+  openBaseNodeConnect,
+  setOpenBaseNodeConnect,
   currentTheme,
   changeTheme,
 }: SettingsComponentProps) => {
@@ -106,6 +114,13 @@ const SettingsComponent = ({
           close={() => setOpenMiningAuthForm(false)}
         />
       </Modal>
+    )
+  }
+
+  // Render Base Node QR code
+  if (openBaseNodeConnect) {
+    return (
+      <BaseNodeQRModal open onClose={() => setOpenBaseNodeConnect(false)} />
     )
   }
 
@@ -159,6 +174,7 @@ const SettingsComponent = ({
               values,
               setValue,
               setOpenMiningAuthForm,
+              onBaseNodeConnectClick: () => setOpenBaseNodeConnect(true),
             })}
           </MainContent>
         </MainContentContainer>

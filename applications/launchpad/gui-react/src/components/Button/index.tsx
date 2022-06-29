@@ -25,6 +25,7 @@ import { ButtonProps } from './types'
  * @param {ReactNode} [rightIcon] - element rendered on right side of the button
  * @param {boolean} [autosizeIcons='true'] - by default, it resizes any svg element set as leftIcon or rightIcon to a given dimensions (16x16px)
  * @param {boolean} [loading] - displays the loader
+ * @param {boolean} [fullWidth] - render with width = 100%
  * @param {() => void} [onClick] - on button click
  * @param {string} [testId] - react test id
  *
@@ -52,6 +53,7 @@ const Button = ({
   autosizeIcons = true,
   onClick,
   loading,
+  fullWidth,
   testId = 'button-cmp',
 }: ButtonProps) => {
   let btnText = children
@@ -128,6 +130,7 @@ const Button = ({
           target='_blank'
           variant={variant}
           data-testid={testId}
+          $fullWidth={fullWidth}
         >
           {btnContent}
         </StyledLinkLikeButton>
@@ -156,6 +159,7 @@ const Button = ({
       style={style}
       variant={variant}
       data-testid={testId}
+      $fullWidth={fullWidth}
     >
       {btnContent}
     </StyledButton>
