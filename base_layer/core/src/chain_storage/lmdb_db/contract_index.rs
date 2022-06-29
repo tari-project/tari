@@ -84,6 +84,7 @@ where T: Deref<Target = ConstTransaction<'a>>
                     .map(|v| v.output_hash)
                     .collect())
             },
+            #[allow(unreachable_patterns)]
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
             OutputType::ContractConstitutionChangeAcceptance |
