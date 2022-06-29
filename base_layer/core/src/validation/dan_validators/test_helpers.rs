@@ -79,9 +79,9 @@ pub fn publish_constitution(
     blockchain: &mut TestBlockchain,
     change: UnblindedOutput,
     contract_id: FixedHash,
-    committee: Vec<PublicKey>,
+    constitution: ContractConstitution,
 ) {
-    let schema = create_contract_constitution_schema(contract_id, change, committee);
+    let schema = create_contract_constitution_schema(contract_id, change, constitution);
     create_block(blockchain, "constitution", schema);
 }
 
@@ -90,9 +90,9 @@ pub fn publish_update_proposal(
     change: UnblindedOutput,
     contract_id: FixedHash,
     proposal_id: u64,
-    committee: Vec<PublicKey>,
+    updated_constitution: ContractConstitution,
 ) {
-    let schema = create_contract_proposal_schema(contract_id, change, proposal_id, committee);
+    let schema = create_contract_proposal_schema(contract_id, change, proposal_id, updated_constitution);
     create_block(blockchain, "proposal", schema);
 }
 
@@ -139,17 +139,15 @@ pub fn create_contract_definition_schema(input: UnblindedOutput) -> (FixedHash, 
 pub fn create_contract_constitution_schema(
     contract_id: FixedHash,
     input: UnblindedOutput,
-    committee: Vec<PublicKey>,
+    constitution: ContractConstitution,
 ) -> TransactionSchema {
-    let constitution = create_contract_constitution(committee);
     let constitution_features = OutputFeatures::for_contract_constitution(contract_id, constitution);
-
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: constitution_features)
 }
 
-pub fn create_contract_constitution(validator_keys: Vec<PublicKey>) -> ContractConstitution {
+pub fn create_contract_constitution() -> ContractConstitution {
     ContractConstitution {
-        validator_committee: validator_keys.clone().try_into().unwrap(),
+        validator_committee: vec![].try_into().unwrap(),
         acceptance_requirements: ContractAcceptanceRequirements {
             acceptance_period_expiry: 100,
             minimum_quorum_required: 5,
@@ -163,7 +161,7 @@ pub fn create_contract_constitution(validator_keys: Vec<PublicKey>) -> ContractC
             change_flags: ConstitutionChangeFlags::all(),
             requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                 minimum_constitution_committee_signatures: 5,
-                constitution_committee: Some(validator_keys.try_into().unwrap()),
+                constitution_committee: Some(vec![].try_into().unwrap()),
             }),
         },
         initial_reward: 100.into(),
@@ -187,12 +185,12 @@ pub fn create_contract_proposal_schema(
     contract_id: FixedHash,
     input: UnblindedOutput,
     proposal_id: u64,
-    committee: Vec<PublicKey>,
+    updated_constitution: ContractConstitution,
 ) -> TransactionSchema {
     let proposal = ContractUpdateProposal {
         proposal_id,
         signature: Signature::default(),
-        updated_constitution: create_contract_constitution(committee),
+        updated_constitution,
     };
 
     let proposal_features = OutputFeatures::for_contract_update_proposal(contract_id, proposal);
@@ -222,12 +220,12 @@ pub fn create_contract_amendment_schema(
     contract_id: FixedHash,
     input: UnblindedOutput,
     proposal_id: u64,
-    committee: Vec<PublicKey>,
+    updated_constitution: ContractConstitution,
 ) -> TransactionSchema {
     let amendment = ContractAmendment {
         proposal_id,
-        updated_constitution: create_contract_constitution(committee.clone()),
-        validator_committee: committee.try_into().unwrap(),
+        updated_constitution: updated_constitution.clone(),
+        validator_committee: updated_constitution.validator_committee,
         validator_signatures: vec![Signature::default()].try_into().unwrap(),
         activation_window: 100,
     };

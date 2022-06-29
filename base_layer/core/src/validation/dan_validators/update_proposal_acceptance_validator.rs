@@ -129,6 +129,8 @@ fn validate_public_key(
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryInto;
+
     use tari_common_types::types::PublicKey;
     use tari_utilities::hex::Hex;
 
@@ -136,7 +138,7 @@ mod test {
         assert_dan_validator_fail,
         assert_dan_validator_success,
         create_block,
-        create_contract_constitution_schema,
+        create_contract_constitution,
         create_contract_update_proposal_acceptance_schema,
         init_test_blockchain,
         publish_constitution,
@@ -156,11 +158,19 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key.clone()];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
 
         // publish the contract update proposal into a block
         let proposal_id: u64 = 1;
-        publish_update_proposal(&mut blockchain, change[2].clone(), contract_id, proposal_id, committee);
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            constitution,
+        );
 
         // create a valid contract acceptance transaction
         let proposal_id = 1;
@@ -186,7 +196,9 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key.clone()];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee);
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution);
 
         // skip the publication of the contract update proposal
 
@@ -215,11 +227,19 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key.clone()];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
 
         // publish the contract update proposal into a block
         let proposal_id: u64 = 1;
-        publish_update_proposal(&mut blockchain, change[2].clone(), contract_id, proposal_id, committee);
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            constitution,
+        );
 
         // publish the contract update proposal acceptance into a block
         let proposal_id = 1;
@@ -254,14 +274,24 @@ mod test {
         let contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // publish the contract constitution into a block
-        let schema = create_contract_constitution_schema(contract_id, change[1].clone(), vec![]);
-        create_block(&mut blockchain, "constitution", schema);
+        let committee = vec![];
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution);
 
         // publish the contract update proposal into a block
         // we deliberately use a committee with only a defult public key to be able to trigger the committee error later
         let proposal_id: u64 = 1;
         let committee = vec![PublicKey::default()];
-        publish_update_proposal(&mut blockchain, change[2].clone(), contract_id, proposal_id, committee);
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            constitution,
+        );
 
         // publish the contract update proposal acceptance into a block
         // we use a public key that is not included in the proposal committee, to trigger the error
