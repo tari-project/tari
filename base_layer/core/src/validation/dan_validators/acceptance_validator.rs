@@ -126,7 +126,8 @@ mod test {
     use tari_utilities::hex::Hex;
 
     use crate::validation::dan_validators::test_helpers::{
-        assert_dan_error,
+        assert_dan_validator_fail,
+        assert_dan_validator_success,
         create_block,
         create_contract_acceptance_schema,
         create_contract_constitution_schema,
@@ -135,6 +136,25 @@ mod test {
         publish_definition,
         schema_to_transaction,
     };
+
+    #[test]
+    fn it_allows_valid_acceptances() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+
+        // publish the contract constitution into a block
+        let validator_node_public_key = PublicKey::default();
+        let committee = vec![validator_node_public_key.clone()];
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee);
+
+        // create a valid contract acceptance transaction
+        let schema = create_contract_acceptance_schema(contract_id, change[2].clone(), validator_node_public_key);
+        let (tx, _) = schema_to_transaction(&schema);
+        assert_dan_validator_success(&blockchain, &tx);
+    }
 
     #[test]
     fn constitution_must_exist() {
@@ -152,7 +172,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Contract constitution not found");
+        assert_dan_validator_fail(&blockchain, &tx, "Contract constitution not found");
     }
 
     #[test]
@@ -178,7 +198,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated acceptance transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated contract acceptance");
+        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract acceptance");
     }
 
     #[test]
@@ -203,6 +223,6 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the committee error
-        assert_dan_error(&blockchain, &tx, "Validator node public key is not in committee");
+        assert_dan_validator_fail(&blockchain, &tx, "Validator node public key is not in committee");
     }
 }

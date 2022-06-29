@@ -83,13 +83,29 @@ mod test {
     use tari_common_types::types::FixedHash;
 
     use crate::validation::dan_validators::test_helpers::{
-        assert_dan_error,
+        assert_dan_validator_fail,
+        assert_dan_validator_success,
         create_contract_constitution_schema,
         init_test_blockchain,
         publish_constitution,
         publish_definition,
         schema_to_transaction,
     };
+
+    #[test]
+    fn it_allows_valid_constitutions() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+
+        // construct a valid constitution transaction
+        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), Vec::new());
+        let (tx, _) = schema_to_transaction(&schema);
+
+        assert_dan_validator_success(&blockchain, &tx);
+    }
 
     #[test]
     fn definition_must_exist() {
@@ -102,7 +118,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the constitution transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Contract definition not found");
+        assert_dan_validator_fail(&blockchain, &tx, "Contract definition not found");
     }
 
     #[test]
@@ -119,6 +135,6 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated constitution transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated contract constitution");
+        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract constitution");
     }
 }

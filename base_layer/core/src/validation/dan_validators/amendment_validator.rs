@@ -110,7 +110,8 @@ mod test {
     use tari_common_types::types::PublicKey;
 
     use crate::validation::dan_validators::test_helpers::{
-        assert_dan_error,
+        assert_dan_validator_fail,
+        assert_dan_validator_success,
         create_block,
         create_contract_amendment_schema,
         init_test_blockchain,
@@ -119,6 +120,36 @@ mod test {
         publish_update_proposal,
         schema_to_transaction,
     };
+
+    #[test]
+    fn it_allows_valid_amendments() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+
+        // publish the contract constitution into a block
+        let validator_node_public_key = PublicKey::default();
+        let committee = vec![validator_node_public_key.clone()];
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+
+        // publish a contract update proposal into a block
+        let proposal_id: u64 = 1;
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            committee.clone(),
+        );
+
+        // create a valid amendment transaction
+        let proposal_id = 1;
+        let schema = create_contract_amendment_schema(contract_id, change[3].clone(), proposal_id, committee);
+        let (tx, _) = schema_to_transaction(&schema);
+        assert_dan_validator_success(&blockchain, &tx);
+    }
 
     #[test]
     fn proposal_must_exist() {
@@ -141,7 +172,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Contract update proposal not found");
+        assert_dan_validator_fail(&blockchain, &tx, "Contract update proposal not found");
     }
 
     #[test]
@@ -176,7 +207,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated amendment transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated amendment");
+        assert_dan_validator_fail(&blockchain, &tx, "Duplicated amendment");
     }
 
     #[test]
@@ -202,7 +233,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the amendment transaction and check that we get the error
-        assert_dan_error(
+        assert_dan_validator_fail(
             &blockchain,
             &tx,
             "The updated_constitution of the amendment does not match the one in the update proposal",

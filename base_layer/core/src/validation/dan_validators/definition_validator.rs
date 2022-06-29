@@ -64,12 +64,25 @@ fn validate_duplication<B: BlockchainBackend>(
 #[cfg(test)]
 mod test {
     use crate::validation::dan_validators::test_helpers::{
-        assert_dan_error,
+        assert_dan_validator_fail,
+        assert_dan_validator_success,
         create_contract_definition_schema,
         init_test_blockchain,
         publish_definition,
         schema_to_transaction,
     };
+
+    #[test]
+    fn it_allows_valid_definitions() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (blockchain, change) = init_test_blockchain();
+
+        // construct a valid definition transaction
+        let (_, schema) = create_contract_definition_schema(change[1].clone());
+        let (tx, _) = schema_to_transaction(&schema);
+
+        assert_dan_validator_success(&blockchain, &tx);
+    }
 
     #[test]
     fn it_rejects_duplicated_definitions() {
@@ -84,6 +97,6 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated definition transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated contract definition");
+        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract definition");
     }
 }
