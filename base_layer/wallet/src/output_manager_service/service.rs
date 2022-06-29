@@ -25,7 +25,10 @@ use std::{convert::TryInto, fmt, sync::Arc};
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
-use itertools::Itertools;
+use itertools::{
+    FoldWhile::{Continue, Done},
+    Itertools,
+};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
@@ -1439,14 +1442,14 @@ where
         Ok(())
     }
 
-    /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
-    /// selection strategy to choose the outputs. It also determines if a change output is required.
-    async fn select_utxos(
+    // NOTE: WIP
+    #[allow(dead_code)]
+    async fn select_utxos2(
         &mut self,
         target_amount: MicroTari,
         fee_per_gram: MicroTari,
         num_outputs: usize,
-        output_metadata_byte_size: usize,
+        total_output_metadata_byte_size: usize,
         selection_criteria: UtxoSelectionCriteria,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
@@ -1456,7 +1459,7 @@ where
             target_amount,
             fee_per_gram,
             num_outputs,
-            output_metadata_byte_size,
+            total_output_metadata_byte_size,
             selection_criteria
         );
 
@@ -1469,23 +1472,54 @@ where
         let balance = self.get_balance(tip_height)?;
 
         // collecting UTXOs sufficient to cover the target amount
-        let utxos = self.resources.db.fetch_unspent_outputs_for_spending(
-            selection_criteria.clone(),
-            target_amount,
-            tip_height,
-        )?;
+        let (_, accumulated_amount, utxos) = self
+            .resources
+            .db
+            .fetch_unspent_outputs_for_spending(selection_criteria.clone(), target_amount, tip_height)?
+            .into_iter()
+            .fold_while(
+                (1usize, MicroTari::zero(), Vec::<DbUnblindedOutput>::new()),
+                |mut acc, out| {
+                    let fee = self.get_fee_calc().calculate(
+                        fee_per_gram,
+                        1,
+                        acc.0,
+                        num_outputs,
+                        total_output_metadata_byte_size,
+                    );
 
-        let accumulated_amount = utxos
-            .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+                    let next = acc.1 + out.unblinded_output.value;
+                    let target_amount_with_fee = target_amount + fee;
+
+                    // if next < target_amount_with_fee || acc.1 < target_amount_with_fee && next >=
+                    // target_amount_with_fee
+                    if next < target_amount_with_fee || acc.1 < target_amount_with_fee {
+                        acc.0 += 1;
+                        acc.1 = next;
+                        acc.2.push(out);
+                        Continue(acc)
+                    } else {
+                        Done(acc)
+                    }
+                },
+            )
+            .into_inner();
+
+        // let accumulated_amount = utxos
+        // .iter()
+        // .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
 
         if accumulated_amount <= target_amount {
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
-        let fee_without_change =
-            self.get_fee_calc()
-                .calculate(fee_per_gram, 1, utxos.len(), num_outputs, output_metadata_byte_size);
+        let fee_without_change = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            utxos.len(),
+            num_outputs,
+            total_output_metadata_byte_size,
+        );
 
         // checking whether the total output value is enough
         if accumulated_amount < (target_amount + fee_without_change) {
@@ -1502,7 +1536,7 @@ where
                 1,
                 utxos.len(),
                 num_outputs + 1,
-                output_metadata_byte_size + self.default_metadata_size(),
+                total_output_metadata_byte_size + self.default_metadata_size(),
             ),
         };
 
@@ -1539,6 +1573,103 @@ where
         })
     }
 
+    /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
+    /// selection strategy to choose the outputs. It also determines if a change output is required.
+    async fn select_utxos(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_outputs: usize,
+        total_output_metadata_byte_size: usize,
+        selection_criteria: UtxoSelectionCriteria,
+    ) -> Result<UtxoSelection, OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
+             selection_criteria: {:?}",
+            amount,
+            fee_per_gram,
+            num_outputs,
+            total_output_metadata_byte_size,
+            selection_criteria
+        );
+        let mut utxos = Vec::new();
+
+        let mut utxos_total_value = MicroTari::from(0);
+        let mut fee_without_change = MicroTari::from(0);
+        let mut fee_with_change = MicroTari::from(0);
+        let fee_calc = self.get_fee_calc();
+
+        // Attempt to get the chain tip height
+        let chain_metadata = self.base_node_service.get_chain_metadata().await?;
+
+        warn!(
+            target: LOG_TARGET,
+            "select_utxos selection criteria: {}", selection_criteria
+        );
+        let tip_height = chain_metadata.as_ref().map(|m| m.height_of_longest_chain());
+        let uo = self
+            .resources
+            .db
+            .fetch_unspent_outputs_for_spending(selection_criteria, amount, tip_height)?;
+        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
+
+        // Assumes that default Outputfeatures are used for change utxo
+        let output_features_estimate = OutputFeatures::default();
+        let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
+            output_features_estimate.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+        );
+        let mut requires_change_output = false;
+        for o in uo {
+            utxos_total_value += o.unblinded_output.value;
+            utxos.push(o);
+            // The assumption here is that the only output will be the payment output and change if required
+            fee_without_change = fee_calc.calculate(
+                fee_per_gram,
+                1,
+                utxos.len(),
+                num_outputs,
+                total_output_metadata_byte_size,
+            );
+            if utxos_total_value == amount + fee_without_change {
+                break;
+            }
+            fee_with_change = fee_calc.calculate(
+                fee_per_gram,
+                1,
+                utxos.len(),
+                num_outputs + 1,
+                total_output_metadata_byte_size + default_metadata_size,
+            );
+            if utxos_total_value > amount + fee_with_change {
+                requires_change_output = true;
+                break;
+            }
+        }
+
+        let perfect_utxo_selection = utxos_total_value == amount + fee_without_change;
+        let enough_spendable = utxos_total_value > amount + fee_with_change;
+
+        if !perfect_utxo_selection && !enough_spendable {
+            let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.height_of_longest_chain());
+            let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
+            let pending_incoming = balance.pending_incoming_balance;
+            if utxos_total_value + pending_incoming >= amount + fee_with_change {
+                return Err(OutputManagerError::FundsPending);
+            } else {
+                return Err(OutputManagerError::NotEnoughFunds);
+            }
+        }
+
+        Ok(UtxoSelection {
+            utxos,
+            requires_change_output,
+            total_value: utxos_total_value,
+            fee_without_change,
+            fee_with_change,
+        })
+    }
+
     pub fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_spent_outputs()?)
     }
@@ -1565,9 +1696,7 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                script!(Nop).consensus_encode_exact_size() +
-                    Covenant::default().consensus_encode_exact_size() +
-                    OutputFeatures::default().consensus_encode_exact_size(),
+                script!(Nop).consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
             )
     }
 
@@ -1598,11 +1727,9 @@ where
         number_of_splits: usize,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
-        let total_split_amount = MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64);
-
         let src_outputs = self
             .select_utxos(
-                total_split_amount,
+                MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64),
                 fee_per_gram,
                 number_of_splits,
                 self.default_metadata_size() * number_of_splits,
