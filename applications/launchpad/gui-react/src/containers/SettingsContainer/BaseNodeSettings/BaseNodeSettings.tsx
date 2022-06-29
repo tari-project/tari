@@ -42,7 +42,7 @@ const BaseNodeSettings = ({
         rules={{ required: true, minLength: 1 }}
         render={({ field }) => (
           <SelectRow>
-            <Label>{t.baseNode.tari_network_label}</Label>
+            <Label $noMargin>{t.baseNode.tari_network_label}</Label>
             <div style={{ width: '50%' }}>
               <Select
                 value={networkOptions.find(
@@ -66,7 +66,7 @@ const BaseNodeSettings = ({
         rules={{ required: true, minLength: 1 }}
         render={({ field }) => (
           <InputRow>
-            <Label>{t.baseNode.settings.rootFolder}</Label>
+            <Label $noMargin>{t.baseNode.settings.rootFolder}</Label>
             <Input
               onChange={field.onChange}
               value={field?.value?.toString() || ''}
