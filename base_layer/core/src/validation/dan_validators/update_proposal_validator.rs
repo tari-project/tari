@@ -111,7 +111,7 @@ mod test {
 
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
-        let committee = vec![validator_node_public_key.clone()];
+        let committee = vec![validator_node_public_key];
         publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
 
         // create a valid proposal transaction
