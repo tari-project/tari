@@ -39,12 +39,12 @@ pub fn validate_definition<B: BlockchainBackend>(
     let sidechain_features = get_sidechain_features(output)?;
     let contract_id = sidechain_features.contract_id;
 
-    validate_duplication(db, contract_id)?;
+    validate_uniqueness(db, contract_id)?;
 
     Ok(())
 }
 
-fn validate_duplication<B: BlockchainBackend>(
+fn validate_uniqueness<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {

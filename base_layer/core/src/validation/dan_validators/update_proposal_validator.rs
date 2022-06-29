@@ -49,7 +49,7 @@ pub fn validate_update_proposal<B: BlockchainBackend>(
 
     fetch_contract_constitution(db, contract_id)?;
 
-    validate_duplication(db, contract_id, proposal_id)?;
+    validate_uniqueness(db, contract_id, proposal_id)?;
 
     Ok(())
 }
@@ -63,7 +63,7 @@ fn get_update_proposal(sidechain_feature: &SideChainFeatures) -> Result<&Contrac
     }
 }
 
-fn validate_duplication<B: BlockchainBackend>(
+fn validate_uniqueness<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
     proposal_id: u64,

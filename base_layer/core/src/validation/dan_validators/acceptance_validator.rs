@@ -56,11 +56,11 @@ pub fn validate_acceptance<B: BlockchainBackend>(
 
     let constitution = fetch_contract_constitution(db, contract_id)?;
 
-    validate_duplication(db, contract_id, validator_node_public_key)?;
+    validate_uniqueness(db, contract_id, validator_node_public_key)?;
     validate_public_key(constitution, validator_node_public_key)?;
 
     // TODO: check that the signature of the transaction is valid
-    // TODO: check that the acceptance is inside the accpentance window of the constiution
+    // TODO: check that the acceptance is inside the acceptance window of the constiution
     // TODO: check that the stake of the transaction is at least the minimum specified in the constitution
 
     Ok(())
@@ -77,7 +77,7 @@ fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&Con
 }
 
 /// Checks that the validator node has not already published the acceptance for the contract
-fn validate_duplication<B: BlockchainBackend>(
+fn validate_uniqueness<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
     validator_node_public_key: &PublicKey,

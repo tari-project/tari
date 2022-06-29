@@ -56,7 +56,7 @@ pub fn validate_update_proposal_acceptance<B: BlockchainBackend>(
 
     let proposal = fetch_contract_update_proposal(db, contract_id, proposal_id)?;
 
-    validate_duplication(db, contract_id, proposal_id, validator_node_public_key)?;
+    validate_uniqueness(db, contract_id, proposal_id, validator_node_public_key)?;
     validate_public_key(proposal, validator_node_public_key)?;
 
     // TODO: check that the signature of the transaction is valid
@@ -79,7 +79,7 @@ fn get_contract_update_proposal_acceptance(
 }
 
 /// Checks that the validator node has not already published the acceptance for the contract
-fn validate_duplication<B: BlockchainBackend>(
+fn validate_uniqueness<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
     proposal_id: u64,

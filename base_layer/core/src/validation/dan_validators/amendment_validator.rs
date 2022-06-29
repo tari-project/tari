@@ -54,7 +54,7 @@ pub fn validate_amendment<B: BlockchainBackend>(
     let proposal_id = amendment.proposal_id;
     let proposal = fetch_contract_update_proposal(db, contract_id, proposal_id)?;
 
-    validate_duplication(db, contract_id, proposal_id)?;
+    validate_uniqueness(db, contract_id, proposal_id)?;
     validate_updated_constiution(amendment, &proposal)?;
 
     Ok(())
@@ -69,7 +69,7 @@ fn get_contract_amendment(sidechain_feature: &SideChainFeatures) -> Result<&Cont
     }
 }
 
-fn validate_duplication<B: BlockchainBackend>(
+fn validate_uniqueness<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
     proposal_id: u64,

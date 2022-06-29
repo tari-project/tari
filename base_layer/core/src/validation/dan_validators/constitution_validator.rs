@@ -40,7 +40,7 @@ pub fn validate_constitution<B: BlockchainBackend>(
     let contract_id = sidechain_features.contract_id;
 
     validate_definition_existence(db, contract_id)?;
-    validate_duplication(db, contract_id)?;
+    validate_uniqueness(db, contract_id)?;
 
     Ok(())
 }
@@ -61,7 +61,7 @@ fn validate_definition_existence<B: BlockchainBackend>(
     Ok(())
 }
 
-fn validate_duplication<B: BlockchainBackend>(
+fn validate_uniqueness<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
