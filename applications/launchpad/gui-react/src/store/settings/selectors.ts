@@ -1,5 +1,3 @@
-import { sep } from '@tauri-apps/api/path'
-
 import { RootState } from '../'
 import { selectMoneroUrls } from '../mining/selectors'
 
@@ -18,13 +16,7 @@ export const selectServiceSettings = (state: RootState) => ({
   moneroUseAuth: isAuthActive(state.mining.merged.authentication),
   moneroUsername: state.mining.merged.authentication?.username || '',
   moneroPassword: state.mining.merged.authentication?.password || '',
-  rootFolder:
-    state.settings.serviceSettings.cacheDir +
-    'tari' +
-    sep +
-    'tmp' +
-    sep +
-    state.baseNode.network,
+  rootFolder: state.baseNode.rootFolder,
 })
 export const selectIsParoleSet = ({ settings }: RootState) =>
   Boolean(settings.serviceSettings.parole)

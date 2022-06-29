@@ -7,6 +7,22 @@ export enum Settings {
   Security = 'security',
 }
 
+export interface InitialSettings {
+  moneroMiningAddress: string
+  moneroWalletAddress: string
+  numMiningThreads: number
+  tariNetwork: string
+  cacheDir: string
+  dockerRegistry: string
+  parole: string
+  dockerTag: string
+  monerodUrl: string
+  moneroUseAuth: boolean
+  moneroUsername: string
+  moneroPassword: string
+  rootFolder: string
+}
+
 export type SettingsState = {
   open: boolean
   which: Settings

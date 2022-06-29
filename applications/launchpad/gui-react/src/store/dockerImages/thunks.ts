@@ -1,3 +1,4 @@
+import { selectServiceSettings } from './../settings/selectors'
 import { createAsyncThunk } from '@reduxjs/toolkit'
 import { invoke } from '@tauri-apps/api/tauri'
 
@@ -15,12 +16,13 @@ export const getDockerImageList = createAsyncThunk<
 >('dockerImages/getDockerImageList', async (_, thunkApi) => {
   try {
     const state = thunkApi.getState()
+    const settings = selectServiceSettings(state)
 
     const { imageInfo, serviceRecipes } = await invoke<{
       imageInfo: DockerImage[]
       serviceRecipes: ServiceRecipe[]
     }>('image_info', {
-      settings: state.settings.serviceSettings,
+      settings,
     })
 
     // TODO get status from backend after https://github.com/Altalogy/tari/issues/311

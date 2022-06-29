@@ -1,5 +1,5 @@
 import { createAsyncThunk } from '@reduxjs/toolkit'
-import { cacheDir } from '@tauri-apps/api/path'
+import { cacheDir, sep } from '@tauri-apps/api/path'
 
 import { RootState } from '..'
 import { actions as baseNodeActions } from '../baseNode'
@@ -10,27 +10,39 @@ import { actions as dockerImagesActions } from '../dockerImages'
 import { SettingsInputs } from '../../containers/SettingsContainer/types'
 
 import MiningConfig from '../../config/mining'
+import { InitialSettings } from './types'
 
-const getSettings = async () => ({
-  moneroMiningAddress: 'test1',
-  moneroWalletAddress: 'test2',
-  // '5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48',
-  numMiningThreads: 1,
-  tariNetwork: 'dibbler',
-  cacheDir: await cacheDir(),
-  dockerRegistry: 'quay.io/tarilabs',
-  dockerTag: 'latest',
-  monerodUrl: MiningConfig.defaultMoneroUrls?.join(',') || '',
-  moneroUseAuth: false,
-  moneroUsername: '',
-  moneroPassword: '',
-  rootFolder: 'asdf',
+const getSettings = async (): Promise<InitialSettings> => {
+  const newCacheDir = await cacheDir()
+  const network = 'dibbler'
+  return {
+    parole: '',
+    moneroMiningAddress: 'test1',
+    moneroWalletAddress: 'test2',
+    numMiningThreads: 1,
+    tariNetwork: network,
+    cacheDir: newCacheDir,
+    dockerRegistry: 'quay.io/tarilabs',
+    dockerTag: 'latest',
+    monerodUrl: MiningConfig.defaultMoneroUrls?.join(',') || '',
+    moneroUseAuth: false,
+    moneroUsername: '',
+    moneroPassword: '',
+    rootFolder: newCacheDir + 'tari' + sep + 'tmp' + sep + network,
+  }
+}
+
+export const loadDefaultServiceSettings = createAsyncThunk<
+  InitialSettings,
+  void
+>('service/start', async (_, thunkApi) => {
+  const settings = await getSettings()
+  const rootState = thunkApi.getState() as RootState
+  if (!rootState.baseNode.rootFolder) {
+    thunkApi.dispatch(baseNodeActions.setRootFolder(settings.rootFolder))
+  }
+  return settings
 })
-
-export const loadDefaultServiceSettings = createAsyncThunk<unknown>(
-  'service/start',
-  getSettings,
-)
 
 export const saveSettings = createAsyncThunk<
   void,
@@ -39,12 +51,14 @@ export const saveSettings = createAsyncThunk<
 >('settings/save', async ({ newSettings }, thunkApi) => {
   const { dispatch } = thunkApi
   // Set BaseNode config
-  if (
-    'baseNode' in newSettings &&
-    newSettings.baseNode &&
-    newSettings.baseNode.network
-  ) {
-    dispatch(baseNodeActions.setTariNetwork(newSettings.baseNode.network))
+
+  if ('baseNode' in newSettings && newSettings.baseNode) {
+    if (newSettings.baseNode.network) {
+      dispatch(baseNodeActions.setTariNetwork(newSettings.baseNode.network))
+    }
+    if (newSettings.baseNode.rootFolder) {
+      dispatch(baseNodeActions.setRootFolder(newSettings.baseNode.rootFolder))
+    }
   }
 
   // Set Mining config

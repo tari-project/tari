@@ -41,7 +41,11 @@ const settingsSlice = createSlice({
   },
   extraReducers: builder => {
     builder.addCase(loadDefaultServiceSettings.fulfilled, (state, action) => {
-      state.serviceSettings = action.payload
+      const settings = action.payload
+      state.serviceSettings = {
+        dockerRegistry: settings.dockerRegistry,
+        dockerTag: settings.dockerTag,
+      }
     })
   },
 })
