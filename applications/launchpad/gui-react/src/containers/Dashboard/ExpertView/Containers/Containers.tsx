@@ -38,10 +38,10 @@ const Containers = ({ containers, stop, start }: ContainersProps) => {
       <ContainersTable>
         <tbody>
           {containers.map(container => (
-            <tr key={container.container}>
+            <tr key={container.imageName}>
               <td>
                 <Text color={theme.inverted.primary}>
-                  {t.common.containers[container.container]}
+                  {container.displayName}
                 </Text>
               </td>
               <TdRight>

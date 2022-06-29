@@ -15,7 +15,9 @@ const noErrors = {
   [Container.MMProxy]: undefined,
   [Container.XMrig]: undefined,
   [Container.Monerod]: undefined,
-  [Container.Frontail]: undefined,
+  [Container.Loki]: undefined,
+  [Container.Promtail]: undefined,
+  [Container.Grafana]: undefined,
 }
 
 const runningContainers = (cs: Container[]) => {
@@ -24,14 +26,14 @@ const runningContainers = (cs: Container[]) => {
 
   cs.forEach(c => {
     containers[`${c.toLowerCase()}-id`] = {
-      type: c,
+      name: c,
       error: undefined,
       status: SystemEventAction.Start,
       timestamp: Number(Date.now()),
     }
 
     stats[`${c.toLowerCase()}-id`] = {
-      timestamp: '',
+      network: { upload: 0, download: 0 },
       cpu: 0,
       memory: 0,
       unsubscribe: () => {
@@ -48,7 +50,7 @@ const zeroedStatsForContainers = (cs: Container[]) => {
 
   cs.forEach(c => {
     stats[`${c.toLowerCase()}-id`] = {
-      timestamp: '',
+      network: { upload: 0, download: 0 },
       cpu: 0,
       memory: 0,
       unsubscribe: () => {

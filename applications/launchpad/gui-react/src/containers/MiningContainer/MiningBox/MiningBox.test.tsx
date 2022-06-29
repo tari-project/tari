@@ -53,7 +53,7 @@ describe('MiningBox', () => {
       error: [{ type: Container.Tor, error: 'Something went wrong' }],
       dependsOn: [
         {
-          type: Container.Tor,
+          containerName: Container.Tor,
           id: 'test-tor-container-id',
           running: false,
           pending: false,

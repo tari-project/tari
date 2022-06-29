@@ -8,6 +8,7 @@ import { getDockerImageList, pullImage } from './thunks'
 export const initialState: DockerImagesState = {
   loaded: false,
   images: [],
+  recipes: {},
 }
 
 const slice = createSlice({
@@ -49,7 +50,15 @@ const slice = createSlice({
     })
     builder.addCase(getDockerImageList.fulfilled, (state, action) => {
       state.loaded = true
-      state.images = action.payload
+      const { images, recipes } = action.payload
+      state.images = images
+      state.recipes = recipes.reduce(
+        (accu, current) => ({
+          ...accu,
+          [current[0]]: current,
+        }),
+        {},
+      )
     })
   },
 })

@@ -4,7 +4,7 @@ import { ContainerStatusDto, Container, SystemEventAction } from './types'
 import { selectContainerStatus } from './selectors'
 
 describe('containers/selectors', () => {
-  it('should return default state for container if no container of that type is present', () => {
+  it('should return default state for container if no container of that containerName is present', () => {
     // given
     const rootState = {
       containers: {
@@ -15,7 +15,7 @@ describe('containers/selectors', () => {
     } as unknown as RootState
     const expected = {
       id: '',
-      type: Container.Tor,
+      containerName: Container.Tor,
       running: false,
       pending: false,
     }
@@ -38,7 +38,7 @@ describe('containers/selectors', () => {
     } as unknown as RootState
     const expected = {
       id: '',
-      type: Container.Tor,
+      containerName: Container.Tor,
       running: false,
       pending: true,
     }
@@ -50,7 +50,7 @@ describe('containers/selectors', () => {
     expect(JSON.stringify(selected)).toBe(JSON.stringify(expected)) // need to check this way because of unsubscribe function
   })
 
-  it('should return container by type', () => {
+  it('should return container by containerName', () => {
     // given
     const rootState = {
       containers: {
@@ -58,7 +58,7 @@ describe('containers/selectors', () => {
         pending: [],
         containers: {
           containerId: {
-            type: Container.Tor,
+            name: Container.Tor,
             status: SystemEventAction.Start,
           },
         },
@@ -67,7 +67,7 @@ describe('containers/selectors', () => {
     const expected = {
       id: 'containerId',
       status: SystemEventAction.Start,
-      type: Container.Tor,
+      containerName: Container.Tor,
       error: undefined,
       running: true,
       pending: false,
@@ -94,7 +94,7 @@ describe('containers/selectors', () => {
         pending: [],
         containers: {
           containerId: {
-            type: Container.Tor,
+            name: Container.Tor,
             error: containerError,
             status: SystemEventAction.Start,
           },
@@ -111,7 +111,7 @@ describe('containers/selectors', () => {
     expect(selectedContainer.error).toBe(containerError)
   })
 
-  it('should return container by type with error if present', () => {
+  it('should return container by containerName with error if present', () => {
     // given
     const containerTypeError = { some: 'error' }
     const rootState = {
@@ -122,7 +122,7 @@ describe('containers/selectors', () => {
         pending: [],
         containers: {
           containerId: {
-            type: Container.Tor,
+            name: Container.Tor,
             status: SystemEventAction.Start,
           },
         },
@@ -153,7 +153,7 @@ describe('containers/selectors', () => {
           pending: [],
           containers: {
             containerId: {
-              type: Container.Tor,
+              name: Container.Tor,
               status: status,
             },
           },
@@ -170,7 +170,7 @@ describe('containers/selectors', () => {
     }),
   )
 
-  it('should return container with biggest timestamp value if multiple containers of the same type are present', () => {
+  it('should return container with biggest timestamp value if multiple containers of the same containerName are present', () => {
     // given
     const rootState = {
       containers: {
@@ -179,12 +179,12 @@ describe('containers/selectors', () => {
         containers: {
           containerId: {
             timestamp: 0,
-            type: Container.Tor,
+            name: Container.Tor,
             status: SystemEventAction.Start,
           },
           anotherContainerId: {
             timestamp: 1,
-            type: Container.Tor,
+            name: Container.Tor,
             status: SystemEventAction.Start,
           },
         },
@@ -194,7 +194,7 @@ describe('containers/selectors', () => {
       id: 'anotherContainerId',
       timestamp: 1,
       status: SystemEventAction.Start,
-      type: Container.Tor,
+      containerName: Container.Tor,
       error: undefined,
       running: true,
       pending: false,
@@ -217,7 +217,7 @@ describe('containers/selectors', () => {
         pending: [],
         containers: {
           containerId: {
-            type: Container.Tor,
+            name: Container.Tor,
             status: SystemEventAction.Create,
           },
         },
@@ -225,7 +225,7 @@ describe('containers/selectors', () => {
     } as unknown as RootState
     const expected = {
       id: 'containerId',
-      type: Container.Tor,
+      containerName: Container.Tor,
       status: SystemEventAction.Create,
       error: undefined,
       running: false,

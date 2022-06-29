@@ -27,10 +27,15 @@ const shouldNotHaveCalledAnyActions = (
   })
 }
 
+const getMockedDispatch = () =>
+  jest.fn().mockReturnValue({
+    unwrap: () => Promise.resolve(),
+  })
+
 describe('starting node', () => {
   it('should throw an error if tari mining start is attempted with misconfigured wallet', async () => {
     // given
-    const dispatch = jest.fn()
+    const dispatch = getMockedDispatch()
     const getState = () =>
       ({
         wallet: {
@@ -65,7 +70,7 @@ describe('starting node', () => {
 
   it('should throw an error if merged mining start is attempted with misconfigured wallet', async () => {
     // given
-    const dispatch = jest.fn()
+    const dispatch = getMockedDispatch()
     const getState = () =>
       ({
         wallet: {
@@ -101,7 +106,7 @@ describe('starting node', () => {
 
   it('should throw an error if merged mining start is attempted with missing monero address', async () => {
     // given
-    const dispatch = jest.fn()
+    const dispatch = getMockedDispatch()
     const getState = () =>
       ({
         wallet: {
@@ -141,7 +146,7 @@ describe('start stop mining', () =>
     describe(miningNode, () => {
       it(`should not stop ${miningNode} mining by scheduled stop if it was started manually`, async () => {
         // given
-        const dispatch = jest.fn()
+        const dispatch = getMockedDispatch()
         const getState = () =>
           ({
             wallet: {
@@ -180,7 +185,7 @@ describe('start stop mining', () =>
 
       it(`should stop ${miningNode} mining manually after manual start`, async () => {
         // given
-        const dispatch = jest.fn()
+        const dispatch = getMockedDispatch()
         const getState = () =>
           ({
             wallet: {
@@ -225,7 +230,7 @@ describe('start stop mining', () =>
       it(`should stop ${miningNode} mining manually after scheduled start`, async () => {
         // given
         const scheduleId = 'someScheduleId'
-        const dispatch = jest.fn()
+        const dispatch = getMockedDispatch()
         const getState = () =>
           ({
             wallet: {
@@ -272,10 +277,7 @@ describe('start stop mining', () =>
       REASONS.forEach(previousSessionStopReason => {
         it(`should start ${miningNode} mining manually for stopReason: ${previousSessionStopReason}`, async () => {
           // given
-          const dispatch = jest.fn()
-          dispatch.mockReturnValue({
-            unwrap: () => Promise.resolve(),
-          })
+          const dispatch = getMockedDispatch()
           const getState = () =>
             ({
               wallet: {
@@ -324,10 +326,7 @@ describe('start stop mining', () =>
         it(`should start ${miningNode} mining on schedule for previous stop reason: ${previousSessionStopReason}`, async () => {
           // given
           const scheduleId = 'someScheduleId'
-          const dispatch = jest.fn()
-          dispatch.mockReturnValue({
-            unwrap: () => Promise.resolve(),
-          })
+          const dispatch = getMockedDispatch()
           const getState = () =>
             ({
               wallet: {
@@ -387,10 +386,7 @@ describe('start stop mining', () =>
       it(`should not start manually stopped scheduled ${miningNode} mining until next schedule`, async () => {
         // given
         const previousScheduleId = 'previousScheduleId'
-        const dispatch = jest.fn()
-        dispatch.mockReturnValue({
-          unwrap: () => Promise.resolve(),
-        })
+        const dispatch = getMockedDispatch()
         const getState = () =>
           ({
             wallet: {
@@ -434,10 +430,7 @@ describe('start stop mining', () =>
         // given
         const previousScheduleId = 'previousScheduleId'
         const nextScheduleId = 'nextScheduleId'
-        const dispatch = jest.fn()
-        dispatch.mockReturnValue({
-          unwrap: () => Promise.resolve(),
-        })
+        const dispatch = getMockedDispatch()
         const getState = () =>
           ({
             wallet: {
@@ -492,7 +485,7 @@ describe('start stop mining', () =>
 describe('Mining events', () => {
   it('should call addMined slice when data is correct', async () => {
     // given
-    const dispatch = jest.fn()
+    const dispatch = getMockedDispatch()
     const getState = () =>
       ({
         wallet: {
@@ -519,7 +512,7 @@ describe('Mining events', () => {
 
   it('should not call addMined action when transaction is already on the list', async () => {
     // given
-    const dispatch = jest.fn()
+    const dispatch = getMockedDispatch()
     const getState = () =>
       ({
         wallet: {

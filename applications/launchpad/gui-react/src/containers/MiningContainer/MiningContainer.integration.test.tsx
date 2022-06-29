@@ -69,7 +69,7 @@ describe('MiningContainer with Redux', () => {
       </Provider>,
     )
 
-    // 2. MiningContainer should by in 'paused' status and render the 'start' button
+    // 2. MiningContainer should be in 'paused' status and render the 'start' button
     let elRunBtn = screen.getByTestId('tari-run-btn')
     expect(elRunBtn).toBeInTheDocument()
 
@@ -87,6 +87,18 @@ describe('MiningContainer with Redux', () => {
           payload: {
             containerId: `${c}-id`,
             action: SystemEventAction.Start,
+          },
+        })
+        store.dispatch({
+          type: 'containers/start/fulfilled',
+          payload: {
+            id: `${c}-id`,
+            unsubscribeStats: () => null,
+          },
+          meta: {
+            arg: {
+              container: c,
+            },
           },
         })
       })

@@ -43,10 +43,13 @@ export enum DockerImagePullStatus {
   Ready = 'ready',
 }
 
+export type ContainerName = string
+export type ServiceRecipe = ContainerName[]
 export type DockerImage = {
   imageName: string
   displayName: string
   dockerImage: string
+  containerName: ContainerName
   latest: boolean
   pending?: boolean
   error?: string

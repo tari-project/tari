@@ -6,7 +6,15 @@ import {
   Container,
   SystemEventAction,
 } from './types'
-import { addStats, start, stop, stopByType, restart } from './thunks'
+import {
+  addStats,
+  start,
+  startRecipe,
+  stop,
+  stopRecipe,
+  stopByType,
+  restart,
+} from './thunks'
 
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
@@ -80,8 +88,8 @@ const containersSlice = createSlice({
   },
   extraReducers: builder => {
     builder.addCase(start.pending, (state, { meta }) => {
-      state.pending.push(meta.arg.service)
-      state.errors[meta.arg.service] = undefined
+      state.pending.push(meta.arg.container)
+      state.errors[meta.arg.container] = undefined
     })
     builder.addCase(start.fulfilled, (state, action) => {
       if (!state.containers[action.payload.id]) {
@@ -90,15 +98,15 @@ const containersSlice = createSlice({
         return
       }
 
-      state.pending = state.pending.filter(p => p !== action.meta.arg.service)
-      state.containers[action.payload.id].type = action.meta.arg.service
+      state.pending = state.pending.filter(p => p !== action.meta.arg.container)
+      state.containers[action.payload.id].name = action.meta.arg.container
       state.stats[action.payload.id].unsubscribe =
         action.payload.unsubscribeStats
-      state.errors[action.meta.arg.service] = undefined
+      state.errors[action.meta.arg.container] = undefined
     })
     builder.addCase(start.rejected, (state, action) => {
-      state.errors[action.meta.arg.service] = action.payload
-      state.pending = state.pending.filter(p => p !== action.meta.arg.service)
+      state.errors[action.meta.arg.container] = action.payload
+      state.pending = state.pending.filter(p => p !== action.meta.arg.container)
     })
 
     builder.addCase(stop.pending, (state, { meta }) => {
@@ -108,7 +116,7 @@ const containersSlice = createSlice({
     builder.addCase(stop.fulfilled, (state, { meta }) => {
       state.pending = state.pending.filter(p => p !== meta.arg)
       state.containers[meta.arg].error = undefined
-      const type = state.containers[meta.arg].type
+      const type = state.containers[meta.arg].name
       if (type) {
         state.errors[type] = undefined
       }
@@ -129,6 +137,14 @@ const containersSlice = createSlice({
 })
 
 const { actions: syncActions } = containersSlice
-export const actions = { start, stop, stopByType, restart, ...syncActions }
+export const actions = {
+  start,
+  startRecipe,
+  stop,
+  stopRecipe,
+  stopByType,
+  restart,
+  ...syncActions,
+}
 
 export default containersSlice.reducer

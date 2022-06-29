@@ -3,10 +3,14 @@ import { createAsyncThunk } from '@reduxjs/toolkit'
 import { invoke } from '@tauri-apps/api/tauri'
 
 import { RootState } from '../'
-import { DockerImage, DockerImagePullStatus } from '../../types/general'
+import {
+  DockerImage,
+  DockerImagePullStatus,
+  ServiceRecipe,
+} from '../../types/general'
 
 export const getDockerImageList = createAsyncThunk<
-  DockerImage[],
+  { images: DockerImage[]; recipes: ServiceRecipe[] },
   void,
   { state: RootState }
 >('dockerImages/getDockerImageList', async (_, thunkApi) => {
@@ -14,12 +18,18 @@ export const getDockerImageList = createAsyncThunk<
     const state = thunkApi.getState()
     const settings = selectServiceSettings(state)
 
-    const images = await invoke<DockerImage[]>('image_list', {
+    const { imageInfo, serviceRecipes } = await invoke<{
+      imageInfo: DockerImage[]
+      serviceRecipes: ServiceRecipe[]
+    }>('image_info', {
       settings,
     })
 
     // TODO get status from backend after https://github.com/Altalogy/tari/issues/311
-    return images.map(img => ({ ...img, latest: true }))
+    return {
+      images: imageInfo.map(img => ({ ...img, latest: true })),
+      recipes: serviceRecipes,
+    }
   } catch (e) {
     return thunkApi.rejectWithValue(e)
   }

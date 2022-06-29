@@ -15,21 +15,25 @@ const ContainersContainer = () => {
   const containerStatuses = useAppSelector(selectContainersStatusesWithStats)
   const containers = useMemo(
     () =>
-      containerStatuses.map(({ container, status }) => ({
-        id: status.id,
-        container: container as Container,
-        error: status.error,
-        cpu: status.stats.cpu,
-        memory: status.stats.memory,
-        pending: status.pending,
-        running: status.running,
-      })),
+      containerStatuses.map(
+        ({ container, imageName, displayName, status }) => ({
+          id: status.id,
+          container: container as Container,
+          imageName,
+          displayName,
+          error: status.error,
+          cpu: status.stats.cpu,
+          memory: status.stats.memory,
+          pending: status.pending,
+          running: status.running,
+        }),
+      ),
     [containerStatuses],
   )
 
   const start = async (container: Container) => {
     try {
-      await dispatch(actions.start({ service: container })).unwrap()
+      await dispatch(actions.start({ container: container })).unwrap()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       setError(e.toString())

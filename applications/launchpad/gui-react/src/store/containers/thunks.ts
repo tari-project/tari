@@ -6,8 +6,12 @@ import { listen } from '@tauri-apps/api/event'
 import type { RootState } from '../'
 import { selectServiceSettings } from '../settings/selectors'
 import { selectNetwork } from '../baseNode/selectors'
+import { selectContainerStatus } from '../containers/selectors'
+import { ContainerStatusDto } from '../containers/types'
+import { selectRecipe } from '../dockerImages/selectors'
 import { startOfSecond } from '../../utils/Date'
 import getStatsRepository from '../../persistence/statsRepository'
+import { ContainerName } from '../../types/general'
 
 import {
   StatsEventPayload,
@@ -16,24 +20,24 @@ import {
   ServiceDescriptor,
   SerializableContainerStats,
 } from './types'
-import { selectContainerByType, selectRunningContainers } from './selectors'
+import { selectContainer, selectRunningContainers } from './selectors'
 
 export const persistStats = createAsyncThunk<
   void,
   {
-    service: Container
+    container: ContainerName
     timestamp: string
     stats: SerializableContainerStats
   },
   { state: RootState }
 >('containers/persistStats', async (payload, thunkApi) => {
-  const { service, timestamp, stats } = payload
+  const { container, timestamp, stats } = payload
 
   const rootState = thunkApi.getState()
   const configuredNetwork = selectNetwork(rootState)
 
   const repository = getStatsRepository()
-  await repository.add(configuredNetwork, service, timestamp, stats)
+  await repository.add(configuredNetwork, container, timestamp, stats)
 })
 
 export const addStats = createAsyncThunk<
@@ -43,12 +47,12 @@ export const addStats = createAsyncThunk<
   },
   {
     containerId: ContainerId
-    service: Container
+    container: ContainerName
     stats: StatsEventPayload
   },
   { state: RootState }
 >('containers/stats', async (payload, thunkApi) => {
-  const { stats, containerId, service } = payload
+  const { stats, containerId, container } = payload
   const rootState = thunkApi.getState()
 
   if (!rootState.containers.stats || !rootState.containers.stats[containerId]) {
@@ -80,7 +84,7 @@ export const addStats = createAsyncThunk<
   const secondTimestamp = startOfSecond(new Date(stats.read)).toISOString()
   thunkApi.dispatch(
     persistStats({
-      service,
+      container,
       timestamp: secondTimestamp,
       stats: currentStats,
     }),
@@ -94,15 +98,15 @@ export const addStats = createAsyncThunk<
 
 export const start = createAsyncThunk<
   { id: ContainerId; unsubscribeStats: UnlistenFn },
-  { service: Container; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  { container: ContainerName; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
   { state: RootState }
->('containers/start', async ({ service, serviceSettings }, thunkApi) => {
+>('containers/start', async ({ container, serviceSettings }, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
     const settings = { ...selectServiceSettings(rootState), ...serviceSettings }
 
     const descriptor: ServiceDescriptor = await invoke('start_service', {
-      serviceName: service.toString(),
+      serviceName: container,
       settings,
     })
 
@@ -112,7 +116,7 @@ export const start = createAsyncThunk<
         thunkApi.dispatch(
           addStats({
             containerId: descriptor.id,
-            service,
+            container,
             stats: statsEvent.payload,
           }),
         )
@@ -128,6 +132,38 @@ export const start = createAsyncThunk<
   }
 })
 
+export const startRecipe = createAsyncThunk<
+  void,
+  { containerName: ContainerName; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  { state: RootState }
+>(
+  'containers/startRecipe',
+  async ({ containerName, serviceSettings }, thunkApi) => {
+    try {
+      const rootState = thunkApi.getState()
+      const recipe = selectRecipe(containerName)(rootState)
+
+      const recipePromises = [...recipe]
+        .reverse()
+        .map(part => {
+          const status = selectContainerStatus(part)(rootState)
+          if (!status.running && !status.pending) {
+            return thunkApi
+              .dispatch(start({ container: part, serviceSettings }))
+              .unwrap()
+          }
+
+          return false
+        })
+        .filter(Boolean)
+
+      await Promise.all(recipePromises)
+    } catch (e) {
+      return thunkApi.rejectWithValue(e)
+    }
+  },
+)
+
 export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
   'containers/stop',
   async (containerId, thunkApi) => {
@@ -138,7 +174,7 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
 
       containerStats.unsubscribe()
       await invoke('stop_service', {
-        serviceName: (containerStatus.type || '').toString(),
+        serviceName: (containerStatus.name || '').toString(),
       })
     } catch (error) {
       return thunkApi.rejectWithValue(error)
@@ -146,14 +182,58 @@ export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
   },
 )
 
+export const stopRecipe = createAsyncThunk<
+  void,
+  ContainerName,
+  { state: RootState }
+>('containers/stopRecipe', async (containerName, thunkApi) => {
+  try {
+    const rootState = thunkApi.getState()
+    const recipe = selectRecipe(containerName)(rootState)
+
+    const runningContainers = selectRunningContainers(rootState)
+    const containersOutsideRecipe = runningContainers.filter(
+      rc => !recipe.includes(rc),
+    )
+    const containersToRemoveFromOtherServicesRecipes = containersOutsideRecipe
+      .reduce((accu, current) => {
+        const currentRecipe = selectRecipe(current)(rootState)
+
+        const dependedOnAnythingInRecipe = currentRecipe.some(cr =>
+          recipe.includes(cr),
+        )
+        if (dependedOnAnythingInRecipe) {
+          return [...accu, ...currentRecipe]
+        }
+
+        return accu
+      }, [] as ContainerName[])
+      .map(part => selectContainerStatus(part)(rootState))
+    const currentRecipeContainers = recipe.map(part =>
+      selectContainerStatus(part)(rootState),
+    )
+
+    const deduplicatedContainersToRemove = new Set<ContainerStatusDto>([
+      ...containersToRemoveFromOtherServicesRecipes,
+      ...currentRecipeContainers,
+    ])
+
+    Array.from(deduplicatedContainersToRemove.values()).forEach(
+      (toRemove: ContainerStatusDto) => thunkApi.dispatch(stop(toRemove.id)),
+    )
+  } catch (e) {
+    return thunkApi.rejectWithValue(e)
+  }
+})
+
 export const stopByType = createAsyncThunk<
   void,
   Container,
   { state: RootState }
->('containers/stopByType', async (containerType, thunkApi) => {
+>('containers/stopByType', async (containerName, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
-    const container = selectContainerByType(containerType)(rootState)
+    const container = selectContainer(containerName)(rootState)
 
     if (container && container.containerId) {
       await thunkApi.dispatch(stop(container.containerId))
@@ -180,7 +260,7 @@ export const restart = createAsyncThunk<void, void, { state: RootState }>(
 
       // Start containers:
       const startPromises = runningContainers.map(c => {
-        return dispatch(start({ service: c }))
+        return dispatch(start({ container: c }))
       })
 
       await Promise.all(startPromises)

@@ -42,14 +42,13 @@ pub struct Payload {
     info: CreateImageInfo,
 }
 
-pub static DEFAULT_IMAGES: [ImageType; 10] = [
+pub static DEFAULT_IMAGES: [ImageType; 9] = [
     ImageType::BaseNode,
     ImageType::Wallet,
     ImageType::Sha3Miner,
     ImageType::Tor,
     ImageType::MmProxy,
     ImageType::XmRig,
-    ImageType::Monerod,
     ImageType::Loki,
     ImageType::Promtail,
     ImageType::Grafana,

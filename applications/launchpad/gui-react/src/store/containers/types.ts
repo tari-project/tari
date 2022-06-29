@@ -1,7 +1,12 @@
 import type { UnlistenFn } from '@tauri-apps/api/event'
 
+import { ContainerName } from '../../types/general'
+
 export type ContainerId = string
 
+// WARNING - be careful about using this directly,
+// you should be using dockerImages.images from state if you work with docker images etc
+// this *couples fronted to backend* with container_name in backend/src/docker/models.rs
 export enum Container {
   Tor = 'tor',
   BaseNode = 'base_node',
@@ -43,14 +48,14 @@ export type SerializableContainerStats = Omit<ContainerStats, 'unsubscribe'>
 export type ContainerStatus = {
   status: SystemEventAction
   timestamp: number
-  type?: Container
+  name?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
 }
 
 export type ContainerStatusDto = {
   id: ContainerId
-  type: Container
+  containerName: ContainerName
   running: boolean
   pending: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,12 +72,12 @@ export type ContainerStateFields = Pick<
 >
 
 export type ContainerStateFieldsWithIdAndType = ContainerStateFields &
-  Pick<ContainerStatusDto, 'id' | 'type'>
+  Pick<ContainerStatusDto, 'id' | 'containerName'>
 
 export type ContainersState = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  errors: Record<Container, any>
-  pending: Array<Container | ContainerId>
+  errors: Record<ContainerName, any>
+  pending: Array<ContainerName | ContainerId>
   containers: Record<ContainerId, ContainerStatus>
   stats: Record<ContainerId, ContainerStats>
 }

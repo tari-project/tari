@@ -27,13 +27,13 @@ export const selectTariContainers = createSelector(
     const errors = containers
       .filter(c => c.error)
       .map(c => ({
-        type: c.type,
+        containerName: c.containerName,
         id: c.id,
         error: c.error,
       }))
 
     return {
-      running: !containers.some(c => !c.running),
+      running: containers.every(c => c.running),
       pending: containers.some(c => c.pending),
       miningPending: sha3.pending,
       error: errors.length > 0 ? errors : undefined,
@@ -70,7 +70,7 @@ export const selectMergedContainers = createSelector(
     const errors = containers
       .filter(c => c.error)
       .map(c => ({
-        type: c.type,
+        containerName: c.containerName,
         id: c.id,
         error: c.error,
       }))
