@@ -5,9 +5,9 @@ import {
   selectState,
 } from '../../../store/wallet/selectors'
 import { actions as walletActions } from '../../../store/wallet'
+import { WalletPasswordPrompt } from '../../../useWithWalletPassword'
 
 import WalletSettings from './WalletSettings'
-import { WalletPasswordPrompt } from './useWithWalletPassword'
 
 const WalletSettingsContainer = () => {
   const dispatch = useAppDispatch()

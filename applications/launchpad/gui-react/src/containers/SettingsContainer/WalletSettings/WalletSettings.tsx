@@ -5,9 +5,9 @@ import Text from '../../../components/Text'
 import Button from '../../../components/Button'
 import CopyBox from '../../../components/CopyBox'
 import t from '../../../locales'
+import { useWithWalletPassword } from '../../../useWithWalletPassword'
 
 import { IsWalletRunningRow, WalletRunningContainer } from './styles'
-import { useWithWalletPassword } from './useWithWalletPassword'
 
 const WalletSettings = ({
   running,

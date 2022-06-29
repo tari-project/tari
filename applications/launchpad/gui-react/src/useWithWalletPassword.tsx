@@ -1,10 +1,10 @@
 import React, { useCallback, useContext, useState } from 'react'
 
-import { useAppSelector, useAppDispatch } from '../../../store/hooks'
-import { actions as settingsActions } from '../../../store/settings'
-import { selectIsParoleSet } from '../../../store/settings/selectors'
-import Modal from '../../../components/Modal'
-import PasswordBox from '../../../containers/WalletContainer/PasswordBox'
+import { useAppSelector, useAppDispatch } from './store/hooks'
+import { actions as settingsActions } from './store/settings'
+import { selectIsParoleSet } from './store/settings/selectors'
+import Modal from './components/Modal'
+import PasswordBox from './containers/WalletContainer/PasswordBox'
 
 const EnsureWalletPasswordContext = React.createContext<{
   ensureWalletPasswordInStore: (callback: () => void) => void
