@@ -4,11 +4,16 @@ import { useAppSelector, useAppDispatch } from './store/hooks'
 import { actions as settingsActions } from './store/settings'
 import { selectIsParoleSet } from './store/settings/selectors'
 import Modal from './components/Modal'
-import PasswordBox from './containers/WalletContainer/PasswordBox'
+import PasswordBox, {
+  Overrides,
+} from './containers/WalletContainer/PasswordBox'
 
 const EnsureWalletPasswordContext = React.createContext<{
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ensureWalletPasswordInStore: (callback: (...a: any[]) => void) => void
+  ensureWalletPasswordInStore: (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    callback: (...a: any[]) => void,
+    overrides?: Overrides,
+  ) => void
 }>({ ensureWalletPasswordInStore: () => null })
 
 export const WalletPasswordPrompt = ({
@@ -23,10 +28,16 @@ export const WalletPasswordPrompt = ({
 
   const [modalOpen, setModalOpen] = useState(false)
   const [action, setAction] = useState<() => void>(() => null)
+  const [overrides, setOverrides] = useState<Overrides | undefined>(undefined)
 
   const ensureWalletPasswordInStore = useCallback(
-    (callback: () => void) => {
+    (callback: () => void, actionOverrides?: Overrides) => {
+      if (modalOpen) {
+        return
+      }
+
       if (!isParoleSet) {
+        setOverrides(actionOverrides)
         setAction(() => callback)
         setModalOpen(true)
         return
@@ -60,18 +71,23 @@ export const WalletPasswordPrompt = ({
             action()
           }}
           style={{ margin: 0 }}
+          overrides={overrides}
         />
       </Modal>
     </>
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const useWithWalletPassword = (action: (...args: any[]) => void) => {
+export const useWithWalletPassword = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  action: (...args: any[]) => void,
+  overrides?: Overrides,
+) => {
   const { ensureWalletPasswordInStore } = useContext(
     EnsureWalletPasswordContext,
   )
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (...args: any[]) => ensureWalletPasswordInStore(() => action(...args))
+  return (...args: any[]) =>
+    ensureWalletPasswordInStore(() => action(...args), overrides)
 }

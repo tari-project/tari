@@ -1,13 +1,14 @@
-import { useCallback, useRef } from 'react'
+import { useMemo, useCallback, useRef } from 'react'
 
 import { MiningNodeType, ScheduleId } from '../types/general'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { selectSchedules } from '../store/app/selectors'
 import { actions as miningActions } from '../store/mining'
-
-import useMiningScheduling from './useMiningScheduling'
 import { MiningActionReason } from '../store/mining/types'
 import { useWithWalletPassword } from '../useWithWalletPassword'
+import t from '../locales'
+
+import useMiningScheduling from './useMiningScheduling'
 
 /**
  * @name useMiningSchedulingContainer
@@ -39,7 +40,17 @@ const useMiningSchedulingContainer = () => {
     },
     [],
   )
-  const startMiningWithPasswordPrompt = useWithWalletPassword(startMining)
+  const passwordPromptOverides = useMemo(
+    () => ({
+      title: t.mining.scheduling.passwordPrompt.title,
+      cta: t.mining.scheduling.passwordPrompt.cta,
+    }),
+    [],
+  )
+  const startMiningWithPasswordPrompt = useWithWalletPassword(
+    startMining,
+    passwordPromptOverides,
+  )
 
   const stopMining = useCallback(
     (node: MiningNodeType) =>
