@@ -25,7 +25,7 @@ use std::sync::Arc;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::NodeIdentity;
 use tari_dan_core::{services::MempoolServiceHandle, storage::global::GlobalDb};
-use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteGlobalDbBackendAdapter};
+use tari_dan_storage_sqlite::{global::SqliteGlobalDbBackendAdapter, SqliteDbFactory};
 use tari_p2p::comms_connector::SubscriptionFactory;
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;

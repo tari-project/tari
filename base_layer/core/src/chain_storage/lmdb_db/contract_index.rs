@@ -84,7 +84,6 @@ where T: Deref<Target = ConstTransaction<'a>>
                     .map(|v| v.output_hash)
                     .collect())
             },
-            #[allow(unreachable_patterns)]
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
             OutputType::ContractConstitutionChangeAcceptance |
@@ -113,7 +112,8 @@ where T: Deref<Target = ConstTransaction<'a>>
             },
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
-            OutputType::ContractConstitutionChangeAcceptance => Ok(self
+            OutputType::ContractConstitutionChangeAcceptance |
+            OutputType::ContractAmendment => Ok(self
                 .get_all_matching::<_, FixedHashSet>(&key)?
                 .into_iter()
                 .flatten()
@@ -288,7 +288,10 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
                 self.delete(&block_key)?;
                 Ok(())
             },
-            OutputType::ContractValidatorAcceptance | OutputType::ContractConstitutionProposal => {
+            OutputType::ContractValidatorAcceptance |
+            OutputType::ContractConstitutionProposal |
+            OutputType::ContractConstitutionChangeAcceptance |
+            OutputType::ContractAmendment => {
                 let contract = self.remove_from_contract_index(&contract_key, &output_hash)?;
                 let block_key = BlockContractIndexKey::new(contract.block_hash, output_type, contract_id);
                 self.remove_from_set(&block_key, &output_hash)?;

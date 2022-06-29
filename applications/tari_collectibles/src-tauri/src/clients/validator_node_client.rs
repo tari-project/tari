@@ -61,6 +61,7 @@ impl GrpcValidatorNodeClient {
       template_id,
       method,
       args,
+      sender: PublicKey::default().to_vec(),
     };
     debug!(target: LOG_TARGET, "req {:?}", req);
     let response = self
@@ -93,6 +94,7 @@ impl GrpcValidatorNodeClient {
       template_id,
       method,
       args,
+      sender: PublicKey::default().to_vec(),
     };
     debug!(target: LOG_TARGET, "req {:?}", req);
     let response = self

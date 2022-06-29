@@ -55,7 +55,7 @@ use tari_dan_core::{
     workers::ConsensusWorker,
     DigitalAssetError,
 };
-use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteGlobalDbBackendAdapter, SqliteStorageService};
+use tari_dan_storage_sqlite::{global::SqliteGlobalDbBackendAdapter, SqliteDbFactory, SqliteStorageService};
 use tari_p2p::{comms_connector::SubscriptionFactory, tari_message::TariMessageType};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
