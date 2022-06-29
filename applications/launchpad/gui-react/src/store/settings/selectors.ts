@@ -17,11 +17,4 @@ export const selectServiceSettings = (state: RootState) => ({
   moneroUsername: state.mining.merged.authentication?.username || '',
   moneroPassword: state.mining.merged.authentication?.password || '',
   rootFolder: state.baseNode.rootFolder,
-  // rootFolder:
-  //   state.settings.serviceSettings.cacheDir +
-  //   'tari' +
-  //   sep +
-  //   'tmp' +
-  //   sep +
-  //   state.baseNode.network,
 })

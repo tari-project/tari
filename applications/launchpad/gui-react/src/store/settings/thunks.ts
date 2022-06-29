@@ -1,7 +1,7 @@
 import { createAsyncThunk } from '@reduxjs/toolkit'
 import { cacheDir, sep } from '@tauri-apps/api/path'
 
-import { AppDispatch, RootState } from '..'
+import { RootState } from '..'
 import { actions as baseNodeActions } from '../baseNode'
 import { actions as miningActions } from '../mining'
 import { actions as containersActions } from '../containers'
@@ -19,7 +19,6 @@ const getSettings = async (): Promise<InitialSettings> => {
     walletPassword: 'tari',
     moneroMiningAddress: 'test1',
     moneroWalletAddress: 'test2',
-    // '5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48',
     numMiningThreads: 1,
     tariNetwork: network,
     cacheDir: newCacheDir,
@@ -35,11 +34,13 @@ const getSettings = async (): Promise<InitialSettings> => {
 
 export const loadDefaultServiceSettings = createAsyncThunk<
   InitialSettings,
-  void,
-  { dispatch: AppDispatch }
+  void
 >('service/start', async (_, thunkApi) => {
   const settings = await getSettings()
-  thunkApi.dispatch(baseNodeActions.setRootFolder(settings.rootFolder))
+  const rootState = thunkApi.getState() as RootState
+  if (!rootState.baseNode.rootFolder) {
+    thunkApi.dispatch(baseNodeActions.setRootFolder(settings.rootFolder))
+  }
   return settings
 })
 
