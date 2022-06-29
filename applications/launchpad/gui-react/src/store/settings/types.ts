@@ -11,7 +11,7 @@ export type SettingsState = {
   open: boolean
   which: Settings
   serviceSettings: {
-    walletPassword: string
+    parole?: string
     dockerRegistry: string
     dockerTag: string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -12,7 +12,6 @@ import { SettingsInputs } from '../../containers/SettingsContainer/types'
 import MiningConfig from '../../config/mining'
 
 const getSettings = async () => ({
-  walletPassword: 'tari',
   moneroMiningAddress: 'test1',
   moneroWalletAddress: 'test2',
   // '5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48',

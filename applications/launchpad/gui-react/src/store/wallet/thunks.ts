@@ -23,8 +23,6 @@ export const unlockWallet = createAsyncThunk<
       .dispatch(
         containersActions.startRecipe({
           containerName: Container.Wallet,
-          // TODO service settings from state
-          // serviceSettings: { walletPassword },
         }),
       )
       .unwrap()

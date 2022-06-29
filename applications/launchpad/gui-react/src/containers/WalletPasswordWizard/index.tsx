@@ -30,7 +30,7 @@ const WalletPasswordWizardContainer = ({
   const [error, setError] = useState('')
   const dispatch = useAppDispatch()
 
-  const onSubmit: SubmitHandler<WalletPasswordInputs> = async data => {
+  const onSubmit: SubmitHandler<WalletPasswordInputs> = async _data => {
     try {
       // TODO useWitWalletPassword
       await dispatch(walletActions.unlockWallet()).unwrap()

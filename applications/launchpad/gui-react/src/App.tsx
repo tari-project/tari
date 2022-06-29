@@ -51,8 +51,12 @@ const App = () => {
 
   useEffect(() => {
     const callInitActionInStore = async () => {
-      await dispatch(init()).unwrap()
-      setInitialized(true)
+      try {
+        await dispatch(init()).unwrap()
+        setInitialized(true)
+      } catch (_) {
+        // TODO handle error
+      }
     }
 
     callInitActionInStore()
@@ -60,6 +64,7 @@ const App = () => {
 
   useDockerEvents({ dispatch })
 
+  // TODO could return loader instead of null if not initialized
   return (
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
