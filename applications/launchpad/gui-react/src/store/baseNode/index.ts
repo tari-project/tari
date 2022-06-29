@@ -5,6 +5,7 @@ import { Network } from '../../containers/BaseNodeContainer/types'
 
 const initialState = {
   network: 'dibbler',
+  rootFolder: '',
 }
 
 const baseNodeSlice = createSlice({
@@ -14,14 +15,18 @@ const baseNodeSlice = createSlice({
     setTariNetwork(state, action: PayloadAction<Network>) {
       state.network = action.payload
     },
+    setRootFolder(state, action: PayloadAction<string>) {
+      state.rootFolder = action.payload
+    },
   },
 })
 
-const { setTariNetwork } = baseNodeSlice.actions
+const { setTariNetwork, setRootFolder } = baseNodeSlice.actions
 export const actions = {
   startNode,
   stopNode,
   setTariNetwork,
+  setRootFolder,
 }
 
 export default baseNodeSlice.reducer

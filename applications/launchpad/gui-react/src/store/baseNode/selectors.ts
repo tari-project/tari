@@ -10,6 +10,7 @@ import { BaseNodeState } from './types'
 
 export const selectState = (state: RootState): BaseNodeState => ({
   network: state.baseNode.network as Network,
+  rootFolder: state.baseNode.rootFolder,
 })
 
 export const selectNetwork = (state: RootState) => state.baseNode.network
