@@ -143,6 +143,17 @@ impl OutputSql {
             _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
         };
 
+        // filtering by Commitment
+        if !q.commitments.is_empty() {
+            query = match q.commitments.len() {
+                0 => query,
+                1 => query.filter(outputs::commitment.eq(q.commitments[0].to_vec())),
+                _ => query.filter(
+                    outputs::commitment.eq_any::<Vec<Vec<u8>>>(q.commitments.into_iter().map(|c| c.to_vec()).collect()),
+                ),
+            };
+        }
+
         // if set, filtering by minimum value
         if let Some((min, is_inclusive)) = q.value_min {
             query = if is_inclusive {
@@ -205,8 +216,15 @@ impl OutputSql {
                     .filter(outputs::features_unique_id.eq(unique_id))
                     .filter(outputs::features_parent_public_key.eq(parent_public_key.as_ref().map(|pk| pk.to_vec())));
             },
-            UtxoSelectionFilter::SpecificOutputs { outputs } => {
-                query = query.filter(outputs::hash.eq_any(outputs.into_iter().map(|o| o.hash)))
+            UtxoSelectionFilter::SpecificOutputs { commitments } => {
+                query = match commitments.len() {
+                    0 => query,
+                    1 => query.filter(outputs::commitment.eq(commitments[0].to_vec())),
+                    _ => query.filter(
+                        outputs::commitment
+                            .eq_any::<Vec<Vec<u8>>>(commitments.into_iter().map(|c| c.to_vec()).collect()),
+                    ),
+                };
             },
         }
 

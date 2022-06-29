@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -108,7 +108,11 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     ValidateUtxos,
     RevalidateTxos,
-    CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
+    CreateCoinSplit((Vec<Commitment>, MicroTari, usize, MicroTari)),
+    CreateCoinJoin {
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    },
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
@@ -172,7 +176,15 @@ impl fmt::Display for OutputManagerRequest {
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
-            CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
+            CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({:?})", v.0),
+            CreateCoinJoin {
+                commitments,
+                fee_per_gram,
+            } => write!(
+                f,
+                "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
+                commitments, fee_per_gram,
+            ),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
@@ -663,22 +675,40 @@ impl OutputManagerHandle {
     /// Returns (tx_id, tx, utxos_total_value).
     pub async fn create_coin_split(
         &mut self,
+        commitments: Vec<Commitment>,
         amount_per_split: MicroTari,
         split_count: usize,
         fee_per_gram: MicroTari,
-        lock_height: Option<u64>,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinSplit((
+                commitments,
                 amount_per_split,
                 split_count,
                 fee_per_gram,
-                lock_height,
             )))
             .await??
         {
             OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_coin_join(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCoinJoin {
+                commitments,
+                fee_per_gram,
+            })
+            .await??
+        {
+            OutputManagerResponse::Transaction(result) => Ok(result),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

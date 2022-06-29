@@ -11,11 +11,17 @@
  */
 #define OutputFields_NUM_FIELDS 10
 
+enum TariTypeTag {
+  String = 0,
+  Utxo = 1,
+  Commitment = 2,
+};
+
 enum TariUtxoSort {
-  ValueAsc,
-  ValueDesc,
-  MinedHeightAsc,
-  MinedHeightDesc,
+  ValueAsc = 0,
+  ValueDesc = 1,
+  MinedHeightAsc = 2,
+  MinedHeightDesc = 3,
 };
 
 /**
@@ -279,12 +285,20 @@ typedef struct Balance TariBalance;
 struct TariUtxo {
   char *commitment;
   uint64_t value;
+  uint64_t mined_height;
 };
 
 struct TariOutputs {
   uintptr_t len;
   uintptr_t cap;
   struct TariUtxo *ptr;
+};
+
+struct TariVector {
+  enum TariTypeTag tag;
+  uintptr_t len;
+  uintptr_t cap;
+  void *ptr;
 };
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
@@ -2190,7 +2204,7 @@ struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
                                      uintptr_t page_size,
                                      enum TariUtxoSort sorting,
                                      uint64_t dust_threshold,
-                                     int32_t *error_out);
+                                     int32_t *error_ptr);
 
 /**
  * Frees memory for a `TariOutputs`
@@ -2205,6 +2219,71 @@ struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
  * None
  */
 void destroy_tari_outputs(struct TariOutputs *x);
+
+/**
+ * Frees memory for a `TariVector`
+ *
+ * ## Arguments
+ * `x` - The pointer to `TariVector`
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_tari_vector(struct TariVector *x);
+
+/**
+ * This function will tell the wallet to do a coin split.
+ *
+ * ## Arguments
+ * * `wallet` - The TariWallet pointer
+ * * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+ *   (see `Commitment::to_hex()`)
+ * * `amount_per_split` - The amount to split
+ * * `number_of_splits` - The number of times to split the amount
+ * * `fee_per_gram` - The transaction fee
+ * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+ *   Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Returns the transaction id.
+ *
+ * # Safety
+ * `TariVector` must be freed after use with `destroy_tari_vector()`
+ */
+uint64_t wallet_coin_split(struct TariWallet *wallet,
+                           struct TariVector *commitments,
+                           uint64_t amount_per_split,
+                           uintptr_t number_of_splits,
+                           uint64_t fee_per_gram,
+                           int32_t *error_ptr);
+
+/**
+ * This function will tell the wallet to do a coin join, resulting in a new coin worth a sum of the joined coins minus
+ * the fee.
+ *
+ * ## Arguments
+ * * `wallet` - The TariWallet pointer
+ * * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+ *   (see `Commitment::to_hex()`)
+ * * `fee_per_gram` - The transaction fee
+ * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+ *   Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Returns the transaction id.
+ *
+ * # Safety
+ * `TariVector` must be freed after use with `destroy_tari_vector()`
+ */
+uint64_t wallet_coin_join(struct TariWallet *wallet,
+                          struct TariVector *commitments,
+                          uint64_t fee_per_gram,
+                          int32_t *error_ptr);
 
 /**
  * Signs a message using the public key of the TariWallet
@@ -2789,33 +2868,6 @@ unsigned long long wallet_start_transaction_validation(struct TariWallet *wallet
  */
 bool wallet_restart_transaction_broadcast(struct TariWallet *wallet,
                                           int *error_out);
-
-/**
- * This function will tell the wallet to do a coin split.
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `amount` - The amount to split
- * `count` - The number of times to split the amount
- * `fee` - The transaction fee
- * `msg` - Message for split
- * `lock_height` - The number of bocks to lock the transaction for
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_ulonglong` - Returns the transaction id.
- *
- * # Safety
- * None
- */
-unsigned long long wallet_coin_split(struct TariWallet *wallet,
-                                     unsigned long long amount,
-                                     unsigned long long count,
-                                     unsigned long long fee,
-                                     const char *msg,
-                                     unsigned long long lock_height,
-                                     int *error_out);
 
 /**
  * Gets the seed words representing the seed private key of the provided `TariWallet`.

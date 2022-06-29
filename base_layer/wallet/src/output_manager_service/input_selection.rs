@@ -25,9 +25,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use tari_common_types::types::PublicKey;
-
-use crate::output_manager_service::storage::models::DbUnblindedOutput;
+use tari_common_types::types::{Commitment, PublicKey};
 
 #[derive(Debug, Clone, Default)]
 pub struct UtxoSelectionCriteria {
@@ -43,12 +41,26 @@ impl UtxoSelectionCriteria {
         }
     }
 
+    pub fn smallest_first() -> Self {
+        Self {
+            filter: UtxoSelectionFilter::Standard,
+            ordering: UtxoSelectionOrdering::SmallestFirst,
+        }
+    }
+
     pub fn for_token(unique_id: Vec<u8>, parent_public_key: Option<PublicKey>) -> Self {
         Self {
             filter: UtxoSelectionFilter::TokenOutput {
                 unique_id,
                 parent_public_key,
             },
+            ordering: UtxoSelectionOrdering::Default,
+        }
+    }
+
+    pub fn specific(commitments: Vec<Commitment>) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::SpecificOutputs { commitments },
             ordering: UtxoSelectionOrdering::Default,
         }
     }
@@ -100,7 +112,7 @@ pub enum UtxoSelectionFilter {
         parent_public_key: Option<PublicKey>,
     },
     /// Selects specific outputs. All outputs must be exist and be spendable.
-    SpecificOutputs { outputs: Vec<DbUnblindedOutput> },
+    SpecificOutputs { commitments: Vec<Commitment> },
 }
 
 impl Default for UtxoSelectionFilter {
@@ -118,7 +130,7 @@ impl Display for UtxoSelectionFilter {
             UtxoSelectionFilter::TokenOutput { .. } => {
                 write!(f, "TokenOutput{{..}}")
             },
-            UtxoSelectionFilter::SpecificOutputs { outputs } => {
+            UtxoSelectionFilter::SpecificOutputs { commitments: outputs } => {
                 write!(f, "Specific({} output(s))", outputs.len())
             },
         }

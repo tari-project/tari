@@ -599,21 +599,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
         let message = request.into_inner();
 
-        let lock_height = if message.lock_height == 0 {
-            None
-        } else {
-            Some(message.lock_height)
-        };
-
         let mut wallet = self.wallet.clone();
 
         let tx_id = wallet
             .coin_split(
+                vec![], // TODO: refactor grpc to accept and use commitments
                 MicroTari::from(message.amount_per_split),
                 message.split_count as usize,
                 MicroTari::from(message.fee_per_gram),
                 message.message,
-                lock_height,
             )
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
