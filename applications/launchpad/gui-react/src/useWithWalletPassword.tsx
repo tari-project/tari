@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useState } from 'react'
+import React, { useCallback, useMemo, useContext, useState } from 'react'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
 import { actions as settingsActions } from './store/settings'
@@ -49,11 +49,16 @@ export const WalletPasswordPrompt = ({
     [isParoleSet],
   )
 
+  const contextValue = useMemo(
+    () => ({
+      ensureWalletPasswordInStore,
+    }),
+    [ensureWalletPasswordInStore],
+  )
+
   return (
     <>
-      <EnsureWalletPasswordContext.Provider
-        value={{ ensureWalletPasswordInStore }}
-      >
+      <EnsureWalletPasswordContext.Provider value={contextValue}>
         {children}
       </EnsureWalletPasswordContext.Provider>
       <Modal

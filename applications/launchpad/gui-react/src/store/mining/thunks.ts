@@ -56,12 +56,6 @@ export const startMiningNode = createAsyncThunk<
       scheduledMiningWasStoppedManually &&
       miningSession.schedule === schedule
     ) {
-      console.debug('STOPPED MANUALLY, SKIPPING SCHEDULE', {
-        miningSession,
-        node,
-        reason,
-        schedule,
-      })
       return
     }
 
