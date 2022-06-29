@@ -4,6 +4,7 @@ import { SubmitHandler } from 'react-hook-form'
 import { useAppDispatch } from '../../store/hooks'
 import { actions as walletActions } from '../../store/wallet'
 import Alert from '../../components/Alert'
+import { actions as settingsActions } from '../../store/settings'
 
 import { WalletPasswordWizardProps } from './types'
 import WalletPasswordForm from './WalletPasswordForm'
@@ -30,9 +31,9 @@ const WalletPasswordWizardContainer = ({
   const [error, setError] = useState('')
   const dispatch = useAppDispatch()
 
-  const onSubmit: SubmitHandler<WalletPasswordInputs> = async _data => {
+  const onSubmit: SubmitHandler<WalletPasswordInputs> = async data => {
     try {
-      // TODO useWitWalletPassword
+      dispatch(settingsActions.setParole(data.password))
       await dispatch(walletActions.unlockWallet()).unwrap()
       if (onSuccess) {
         onSuccess()
