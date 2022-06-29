@@ -43,6 +43,7 @@ use tari_core::{
             EncryptedValue,
             KernelFeatures,
             OutputFeatures,
+            OutputType,
             Transaction,
             TransactionError,
             TransactionOutput,
@@ -304,6 +305,18 @@ where
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
+            OutputManagerRequest::CreateReclaimConstitutionTransaction { tx_id, contract_id } => self
+                .create_pay_to_self_transaction(
+                    tx_id,
+                    MicroTari(0),
+                    UtxoSelectionCriteria::for_contract(contract_id, OutputType::ContractConstitution),
+                    OutputFeatures::default(),
+                    MicroTari(5),
+                    None,
+                    "".to_string(),
+                )
+                .await
+                .map(OutputManagerResponse::ReclaimConstitutionTransaction),
             OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,

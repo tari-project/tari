@@ -312,6 +312,7 @@ pub(crate) async fn assets_create_constitution_definition(
   committee: Vec<String>,
   acceptance_period_expiry: u64,
   minimum_quorum_required: u64,
+  initial_reward: u64,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Vec<String>, Status> {
   let mut client = state.create_wallet_client().await;
@@ -324,6 +325,7 @@ pub(crate) async fn assets_create_constitution_definition(
       committee.clone(),
       acceptance_period_expiry,
       minimum_quorum_required,
+      initial_reward,
     )
     .await?;
 

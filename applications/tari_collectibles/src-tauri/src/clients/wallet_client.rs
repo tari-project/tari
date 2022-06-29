@@ -141,6 +141,7 @@ impl WalletClient {
     committee: Vec<String>,
     acceptance_period_expiry: u64,
     minimum_quorum_required: u64,
+    initial_reward: u64,
   ) -> Result<grpc::CreateConstitutionDefinitionResponse, CollectiblesError> {
     let inner = self.get_inner_mut()?;
 
@@ -153,6 +154,7 @@ impl WalletClient {
       validator_committee: Some(committee),
       acceptance_period_expiry,
       minimum_quorum_required,
+      initial_reward,
     };
 
     let result = inner

@@ -30,7 +30,7 @@ use std::{
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{FixedHash, PublicKey},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -113,6 +113,9 @@ pub enum TransactionServiceRequest {
     GetFeePerGramStatsPerBlock {
         count: usize,
     },
+    ReclaimTransaction {
+        contract_id: FixedHash,
+    },
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -186,6 +189,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ReValidateTransactions => f.write_str("ReValidateTransactions"),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
+            },
+            Self::ReclaimTransaction { contract_id } => {
+                write!(f, "ReclaimTransaction({})", contract_id)
             },
         }
     }
@@ -409,6 +415,17 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 message,
             })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn reclaim_constitution(&mut self, contract_id: FixedHash) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ReclaimTransaction { contract_id })
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),

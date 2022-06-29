@@ -292,6 +292,7 @@ message CreateConstitutionDefinitionRequest {
     CommitteeMembers validator_committee = 2;
     uint64 acceptance_period_expiry = 3;
     uint64 minimum_quorum_required = 4;
+    uint64 initial_reward = 5;
 }
 
 message CreateConstitutionDefinitionResponse {

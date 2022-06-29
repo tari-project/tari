@@ -86,6 +86,9 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
     pub async fn handle_request(&mut self, request: AssetManagerRequest) -> Result<AssetManagerResponse, WalletError> {
         trace!(target: LOG_TARGET, "Handling Service API Request {:?}", request);
         match request {
+            AssetManagerRequest::ListOwnedConstitutions { .. } => Ok(AssetManagerResponse::ListOwnedConstitutions {
+                contracts_ids: self.manager.list_owned_constitutions().await?,
+            }),
             AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
                 assets: self.manager.list_owned().await?,
             }),
@@ -160,11 +163,12 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                 })
             },
             AssetManagerRequest::CreateConstitutionDefinition {
+                initial_reward,
                 constitution_definition,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_contract_constitution(&constitution_definition)
+                    .create_contract_constitution(initial_reward, &constitution_definition)
                     .await?;
                 Ok(AssetManagerResponse::CreateConstitutionDefinition {
                     transaction: Box::new(transaction),

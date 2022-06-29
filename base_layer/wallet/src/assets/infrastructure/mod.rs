@@ -26,22 +26,26 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{
-    ContractAmendment,
-    ContractDefinition,
-    ContractUpdateProposal,
-    OutputFeatures,
-    SideChainFeatures,
-    TemplateParameter,
-    Transaction,
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{
+        ContractAmendment,
+        ContractDefinition,
+        ContractUpdateProposal,
+        OutputFeatures,
+        SideChainFeatures,
+        TemplateParameter,
+        Transaction,
+    },
 };
 
-use crate::assets::Asset;
+use crate::{assets::Asset, output_manager_service::storage::models::DbUnblindedOutput};
 
 pub mod initializer;
 
 #[derive(Debug)]
 pub enum AssetManagerRequest {
+    ListOwnedConstitutions {},
     ListOwned {},
     GetOwnedAsset {
         public_key: PublicKey,
@@ -70,6 +74,7 @@ pub enum AssetManagerRequest {
         committee_public_keys: Vec<PublicKey>,
     },
     CreateConstitutionDefinition {
+        initial_reward: MicroTari,
         constitution_definition: Box<SideChainFeatures>,
     },
     CreateContractDefinition {
@@ -97,6 +102,7 @@ pub enum AssetManagerRequest {
 }
 
 pub enum AssetManagerResponse {
+    ListOwnedConstitutions { contracts_ids: Vec<DbUnblindedOutput> },
     ListOwned { assets: Vec<Asset> },
     GetOwnedAsset { asset: Box<Asset> },
     CreateRegistrationTransaction { transaction: Box<Transaction>, tx_id: TxId },

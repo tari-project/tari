@@ -25,16 +25,19 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{
-    CommitteeSignatures,
-    ContractAmendment,
-    ContractDefinition,
-    ContractUpdateProposal,
-    OutputFeatures,
-    OutputType,
-    SideChainFeatures,
-    TemplateParameter,
-    Transaction,
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{
+        CommitteeSignatures,
+        ContractAmendment,
+        ContractDefinition,
+        ContractUpdateProposal,
+        OutputFeatures,
+        OutputType,
+        SideChainFeatures,
+        TemplateParameter,
+        Transaction,
+    },
 };
 
 use crate::{
@@ -63,6 +66,21 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             output_database: OutputManagerDatabase::new(backend),
             output_manager,
         }
+    }
+
+    pub async fn list_owned_constitutions(&self) -> Result<Vec<DbUnblindedOutput>, WalletError> {
+        let outputs = self
+            .output_database
+            .fetch_with_features(OutputType::ContractConstitution)
+            .map_err(|err| WalletError::OutputManagerError(err.into()))?;
+
+        error!(
+            target: LOG_TARGET,
+            "Found {} owned outputs that contain constitution",
+            outputs.len()
+        );
+        error!(target: LOG_TARGET, "{:?}", outputs);
+        Ok(outputs)
     }
 
     pub async fn list_owned(&self) -> Result<Vec<Asset>, WalletError> {
@@ -261,11 +279,12 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
     pub async fn create_contract_constitution(
         &mut self,
+        initial_reward: MicroTari,
         constitution_definition: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
-            .create_output_with_features(0.into(), OutputFeatures {
+            .create_output_with_features(initial_reward, OutputFeatures {
                 output_type: OutputType::ContractConstitution,
                 sidechain_features: Some(constitution_definition.clone()),
                 ..Default::default()

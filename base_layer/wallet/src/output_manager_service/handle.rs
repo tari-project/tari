@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{FixedHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -86,6 +86,10 @@ pub enum OutputManagerRequest {
         message: String,
         script: TariScript,
         covenant: Covenant,
+    },
+    CreateReclaimConstitutionTransaction {
+        tx_id: TxId,
+        contract_id: FixedHash,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -217,6 +221,10 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
+
+            CreateReclaimConstitutionTransaction { tx_id, contract_id } => {
+                write!(f, "CreateReclaimConstitutionTransaction: {} {}", tx_id, contract_id)
+            },
         }
     }
 }
@@ -256,6 +264,7 @@ pub enum OutputManagerResponse {
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
+    ReclaimConstitutionTransaction((MicroTari, Transaction)),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -771,6 +780,21 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::CreatePayToSelfWithOutputs { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_reclaim_constitution_transaction(
+        &mut self,
+        tx_id: TxId,
+        contract_id: FixedHash,
+    ) -> Result<(MicroTari, Transaction), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateReclaimConstitutionTransaction { tx_id, contract_id })
+            .await??
+        {
+            OutputManagerResponse::ReclaimConstitutionTransaction(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

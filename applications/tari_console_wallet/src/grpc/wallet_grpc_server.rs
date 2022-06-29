@@ -885,10 +885,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let side_chain_features = SideChainFeatures::try_from(message).map_err(Status::internal)?;
+        let side_chain_features = SideChainFeatures::try_from(message.clone()).map_err(Status::internal)?;
 
         let (tx_id, transaction) = asset_manager
-            .create_constitution_definition(&side_chain_features)
+            .create_constitution_definition(message.initial_reward.into(), &side_chain_features)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

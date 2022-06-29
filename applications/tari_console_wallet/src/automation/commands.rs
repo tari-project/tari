@@ -1101,7 +1101,7 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
 
     let mut asset_manager = wallet.asset_manager.clone();
     let (tx_id, transaction) = asset_manager
-        .create_constitution_definition(&side_chain_features)
+        .create_constitution_definition(constitution_definition.initial_reward.into(), &side_chain_features)
         .await?;
 
     let message = format!(
@@ -1111,7 +1111,12 @@ async fn publish_contract_constitution(wallet: &WalletSqlite, args: PublishFileA
     );
     let mut transaction_service = wallet.transaction_service.clone();
     transaction_service
-        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .submit_transaction(
+            tx_id,
+            transaction,
+            constitution_definition.initial_reward.into(),
+            message,
+        )
         .await?;
 
     Ok(())

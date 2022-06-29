@@ -24,14 +24,17 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::{
-    ContractAmendment,
-    ContractDefinition,
-    ContractUpdateProposal,
-    OutputFeatures,
-    SideChainFeatures,
-    TemplateParameter,
-    Transaction,
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{
+        ContractAmendment,
+        ContractDefinition,
+        ContractUpdateProposal,
+        OutputFeatures,
+        SideChainFeatures,
+        TemplateParameter,
+        Transaction,
+    },
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 
@@ -41,6 +44,7 @@ use crate::{
         Asset,
     },
     error::WalletError,
+    output_manager_service::storage::models::DbUnblindedOutput,
 };
 
 #[derive(Clone)]
@@ -125,11 +129,13 @@ impl AssetManagerHandle {
 
     pub async fn create_constitution_definition(
         &mut self,
+        initial_reward: MicroTari,
         side_chain_features: &SideChainFeatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateConstitutionDefinition {
+                initial_reward,
                 constitution_definition: Box::new(side_chain_features.clone()),
             })
             .await??
@@ -300,6 +306,20 @@ impl AssetManagerHandle {
             AssetManagerResponse::CreateContractAmendment { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_contract_amendment".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn list_owned_constitutions(&mut self) -> Result<Vec<DbUnblindedOutput>, WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::ListOwnedConstitutions {})
+            .await??
+        {
+            AssetManagerResponse::ListOwnedConstitutions { contracts_ids } => Ok(contracts_ids),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "list_owned_constitutions".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

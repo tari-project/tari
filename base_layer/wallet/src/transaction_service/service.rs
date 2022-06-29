@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey},
+    types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -567,6 +567,12 @@ where
 
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         let response = match request {
+            TransactionServiceRequest::ReclaimTransaction { contract_id } => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.reclaim_transaction(contract_id, transaction_broadcast_join_handles, rp)
+                    .await?;
+                return Ok(());
+            },
             TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
@@ -843,7 +849,50 @@ where
         }
     }
 
-    /// Sends a new transaction to a single recipient
+    pub async fn reclaim_transaction(
+        &mut self,
+        contract_id: FixedHash,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let tx_id = TxId::new_random();
+
+        let (fee, transaction) = self
+            .output_manager_service
+            .create_reclaim_constitution_transaction(tx_id, contract_id)
+            .await?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.node_identity.public_key().clone(),
+                self.node_identity.public_key().clone(),
+                MicroTari(0),
+                fee,
+                transaction,
+                TransactionStatus::Completed,
+                "".to_string(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Inbound,
+                None,
+                None,
+            ),
+        )
+        .await?;
+
+        let _result = reply_channel
+            .send(Ok(TransactionServiceResponse::TransactionSent(tx_id)))
+            .map_err(|e| {
+                warn!(target: LOG_TARGET, "Failed to send service reply");
+                e
+            });
+
+        Ok(())
+    }
+
+    /// Sends a new transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient

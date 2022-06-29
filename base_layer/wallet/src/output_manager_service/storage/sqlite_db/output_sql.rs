@@ -308,9 +308,11 @@ impl OutputSql {
         output_type: OutputType,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        let res = diesel::sql_query("SELECT * FROM outputs where output_type & $1 = $1 ORDER BY id;")
-            .bind::<diesel::sql_types::Integer, _>(i32::from(output_type.as_byte()))
-            .load(conn)?;
+        let res = diesel::sql_query(
+            "SELECT * FROM outputs where output_type & $1 = $1 AND marked_deleted_at_height is null ORDER BY id;",
+        )
+        .bind::<diesel::sql_types::Integer, _>(i32::from(output_type.as_byte()))
+        .load(conn)?;
         Ok(res)
     }
 
