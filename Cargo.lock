@@ -6981,6 +6981,8 @@ dependencies = [
  "futures 0.3.21",
  "lmdb-zero",
  "log",
+ "num-derive",
+ "num-traits",
  "patricia_tree",
  "prost",
  "prost-types",

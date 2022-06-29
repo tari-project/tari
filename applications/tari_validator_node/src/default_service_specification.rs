@@ -37,9 +37,9 @@ use tari_dan_core::{
     },
 };
 use tari_dan_storage_sqlite::{
+    global::SqliteGlobalDbBackendAdapter,
     SqliteChainBackendAdapter,
     SqliteDbFactory,
-    SqliteGlobalDbBackendAdapter,
     SqliteStateDbBackendAdapter,
     SqliteStorageService,
 };

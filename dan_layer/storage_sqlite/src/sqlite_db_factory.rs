@@ -31,7 +31,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     error::SqliteStorageError,
-    sqlite_global_db_backend_adapter::SqliteGlobalDbBackendAdapter,
+    global::SqliteGlobalDbBackendAdapter,
     sqlite_state_db_backend_adapter::SqliteStateDbBackendAdapter,
     SqliteChainBackendAdapter,
 };

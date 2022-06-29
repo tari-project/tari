@@ -21,9 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
-use tari_dan_core::storage::global::{GlobalDbBackendAdapter, GlobalDbMetadataKey};
+use tari_common_types::types::FixedHash;
+use tari_dan_core::storage::global::{ContractState, GlobalDbBackendAdapter, GlobalDbMetadataKey};
 
-use crate::{error::SqliteStorageError, models::metadata::Metadata, SqliteTransaction};
+use crate::{error::SqliteStorageError, global::models::metadata::Metadata, SqliteTransaction};
 
 #[derive(Clone)]
 pub struct SqliteGlobalDbBackendAdapter {
@@ -60,7 +61,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
     }
 
     fn set_data(&self, key: GlobalDbMetadataKey, value: &[u8]) -> Result<(), Self::Error> {
-        use crate::schema::metadata;
+        use crate::global::schema::metadata;
         let tx = self.create_transaction()?;
 
         match self.get_data_with_connection(&key, &tx) {
@@ -90,7 +91,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
     }
 
     fn get_data(&self, key: GlobalDbMetadataKey) -> Result<Option<Vec<u8>>, Self::Error> {
-        use crate::schema::metadata::dsl;
+        use crate::global::schema::metadata::dsl;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
 
         let row: Option<Metadata> = dsl::metadata
@@ -110,7 +111,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         key: &GlobalDbMetadataKey,
         tx: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error> {
-        use crate::schema::metadata::dsl;
+        use crate::global::schema::metadata::dsl;
 
         let row: Option<Metadata> = dsl::metadata
             .find(key.as_key_bytes())
@@ -131,6 +132,49 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
                 source,
                 operation: "commit::state".to_string(),
             })?;
+        Ok(())
+    }
+
+    fn save_contract(
+        &self,
+        contract_id: FixedHash,
+        mined_height: u64,
+        state: ContractState,
+    ) -> Result<(), Self::Error> {
+        use crate::global::schema::contracts;
+        let tx = self.create_transaction()?;
+
+        diesel::insert_into(contracts::table)
+            .values((
+                contracts::id.eq(contract_id.to_vec()),
+                contracts::height.eq(mined_height as i64),
+                contracts::state.eq(i32::from(state.as_byte())),
+            ))
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert::contract".to_string(),
+            })?;
+
+        self.commit(&tx)?;
+
+        Ok(())
+    }
+
+    fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error> {
+        use crate::global::schema::contracts;
+        let tx = self.create_transaction()?;
+
+        diesel::update(contracts::table.filter(contracts::id.eq(contract_id.to_vec())))
+            .set(contracts::state.eq(i32::from(state.as_byte())))
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "update::contract_state".to_string(),
+            })?;
+
+        self.commit(&tx)?;
+
         Ok(())
     }
 }

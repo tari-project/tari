@@ -14,6 +14,7 @@ create table instructions (
     template_id int not null,
     method text not null,
     args blob not null,
+    sender blob not null,
     foreign key (node_id) references nodes(id)
 );
 

@@ -49,6 +49,7 @@ message InvokeReadMethodRequest{
   uint32 template_id = 2;
   string method = 3;
   bytes args = 4;
+  bytes sender = 5;
 }
 
 message InvokeReadMethodResponse {
@@ -61,6 +62,7 @@ message InvokeMethodRequest{
   uint32 template_id = 2;
   string method = 3;
   bytes args = 4;
+  bytes sender = 5;
 }
 
 message InvokeMethodResponse {

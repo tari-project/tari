@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod instruction;
-pub mod locked_qc;
-pub mod node;
-pub mod prepare_qc;
-pub mod state_key;
-pub mod state_op_log;
-pub mod state_tree;
+use crate::global::schema::*;
+
+#[derive(Queryable, Insertable, Identifiable)]
+pub struct Contract {
+    pub id: Vec<u8>,
+    pub state: i32,
+    pub height: i64,
+}

@@ -26,7 +26,7 @@ use std::{
 
 use futures::channel::mpsc;
 use tari_app_grpc::tari_rpc::{self as rpc, TransactionOutput};
-use tari_common_types::types::{FixedHash, Signature};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
@@ -188,6 +188,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
                     .map_err(|_| Status::invalid_argument("invalid template_id"))?,
                 request.method.clone(),
                 request.args.clone(),
+                PublicKey::from_bytes(&request.sender).map_err(|_| Status::invalid_argument("invalid sender"))?,
             )
             .await
         {
@@ -238,7 +239,12 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
             .map_err(|e| Status::internal(format!("Could not create state db: {}", e)))?
         {
             let state_db_reader = state.reader();
-            let instruction = Instruction::new(template_id, request.method, request.args);
+            let instruction = Instruction::new(
+                template_id,
+                request.method,
+                request.args,
+                PublicKey::from_bytes(&request.sender).map_err(|_| Status::invalid_argument("invalid sender"))?,
+            );
             let response_bytes = self
                 .asset_processor
                 .invoke_read_method(&instruction, &state_db_reader)
@@ -255,7 +261,13 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
             // Forward to proxy
             let response_bytes = self
                 .asset_proxy
-                .invoke_read_method(&contract_id, template_id, request.method, request.args)
+                .invoke_read_method(
+                    &contract_id,
+                    template_id,
+                    request.method,
+                    request.args,
+                    PublicKey::from_bytes(&request.sender).map_err(|_| Status::invalid_argument("invalid sender"))?,
+                )
                 .await
                 .map_err(|err| Status::internal(format!("Error calling proxied method:{}", err)))?;
             // TODO: Populate authority

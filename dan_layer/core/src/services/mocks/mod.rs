@@ -383,6 +383,7 @@ impl ValidatorNodeRpcClient for MockValidatorNodeClient {
         _template_id: TemplateId,
         _method: String,
         _args: Vec<u8>,
+        _sender: PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         Ok(None)
     }
@@ -393,6 +394,7 @@ impl ValidatorNodeRpcClient for MockValidatorNodeClient {
         _template_id: TemplateId,
         _method: String,
         _args: Vec<u8>,
+        _sender: PublicKey,
     ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         Ok(None)
     }
