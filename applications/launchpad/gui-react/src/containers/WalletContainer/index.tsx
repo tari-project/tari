@@ -31,7 +31,8 @@ const WalletContainer = () => {
       <CenteredLayout horizontally vertically>
         <PasswordBox
           pending={pending}
-          onSubmit={password => dispatch(actions.unlockWallet(password))}
+          // TODO useWithWalletPassword
+          onSubmit={() => dispatch(actions.unlockWallet())}
         />
       </CenteredLayout>
     )

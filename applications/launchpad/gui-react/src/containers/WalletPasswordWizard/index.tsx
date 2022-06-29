@@ -32,7 +32,8 @@ const WalletPasswordWizardContainer = ({
 
   const onSubmit: SubmitHandler<WalletPasswordInputs> = async data => {
     try {
-      await dispatch(walletActions.unlockWallet(data.password)).unwrap()
+      // TODO useWitWalletPassword
+      await dispatch(walletActions.unlockWallet()).unwrap()
       if (onSuccess) {
         onSuccess()
       }

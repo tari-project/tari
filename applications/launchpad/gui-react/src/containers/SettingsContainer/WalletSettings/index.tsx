@@ -7,6 +7,7 @@ import {
 import { actions as walletActions } from '../../../store/wallet'
 
 import WalletSettings from './WalletSettings'
+import { WalletPasswordPrompt } from './useWithWalletPassword'
 
 const WalletSettingsContainer = () => {
   const dispatch = useAppDispatch()
@@ -15,13 +16,15 @@ const WalletSettingsContainer = () => {
   const pending = useAppSelector(selectIsPending)
 
   return (
-    <WalletSettings
-      running={running}
-      pending={pending}
-      stop={() => dispatch(walletActions.stop())}
-      start={password => dispatch(walletActions.start(password))}
-      address={address}
-    />
+    <WalletPasswordPrompt local>
+      <WalletSettings
+        running={running}
+        pending={pending}
+        stop={() => dispatch(walletActions.stop())}
+        start={() => dispatch(walletActions.start())}
+        address={address}
+      />
+    </WalletPasswordPrompt>
   )
 }
 

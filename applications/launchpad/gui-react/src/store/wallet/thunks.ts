@@ -6,8 +6,6 @@ import { actions as containersActions } from '../containers'
 
 import * as walletService from './walletService'
 
-type WalletPassword = string
-
 // TODO backend communication
 const waitForWalletToBeResponsive = () =>
   new Promise(resolve => setTimeout(resolve, 200))
@@ -17,15 +15,16 @@ export const unlockWallet = createAsyncThunk<
     address: string
     tari: { balance: number; available: number }
   },
-  WalletPassword,
+  void,
   { state: RootState }
->('wallet/unlock', async (walletPassword, thunkApi) => {
+>('wallet/unlock', async (_, thunkApi) => {
   try {
     await thunkApi
       .dispatch(
         containersActions.startRecipe({
           containerName: Container.Wallet,
-          serviceSettings: { walletPassword },
+          // TODO service settings from state
+          // serviceSettings: { walletPassword },
         }),
       )
       .unwrap()
