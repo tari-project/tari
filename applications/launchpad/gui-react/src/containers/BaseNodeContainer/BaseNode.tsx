@@ -13,6 +13,8 @@ import SvgSetting2 from '../../styles/Icons/Setting2'
 import { useAppDispatch } from '../../store/hooks'
 import { actions as settingsActions } from '../../store/settings'
 import { Settings } from '../../store/settings/types'
+import BaseNodeQRModal from '../BaseNodeQRModal'
+import { useState } from 'react'
 
 const BaseNode = ({
   running,
@@ -24,6 +26,8 @@ const BaseNode = ({
 }: BaseNodeProps) => {
   const theme = useTheme()
   const dispatch = useAppDispatch()
+
+  const [openQRModal, setOpenQRModal] = useState(false)
 
   return (
     <>
@@ -90,6 +94,31 @@ const BaseNode = ({
           </Button>
         )}
       </Box>
+
+      <Box
+        border={false}
+        style={{ background: theme.backgroundSecondary, marginTop: 0 }}
+      >
+        <Tag>{t.common.adjectives.recommended}</Tag>
+        <Text style={{ marginTop: theme.spacingVertical(1.2) }}>
+          <Button variant='button-in-text' onClick={() => setOpenQRModal(true)}>
+            {t.baseNode.aurora.connectYourAurora}
+          </Button>{' '}
+          <Text as='span'>{t.baseNode.aurora.withBaseNode}</Text>
+        </Text>
+        <Text
+          type='smallMedium'
+          style={{ marginTop: theme.spacingVertical(0.67) }}
+          color={theme.secondary}
+        >
+          {t.baseNode.aurora.description}
+        </Text>
+      </Box>
+      <BaseNodeQRModal
+        open={openQRModal}
+        onClose={() => setOpenQRModal(false)}
+      />
+
       <Button
         autosizeIcons={false}
         variant='text'
@@ -97,6 +126,7 @@ const BaseNode = ({
         style={{
           paddingLeft: 0,
           width: '199px',
+          color: theme.primary,
         }}
         onClick={() =>
           dispatch(settingsActions.open({ toOpen: Settings.BaseNode }))

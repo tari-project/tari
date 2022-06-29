@@ -28,6 +28,7 @@ const SettingsContainer = () => {
   const currentTheme = useAppSelector(selectTheme)
 
   const [openMiningAuthForm, setOpenMiningAuthForm] = useState(false)
+  const [openBaseNodeConnect, setOpenBaseNodeConnect] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
 
   const defaultValues = useMemo(
@@ -111,6 +112,8 @@ const SettingsContainer = () => {
       discardChanges={closeAndDiscard}
       openMiningAuthForm={openMiningAuthForm}
       setOpenMiningAuthForm={setOpenMiningAuthForm}
+      openBaseNodeConnect={openBaseNodeConnect}
+      setOpenBaseNodeConnect={setOpenBaseNodeConnect}
       currentTheme={currentTheme}
       changeTheme={changeTheme}
     />

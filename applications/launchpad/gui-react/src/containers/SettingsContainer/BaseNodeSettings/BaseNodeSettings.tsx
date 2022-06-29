@@ -22,9 +22,11 @@ import MessagesConfig from '../../../config/helpMessagesConfig'
 const BaseNodeSettings = ({
   control,
   network,
+  onBaseNodeConnectClick,
 }: {
   control: Control<SettingsInputs>
   network: Network
+  onBaseNodeConnectClick: () => void
 }) => {
   const theme = useTheme()
   const dispatch = useAppDispatch()
@@ -80,6 +82,7 @@ const BaseNodeSettings = ({
             <Button
               variant='button-in-text'
               style={{ color: theme.onTextLight, fontSize: '14px' }}
+              onClick={onBaseNodeConnectClick}
             >
               <Text type='smallMedium'>{t.common.verbs.connect}</Text>
             </Button>{' '}

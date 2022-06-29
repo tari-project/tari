@@ -54,6 +54,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     running: 'Running',
     paused: 'Paused',
     copied: 'Copied',
+    recommended: 'Recommended',
   },
   conjunctions: {
     or: 'or',

@@ -22,10 +22,14 @@ const getButtonBackgroundColor = ({
   }
 }
 
-const ButtonCSS = css`
+const ButtonCSS = css<
+  { $fullWidth?: boolean } & Pick<ButtonProps, 'variant' | 'type' | 'disabled'>
+>`
 display: flex;
 position: relative;
-justify-content: space-between;
+${({ $fullWidth }) => $fullWidth && 'width: 100%;'}
+justify-content: ${({ $fullWidth }) =>
+  $fullWidth ? 'center' : 'space-between'};
 align-items: center;
 column-gap: 0.25em;
 margin: 0;
@@ -98,13 +102,13 @@ text-decoration: none;
 `
 
 export const StyledButton = styled.button<
-  Pick<ButtonProps, 'variant' | 'type'>
+  { $fullWidth?: boolean } & Pick<ButtonProps, 'variant' | 'type' | 'disabled'>
 >`
   ${ButtonCSS}
 `
 
 export const StyledLinkLikeButton = styled.a<
-  Pick<ButtonProps, 'variant' | 'type'>
+  { $fullWidth?: boolean } & Pick<ButtonProps, 'variant' | 'type' | 'disabled'>
 >`
   ${ButtonCSS}
 `

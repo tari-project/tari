@@ -24,5 +24,6 @@ export interface ButtonProps {
   autosizeIcons?: boolean
   onClick?: () => void
   loading?: boolean
+  fullWidth?: boolean
   testId?: string
 }
