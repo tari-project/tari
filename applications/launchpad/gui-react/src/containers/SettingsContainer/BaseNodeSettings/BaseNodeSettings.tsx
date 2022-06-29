@@ -21,11 +21,9 @@ import MessagesConfig from '../../../config/helpMessagesConfig'
 
 const BaseNodeSettings = ({
   control,
-  network,
   onBaseNodeConnectClick,
 }: {
   control: Control<SettingsInputs>
-  network: Network
   onBaseNodeConnectClick: () => void
 }) => {
   const theme = useTheme()
@@ -38,7 +36,6 @@ const BaseNodeSettings = ({
       <Controller
         name='baseNode.network'
         control={control}
-        defaultValue={network}
         rules={{ required: true, minLength: 1 }}
         render={({ field }) => (
           <SelectRow>
@@ -62,7 +59,6 @@ const BaseNodeSettings = ({
       <Controller
         name='baseNode.rootFolder'
         control={control}
-        defaultValue={network}
         rules={{ required: true, minLength: 1 }}
         render={({ field }) => (
           <InputRow>
