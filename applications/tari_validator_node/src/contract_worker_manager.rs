@@ -22,7 +22,7 @@
 
 use std::{
     collections::HashMap,
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
@@ -149,10 +149,12 @@ impl ContractWorkerManager {
             return Ok(());
         }
 
-        // self.start_active_contracts().await?;
+        // TODO: Get statuses of active contracts
+        self.start_active_contracts().await?;
 
         loop {
-            // TODO: Get statuses on accepted contracts
+            // TODO: Get statuses of Accepted contracts to see if quorum is me if quorum is met, start the chain and
+            // create a checkpoint
 
             let tip = self.base_node_client.get_tip_info().await?;
             if self.config.constitution_auto_accept {
@@ -163,6 +165,18 @@ impl ContractWorkerManager {
                 _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
                 _ = &mut self.shutdown => break
             }
+        }
+
+        Ok(())
+    }
+
+    async fn start_active_contracts(&mut self) -> Result<(), WorkerManagerError> {
+        let active_contracts = self.global_db.get_active_contracts()?;
+
+        for contract in active_contracts {
+            let contract_id = FixedHash::try_from(contract.id)?;
+            let kill = self.spawn_asset_worker(FixedHash::from(contract_id), &contract.constitution);
+            self.active_workers.insert(contract_id, kill);
         }
 
         Ok(())
@@ -188,8 +202,9 @@ impl ContractWorkerManager {
             );
             self.post_contract_acceptance(&contract).await?;
 
+            // TODO: This should only be set to Accepted but we don't have steps for checking quorums yet.
             self.global_db
-                .update_contract_state(contract.contract_id, ContractState::Accepted)?;
+                .update_contract_state(contract.contract_id, ContractState::Active)?;
 
             // TODO: Scan for acceptances and once enough are present, start working on the contract
             //       for now, we start working immediately.

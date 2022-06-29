@@ -23,8 +23,8 @@
 table! {
     contracts (id) {
         id -> Binary,
-        height -> BigInt,
         state -> Integer,
+        height -> BigInt,
     }
 }
 

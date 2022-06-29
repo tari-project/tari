@@ -33,6 +33,7 @@ pub struct MockGlobalDbBackupAdapter;
 impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
     type BackendTransaction = ();
     type Error = StorageError;
+    type Model = ();
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
         todo!()
@@ -68,6 +69,10 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
     }
 
     fn update_contract_state(&self, _contract_id: FixedHash, _state: ContractState) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn get_active_contracts(&self) -> Result<Vec<Self::Model>, Self::Error> {
         todo!()
     }
 }

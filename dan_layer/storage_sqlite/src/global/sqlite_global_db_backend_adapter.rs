@@ -24,7 +24,11 @@ use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
 use tari_common_types::types::FixedHash;
 use tari_dan_core::storage::global::{ContractState, GlobalDbBackendAdapter, GlobalDbMetadataKey};
 
-use crate::{error::SqliteStorageError, global::models::metadata::Metadata, SqliteTransaction};
+use crate::{
+    error::SqliteStorageError,
+    global::models::{contract::Contract, metadata::Metadata},
+    SqliteTransaction,
+};
 
 #[derive(Clone)]
 pub struct SqliteGlobalDbBackendAdapter {
@@ -40,6 +44,7 @@ impl SqliteGlobalDbBackendAdapter {
 impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
     type BackendTransaction = SqliteTransaction;
     type Error = SqliteStorageError;
+    type Model = Contract;
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
@@ -176,5 +181,18 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         self.commit(&tx)?;
 
         Ok(())
+    }
+
+    fn get_active_contracts(&self) -> Result<Vec<Contract>, Self::Error> {
+        use crate::global::schema::{contracts, contracts::dsl};
+        let tx = self.create_transaction()?;
+
+        dsl::contracts
+            .filter(contracts::state.eq(i32::from(ContractState::Active.as_byte())))
+            .load::<Contract>(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get::contracts".to_string(),
+            })
     }
 }
