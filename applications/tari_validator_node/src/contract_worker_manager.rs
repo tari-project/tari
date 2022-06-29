@@ -33,7 +33,10 @@ use tari_common_types::types::{FixedHash, FixedHashSizeError, HashDigest, Privat
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_core::{consensus::ConsensusHashWriter, transactions::transaction_components::ContractConstitution};
-use tari_crypto::{keys::SecretKey, tari_utilities::hex::Hex};
+use tari_crypto::{
+    keys::SecretKey,
+    tari_utilities::{hex::Hex, ByteArray},
+};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, Committee},
     services::{
@@ -131,79 +134,74 @@ impl ContractWorkerManager {
     }
 
     pub async fn start(mut self) -> Result<(), WorkerManagerError> {
-        // TODO: Uncomment line to scan from previous block height once we can
-        //       start up asset workers for existing contracts.
-        // self.load_initial_state()?;
+        self.load_initial_state()?;
+
         if self.config.constitution_auto_accept {
-            info!("constitution_auto_accept is true")
+            info!("constitution_auto_accept is true");
         }
 
         if !self.config.scan_for_assets {
             info!(
                 target: LOG_TARGET,
-                "scan_for_assets set to false. Contract scanner is sleeping."
+                "scan_for_assets set to false. Contract scanner is shutting down."
             );
             self.shutdown.await;
             return Ok(());
         }
 
+        // self.start_active_contracts().await?;
+
         loop {
+            // TODO: Get statuses on accepted contracts
+
             let tip = self.base_node_client.get_tip_info().await?;
-            let next_scan_height = self.last_scanned_height + self.config.constitution_management_polling_interval;
-            if tip.height_of_longest_chain < next_scan_height {
-                info!(
-                    target: LOG_TARGET,
-                    "Base layer tip is {}. Next scan will occur at height {}.",
-                    tip.height_of_longest_chain,
-                    next_scan_height
-                );
-                tokio::select! {
-                    _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
-                    _ = &mut self.shutdown => break,
-                }
-                continue;
+            if self.config.constitution_auto_accept {
+                self.scan_and_accept_contracts(&tip).await?;
             }
-            info!(
-                target: LOG_TARGET,
-                "Base layer tip is {}. Scanning for new contracts.", tip.height_of_longest_chain,
-            );
-
-            let active_contracts = self.scan_for_new_contracts(&tip).await?;
-
-            info!(target: LOG_TARGET, "{} new contract(s) found", active_contracts.len());
-
-            for contract in active_contracts {
-                self.global_db
-                    .save_contract(contract.contract_id, contract.mined_height, ContractState::Pending)?;
-
-                if self.config.constitution_auto_accept {
-                    info!(
-                        target: LOG_TARGET,
-                        "Posting acceptance transaction for contract {}", contract.contract_id
-                    );
-                    self.post_contract_acceptance(&contract).await?;
-
-                    self.global_db
-                        .update_contract_state(contract.contract_id, ContractState::Accepted)?;
-
-                    // TODO: Scan for acceptances and once enough are present, start working on the contract
-                    //       for now, we start working immediately.
-                    let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
-                    self.active_workers.insert(contract.contract_id, kill);
-                }
-            }
-            self.set_last_scanned_block(tip)?;
 
             tokio::select! {
                 _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
-                _ = &mut self.shutdown => break,
+                _ = &mut self.shutdown => break
             }
         }
+
         Ok(())
     }
 
-    // TODO: Remove once we can start previous contracts
-    #[allow(dead_code)]
+    async fn scan_and_accept_contracts(&mut self, tip: &BaseLayerMetadata) -> Result<(), WorkerManagerError> {
+        info!(
+            target: LOG_TARGET,
+            "Base layer tip is {}. Scanning for new contracts.", tip.height_of_longest_chain,
+        );
+
+        let new_contracts = self.scan_for_new_contracts(tip).await?;
+
+        info!(target: LOG_TARGET, "{} new contract(s) found", new_contracts.len());
+
+        for contract in new_contracts {
+            self.global_db
+                .save_contract(contract.contract_id, contract.mined_height, ContractState::Pending)?;
+
+            info!(
+                target: LOG_TARGET,
+                "Posting acceptance transaction for contract {}", contract.contract_id
+            );
+            self.post_contract_acceptance(&contract).await?;
+
+            self.global_db
+                .update_contract_state(contract.contract_id, ContractState::Accepted)?;
+
+            // TODO: Scan for acceptances and once enough are present, start working on the contract
+            //       for now, we start working immediately.
+            let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
+            self.active_workers.insert(contract.contract_id, kill);
+        }
+
+        self.set_last_scanned_block(tip)?;
+
+        Ok(())
+    }
+
     fn load_initial_state(&mut self) -> Result<(), WorkerManagerError> {
         self.last_scanned_hash = self
             .global_db
@@ -416,9 +414,11 @@ impl ContractWorkerManager {
         Ok(())
     }
 
-    fn set_last_scanned_block(&mut self, tip: BaseLayerMetadata) -> Result<(), WorkerManagerError> {
-        self.global_db
-            .set_data(GlobalDbMetadataKey::LastScannedConstitutionHash, &*tip.tip_hash)?;
+    fn set_last_scanned_block(&mut self, tip: &BaseLayerMetadata) -> Result<(), WorkerManagerError> {
+        self.global_db.set_data(
+            GlobalDbMetadataKey::LastScannedConstitutionHash,
+            tip.tip_hash.as_bytes(),
+        )?;
         self.global_db.set_data(
             GlobalDbMetadataKey::LastScannedConstitutionHeight,
             &tip.height_of_longest_chain.to_le_bytes(),
