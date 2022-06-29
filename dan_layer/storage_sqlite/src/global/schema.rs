@@ -21,8 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 table! {
+    contracts (id) {
+        id -> Binary,
+        height -> BigInt,
+        state -> Integer,
+    }
+}
+
+table! {
     metadata (key_name) {
         key_name -> Binary,
         value -> Binary,
     }
 }
+
+allow_tables_to_appear_in_same_query!(contracts, metadata,);

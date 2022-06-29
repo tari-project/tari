@@ -49,7 +49,7 @@ use tari_dan_core::{
         WalletClient,
     },
     storage::{
-        global::{GlobalDb, GlobalDbMetadataKey},
+        global::{ContractState, GlobalDb, GlobalDbMetadataKey},
         StorageError,
     },
     workers::ConsensusWorker,
@@ -134,6 +134,9 @@ impl ContractWorkerManager {
         // TODO: Uncomment line to scan from previous block height once we can
         //       start up asset workers for existing contracts.
         // self.load_initial_state()?;
+        if self.config.constitution_auto_accept {
+            info!("constitution_auto_accept is true")
+        }
 
         if !self.config.scan_for_assets {
             info!(
@@ -155,7 +158,7 @@ impl ContractWorkerManager {
                     next_scan_height
                 );
                 tokio::select! {
-                    _ = time::sleep(Duration::from_secs(60)) => {},
+                    _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
                     _ = &mut self.shutdown => break,
                 }
                 continue;
@@ -170,20 +173,29 @@ impl ContractWorkerManager {
             info!(target: LOG_TARGET, "{} new contract(s) found", active_contracts.len());
 
             for contract in active_contracts {
-                info!(
-                    target: LOG_TARGET,
-                    "Posting acceptance transaction for contract {}", contract.contract_id
-                );
-                self.post_contract_acceptance(&contract).await?;
-                // TODO: Scan for acceptances and once enough are present, start working on the contract
-                //       for now, we start working immediately.
-                let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
-                self.active_workers.insert(contract.contract_id, kill);
+                self.global_db
+                    .save_contract(contract.contract_id, contract.mined_height, ContractState::Pending)?;
+
+                if self.config.constitution_auto_accept {
+                    info!(
+                        target: LOG_TARGET,
+                        "Posting acceptance transaction for contract {}", contract.contract_id
+                    );
+                    self.post_contract_acceptance(&contract).await?;
+
+                    self.global_db
+                        .update_contract_state(contract.contract_id, ContractState::Accepted)?;
+
+                    // TODO: Scan for acceptances and once enough are present, start working on the contract
+                    //       for now, we start working immediately.
+                    let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
+                    self.active_workers.insert(contract.contract_id, kill);
+                }
             }
             self.set_last_scanned_block(tip)?;
 
             tokio::select! {
-                _ = time::sleep(Duration::from_secs(60)) => {},
+                _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
                 _ = &mut self.shutdown => break,
             }
         }
@@ -234,6 +246,7 @@ impl ContractWorkerManager {
         let mut new_contracts = vec![];
         for utxo in outputs {
             let output = some_or_continue!(utxo.output.into_unpruned_output());
+            let mined_height = utxo.mined_height;
             let sidechain_features = some_or_continue!(output.features.sidechain_features);
             let contract_id = sidechain_features.contract_id;
             let constitution = some_or_continue!(sidechain_features.constitution);
@@ -258,12 +271,17 @@ impl ContractWorkerManager {
                     constitution.acceptance_requirements.acceptance_period_expiry,
                     tip.height_of_longest_chain
                 );
+
+                self.global_db
+                    .save_contract(contract_id, mined_height, ContractState::Expired)?;
+
                 continue;
             }
 
             new_contracts.push(ActiveContract {
                 contract_id,
                 constitution,
+                mined_height,
             });
         }
 
@@ -435,4 +453,5 @@ pub enum WorkerManagerError {
 struct ActiveContract {
     pub contract_id: FixedHash,
     pub constitution: ContractConstitution,
+    pub mined_height: u64,
 }
