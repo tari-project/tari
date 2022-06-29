@@ -251,7 +251,7 @@ where T: OutputManagerBackend + 'static
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     pub fn fetch_unspent_outputs_for_spending(
         &self,
-        selection_criteria: UtxoSelectionCriteria,
+        selection_criteria: &UtxoSelectionCriteria,
         amount: MicroTari,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {

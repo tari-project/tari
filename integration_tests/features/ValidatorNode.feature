@@ -18,7 +18,6 @@ Feature: Validator Node
         And I mine 9 blocks using wallet WALLET1 on NODE1
         Then wallet WALLET1 will have a successfully mined contract acceptance transaction for contract DEF1
 
-    @broken
     Scenario: Contract constitution auto acceptance
         Given I have a seed node NODE1
         And I have wallet WALLET1 connected to all seed nodes
@@ -27,6 +26,7 @@ Feature: Validator Node
         And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
         And validator node VN1 has "constitution_auto_accept" set to true
         And validator node VN1 has "constitution_management_polling_interval" set to 5
+        And validator node VN1 has "constitution_management_polling_interval_in_seconds" set to 5
         And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
         And I mine 4 blocks using wallet WALLET1 on NODE1
         When I create a contract constitution COM1 for contract DEF1 from file "fixtures/contract_constitution.json"

@@ -45,7 +45,14 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, KernelFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_components::{
+            EncryptedValue,
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionOutput,
+            UnblindedOutput,
+        },
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -75,6 +82,7 @@ use crate::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         storage::models::SpendingPriority,
+        UtxoSelectionCriteria,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -562,8 +570,7 @@ where
             TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
-                unique_id,
-                parent_public_key,
+                output_features,
                 fee_per_gram,
                 message,
             } => {
@@ -571,8 +578,7 @@ where
                 self.send_transaction(
                     dest_pubkey,
                     amount,
-                    unique_id,
-                    parent_public_key,
+                    output_features,
                     fee_per_gram,
                     message,
                     send_transaction_join_handles,
@@ -585,16 +591,14 @@ where
             TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
-                unique_id,
-                parent_public_key,
+                output_features,
                 fee_per_gram,
                 message,
             } => self
                 .send_one_sided_transaction(
                     dest_pubkey,
                     amount,
-                    unique_id,
-                    parent_public_key,
+                    output_features,
                     fee_per_gram,
                     message,
                     transaction_broadcast_join_handles,
@@ -839,7 +843,7 @@ where
         }
     }
 
-    /// Sends a new transaction to a recipient
+    /// Sends a new transaction to a single recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
@@ -848,8 +852,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
         join_handles: &mut FuturesUnordered<
@@ -874,8 +877,9 @@ where
                 .create_pay_to_self_transaction(
                     tx_id,
                     amount,
-                    unique_id.clone(),
-                    parent_public_key.clone(),
+                    // TODO: allow customization of selected inputs and outputs
+                    UtxoSelectionCriteria::default(),
+                    output_features,
                     fee_per_gram,
                     None,
                     message.clone(),
@@ -929,8 +933,6 @@ where
             cancellation_receiver,
             dest_pubkey,
             amount,
-            unique_id,
-            parent_public_key,
             fee_per_gram,
             message,
             Some(reply_channel),
@@ -987,8 +989,8 @@ where
             .prepare_transaction_to_send(
                 tx_id,
                 amount,
-                None,
-                None,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
                 fee_per_gram,
                 None,
                 message.clone(),
@@ -1129,8 +1131,7 @@ where
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1152,8 +1153,8 @@ where
             .prepare_transaction_to_send(
                 tx_id,
                 amount,
-                unique_id.clone(),
-                parent_public_key.clone(),
+                UtxoSelectionCriteria::default(),
+                output_features,
                 fee_per_gram,
                 None,
                 message.clone(),
@@ -1569,8 +1570,6 @@ where
                     cancellation_receiver,
                     tx.destination_public_key,
                     tx.amount,
-                    None,
-                    None,
                     tx.fee,
                     tx.message,
                     None,

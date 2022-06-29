@@ -20,8 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::FixedHash;
+
 use crate::storage::{
-    global::{GlobalDbBackendAdapter, GlobalDbMetadataKey},
+    global::{ContractState, GlobalDbBackendAdapter, GlobalDbMetadataKey},
     StorageError,
 };
 
@@ -53,6 +55,19 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
         _key: &GlobalDbMetadataKey,
         _tx: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error> {
+        todo!()
+    }
+
+    fn save_contract(
+        &self,
+        _contract_id: FixedHash,
+        _mined_height: u64,
+        _status: ContractState,
+    ) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn update_contract_state(&self, _contract_id: FixedHash, _state: ContractState) -> Result<(), Self::Error> {
         todo!()
     }
 }

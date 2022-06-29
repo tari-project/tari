@@ -152,7 +152,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_follow_on_asset_checkpoint(contract_id, merkle_root)
+                    .create_follow_on_contract_checkpoint(contract_id, merkle_root)
                     .await?;
                 Ok(AssetManagerResponse::CreateFollowOnCheckpoint {
                     transaction: Box::new(transaction),
@@ -164,7 +164,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_constitution_definition(&constitution_definition)
+                    .create_contract_constitution(&constitution_definition)
                     .await?;
                 Ok(AssetManagerResponse::CreateConstitutionDefinition {
                     transaction: Box::new(transaction),

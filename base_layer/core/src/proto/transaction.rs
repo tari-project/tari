@@ -216,6 +216,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .map_err(|_| "Non-compact Transaction input should contain sender_offset_public_key".to_string())?
                     .as_bytes()
                     .to_vec(),
+                // Output hash is only used in compact form
                 output_hash: Vec::new(),
                 covenant: input
                     .covenant()

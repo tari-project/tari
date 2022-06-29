@@ -74,8 +74,9 @@ pub struct ValidatorNodeConfig {
     pub p2p: P2pConfig,
     pub constitution_auto_accept: bool,
     /// Constitution polling interval in block height
-    pub constitution_management_polling_interval: u64,
     pub constitution_management_confirmation_time: u64,
+    pub constitution_management_polling_interval: u64,
+    pub constitution_management_polling_interval_in_seconds: u64,
     pub grpc_address: Option<Multiaddr>,
 }
 
@@ -116,6 +117,7 @@ impl Default for ValidatorNodeConfig {
             constitution_auto_accept: false,
             constitution_management_confirmation_time: 20,
             constitution_management_polling_interval: 120,
+            constitution_management_polling_interval_in_seconds: 60,
             p2p,
             grpc_address: Some("/ip4/127.0.0.1/tcp/18144".parse().unwrap()),
         }

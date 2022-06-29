@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use crate::global::schema::*;
 
-use crate::{models::StateRoot, DigitalAssetError};
-
-#[async_trait]
-pub trait WalletClient: Send + Sync {
-    async fn create_new_checkpoint(
-        &mut self,
-        contract_id: &FixedHash,
-        state_root: &StateRoot,
-        is_initial: bool,
-    ) -> Result<(), DigitalAssetError>;
-
-    async fn submit_contract_acceptance(
-        &mut self,
-        contract_id: &FixedHash,
-        validator_node_public_key: &PublicKey,
-        signature: &Signature,
-    ) -> Result<u64, DigitalAssetError>;
-
-    async fn submit_contract_update_proposal_acceptance(
-        &mut self,
-        contract_id: &FixedHash,
-        proposal_id: u64,
-        validator_node_public_key: &PublicKey,
-        signature: &Signature,
-    ) -> Result<u64, DigitalAssetError>;
+#[derive(Queryable, Insertable, Identifiable)]
+pub struct Contract {
+    pub id: Vec<u8>,
+    pub state: i32,
+    pub height: i64,
 }

@@ -1192,7 +1192,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     fn fetch_unspent_outputs_for_spending(
         &self,
-        selection_criteria: UtxoSelectionCriteria,
+        selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
