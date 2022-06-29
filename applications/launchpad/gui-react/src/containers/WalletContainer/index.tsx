@@ -6,6 +6,7 @@ import {
   selectWalletSetupRequired,
 } from '../../store/wallet/selectors'
 import { WalletSetupRequired } from '../../store/wallet/types'
+import { actions as settingsActions } from '../../store/settings'
 import CenteredLayout from '../../components/CenteredLayout'
 
 import WalletContent from './WalletContent'
@@ -31,8 +32,10 @@ const WalletContainer = () => {
       <CenteredLayout horizontally vertically>
         <PasswordBox
           pending={pending}
-          // TODO useWithWalletPassword
-          onSubmit={() => dispatch(actions.unlockWallet())}
+          onSubmit={password => {
+            dispatch(settingsActions.setParole(password))
+            dispatch(actions.unlockWallet())
+          }}
         />
       </CenteredLayout>
     )
