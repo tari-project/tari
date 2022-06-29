@@ -148,7 +148,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
             .values((
                 contracts::id.eq(contract_id.to_vec()),
                 contracts::height.eq(mined_height as i64),
-                contracts::state.eq(state.as_byte() as i32),
+                contracts::state.eq(i32::from(state.as_byte())),
             ))
             .execute(tx.connection())
             .map_err(|source| SqliteStorageError::DieselError {
@@ -166,7 +166,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         let tx = self.create_transaction()?;
 
         diesel::update(contracts::table.filter(contracts::id.eq(contract_id.to_vec())))
-            .set(contracts::state.eq(state.as_byte() as i32))
+            .set(contracts::state.eq(i32::from(state.as_byte())))
             .execute(tx.connection())
             .map_err(|source| SqliteStorageError::DieselError {
                 source,
