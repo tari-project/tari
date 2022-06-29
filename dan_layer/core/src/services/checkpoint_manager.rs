@@ -41,6 +41,7 @@ pub struct ConcreteCheckpointManager<TWallet: WalletClient> {
     asset_definition: AssetDefinition,
     wallet: TWallet,
     num_calls: u32,
+    is_initial_checkpoint: bool,
     checkpoint_interval: u32,
 }
 
@@ -50,6 +51,8 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
             asset_definition,
             wallet,
             num_calls: 0,
+            // TODO: VNs need to be aware of the checkpoint state
+            is_initial_checkpoint: true,
             checkpoint_interval: 100,
         }
     }
@@ -65,8 +68,13 @@ impl<TWallet: WalletClient + Sync + Send> CheckpointManager for ConcreteCheckpoi
                 "Creating checkpoint for contract {}", self.asset_definition.contract_id
             );
             self.wallet
-                .create_new_checkpoint(&self.asset_definition.contract_id, &state_root)
+                .create_new_checkpoint(
+                    &self.asset_definition.contract_id,
+                    &state_root,
+                    self.is_initial_checkpoint,
+                )
                 .await?;
+            self.is_initial_checkpoint = false;
             self.num_calls = 0;
         }
         Ok(())

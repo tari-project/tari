@@ -283,8 +283,8 @@ where
             OutputManagerRequest::PrepareToSendTransaction {
                 tx_id,
                 amount,
-                unique_id,
-                parent_public_key,
+                utxo_selection,
+                output_features,
                 fee_per_gram,
                 lock_height,
                 message,
@@ -294,11 +294,11 @@ where
                 .prepare_transaction_to_send(
                     tx_id,
                     amount,
-                    unique_id,
-                    parent_public_key,
+                    utxo_selection,
                     fee_per_gram,
                     lock_height,
                     message,
+                    output_features,
                     script,
                     covenant,
                 )
@@ -307,8 +307,8 @@ where
             OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
-                unique_id,
-                parent_public_key,
+                utxo_selection,
+                output_features,
                 fee_per_gram,
                 lock_height,
                 message,
@@ -316,8 +316,8 @@ where
                 .create_pay_to_self_transaction(
                     tx_id,
                     amount,
-                    unique_id,
-                    parent_public_key,
+                    utxo_selection,
+                    output_features,
                     fee_per_gram,
                     lock_height,
                     message,
@@ -414,16 +414,10 @@ where
             OutputManagerRequest::CreatePayToSelfWithOutputs {
                 outputs,
                 fee_per_gram,
-                spending_unique_id,
-                spending_parent_public_key,
+                input_selection,
             } => {
                 let (tx_id, transaction) = self
-                    .create_pay_to_self_containing_outputs(
-                        outputs,
-                        fee_per_gram,
-                        spending_unique_id.as_ref(),
-                        spending_parent_public_key.as_ref(),
-                    )
+                    .create_pay_to_self_containing_outputs(outputs, fee_per_gram, input_selection)
                     .await?;
                 Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {
                     transaction: Box::new(transaction),
@@ -844,55 +838,34 @@ where
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        utxo_selection: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
+        recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Preparing to send transaction. Amount: {}. Unique id : {:?}. Fee per gram: {}. ",
+            "Preparing to send transaction. Amount: {}. UTXO Selection: {}. Fee per gram: {}. ",
             amount,
-            unique_id,
+            utxo_selection,
             fee_per_gram,
         );
-        let output_features_estimate = OutputFeatures::default();
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features_estimate.consensus_encode_exact_size() +
+                recipient_output_features.consensus_encode_exact_size() +
                     recipient_script.consensus_encode_exact_size() +
                     recipient_covenant.consensus_encode_exact_size(),
             );
 
-        // TODO: Some(unique_id) means select the unique_id AND use the features of UTXOs with the unique_id. These
-        //       should be able to be specified independently.
-        let selection_criteria = match unique_id.as_ref() {
-            Some(unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), parent_public_key.as_ref().cloned()),
-            None => UtxoSelectionCriteria::default(),
-        };
-
         let input_selection = self
-            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, selection_criteria)
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, utxo_selection)
             .await?;
-
-        // TODO: improve this logic #LOGGED
-        let recipient_output_features = match unique_id {
-            Some(ref _unique_id) => match input_selection
-                .utxos
-                .iter()
-                .find(|output| output.unblinded_output.features.unique_id.is_some())
-            {
-                Some(output) => output.unblinded_output.features.clone(),
-                _ => OutputFeatures::default(),
-            },
-            _ => OutputFeatures::default(),
-        };
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -1065,8 +1038,7 @@ where
         &mut self,
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
-        spending_unique_id: Option<&Vec<u8>>,
-        spending_parent_public_key: Option<&PublicKey>,
+        selection_criteria: UtxoSelectionCriteria,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = MicroTari(outputs.iter().fold(0u64, |running, out| running + out.value.as_u64()));
         let nop_script = script![Nop];
@@ -1075,6 +1047,7 @@ where
             total +
                 weighting.round_up_metadata_size({
                     output.features.consensus_encode_exact_size() +
+                        output.covenant().consensus_encode_exact_size() +
                         output
                             .script
                             .as_ref()
@@ -1082,11 +1055,6 @@ where
                             .consensus_encode_exact_size()
                 })
         });
-
-        let selection_criteria = match spending_unique_id {
-            Some(unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), spending_parent_public_key.cloned()),
-            None => UtxoSelectionCriteria::default(),
-        };
 
         let input_selection = self
             .select_utxos(
@@ -1229,35 +1197,26 @@ where
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        utxo_selection: UtxoSelectionCriteria,
+        mut output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
-        let output_features_estimate = OutputFeatures {
-            unique_id: unique_id.clone(),
-            ..Default::default()
-        };
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features_estimate.consensus_encode_exact_size() +
+                output_features.consensus_encode_exact_size() +
                     script.consensus_encode_exact_size() +
                     covenant.consensus_encode_exact_size(),
             );
 
-        let selection_criteria = match unique_id {
-            Some(ref unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), parent_public_key),
-            None => UtxoSelectionCriteria::default(),
-        };
-
         let input_selection = self
-            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, selection_criteria)
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, utxo_selection)
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1286,11 +1245,7 @@ where
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
         let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
-        let output_features = OutputFeatures {
-            recovery_byte,
-            unique_id: unique_id.clone(),
-            ..Default::default()
-        };
+        output_features.set_recovery_byte(recovery_byte);
         let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
@@ -1412,6 +1367,7 @@ where
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
     /// selection strategy to choose the outputs. It also determines if a change output is required.
+    #[allow(clippy::too_many_lines)]
     async fn select_utxos(
         &mut self,
         amount: MicroTari,
@@ -1432,9 +1388,6 @@ where
         );
         let mut utxos = Vec::new();
 
-        let mut utxos_total_value = MicroTari::from(0);
-        let mut fee_without_change = MicroTari::from(0);
-        let mut fee_with_change = MicroTari::from(0);
         let fee_calc = self.get_fee_calc();
 
         // Attempt to get the chain tip height
@@ -1445,20 +1398,59 @@ where
             "select_utxos selection criteria: {}", selection_criteria
         );
         let tip_height = chain_metadata.as_ref().map(|m| m.height_of_longest_chain());
-        let uo = self
+        let mut uo = self
             .resources
             .db
-            .fetch_unspent_outputs_for_spending(selection_criteria, amount, tip_height)?;
-        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
+            .fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height)?;
+
+        // For non-standard queries, we want to ensure that the intended UTXOs are selected
+        if !selection_criteria.filter.is_standard() && uo.is_empty() {
+            return Err(OutputManagerError::NoUtxosSelected {
+                criteria: selection_criteria,
+            });
+        }
 
         // Assumes that default Outputfeatures are used for change utxo
         let output_features_estimate = OutputFeatures::default();
         let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
-            output_features_estimate.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+            output_features_estimate.consensus_encode_exact_size() +
+                Covenant::new().consensus_encode_exact_size() +
+                script![Nop].consensus_encode_exact_size(),
         );
+
+        if selection_criteria.filter.is_contract_output() {
+            let fee_with_change = fee_calc.calculate(
+                fee_per_gram,
+                1,
+                uo.len(),
+                num_outputs + 1,
+                output_metadata_byte_size + default_metadata_size,
+            );
+
+            // If the initial selection was not able to select enough UTXOs, fill in the difference with standard UTXOs
+            let total_utxo_value = uo.iter().map(|uo| uo.unblinded_output.value).sum::<MicroTari>();
+            if total_utxo_value < amount + fee_with_change {
+                let mut query = UtxoSelectionCriteria::smallest_first();
+                query.excluding = uo.iter().map(|o| o.commitment.clone()).collect();
+                let additional = self.resources.db.fetch_unspent_outputs_for_spending(
+                    &query,
+                    amount + fee_with_change - total_utxo_value,
+                    tip_height,
+                )?;
+                uo.extend(additional);
+            }
+        }
+
+        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
+
         let mut requires_change_output = false;
+        let mut utxos_total_value = MicroTari::from(0);
+        let mut fee_without_change = MicroTari::from(0);
+        let mut fee_with_change = MicroTari::from(0);
         for o in uo {
             utxos_total_value += o.unblinded_output.value;
+
+            error!(target: LOG_TARGET, "-- utxos_total_value = {:?}", utxos_total_value);
             utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change =
@@ -1473,6 +1465,8 @@ where
                 num_outputs + 1,
                 output_metadata_byte_size + default_metadata_size,
             );
+
+            error!(target: LOG_TARGET, "-- amt+fee = {:?} {}", amount, fee_with_change);
             if utxos_total_value > amount + fee_with_change {
                 requires_change_output = true;
                 break;

@@ -762,6 +762,7 @@ impl LMDBDatabase {
         }
 
         if input.features()?.is_sidechain_contract() {
+            // TODO: 0-conf not supported for contract outputs
             self.get_contract_index(txn).spend(input)?;
         }
 

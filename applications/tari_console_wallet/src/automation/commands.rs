@@ -55,6 +55,7 @@ use tari_core::transactions::{
         ContractAmendment,
         ContractDefinition,
         ContractUpdateProposal,
+        OutputFeatures,
         SideChainConsensus,
         SideChainFeatures,
         TransactionOutput,
@@ -141,7 +142,13 @@ pub async fn send_tari(
     message: String,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
-        .send_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
+        .send_transaction(
+            dest_pubkey,
+            amount,
+            OutputFeatures::default(),
+            fee_per_gram * uT,
+            message,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -205,7 +212,13 @@ pub async fn send_one_sided(
     message: String,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
-        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
+        .send_one_sided_transaction(
+            dest_pubkey,
+            amount,
+            OutputFeatures::default(),
+            fee_per_gram * uT,
+            message,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }

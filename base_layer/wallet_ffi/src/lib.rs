@@ -102,6 +102,7 @@ use tari_core::transactions::{
         AssetOutputFeatures,
         CommitteeDefinitionFeatures,
         MintNonFungibleFeatures,
+        OutputFeatures,
         OutputFeaturesVersion,
         OutputType,
         SideChainCheckpointFeatures,
@@ -4893,6 +4894,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
                 (*dest_public_key).clone(),
                 MicroTari::from(amount),
+                OutputFeatures::default(),
                 MicroTari::from(fee_per_gram),
                 message_string,
             )) {
@@ -4909,6 +4911,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .block_on((*wallet).wallet.transaction_service.send_transaction(
                 (*dest_public_key).clone(),
                 MicroTari::from(amount),
+                OutputFeatures::default(),
                 MicroTari::from(fee_per_gram),
                 message_string,
             )) {

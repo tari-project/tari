@@ -27,6 +27,7 @@ use tari_app_grpc::{
     tari_rpc as grpc,
     tari_rpc::{
         CreateFollowOnAssetCheckpointRequest,
+        CreateInitialAssetCheckpointRequest,
         SubmitContractAcceptanceRequest,
         SubmitContractUpdateProposalAcceptanceRequest,
     },
@@ -66,18 +67,32 @@ impl WalletClient for GrpcWalletClient {
         &mut self,
         contract_id: &FixedHash,
         state_root: &StateRoot,
+        is_initial: bool,
     ) -> Result<(), DigitalAssetError> {
         let inner = self.connection().await?;
 
-        let request = CreateFollowOnAssetCheckpointRequest {
-            contract_id: contract_id.to_vec(),
-            merkle_root: state_root.as_bytes().to_vec(),
-        };
+        if is_initial {
+            let request = CreateInitialAssetCheckpointRequest {
+                contract_id: contract_id.to_vec(),
+                merkle_root: state_root.as_bytes().to_vec(),
+                committee: vec![],
+            };
 
-        let _res = inner
-            .create_follow_on_asset_checkpoint(request)
-            .await
-            .map_err(|e| DigitalAssetError::FatalError(format!("Could not create checkpoint:{}", e)))?;
+            let _res = inner
+                .create_initial_asset_checkpoint(request)
+                .await
+                .map_err(|e| DigitalAssetError::FatalError(format!("Could not create checkpoint:{}", e)))?;
+        } else {
+            let request = CreateFollowOnAssetCheckpointRequest {
+                contract_id: contract_id.to_vec(),
+                merkle_root: state_root.as_bytes().to_vec(),
+            };
+
+            let _res = inner
+                .create_follow_on_asset_checkpoint(request)
+                .await
+                .map_err(|e| DigitalAssetError::FatalError(format!("Could not create checkpoint:{}", e)))?;
+        }
 
         Ok(())
     }
