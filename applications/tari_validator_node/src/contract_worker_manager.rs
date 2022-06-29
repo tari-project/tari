@@ -49,7 +49,7 @@ use tari_dan_core::{
         WalletClient,
     },
     storage::{
-        global::{ContractStatus, GlobalDb, GlobalDbMetadataKey},
+        global::{ContractState, GlobalDb, GlobalDbMetadataKey},
         StorageError,
     },
     workers::ConsensusWorker,
@@ -174,7 +174,7 @@ impl ContractWorkerManager {
 
             for contract in active_contracts {
                 self.global_db
-                    .save_contract(contract.contract_id, contract.mined_height, ContractStatus::Pending)?;
+                    .save_contract(contract.contract_id, contract.mined_height, ContractState::Pending)?;
 
                 if self.config.constitution_auto_accept {
                     info!(
@@ -184,7 +184,7 @@ impl ContractWorkerManager {
                     self.post_contract_acceptance(&contract).await?;
 
                     self.global_db
-                        .update_contract_state(contract.contract_id, ContractStatus::Accepted)?;
+                        .update_contract_state(contract.contract_id, ContractState::Accepted)?;
 
                     // TODO: Scan for acceptances and once enough are present, start working on the contract
                     //       for now, we start working immediately.
@@ -273,7 +273,7 @@ impl ContractWorkerManager {
                 );
 
                 self.global_db
-                    .save_contract(contract_id, mined_height, ContractStatus::Expired)?;
+                    .save_contract(contract_id, mined_height, ContractState::Expired)?;
 
                 continue;
             }

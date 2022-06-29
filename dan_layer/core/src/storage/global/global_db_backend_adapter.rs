@@ -39,13 +39,9 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
         key: &GlobalDbMetadataKey,
         connection: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error>;
-    fn save_contract(
-        &self,
-        contract_id: FixedHash,
-        mined_height: u64,
-        state: ContractStatus,
-    ) -> Result<(), Self::Error>;
-    fn update_contract_state(&self, contract_id: FixedHash, state: ContractStatus) -> Result<(), Self::Error>;
+    fn save_contract(&self, contract_id: FixedHash, mined_height: u64, state: ContractState)
+        -> Result<(), Self::Error>;
+    fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,13 +61,13 @@ impl GlobalDbMetadataKey {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, FromPrimitive)]
 #[repr(u8)]
-pub enum ContractStatus {
+pub enum ContractState {
     Pending = 0,
     Accepted = 1,
     Expired = 2,
 }
 
-impl ContractStatus {
+impl ContractState {
     pub fn as_byte(self) -> u8 {
         self as u8
     }

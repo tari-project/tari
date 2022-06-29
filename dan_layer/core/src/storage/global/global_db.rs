@@ -25,7 +25,7 @@ use std::sync::Arc;
 use tari_common_types::types::FixedHash;
 
 use crate::storage::{
-    global::{ContractStatus, GlobalDbBackendAdapter, GlobalDbMetadataKey},
+    global::{ContractState, GlobalDbBackendAdapter, GlobalDbMetadataKey},
     StorageError,
 };
 
@@ -55,14 +55,14 @@ impl<TGlobalDbBackendAdapter: GlobalDbBackendAdapter> GlobalDb<TGlobalDbBackendA
         &self,
         contract_id: FixedHash,
         mined_height: u64,
-        state: ContractStatus,
+        state: ContractState,
     ) -> Result<(), StorageError> {
         self.adapter
             .save_contract(contract_id, mined_height, state)
             .map_err(TGlobalDbBackendAdapter::Error::into)
     }
 
-    pub fn update_contract_state(&self, contract_id: FixedHash, state: ContractStatus) -> Result<(), StorageError> {
+    pub fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), StorageError> {
         self.adapter
             .update_contract_state(contract_id, state)
             .map_err(TGlobalDbBackendAdapter::Error::into)

@@ -22,7 +22,7 @@
 
 use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
 use tari_common_types::types::FixedHash;
-use tari_dan_core::storage::global::{ContractStatus, GlobalDbBackendAdapter, GlobalDbMetadataKey};
+use tari_dan_core::storage::global::{ContractState, GlobalDbBackendAdapter, GlobalDbMetadataKey};
 
 use crate::{error::SqliteStorageError, global::models::metadata::Metadata, SqliteTransaction};
 
@@ -139,7 +139,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         &self,
         contract_id: FixedHash,
         mined_height: u64,
-        state: ContractStatus,
+        state: ContractState,
     ) -> Result<(), Self::Error> {
         use crate::global::schema::contracts;
         let tx = self.create_transaction()?;
@@ -161,7 +161,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         Ok(())
     }
 
-    fn update_contract_state(&self, contract_id: FixedHash, state: ContractStatus) -> Result<(), Self::Error> {
+    fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error> {
         use crate::global::schema::contracts;
         let tx = self.create_transaction()?;
 
