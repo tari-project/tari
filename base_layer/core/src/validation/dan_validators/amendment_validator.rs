@@ -107,6 +107,8 @@ fn validate_updated_constiution(
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryInto;
+
     use tari_common_types::types::PublicKey;
 
     use crate::validation::dan_validators::test_helpers::{
@@ -114,6 +116,7 @@ mod test {
         assert_dan_validator_success,
         create_block,
         create_contract_amendment_schema,
+        create_contract_constitution,
         init_test_blockchain,
         publish_constitution,
         publish_definition,
@@ -132,7 +135,9 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
 
         // publish a contract update proposal into a block
         let proposal_id: u64 = 1;
@@ -141,12 +146,12 @@ mod test {
             change[2].clone(),
             contract_id,
             proposal_id,
-            committee.clone(),
+            constitution.clone(),
         );
 
         // create a valid amendment transaction
         let proposal_id = 1;
-        let schema = create_contract_amendment_schema(contract_id, change[3].clone(), proposal_id, committee);
+        let schema = create_contract_amendment_schema(contract_id, change[3].clone(), proposal_id, constitution);
         let (tx, _) = schema_to_transaction(&schema);
         assert_dan_validator_success(&blockchain, &tx);
     }
@@ -162,13 +167,15 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
 
         // skip the publication of the contract update proposal
 
         // create an amendment transaction
         let proposal_id = 1;
-        let schema = create_contract_amendment_schema(contract_id, change[1].clone(), proposal_id, committee);
+        let schema = create_contract_amendment_schema(contract_id, change[1].clone(), proposal_id, constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
@@ -186,7 +193,9 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
 
         // publish a contract update proposal into a block
         let proposal_id: u64 = 1;
@@ -195,15 +204,16 @@ mod test {
             change[2].clone(),
             contract_id,
             proposal_id,
-            committee.clone(),
+            constitution.clone(),
         );
 
         // publish the contract amendment into a block
-        let schema = create_contract_amendment_schema(contract_id, change[3].clone(), proposal_id, committee.clone());
+        let schema =
+            create_contract_amendment_schema(contract_id, change[3].clone(), proposal_id, constitution.clone());
         create_block(&mut blockchain, "amendment", schema);
 
         // create a (duplicated) contract amendment transaction
-        let schema = create_contract_amendment_schema(contract_id, change[4].clone(), proposal_id, committee);
+        let schema = create_contract_amendment_schema(contract_id, change[4].clone(), proposal_id, constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated amendment transaction and check that we get the error
@@ -221,15 +231,25 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
 
         // publish a contract update proposal into a block
         let proposal_id: u64 = 1;
-        publish_update_proposal(&mut blockchain, change[2].clone(), contract_id, proposal_id, committee);
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            constitution,
+        );
 
         // create an amendment with an altered committee (compared to the proposal)
-        let altered_committee = vec![];
-        let schema = create_contract_amendment_schema(contract_id, change[4].clone(), proposal_id, altered_committee);
+        let mut altered_constitution = create_contract_constitution();
+        altered_constitution.validator_committee = vec![].try_into().unwrap();
+        let schema =
+            create_contract_amendment_schema(contract_id, change[4].clone(), proposal_id, altered_constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the amendment transaction and check that we get the error
