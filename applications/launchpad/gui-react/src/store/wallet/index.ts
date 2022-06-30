@@ -5,7 +5,10 @@ import { unlockWallet, start, stop, updateWalletBalance } from './thunks'
 
 export const initialState: WalletState = {
   unlocked: false,
-  address: '',
+  address: {
+    uri: '',
+    emoji: '',
+  },
   tari: {
     balance: 0,
     available: 0,

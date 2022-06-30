@@ -8,11 +8,11 @@ import * as walletService from './walletService'
 
 // TODO backend communication
 const waitForWalletToBeResponsive = () =>
-  new Promise(resolve => setTimeout(resolve, 200))
+  new Promise(resolve => setTimeout(resolve, 4000))
 
 export const unlockWallet = createAsyncThunk<
   {
-    address: string
+    address: { uri: string; emoji: string }
     tari: { balance: number; available: number }
   },
   void,
@@ -38,7 +38,10 @@ export const unlockWallet = createAsyncThunk<
     ])
 
     return {
-      address: walletIdentity.publicAddress,
+      address: {
+        uri: walletIdentity.publicAddress,
+        emoji: walletIdentity.emojiId,
+      },
       tari: {
         balance:
           tari.availableBalance -

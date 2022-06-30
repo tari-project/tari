@@ -4,9 +4,10 @@ import { toT } from '../../utils/Format'
 
 interface WalletIdentityDto {
   publicAddress: string
+  emojiId: string
 }
 export const getIdentity: () => Promise<WalletIdentityDto> = () =>
-  invoke('wallet_identity')
+  invoke<WalletIdentityDto>('wallet_identity')
 
 interface WalletBalanceDto {
   availableBalance: number

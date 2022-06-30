@@ -42,7 +42,7 @@ describe('WalletContainer', () => {
           preloadedState: {
             wallet: {
               ...walletInitialState,
-              address: 'configuredWalletAddress',
+              address: { uri: 'configuredWalletAddress', emoji: '' },
               unlocked: false,
             },
           },
@@ -66,7 +66,7 @@ describe('WalletContainer', () => {
           preloadedState: {
             wallet: {
               ...walletInitialState,
-              address: 'configuredWalletAddress',
+              address: { uri: 'configuredWalletAddress', emoji: '' },
               unlocked: true,
             },
           },
@@ -90,7 +90,7 @@ describe('WalletContainer', () => {
           preloadedState: {
             wallet: {
               ...walletInitialState,
-              address: 'configuredWalletAddress',
+              address: { uri: 'configuredWalletAddress', emoji: '' },
               unlocked: true,
             },
           },
