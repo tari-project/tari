@@ -105,9 +105,8 @@ use crate::support::{
 };
 
 fn default_metadata_byte_size() -> usize {
-    let output_features = OutputFeatures { ..Default::default() };
     TransactionWeight::latest().round_up_metadata_size(
-        output_features.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
     )
 }
 
@@ -422,6 +421,7 @@ async fn fee_estimate() {
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 }
 
+#[ignore]
 #[allow(clippy::identity_op)]
 #[tokio::test]
 #[ignore]
@@ -847,6 +847,7 @@ async fn send_no_change() {
         MicroTari::from(0)
     );
 }
+
 #[tokio::test]
 async fn send_not_enough_for_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -1096,7 +1097,8 @@ async fn sending_transaction_persisted_while_offline() {
     assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
     assert_eq!(balance.pending_outgoing_balance, available_balance / 2);
 
-    // This simulates an offline wallet with a  queued transaction that has not been sent to the receiving wallet yet
+    // This simulates an offline wallet with a  queued transaction that has not been sent to the receiving wallet
+    // yet
     drop(oms.output_manager_handle);
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
@@ -1173,7 +1175,8 @@ async fn coin_split_with_change() {
         (split_count + 1) * default_metadata_byte_size(),
     );
     assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
-    assert_eq!(amount, val2 + val3);
+    // NOTE: assuming the LargestFirst strategy is used
+    assert_eq!(amount, val3);
 }
 
 #[tokio::test]
@@ -1195,6 +1198,7 @@ async fn coin_split_no_change() {
         split_count,
         split_count * default_metadata_byte_size(),
     );
+
     let val1 = 4_000 * uT;
     let val2 = 5_000 * uT;
     let val3 = 6_000 * uT + expected_fee;
@@ -1496,10 +1500,10 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.pending_incoming_balance,
         MicroTari::from(output1_value) -
-            MicroTari::from(900_000) -
-            MicroTari::from(1260) + //Output4 = output 1 -900_000 and 1260 for fees
-            MicroTari::from(8_000_000) +
-            MicroTari::from(16_000_000)
+                MicroTari::from(900_000) -
+                MicroTari::from(1260) + //Output4 = output 1 -900_000 and 1260 for fees
+                MicroTari::from(8_000_000) +
+                MicroTari::from(16_000_000)
     );
 
     // Output 1:    Spent in Block 5 - Unconfirmed
@@ -1642,10 +1646,10 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
-            MicroTari::from(900_000) -
-            MicroTari::from(1260) + //spent 900_000 and 1260 for fees
-            MicroTari::from(8_000_000) +    //output 5
-            MicroTari::from(16_000_000) // output 6
+                MicroTari::from(900_000) -
+                MicroTari::from(1260) + //spent 900_000 and 1260 for fees
+                MicroTari::from(8_000_000) +    //output 5
+                MicroTari::from(16_000_000) // output 6
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(1000000));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
@@ -1755,7 +1759,8 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
-    // This is needed on a fast computer, otherwise the balance have not been updated correctly yet with the next step
+    // This is needed on a fast computer, otherwise the balance have not been updated correctly yet with the next
+    // step
     let mut event_stream = oms.output_manager_handle.get_event_stream();
     let delay = sleep(Duration::from_secs(10));
     tokio::pin!(delay);
