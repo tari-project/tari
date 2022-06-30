@@ -24,16 +24,16 @@ use tari_common_types::types::{FixedHash, PublicKey};
 use tari_utilities::hex::Hex;
 
 use super::helpers::{
-    fetch_contract_constitution,
     fetch_contract_features,
+    fetch_contract_update_proposal,
     get_sidechain_features,
     validate_output_type,
 };
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
-        ContractAcceptance,
-        ContractConstitution,
+        ContractUpdateProposal,
+        ContractUpdateProposalAcceptance,
         OutputType,
         SideChainFeatures,
         TransactionOutput,
@@ -41,37 +41,39 @@ use crate::{
     validation::ValidationError,
 };
 
-/// This validator checks that the provided output corresponds to a valid Contract Acceptance in the DAN layer
-pub fn validate_acceptance<B: BlockchainBackend>(
+pub fn validate_update_proposal_acceptance<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    validate_output_type(output, OutputType::ContractValidatorAcceptance)?;
+    validate_output_type(output, OutputType::ContractConstitutionChangeAcceptance)?;
 
     let sidechain_features = get_sidechain_features(output)?;
     let contract_id = sidechain_features.contract_id;
 
-    let acceptance_features = get_contract_acceptance(sidechain_features)?;
+    let acceptance_features = get_contract_update_proposal_acceptance(sidechain_features)?;
+    let proposal_id = acceptance_features.proposal_id;
     let validator_node_public_key = &acceptance_features.validator_node_public_key;
 
-    let constitution = fetch_contract_constitution(db, contract_id)?;
+    let proposal = fetch_contract_update_proposal(db, contract_id, proposal_id)?;
 
-    validate_duplication(db, contract_id, validator_node_public_key)?;
-    validate_public_key(constitution, validator_node_public_key)?;
+    validate_duplication(db, contract_id, proposal_id, validator_node_public_key)?;
+    validate_public_key(proposal, validator_node_public_key)?;
 
     // TODO: check that the signature of the transaction is valid
-    // TODO: check that the acceptance is inside the accpentance window of the constiution
+    // TODO: check that the acceptance is inside the acceptance window of the proposal
     // TODO: check that the stake of the transaction is at least the minimum specified in the constitution
 
     Ok(())
 }
 
-/// Retrieves a contract acceptance object from the sidechain features, returns an error if not present
-fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&ContractAcceptance, ValidationError> {
-    match sidechain_feature.acceptance.as_ref() {
+/// Retrieves a contract update proposal acceptance object from the sidechain features, returns an error if not present
+fn get_contract_update_proposal_acceptance(
+    sidechain_feature: &SideChainFeatures,
+) -> Result<&ContractUpdateProposalAcceptance, ValidationError> {
+    match sidechain_feature.update_proposal_acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
         None => Err(ValidationError::DanLayerError(
-            "Contract acceptance features not found".to_string(),
+            "Contract update proposal acceptance features not found".to_string(),
         )),
     }
 }
@@ -80,18 +82,22 @@ fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&Con
 fn validate_duplication<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
+    proposal_id: u64,
     validator_node_public_key: &PublicKey,
 ) -> Result<(), ValidationError> {
-    let features = fetch_contract_features(db, contract_id, OutputType::ContractValidatorAcceptance)?;
+    let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitutionChangeAcceptance)?;
     match features
         .into_iter()
-        .filter_map(|feature| feature.acceptance)
-        .find(|feature| feature.validator_node_public_key == *validator_node_public_key)
-    {
+        .filter_map(|feature| feature.update_proposal_acceptance)
+        .find(|feature| {
+            feature.validator_node_public_key == *validator_node_public_key && feature.proposal_id == proposal_id
+        }) {
         Some(_) => {
             let msg = format!(
-                "Duplicated contract acceptance for contract_id ({:?}) and validator_node_public_key ({:?})",
+                "Duplicated contract update proposal acceptance for contract_id ({:?}), proposal_id ({}) and \
+                 validator_node_public_key ({:?})",
                 contract_id.to_hex(),
+                proposal_id,
                 validator_node_public_key,
             );
             Err(ValidationError::DanLayerError(msg))
@@ -102,10 +108,11 @@ fn validate_duplication<B: BlockchainBackend>(
 
 /// Checks that the validator public key is present as part of the proposed committee in the constitution
 fn validate_public_key(
-    constitution: ContractConstitution,
+    proposal: ContractUpdateProposal,
     validator_node_public_key: &PublicKey,
 ) -> Result<(), ValidationError> {
-    let is_validator_in_committee = constitution
+    let is_validator_in_committee = proposal
+        .updated_constitution
         .validator_committee
         .members()
         .contains(validator_node_public_key);
@@ -128,31 +135,42 @@ mod test {
     use crate::validation::dan_validators::test_helpers::{
         assert_dan_error,
         create_block,
-        create_contract_acceptance_schema,
         create_contract_constitution_schema,
+        create_contract_update_proposal_acceptance_schema,
         init_test_blockchain,
         publish_constitution,
         publish_definition,
+        publish_update_proposal,
         schema_to_transaction,
     };
 
     #[test]
-    fn constitution_must_exist() {
+    fn proposal_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
 
         // publish the contract definition into a block
         let contract_id = publish_definition(&mut blockchain, change[0].clone());
 
-        // skip the contract constitution publication
-
-        // create a contract acceptance transaction
+        // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
-        let schema = create_contract_acceptance_schema(contract_id, change[1].clone(), validator_node_public_key);
+        let committee = vec![validator_node_public_key.clone()];
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee);
+
+        // skip the publication of the contract update proposal
+
+        // create a contract update proposal acceptance transaction
+        let proposal_id = 1;
+        let schema = create_contract_update_proposal_acceptance_schema(
+            contract_id,
+            change[1].clone(),
+            proposal_id,
+            validator_node_public_key,
+        );
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Contract constitution not found");
+        assert_dan_error(&blockchain, &tx, "Contract update proposal not found");
     }
 
     #[test]
@@ -166,23 +184,38 @@ mod test {
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key.clone()];
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee);
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, committee.clone());
 
-        // publish a contract acceptance into a block
-        let schema =
-            create_contract_acceptance_schema(contract_id, change[2].clone(), validator_node_public_key.clone());
-        create_block(&mut blockchain, "acceptance", schema);
+        // publish the contract update proposal into a block
+        let proposal_id: u64 = 1;
+        publish_update_proposal(&mut blockchain, change[2].clone(), contract_id, proposal_id, committee);
+
+        // publish the contract update proposal acceptance into a block
+        let proposal_id = 1;
+        let schema = create_contract_update_proposal_acceptance_schema(
+            contract_id,
+            change[3].clone(),
+            proposal_id,
+            validator_node_public_key.clone(),
+        );
+        create_block(&mut blockchain, "proposal-acceptance", schema);
 
         // create a (duplicated) contract acceptance transaction
-        let schema = create_contract_acceptance_schema(contract_id, change[3].clone(), validator_node_public_key);
+        let proposal_id = 1;
+        let schema = create_contract_update_proposal_acceptance_schema(
+            contract_id,
+            change[4].clone(),
+            proposal_id,
+            validator_node_public_key,
+        );
         let (tx, _) = schema_to_transaction(&schema);
 
-        // try to validate the duplicated acceptance transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated contract acceptance");
+        // try to validate the (duplicated) proposal acceptance transaction and check that we get the error
+        assert_dan_error(&blockchain, &tx, "Duplicated contract update proposal acceptance");
     }
 
     #[test]
-    fn it_rejects_contract_acceptances_of_non_committee_members() {
+    fn it_rejects_acceptances_of_non_committee_members() {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
 
@@ -190,19 +223,29 @@ mod test {
         let contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // publish the contract constitution into a block
-        // we deliberately use a committee with only a defult public key to be able to trigger the committee error later
-        let committee = vec![PublicKey::default()];
-        let schema = create_contract_constitution_schema(contract_id, change[1].clone(), committee);
+        let schema = create_contract_constitution_schema(contract_id, change[1].clone(), vec![]);
         create_block(&mut blockchain, "constitution", schema);
 
-        // create a contract acceptance transaction
-        // we use a public key that is not included in the constitution committee, to trigger the error
+        // publish the contract update proposal into a block
+        // we deliberately use a committee with only a defult public key to be able to trigger the committee error later
+        let proposal_id: u64 = 1;
+        let committee = vec![PublicKey::default()];
+        publish_update_proposal(&mut blockchain, change[2].clone(), contract_id, proposal_id, committee);
+
+        // publish the contract update proposal acceptance into a block
+        // we use a public key that is not included in the proposal committee, to trigger the error
         let validator_node_public_key =
             PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-        let schema = create_contract_acceptance_schema(contract_id, change[2].clone(), validator_node_public_key);
+        let proposal_id = 1;
+        let schema = create_contract_update_proposal_acceptance_schema(
+            contract_id,
+            change[3].clone(),
+            proposal_id,
+            validator_node_public_key,
+        );
         let (tx, _) = schema_to_transaction(&schema);
 
-        // try to validate the acceptance transaction and check that we get the committee error
+        // try to validate the proposal acceptance transaction and check that we get the committee error
         assert_dan_error(&blockchain, &tx, "Validator node public key is not in committee");
     }
 }

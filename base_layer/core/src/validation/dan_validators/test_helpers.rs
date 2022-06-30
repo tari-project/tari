@@ -36,13 +36,14 @@ use crate::{
         transaction_components::{
             vec_into_fixed_string,
             CheckpointParameters,
-            CommitteeMembers,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
+            ContractAmendment,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
+            ContractUpdateProposal,
             OutputFeatures,
             RequirementsForConstitutionChange,
             SideChainConsensus,
@@ -82,6 +83,17 @@ pub fn publish_constitution(
 ) {
     let schema = create_contract_constitution_schema(contract_id, change, committee);
     create_block(blockchain, "constitution", schema);
+}
+
+pub fn publish_update_proposal(
+    blockchain: &mut TestBlockchain,
+    change: UnblindedOutput,
+    contract_id: FixedHash,
+    proposal_id: u64,
+    committee: Vec<PublicKey>,
+) {
+    let schema = create_contract_proposal_schema(contract_id, change, proposal_id, committee);
+    create_block(blockchain, "proposal", schema);
 }
 
 pub fn schema_to_transaction(schema: &TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
@@ -129,9 +141,15 @@ pub fn create_contract_constitution_schema(
     input: UnblindedOutput,
     committee: Vec<PublicKey>,
 ) -> TransactionSchema {
-    let validator_committee: CommitteeMembers = vec![PublicKey::default()].try_into().unwrap();
-    let constitution = ContractConstitution {
-        validator_committee,
+    let constitution = create_contract_constitution(committee);
+    let constitution_features = OutputFeatures::for_contract_constitution(contract_id, constitution);
+
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: constitution_features)
+}
+
+pub fn create_contract_constitution(validator_keys: Vec<PublicKey>) -> ContractConstitution {
+    ContractConstitution {
+        validator_committee: validator_keys.clone().try_into().unwrap(),
         acceptance_requirements: ContractAcceptanceRequirements {
             acceptance_period_expiry: 100,
             minimum_quorum_required: 5,
@@ -145,14 +163,11 @@ pub fn create_contract_constitution_schema(
             change_flags: ConstitutionChangeFlags::all(),
             requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                 minimum_constitution_committee_signatures: 5,
-                constitution_committee: Some(committee.try_into().unwrap()),
+                constitution_committee: Some(validator_keys.try_into().unwrap()),
             }),
         },
         initial_reward: 100.into(),
-    };
-    let constitution_features = OutputFeatures::for_contract_constitution(contract_id, constitution);
-
-    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: constitution_features)
+    }
 }
 
 pub fn create_contract_acceptance_schema(
@@ -168,12 +183,71 @@ pub fn create_contract_acceptance_schema(
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
 }
 
+pub fn create_contract_proposal_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    proposal_id: u64,
+    committee: Vec<PublicKey>,
+) -> TransactionSchema {
+    let proposal = ContractUpdateProposal {
+        proposal_id,
+        signature: Signature::default(),
+        updated_constitution: create_contract_constitution(committee),
+    };
+
+    let proposal_features = OutputFeatures::for_contract_update_proposal(contract_id, proposal);
+
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: proposal_features)
+}
+
+pub fn create_contract_update_proposal_acceptance_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    proposal_id: u64,
+    validator_node_public_key: PublicKey,
+) -> TransactionSchema {
+    let signature = Signature::default();
+
+    let acceptance_features = OutputFeatures::for_contract_update_proposal_acceptance(
+        contract_id,
+        proposal_id,
+        validator_node_public_key,
+        signature,
+    );
+
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
+pub fn create_contract_amendment_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    proposal_id: u64,
+    committee: Vec<PublicKey>,
+) -> TransactionSchema {
+    let amendment = ContractAmendment {
+        proposal_id,
+        updated_constitution: create_contract_constitution(committee.clone()),
+        validator_committee: committee.try_into().unwrap(),
+        validator_signatures: vec![Signature::default()].try_into().unwrap(),
+        activation_window: 100,
+    };
+
+    let amendment_features = OutputFeatures::for_contract_amendment(contract_id, amendment);
+
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: amendment_features)
+}
+
 pub fn assert_dan_error(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
     let validator = TxDanLayerValidator::new(blockchain.db().clone());
     let err = validator.validate(transaction).unwrap_err();
     match err {
         ValidationError::DanLayerError(message) => {
-            assert!(message.contains(expected_message))
+            assert!(
+                message.contains(expected_message),
+                "Message \"{}\" does not contain \"{}\"",
+                message,
+                expected_message
+            )
         },
         _ => panic!("Expected a consensus error"),
     }
