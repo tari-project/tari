@@ -39,7 +39,7 @@ use crate::{
         SideChainFeatures,
         TransactionOutput,
     },
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_update_proposal_acceptance<B: BlockchainBackend>(
@@ -71,12 +71,12 @@ pub fn validate_update_proposal_acceptance<B: BlockchainBackend>(
 /// Retrieves a contract update proposal acceptance object from the sidechain features, returns an error if not present
 fn get_contract_update_proposal_acceptance(
     sidechain_feature: &SideChainFeatures,
-) -> Result<&ContractUpdateProposalAcceptance, ValidationError> {
+) -> Result<&ContractUpdateProposalAcceptance, DanLayerValidationError> {
     match sidechain_feature.update_proposal_acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
-        None => Err(ValidationError::DanLayerError(
-            "Contract update proposal acceptance features not found".to_string(),
-        )),
+        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
+            field_name: "update_proposal_acceptance",
+        }),
     }
 }
 
@@ -94,16 +94,11 @@ fn validate_uniqueness<B: BlockchainBackend>(
         .find(|feature| {
             feature.validator_node_public_key == *validator_node_public_key && feature.proposal_id == proposal_id
         }) {
-        Some(_) => {
-            let msg = format!(
-                "Duplicated contract update proposal acceptance for contract_id ({:?}), proposal_id ({}) and \
-                 validator_node_public_key ({:?})",
-                contract_id.to_hex(),
-                proposal_id,
-                validator_node_public_key,
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
+        Some(_) => Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractConstitutionChangeAcceptance,
+            details: format!("validator_node_public_key = {}", validator_node_public_key.to_hex()),
+        })),
         None => Ok(()),
     }
 }
@@ -112,18 +107,16 @@ fn validate_uniqueness<B: BlockchainBackend>(
 fn validate_public_key(
     proposal: &ContractUpdateProposal,
     validator_node_public_key: &PublicKey,
-) -> Result<(), ValidationError> {
+) -> Result<(), DanLayerValidationError> {
     let is_validator_in_committee = proposal
         .updated_constitution
         .validator_committee
         .members()
         .contains(validator_node_public_key);
     if !is_validator_in_committee {
-        let msg = format!(
-            "Validator node public key is not in committee ({:?})",
-            validator_node_public_key
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(DanLayerValidationError::ValidatorNotInCommittee {
+            public_key: validator_node_public_key.to_hex(),
+        });
     }
 
     Ok(())
@@ -144,12 +137,12 @@ fn validate_acceptance_window<B: BlockchainBackend>(
 
     let window_has_expired = current_height > max_allowed_absolute_height;
     if window_has_expired {
-        let msg = format!(
-            "Proposal acceptance window has expired for contract_id ({}) and proposal_id ({})",
-            contract_id.to_hex(),
-            proposal.proposal_id
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::ProposalAcceptanceWindowHasExpired {
+                contract_id,
+                proposal_id: proposal.proposal_id,
+            },
+        ));
     }
 
     Ok(())
@@ -180,11 +173,12 @@ pub fn fetch_proposal_height<B: BlockchainBackend>(
 
     match proposal_utxo {
         Some(utxo) => Ok(utxo.mined_height),
-        None => Err(ValidationError::DanLayerError(format!(
-            "Contract update proposal not found for contract_id {} and proposal_id {}",
-            contract_id.to_hex(),
-            proposal_id
-        ))),
+        None => Err(ValidationError::DanLayerError(
+            DanLayerValidationError::ContractUpdateProposalNotFound {
+                contract_id,
+                proposal_id,
+            },
+        )),
     }
 }
 

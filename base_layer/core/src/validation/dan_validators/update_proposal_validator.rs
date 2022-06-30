@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_utilities::hex::Hex;
 
 use super::helpers::{
     fetch_contract_constitution,
@@ -32,7 +31,7 @@ use super::helpers::{
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{ContractUpdateProposal, OutputType, SideChainFeatures, TransactionOutput},
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_update_proposal<B: BlockchainBackend>(
@@ -54,12 +53,14 @@ pub fn validate_update_proposal<B: BlockchainBackend>(
     Ok(())
 }
 
-fn get_update_proposal(sidechain_feature: &SideChainFeatures) -> Result<&ContractUpdateProposal, ValidationError> {
+fn get_update_proposal(
+    sidechain_feature: &SideChainFeatures,
+) -> Result<&ContractUpdateProposal, DanLayerValidationError> {
     match sidechain_feature.update_proposal.as_ref() {
         Some(proposal) => Ok(proposal),
-        None => Err(ValidationError::DanLayerError(
-            "Contract update proposal features not found".to_string(),
-        )),
+        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
+            field_name: "update_proposal",
+        }),
     }
 }
 
@@ -74,14 +75,11 @@ fn validate_uniqueness<B: BlockchainBackend>(
         .filter_map(|feature| feature.update_proposal)
         .find(|proposal| proposal.proposal_id == proposal_id)
     {
-        Some(_) => {
-            let msg = format!(
-                "Duplicated contract update proposal for contract_id ({:?}) and proposal_id ({:?})",
-                contract_id.to_hex(),
-                proposal_id,
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
+        Some(_) => Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractConstitutionProposal,
+            details: format!("Proposal ID is {}", proposal_id),
+        })),
         None => Ok(()),
     }
 }

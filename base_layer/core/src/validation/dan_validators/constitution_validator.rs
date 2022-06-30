@@ -21,13 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_utilities::hex::Hex;
 
 use super::helpers::{fetch_contract_features, get_sidechain_features, validate_output_type};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{OutputType, TransactionOutput},
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_constitution<B: BlockchainBackend>(
@@ -51,11 +50,9 @@ fn validate_definition_existence<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let features = fetch_contract_features(db, contract_id, OutputType::ContractDefinition)?;
     if features.is_empty() {
-        let msg = format!(
-            "Contract definition not found for contract_id ({:?})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::ContractDefnintionNotFound { contract_id },
+        ));
     }
 
     Ok(())
@@ -68,11 +65,11 @@ fn validate_uniqueness<B: BlockchainBackend>(
     let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
     let is_duplicated = !features.is_empty();
     if is_duplicated {
-        let msg = format!(
-            "Duplicated contract constitution for contract_id ({:?})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractConstitution,
+            details: String::new(),
+        }));
     }
 
     Ok(())
