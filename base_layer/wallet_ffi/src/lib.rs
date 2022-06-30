@@ -9097,7 +9097,7 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_join() {
         unsafe {
             let mut error = 0;
@@ -9227,7 +9227,7 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_split() {
         unsafe {
             let mut error = 0;
