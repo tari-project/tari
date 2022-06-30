@@ -59,7 +59,7 @@ use tari_dan_core::{
     DigitalAssetError,
 };
 use tari_dan_storage_sqlite::{
-    global::{models::contract::Contract, SqliteGlobalDbBackendAdapter},
+    global::{models::contract::NewContract, SqliteGlobalDbBackendAdapter},
     SqliteDbFactory,
     SqliteStorageService,
 };
@@ -505,10 +505,9 @@ struct ActiveContract {
     pub mined_height: u64,
 }
 
-impl From<ActiveContract> for Contract {
+impl From<ActiveContract> for NewContract {
     fn from(value: ActiveContract) -> Self {
         Self {
-            id: 0,
             height: value.mined_height as i64,
             contract_id: value.contract_id.to_vec(),
             constitution: value.constitution.to_binary().unwrap(),

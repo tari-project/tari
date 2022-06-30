@@ -26,7 +26,10 @@ use tari_dan_core::storage::global::{ContractState, GlobalDbBackendAdapter, Glob
 
 use crate::{
     error::SqliteStorageError,
-    global::models::{contract::Contract, metadata::Metadata},
+    global::models::{
+        contract::{Contract, NewContract},
+        metadata::Metadata,
+    },
     SqliteTransaction,
 };
 
@@ -45,6 +48,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
     type BackendTransaction = SqliteTransaction;
     type Error = SqliteStorageError;
     type Model = Contract;
+    type NewModel = NewContract;
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
@@ -140,7 +144,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         Ok(())
     }
 
-    fn save_contract(&self, mut contract: Contract, state: ContractState) -> Result<(), Self::Error> {
+    fn save_contract(&self, mut contract: NewContract, state: ContractState) -> Result<(), Self::Error> {
         use crate::global::schema::contracts;
         let tx = self.create_transaction()?;
 

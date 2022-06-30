@@ -53,7 +53,7 @@ impl<TGlobalDbBackendAdapter: GlobalDbBackendAdapter> GlobalDb<TGlobalDbBackendA
 
     pub fn save_contract(
         &self,
-        contract: TGlobalDbBackendAdapter::Model,
+        contract: TGlobalDbBackendAdapter::NewModel,
         state: ContractState,
     ) -> Result<(), StorageError> {
         self.adapter

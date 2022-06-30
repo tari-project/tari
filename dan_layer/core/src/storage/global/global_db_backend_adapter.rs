@@ -30,6 +30,7 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
     type Error: Into<StorageError>;
     type Model;
+    type NewModel;
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
     fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
@@ -40,7 +41,7 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
         key: &GlobalDbMetadataKey,
         connection: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error>;
-    fn save_contract(&self, contract: Self::Model, state: ContractState) -> Result<(), Self::Error>;
+    fn save_contract(&self, contract: Self::NewModel, state: ContractState) -> Result<(), Self::Error>;
     fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error>;
     fn get_active_contracts(&self) -> Result<Vec<Self::Model>, Self::Error>;
 }

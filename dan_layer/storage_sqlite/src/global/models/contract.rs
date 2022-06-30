@@ -24,7 +24,7 @@ use tari_dan_core::storage::global::ContractState;
 
 use crate::global::schema::*;
 
-#[derive(Queryable, Insertable, Identifiable)]
+#[derive(Queryable, Identifiable)]
 pub struct Contract {
     pub id: i32,
     pub contract_id: Vec<u8>,
@@ -33,8 +33,17 @@ pub struct Contract {
     pub constitution: Vec<u8>,
 }
 
-impl Contract {
-    pub fn with_state(&mut self, state: ContractState) -> &mut Contract {
+#[derive(Insertable)]
+#[table_name = "contracts"]
+pub struct NewContract {
+    pub contract_id: Vec<u8>,
+    pub height: i64,
+    pub state: i32,
+    pub constitution: Vec<u8>,
+}
+
+impl NewContract {
+    pub fn with_state(&mut self, state: ContractState) -> &mut Self {
         self.state = i32::from(state.as_byte());
         self
     }

@@ -34,6 +34,7 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
     type BackendTransaction = ();
     type Error = StorageError;
     type Model = ();
+    type NewModel = ();
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
         todo!()
