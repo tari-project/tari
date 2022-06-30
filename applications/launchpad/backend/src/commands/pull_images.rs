@@ -43,12 +43,12 @@ pub struct Payload {
 }
 
 pub static DEFAULT_IMAGES: [ImageType; 9] = [
+    ImageType::Tor,
     ImageType::BaseNode,
     ImageType::Wallet,
     ImageType::Sha3Miner,
-    ImageType::Tor,
-    ImageType::MmProxy,
     ImageType::XmRig,
+    ImageType::MmProxy,
     ImageType::Loki,
     ImageType::Promtail,
     ImageType::Grafana,
