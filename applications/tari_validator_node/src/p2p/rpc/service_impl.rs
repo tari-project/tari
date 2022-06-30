@@ -124,11 +124,11 @@ where
                 .map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
             request.method.clone(),
             request.args.clone(),
-            /* TokenId(request.token_id.clone()),
-             * TODO: put signature in here
-             * ComSig::default()
-             * create_com_sig_from_bytes(&request.signature)
-             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
+            // TokenId(request.token_id.clone()),
+            // TODO: put signature in here
+            // ComSig::default()
+            // create_com_sig_from_bytes(&request.signature)
+            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
         );
         debug!(target: LOG_TARGET, "Submitting instruction {} to mempool", instruction);
         let mut mempool_service = self.mempool_service.clone();

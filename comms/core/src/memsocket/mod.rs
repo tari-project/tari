@@ -71,7 +71,7 @@ pub fn acquire_next_memsocket_port() -> NonZeroU16 {
 
         // The switchboard is full and all ports are in use
         assert!(
-            !(switchboard.0.len() == (std::u16::MAX - 1) as usize),
+            switchboard.0.len() != (std::u16::MAX - 1) as usize,
             "All memsocket addresses in use!"
         );
 

@@ -30,7 +30,7 @@ use crate::utils::datetime::format_duration;
 
 /// Basic stats for peer connection attempts. Allows the connectivity manager to keep track of successful/failed
 /// connection attempts to allow it to mark peers as offline if necessary.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PeerConnectionStats {
     /// The last time a connection was successfully made or, None if a successful
     /// connection has never been made.
@@ -97,7 +97,7 @@ impl fmt::Display for PeerConnectionStats {
 }
 
 /// Peer connection statistics
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
 pub enum LastConnectionAttempt {
     /// This node has never attempted to connect to this peer
     Never,

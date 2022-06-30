@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, fmt, fmt::Display, sync::Arc};
+use std::{convert::TryInto, fmt, sync::Arc};
 
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
@@ -80,10 +80,11 @@ use crate::{
             PublicRewindKeys,
             RecoveredOutput,
         },
+        input_selection::UtxoSelectionCriteria,
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
@@ -361,6 +362,10 @@ where
             OutputManagerRequest::GetUnspentOutputs => {
                 let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
+            },
+            OutputManagerRequest::GetOutputsBy(q) => {
+                let outputs = self.fetch_outputs_by(q)?.into_iter().map(|v| v.into()).collect();
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
@@ -836,9 +841,7 @@ where
                 fee_per_gram,
                 num_outputs,
                 metadata_byte_size * num_outputs,
-                None,
-                None,
-                None,
+                UtxoSelectionCriteria::default(),
             )
             .await?;
 
@@ -883,16 +886,15 @@ where
                     recipient_covenant.consensus_encode_exact_size(),
             );
 
+        // TODO: Some(unique_id) means select the unique_id AND use the features of UTXOs with the unique_id. These
+        //       should be able to be specified independently.
+        let selection_criteria = match unique_id.as_ref() {
+            Some(unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), parent_public_key.as_ref().cloned()),
+            None => UtxoSelectionCriteria::default(),
+        };
+
         let input_selection = self
-            .select_utxos(
-                amount,
-                fee_per_gram,
-                1,
-                metadata_byte_size,
-                None,
-                unique_id.as_ref(),
-                parent_public_key.as_ref(),
-            )
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, selection_criteria)
             .await?;
 
         // TODO: improve this logic #LOGGED
@@ -1096,15 +1098,19 @@ where
                             .consensus_encode_exact_size()
                 })
         });
+
+        let selection_criteria = match spending_unique_id {
+            Some(unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), spending_parent_public_key.cloned()),
+            None => UtxoSelectionCriteria::default(),
+        };
+
         let input_selection = self
             .select_utxos(
                 total_value,
                 fee_per_gram,
                 outputs.len(),
                 metadata_byte_size,
-                None,
-                spending_unique_id,
-                spending_parent_public_key,
+                selection_criteria,
             )
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
@@ -1261,16 +1267,13 @@ where
                     covenant.consensus_encode_exact_size(),
             );
 
+        let selection_criteria = match unique_id {
+            Some(ref unique_id) => UtxoSelectionCriteria::for_token(unique_id.clone(), parent_public_key),
+            None => UtxoSelectionCriteria::default(),
+        };
+
         let input_selection = self
-            .select_utxos(
-                amount,
-                fee_per_gram,
-                1,
-                metadata_byte_size,
-                None,
-                unique_id.as_ref(),
-                parent_public_key.as_ref(),
-            )
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, selection_criteria)
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1422,47 +1425,23 @@ where
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
     /// selection strategy to choose the outputs. It also determines if a change output is required.
-    #[allow(clippy::too_many_lines)]
     async fn select_utxos(
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
         num_outputs: usize,
         output_metadata_byte_size: usize,
-        strategy: Option<UTXOSelectionStrategy>,
-        unique_id: Option<&Vec<u8>>,
-        parent_public_key: Option<&PublicKey>,
+        selection_criteria: UtxoSelectionCriteria,
     ) -> Result<UtxoSelection, OutputManagerError> {
-        let token = match unique_id {
-            Some(unique_id) => {
-                debug!(target: LOG_TARGET, "Looking for {:?}", unique_id);
-                // todo: new method to fetch by unique asset id
-                let uo = self.resources.db.fetch_all_unspent_outputs()?;
-                if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
-                    Some(token_unique_id) => {
-                        debug!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
-                        token_unique_id == unique_id &&
-                            x.unblinded_output.features.parent_public_key.as_ref() == parent_public_key
-                    },
-                    _ => false,
-                }) {
-                    Some(token_id)
-                } else {
-                    return Err(OutputManagerError::TokenUniqueIdNotFound);
-                }
-            },
-            _ => None,
-        };
         debug!(
             target: LOG_TARGET,
-            "select_utxos amount: {}, token : {:?}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
-             strategy: {:?}",
+            "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
+             selection_criteria: {:?}",
             amount,
-            token,
             fee_per_gram,
             num_outputs,
             output_metadata_byte_size,
-            strategy
+            selection_criteria
         );
         let mut utxos = Vec::new();
 
@@ -1470,44 +1449,19 @@ where
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
         let fee_calc = self.get_fee_calc();
-        if let Some(token) = token {
-            utxos_total_value = token.unblinded_output.value;
-            utxos.push(token);
-        }
 
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
-        let (connected, tip_height) = match &chain_metadata {
-            Some(metadata) => (true, Some(metadata.height_of_longest_chain())),
-            None => (false, None),
-        };
 
-        // If no strategy was specified and no metadata is available, then make sure to use MaturitythenSmallest
-        let strategy = match (strategy, connected) {
-            (Some(s), _) => s,
-            (None, false) => UTXOSelectionStrategy::MaturityThenSmallest,
-            (None, true) => UTXOSelectionStrategy::Default, // use the selection heuristic next
-        };
-
-        // Heuristic for selection strategy: Default to MaturityThenSmallest, but if the amount is greater than
-        // the largest UTXO, use Largest UTXOs first.
-        // let strategy = match (strategy, uo.is_empty()) {
-        //     (Some(s), _) => s,
-        //     (None, true) => UTXOSelectionStrategy::Smallest,
-        //     (None, false) => {
-        //         let largest_utxo = &uo[uo.len() - 1];
-        //         if amount > largest_utxo.unblinded_output.value {
-        //             UTXOSelectionStrategy::Largest
-        //         } else {
-        //             UTXOSelectionStrategy::MaturityThenSmallest
-        //         }
-        //     },
-        // };
-        warn!(target: LOG_TARGET, "select_utxos selection strategy: {}", strategy);
+        warn!(
+            target: LOG_TARGET,
+            "select_utxos selection criteria: {}", selection_criteria
+        );
+        let tip_height = chain_metadata.as_ref().map(|m| m.height_of_longest_chain());
         let uo = self
             .resources
             .db
-            .fetch_unspent_outputs_for_spending(strategy, amount, tip_height)?;
+            .fetch_unspent_outputs_for_spending(selection_criteria, amount, tip_height)?;
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         // Assumes that default Outputfeatures are used for change utxo
@@ -1569,6 +1523,10 @@ where
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_outputs_by(q)?)
+    }
+
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
     }
@@ -1611,9 +1569,7 @@ where
                 fee_per_gram,
                 output_count,
                 output_count * metadata_byte_size,
-                Some(UTXOSelectionStrategy::Largest),
-                None,
-                None,
+                UtxoSelectionCriteria::largest_first(),
             )
             .await?;
 
@@ -2069,32 +2025,6 @@ where
 
     fn get_fee_calc(&self) -> Fee {
         Fee::new(*self.resources.consensus_constants.transaction_weight())
-    }
-}
-
-/// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
-#[derive(Debug, PartialEq)]
-pub enum UTXOSelectionStrategy {
-    // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
-    // is removing small UTXOs from the blockchain, con is that it costs more in fees
-    Smallest,
-    // Start from oldest maturity to reduce the likelihood of grabbing locked up UTXOs
-    MaturityThenSmallest,
-    // A strategy that selects the largest UTXOs first. Preferred when the amount is large
-    Largest,
-    // Heuristic for selection strategy: MaturityThenSmallest, but if the amount is greater than
-    // the largest UTXO, use Largest UTXOs first
-    Default,
-}
-
-impl Display for UTXOSelectionStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UTXOSelectionStrategy::Smallest => write!(f, "Smallest"),
-            UTXOSelectionStrategy::MaturityThenSmallest => write!(f, "MaturityThenSmallest"),
-            UTXOSelectionStrategy::Largest => write!(f, "Largest"),
-            UTXOSelectionStrategy::Default => write!(f, "Default"),
-        }
     }
 }
 
