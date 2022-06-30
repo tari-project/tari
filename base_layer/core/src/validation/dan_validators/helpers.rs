@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, UtxoMinedInfo},
@@ -32,20 +31,19 @@ use crate::{
         SideChainFeatures,
         TransactionOutput,
     },
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_output_type(
     output: &TransactionOutput,
     expected_output_type: OutputType,
-) -> Result<(), ValidationError> {
+) -> Result<(), DanLayerValidationError> {
     let output_type = output.features.output_type;
     if output_type != expected_output_type {
-        let msg = format!(
-            "Invalid output type: expected {:?} but got {:?}",
-            expected_output_type, output_type
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(DanLayerValidationError::UnexpectedOutputType {
+            got: output_type,
+            expected: expected_output_type,
+        });
     }
 
     Ok(())
@@ -57,10 +55,9 @@ pub fn fetch_contract_features<B: BlockchainBackend>(
     output_type: OutputType,
 ) -> Result<Vec<SideChainFeatures>, ValidationError> {
     let features = fetch_contract_utxos(db, contract_id, output_type)?
-        .iter()
-        .filter_map(|utxo| utxo.output.as_transaction_output())
-        .filter_map(|output| output.features.sidechain_features.as_ref())
-        .cloned()
+        .into_iter()
+        .filter_map(|utxo| utxo.output.into_unpruned_output())
+        .filter_map(|output| output.features.sidechain_features)
         .collect();
 
     Ok(features)
@@ -71,10 +68,7 @@ pub fn fetch_contract_utxos<B: BlockchainBackend>(
     contract_id: FixedHash,
     output_type: OutputType,
 ) -> Result<Vec<UtxoMinedInfo>, ValidationError> {
-    let utxos = db
-        .fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
-        .map_err(|err| ValidationError::DanLayerError(format!("Could not search outputs: {}", err)))?;
-
+    let utxos = db.fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)?;
     Ok(utxos)
 }
 
@@ -82,26 +76,19 @@ pub fn fetch_contract_constitution<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<ContractConstitution, ValidationError> {
-    let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
-    if features.is_empty() {
-        return Err(ValidationError::DanLayerError(format!(
-            "Contract constitution not found for contract_id {}",
-            contract_id.to_hex()
-        )));
+    let mut features = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
+    let feature = features
+        .pop()
+        .ok_or(DanLayerValidationError::ContractConstitutionNotFound { contract_id })?;
+
+    match feature.constitution {
+        Some(value) => Ok(value),
+        None => Err(ValidationError::DanLayerError(
+            DanLayerValidationError::DataInconsistency {
+                details: "Contract constitution data not found in the output features".to_string(),
+            },
+        )),
     }
-
-    let feature = &features[0];
-
-    let constitution = match feature.constitution.as_ref() {
-        Some(value) => value,
-        None => {
-            return Err(ValidationError::DanLayerError(
-                "Contract constitution data not found in the output features".to_string(),
-            ))
-        },
-    };
-
-    Ok(constitution.clone())
 }
 
 pub fn fetch_contract_update_proposal<B: BlockchainBackend>(
@@ -116,19 +103,18 @@ pub fn fetch_contract_update_proposal<B: BlockchainBackend>(
         .find(|proposal| proposal.proposal_id == proposal_id)
     {
         Some(proposal) => Ok(proposal),
-        None => Err(ValidationError::DanLayerError(format!(
-            "Contract update proposal not found for contract_id {} and proposal_id {}",
-            contract_id.to_hex(),
-            proposal_id
-        ))),
+        None => Err(ValidationError::DanLayerError(
+            DanLayerValidationError::ContractUpdateProposalNotFound {
+                contract_id,
+                proposal_id,
+            },
+        )),
     }
 }
 
-pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, ValidationError> {
+pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, DanLayerValidationError> {
     match output.features.sidechain_features.as_ref() {
         Some(features) => Ok(features),
-        None => Err(ValidationError::DanLayerError(
-            "Sidechain features not found".to_string(),
-        )),
+        None => Err(DanLayerValidationError::SidechainFeaturesNotProvided),
     }
 }
