@@ -1,4 +1,7 @@
-import { Controller, Control } from 'react-hook-form'
+import { useCallback } from 'react'
+import { Controller, Control, UseFormSetValue } from 'react-hook-form'
+import { open } from '@tauri-apps/api/dialog'
+import { appDir } from '@tauri-apps/api/path'
 
 import Select from '../../../components/Select'
 import Text from '../../../components/Text'
@@ -22,12 +25,28 @@ import MessagesConfig from '../../../config/helpMessagesConfig'
 const BaseNodeSettings = ({
   control,
   onBaseNodeConnectClick,
+  setValue,
 }: {
   control: Control<SettingsInputs>
   onBaseNodeConnectClick: () => void
+  setValue: UseFormSetValue<SettingsInputs>
 }) => {
   const theme = useTheme()
   const dispatch = useAppDispatch()
+  const selectDirectory = useCallback(async (lastPath?: string) => {
+    const selectedFolder = await open({
+      directory: true,
+      defaultPath: lastPath || (await appDir()),
+    })
+
+    if (selectedFolder === null) {
+      return
+    } else if (typeof selectedFolder === 'string') {
+      setValue('baseNode.rootFolder', selectedFolder, {
+        shouldDirty: true,
+      })
+    }
+  }, [])
   return (
     <>
       <Text type='subheader' as='h2'>
@@ -64,6 +83,7 @@ const BaseNodeSettings = ({
           <InputRow>
             <Label $noMargin>{t.baseNode.settings.rootFolder}</Label>
             <Input
+              onClick={() => selectDirectory(field.value)}
               onChange={field.onChange}
               value={field?.value?.toString() || ''}
               containerStyle={{ width: '50%' }}

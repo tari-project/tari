@@ -53,6 +53,7 @@ const Input = (
     containerStyle,
     inverted,
     withError = true,
+    onClick,
   }: InputProps,
   ref?: React.ForwardedRef<HTMLInputElement>,
 ) => {
@@ -81,6 +82,7 @@ const Input = (
         </Label>
       )}
       <InputContainer
+        onClick={onClick}
         disabled={disabled}
         $error={Boolean(error)}
         $withError={withError}
@@ -99,22 +101,24 @@ const Input = (
           style={style}
           ref={ref}
         />
-        <IconUnitsContainer $iconWrapperWidth={iconWrapperWidth}>
-          {inputIcon && (
-            <IconWrapper
-              onClick={disabled ? undefined : onIconClick}
-              data-testid='icon-test'
-              ref={iconsRef}
-            >
-              {inputIcon}
-            </IconWrapper>
-          )}{' '}
-          {inputUnits && (
-            <UnitsText type='smallMedium' data-testid='units-test'>
-              {inputUnits}
-            </UnitsText>
-          )}
-        </IconUnitsContainer>
+        {(inputIcon || inputUnits) && (
+          <IconUnitsContainer $iconWrapperWidth={iconWrapperWidth}>
+            {inputIcon && (
+              <IconWrapper
+                onClick={disabled ? undefined : onIconClick}
+                data-testid='icon-test'
+                ref={iconsRef}
+              >
+                {inputIcon}
+              </IconWrapper>
+            )}{' '}
+            {inputUnits && (
+              <UnitsText type='smallMedium' data-testid='units-test'>
+                {inputUnits}
+              </UnitsText>
+            )}
+          </IconUnitsContainer>
+        )}
       </InputContainer>
       {error && (
         <Text

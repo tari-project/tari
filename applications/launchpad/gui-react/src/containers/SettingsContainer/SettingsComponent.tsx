@@ -58,6 +58,7 @@ const renderSettings = (
         <BaseNodeSettings
           control={props.control}
           onBaseNodeConnectClick={props.onBaseNodeConnectClick}
+          setValue={props.setValue}
         />
       )
     case Settings.Docker:
@@ -97,7 +98,6 @@ const SettingsComponent = ({
   changeTheme,
 }: SettingsComponentProps) => {
   const theme = useTheme()
-
   // Render Monero Authentication form if open:
   if (openMiningAuthForm) {
     return (

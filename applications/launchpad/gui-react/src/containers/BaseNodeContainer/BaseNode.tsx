@@ -118,22 +118,21 @@ const BaseNode = ({
         open={openQRModal}
         onClose={() => setOpenQRModal(false)}
       />
-
-      <Button
-        autosizeIcons={false}
-        variant='text'
-        leftIcon={<SvgSetting2 width='1.5rem' height='1.5rem' />}
-        style={{
-          paddingLeft: 0,
-          width: '199px',
-          color: theme.primary,
-        }}
-        onClick={() =>
-          dispatch(settingsActions.open({ toOpen: Settings.BaseNode }))
-        }
-      >
-        {t.baseNode.viewActions.baseNodeSettings}
-      </Button>
+      <div style={{ width: '100%' }}>
+        <Button
+          autosizeIcons={false}
+          variant='text'
+          leftIcon={<SvgSetting2 width='1.5rem' height='1.5rem' />}
+          style={{
+            paddingLeft: 0,
+          }}
+          onClick={() =>
+            dispatch(settingsActions.open({ toOpen: Settings.BaseNode }))
+          }
+        >
+          {t.baseNode.viewActions.baseNodeSettings}
+        </Button>
+      </div>
     </>
   )
 }
