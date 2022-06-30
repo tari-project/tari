@@ -59,12 +59,7 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
         todo!()
     }
 
-    fn save_contract(
-        &self,
-        _contract_id: FixedHash,
-        _mined_height: u64,
-        _status: ContractState,
-    ) -> Result<(), Self::Error> {
+    fn save_contract(&self, _contract: Self::Model, _status: ContractState) -> Result<(), Self::Error> {
         todo!()
     }
 

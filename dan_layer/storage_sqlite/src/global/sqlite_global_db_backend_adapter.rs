@@ -140,21 +140,14 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         Ok(())
     }
 
-    fn save_contract(
-        &self,
-        contract_id: FixedHash,
-        mined_height: u64,
-        state: ContractState,
-    ) -> Result<(), Self::Error> {
+    fn save_contract(&self, mut contract: Contract, state: ContractState) -> Result<(), Self::Error> {
         use crate::global::schema::contracts;
         let tx = self.create_transaction()?;
 
+        contract.with_state(state);
+
         diesel::insert_into(contracts::table)
-            .values((
-                contracts::id.eq(contract_id.to_vec()),
-                contracts::height.eq(mined_height as i64),
-                contracts::state.eq(i32::from(state.as_byte())),
-            ))
+            .values(&contract)
             .execute(tx.connection())
             .map_err(|source| SqliteStorageError::DieselError {
                 source,
@@ -170,7 +163,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         use crate::global::schema::contracts;
         let tx = self.create_transaction()?;
 
-        diesel::update(contracts::table.filter(contracts::id.eq(contract_id.to_vec())))
+        diesel::update(contracts::table.filter(contracts::contract_id.eq(contract_id.to_vec())))
             .set(contracts::state.eq(i32::from(state.as_byte())))
             .execute(tx.connection())
             .map_err(|source| SqliteStorageError::DieselError {

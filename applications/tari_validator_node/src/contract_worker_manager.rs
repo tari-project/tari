@@ -35,7 +35,7 @@ use tari_comms_dht::Dht;
 use tari_core::{consensus::ConsensusHashWriter, transactions::transaction_components::ContractConstitution};
 use tari_crypto::{
     keys::SecretKey,
-    tari_utilities::{hex::Hex, ByteArray},
+    tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray},
 };
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, Committee},
@@ -58,7 +58,11 @@ use tari_dan_core::{
     workers::ConsensusWorker,
     DigitalAssetError,
 };
-use tari_dan_storage_sqlite::{global::SqliteGlobalDbBackendAdapter, SqliteDbFactory, SqliteStorageService};
+use tari_dan_storage_sqlite::{
+    global::{models::contract::Contract, SqliteGlobalDbBackendAdapter},
+    SqliteDbFactory,
+    SqliteStorageService,
+};
 use tari_p2p::{comms_connector::SubscriptionFactory, tari_message::TariMessageType};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
@@ -174,8 +178,17 @@ impl ContractWorkerManager {
         let active_contracts = self.global_db.get_active_contracts()?;
 
         for contract in active_contracts {
-            let contract_id = FixedHash::try_from(contract.id)?;
-            let kill = self.spawn_asset_worker(FixedHash::from(contract_id), &contract.constitution);
+            let contract_id = FixedHash::try_from(contract.contract_id)?;
+
+            println!("Starting contract {}", contract_id.to_hex());
+
+            let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
+                WorkerManagerError::DataCorruption {
+                    details: error.to_string(),
+                }
+            })?;
+
+            let kill = self.spawn_asset_worker(contract_id, &constitution);
             self.active_workers.insert(contract_id, kill);
         }
 
@@ -193,8 +206,17 @@ impl ContractWorkerManager {
         info!(target: LOG_TARGET, "{} new contract(s) found", new_contracts.len());
 
         for contract in new_contracts {
-            self.global_db
-                .save_contract(contract.contract_id, contract.mined_height, ContractState::Pending)?;
+            match self
+                .global_db
+                .save_contract(contract.clone().into(), ContractState::Pending)
+            {
+                Ok(_) => info!("Saving contract data id={}", contract.contract_id.to_hex()),
+                Err(error) => error!(
+                    "Couldn't save contract data id={} received error={}",
+                    contract.contract_id.to_hex(),
+                    error.to_string()
+                ),
+            }
 
             info!(
                 target: LOG_TARGET,
@@ -285,15 +307,27 @@ impl ContractWorkerManager {
                     tip.height_of_longest_chain
                 );
 
-                self.global_db
-                    .save_contract(contract_id, mined_height, ContractState::Expired)?;
+                let contract = ActiveContract {
+                    constitution,
+                    contract_id,
+                    mined_height,
+                };
+
+                match self.global_db.save_contract(contract.into(), ContractState::Expired) {
+                    Ok(_) => info!("Saving expired contract data id={}", contract_id.to_hex()),
+                    Err(error) => error!(
+                        "Couldn't save expired contract data id={} received error={}",
+                        contract_id.to_hex(),
+                        error.to_string()
+                    ),
+                }
 
                 continue;
             }
 
             new_contracts.push(ActiveContract {
-                contract_id,
                 constitution,
+                contract_id,
                 mined_height,
             });
         }
@@ -466,7 +500,19 @@ pub enum WorkerManagerError {
 
 #[derive(Debug, Clone)]
 struct ActiveContract {
-    pub contract_id: FixedHash,
     pub constitution: ContractConstitution,
+    pub contract_id: FixedHash,
     pub mined_height: u64,
+}
+
+impl From<ActiveContract> for Contract {
+    fn from(value: ActiveContract) -> Self {
+        Self {
+            id: 0,
+            height: value.mined_height as i64,
+            contract_id: value.contract_id.to_vec(),
+            constitution: value.constitution.to_binary().unwrap(),
+            state: 0,
+        }
+    }
 }

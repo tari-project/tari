@@ -40,8 +40,7 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
         key: &GlobalDbMetadataKey,
         connection: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error>;
-    fn save_contract(&self, contract_id: FixedHash, mined_height: u64, state: ContractState)
-        -> Result<(), Self::Error>;
+    fn save_contract(&self, contract: Self::Model, state: ContractState) -> Result<(), Self::Error>;
     fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error>;
     fn get_active_contracts(&self) -> Result<Vec<Self::Model>, Self::Error>;
 }
