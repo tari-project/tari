@@ -69,6 +69,8 @@ lazy_static! {
     pub static ref CONTAINERS: RwLock<HashMap<String, ContainerState>> = RwLock::new(HashMap::new());
 }
 
+pub static DEFAULT_WORKSPACE_NAME: &str = "default";
+
 fn tari_blockchain_volume_name(tari_workspace: String, tari_network: TariNetwork) -> String {
     format!("{}_{}_volume", tari_workspace, tari_network.lower_case())
 }

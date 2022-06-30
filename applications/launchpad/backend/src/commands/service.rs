@@ -49,13 +49,13 @@ use crate::{
         XmRigConfig,
         DEFAULT_MINING_ADDRESS,
         DEFAULT_MONEROD_URL,
+        DEFAULT_WORKSPACE_NAME,
     },
     error::LauncherError,
 };
 
 /// "Global" settings from the launcher front-end
 #[derive(Clone, Derivative, Deserialize)]
-#[derivative(Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceSettings {
     pub tari_network: String,
@@ -194,7 +194,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
     let app_config = app.config();
     let should_create_workspace = {
         let wrapper = state.workspaces.read().await;
-        !wrapper.workspace_exists("default")
+        !wrapper.workspace_exists(DEFAULT_WORKSPACE_NAME)
     }; // drop read-only lock
     if should_create_workspace {
         let package_info = &state.package_info;
@@ -203,7 +203,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "config.toml")?;
         // Only get a write-lock if we need one
         let mut wrapper = state.workspaces.write().await;
-        wrapper.create_workspace("default", config)?;
+        wrapper.create_workspace(DEFAULT_WORKSPACE_NAME, config)?;
     }
     Ok(should_create_workspace)
 }

@@ -6,8 +6,10 @@ mod wallet_grpc_client;
 use std::convert::TryFrom;
 
 use futures::{Future, Stream};
+use log::{error, info};
 use serde::Serialize;
 use tari_app_grpc::tari_rpc::{GetBalanceResponse, GetIdentityResponse, TransactionEvent};
+use tari_common_types::{emoji::EmojiId, types::PublicKey};
 use thiserror::Error;
 pub use wallet_grpc_client::*;
 
@@ -30,10 +32,9 @@ pub struct WalletIdentity {
     public_key: Vec<u8>,
     public_address: String,
     node_id: Vec<u8>,
+    emoji_id: String,
 }
-
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WalletBalance {
     available_balance: u64,
     pending_incoming_balance: u64,
@@ -61,13 +62,20 @@ impl TryFrom<TransactionEvent> for WalletTransaction {
     }
 }
 
-impl From<GetIdentityResponse> for WalletIdentity {
-    fn from(value: GetIdentityResponse) -> WalletIdentity {
-        WalletIdentity {
+impl TryFrom<GetIdentityResponse> for WalletIdentity {
+    type Error = String;
+
+    fn try_from(value: GetIdentityResponse) -> Result<Self, Self::Error> {
+        let hex_public_key = String::from_utf8(value.public_key.clone()).unwrap();
+        let emoji_id = EmojiId::from_hex(&hex_public_key)
+            .map_err(|e| format!("Failed to create an emoji: {}", e))?
+            .to_string();
+        Ok(WalletIdentity {
             public_key: value.public_key,
             public_address: value.public_address,
             node_id: value.node_id,
-        }
+            emoji_id,
+        })
     }
 }
 

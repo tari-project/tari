@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use std::{convert::TryFrom, fmt::format};
+use std::{convert::TryFrom, fmt::format, thread, time::Duration};
 
 use config::Config;
 use futures::StreamExt;
@@ -41,7 +41,8 @@ pub async fn wallet_identity() -> Result<WalletIdentity, String> {
     if "running" == status.to_lowercase() {
         let mut wallet_client = GrpcWalletClient::new();
         let identity = wallet_client.identity().await.map_err(|e| e.to_string())?;
-        Ok(WalletIdentity::from(identity))
+        info!("SUCCESS: IDENTITY: {:?}", identity);
+        WalletIdentity::try_from(identity)
     } else {
         error!("Wallet container[image = {}] is not running", ImageType::Wallet);
         Err("Wallet is not running".to_string())
@@ -83,7 +84,7 @@ pub async fn wallet_events(app: AppHandle<Wry>) -> Result<(), String> {
                     is_coinbase: value.is_coinbase,
                 };
 
-                if let Err(err) = app_clone.emit_all("tari://wallet_event", wt.clone()) {
+                if let Err(err) = app_clone.emit_all("tari://wallet_event", wt) {
                     warn!("Could not emit event to front-end, {:?}", err);
                 }
             }
