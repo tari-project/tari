@@ -309,8 +309,8 @@ mod test {
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
 
-        assert_eq!(oms_mock_state.call_count(), 1);
-        let (params, body) = oms_mock_state.pop_call().unwrap();
+        assert_eq!(oms_mock_state.call_count().await, 1);
+        let (params, body) = oms_mock_state.pop_call().await.unwrap();
 
         // Header and body are preserved when forwarding
         assert_eq!(&body.to_vec(), &sample_body);

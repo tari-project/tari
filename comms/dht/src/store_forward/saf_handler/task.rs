@@ -738,16 +738,12 @@ mod test {
 
         task::spawn(task.run());
 
-        task::spawn_blocking({
-            let mock_state = oms_mock_state.clone();
-            move || {
-                mock_state.wait_call_count(1, Duration::from_secs(10)).unwrap();
-            }
-        })
-        .await
-        .unwrap();
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
 
-        let (_, body) = oms_mock_state.pop_call().unwrap();
+        let (_, body) = oms_mock_state.pop_call().await.unwrap();
         let body = EnvelopeBody::decode(body.as_ref()).unwrap();
         let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
         assert_eq!(msg.messages().len(), 0);
@@ -801,13 +797,13 @@ mod test {
         task::spawn(task.run());
 
         for _ in 0..6 {
-            if oms_mock_state.call_count() >= 1 {
+            if oms_mock_state.call_count().await >= 1 {
                 break;
             }
             sleep(Duration::from_secs(5)).await;
         }
-        assert_eq!(oms_mock_state.call_count(), 1);
-        let call = oms_mock_state.pop_call().unwrap();
+        assert_eq!(oms_mock_state.call_count().await, 1);
+        let call = oms_mock_state.pop_call().await.unwrap();
 
         let body = call.1.to_vec();
         let body = EnvelopeBody::decode(body.as_slice()).unwrap();

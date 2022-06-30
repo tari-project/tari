@@ -75,14 +75,14 @@ pub enum TransactionServiceRequest {
     SendTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        output_features: OutputFeatures,
+        output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        output_features: OutputFeatures,
+        output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         message: String,
     },
@@ -405,7 +405,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
-                output_features,
+                output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
             })
@@ -429,7 +429,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
-                output_features,
+                output_features: Box::new(output_features),
                 fee_per_gram,
                 message,
             })
