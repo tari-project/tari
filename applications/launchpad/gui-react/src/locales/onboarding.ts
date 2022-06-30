@@ -42,6 +42,7 @@ const translations = {
       link: 'Take me to installation page',
     },
     afterInstall: 'Easy peasy, lemon squeezy! Congratulations! 👏 Docker is installed on your computer. I knew you could handle it. Now it\'s time for the final stretch.',
+    startSyncBtn: 'Sync the blockchain', 
   },
   dockerImages: {
     message1: {
@@ -59,7 +60,10 @@ const translations = {
     },
   },
   lastSteps: {
-    message1: 'Awesome, everything went smoothly. You are one step away from starting mining.'
+    message1: 'Awesome, everything went smoothly. You are one step away from starting mining.',
+    message2: 'When the data synchronization is completed, the Tari Launchpad dashboard will start automatically. Do not close this window as this will pause the entire process.',
+    syncError: 'Oops! Something went wrong!',
+    blockchainIsSyncing: 'Blockchain is synchronizing...',
   },
   expertView: {
     title: 'Pulling images',

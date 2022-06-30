@@ -10,7 +10,7 @@ import {
   OnboardingMessagesDockerInstallAfter,
   DownloadImagesMessage,
   DownloadImagesErrorMessage,
-  OnboardingMessagesLastSteps,
+  BlockchainSyncStep,
 } from '../../config/onboardingMessagesConfig'
 import { setOnboardingComplete } from '../../store/app'
 import { selectOnboardingCheckpoint } from '../../store/app/selectors'
@@ -76,7 +76,14 @@ const OnboardingContainer = () => {
 
   /** MOCK FOR DOCKER IMAGE DOWNLOAD */
   const onImagesDowloadSuccess = () => {
-    pushMessages(OnboardingMessagesLastSteps)
+    pushMessages([
+      {
+        content: <BlockchainSyncStep pushMessages={pushMessages} />,
+        barFill: 0.875,
+        wait: 500,
+        noSkip: true,
+      },
+    ])
   }
 
   const onDockerInstallDone = () => {

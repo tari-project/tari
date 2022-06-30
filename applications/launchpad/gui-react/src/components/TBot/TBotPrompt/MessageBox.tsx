@@ -1,4 +1,4 @@
-import { forwardRef, ReactNode, ForwardedRef } from 'react'
+import { forwardRef, ReactNode, ForwardedRef, useState, useRef } from 'react'
 import { useSpring } from 'react-spring'
 import { useTheme } from 'styled-components'
 import SvgArrowRight from '../../../styles/Icons/ArrowRight'
@@ -11,6 +11,7 @@ import {
   MessageSlideIn,
   SkipButtonContainer,
 } from './styles'
+import React from 'react'
 
 /**
  * Component renders the message wrapped with elements allowing to perform
@@ -32,6 +33,9 @@ const MessageBox = (
   },
   ref?: ForwardedRef<HTMLDivElement>,
 ) => {
+  const messageBoxRef = useRef<HTMLDivElement | null>(null)
+  const [heightCtrl, setHeightCtrl] = useState<number | string | undefined>()
+
   const useOpacityAnim = useSpring({
     from: { opacity: animate ? 0 : 1 },
     to: { opacity: 1 },
@@ -46,10 +50,16 @@ const MessageBox = (
 
   const theme = useTheme()
 
+  const updateMessageBoxSize = () => {
+    if (messageBoxRef.current) {
+      setHeightCtrl(messageBoxRef.current.clientHeight)
+    }
+  }
+
   return (
     <StyledMessageBox ref={ref}>
       <StyledMessage
-        style={{ opacity: 0 }}
+        style={{ opacity: 0, height: heightCtrl ? heightCtrl : 'auto' }}
         $skipButton={skipButton}
         $floating={floating}
       >
@@ -58,11 +68,27 @@ const MessageBox = (
       <MessageSpaceContainer>
         <MessageSlideIn style={{ ...useSlideInAnim }}>
           <StyledMessage
+            ref={messageBoxRef}
             style={{ ...useOpacityAnim }}
             $skipButton={skipButton}
             $floating={floating}
           >
-            {children}
+            {React.Children.map(children, child => {
+              if (React.isValidElement(child)) {
+                /**
+                 * TBot Prompt adds each message twice to the DOM:
+                 * first message is hidden, and its role is to create a space in the layout for the second message.
+                 * The second message is animated and absolutely positioned.
+                 * In some cases, the content of the visible message can be changed,
+                 * and the size may change. So it may result in covering next message.
+                 * To solve this issue, the children should fire `updateMessageBoxSize()`
+                 * whenever the content changes the box sizes. The `updateMessageBoxSize`
+                 * updates the size of hidden message, so the visible message fits the layout.
+                 */
+                return React.cloneElement(child, { updateMessageBoxSize })
+              }
+              return child
+            })}
             {skipButton && (
               <SkipButtonContainer>
                 <Button

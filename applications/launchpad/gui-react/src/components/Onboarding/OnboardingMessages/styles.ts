@@ -24,3 +24,24 @@ export const StatusRow = styled.div`
     margin-bottom: 2px;
   }
 `
+
+export const FlexContent = styled.div`
+  display: flex;
+  flex-direction: column;
+`
+
+export const ProgressContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: ${({ theme }) => theme.spacingVertical(4)};
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 450px;
+`
+
+export const RemainingTime = styled.div`
+  margin-top: ${({ theme }) => theme.spacingVertical(1.5)};
+  margin-bottom: ${({ theme }) => theme.spacingVertical(2)};
+`

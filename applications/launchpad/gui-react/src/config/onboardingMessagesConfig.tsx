@@ -7,7 +7,7 @@ import {
   DownloadImagesMessage,
   DownloadImagesErrorMessage,
 } from '../components/Onboarding/OnboardingMessages/DockerImagesMessages'
-import lastStepsMessages from '../components/Onboarding/OnboardingMessages/LastStepsMessages'
+import { BlockchainSyncStep } from '../components/Onboarding/OnboardingMessages/LastStepsMessages'
 
 export const OnboardingMessagesIntro: TBotMessage[] = [
   {
@@ -73,13 +73,5 @@ export const OnboardingMessagesDockerInstallAfter: TBotMessage[] = [
   },
 ]
 
-export const OnboardingMessagesLastSteps: TBotMessage[] = [
-  {
-    content: lastStepsMessages[0],
-    barFill: 0.875,
-    wait: 3000,
-    noSkip: true,
-  },
-]
-
+export { BlockchainSyncStep }
 export { DownloadImagesMessage, DownloadImagesErrorMessage }

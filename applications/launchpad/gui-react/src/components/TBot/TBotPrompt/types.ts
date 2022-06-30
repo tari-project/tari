@@ -21,3 +21,7 @@ export interface TBotPromptProps {
   onMessageRender?: (index: number) => void
   onSkip?: () => void
 }
+
+export interface TBotMessageHOCProps {
+  updateMessageBoxSize?: () => void
+}

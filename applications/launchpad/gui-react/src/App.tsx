@@ -58,6 +58,7 @@ const App = () => {
     callInitActionInStore()
   }, [])
 
+  useSystemEvents({ dispatch })
   useDockerEvents({ dispatch })
 
   return (
