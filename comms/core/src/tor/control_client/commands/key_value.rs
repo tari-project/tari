@@ -20,50 +20,48 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, fmt, marker::PhantomData};
+use std::{borrow::Cow, fmt};
 
 use crate::tor::control_client::{commands::TorCommand, error::TorClientError, parsers, response::ResponseLine};
 
 /// The GETCONF command.
 ///
 /// This command is used to query the Tor proxy configuration file.
-pub fn get_conf(query: &str) -> KeyValueCommand<'_, '_> {
+pub fn get_conf(query: &str) -> KeyValueCommand<'_> {
     KeyValueCommand::new("GETCONF", &[query])
 }
 
 /// The GETINFO command.
 ///
 /// This command is used to retrieve Tor proxy configuration keys.
-pub fn get_info(key_name: &str) -> KeyValueCommand<'_, '_> {
+pub fn get_info(key_name: &str) -> KeyValueCommand<'_> {
     KeyValueCommand::new("GETINFO", &[key_name])
 }
 
 /// The SETEVENTS command.
 ///
 /// This command is used to set the events that tor will emit
-pub fn set_events<'b>(event_types: &[&'b str]) -> KeyValueCommand<'static, 'b> {
+pub fn set_events<'a>(event_types: &[&'a str]) -> KeyValueCommand<'a> {
     KeyValueCommand::new("SETEVENTS", event_types)
 }
 
-pub struct KeyValueCommand<'a, 'b> {
-    command: &'a str,
-    args: Vec<&'b str>,
-    _lifetime: PhantomData<&'b ()>,
+pub struct KeyValueCommand<'a> {
+    command: &'static str,
+    args: Vec<&'a str>,
 }
 
-impl<'a, 'b> KeyValueCommand<'a, 'b> {
-    pub fn new(command: &'a str, args: &[&'b str]) -> Self {
+impl<'a> KeyValueCommand<'a> {
+    pub fn new(command: &'static str, args: &[&'a str]) -> Self {
         Self {
             command,
             args: args.to_vec(),
-            _lifetime: PhantomData,
         }
     }
 }
 
-impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
+impl<'a> TorCommand for KeyValueCommand<'a> {
     type Error = TorClientError;
-    type Output = Vec<Cow<'b, str>>;
+    type Output = Vec<Cow<'a, str>>;
 
     fn to_command_string(&self) -> Result<String, Self::Error> {
         Ok(format!("{} {}", self.command, self.args.join(" ")))
@@ -99,7 +97,7 @@ impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
     }
 }
 
-impl fmt::Display for KeyValueCommand<'_, '_> {
+impl fmt::Display for KeyValueCommand<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
