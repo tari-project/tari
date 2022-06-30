@@ -82,7 +82,7 @@ pub(super) struct MultiRecipientInfo {
 }
 
 /// This is the message containing the public data that the Receiver will send back to the Sender
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecipientSignedMessage {
     pub tx_id: TxId,
     pub output: TransactionOutput,

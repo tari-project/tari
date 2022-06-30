@@ -49,28 +49,27 @@ pub async fn send_transaction_reply(
     direct_send_timeout: Duration,
     transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<bool, TransactionServiceError> {
-    let send_result;
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
     let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
 
-    match transaction_routing_mechanism {
+    let send_result = match transaction_routing_mechanism {
         TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
-            send_result = send_transaction_reply_direct(
+            send_transaction_reply_direct(
                 inbound_transaction,
                 outbound_message_service,
                 direct_send_timeout,
                 transaction_routing_mechanism,
             )
-            .await?;
+            .await?
         },
         TransactionRoutingMechanism::StoreAndForwardOnly => {
-            send_result = send_transaction_reply_store_and_forward(
+            send_transaction_reply_store_and_forward(
                 inbound_transaction.tx_id,
                 inbound_transaction.source_public_key,
                 proto_message.clone(),
                 &mut outbound_message_service,
             )
-            .await?;
+            .await?
         },
     };
 

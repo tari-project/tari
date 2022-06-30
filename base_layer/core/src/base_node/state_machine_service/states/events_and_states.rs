@@ -82,7 +82,7 @@ impl<E: std::error::Error> From<E> for StateEvent {
 /// blockchain the local node is. It can either be very far behind (`LaggingBehindHorizon`), in which case we will just
 /// synchronise against the pruning horizon; we're somewhat behind (`Lagging`) and need to download the missing
 /// blocks to catch up, or we are `UpToDate`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
     Lagging {
@@ -252,7 +252,7 @@ impl Display for StatusInfo {
 }
 
 /// This struct contains info that is use full for external viewing of state info
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockSyncInfo {
     pub tip_height: u64,
     pub local_height: u64,

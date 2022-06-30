@@ -43,8 +43,8 @@ impl TokenManagerHandle {
     pub async fn list_owned_tokens(&mut self) -> Result<Vec<Token>, WalletError> {
         match self.handle.call(TokenManagerRequest::ListOwned {}).await?? {
             TokenManagerResponse::ListOwned { tokens } => Ok(tokens),
-            /* _ => Err(WalletError::UnexpectedApiResponse{ method: "list_owned_tokens".to_string(), api:
-             * "TokenManagerService".to_string()}), */
+            // _ => Err(WalletError::UnexpectedApiResponse{ method: "list_owned_tokens".to_string(), api:
+            // "TokenManagerService".to_string()}),
         }
     }
 }

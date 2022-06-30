@@ -53,7 +53,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum CoinbaseBuildError {
     #[error("The block height for this coinbase transaction wasn't provided")]
     MissingBlockHeight,

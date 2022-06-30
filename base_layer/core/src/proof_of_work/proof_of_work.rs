@@ -41,7 +41,7 @@ pub trait AchievedDifficulty {}
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here
 /// to make serialization more straightforward
 #[allow(deprecated)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProofOfWork {
     /// The algorithm used to mine this block
     pub pow_algo: PowAlgorithm,

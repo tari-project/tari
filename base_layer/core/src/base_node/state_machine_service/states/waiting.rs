@@ -31,7 +31,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::waiting";
 
 /// A time-out state for the base node. It will do nothing in this state; and return a Continue event once the
 /// timeout is complete.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Waiting {
     timeout: Duration,
 }
