@@ -266,7 +266,7 @@ impl TryFrom<DbUnblindedOutput> for TariUtxo {
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[repr(C)]
 pub enum TariTypeTag {
-    String = 0,
+    Text = 0,
     Utxo = 1,
     Commitment = 2,
 }
@@ -274,7 +274,7 @@ pub enum TariTypeTag {
 impl Display for TariTypeTag {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TariTypeTag::String => write!(f, "String"),
+            TariTypeTag::Text => write!(f, "String"),
             TariTypeTag::Utxo => write!(f, "Utxo"),
             TariTypeTag::Commitment => write!(f, "Commitment"),
         }
@@ -300,7 +300,7 @@ impl TariVector {
         );
 
         Ok(Self {
-            tag: TariTypeTag::String,
+            tag: TariTypeTag::Text,
             len: strings.len(),
             cap: strings.capacity(),
             ptr: strings.as_mut_ptr() as *mut c_void,
@@ -317,7 +317,7 @@ impl TariVector {
     }
 
     fn to_string_vec(&self) -> Result<Vec<String>, InterfaceError> {
-        if self.tag != TariTypeTag::String {
+        if self.tag != TariTypeTag::Text {
             return Err(InterfaceError::InvalidArgument(format!(
                 "expecting String, got {}",
                 self.tag
@@ -4011,7 +4011,7 @@ pub unsafe extern "C" fn wallet_create(
             .to_str()
             .expect("A non-null network should be able to be converted to string");
         error!(target: LOG_TARGET, "network set to {}", network);
-        eprintln!("network set to {}", network);
+        // eprintln!("network set to {}", network);
         match Network::from_str(&*network) {
             Ok(n) => n,
             Err(_) => {
@@ -4404,7 +4404,6 @@ pub unsafe extern "C" fn destroy_tari_vector(x: *mut TariVector) {
 pub unsafe extern "C" fn wallet_coin_split(
     wallet: *mut TariWallet,
     commitments: *mut TariVector,
-    amount_per_split: u64,
     number_of_splits: usize,
     fee_per_gram: u64,
     error_ptr: *mut i32,
@@ -4437,9 +4436,8 @@ pub unsafe extern "C" fn wallet_coin_split(
         },
     };
 
-    match (*wallet).runtime.block_on((*wallet).wallet.coin_split(
+    match (*wallet).runtime.block_on((*wallet).wallet.coin_split_even(
         commitments,
-        MicroTari(amount_per_split),
         number_of_splits,
         MicroTari(fee_per_gram),
         String::new(),
@@ -9307,7 +9305,7 @@ mod test {
 
             let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
 
-            let result = wallet_coin_split(alice_wallet, commitments, 20500, 3, 5, error_ptr);
+            let result = wallet_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
 
@@ -9340,8 +9338,9 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
             assert_eq!(unspent_outputs.len(), 2);
-            assert_eq!(new_pending_outputs.len(), 4);
-            assert!(new_pending_outputs[0..3].iter().all(|x| *x == 20500.into()));
+            assert_eq!(new_pending_outputs.len(), 3);
+            assert_eq!(new_pending_outputs[0], new_pending_outputs[1]);
+            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroTari(1));
 
             destroy_tari_outputs(outputs);
             destroy_tari_vector(commitments);
@@ -9355,24 +9354,5 @@ mod test {
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
-    }
-
-    #[test]
-    fn test_tari_vector() {
-        let mut strings = ManuallyDrop::new(vec![
-            CString::new("string0").unwrap().into_raw(),
-            CString::new("string1").unwrap().into_raw(),
-            CString::new("string2").unwrap().into_raw(),
-        ]);
-
-        let v = TariVector {
-            tag: TariTypeTag::String,
-            len: strings.len(),
-            cap: strings.capacity(),
-            ptr: strings.as_mut_ptr() as *mut c_void,
-        };
-
-        eprintln!("v = {:#?}", v);
-        eprintln!("result = {:#?}", v.to_string_vec());
     }
 }

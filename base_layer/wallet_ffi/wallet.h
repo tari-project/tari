@@ -14,7 +14,7 @@
 #define OutputFields_NUM_FIELDS 10
 
 enum TariTypeTag {
-  String = 0,
+  Text = 0,
   Utxo = 1,
   Commitment = 2,
 };
@@ -2262,7 +2262,6 @@ void destroy_tari_vector(struct TariVector *x);
  */
 uint64_t wallet_coin_split(struct TariWallet *wallet,
                            struct TariVector *commitments,
-                           uint64_t amount_per_split,
                            uintptr_t number_of_splits,
                            uint64_t fee_per_gram,
                            int32_t *error_ptr);

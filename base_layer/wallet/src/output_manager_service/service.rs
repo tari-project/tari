@@ -384,11 +384,27 @@ where
             },
             OutputManagerRequest::CreateCoinSplit((commitments, amount_per_split, split_count, fee_per_gram)) => {
                 if commitments.is_empty() {
-                    self.create_coin_split_auto(amount_per_split, split_count, fee_per_gram)
+                    self.create_coin_split_auto(Some(amount_per_split), split_count, fee_per_gram)
                         .await
                         .map(OutputManagerResponse::Transaction)
                 } else {
-                    self.create_coin_split_with_commitments(commitments, amount_per_split, split_count, fee_per_gram)
+                    self.create_coin_split_with_commitments(
+                        commitments,
+                        Some(amount_per_split),
+                        split_count,
+                        fee_per_gram,
+                    )
+                    .await
+                    .map(OutputManagerResponse::Transaction)
+                }
+            },
+            OutputManagerRequest::CreateCoinSplitEven((commitments, split_count, fee_per_gram)) => {
+                if commitments.is_empty() {
+                    self.create_coin_split_auto(None, split_count, fee_per_gram)
+                        .await
+                        .map(OutputManagerResponse::Transaction)
+                } else {
+                    self.create_coin_split_with_commitments(commitments, None, split_count, fee_per_gram)
                         .await
                         .map(OutputManagerResponse::Transaction)
                 }
@@ -1703,7 +1719,7 @@ where
     async fn create_coin_split_with_commitments(
         &mut self,
         commitments: Vec<Commitment>,
-        amount_per_split: MicroTari,
+        amount_per_split: Option<MicroTari>,
         number_of_splits: usize,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
@@ -1717,19 +1733,27 @@ where
             None,
         )?;
 
-        self.create_coin_split(src_outputs, amount_per_split, number_of_splits, fee_per_gram)
-            .await
+        match amount_per_split {
+            None => {
+                self.create_coin_split_even(src_outputs, number_of_splits, fee_per_gram)
+                    .await
+            },
+            Some(amount_per_split) => {
+                self.create_coin_split(src_outputs, amount_per_split, number_of_splits, fee_per_gram)
+                    .await
+            },
+        }
     }
 
     async fn create_coin_split_auto(
         &mut self,
-        amount_per_split: MicroTari,
+        amount_per_split: Option<MicroTari>,
         number_of_splits: usize,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
-        let src_outputs = self
+        let selection = self
             .select_utxos(
-                MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64),
+                amount_per_split.unwrap_or(MicroTari::zero()),
                 fee_per_gram,
                 number_of_splits,
                 self.default_metadata_size() * number_of_splits,
@@ -1737,8 +1761,181 @@ where
             )
             .await?;
 
-        self.create_coin_split(src_outputs.utxos, amount_per_split, number_of_splits, fee_per_gram)
-            .await
+        match amount_per_split {
+            None => {
+                self.create_coin_split_even(selection.utxos, number_of_splits, fee_per_gram)
+                    .await
+            },
+            Some(amount_per_split) => {
+                self.create_coin_split(selection.utxos, amount_per_split, number_of_splits, fee_per_gram)
+                    .await
+            },
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn create_coin_split_even(
+        &mut self,
+        src_outputs: Vec<DbUnblindedOutput>,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        if number_of_splits == 0 {
+            return Err(OutputManagerError::InvalidArgument(
+                "number_of_splits must be greater than 0".to_string(),
+            ));
+        }
+
+        let covenant = Covenant::default();
+        let default_metadata_size = self.default_metadata_size();
+        let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
+
+        // accumulated value amount from given source outputs
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        let fee = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            src_outputs.len(),
+            number_of_splits,
+            default_metadata_size * number_of_splits,
+        );
+
+        let aftertax_amount = accumulated_amount.saturating_sub(fee);
+        let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroTari(aftertax_amount.as_u64() % amount_per_split.as_u64());
+
+        // preliminary balance check
+        if self.get_balance(None)?.available_balance < (aftertax_amount + fee) {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        trace!(target: LOG_TARGET, "initializing new split (even) transaction");
+
+        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(PrivateKey::random(&mut OsRng))
+            .with_private_nonce(PrivateKey::random(&mut OsRng))
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
+
+        // collecting inputs from source outputs
+        let inputs: Vec<TransactionInput> = src_outputs
+            .iter()
+            .map(|src_out| {
+                src_out
+                    .unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)
+            })
+            .try_collect()?;
+
+        // adding inputs to the transaction
+        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+            trace!(
+                target: LOG_TARGET,
+                "adding transaction input: output_hash=: {:?}",
+                src_output.hash
+            );
+            tx_builder.with_input(input, src_output.unblinded_output.clone());
+        });
+
+        for i in 1..=number_of_splits {
+            // NOTE: adding the unspent `change` to the last output
+            let amount_per_split = if i == number_of_splits {
+                amount_per_split + unspent_remainder
+            } else {
+                amount_per_split
+            };
+
+            let noop_script = script!(Nop);
+            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let output_features = OutputFeatures {
+                recovery_byte: self.calculate_recovery_byte(spending_key.clone(), accumulated_amount.as_u64(), true)?,
+                ..Default::default()
+            };
+
+            // generating sender's keypair
+            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+            let commitment_signature = TransactionOutput::create_final_metadata_signature(
+                TransactionOutputVersion::get_current_version(),
+                amount_per_split,
+                &spending_key,
+                &noop_script,
+                &output_features,
+                &sender_offset_private_key,
+                &covenant,
+            )?;
+
+            let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                UnblindedOutput::new_current_version(
+                    amount_per_split,
+                    spending_key,
+                    output_features,
+                    noop_script,
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    script_private_key,
+                    sender_offset_public_key,
+                    commitment_signature,
+                    0,
+                    covenant.clone(),
+                ),
+                &self.resources.factories,
+                &self.resources.rewind_data.clone(),
+                None,
+                None,
+            )?;
+
+            tx_builder
+                .with_output(output.unblinded_output.clone(), sender_offset_private_key)
+                .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+            dest_outputs.push(output);
+        }
+
+        let mut stp = tx_builder
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
+        // store them until the transaction times out OR is confirmed
+        let tx_id = stp.get_tx_id()?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Encumber coin split (even) transaction (tx_id={}) outputs",
+            tx_id
+        );
+
+        // encumbering transaction
+        self.resources
+            .db
+            .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
+        self.confirm_encumberance(tx_id)?;
+
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin split transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
+
+        Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1752,6 +1949,12 @@ where
         if number_of_splits == 0 {
             return Err(OutputManagerError::InvalidArgument(
                 "number_of_splits must be greater than 0".to_string(),
+            ));
+        }
+
+        if amount_per_split == MicroTari::zero() {
+            return Err(OutputManagerError::InvalidArgument(
+                "amount_per_split must be greater than 0".to_string(),
             ));
         }
 

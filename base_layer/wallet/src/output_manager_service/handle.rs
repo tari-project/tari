@@ -109,6 +109,7 @@ pub enum OutputManagerRequest {
     ValidateUtxos,
     RevalidateTxos,
     CreateCoinSplit((Vec<Commitment>, MicroTari, usize, MicroTari)),
+    CreateCoinSplitEven((Vec<Commitment>, usize, MicroTari)),
     CreateCoinJoin {
         commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
@@ -177,6 +178,7 @@ impl fmt::Display for OutputManagerRequest {
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({:?})", v.0),
+            CreateCoinSplitEven(v) => write!(f, "CreateCoinSplitEven ({:?})", v.0),
             CreateCoinJoin {
                 commitments,
                 fee_per_gram,
@@ -685,6 +687,26 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::CreateCoinSplit((
                 commitments,
                 amount_per_split,
+                split_count,
+                fee_per_gram,
+            )))
+            .await??
+        {
+            OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_coin_split_even(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCoinSplitEven((
+                commitments,
                 split_count,
                 fee_per_gram,
             )))

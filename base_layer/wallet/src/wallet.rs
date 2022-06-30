@@ -565,6 +565,34 @@ where
         }
     }
 
+    /// Do a coin split
+    pub async fn coin_split_even(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, WalletError> {
+        let coin_split_tx = self
+            .output_manager_service
+            .create_coin_split_even(commitments, split_count, fee_per_gram)
+            .await;
+
+        match coin_split_tx {
+            Ok((tx_id, split_tx, amount)) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .await;
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
     pub async fn coin_join(
         &mut self,
         commitments: Vec<Commitment>,
