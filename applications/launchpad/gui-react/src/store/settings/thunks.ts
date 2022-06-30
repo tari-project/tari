@@ -16,7 +16,7 @@ const getSettings = async (): Promise<InitialSettings> => {
   const newCacheDir = await cacheDir()
   const network = 'dibbler'
   return {
-    walletPassword: 'tari',
+    parole: '',
     moneroMiningAddress: 'test1',
     moneroWalletAddress: 'test2',
     numMiningThreads: 1,

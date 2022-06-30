@@ -28,7 +28,7 @@ const reducer = combineReducers(rootReducer)
 const persistConfig = {
   key: 'root',
   storage,
-  blacklist: ['containers'],
+  blacklist: ['containers', 'settings.serviceSettings.parole'],
 }
 
 const persistedReducer = persistReducer(persistConfig, reducer)

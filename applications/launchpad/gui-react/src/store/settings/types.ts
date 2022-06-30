@@ -8,13 +8,13 @@ export enum Settings {
 }
 
 export interface InitialSettings {
-  walletPassword: string
   moneroMiningAddress: string
   moneroWalletAddress: string
   numMiningThreads: number
   tariNetwork: string
   cacheDir: string
   dockerRegistry: string
+  parole: string
   dockerTag: string
   monerodUrl: string
   moneroUseAuth: boolean
@@ -27,7 +27,7 @@ export type SettingsState = {
   open: boolean
   which: Settings
   serviceSettings: {
-    walletPassword: string
+    parole?: string
     dockerRegistry: string
     dockerTag: string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

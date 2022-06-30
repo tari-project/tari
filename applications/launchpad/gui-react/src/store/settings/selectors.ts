@@ -18,3 +18,5 @@ export const selectServiceSettings = (state: RootState) => ({
   moneroPassword: state.mining.merged.authentication?.password || '',
   rootFolder: state.baseNode.rootFolder,
 })
+export const selectIsParoleSet = ({ settings }: RootState) =>
+  Boolean(settings.serviceSettings.parole)

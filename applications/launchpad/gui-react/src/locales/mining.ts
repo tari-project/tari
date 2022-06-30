@@ -50,6 +50,10 @@ const translations = {
     error_miningInThePast:
       /* eslint-disable-next-line quotes */
       "I guess you need to correct the selected date because we can't mine in the past",
+    passwordPrompt: {
+      title: 'Unlock your wallet',
+      cta: 'According to your schedule we should be mining! Provide password to unlock your wallet:',
+    },
   },
   statistics: {
     title: 'Mined coins',

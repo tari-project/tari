@@ -61,7 +61,7 @@ pub struct ServiceSettings {
     pub tari_network: String,
     pub root_folder: String,
     #[derivative(Debug = "ignore")]
-    pub wallet_password: String,
+    pub parole: Option<String>,
     pub monero_mining_address: Option<String>,
     pub num_mining_threads: i64,
     pub docker_registry: Option<String>,
@@ -84,7 +84,7 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
         let base_node = BaseNodeConfig { delay: zero_delay };
         let wallet = WalletConfig {
             delay: zero_delay,
-            password: settings.wallet_password,
+            password: settings.parole.unwrap_or_else(|| "".to_string()),
         };
         let sha3_miner = Sha3MinerConfig {
             delay: zero_delay,

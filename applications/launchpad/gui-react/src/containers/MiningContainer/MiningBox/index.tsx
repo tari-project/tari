@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTheme } from 'styled-components'
 import deepmerge from 'deepmerge'
 
@@ -23,6 +23,7 @@ import {
 import { MiningBoxContent, NodeIcons } from './styles'
 import RunningButton from '../../../components/RunningButton'
 import { tbotactions } from '../../../store/tbot'
+import { useWithWalletPassword } from '../../../useWithWalletPassword'
 
 const parseLastSessionToCoins = (
   lastSession: MiningSession | undefined,
@@ -92,6 +93,16 @@ const MiningBox = ({
 }: MiningBoxProps) => {
   const dispatch = useAppDispatch()
   const theme = useTheme()
+
+  const startMining = useCallback(() => {
+    dispatch(
+      actions.startMiningNode({
+        node,
+        reason: MiningActionReason.Manual,
+      }),
+    )
+  }, [dispatch, node])
+  const startMiningWithPasswordEnsured = useWithWalletPassword(startMining)
 
   let theCurrentStatus = currentStatus
 
@@ -214,14 +225,7 @@ const MiningBox = ({
             <MiningBoxContent>
               {coins ? <CoinsList coins={coins} /> : null}
               <Button
-                onClick={() =>
-                  dispatch(
-                    actions.startMiningNode({
-                      node,
-                      reason: MiningActionReason.Manual,
-                    }),
-                  )
-                }
+                onClick={startMiningWithPasswordEnsured}
                 disabled={disableActions}
                 loading={disableActions}
                 testId={`${node}-run-btn`}
@@ -237,14 +241,7 @@ const MiningBox = ({
           <MiningBoxContent data-testid='mining-box-paused-content'>
             <Text>{t.mining.readyToMiningText}</Text>
             <Button
-              onClick={() =>
-                dispatch(
-                  actions.startMiningNode({
-                    node,
-                    reason: MiningActionReason.Manual,
-                  }),
-                )
-              }
+              onClick={startMiningWithPasswordEnsured}
               disabled={disableActions}
               loading={disableActions}
               testId={`${node}-run-btn`}
@@ -258,14 +255,7 @@ const MiningBox = ({
           <MiningBoxContent data-testid='mining-box-paused-content'>
             {coins ? <CoinsList coins={coins} /> : null}
             <Button
-              onClick={() =>
-                dispatch(
-                  actions.startMiningNode({
-                    node,
-                    reason: MiningActionReason.Manual,
-                  }),
-                )
-              }
+              onClick={startMiningWithPasswordEnsured}
               disabled={disableActions}
               loading={disableActions}
               testId={`${node}-run-btn`}

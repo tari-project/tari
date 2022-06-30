@@ -18,6 +18,7 @@ import useMiningScheduling from './useMiningScheduling'
 import TBotContainer from './containers/TBotContainer'
 import MiningNotifications from './containers/MiningNotifications'
 import Onboarding from './pages/onboarding'
+import { WalletPasswordPrompt } from './useWithWalletPassword'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -51,8 +52,12 @@ const App = () => {
 
   useEffect(() => {
     const callInitActionInStore = async () => {
-      await dispatch(init()).unwrap()
-      setInitialized(true)
+      try {
+        await dispatch(init()).unwrap()
+        setInitialized(true)
+      } catch (_) {
+        // TODO handle error
+      }
     }
 
     callInitActionInStore()
@@ -61,6 +66,7 @@ const App = () => {
   useSystemEvents({ dispatch })
   useDockerEvents({ dispatch })
 
+  // TODO could return loader instead of null if not initialized
   return (
     <ThemeProvider theme={themeConfig}>
       <AppContainer>
@@ -69,11 +75,13 @@ const App = () => {
             <Onboarding />
           ) : null
         ) : initialized ? (
-          <OnboardedAppContainer>
-            <HomePage />
-            <TBotContainer />
-            <MiningNotifications />
-          </OnboardedAppContainer>
+          <WalletPasswordPrompt>
+            <OnboardedAppContainer>
+              <HomePage />
+              <TBotContainer />
+              <MiningNotifications />
+            </OnboardedAppContainer>
+          </WalletPasswordPrompt>
         ) : null}
       </AppContainer>
     </ThemeProvider>

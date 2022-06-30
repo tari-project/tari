@@ -98,12 +98,12 @@ export const addStats = createAsyncThunk<
 
 export const start = createAsyncThunk<
   { id: ContainerId; unsubscribeStats: UnlistenFn },
-  { container: ContainerName; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  { container: ContainerName },
   { state: RootState }
->('containers/start', async ({ container, serviceSettings }, thunkApi) => {
+>('containers/start', async ({ container }, thunkApi) => {
   try {
     const rootState = thunkApi.getState()
-    const settings = { ...selectServiceSettings(rootState), ...serviceSettings }
+    const settings = selectServiceSettings(rootState)
 
     const descriptor: ServiceDescriptor = await invoke('start_service', {
       serviceName: container,
@@ -134,35 +134,30 @@ export const start = createAsyncThunk<
 
 export const startRecipe = createAsyncThunk<
   void,
-  { containerName: ContainerName; serviceSettings?: any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  { containerName: ContainerName },
   { state: RootState }
->(
-  'containers/startRecipe',
-  async ({ containerName, serviceSettings }, thunkApi) => {
-    try {
-      const rootState = thunkApi.getState()
-      const recipe = selectRecipe(containerName)(rootState)
+>('containers/startRecipe', async ({ containerName }, thunkApi) => {
+  try {
+    const rootState = thunkApi.getState()
+    const recipe = selectRecipe(containerName)(rootState)
 
-      const recipePromises = [...recipe]
-        .reverse()
-        .map(part => {
-          const status = selectContainerStatus(part)(rootState)
-          if (!status.running && !status.pending) {
-            return thunkApi
-              .dispatch(start({ container: part, serviceSettings }))
-              .unwrap()
-          }
+    const recipePromises = [...recipe]
+      .reverse()
+      .map(part => {
+        const status = selectContainerStatus(part)(rootState)
+        if (!status.running && !status.pending) {
+          return thunkApi.dispatch(start({ container: part })).unwrap()
+        }
 
-          return false
-        })
-        .filter(Boolean)
+        return false
+      })
+      .filter(Boolean)
 
-      await Promise.all(recipePromises)
-    } catch (e) {
-      return thunkApi.rejectWithValue(e)
-    }
-  },
-)
+    await Promise.all(recipePromises)
+  } catch (e) {
+    return thunkApi.rejectWithValue(e)
+  }
+})
 
 export const stop = createAsyncThunk<void, ContainerId, { state: RootState }>(
   'containers/stop',

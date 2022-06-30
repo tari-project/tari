@@ -1,13 +1,11 @@
-import { useState } from 'react'
 import { useTheme } from 'styled-components'
 
 import Tag from '../../../components/Tag'
 import Text from '../../../components/Text'
 import Button from '../../../components/Button'
 import CopyBox from '../../../components/CopyBox'
-import Modal from '../../../components/Modal'
-import PasswordBox from '../../../containers/WalletContainer/PasswordBox'
 import t from '../../../locales'
+import { useWithWalletPassword } from '../../../useWithWalletPassword'
 
 import { IsWalletRunningRow, WalletRunningContainer } from './styles'
 
@@ -22,10 +20,10 @@ const WalletSettings = ({
   pending: boolean
   address: string
   stop: () => void
-  start: (password: string) => void
+  start: () => void
 }) => {
   const theme = useTheme()
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const startWallet = useWithWalletPassword(start)
 
   return (
     <>
@@ -46,28 +44,12 @@ const WalletSettings = ({
             {t.common.verbs.stop}
           </Button>
         )}
-        {/* TODO show password box when starting */}
         {!running && (
-          <Button onClick={() => setShowPasswordModal(true)} loading={pending}>
+          <Button onClick={startWallet} loading={pending}>
             {t.common.verbs.start}
           </Button>
         )}
       </IsWalletRunningRow>
-      <Modal
-        open={showPasswordModal}
-        onClose={() => setShowPasswordModal(false)}
-        local
-        size='auto'
-      >
-        <PasswordBox
-          pending={false}
-          onSubmit={password => {
-            setShowPasswordModal(false)
-            start(password)
-          }}
-          style={{ margin: 0 }}
-        />
-      </Modal>
       <CopyBox
         label={`${t.wallet.wallet.walletId} (${t.wallet.wallet.address})`}
         value={address}

@@ -35,12 +35,14 @@ const settingsSlice = createSlice({
         dockerRegistry: action.payload.docker.registry,
       }
     },
+    setParole(state, { payload: parole }: { payload: string }) {
+      state.serviceSettings.parole = parole
+    },
   },
   extraReducers: builder => {
     builder.addCase(loadDefaultServiceSettings.fulfilled, (state, action) => {
       const settings = action.payload
       state.serviceSettings = {
-        walletPassword: settings.walletPassword,
         dockerRegistry: settings.dockerRegistry,
         dockerTag: settings.dockerTag,
       }

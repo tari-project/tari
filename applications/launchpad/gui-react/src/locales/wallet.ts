@@ -4,7 +4,7 @@ const translations = {
   setUpTariWalletSubmitBtn: 'Set up Tari Wallet',
   password: {
     title: 'Enter Password',
-    cta: 'to access your wallet:',
+    cta: 'to unlock your wallet:',
     placeholderCta: 'Enter password to Tari Wallet',
   },
   wallet: {

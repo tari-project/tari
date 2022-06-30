@@ -7,6 +7,8 @@ export const TariBackgroundSignet = styled(SvgTariSignet)`
   height: 80px;
   width: 80px;
   position: absolute;
+  z-index: 0;
+  pointer-events: none;
   right: ${({ theme }) => theme.spacing()};
   top: ${({ theme }) => theme.spacing()};
 `

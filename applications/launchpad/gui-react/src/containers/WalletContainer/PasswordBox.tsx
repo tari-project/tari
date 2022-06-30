@@ -11,14 +11,21 @@ import { TariBackgroundSignet } from './styles'
 
 const MINIMAL_PASSWORD_LENGTH = 4
 
+export type Overrides = {
+  title?: string
+  cta?: string
+}
+
 const PasswordBox = ({
   pending,
   onSubmit,
   style,
+  overrides,
 }: {
   pending: boolean
   onSubmit: (password: string) => void
   style?: CSSProperties
+  overrides?: Overrides
 }) => {
   const theme = useTheme()
   const [password, setPassword] = useState('')
@@ -37,10 +44,12 @@ const PasswordBox = ({
   return (
     <Box style={{ position: 'relative', ...style }}>
       <TariBackgroundSignet />
-      <Text type='header' style={{ marginBottom: theme.spacing() }}>
-        {t.wallet.password.title}
-      </Text>
-      <Text>{t.wallet.password.cta}</Text>
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <Text type='header' style={{ marginBottom: theme.spacing() }}>
+          {overrides?.title || t.wallet.password.title}
+        </Text>
+        <Text>{overrides?.cta || t.wallet.password.cta}</Text>
+      </div>
       <form onSubmit={formSubmitHandler}>
         <PasswordInput
           autoFocus

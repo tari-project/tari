@@ -5,6 +5,7 @@ import {
   selectState,
 } from '../../../store/wallet/selectors'
 import { actions as walletActions } from '../../../store/wallet'
+import { WalletPasswordPrompt } from '../../../useWithWalletPassword'
 
 import WalletSettings from './WalletSettings'
 
@@ -15,13 +16,15 @@ const WalletSettingsContainer = () => {
   const pending = useAppSelector(selectIsPending)
 
   return (
-    <WalletSettings
-      running={running}
-      pending={pending}
-      stop={() => dispatch(walletActions.stop())}
-      start={password => dispatch(walletActions.start(password))}
-      address={address}
-    />
+    <WalletPasswordPrompt local>
+      <WalletSettings
+        running={running}
+        pending={pending}
+        stop={() => dispatch(walletActions.stop())}
+        start={() => dispatch(walletActions.start())}
+        address={address}
+      />
+    </WalletPasswordPrompt>
   )
 }
 
