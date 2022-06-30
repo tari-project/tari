@@ -424,7 +424,6 @@ async fn fee_estimate() {
 #[ignore]
 #[allow(clippy::identity_op)]
 #[tokio::test]
-#[ignore]
 async fn test_utxo_selection_no_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
