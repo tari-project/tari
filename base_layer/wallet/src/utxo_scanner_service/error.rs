@@ -30,8 +30,8 @@ use crate::{error::WalletStorageError, output_manager_service::error::OutputMana
 
 #[derive(Debug, Error)]
 pub enum UtxoScannerError {
-    #[error("API returned something unexpected.")]
-    UnexpectedApiResponse,
+    #[error("Unexpected API response: {details}")]
+    UnexpectedApiResponse { details: String },
     #[error("Wallet storage error: `{0}`")]
     WalletStorageError(#[from] WalletStorageError),
     #[error("Connectivity error: `{0}`")]
