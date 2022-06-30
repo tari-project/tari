@@ -39,6 +39,7 @@ use crate::{
     base_node_service::error::BaseNodeServiceError,
     error::WalletStorageError,
     key_manager_service::KeyManagerServiceError,
+    output_manager_service::UtxoSelectionCriteria,
 };
 
 #[derive(Debug, Error)]
@@ -115,8 +116,8 @@ pub enum OutputManagerError {
     MasterSeedMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
-    #[error("Token with unique id not found")]
-    TokenUniqueIdNotFound,
+    #[error("No UTXOs selected as inputs for {criteria}")]
+    NoUtxosSelected { criteria: UtxoSelectionCriteria },
     #[error("Connectivity error: {source}")]
     ConnectivityError {
         #[from]

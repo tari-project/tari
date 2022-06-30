@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::{prelude::*, Connection, RunQueryDsl, SqliteConnection};
-use tari_dan_core::storage::global::{GlobalDbBackendAdapter, GlobalDbMetadataKey};
+use tari_common_types::types::FixedHash;
+use tari_dan_core::storage::global::{ContractState, GlobalDbBackendAdapter, GlobalDbMetadataKey};
 
 use crate::{error::SqliteStorageError, global::models::metadata::Metadata, SqliteTransaction};
 
@@ -131,6 +132,49 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
                 source,
                 operation: "commit::state".to_string(),
             })?;
+        Ok(())
+    }
+
+    fn save_contract(
+        &self,
+        contract_id: FixedHash,
+        mined_height: u64,
+        state: ContractState,
+    ) -> Result<(), Self::Error> {
+        use crate::global::schema::contracts;
+        let tx = self.create_transaction()?;
+
+        diesel::insert_into(contracts::table)
+            .values((
+                contracts::id.eq(contract_id.to_vec()),
+                contracts::height.eq(mined_height as i64),
+                contracts::state.eq(i32::from(state.as_byte())),
+            ))
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert::contract".to_string(),
+            })?;
+
+        self.commit(&tx)?;
+
+        Ok(())
+    }
+
+    fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error> {
+        use crate::global::schema::contracts;
+        let tx = self.create_transaction()?;
+
+        diesel::update(contracts::table.filter(contracts::id.eq(contract_id.to_vec())))
+            .set(contracts::state.eq(i32::from(state.as_byte())))
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "update::contract_state".to_string(),
+            })?;
+
+        self.commit(&tx)?;
+
         Ok(())
     }
 }

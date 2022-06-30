@@ -7337,6 +7337,8 @@ dependencies = [
  "futures 0.3.21",
  "lmdb-zero",
  "log",
+ "num-derive",
+ "num-traits",
  "prost",
  "prost-types",
  "rand 0.8.5",

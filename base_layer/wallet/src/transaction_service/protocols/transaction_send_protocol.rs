@@ -27,7 +27,7 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{HashOutput, PublicKey},
+    types::HashOutput,
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
@@ -38,7 +38,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::KernelFeatures,
+        transaction_components::{KernelFeatures, OutputFeatures},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -56,6 +56,7 @@ use tokio::{
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
+    output_manager_service::UtxoSelectionCriteria,
     transaction_service::{
         config::TransactionRoutingMechanism,
         error::{TransactionServiceError, TransactionServiceProtocolError},
@@ -87,8 +88,6 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
-    unique_id: Option<Vec<u8>>,
-    parent_public_key: Option<PublicKey>,
     fee_per_gram: MicroTari,
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
@@ -113,8 +112,6 @@ where
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
         service_request_reply_channel: Option<
@@ -132,8 +129,6 @@ where
             cancellation_receiver: Some(cancellation_receiver),
             dest_pubkey,
             amount,
-            unique_id,
-            parent_public_key,
             fee_per_gram,
             message,
             service_request_reply_channel,
@@ -223,8 +218,8 @@ where
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
-                self.unique_id.clone(),
-                self.parent_public_key.clone(),
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
                 self.fee_per_gram,
                 None,
                 self.message.clone(),

@@ -20,6 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
+use tari_common_types::types::FixedHash;
+
 use crate::storage::StorageError;
 
 pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
@@ -35,6 +39,9 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
         key: &GlobalDbMetadataKey,
         connection: &Self::BackendTransaction,
     ) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn save_contract(&self, contract_id: FixedHash, mined_height: u64, state: ContractState)
+        -> Result<(), Self::Error>;
+    fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -49,5 +56,24 @@ impl GlobalDbMetadataKey {
             GlobalDbMetadataKey::LastScannedConstitutionHash => b"last_scanned_constitution_hash",
             GlobalDbMetadataKey::LastScannedConstitutionHeight => b"last_scanned_constitution_height",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, FromPrimitive)]
+#[repr(u8)]
+pub enum ContractState {
+    Pending = 0,
+    Accepted = 1,
+    Expired = 2,
+}
+
+impl ContractState {
+    pub fn as_byte(self) -> u8 {
+        self as u8
+    }
+
+    /// Returns the Status that corresponds to the byte. None is returned if the byte does not correspond
+    pub fn from_byte(value: u8) -> Option<Self> {
+        FromPrimitive::from_u8(value)
     }
 }

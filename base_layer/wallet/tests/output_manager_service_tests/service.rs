@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, Rng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, PrivateKey, PublicKey},
+    types::{ComSignature, FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -41,7 +41,14 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
+        transaction_components::{
+            CommitteeSignatures,
+            EncryptedValue,
+            OutputFeatures,
+            OutputType,
+            TransactionOutput,
+            UnblindedOutput,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         weight::TransactionWeight,
         CryptoFactories,
@@ -86,6 +93,7 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
             OutputStatus,
         },
+        UtxoSelectionCriteria,
     },
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
@@ -437,8 +445,8 @@ async fn test_utxo_selection_no_chain_metadata() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             amount,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
             "".to_string(),
@@ -470,11 +478,11 @@ async fn test_utxo_selection_no_chain_metadata() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             amount,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
-            "".to_string(),
+            String::new(),
             script!(Nop),
             Covenant::default(),
         )
@@ -551,8 +559,8 @@ async fn test_utxo_selection_with_chain_metadata() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             amount,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
             "".to_string(),
@@ -613,8 +621,8 @@ async fn test_utxo_selection_with_chain_metadata() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             amount,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
             "".to_string(),
@@ -640,8 +648,8 @@ async fn test_utxo_selection_with_chain_metadata() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             6 * amount,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
             "".to_string(),
@@ -713,8 +721,8 @@ async fn test_utxo_selection_with_tx_priority() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
             "".to_string(),
@@ -730,6 +738,77 @@ async fn test_utxo_selection_with_tx_priority() {
     assert_eq!(utxos.len(), 1);
 
     assert_ne!(utxos[0].features.output_type, OutputType::Coinbase);
+}
+
+#[tokio::test]
+async fn utxo_selection_for_contract_checkpoint() {
+    let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let contract_id = FixedHash::hash_bytes(b"test_utxo_selection_for_contract_checkpoint");
+
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    // setup with chain metadata at a height of 6
+    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
+        OutputManagerSqliteDatabase::new(connection, None),
+        Some(6),
+        server_node_identity,
+    )
+    .await;
+
+    let amount = MicroTari::from(2000);
+    let fee_per_gram = MicroTari::from(2);
+
+    // we create two outputs, one as coinbase-high priority one as normal so we can track them
+    let (_, uo) = make_input_with_features(
+        &mut OsRng.clone(),
+        amount,
+        &factories.commitment,
+        Some(OutputFeatures::for_checkpoint(
+            contract_id,
+            FixedHash::zero(),
+            CommitteeSignatures::empty(),
+        )),
+        oms.clone(),
+    )
+    .await;
+    oms.add_rewindable_output(uo, None, None).await.unwrap();
+    let (_, uo) = make_input_with_features(
+        &mut OsRng.clone(),
+        amount,
+        &factories.commitment,
+        Some(OutputFeatures {
+            maturity: 1,
+            ..Default::default()
+        }),
+        oms.clone(),
+    )
+    .await;
+    oms.add_rewindable_output(uo, None, None).await.unwrap();
+
+    let utxos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(utxos.len(), 2);
+
+    // test transactions
+    let stp = oms
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            // Spend more than the selected contract output, this will cause the other UTXO to be included
+            MicroTari::from(2500),
+            UtxoSelectionCriteria::for_contract(contract_id, OutputType::ContractCheckpoint),
+            OutputFeatures::for_checkpoint(contract_id, FixedHash::zero(), CommitteeSignatures::empty()),
+            fee_per_gram,
+            None,
+            String::new(),
+            script!(Nop),
+            Covenant::default(),
+        )
+        .await
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that the utxo with the lowest priority was left
+    let utxos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(utxos.len(), 0);
 }
 
 #[tokio::test]
@@ -758,8 +837,8 @@ async fn send_not_enough_funds() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(num_outputs * 2000),
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             MicroTari::from(4),
             None,
             "".to_string(),
@@ -817,8 +896,8 @@ async fn send_no_change() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(value1 + value2) - fee_without_change,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
             "".to_string(),
@@ -838,6 +917,7 @@ async fn send_no_change() {
         MicroTari::from(0)
     );
 }
+
 #[tokio::test]
 async fn send_not_enough_for_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -881,8 +961,8 @@ async fn send_not_enough_for_change() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             value1 + value2 + uT - fee_without_change,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             fee_per_gram,
             None,
             "".to_string(),
@@ -922,8 +1002,8 @@ async fn cancel_transaction() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             MicroTari::from(4),
             None,
             "".to_string(),
@@ -1015,8 +1095,8 @@ async fn test_get_balance() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             send_value,
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             MicroTari::from(4),
             None,
             "".to_string(),
@@ -1071,8 +1151,8 @@ async fn sending_transaction_persisted_while_offline() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             MicroTari::from(4),
             None,
             "".to_string(),
@@ -1102,8 +1182,8 @@ async fn sending_transaction_persisted_while_offline() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             MicroTari::from(4),
             None,
             "".to_string(),
@@ -1409,8 +1489,8 @@ async fn test_txo_validation() {
         .prepare_transaction_to_send(
             4u64.into(),
             MicroTari::from(900_000),
-            None,
-            None,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
             MicroTari::from(10),
             None,
             "".to_string(),

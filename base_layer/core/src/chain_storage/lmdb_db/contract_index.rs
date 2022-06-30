@@ -23,7 +23,7 @@
 use std::{
     collections::{hash_map::DefaultHasher, HashSet},
     convert::{TryFrom, TryInto},
-    fmt::Debug,
+    fmt::{Debug, Display, Formatter},
     hash::{BuildHasherDefault, Hash},
     ops::Deref,
 };
@@ -215,6 +215,7 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
         output_hash: FixedHash,
     ) -> Result<(), ChainStorageError> {
         let contract_key = ContractIndexKey::new(contract_id, output_type);
+        debug!(target: LOG_TARGET, "Adding contract key {} to index", contract_key,);
         let block_key = BlockContractIndexKey::new(block_hash, output_type, contract_id);
         match output_type {
             OutputType::ContractDefinition => {
@@ -267,6 +268,7 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
     ) -> Result<(), ChainStorageError> {
         let contract_key = ContractIndexKey::new(contract_id, output_type);
 
+        debug!(target: LOG_TARGET, "Removing contract key {} from index", contract_key,);
         match output_type {
             OutputType::ContractDefinition => {
                 if self.has_dependent_outputs(&contract_key)? {
@@ -488,6 +490,22 @@ impl ContractIndexKey {
         key.key[FixedHash::byte_size() + 1] = output_type.as_byte();
         key
     }
+
+    pub fn key_type(&self) -> KeyType {
+        match self.key[0] {
+            0 => KeyType::PerContract,
+            1 => KeyType::PerBlock,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn contract_id(&self) -> FixedHash {
+        FixedHash::try_from(&self.key[1..=32]).expect("32 bytes cannot fail")
+    }
+
+    pub fn output_type(&self) -> OutputType {
+        OutputType::from_byte(self.key[33]).expect("Contract key set with invalid OutputType")
+    }
 }
 
 impl Deref for ContractIndexKey {
@@ -501,6 +519,18 @@ impl Deref for ContractIndexKey {
 impl AsLmdbBytes for ContractIndexKey {
     fn as_lmdb_bytes(&self) -> &[u8] {
         &self.key
+    }
+}
+
+impl Display for ContractIndexKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:?}, {}, {}",
+            self.key_type(),
+            self.contract_id(),
+            self.output_type()
+        )
     }
 }
 

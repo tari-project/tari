@@ -45,6 +45,13 @@ impl CommitteeSignatures {
         Self { signatures }
     }
 
+    pub fn empty() -> Self {
+        Self {
+            // Panic: vec is size 0 < 512
+            signatures: vec![].try_into().unwrap(),
+        }
+    }
+
     pub fn signatures(&self) -> Vec<Signature> {
         self.signatures.to_vec()
     }

@@ -341,6 +341,7 @@ impl WalletClient for MockWalletClient {
         &mut self,
         _contract_id: &FixedHash,
         _state_root: &StateRoot,
+        _is_initial: bool,
     ) -> Result<(), DigitalAssetError> {
         Ok(())
     }

@@ -110,7 +110,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     fn fetch_unspent_outputs_for_spending(
         &self,
-        selection_criteria: UtxoSelectionCriteria,
+        selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
         current_tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;

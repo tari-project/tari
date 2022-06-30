@@ -57,6 +57,7 @@ use crate::output_manager_service::{
         database::OutputBackendQuery,
         models::{KnownOneSidedPaymentScript, SpendingPriority},
     },
+    UtxoSelectionCriteria,
 };
 
 /// API Request enum
@@ -78,8 +79,8 @@ pub enum OutputManagerRequest {
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        utxo_selection: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -89,8 +90,8 @@ pub enum OutputManagerRequest {
     CreatePayToSelfTransaction {
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        utxo_selection: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -98,8 +99,7 @@ pub enum OutputManagerRequest {
     CreatePayToSelfWithOutputs {
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
-        spending_unique_id: Option<Vec<u8>>,
-        spending_parent_public_key: Option<PublicKey>,
+        input_selection: UtxoSelectionCriteria,
     },
     CancelTransaction(TxId),
     GetSpentOutputs,
@@ -518,8 +518,8 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        utxo_selection: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -531,8 +531,8 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::PrepareToSendTransaction {
                 tx_id,
                 amount,
-                unique_id,
-                parent_public_key,
+                utxo_selection,
+                output_features,
                 fee_per_gram,
                 lock_height,
                 message,
@@ -759,16 +759,14 @@ impl OutputManagerHandle {
         &mut self,
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
-        spending_unique_id: Option<Vec<u8>>,
-        spending_parent_public_key: Option<PublicKey>,
+        input_selection: UtxoSelectionCriteria,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfWithOutputs {
                 outputs,
                 fee_per_gram,
-                spending_unique_id,
-                spending_parent_public_key,
+                input_selection,
             })
             .await??
         {
@@ -781,8 +779,8 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         amount: MicroTari,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
+        utxo_selection: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -792,11 +790,11 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
+                utxo_selection,
+                output_features,
                 fee_per_gram,
                 lock_height,
                 message,
-                unique_id,
-                parent_public_key,
             })
             .await??
         {

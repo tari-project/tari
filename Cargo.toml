@@ -35,8 +35,6 @@ members = [
 
 ]
 #
-#[profile.release]
-#debug = true
 
 # Shutdown when panicking so we can see the error, specifically for the wallet
 [profile.release]
@@ -47,3 +45,4 @@ panic = 'abort'
 liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }
 #pgp = { git = "https://github.com/rpgp/rpgp.git", rev = "21081b6aaaaa5750ab937cfef30bae879a740d23" }
 pgp = { git = "https://github.com/tari-project/rpgp.git", rev = "32939dbe86565d5ede769a7907ec42dfdf353849" }
+
