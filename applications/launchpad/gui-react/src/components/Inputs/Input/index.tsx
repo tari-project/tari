@@ -101,22 +101,24 @@ const Input = (
           style={style}
           ref={ref}
         />
-        <IconUnitsContainer $iconWrapperWidth={iconWrapperWidth}>
-          {inputIcon && (
-            <IconWrapper
-              onClick={disabled ? undefined : onIconClick}
-              data-testid='icon-test'
-              ref={iconsRef}
-            >
-              {inputIcon}
-            </IconWrapper>
-          )}{' '}
-          {inputUnits && (
-            <UnitsText type='smallMedium' data-testid='units-test'>
-              {inputUnits}
-            </UnitsText>
-          )}
-        </IconUnitsContainer>
+        {(inputIcon || inputUnits) && (
+          <IconUnitsContainer $iconWrapperWidth={iconWrapperWidth}>
+            {inputIcon && (
+              <IconWrapper
+                onClick={disabled ? undefined : onIconClick}
+                data-testid='icon-test'
+                ref={iconsRef}
+              >
+                {inputIcon}
+              </IconWrapper>
+            )}{' '}
+            {inputUnits && (
+              <UnitsText type='smallMedium' data-testid='units-test'>
+                {inputUnits}
+              </UnitsText>
+            )}
+          </IconUnitsContainer>
+        )}
       </InputContainer>
       {error && (
         <Text
