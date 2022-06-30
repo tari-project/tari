@@ -237,7 +237,7 @@ pub fn create_contract_amendment_schema(
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: amendment_features)
 }
 
-pub fn assert_dan_error(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
+pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
     let validator = TxDanLayerValidator::new(blockchain.db().clone());
     let err = validator.validate(transaction).unwrap_err();
     match err {
@@ -251,4 +251,9 @@ pub fn assert_dan_error(blockchain: &TestBlockchain, transaction: &Transaction, 
         },
         _ => panic!("Expected a consensus error"),
     }
+}
+
+pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &Transaction) {
+    let validator = TxDanLayerValidator::new(blockchain.db().clone());
+    validator.validate(transaction).unwrap();
 }
