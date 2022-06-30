@@ -21,9 +21,12 @@
 --  // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 create table contracts (
-                               id       blob    primary key  not null,
-                               height   bigint               not null,
-                               state    integer              not null
+                        id              Integer primary key autoincrement not null,
+                        contract_id     blob                              not null,
+                        height          bigint                            not null,
+                        state           integer                           not null,
+                        constitution    blob                              not null
 );
 
+create index contracts_contract_id_index on contracts (contract_id);
 create index contracts_state_index on contracts (state);

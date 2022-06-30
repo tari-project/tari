@@ -40,7 +40,7 @@ pub fn validate_constitution<B: BlockchainBackend>(
     let contract_id = sidechain_features.contract_id;
 
     validate_definition_existence(db, contract_id)?;
-    validate_duplication(db, contract_id)?;
+    validate_uniqueness(db, contract_id)?;
 
     Ok(())
 }
@@ -61,7 +61,7 @@ fn validate_definition_existence<B: BlockchainBackend>(
     Ok(())
 }
 
-fn validate_duplication<B: BlockchainBackend>(
+fn validate_uniqueness<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
@@ -83,7 +83,9 @@ mod test {
     use tari_common_types::types::FixedHash;
 
     use crate::validation::dan_validators::test_helpers::{
-        assert_dan_error,
+        assert_dan_validator_fail,
+        assert_dan_validator_success,
+        create_contract_constitution,
         create_contract_constitution_schema,
         init_test_blockchain,
         publish_constitution,
@@ -92,17 +94,34 @@ mod test {
     };
 
     #[test]
+    fn it_allows_valid_constitutions() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+
+        // construct a valid constitution transaction
+        let constitution = create_contract_constitution();
+        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        assert_dan_validator_success(&blockchain, &tx);
+    }
+
+    #[test]
     fn definition_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (blockchain, change) = init_test_blockchain();
 
         // construct a transaction for a constitution, without a prior definition
         let contract_id = FixedHash::default();
-        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), Vec::new());
+        let constitution = create_contract_constitution();
+        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the constitution transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Contract definition not found");
+        assert_dan_validator_fail(&blockchain, &tx, "Contract definition not found");
     }
 
     #[test]
@@ -110,15 +129,18 @@ mod test {
         // initialise a blockchain with enough funds to spend at contract transactions
         let (mut blockchain, change) = init_test_blockchain();
 
-        // publish the contract definition and constitution into a block
+        // publish the contract definition into a block
         let contract_id = publish_definition(&mut blockchain, change[0].clone());
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, vec![]);
+
+        // publish the contract constitution into a block
+        let constitution = create_contract_constitution();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
 
         // construct a transaction for the duplicated contract constitution
-        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), Vec::new());
+        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated constitution transaction and check that we get the error
-        assert_dan_error(&blockchain, &tx, "Duplicated contract constitution");
+        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract constitution");
     }
 }
