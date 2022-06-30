@@ -18,4 +18,5 @@ export interface InputProps
   containerStyle?: CSSProperties
   inverted?: boolean
   withError?: boolean
+  onClick?: () => void
 }

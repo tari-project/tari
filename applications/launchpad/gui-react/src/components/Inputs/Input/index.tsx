@@ -53,6 +53,7 @@ const Input = (
     containerStyle,
     inverted,
     withError = true,
+    onClick,
   }: InputProps,
   ref?: React.ForwardedRef<HTMLInputElement>,
 ) => {
@@ -81,6 +82,7 @@ const Input = (
         </Label>
       )}
       <InputContainer
+        onClick={onClick}
         disabled={disabled}
         $error={Boolean(error)}
         $withError={withError}
