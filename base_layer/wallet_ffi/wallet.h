@@ -8,10 +8,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#ifdef __cplusplus
-namespace wallet_ffi_h {
-#endif // __cplusplus
-
 /**
  * The number of unique fields available. This always matches the number of variants in `OutputField`.
  */
@@ -3390,8 +3386,4 @@ void fee_per_gram_stat_destroy(TariFeePerGramStat *fee_per_gram_stat);
 
 #ifdef __cplusplus
 } // extern "C"
-#endif // __cplusplus
-
-#ifdef __cplusplus
-} // namespace wallet_ffi_h
 #endif // __cplusplus

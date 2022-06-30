@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.7](https://github.com/tari-project/tari/compare/v0.32.6...v0.32.7) (2022-06-30)
+
+
+### Features
+
+* **wallet_ffi:** wallet_get_utxos, wallet_coin_join, wallet_coin_split ([#4244](https://github.com/tari-project/tari/issues/4244)) ([88931aa](https://github.com/tari-project/tari/commit/88931aa5eea3f574fda44b37bc4b973dd5a6e125))
+
 ### [0.32.6](https://github.com/tari-project/tari/compare/v0.32.5...v0.32.6) (2022-06-29)
 
 
