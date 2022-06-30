@@ -578,7 +578,7 @@ where
                 self.send_transaction(
                     dest_pubkey,
                     amount,
-                    output_features,
+                    *output_features,
                     fee_per_gram,
                     message,
                     send_transaction_join_handles,
@@ -598,7 +598,7 @@ where
                 .send_one_sided_transaction(
                     dest_pubkey,
                     amount,
-                    output_features,
+                    *output_features,
                     fee_per_gram,
                     message,
                     transaction_broadcast_join_handles,
