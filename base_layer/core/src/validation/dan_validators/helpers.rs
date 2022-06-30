@@ -66,25 +66,6 @@ pub fn fetch_contract_features<B: BlockchainBackend>(
     Ok(features)
 }
 
-pub fn fetch_height<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    contract_id: FixedHash,
-    output_type: OutputType,
-) -> Result<u64, ValidationError> {
-    let utxos = fetch_contract_utxos(db, contract_id, output_type)?;
-    match utxos.first() {
-        Some(utxo) => Ok(utxo.mined_height),
-        None => {
-            let msg = format!(
-                "Could not find UTXO for contract_id ({}) and type ({})",
-                contract_id.to_hex(),
-                output_type
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
-    }
-}
-
 pub fn fetch_contract_utxos<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,

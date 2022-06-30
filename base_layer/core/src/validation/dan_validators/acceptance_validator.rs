@@ -26,7 +26,7 @@ use tari_utilities::hex::Hex;
 use super::helpers::{
     fetch_contract_constitution,
     fetch_contract_features,
-    fetch_height,
+    fetch_contract_utxos,
     get_sidechain_features,
     validate_output_type,
 };
@@ -126,7 +126,7 @@ fn validate_acceptance_window<B: BlockchainBackend>(
     contract_id: FixedHash,
     constitution: &ContractConstitution,
 ) -> Result<(), ValidationError> {
-    let constitution_height = fetch_height(db, contract_id, OutputType::ContractConstitution)?;
+    let constitution_height = fetch_constitution_height(db, contract_id)?;
     let max_allowed_absolute_height =
         constitution_height + constitution.acceptance_requirements.acceptance_period_expiry;
     let current_height = db.get_height()?;
@@ -141,6 +141,24 @@ fn validate_acceptance_window<B: BlockchainBackend>(
     }
 
     Ok(())
+}
+
+pub fn fetch_constitution_height<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+) -> Result<u64, ValidationError> {
+    let utxos = fetch_contract_utxos(db, contract_id, OutputType::ContractConstitution)?;
+    // Only one constitution should be stored for a particular contract_id
+    match utxos.first() {
+        Some(utxo) => Ok(utxo.mined_height),
+        None => {
+            let msg = format!(
+                "Could not find constitution UTXO for contract_id ({})",
+                contract_id.to_hex(),
+            );
+            Err(ValidationError::DanLayerError(msg))
+        },
+    }
 }
 
 #[cfg(test)]

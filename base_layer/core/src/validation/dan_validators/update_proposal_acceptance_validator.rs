@@ -26,6 +26,7 @@ use tari_utilities::hex::Hex;
 use super::helpers::{
     fetch_contract_features,
     fetch_contract_update_proposal,
+    fetch_contract_utxos,
     get_sidechain_features,
     validate_output_type,
 };
@@ -57,7 +58,8 @@ pub fn validate_update_proposal_acceptance<B: BlockchainBackend>(
     let proposal = fetch_contract_update_proposal(db, contract_id, proposal_id)?;
 
     validate_uniqueness(db, contract_id, proposal_id, validator_node_public_key)?;
-    validate_public_key(proposal, validator_node_public_key)?;
+    validate_public_key(&proposal, validator_node_public_key)?;
+    validate_acceptance_window(db, contract_id, &proposal)?;
 
     // TODO: check that the signature of the transaction is valid
     // TODO: check that the acceptance is inside the acceptance window of the proposal
@@ -108,7 +110,7 @@ fn validate_uniqueness<B: BlockchainBackend>(
 
 /// Checks that the validator public key is present as part of the proposed committee in the constitution
 fn validate_public_key(
-    proposal: ContractUpdateProposal,
+    proposal: &ContractUpdateProposal,
     validator_node_public_key: &PublicKey,
 ) -> Result<(), ValidationError> {
     let is_validator_in_committee = proposal
@@ -127,6 +129,65 @@ fn validate_public_key(
     Ok(())
 }
 
+fn validate_acceptance_window<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+    proposal: &ContractUpdateProposal,
+) -> Result<(), ValidationError> {
+    let proposal_height = fetch_proposal_height(db, contract_id, proposal.proposal_id)?;
+    let max_allowed_absolute_height = proposal_height +
+        proposal
+            .updated_constitution
+            .acceptance_requirements
+            .acceptance_period_expiry;
+    let current_height = db.get_height()?;
+
+    let window_has_expired = current_height > max_allowed_absolute_height;
+    if window_has_expired {
+        let msg = format!(
+            "Proposal acceptance window has expired for contract_id ({}) and proposal_id ({})",
+            contract_id.to_hex(),
+            proposal.proposal_id
+        );
+        return Err(ValidationError::DanLayerError(msg));
+    }
+
+    Ok(())
+}
+
+pub fn fetch_proposal_height<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+    proposal_id: u64,
+) -> Result<u64, ValidationError> {
+    let utxos = fetch_contract_utxos(db, contract_id, OutputType::ContractConstitutionProposal)?;
+    let proposal_utxo = utxos.into_iter().find(|utxo| {
+        let output = match utxo.output.as_transaction_output() {
+            Some(value) => value,
+            None => return false,
+        };
+        let sidechain_features = match output.features.sidechain_features.as_ref() {
+            Some(value) => value,
+            None => return false,
+        };
+        let proposal = match &sidechain_features.update_proposal {
+            Some(value) => value,
+            None => return false,
+        };
+
+        proposal.proposal_id == proposal_id
+    });
+
+    match proposal_utxo {
+        Some(utxo) => Ok(utxo.mined_height),
+        None => Err(ValidationError::DanLayerError(format!(
+            "Contract update proposal not found for contract_id {} and proposal_id {}",
+            contract_id.to_hex(),
+            proposal_id
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::convert::TryInto;
@@ -134,17 +195,20 @@ mod test {
     use tari_common_types::types::PublicKey;
     use tari_utilities::hex::Hex;
 
-    use crate::validation::dan_validators::test_helpers::{
-        assert_dan_validator_fail,
-        assert_dan_validator_success,
-        create_block,
-        create_contract_constitution,
-        create_contract_update_proposal_acceptance_schema,
-        init_test_blockchain,
-        publish_constitution,
-        publish_definition,
-        publish_update_proposal,
-        schema_to_transaction,
+    use crate::{
+        txn_schema,
+        validation::dan_validators::test_helpers::{
+            assert_dan_validator_fail,
+            assert_dan_validator_success,
+            create_block,
+            create_contract_constitution,
+            create_contract_update_proposal_acceptance_schema,
+            init_test_blockchain,
+            publish_constitution,
+            publish_definition,
+            publish_update_proposal,
+            schema_to_transaction,
+        },
     };
 
     #[test]
@@ -308,5 +372,50 @@ mod test {
 
         // try to validate the proposal acceptance transaction and check that we get the committee error
         assert_dan_validator_fail(&blockchain, &tx, "Validator node public key is not in committee");
+    }
+
+    #[test]
+    fn it_rejects_expired_acceptances() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, change) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+
+        // publish the contract constitution into a block
+        let validator_node_public_key = PublicKey::default();
+        let committee = vec![validator_node_public_key.clone()];
+        let mut constitution = create_contract_constitution();
+        constitution.validator_committee = committee.try_into().unwrap();
+        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
+
+        // publish the contract update proposal into a block,  with a very short (1 block) expiration time
+        let proposal_id: u64 = 1;
+        constitution.acceptance_requirements.acceptance_period_expiry = 1;
+        publish_update_proposal(
+            &mut blockchain,
+            change[2].clone(),
+            contract_id,
+            proposal_id,
+            constitution,
+        );
+
+        // publish some filler blocks in, just to make the expiration height pass
+        let schema = txn_schema!(from: vec![change[3].clone()], to: vec![0.into()]);
+        create_block(&mut blockchain, "filler1", schema);
+        let schema = txn_schema!(from: vec![change[4].clone()], to: vec![0.into()]);
+        create_block(&mut blockchain, "filler2", schema);
+
+        // create a contract acceptance after the expiration block height
+        let schema = create_contract_update_proposal_acceptance_schema(
+            contract_id,
+            change[5].clone(),
+            proposal_id,
+            validator_node_public_key,
+        );
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the acceptance transaction and check that we get the expiration error
+        assert_dan_validator_fail(&blockchain, &tx, "Proposal acceptance window has expired");
     }
 }
