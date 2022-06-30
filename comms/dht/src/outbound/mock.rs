@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    sync::{Arc, Condvar, Mutex, RwLock},
-    time::Duration,
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
 use bytes::Bytes;
@@ -32,7 +32,8 @@ use tari_comms::{
     protocol::messaging::SendFailReason,
 };
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, watch, Mutex, RwLock},
+    time,
     time::sleep,
 };
 
@@ -57,94 +58,96 @@ pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, O
     (OutboundMessageRequester::new(tx), OutboundServiceMock::new(rx))
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct OutboundServiceMockState {
     #[allow(clippy::type_complexity)]
     calls: Arc<Mutex<Vec<(FinalSendMessageParams, Bytes)>>>,
     next_response: Arc<RwLock<Option<SendMessageResponse>>>,
-    call_count_cond_var: Arc<Condvar>,
+    notif_sender: Arc<watch::Sender<()>>,
+    notif_reciever: watch::Receiver<()>,
     behaviour: Arc<Mutex<MockBehaviour>>,
 }
 
 impl OutboundServiceMockState {
     pub fn new() -> Self {
+        let (sender, receiver) = watch::channel(());
         Self {
             calls: Arc::new(Mutex::new(Vec::new())),
             next_response: Arc::new(RwLock::new(None)),
-            call_count_cond_var: Arc::new(Condvar::new()),
+            notif_sender: Arc::new(sender),
+            notif_reciever: receiver,
             behaviour: Arc::new(Mutex::new(MockBehaviour::default())),
         }
     }
 
-    pub fn call_count(&self) -> usize {
-        acquire_lock!(self.calls).len()
+    pub async fn call_count(&self) -> usize {
+        self.calls.lock().await.len()
     }
 
     /// Wait for `num_calls` extra calls or timeout.
     ///
     /// An error will be returned if the timeout expires.
-    pub fn wait_call_count(&self, expected_calls: usize, timeout: Duration) -> Result<usize, String> {
-        let call_guard = acquire_lock!(self.calls);
-        let (call_guard, is_timeout) =
-            condvar_shim::wait_timeout_until(&self.call_count_cond_var, call_guard, timeout, |calls| {
-                calls.len() >= expected_calls
-            })
-            .expect("CondVar must never be poisoned");
+    pub async fn wait_call_count(&self, expected_calls: usize, timeout: Duration) -> Result<usize, String> {
+        let mut rx = self.notif_reciever.clone();
+        let start = Instant::now();
+        let result = loop {
+            let since = start.elapsed();
+            if timeout.checked_sub(since).is_none() {
+                break None;
+            }
+            if time::timeout(timeout - since, rx.changed()).await.is_err() {
+                break None;
+            }
+            let calls = self.calls.lock().await;
+            if calls.len() >= expected_calls {
+                break Some(calls.len());
+            }
+        };
 
-        if is_timeout {
-            Err(format!(
-                "wait_call_count timed out before before receiving the expected number of calls. (Expected = {}, Got \
-                 = {})",
-                expected_calls,
-                call_guard.len()
-            ))
-        } else {
-            Ok(call_guard.len())
+        match result {
+            Some(n) => Ok(n),
+            None => {
+                let num_calls = self.call_count().await;
+                Err(format!(
+                    "wait_call_count timed out before before receiving the expected number of calls. (Expected = {}, \
+                     Got = {})",
+                    expected_calls, num_calls
+                ))
+            },
         }
     }
 
-    /// Wait for a call to be added or timeout.
-    ///
-    /// An error will be returned if the timeout expires.
-    pub fn wait_pop_call(&self, timeout: Duration) -> Result<(FinalSendMessageParams, Bytes), String> {
-        let call_guard = acquire_lock!(self.calls);
-        let (mut call_guard, timeout) = self
-            .call_count_cond_var
-            .wait_timeout(call_guard, timeout)
-            .expect("CondVar must never be poisoned");
-
-        if timeout.timed_out() {
-            Err("wait_pop_call timed out before before receiving a call.".to_string())
-        } else {
-            Ok(call_guard.pop().expect("calls.len() must be greater than 1"))
-        }
+    pub async fn take_next_response(&self) -> Option<SendMessageResponse> {
+        self.next_response.write().await.take()
     }
 
-    pub fn take_next_response(&self) -> Option<SendMessageResponse> {
-        self.next_response.write().unwrap().take()
+    pub async fn add_call(&self, req: (FinalSendMessageParams, Bytes)) {
+        self.calls.lock().await.push(req);
+        let _r = self.notif_sender.send(());
     }
 
-    pub fn add_call(&self, req: (FinalSendMessageParams, Bytes)) {
-        acquire_lock!(self.calls).push(req);
-        self.call_count_cond_var.notify_all();
+    pub async fn take_calls(&self) -> Vec<(FinalSendMessageParams, Bytes)> {
+        self.calls.lock().await.drain(..).collect()
     }
 
-    pub fn take_calls(&self) -> Vec<(FinalSendMessageParams, Bytes)> {
-        acquire_lock!(self.calls).drain(..).collect()
+    pub async fn pop_call(&self) -> Option<(FinalSendMessageParams, Bytes)> {
+        self.calls.lock().await.pop()
     }
 
-    pub fn pop_call(&self) -> Option<(FinalSendMessageParams, Bytes)> {
-        acquire_lock!(self.calls).pop()
-    }
-
-    pub fn set_behaviour(&self, behaviour: MockBehaviour) {
-        let mut lock = acquire_lock!(self.behaviour);
+    pub async fn set_behaviour(&self, behaviour: MockBehaviour) {
+        let mut lock = self.behaviour.lock().await;
         *lock = behaviour;
     }
 
-    pub fn get_behaviour(&self) -> MockBehaviour {
-        let lock = acquire_lock!(self.behaviour);
+    pub async fn get_behaviour(&self) -> MockBehaviour {
+        let lock = self.behaviour.lock().await;
         (*lock).clone()
+    }
+}
+
+impl Default for OutboundServiceMockState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -169,7 +172,7 @@ impl OutboundServiceMock {
         while let Some(req) = self.receiver.recv().await {
             match req {
                 DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
-                    let behaviour = self.mock_state.get_behaviour();
+                    let behaviour = self.mock_state.get_behaviour().await;
                     trace!(
                         target: LOG_TARGET,
                         "Send message request received with length of {} bytes (behaviour = {:?})",
@@ -180,17 +183,17 @@ impl OutboundServiceMock {
                         BroadcastStrategy::DirectPublicKey(_) => {
                             match behaviour.direct {
                                 ResponseType::Queued => {
-                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
                                     reply_tx.send(response).expect("Reply channel cancelled");
                                     inner_reply_tx.reply_success();
                                 },
                                 ResponseType::QueuedFail => {
-                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
                                     reply_tx.send(response).expect("Reply channel cancelled");
                                     inner_reply_tx.reply_fail(SendFailReason::PeerDialFailed);
                                 },
                                 ResponseType::QueuedSuccessDelay(delay) => {
-                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
                                     reply_tx.send(response).expect("Reply channel cancelled");
                                     sleep(delay).await;
                                     inner_reply_tx.reply_success();
@@ -207,7 +210,7 @@ impl OutboundServiceMock {
                         },
                         BroadcastStrategy::ClosestNodes(_) => {
                             if behaviour.broadcast == ResponseType::Queued {
-                                let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
+                                let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
                                 reply_tx.send(response).expect("Reply channel cancelled");
                                 inner_reply_tx.reply_success();
                             } else {
@@ -219,7 +222,7 @@ impl OutboundServiceMock {
                             }
                         },
                         _ => {
-                            let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
+                            let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body).await;
                             reply_tx.send(response).expect("Reply channel cancelled");
                             inner_reply_tx.reply_success();
                         },
@@ -229,12 +232,17 @@ impl OutboundServiceMock {
         }
     }
 
-    fn add_call(&mut self, params: FinalSendMessageParams, body: Bytes) -> (SendMessageResponse, MessagingReplyTx) {
-        self.mock_state.add_call((params, body));
+    async fn add_call(
+        &mut self,
+        params: FinalSendMessageParams,
+        body: Bytes,
+    ) -> (SendMessageResponse, MessagingReplyTx) {
+        self.mock_state.add_call((params, body)).await;
         let (inner_reply_tx, inner_reply_rx) = oneshot::channel();
         let response = self
             .mock_state
             .take_next_response()
+            .await
             .or_else(|| {
                 Some(SendMessageResponse::Queued(
                     vec![MessageSendState::new(MessageTag::new(), inner_reply_rx)].into(),
@@ -242,42 +250,6 @@ impl OutboundServiceMock {
             })
             .expect("never none");
         (response, inner_reply_tx.into())
-    }
-}
-
-mod condvar_shim {
-    use std::{
-        sync::{Condvar, LockResult, MutexGuard, PoisonError},
-        time::{Duration, Instant},
-    };
-
-    pub fn wait_timeout_until<'a, T, F>(
-        condvar: &Condvar,
-        mut guard: MutexGuard<'a, T>,
-        dur: Duration,
-        mut condition: F,
-    ) -> LockResult<(MutexGuard<'a, T>, bool)>
-    where
-        F: FnMut(&mut T) -> bool,
-    {
-        let start = Instant::now();
-        loop {
-            if condition(&mut *guard) {
-                return Ok((guard, false));
-            }
-            let timeout = match dur.checked_sub(start.elapsed()) {
-                Some(timeout) => timeout,
-                None => return Ok((guard, true)),
-            };
-            guard = condvar
-                .wait_timeout(guard, timeout)
-                .map(|(guard, timeout)| (guard, timeout.timed_out()))
-                .map_err(|err| {
-                    let (guard, timeout) = err.into_inner();
-                    PoisonError::new((guard, timeout.timed_out()))
-                })?
-                .0;
-        }
     }
 }
 
