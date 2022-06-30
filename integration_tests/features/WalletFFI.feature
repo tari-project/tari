@@ -171,12 +171,12 @@ Feature: Wallet FFI
         And I have mining node MINER connected to base node BASE1 and wallet SENDER
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 5000000 uT
-        And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
-        And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
+        And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 4000000 uT
-        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20 via one-sided transactions
+        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 5 via one-sided transactions
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And mining node MINER mines 2 blocks
         Then all nodes are at height 22
