@@ -250,6 +250,7 @@ const TBotPrompt = ({
           const FuncComponentMsg = msg.content
           return (
             <MessageBox
+              key={idx}
               animate={count === idx + 1}
               ref={count === idx + 1 ? lastMsgRef : null}
               skipButton={mode === 'onboarding' && skipButtonCheck}
@@ -262,6 +263,7 @@ const TBotPrompt = ({
         }
         return (
           <MessageBox
+            key={idx}
             animate={count === idx + 1}
             ref={count === idx + 1 ? lastMsgRef : null}
             skipButton={mode === 'onboarding' && skipButtonCheck}

@@ -8,7 +8,7 @@ const BarSegment = ({ fill }: { fill: number | undefined }) => {
   }
   const progressAnim = useSpring({
     width: progressBarWidth,
-    config: config.gentle,
+    config: config.stiff,
   })
   return (
     <BarSegmentContainer>
