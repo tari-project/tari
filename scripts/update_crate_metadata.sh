@@ -41,7 +41,7 @@ function update_versions {
    base_layer/service_framework
    base_layer/wallet
    base_layer/wallet_ffi
-   base_layer/tari_mining_helpers_ffi
+   base_layer/tari_mining_helper_ffi
    common
    common_sqlite
    comms/core

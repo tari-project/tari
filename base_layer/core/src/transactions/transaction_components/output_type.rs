@@ -90,7 +90,8 @@ impl OutputType {
                 ContractValidatorAcceptance |
                 ContractCheckpoint |
                 ContractConstitutionProposal |
-                ContractConstitutionChangeAcceptance
+                ContractConstitutionChangeAcceptance |
+                ContractAmendment
         )
     }
 }

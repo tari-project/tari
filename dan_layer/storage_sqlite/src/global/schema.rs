@@ -22,9 +22,11 @@
 
 table! {
     contracts (id) {
-        id -> Binary,
+        id -> Integer,
+        contract_id -> Binary,
         height -> BigInt,
         state -> Integer,
+        constitution -> Binary,
     }
 }
 
