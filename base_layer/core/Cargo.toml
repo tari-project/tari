@@ -40,6 +40,7 @@ bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"
 bytes = "0.5"
+chacha20poly1305 = "0.9.0"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 criterion = { version = "0.3.5", optional = true  }
 croaring = { version = "0.5.2", optional = true }

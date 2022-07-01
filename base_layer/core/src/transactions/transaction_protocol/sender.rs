@@ -802,7 +802,6 @@ mod test {
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
-                RewindData,
                 TransactionProtocolError,
                 TransactionProtocolError::RangeProofError,
             },
@@ -897,7 +896,10 @@ mod test {
         .unwrap();
         let covenant = Covenant::default();
 
-        let encrypted_value = EncryptedValue::todo_encrypt_from(value);
+        // Encrypted value
+        let encryption_key = PrivateKey::random(&mut OsRng);
+        let encrypted_value = EncryptedValue::encrypt_value(&encryption_key, &commitment, value.into()).unwrap();
+
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             value.into(),
@@ -1237,19 +1239,11 @@ mod test {
     fn single_recipient_with_rewindable_change_and_receiver_outputs_bulletproofs() {
         let factories = CryptoFactories::default();
         // Alice's parameters
-        let a = TestParams::new();
+        let alice_test_params = TestParams::new();
         // Bob's parameters
-        let b = TestParams::new();
+        let bob_test_params = TestParams::new();
         let alice_value = MicroTari(25000);
         let (utxo, input) = create_test_input(alice_value, 0, &factories.commitment);
-
-        // Rewind params
-        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-
-        let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key: PrivateKey::random(&mut OsRng),
-        };
 
         let script = script!(Nop);
 
@@ -1257,10 +1251,10 @@ mod test {
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
-            .with_offset(a.offset.clone())
-            .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_spend_key.clone())
-            .with_rewindable_outputs(rewind_data)
+            .with_offset(alice_test_params.offset.clone())
+            .with_private_nonce(alice_test_params.nonce.clone())
+            .with_change_secret(alice_test_params.change_spend_key.clone())
+            .with_rewindable_outputs(alice_test_params.rewind_data.clone())
             .with_input(utxo, input)
             .with_amount(0, MicroTari(5000))
             .with_recipient_data(
@@ -1291,7 +1285,14 @@ mod test {
         assert!(alice.is_collecting_single_signature());
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            bob_test_params.nonce,
+            bob_test_params.spend_key,
+            &factories,
+            None,
+        )
+        .unwrap();
 
         // Alice gets message back, deserializes it, etc
         alice
@@ -1310,18 +1311,45 @@ mod test {
 
         // If the first output isn't alice's then the second must be
         // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
-        let committed_value_0 = MicroTari::from(tx.body.outputs()[0].encrypted_value.todo_decrypt());
-        let committed_value_1 = MicroTari::from(tx.body.outputs()[1].encrypted_value.todo_decrypt());
-        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
-        let blinding_factor_0 = tx.body.outputs()[0]
-            .recover_mask(&factories.range_proof, &rewind_blinding_key)
-            .unwrap();
-        let blinding_factor_1 = tx.body.outputs()[1]
-            .recover_mask(&factories.range_proof, &rewind_blinding_key)
-            .unwrap();
-        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
-        assert!(committed_value_0 == change || committed_value_1 == change);
-        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
-        assert!(blinding_factor_0 == a.change_spend_key || blinding_factor_1 == a.change_spend_key);
+        let output_0 = &tx.body.outputs()[0];
+        let output_1 = &tx.body.outputs()[1];
+
+        if let Ok(committed_value) = EncryptedValue::decrypt_value(
+            &alice_test_params.rewind_data.encryption_key,
+            &output_0.commitment,
+            &output_0.encrypted_value,
+        ) {
+            let blinding_factor = output_0
+                .recover_mask(
+                    &factories.range_proof,
+                    &alice_test_params.rewind_data.rewind_blinding_key,
+                )
+                .unwrap();
+            assert_eq!(
+                factories
+                    .commitment
+                    .commit_value(&blinding_factor, committed_value.as_u64()),
+                output_0.commitment
+            );
+        } else if let Ok(committed_value) = EncryptedValue::decrypt_value(
+            &alice_test_params.rewind_data.encryption_key,
+            &output_1.commitment,
+            &output_1.encrypted_value,
+        ) {
+            let blinding_factor = output_1
+                .recover_mask(
+                    &factories.range_proof,
+                    &alice_test_params.rewind_data.rewind_blinding_key,
+                )
+                .unwrap();
+            assert_eq!(
+                factories
+                    .commitment
+                    .commit_value(&blinding_factor, committed_value.as_u64()),
+                output_1.commitment
+            );
+        } else {
+            panic!("Could not recover Alice's output");
+        }
     }
 }
