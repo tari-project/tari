@@ -1064,7 +1064,7 @@ async fn consensus_validation_versions() {
     assert_eq!(output_v1_features_v0.version, TransactionOutputVersion::V1);
     assert_eq!(output_v1_features_v0.features.version, OutputFeaturesVersion::V0);
 
-    let features = OutputFeatures::new(
+    let features_v1 = OutputFeatures::new(
         OutputFeaturesVersion::V1,
         OutputType::default(),
         0,
@@ -1081,14 +1081,14 @@ async fn consensus_validation_versions() {
 
     let test_params = TestParams::new();
     let mut params = UtxoTestParams::with_value(1 * T);
-    params.features = features.clone();
+    params.features = features_v1.clone();
     let output_v0_features_v1 = test_params.create_unblinded_output(params);
     assert_eq!(output_v0_features_v1.version, TransactionOutputVersion::V0);
     assert_eq!(output_v0_features_v1.features.version, OutputFeaturesVersion::V1);
 
     let test_params = TestParams::new();
     let mut params = UtxoTestParams::with_value(1 * T);
-    params.features = features.clone();
+    params.features = features_v1.clone();
     let mut output_v1_features_v1 = test_params.create_unblinded_output(params);
     output_v1_features_v1.version = TransactionOutputVersion::V1;
     assert_eq!(output_v1_features_v1.version, TransactionOutputVersion::V1);

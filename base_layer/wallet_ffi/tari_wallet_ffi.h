@@ -756,40 +756,6 @@ struct ByteVector *encrypted_value_as_bytes(const TariEncryptedValue *encrypted_
                                             int *error_out);
 
 /**
- * Creates a TariEncryptedValue from an amount
- *
- * ## Arguments
- * `amount` - The Tari amount
- *
- * ## Returns
- * `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
- * null or if there was an error with the contents of bytes
- *
- * # Safety
- * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
- * memory leak
- */
-TariEncryptedValue *encrypted_value_encrypt(unsigned long long amount,
-                                            int *error_out);
-
-/**
- * Creates an amount from a TariEncryptedValue
- *
- * ## Arguments
- * `amount` - The Tari amount
- *
- * ## Returns
- * `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
- * null or if there was an error with the contents of bytes
- *
- * # Safety
- * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
- * memory leak
- */
-unsigned long long encrypted_value_decrypt(const TariEncryptedValue *encrypted_value,
-                                           int *error_out);
-
-/**
  * Frees memory for a TariEncryptedValue
  *
  * ## Arguments

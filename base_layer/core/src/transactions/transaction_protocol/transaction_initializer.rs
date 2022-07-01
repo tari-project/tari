@@ -393,7 +393,15 @@ impl SenderTransactionInitializer {
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
                         output_features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
-                        let encrypted_value = EncryptedValue::todo_encrypt_from(v);
+
+                        let encrypted_value = self
+                            .rewind_data
+                            .as_ref()
+                            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, v))
+                            .transpose()
+                            .map_err(|e| e.to_string())?
+                            .unwrap_or_default();
+
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
                             TransactionOutputVersion::get_current_version(),
                             v,
