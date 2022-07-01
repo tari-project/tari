@@ -43,6 +43,7 @@ use tari_core::{
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         transaction_components::{
             CommitteeSignatures,
+            ContractCheckpoint,
             EncryptedValue,
             OutputFeatures,
             OutputType,
@@ -763,10 +764,13 @@ async fn utxo_selection_for_contract_checkpoint() {
         &mut OsRng.clone(),
         amount,
         &factories.commitment,
-        Some(OutputFeatures::for_checkpoint(
+        Some(OutputFeatures::for_contract_checkpoint(
             contract_id,
-            FixedHash::zero(),
-            CommitteeSignatures::empty(),
+            ContractCheckpoint {
+                checkpoint_number: 0,
+                merkle_root: FixedHash::zero(),
+                signatures: CommitteeSignatures::empty(),
+            },
         )),
         oms.clone(),
     )
@@ -795,7 +799,11 @@ async fn utxo_selection_for_contract_checkpoint() {
             // Spend more than the selected contract output, this will cause the other UTXO to be included
             MicroTari::from(2500),
             UtxoSelectionCriteria::for_contract(contract_id, OutputType::ContractCheckpoint),
-            OutputFeatures::for_checkpoint(contract_id, FixedHash::zero(), CommitteeSignatures::empty()),
+            OutputFeatures::for_contract_checkpoint(contract_id, ContractCheckpoint {
+                checkpoint_number: 0,
+                merkle_root: FixedHash::zero(),
+                signatures: CommitteeSignatures::empty(),
+            }),
             fee_per_gram,
             None,
             String::new(),

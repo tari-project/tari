@@ -55,7 +55,6 @@ use crate::{
             AssetOutputFeatures,
             CommitteeDefinitionFeatures,
             CommitteeMembers,
-            CommitteeSignatures,
             ContractCheckpoint,
             MintNonFungibleFeatures,
             OutputType,
@@ -247,16 +246,9 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_checkpoint(
-        contract_id: FixedHash,
-        merkle_root: FixedHash,
-        signatures: CommitteeSignatures,
-    ) -> OutputFeatures {
+    pub fn for_contract_checkpoint(contract_id: FixedHash, checkpoint: ContractCheckpoint) -> OutputFeatures {
         let features = SideChainFeatures::builder(contract_id)
-            .with_contract_checkpoint(ContractCheckpoint {
-                merkle_root,
-                signatures,
-            })
+            .with_contract_checkpoint(checkpoint)
             .finish();
 
         Self {
@@ -540,11 +532,7 @@ impl Display for OutputFeatures {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        convert::{TryFrom, TryInto},
-        io::ErrorKind,
-        iter,
-    };
+    use std::{convert::TryInto, io::ErrorKind, iter};
 
     use tari_common_types::types::Signature;
 
@@ -666,6 +654,7 @@ mod test {
                     activation_window: 0_u64,
                 }),
                 checkpoint: Some(ContractCheckpoint {
+                    checkpoint_number: u64::MAX,
                     merkle_root: FixedHash::zero(),
                     signatures: vec![Signature::default(); 512].try_into().unwrap(),
                 }),
@@ -801,22 +790,17 @@ mod test {
     fn test_for_checkpoint() {
         let contract_id = FixedHash::hash_bytes("CONTRACT");
         let hash = FixedHash::hash_bytes("MERKLE");
-        let signatures = CommitteeSignatures::try_from(vec![Signature::default()]).unwrap();
-        assert_eq!(
-            OutputFeatures {
-                output_type: OutputType::ContractCheckpoint,
-                sidechain_features: Some(
-                    SideChainFeatures::builder(contract_id)
-                        .with_contract_checkpoint(ContractCheckpoint {
-                            merkle_root: hash,
-                            signatures: signatures.clone()
-                        })
-                        .finish()
-                ),
-                ..Default::default()
-            },
-            OutputFeatures::for_checkpoint(contract_id, hash, signatures)
-        );
+        let checkpoint = ContractCheckpoint {
+            checkpoint_number: 123,
+            merkle_root: hash,
+            signatures: vec![Signature::default()].try_into().unwrap(),
+        };
+
+        let features = OutputFeatures::for_contract_checkpoint(contract_id, checkpoint.clone());
+        let sidechain_features = features.sidechain_features.as_ref().unwrap();
+        assert_eq!(features.output_type, OutputType::ContractCheckpoint);
+        assert_eq!(sidechain_features.contract_id, contract_id);
+        assert_eq!(*sidechain_features.checkpoint.as_ref().unwrap(), checkpoint);
     }
 
     #[test]
