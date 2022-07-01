@@ -5,7 +5,7 @@ import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { selectSchedules } from '../store/app/selectors'
 import { actions as miningActions } from '../store/mining'
 import { MiningActionReason } from '../store/mining/types'
-import { useWithWalletPassword } from '../useWithWalletPassword'
+import useWithPasswordPrompt from '../containers/PasswordPrompt/useWithPasswordPrompt'
 import t from '../locales'
 
 import useMiningScheduling from './useMiningScheduling'
@@ -47,7 +47,7 @@ const useMiningSchedulingContainer = () => {
     }),
     [],
   )
-  const startMiningWithPasswordPrompt = useWithWalletPassword(
+  const startMiningWithPasswordPrompt = useWithPasswordPrompt(
     startMining,
     passwordPromptOverides,
   )

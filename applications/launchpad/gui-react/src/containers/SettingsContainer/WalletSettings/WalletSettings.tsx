@@ -5,7 +5,7 @@ import Text from '../../../components/Text'
 import Button from '../../../components/Button'
 import CopyBox from '../../../components/CopyBox'
 import t from '../../../locales'
-import { useWithWalletPassword } from '../../../useWithWalletPassword'
+import useWithPasswordPrompt from '../../../containers/PasswordPrompt/useWithPasswordPrompt'
 
 import { IsWalletRunningRow, WalletRunningContainer } from './styles'
 
@@ -23,7 +23,7 @@ const WalletSettings = ({
   start: () => void
 }) => {
   const theme = useTheme()
-  const startWallet = useWithWalletPassword(start)
+  const startWallet = useWithPasswordPrompt(start)
 
   return (
     <>
