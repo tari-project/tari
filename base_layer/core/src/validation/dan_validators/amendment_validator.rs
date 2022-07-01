@@ -213,7 +213,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated amendment transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated amendment");
+        assert_dan_validator_fail(&blockchain, &tx, "Duplicate ContractAmendment contract UTXO");
     }
 
     #[test]

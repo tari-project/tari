@@ -178,6 +178,6 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated proposal transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract update proposal");
+        assert_dan_validator_fail(&blockchain, &tx, "Duplicate ContractConstitutionProposal contract UTXO");
     }
 }
