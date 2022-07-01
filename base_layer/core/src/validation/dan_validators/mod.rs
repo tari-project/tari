@@ -52,6 +52,8 @@ mod helpers;
 mod error;
 pub use error::DanLayerValidationError;
 
+use crate::transactions::transaction_components::TransactionOutput;
+
 #[cfg(test)]
 mod test_helpers;
 
@@ -80,10 +82,44 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<
                     validate_update_proposal_acceptance(&self.db, output)?
                 },
                 OutputType::ContractAmendment => validate_amendment(&self.db, output)?,
-                _ => continue,
+                _ => validate_no_sidechain_features(output)?,
             }
         }
 
         Ok(())
+    }
+}
+
+fn validate_no_sidechain_features(output: &TransactionOutput) -> Result<(), ValidationError> {
+    match output.features.sidechain_features {
+        Some(ref features) => Err(ValidationError::NonContractOutputContainsSidechainFeatures {
+            output_type: output.features.output_type,
+            contract_id: features.contract_id,
+        }),
+        None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common_types::types::FixedHash;
+
+    use super::*;
+    use crate::transactions::{
+        test_helpers::{create_unblinded_coinbase, TestParams},
+        transaction_components::SideChainFeatures,
+        CryptoFactories,
+    };
+
+    #[test]
+    fn it_rejects_standard_output_type_with_sidechain_features() {
+        let mut utxo = create_unblinded_coinbase(&TestParams::new(), 1);
+        utxo.features.sidechain_features = Some(SideChainFeatures::builder(FixedHash::default()).finish());
+        let output = utxo.as_transaction_output(&CryptoFactories::default()).unwrap();
+        let err = validate_no_sidechain_features(&output).unwrap_err();
+        assert!(matches!(
+            err,
+            ValidationError::NonContractOutputContainsSidechainFeatures { .. }
+        ))
     }
 }

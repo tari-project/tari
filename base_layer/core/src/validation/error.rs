@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::HashOutput;
+use tari_common_types::types::{FixedHash, HashOutput};
 use thiserror::Error;
 use tokio::task;
 
@@ -29,7 +29,7 @@ use crate::{
     chain_storage::ChainStorageError,
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::transaction_components::TransactionError,
+    transactions::transaction_components::{OutputType, TransactionError},
     validation::dan_validators::DanLayerValidationError,
 };
 
@@ -119,6 +119,13 @@ pub enum ValidationError {
     ErroneousCoinbaseOutput,
     #[error("Digital Asset Network Error: {0}")]
     DanLayerError(#[from] DanLayerValidationError),
+    #[error(
+        "Output was flagged as a {output_type} but contained sidechain feature data with contract_id {contract_id}"
+    )]
+    NonContractOutputContainsSidechainFeatures {
+        output_type: OutputType,
+        contract_id: FixedHash,
+    },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
