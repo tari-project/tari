@@ -1751,22 +1751,30 @@ where
         number_of_splits: usize,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
-        let selection = self
-            .select_utxos(
-                amount_per_split.unwrap_or(MicroTari::zero()),
-                fee_per_gram,
-                number_of_splits,
-                self.default_metadata_size() * number_of_splits,
-                UtxoSelectionCriteria::largest_first(),
-            )
-            .await?;
-
         match amount_per_split {
             None => {
+                /*
+                let amount_per_split = match amount_per_split.clone() {
+                    None => MicroTari(u64::MAX),
+                    Some(aps) => aps * MicroTari(number_of_splits as u64),
+                };
+
                 self.create_coin_split_even(selection.utxos, number_of_splits, fee_per_gram)
                     .await
+                 */
+                Err(OutputManagerError::InvalidArgument("coin split without `amount_per_split` is not supported yet".to_string()))
             },
             Some(amount_per_split) => {
+                let selection = self
+                    .select_utxos(
+                        amount_per_split * MicroTari(number_of_splits as u64),
+                        fee_per_gram,
+                        number_of_splits,
+                        self.default_metadata_size() * number_of_splits,
+                        UtxoSelectionCriteria::largest_first(),
+                    )
+                    .await?;
+
                 self.create_coin_split(selection.utxos, amount_per_split, number_of_splits, fee_per_gram)
                     .await
             },
