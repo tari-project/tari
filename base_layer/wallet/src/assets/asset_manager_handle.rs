@@ -25,6 +25,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_core::transactions::transaction_components::{
+    CommitteeSignatures,
     ContractAmendment,
     ContractDefinition,
     ContractUpdateProposal,
@@ -84,13 +85,14 @@ impl AssetManagerHandle {
         &mut self,
         contract_id: FixedHash,
         merkle_root: FixedHash,
+        committee_signatures: CommitteeSignatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateInitialCheckpoint {
                 contract_id,
                 merkle_root,
-                committee_public_keys: Vec::new(),
+                committee_signatures,
             })
             .await??
         {
@@ -107,6 +109,7 @@ impl AssetManagerHandle {
         contract_id: FixedHash,
         checkpoint_number: u64,
         merkle_root: FixedHash,
+        committee_signatures: CommitteeSignatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
@@ -114,7 +117,7 @@ impl AssetManagerHandle {
                 contract_id,
                 checkpoint_number,
                 merkle_root,
-                committee_public_keys: Vec::new(),
+                committee_signatures,
             })
             .await??
         {
