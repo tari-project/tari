@@ -3,20 +3,27 @@ import BarSegment from './BarSegment'
 import { StyledContainer } from './styles'
 import { ProgressIndicatorProps } from './types'
 
-const ProgressIndicator = ({ overallFill }: ProgressIndicatorProps) => {
-  const [fillOne, setFillOne] = useState<number | undefined>(0.0001)
-  const [fillTwo, setFillTwo] = useState<number | undefined>(0.0001)
-  const [fillThree, setFillThree] = useState<number | undefined>(0.0001)
-  const [fillFour, setFillFour] = useState<number | undefined>(0.0001)
+const NON_ZERO_VALUE_ALLOWING_ANIMATION = 0.001
 
-  // Bar one logic
+const ProgressIndicator = ({ overallFill }: ProgressIndicatorProps) => {
+  const [fillOne, setFillOne] = useState<number | undefined>(
+    NON_ZERO_VALUE_ALLOWING_ANIMATION,
+  )
+  const [fillTwo, setFillTwo] = useState<number | undefined>(
+    NON_ZERO_VALUE_ALLOWING_ANIMATION,
+  )
+  const [fillThree, setFillThree] = useState<number | undefined>(
+    NON_ZERO_VALUE_ALLOWING_ANIMATION,
+  )
+  const [fillFour, setFillFour] = useState<number | undefined>(
+    NON_ZERO_VALUE_ALLOWING_ANIMATION,
+  )
+
+  // Logic for animation progress
   useEffect(() => {
     if (overallFill) {
       if (overallFill <= 0.25) {
         setFillOne(overallFill * 4)
-        // setFillTwo(0.0001)
-        // setFillThree(0.0001)
-        // setFillFour(0.0001)
       }
       if (overallFill >= 0.25) {
         setFillOne(1)
@@ -24,8 +31,6 @@ const ProgressIndicator = ({ overallFill }: ProgressIndicatorProps) => {
       if (overallFill > 0.25 && overallFill <= 0.5) {
         setTimeout(() => {
           setFillTwo((overallFill - 0.25) * 4)
-          setFillThree(0.0001)
-          setFillFour(0.0001)
         }, 300)
       }
       if (overallFill >= 0.5) {
@@ -34,7 +39,6 @@ const ProgressIndicator = ({ overallFill }: ProgressIndicatorProps) => {
       if (overallFill > 0.5 && overallFill <= 0.75) {
         setTimeout(() => {
           setFillThree((overallFill - 0.5) * 4)
-          setFillFour(0.0001)
         }, 300)
       }
       if (overallFill >= 0.75) {
