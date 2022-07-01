@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::{FixedHash, HashOutput};
+use tari_crypto::errors::RangeProofError;
 use thiserror::Error;
 use tokio::task;
 
@@ -47,6 +48,8 @@ pub enum ValidationError {
     UnknownInput,
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
+    #[error("A range proof verification has produced an error: {0}")]
+    RangeProofError(#[from] RangeProofError),
     #[error("Error: {0}")]
     CustomError(String),
     #[error("Fatal storage error during validation: {0}")]

@@ -70,7 +70,7 @@ mod transaction_input;
 mod transaction_input_version;
 mod transaction_kernel;
 mod transaction_kernel_version;
-mod transaction_output;
+pub mod transaction_output;
 mod transaction_output_version;
 mod unblinded_output;
 mod unblinded_output_builder;
