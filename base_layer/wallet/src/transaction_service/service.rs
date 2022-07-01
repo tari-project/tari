@@ -64,6 +64,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -1025,10 +1026,12 @@ where
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
         let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
 
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key: recovery_byte_key.clone(),
+            encryption_key: encryption_key.clone(),
         };
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
@@ -1041,7 +1044,12 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let output = recipient_reply.output.clone();
-        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spend_key, amount.into());
+        let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spend_key,
@@ -1189,9 +1197,11 @@ where
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
         let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
             recovery_byte_key: recovery_byte_key.clone(),
+            encryption_key: encryption_key.clone(),
         };
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(

@@ -35,7 +35,7 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey},
     tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
@@ -43,7 +43,8 @@ use crate::{
     version::DhtProtocolVersion,
 };
 
-#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Clone, Zeroize)]
+#[zeroize(drop)]
 pub struct CipherKey(chacha20::Key);
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.

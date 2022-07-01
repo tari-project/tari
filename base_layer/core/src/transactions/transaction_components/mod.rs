@@ -25,7 +25,7 @@
 
 pub use asset_output_features::AssetOutputFeatures;
 pub use committee_definition_features::CommitteeDefinitionFeatures;
-pub use encrypted_value::EncryptedValue;
+pub use encrypted_value::{EncryptedValue, EncryptionError};
 pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;

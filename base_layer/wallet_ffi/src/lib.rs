@@ -1131,60 +1131,6 @@ pub unsafe extern "C" fn encrypted_value_as_bytes(
     Box::into_raw(Box::new(encrypted_byte_vector))
 }
 
-/// Creates a TariEncryptedValue from an amount
-///
-/// ## Arguments
-/// `amount` - The Tari amount
-///
-/// ## Returns
-/// `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
-/// null or if there was an error with the contents of bytes
-///
-/// # Safety
-/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn encrypted_value_encrypt(
-    amount: c_ulonglong,
-    error_out: *mut c_int,
-) -> *mut TariEncryptedValue {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    let encrypted_value = TariEncryptedValue::todo_encrypt_from(amount);
-    Box::into_raw(Box::new(encrypted_value))
-}
-
-/// Creates an amount from a TariEncryptedValue
-///
-/// ## Arguments
-/// `amount` - The Tari amount
-///
-/// ## Returns
-/// `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
-/// null or if there was an error with the contents of bytes
-///
-/// # Safety
-/// The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn encrypted_value_decrypt(
-    encrypted_value: *const TariEncryptedValue,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if encrypted_value.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("encrypted_value".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    let encrypted_value = (*encrypted_value).clone();
-    encrypted_value.todo_decrypt() as c_ulonglong
-}
-
 /// Frees memory for a TariEncryptedValue
 ///
 /// ## Arguments
@@ -7192,13 +7138,10 @@ mod test {
     };
 
     use libc::{c_char, c_uchar, c_uint};
-    use tari_common_types::{emoji, transaction::TransactionStatus};
+    use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
     use tari_core::{
         covenant,
-        transactions::{
-            test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::EncryptedValue,
-        },
+        transactions::test_helpers::{create_test_input, create_unblinded_output, TestParams},
     };
     use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
@@ -7767,38 +7710,24 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let amount = 1234u64;
-            let expected_encrypted_value = EncryptedValue::todo_encrypt_from(amount);
-            let encrypted_value_bytes =
-                Box::into_raw(Box::new(ByteVector(expected_encrypted_value.as_bytes().to_vec())));
+            let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)));
+            let encryption_key = PrivateKey::random(&mut OsRng);
+            let amount = MicroTari::from(123456);
+            let encrypted_value = TariEncryptedValue::encrypt_value(&encryption_key, &commitment, amount).unwrap();
+            let encrypted_value_bytes = encrypted_value.as_bytes();
 
-            let encrypted_value_1 = encrypted_value_create_from_bytes(encrypted_value_bytes, error_ptr);
-            assert_eq!(error, 0);
-            assert_eq!(*encrypted_value_1, expected_encrypted_value);
-
+            let encrypted_value_1 = Box::into_raw(Box::new(encrypted_value.clone()));
             let encrypted_value_1_as_bytes = encrypted_value_as_bytes(encrypted_value_1, error_ptr);
             assert_eq!(error, 0);
-            // The wrapped raw bytes includes a memory allocation, thus not equal
-            assert_ne!(encrypted_value_1_as_bytes, encrypted_value_bytes);
-            // The dereferenced vector is equal
-            assert_eq!(*encrypted_value_1_as_bytes, *encrypted_value_bytes);
 
             let encrypted_value_2 = encrypted_value_create_from_bytes(encrypted_value_1_as_bytes, error_ptr);
             assert_eq!(error, 0);
-            assert_eq!(*encrypted_value_2, expected_encrypted_value);
+            assert_eq!(*encrypted_value_1, *encrypted_value_2);
 
-            let encrypted_value_3 = encrypted_value_encrypt(amount as c_ulonglong, error_ptr);
-            assert_eq!(error, 0);
-            assert_eq!(*encrypted_value_3, expected_encrypted_value);
+            assert_eq!((*encrypted_value_1_as_bytes).0, encrypted_value_bytes.to_vec());
 
-            let decrypted_value_3 = encrypted_value_decrypt(encrypted_value_3, error_ptr);
-            assert_eq!(error, 0);
-            assert_eq!(decrypted_value_3, amount as c_ulonglong);
-
-            encrypted_value_destroy(encrypted_value_1);
             encrypted_value_destroy(encrypted_value_2);
-            encrypted_value_destroy(encrypted_value_3);
-            byte_vector_destroy(encrypted_value_bytes);
+            encrypted_value_destroy(encrypted_value_1);
             byte_vector_destroy(encrypted_value_1_as_bytes);
         }
     }
@@ -8685,12 +8614,9 @@ mod test {
             let utxo_1;
             loop {
                 let test_params = TestParams::new();
-                let utxo_temp = create_unblinded_output(
-                    script!(Nop),
-                    default_features.clone(),
-                    &test_params,
-                    MicroTari::from(100_000),
-                );
+                let amount = 100_000;
+                let utxo_temp =
+                    create_unblinded_output(script!(Nop), default_features.clone(), &test_params, MicroTari(amount));
                 if utxo_temp.features.recovery_byte != default_features.recovery_byte {
                     utxo_1 = utxo_temp;
                     break;

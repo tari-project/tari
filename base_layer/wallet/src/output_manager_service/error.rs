@@ -25,7 +25,7 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction_components::TransactionError,
+    transaction_components::{EncryptionError, TransactionError},
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
@@ -127,6 +127,8 @@ pub enum OutputManagerError {
     InvalidMessageError(String),
     #[error("Key manager service error : {0}")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+    #[error("Value can't be encrypted/decrypted")]
+    ValueEncryptionError(#[from] EncryptionError),
 }
 
 #[derive(Debug, Error)]

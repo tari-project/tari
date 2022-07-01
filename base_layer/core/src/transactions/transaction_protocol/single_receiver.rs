@@ -110,7 +110,13 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.features.clone(),
         );
 
-        let encrypted_value = EncryptedValue::todo_encrypt_from(sender_info.amount);
+        let encrypted_value = rewind_data
+            .as_ref()
+            .map(|rd| EncryptedValue::encrypt_value(&rd.encryption_key, &commitment, sender_info.amount))
+            .transpose()
+            .map_err(|_| TPE::EncryptionError)?
+            .unwrap_or_default();
+
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             sender_info.amount,
