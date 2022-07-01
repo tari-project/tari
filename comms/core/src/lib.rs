@@ -55,6 +55,7 @@ pub mod utils;
 // TODO: Test utils should be part of a `tari_comms_test` crate
 // #[cfg(test)]
 pub mod test_utils;
+pub mod traits;
 
 //---------------------------------- Re-exports --------------------------------------------//
 // Rather than requiring dependent crates to import dependencies for use with `tari_comms` we re-export them here.
