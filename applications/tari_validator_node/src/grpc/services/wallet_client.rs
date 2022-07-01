@@ -67,11 +67,11 @@ impl WalletClient for GrpcWalletClient {
         &mut self,
         contract_id: &FixedHash,
         state_root: &StateRoot,
-        is_initial: bool,
+        checkpoint_number: u64,
     ) -> Result<(), DigitalAssetError> {
         let inner = self.connection().await?;
 
-        if is_initial {
+        if checkpoint_number == 0 {
             let request = CreateInitialAssetCheckpointRequest {
                 contract_id: contract_id.to_vec(),
                 merkle_root: state_root.as_bytes().to_vec(),
@@ -84,6 +84,7 @@ impl WalletClient for GrpcWalletClient {
                 .map_err(|e| DigitalAssetError::FatalError(format!("Could not create checkpoint:{}", e)))?;
         } else {
             let request = CreateFollowOnAssetCheckpointRequest {
+                checkpoint_number,
                 contract_id: contract_id.to_vec(),
                 merkle_root: state_root.as_bytes().to_vec(),
             };

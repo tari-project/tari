@@ -260,6 +260,7 @@ mod tests {
                 activation_window: 0_u64,
             }),
             checkpoint: Some(ContractCheckpoint {
+                checkpoint_number: u64::MAX,
                 merkle_root: FixedHash::zero(),
                 signatures: vec![Signature::default(); 512].try_into().unwrap(),
             }),

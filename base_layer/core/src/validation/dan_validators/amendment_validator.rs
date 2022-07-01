@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_utilities::hex::Hex;
 
 use super::helpers::{
     fetch_contract_features,
@@ -38,7 +37,7 @@ use crate::{
         SideChainFeatures,
         TransactionOutput,
     },
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_amendment<B: BlockchainBackend>(
@@ -60,12 +59,14 @@ pub fn validate_amendment<B: BlockchainBackend>(
     Ok(())
 }
 
-fn get_contract_amendment(sidechain_feature: &SideChainFeatures) -> Result<&ContractAmendment, ValidationError> {
+fn get_contract_amendment(
+    sidechain_feature: &SideChainFeatures,
+) -> Result<&ContractAmendment, DanLayerValidationError> {
     match sidechain_feature.amendment.as_ref() {
         Some(amendment) => Ok(amendment),
-        None => Err(ValidationError::DanLayerError(
-            "Contract amendment features not found".to_string(),
-        )),
+        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
+            field_name: "amendment",
+        }),
     }
 }
 
@@ -80,14 +81,11 @@ fn validate_uniqueness<B: BlockchainBackend>(
         .filter_map(|feature| feature.amendment)
         .find(|amendment| amendment.proposal_id == proposal_id)
     {
-        Some(_) => {
-            let msg = format!(
-                "Duplicated amendment for contract_id ({:?}) and proposal_id ({:?})",
-                contract_id.to_hex(),
-                proposal_id,
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
+        Some(_) => Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractAmendment,
+            details: format!("proposal_id = {}", proposal_id),
+        })),
         None => Ok(()),
     }
 }
@@ -95,11 +93,9 @@ fn validate_uniqueness<B: BlockchainBackend>(
 fn validate_updated_constiution(
     amendment: &ContractAmendment,
     proposal: &ContractUpdateProposal,
-) -> Result<(), ValidationError> {
+) -> Result<(), DanLayerValidationError> {
     if amendment.updated_constitution != proposal.updated_constitution {
-        return Err(ValidationError::DanLayerError(
-            "The updated_constitution of the amendment does not match the one in the update proposal".to_string(),
-        ));
+        return Err(DanLayerValidationError::UpdatedConstitutionAmendmentMismatch);
     }
 
     Ok(())
@@ -110,18 +106,26 @@ mod test {
     use std::convert::TryInto;
 
     use tari_common_types::types::PublicKey;
+    use tari_test_utils::unpack_enum;
 
-    use crate::validation::dan_validators::test_helpers::{
-        assert_dan_validator_fail,
-        assert_dan_validator_success,
-        create_block,
-        create_contract_amendment_schema,
-        create_contract_constitution,
-        init_test_blockchain,
-        publish_constitution,
-        publish_definition,
-        publish_update_proposal,
-        schema_to_transaction,
+    use crate::{
+        transactions::transaction_components::OutputType,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_fail,
+                assert_dan_validator_success,
+                create_block,
+                create_contract_amendment_schema,
+                create_contract_constitution,
+                init_test_blockchain,
+                publish_constitution,
+                publish_definition,
+                publish_update_proposal,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
+        },
     };
 
     #[test]
@@ -217,7 +221,17 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated amendment transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated amendment");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        let expected_contract_id = contract_id;
+        unpack_enum!(
+            DanLayerValidationError::DuplicateUtxo {
+                output_type,
+                contract_id,
+                ..
+            } = err
+        );
+        assert_eq!(output_type, OutputType::ContractAmendment);
+        assert_eq!(contract_id, expected_contract_id);
     }
 
     #[test]

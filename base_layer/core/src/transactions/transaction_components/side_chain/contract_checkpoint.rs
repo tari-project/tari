@@ -32,12 +32,14 @@ use crate::{
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct ContractCheckpoint {
+    pub checkpoint_number: u64,
     pub merkle_root: FixedHash,
     pub signatures: CommitteeSignatures,
 }
 
 impl ConsensusEncoding for ContractCheckpoint {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.checkpoint_number.consensus_encode(writer)?;
         self.merkle_root.consensus_encode(writer)?;
         self.signatures.consensus_encode(writer)?;
         Ok(())
@@ -49,6 +51,7 @@ impl ConsensusEncodingSized for ContractCheckpoint {}
 impl ConsensusDecoding for ContractCheckpoint {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         Ok(Self {
+            checkpoint_number: u64::consensus_decode(reader)?,
             merkle_root: ConsensusDecoding::consensus_decode(reader)?,
             signatures: ConsensusDecoding::consensus_decode(reader)?,
         })
@@ -67,6 +70,7 @@ mod tests {
     #[test]
     fn it_encodes_and_decodes_correctly() {
         let subject = ContractCheckpoint {
+            checkpoint_number: u64::MAX,
             merkle_root: FixedHash::zero(),
             signatures: vec![Signature::default(); 512].try_into().unwrap(),
         };

@@ -21,13 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_utilities::hex::Hex;
 
 use super::helpers::{fetch_contract_features, get_sidechain_features, validate_output_type};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{OutputType, TransactionOutput},
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_definition<B: BlockchainBackend>(
@@ -51,11 +50,11 @@ fn validate_uniqueness<B: BlockchainBackend>(
     let features = fetch_contract_features(db, contract_id, OutputType::ContractDefinition)?;
     let is_duplicated = !features.is_empty();
     if is_duplicated {
-        let msg = format!(
-            "Duplicated contract definition for contract_id ({:?})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractDefinition,
+            details: String::new(),
+        }));
     }
 
     Ok(())
@@ -63,13 +62,21 @@ fn validate_uniqueness<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
-    use crate::validation::dan_validators::test_helpers::{
-        assert_dan_validator_fail,
-        assert_dan_validator_success,
-        create_contract_definition_schema,
-        init_test_blockchain,
-        publish_definition,
-        schema_to_transaction,
+    use tari_test_utils::unpack_enum;
+
+    use crate::{
+        transactions::transaction_components::OutputType,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_success,
+                create_contract_definition_schema,
+                init_test_blockchain,
+                publish_definition,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
+        },
     };
 
     #[test]
@@ -90,13 +97,22 @@ mod test {
         let (mut blockchain, change) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let _contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let expected_contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // construct a transaction for the duplicated contract definition
         let (_, schema) = create_contract_definition_schema(change[1].clone());
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated definition transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract definition");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        unpack_enum!(
+            DanLayerValidationError::DuplicateUtxo {
+                output_type,
+                contract_id,
+                ..
+            } = err
+        );
+        assert_eq!(output_type, OutputType::ContractDefinition);
+        assert_eq!(contract_id, expected_contract_id);
     }
 }
