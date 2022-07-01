@@ -65,6 +65,21 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         }
     }
 
+    pub async fn list_owned_constitutions(&self) -> Result<Vec<DbUnblindedOutput>, WalletError> {
+        let outputs = self
+            .output_database
+            .fetch_with_features(OutputType::ContractConstitution)
+            .map_err(|err| WalletError::OutputManagerError(err.into()))?;
+
+        error!(
+            target: LOG_TARGET,
+            "Found {} owned outputs that contain constitution",
+            outputs.len()
+        );
+        error!(target: LOG_TARGET, "{:?}", outputs);
+        Ok(outputs)
+    }
+
     pub async fn list_owned(&self) -> Result<Vec<Asset>, WalletError> {
         let outputs = self
             .output_database
