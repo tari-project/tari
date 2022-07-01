@@ -106,18 +106,26 @@ mod test {
     use std::convert::TryInto;
 
     use tari_common_types::types::PublicKey;
+    use tari_test_utils::unpack_enum;
 
-    use crate::validation::dan_validators::test_helpers::{
-        assert_dan_validator_fail,
-        assert_dan_validator_success,
-        create_block,
-        create_contract_amendment_schema,
-        create_contract_constitution,
-        init_test_blockchain,
-        publish_constitution,
-        publish_definition,
-        publish_update_proposal,
-        schema_to_transaction,
+    use crate::{
+        transactions::transaction_components::OutputType,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_fail,
+                assert_dan_validator_success,
+                create_block,
+                create_contract_amendment_schema,
+                create_contract_constitution,
+                init_test_blockchain,
+                publish_constitution,
+                publish_definition,
+                publish_update_proposal,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
+        },
     };
 
     #[test]
@@ -213,7 +221,17 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated amendment transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated amendment");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        let expected_contract_id = contract_id;
+        unpack_enum!(
+            DanLayerValidationError::DuplicateUtxo {
+                output_type,
+                contract_id,
+                ..
+            } = err
+        );
+        assert_eq!(output_type, OutputType::ContractAmendment);
+        assert_eq!(contract_id, expected_contract_id);
     }
 
     #[test]

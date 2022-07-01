@@ -25,6 +25,7 @@ use tari_common_types::types::FixedHash;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, UtxoMinedInfo},
     transactions::transaction_components::{
+        ContractCheckpoint,
         ContractConstitution,
         ContractUpdateProposal,
         OutputType,
@@ -47,6 +48,13 @@ pub fn validate_output_type(
     }
 
     Ok(())
+}
+
+pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, DanLayerValidationError> {
+    match output.features.sidechain_features.as_ref() {
+        Some(features) => Ok(features),
+        None => Err(DanLayerValidationError::SidechainFeaturesNotProvided),
+    }
 }
 
 pub fn fetch_contract_features<B: BlockchainBackend>(
@@ -112,9 +120,20 @@ pub fn fetch_contract_update_proposal<B: BlockchainBackend>(
     }
 }
 
-pub fn get_sidechain_features(output: &TransactionOutput) -> Result<&SideChainFeatures, DanLayerValidationError> {
-    match output.features.sidechain_features.as_ref() {
-        Some(features) => Ok(features),
-        None => Err(DanLayerValidationError::SidechainFeaturesNotProvided),
-    }
+pub fn fetch_current_contract_checkpoint<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+) -> Result<Option<ContractCheckpoint>, ValidationError> {
+    let mut features = fetch_contract_features(db, contract_id, OutputType::ContractCheckpoint)?;
+    let feature = match features.pop() {
+        Some(feat) => feat,
+        None => return Ok(None),
+    };
+
+    let checkpoint = feature
+        .checkpoint
+        .ok_or_else(|| DanLayerValidationError::DataInconsistency {
+            details: "DB output marked as checkpoint did not contain checkpoint data".to_string(),
+        })?;
+    Ok(Some(checkpoint))
 }

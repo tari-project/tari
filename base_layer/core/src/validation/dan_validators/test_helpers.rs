@@ -36,10 +36,12 @@ use crate::{
         transaction_components::{
             vec_into_fixed_string,
             CheckpointParameters,
+            CommitteeSignatures,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
             ContractAmendment,
+            ContractCheckpoint,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
@@ -68,6 +70,21 @@ pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
     (blockchain, change_outputs)
 }
 
+pub fn publish_contract(
+    blockchain: &mut TestBlockchain,
+    inputs: &[UnblindedOutput],
+    committee: Vec<PublicKey>,
+) -> FixedHash {
+    // publish the contract definition into a block
+    let contract_id = publish_definition(blockchain, inputs[0].clone());
+
+    // construct a transaction for the duplicated contract definition
+    let mut constitution = create_contract_constitution();
+    constitution.validator_committee = committee.try_into().unwrap();
+    publish_constitution(blockchain, inputs[1].clone(), contract_id, constitution);
+    contract_id
+}
+
 pub fn publish_definition(blockchain: &mut TestBlockchain, change: UnblindedOutput) -> FixedHash {
     let (contract_id, schema) = create_contract_definition_schema(change);
     create_block(blockchain, "definition", schema);
@@ -83,6 +100,19 @@ pub fn publish_constitution(
 ) {
     let schema = create_contract_constitution_schema(contract_id, change, constitution);
     create_block(blockchain, "constitution", schema);
+}
+
+pub fn publish_checkpoint(
+    blockchain: &mut TestBlockchain,
+    block_name: &'static str,
+    input: UnblindedOutput,
+    contract_id: FixedHash,
+    checkpoint_number: u64,
+) {
+    let checkpoint = create_contract_checkpoint(checkpoint_number);
+    let schema = create_contract_checkpoint_schema(contract_id, input, checkpoint);
+    // TODO: need to change block spec to accept dynamic strings for name
+    create_block(blockchain, block_name, schema);
 }
 
 pub fn publish_update_proposal(
@@ -166,6 +196,23 @@ pub fn create_contract_constitution() -> ContractConstitution {
         },
         initial_reward: 100.into(),
     }
+}
+
+pub fn create_contract_checkpoint(checkpoint_number: u64) -> ContractCheckpoint {
+    ContractCheckpoint {
+        checkpoint_number,
+        merkle_root: FixedHash::zero(),
+        signatures: CommitteeSignatures::default(),
+    }
+}
+
+pub fn create_contract_checkpoint_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    checkpoint: ContractCheckpoint,
+) -> TransactionSchema {
+    let features = OutputFeatures::for_contract_checkpoint(contract_id, checkpoint);
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: features)
 }
 
 pub fn create_contract_acceptance_schema(

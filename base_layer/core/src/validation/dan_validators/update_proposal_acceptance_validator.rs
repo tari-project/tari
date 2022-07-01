@@ -187,21 +187,27 @@ mod test {
     use std::convert::TryInto;
 
     use tari_common_types::types::PublicKey;
+    use tari_test_utils::unpack_enum;
     use tari_utilities::hex::Hex;
 
     use crate::{
+        transactions::transaction_components::OutputType,
         txn_schema,
-        validation::dan_validators::test_helpers::{
-            assert_dan_validator_fail,
-            assert_dan_validator_success,
-            create_block,
-            create_contract_constitution,
-            create_contract_update_proposal_acceptance_schema,
-            init_test_blockchain,
-            publish_constitution,
-            publish_definition,
-            publish_update_proposal,
-            schema_to_transaction,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_fail,
+                assert_dan_validator_success,
+                create_block,
+                create_contract_constitution,
+                create_contract_update_proposal_acceptance_schema,
+                init_test_blockchain,
+                publish_constitution,
+                publish_definition,
+                publish_update_proposal,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
         },
     };
 
@@ -320,7 +326,17 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the (duplicated) proposal acceptance transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract update proposal acceptance");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        let expected_contract_id = contract_id;
+        unpack_enum!(
+            DanLayerValidationError::DuplicateUtxo {
+                output_type,
+                contract_id,
+                ..
+            } = err
+        );
+        assert_eq!(output_type, OutputType::ContractConstitutionChangeAcceptance);
+        assert_eq!(contract_id, expected_contract_id);
     }
 
     #[test]
