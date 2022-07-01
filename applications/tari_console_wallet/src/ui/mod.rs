@@ -64,6 +64,8 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
             app.app_state.check_connectivity().await;
             trace!(target: LOG_TARGET, "Starting balance enquiry debouncer");
             app.app_state.start_balance_enquiry_debouncer().await?;
+            trace!(target: LOG_TARGET, "Refreshing constitutions");
+            app.app_state.refresh_constitutions_state().await?;
             trace!(target: LOG_TARGET, "Refreshing assets");
             app.app_state.refresh_assets_state().await?;
             trace!(target: LOG_TARGET, "Refreshing tokens");

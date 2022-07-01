@@ -23,8 +23,10 @@
 use tari_utilities::hex::Hex;
 use tui::{
     backend::Backend,
-    layout::{Constraint, Rect},
-    widgets::{Block, Borders, Row, Table, TableState},
+    layout::{Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    text::{Span, Spans},
+    widgets::{Block, Borders, Paragraph, Row, Table, TableState, Wrap},
     Frame,
 };
 
@@ -47,35 +49,40 @@ impl AssetsTab {
 
 impl<B: Backend> Component<B> for AssetsTab {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
-        let assets = app_state.get_owned_assets();
+        let list_areas = Layout::default()
+            .constraints([Constraint::Length(1), Constraint::Min(42)].as_ref())
+            .split(area);
 
-        let assets: Vec<_> = assets
+        let instructions = Paragraph::new(Spans::from(vec![
+            Span::raw("Use "),
+            Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to select a contract."),
+        ]))
+        .wrap(Wrap { trim: true });
+
+        f.render_widget(instructions, list_areas[0]);
+        let constitutions = app_state.get_owned_constitutions();
+
+        let constitutions: Vec<_> = constitutions
             .iter()
             .map(|r| {
-                (
-                    r.name().to_string(),
-                    r.registration_output_status().to_string(),
-                    r.public_key().to_hex(),
-                    r.owner_commitment().to_hex(),
-                )
+                (r.unblinded_output
+                    .features
+                    .sidechain_features
+                    .clone()
+                    .unwrap()
+                    .contract_id
+                    .to_hex(),)
             })
             .collect();
-        let rows: Vec<_> = assets
-            .iter()
-            .map(|v| Row::new(vec![v.0.as_str(), v.1.as_str(), v.2.as_str(), v.3.as_str()]))
-            .collect();
+        let rows: Vec<_> = constitutions.iter().map(|v| Row::new(vec![v.0.as_str()])).collect();
         let table = Table::new(rows)
             .header(Row::new(vec!["Name", "Status", "Pub Key", "Owner"]).style(styles::header_row()))
             .block(Block::default().title("Assets").borders(Borders::ALL))
-            .widths(&[
-                Constraint::Length(30),
-                Constraint::Length(20),
-                Constraint::Length(64),
-                Constraint::Length(64),
-            ])
+            .widths(&[Constraint::Length(30 + 20 + 64 + 64)])
             .highlight_style(styles::highlight())
             .highlight_symbol(">>");
-        f.render_stateful_widget(table, area, &mut self.table_state)
+        f.render_stateful_widget(table, list_areas[1], &mut self.table_state);
     }
 
     fn on_up(&mut self, _app_state: &mut AppState) {
@@ -89,8 +96,8 @@ impl<B: Backend> Component<B> for AssetsTab {
 
     fn on_down(&mut self, app_state: &mut AppState) {
         let index = self.table_state.selected().map(|s| s + 1).unwrap_or_default();
-        let assets = app_state.get_owned_assets();
-        if index > assets.len().saturating_sub(1) {
+        let constitutions = app_state.get_owned_constitutions();
+        if index > constitutions.len().saturating_sub(1) {
             self.table_state.select(None);
         } else {
             self.table_state.select(Some(index));

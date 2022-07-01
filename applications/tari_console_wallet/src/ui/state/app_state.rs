@@ -56,7 +56,11 @@ use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
+    output_manager_service::{
+        handle::OutputManagerEventReceiver,
+        service::Balance,
+        storage::models::DbUnblindedOutput,
+    },
     tokens::Token,
     transaction_service::{
         handle::TransactionEventReceiver,
@@ -173,6 +177,15 @@ impl AppState {
         inner.refresh_connected_peers_state().await?;
         drop(inner);
         self.update_cache().await;
+        Ok(())
+    }
+
+    pub async fn refresh_constitutions_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_constitutions_state().await?;
+        if let Some(data) = inner.get_updated_app_state() {
+            self.cached_data = data;
+        }
         Ok(())
     }
 
@@ -379,8 +392,8 @@ impl AppState {
         &self.cached_data.my_identity
     }
 
-    pub fn get_owned_assets(&self) -> &[Asset] {
-        self.cached_data.owned_assets.as_slice()
+    pub fn get_owned_constitutions(&self) -> &[DbUnblindedOutput] {
+        self.cached_data.owned_constitutions.as_slice()
     }
 
     pub fn get_owned_tokens(&self) -> &[Token] {
@@ -797,6 +810,13 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_constitutions_state(&mut self) -> Result<(), UiError> {
+        let constitutions = self.wallet.asset_manager.list_owned_constitutions().await?;
+        self.data.owned_constitutions = constitutions;
+        self.updated = true;
+        Ok(())
+    }
+
     pub async fn refresh_assets_state(&mut self) -> Result<(), UiError> {
         let asset_utxos = self.wallet.asset_manager.list_owned_assets().await?;
         self.data.owned_assets = asset_utxos;
@@ -1101,6 +1121,7 @@ impl CompletedTransactionInfo {
 
 #[derive(Clone)]
 struct AppStateData {
+    owned_constitutions: Vec<DbUnblindedOutput>,
     owned_assets: Vec<Asset>,
     owned_tokens: Vec<Token>,
     pending_txs: Vec<CompletedTransactionInfo>,
@@ -1176,6 +1197,7 @@ impl AppStateData {
         }
 
         AppStateData {
+            owned_constitutions: Vec::new(),
             owned_assets: Vec::new(),
             owned_tokens: Vec::new(),
             pending_txs: Vec::new(),
