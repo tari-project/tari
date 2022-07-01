@@ -150,12 +150,13 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             },
             AssetManagerRequest::CreateFollowOnCheckpoint {
                 contract_id,
+                checkpoint_number,
                 merkle_root,
                 committee_public_keys: _pks,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_follow_on_contract_checkpoint(contract_id, merkle_root)
+                    .create_follow_on_contract_checkpoint(contract_id, checkpoint_number, merkle_root)
                     .await?;
                 Ok(AssetManagerResponse::CreateFollowOnCheckpoint {
                     transaction: Box::new(transaction),

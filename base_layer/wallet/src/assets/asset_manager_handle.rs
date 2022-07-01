@@ -105,12 +105,14 @@ impl AssetManagerHandle {
     pub async fn create_follow_on_asset_checkpoint(
         &mut self,
         contract_id: FixedHash,
+        checkpoint_number: u64,
         merkle_root: FixedHash,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateFollowOnCheckpoint {
                 contract_id,
+                checkpoint_number,
                 merkle_root,
                 committee_public_keys: Vec::new(),
             })

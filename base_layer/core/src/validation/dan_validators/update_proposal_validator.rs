@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_utilities::hex::Hex;
 
 use super::helpers::{
     fetch_contract_constitution,
@@ -32,7 +31,7 @@ use super::helpers::{
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{ContractUpdateProposal, OutputType, SideChainFeatures, TransactionOutput},
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_update_proposal<B: BlockchainBackend>(
@@ -54,12 +53,14 @@ pub fn validate_update_proposal<B: BlockchainBackend>(
     Ok(())
 }
 
-fn get_update_proposal(sidechain_feature: &SideChainFeatures) -> Result<&ContractUpdateProposal, ValidationError> {
+fn get_update_proposal(
+    sidechain_feature: &SideChainFeatures,
+) -> Result<&ContractUpdateProposal, DanLayerValidationError> {
     match sidechain_feature.update_proposal.as_ref() {
         Some(proposal) => Ok(proposal),
-        None => Err(ValidationError::DanLayerError(
-            "Contract update proposal features not found".to_string(),
-        )),
+        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
+            field_name: "update_proposal",
+        }),
     }
 }
 
@@ -74,14 +75,11 @@ fn validate_uniqueness<B: BlockchainBackend>(
         .filter_map(|feature| feature.update_proposal)
         .find(|proposal| proposal.proposal_id == proposal_id)
     {
-        Some(_) => {
-            let msg = format!(
-                "Duplicated contract update proposal for contract_id ({:?}) and proposal_id ({:?})",
-                contract_id.to_hex(),
-                proposal_id,
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
+        Some(_) => Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractConstitutionProposal,
+            details: format!("Proposal ID is {}", proposal_id),
+        })),
         None => Ok(()),
     }
 }
@@ -91,17 +89,25 @@ mod test {
     use std::convert::TryInto;
 
     use tari_common_types::types::PublicKey;
+    use tari_test_utils::unpack_enum;
 
-    use crate::validation::dan_validators::test_helpers::{
-        assert_dan_validator_fail,
-        assert_dan_validator_success,
-        create_contract_constitution,
-        create_contract_proposal_schema,
-        init_test_blockchain,
-        publish_constitution,
-        publish_definition,
-        publish_update_proposal,
-        schema_to_transaction,
+    use crate::{
+        transactions::transaction_components::OutputType,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_fail,
+                assert_dan_validator_success,
+                create_contract_constitution,
+                create_contract_proposal_schema,
+                init_test_blockchain,
+                publish_constitution,
+                publish_definition,
+                publish_update_proposal,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
+        },
     };
 
     #[test]
@@ -180,6 +186,16 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated proposal transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract update proposal");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        let expected_contract_id = contract_id;
+        unpack_enum!(
+            DanLayerValidationError::DuplicateUtxo {
+                output_type,
+                contract_id,
+                ..
+            } = err
+        );
+        assert_eq!(output_type, OutputType::ContractConstitutionProposal);
+        assert_eq!(contract_id, expected_contract_id);
     }
 }

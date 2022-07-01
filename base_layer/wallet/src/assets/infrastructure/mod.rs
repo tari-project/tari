@@ -67,6 +67,7 @@ pub enum AssetManagerRequest {
     },
     CreateFollowOnCheckpoint {
         contract_id: FixedHash,
+        checkpoint_number: u64,
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },

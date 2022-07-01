@@ -36,10 +36,12 @@ use crate::{
         transaction_components::{
             vec_into_fixed_string,
             CheckpointParameters,
+            CommitteeSignatures,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
             ContractAcceptanceRequirements,
             ContractAmendment,
+            ContractCheckpoint,
             ContractConstitution,
             ContractDefinition,
             ContractSpecification,
@@ -52,7 +54,7 @@ use crate::{
         },
     },
     txn_schema,
-    validation::{MempoolTransactionValidation, ValidationError},
+    validation::{dan_validators::DanLayerValidationError, MempoolTransactionValidation, ValidationError},
 };
 
 pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
@@ -66,6 +68,21 @@ pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
     let change_outputs = create_block(&mut blockchain, "change", schema);
 
     (blockchain, change_outputs)
+}
+
+pub fn publish_contract(
+    blockchain: &mut TestBlockchain,
+    inputs: &[UnblindedOutput],
+    committee: Vec<PublicKey>,
+) -> FixedHash {
+    // publish the contract definition into a block
+    let contract_id = publish_definition(blockchain, inputs[0].clone());
+
+    // construct a transaction for the duplicated contract definition
+    let mut constitution = create_contract_constitution();
+    constitution.validator_committee = committee.try_into().unwrap();
+    publish_constitution(blockchain, inputs[1].clone(), contract_id, constitution);
+    contract_id
 }
 
 pub fn publish_definition(blockchain: &mut TestBlockchain, change: UnblindedOutput) -> FixedHash {
@@ -83,6 +100,19 @@ pub fn publish_constitution(
 ) {
     let schema = create_contract_constitution_schema(contract_id, change, constitution);
     create_block(blockchain, "constitution", schema);
+}
+
+pub fn publish_checkpoint(
+    blockchain: &mut TestBlockchain,
+    block_name: &'static str,
+    input: UnblindedOutput,
+    contract_id: FixedHash,
+    checkpoint_number: u64,
+) {
+    let checkpoint = create_contract_checkpoint(checkpoint_number);
+    let schema = create_contract_checkpoint_schema(contract_id, input, checkpoint);
+    // TODO: need to change block spec to accept dynamic strings for name
+    create_block(blockchain, block_name, schema);
 }
 
 pub fn publish_update_proposal(
@@ -168,6 +198,23 @@ pub fn create_contract_constitution() -> ContractConstitution {
     }
 }
 
+pub fn create_contract_checkpoint(checkpoint_number: u64) -> ContractCheckpoint {
+    ContractCheckpoint {
+        checkpoint_number,
+        merkle_root: FixedHash::zero(),
+        signatures: CommitteeSignatures::default(),
+    }
+}
+
+pub fn create_contract_checkpoint_schema(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    checkpoint: ContractCheckpoint,
+) -> TransactionSchema {
+    let features = OutputFeatures::for_contract_checkpoint(contract_id, checkpoint);
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: features)
+}
+
 pub fn create_contract_acceptance_schema(
     contract_id: FixedHash,
     input: UnblindedOutput,
@@ -235,23 +282,29 @@ pub fn create_contract_amendment_schema(
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: amendment_features)
 }
 
-pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
+fn perform_validation(blockchain: &TestBlockchain, transaction: &Transaction) -> Result<(), DanLayerValidationError> {
     let validator = TxDanLayerValidator::new(blockchain.db().clone());
-    let err = validator.validate(transaction).unwrap_err();
-    match err {
-        ValidationError::DanLayerError(message) => {
-            assert!(
-                message.contains(expected_message),
-                "Message \"{}\" does not contain \"{}\"",
-                message,
-                expected_message
-            )
-        },
+    match validator.validate(transaction) {
+        Ok(()) => Ok(()),
+        Err(ValidationError::DanLayerError(err)) => Err(err),
         _ => panic!("Expected a consensus error"),
     }
 }
 
+pub fn assert_dan_validator_err(blockchain: &TestBlockchain, transaction: &Transaction) -> DanLayerValidationError {
+    perform_validation(blockchain, transaction).unwrap_err()
+}
+
+pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
+    let err = assert_dan_validator_err(blockchain, transaction);
+    assert!(
+        err.to_string().contains(expected_message),
+        "Message \"{}\" does not contain \"{}\"",
+        err,
+        expected_message
+    );
+}
+
 pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &Transaction) {
-    let validator = TxDanLayerValidator::new(blockchain.db().clone());
-    validator.validate(transaction).unwrap();
+    perform_validation(blockchain, transaction).unwrap()
 }

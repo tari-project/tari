@@ -30,6 +30,7 @@ use crate::{
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
     transactions::transaction_components::TransactionError,
+    validation::dan_validators::DanLayerValidationError,
 };
 
 #[derive(Debug, Error)]
@@ -117,7 +118,7 @@ pub enum ValidationError {
     #[error("Standard transaction contains coinbase output")]
     ErroneousCoinbaseOutput,
     #[error("Digital Asset Network Error: {0}")]
-    DanLayerError(String),
+    DanLayerError(#[from] DanLayerValidationError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

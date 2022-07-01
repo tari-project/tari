@@ -858,13 +858,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .try_into()
             .map_err(|e| Status::invalid_argument(format!("Contract ID was not valid :{}", e)))?;
 
+        let checkpoint_number = message.checkpoint_number;
+
         let merkle_root = message
             .merkle_root
             .try_into()
             .map_err(|_| Status::invalid_argument("Incorrect merkle root length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_follow_on_asset_checkpoint(contract_id, merkle_root)
+            .create_follow_on_asset_checkpoint(contract_id, checkpoint_number, merkle_root)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

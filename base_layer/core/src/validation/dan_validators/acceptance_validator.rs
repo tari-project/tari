@@ -39,7 +39,7 @@ use crate::{
         SideChainFeatures,
         TransactionOutput,
     },
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 /// This validator checks that the provided output corresponds to a valid Contract Acceptance in the DAN layer
@@ -68,12 +68,12 @@ pub fn validate_acceptance<B: BlockchainBackend>(
 }
 
 /// Retrieves a contract acceptance object from the sidechain features, returns an error if not present
-fn get_contract_acceptance(sidechain_feature: &SideChainFeatures) -> Result<&ContractAcceptance, ValidationError> {
+fn get_contract_acceptance(
+    sidechain_feature: &SideChainFeatures,
+) -> Result<&ContractAcceptance, DanLayerValidationError> {
     match sidechain_feature.acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
-        None => Err(ValidationError::DanLayerError(
-            "Contract acceptance features not found".to_string(),
-        )),
+        None => Err(DanLayerValidationError::ContractAcceptanceNotFound),
     }
 }
 
@@ -89,14 +89,14 @@ fn validate_uniqueness<B: BlockchainBackend>(
         .filter_map(|feature| feature.acceptance)
         .find(|feature| feature.validator_node_public_key == *validator_node_public_key)
     {
-        Some(_) => {
-            let msg = format!(
-                "Duplicated contract acceptance for contract_id ({:?}) and validator_node_public_key ({:?})",
-                contract_id.to_hex(),
-                validator_node_public_key,
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
+        Some(_) => Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractValidatorAcceptance,
+            details: format!(
+                "Validator ({}) sent duplicate acceptance UTXO",
+                validator_node_public_key.to_hex(),
+            ),
+        })),
         None => Ok(()),
     }
 }
@@ -105,17 +105,12 @@ fn validate_uniqueness<B: BlockchainBackend>(
 fn validate_public_key(
     constitution: &ContractConstitution,
     validator_node_public_key: &PublicKey,
-) -> Result<(), ValidationError> {
-    let is_validator_in_committee = constitution
-        .validator_committee
-        .members()
-        .contains(validator_node_public_key);
+) -> Result<(), DanLayerValidationError> {
+    let is_validator_in_committee = constitution.validator_committee.contains(validator_node_public_key);
     if !is_validator_in_committee {
-        let msg = format!(
-            "Validator node public key is not in committee ({:?})",
-            validator_node_public_key
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(DanLayerValidationError::ValidatorNotInCommittee {
+            public_key: validator_node_public_key.to_hex(),
+        });
     }
 
     Ok(())
@@ -133,11 +128,9 @@ fn validate_acceptance_window<B: BlockchainBackend>(
 
     let window_has_expired = current_height > max_allowed_absolute_height;
     if window_has_expired {
-        let msg = format!(
-            "Acceptance window has expired for contract_id ({})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::AcceptanceWindowHasExpired { contract_id },
+        ));
     }
 
     Ok(())
@@ -151,13 +144,9 @@ pub fn fetch_constitution_height<B: BlockchainBackend>(
     // Only one constitution should be stored for a particular contract_id
     match utxos.first() {
         Some(utxo) => Ok(utxo.mined_height),
-        None => {
-            let msg = format!(
-                "Could not find constitution UTXO for contract_id ({})",
-                contract_id.to_hex(),
-            );
-            Err(ValidationError::DanLayerError(msg))
-        },
+        None => Err(ValidationError::DanLayerError(
+            DanLayerValidationError::ContractConstitutionNotFound { contract_id },
+        )),
     }
 }
 
@@ -247,7 +236,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated acceptance transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract acceptance");
+        assert_dan_validator_fail(&blockchain, &tx, "sent duplicate acceptance UTXO");
     }
 
     #[test]

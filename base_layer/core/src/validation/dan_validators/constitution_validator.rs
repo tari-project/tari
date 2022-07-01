@@ -21,13 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
-use tari_utilities::hex::Hex;
 
 use super::helpers::{fetch_contract_features, get_sidechain_features, validate_output_type};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{OutputType, TransactionOutput},
-    validation::ValidationError,
+    validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
 pub fn validate_constitution<B: BlockchainBackend>(
@@ -45,17 +44,15 @@ pub fn validate_constitution<B: BlockchainBackend>(
     Ok(())
 }
 
-fn validate_definition_existence<B: BlockchainBackend>(
+pub fn validate_definition_existence<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,
 ) -> Result<(), ValidationError> {
     let features = fetch_contract_features(db, contract_id, OutputType::ContractDefinition)?;
     if features.is_empty() {
-        let msg = format!(
-            "Contract definition not found for contract_id ({:?})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::ContractDefnintionNotFound { contract_id },
+        ));
     }
 
     Ok(())
@@ -68,11 +65,11 @@ fn validate_uniqueness<B: BlockchainBackend>(
     let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
     let is_duplicated = !features.is_empty();
     if is_duplicated {
-        let msg = format!(
-            "Duplicated contract constitution for contract_id ({:?})",
-            contract_id.to_hex()
-        );
-        return Err(ValidationError::DanLayerError(msg));
+        return Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
+            contract_id,
+            output_type: OutputType::ContractConstitution,
+            details: String::new(),
+        }));
     }
 
     Ok(())
@@ -81,16 +78,24 @@ fn validate_uniqueness<B: BlockchainBackend>(
 #[cfg(test)]
 mod test {
     use tari_common_types::types::FixedHash;
+    use tari_test_utils::unpack_enum;
 
-    use crate::validation::dan_validators::test_helpers::{
-        assert_dan_validator_fail,
-        assert_dan_validator_success,
-        create_contract_constitution,
-        create_contract_constitution_schema,
-        init_test_blockchain,
-        publish_constitution,
-        publish_definition,
-        schema_to_transaction,
+    use crate::{
+        transactions::transaction_components::OutputType,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_fail,
+                assert_dan_validator_success,
+                create_contract_constitution,
+                create_contract_constitution_schema,
+                init_test_blockchain,
+                publish_constitution,
+                publish_definition,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
+        },
     };
 
     #[test]
@@ -130,17 +135,31 @@ mod test {
         let (mut blockchain, change) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let expected_contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // publish the contract constitution into a block
         let constitution = create_contract_constitution();
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
+        publish_constitution(
+            &mut blockchain,
+            change[1].clone(),
+            expected_contract_id,
+            constitution.clone(),
+        );
 
         // construct a transaction for the duplicated contract constitution
-        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
+        let schema = create_contract_constitution_schema(expected_contract_id, change[2].clone(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated constitution transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Duplicated contract constitution");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        unpack_enum!(
+            DanLayerValidationError::DuplicateUtxo {
+                output_type,
+                contract_id,
+                ..
+            } = err
+        );
+        assert_eq!(output_type, OutputType::ContractConstitution);
+        assert_eq!(contract_id, expected_contract_id);
     }
 }
