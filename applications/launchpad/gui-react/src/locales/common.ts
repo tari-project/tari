@@ -20,6 +20,8 @@ const translations: { [key: string]: { [key: string]: string } } = {
     docker: 'Docker',
     expertView: 'Expert view',
     baseNode: 'Base Node',
+    tariWallet: 'Tari Wallet',
+    moneroWallet: 'Monero Wallet',
     mining: 'Mining',
     problem: 'Problem',
     settings: 'Settings',

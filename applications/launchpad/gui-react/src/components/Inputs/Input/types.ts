@@ -6,7 +6,7 @@ export interface InputProps
   disabled?: boolean
   value?: string
   id?: string
-  label?: string
+  label?: ReactNode
   error?: string
   placeholder?: string
   inputUnits?: string

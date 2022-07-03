@@ -8,10 +8,10 @@ import {
 } from '../../store/settings/selectors'
 import Modal from '../../components/Modal'
 
-import WalletPasswordBox, { Overrides } from './PasswordBox'
+import WalletPasswordBox from './WalletPasswordBox'
 import AllCredentialsBox from './AllCredentialsBox'
 import MoneroCredentialsBox from './MoneroCredentialsBox'
-import { WalletParole, MoneroCredentials } from './types'
+import { WalletParole, MoneroCredentials, Overrides } from './types'
 
 export const EnsurePasswordsContext = React.createContext<{
   ensureWalletPasswordInStore: (
@@ -71,6 +71,9 @@ const PasswordsPrompt = ({
   }) => {
     if (wallet) {
       dispatch(settingsActions.setParole(wallet))
+    }
+    if (monero) {
+      // dispatch(settingsActions.setMoneroCredentials(monero))
     }
     setModalOpen(false)
     action()

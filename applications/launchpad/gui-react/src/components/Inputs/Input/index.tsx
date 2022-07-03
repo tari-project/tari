@@ -20,7 +20,7 @@ import { useTheme } from 'styled-components'
  * @prop {string} [type] - input type
  * @prop {string} [value] - input text value
  * @prop {string} [id] - the input id (recommended to use when label is set)
- * @prop {string} [label] - the input label
+ * @prop {ReactNode} [label] - the input label
  * @prop {string} [placeholder] - placeholder text
  * @prop {string} [inputUnits] - optional units text, e.g. 'MB' on right-hand side of input field
  * @prop {ReactNode} [inputIcon] - optional icon rendered inside input field

@@ -1,7 +1,6 @@
 import { useContext } from 'react'
 
-import { Overrides } from './PasswordBox'
-
+import { Overrides } from './types'
 import { EnsurePasswordsContext } from '.'
 
 const useWithPasswordPrompt = (

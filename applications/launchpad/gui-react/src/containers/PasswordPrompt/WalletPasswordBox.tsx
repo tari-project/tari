@@ -1,4 +1,4 @@
-import { CSSProperties, useState, SyntheticEvent } from 'react'
+import { useState, SyntheticEvent } from 'react'
 import { useTheme } from 'styled-components'
 
 import PasswordInput from '../../components/Inputs/PasswordInput'
@@ -8,24 +8,17 @@ import Button from '../../components/Button'
 import t from '../../locales'
 
 import { TariBackgroundSignet } from './styles'
-import { WalletParole } from './types'
+import { WalletParole, Overrides } from './types'
 
 const MINIMAL_PASSWORD_LENGTH = 4
 
-export type Overrides = {
-  title?: string
-  cta?: string
-}
-
-const PasswordBox = ({
+const WalletPasswordBox = ({
   pending,
   onSubmit,
-  style,
   overrides,
 }: {
   pending: boolean
   onSubmit: (password: WalletParole) => void
-  style?: CSSProperties
   overrides?: Overrides
 }) => {
   const theme = useTheme()
@@ -41,7 +34,7 @@ const PasswordBox = ({
     pending || walletPassword.length < MINIMAL_PASSWORD_LENGTH
 
   return (
-    <Box style={{ position: 'relative', ...style }}>
+    <Box style={{ position: 'relative', margin: 0 }}>
       <TariBackgroundSignet />
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
@@ -71,4 +64,4 @@ const PasswordBox = ({
   )
 }
 
-export default PasswordBox
+export default WalletPasswordBox
