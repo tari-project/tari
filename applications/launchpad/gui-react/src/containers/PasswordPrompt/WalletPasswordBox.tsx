@@ -7,7 +7,7 @@ import Text from '../../components/Text'
 import Button from '../../components/Button'
 import t from '../../locales'
 
-import { TariBackgroundSignet } from './styles'
+import { SignetsContainer, TariBackgroundSignet } from './styles'
 import { WalletParole } from './types'
 
 const MINIMAL_PASSWORD_LENGTH = 4
@@ -33,7 +33,9 @@ const WalletPasswordBox = ({
 
   return (
     <Box style={{ position: 'relative', margin: 0 }}>
-      <TariBackgroundSignet />
+      <SignetsContainer>
+        <TariBackgroundSignet />
+      </SignetsContainer>
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
           {t.wallet.password.title}
