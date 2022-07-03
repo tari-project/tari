@@ -2,9 +2,16 @@ import React, { useCallback, useMemo, useState } from 'react'
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import { actions as settingsActions } from '../../store/settings'
-import { selectIsParoleSet } from '../../store/settings/selectors'
+import {
+  selectIsParoleSet,
+  selectAreMoneroCredentialsPresent,
+} from '../../store/settings/selectors'
 import Modal from '../../components/Modal'
-import PasswordBox, { Overrides } from '../WalletContainer/PasswordBox'
+
+import WalletPasswordBox, { Overrides } from './PasswordBox'
+import AllCredentialsBox from './AllCredentialsBox'
+import MoneroCredentialsBox from './MoneroCredentialsBox'
+import { WalletParole, MoneroCredentials } from './types'
 
 export const EnsurePasswordsContext = React.createContext<{
   ensureWalletPasswordInStore: (
@@ -22,7 +29,8 @@ const PasswordsPrompt = ({
   local?: boolean
 }) => {
   const dispatch = useAppDispatch()
-  const isParoleSet = useAppSelector(selectIsParoleSet)
+  const askToUnlockWallet = !useAppSelector(selectIsParoleSet)
+  const askToUnlockMonero = !useAppSelector(selectAreMoneroCredentialsPresent)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [action, setAction] = useState<() => void>(() => null)
@@ -34,7 +42,7 @@ const PasswordsPrompt = ({
         return
       }
 
-      if (!isParoleSet) {
+      if (askToUnlockWallet || askToUnlockMonero) {
         setOverrides(actionOverrides)
         setAction(() => callback)
         setModalOpen(true)
@@ -44,7 +52,7 @@ const PasswordsPrompt = ({
       // TODO await and error handling?
       callback()
     },
-    [isParoleSet],
+    [askToUnlockWallet, askToUnlockMonero],
   )
 
   const contextValue = useMemo(
@@ -53,6 +61,20 @@ const PasswordsPrompt = ({
     }),
     [ensureWalletPasswordInStore],
   )
+
+  const saveCredentials = ({
+    wallet,
+    monero,
+  }: {
+    wallet?: WalletParole
+    monero?: MoneroCredentials
+  }) => {
+    if (wallet) {
+      dispatch(settingsActions.setParole(wallet))
+    }
+    setModalOpen(false)
+    action()
+  }
 
   return (
     <>
@@ -65,17 +87,26 @@ const PasswordsPrompt = ({
         local={local}
         size='auto'
       >
-        <PasswordBox
-          pending={false}
-          // TODO make async, loader indicator, error indicator (in passwordbox) ??
-          onSubmit={parole => {
-            dispatch(settingsActions.setParole(parole))
-            setModalOpen(false)
-            action()
-          }}
-          style={{ margin: 0 }}
-          overrides={overrides}
-        />
+        {askToUnlockWallet && !askToUnlockMonero && (
+          <WalletPasswordBox
+            onSubmit={(wallet: WalletParole) => saveCredentials({ wallet })}
+            pending={false}
+          />
+        )}
+        {askToUnlockWallet && askToUnlockMonero && (
+          <AllCredentialsBox
+            onSubmit={(wallet: WalletParole, monero: MoneroCredentials) =>
+              saveCredentials({ wallet, monero })
+            }
+          />
+        )}
+        {!askToUnlockWallet && askToUnlockMonero && (
+          <MoneroCredentialsBox
+            onSubmit={(monero: MoneroCredentials) =>
+              saveCredentials({ monero })
+            }
+          />
+        )}
       </Modal>
     </>
   )

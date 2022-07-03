@@ -8,51 +8,59 @@ import Button from '../../components/Button'
 import t from '../../locales'
 
 import { TariBackgroundSignet } from './styles'
+import { WalletParole } from './types'
 
 const MINIMAL_PASSWORD_LENGTH = 4
+
+export type Overrides = {
+  title?: string
+  cta?: string
+}
 
 const PasswordBox = ({
   pending,
   onSubmit,
   style,
+  overrides,
 }: {
   pending: boolean
-  onSubmit: (password: string) => void
+  onSubmit: (password: WalletParole) => void
   style?: CSSProperties
+  overrides?: Overrides
 }) => {
   const theme = useTheme()
-  const [password, setPassword] = useState('')
-  const updatePassword = (v: string) => {
-    setPassword(v)
-  }
+  const [walletPassword, setWalletPassword] = useState('')
 
   const formSubmitHandler = (event: SyntheticEvent) => {
     event.preventDefault()
 
-    onSubmit(password)
+    onSubmit(walletPassword)
   }
 
-  const disableSubmit = pending || password.length < MINIMAL_PASSWORD_LENGTH
+  const disableSubmit =
+    pending || walletPassword.length < MINIMAL_PASSWORD_LENGTH
 
   return (
     <Box style={{ position: 'relative', ...style }}>
       <TariBackgroundSignet />
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
-          {t.wallet.password.title}
+          {overrides?.title || t.wallet.password.title}
         </Text>
-        <Text>{t.wallet.password.cta}</Text>
+        <Text>{overrides?.cta || t.wallet.password.cta}</Text>
       </div>
-      <form onSubmit={formSubmitHandler}>
+      <form
+        onSubmit={formSubmitHandler}
+        style={{
+          margin: `${theme.spacing()} 0`,
+        }}
+      >
         <PasswordInput
           autoFocus
-          onChange={updatePassword}
-          value={password}
+          onChange={setWalletPassword}
+          value={walletPassword}
           disabled={pending}
           placeholder={t.wallet.password.placeholderCta}
-          containerStyle={{
-            margin: `${theme.spacing()} 0`,
-          }}
           useReveal
         />
         <Button disabled={disableSubmit} loading={pending} type='submit'>

@@ -1,6 +1,6 @@
 import { useContext } from 'react'
 
-import { Overrides } from '../WalletContainer/PasswordBox'
+import { Overrides } from './PasswordBox'
 
 import { EnsurePasswordsContext } from '.'
 

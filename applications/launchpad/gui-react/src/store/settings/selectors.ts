@@ -1,3 +1,5 @@
+import { createSelector } from '@reduxjs/toolkit'
+
 import { RootState } from '../'
 import { selectMoneroUrls } from '../mining/selectors'
 
@@ -18,5 +20,15 @@ export const selectServiceSettings = (state: RootState) => ({
   moneroPassword: state.mining.merged.authentication?.password || '',
   rootFolder: state.baseNode.rootFolder,
 })
-export const selectIsParoleSet = ({ settings }: RootState) =>
-  Boolean(settings.serviceSettings.parole)
+export const selectIsParoleSet = createSelector(
+  selectServiceSettings,
+  settings => Boolean(settings.parole),
+)
+
+export const selectAreMoneroCredentialsPresent = createSelector(
+  selectServiceSettings,
+  settings =>
+    settings.moneroUserAuth &&
+    settings.moneroUsername &&
+    settings.moneroPassword,
+)
