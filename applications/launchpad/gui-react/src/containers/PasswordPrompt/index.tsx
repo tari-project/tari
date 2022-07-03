@@ -11,13 +11,16 @@ import Modal from '../../components/Modal'
 import WalletPasswordBox from './WalletPasswordBox'
 import AllCredentialsBox from './AllCredentialsBox'
 import MoneroCredentialsBox from './MoneroCredentialsBox'
-import { WalletParole, MoneroCredentials, Overrides } from './types'
+import { WalletParole, MoneroCredentials } from './types'
 
 export const EnsurePasswordsContext = React.createContext<{
   ensureWalletPasswordInStore: (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     callback: (...a: any[]) => void,
-    overrides?: Overrides,
+    required: {
+      wallet?: boolean
+      monero?: boolean
+    },
   ) => void
 }>({ ensureWalletPasswordInStore: () => null })
 
@@ -34,16 +37,32 @@ const PasswordsPrompt = ({
 
   const [modalOpen, setModalOpen] = useState(false)
   const [action, setAction] = useState<() => void>(() => null)
-  const [overrides, setOverrides] = useState<Overrides | undefined>(undefined)
+  const [required, setRequired] = useState<{
+    wallet?: boolean
+    monero?: boolean
+  }>({ wallet: true, monero: true })
 
   const ensureWalletPasswordInStore = useCallback(
-    (callback: () => void, actionOverrides?: Overrides) => {
+    (
+      callback: () => void,
+      required: {
+        wallet?: boolean
+        monero?: boolean
+      },
+    ) => {
       if (modalOpen) {
         return
       }
 
-      if (askToUnlockWallet || askToUnlockMonero) {
-        setOverrides(actionOverrides)
+      if (!required.wallet && !required.monero) {
+        return
+      }
+
+      if (
+        (required.wallet && askToUnlockWallet) ||
+        (required.monero && askToUnlockMonero)
+      ) {
+        setRequired(required)
         setAction(() => callback)
         setModalOpen(true)
         return
@@ -79,6 +98,9 @@ const PasswordsPrompt = ({
     action()
   }
 
+  const showWalletForm = required.wallet && askToUnlockWallet
+  const showMoneroForm = required.monero && askToUnlockMonero
+
   return (
     <>
       <EnsurePasswordsContext.Provider value={contextValue}>
@@ -90,20 +112,20 @@ const PasswordsPrompt = ({
         local={local}
         size='auto'
       >
-        {askToUnlockWallet && !askToUnlockMonero && (
+        {showWalletForm && !showMoneroForm && (
           <WalletPasswordBox
             onSubmit={(wallet: WalletParole) => saveCredentials({ wallet })}
             pending={false}
           />
         )}
-        {askToUnlockWallet && askToUnlockMonero && (
+        {showWalletForm && showMoneroForm && (
           <AllCredentialsBox
             onSubmit={(wallet: WalletParole, monero: MoneroCredentials) =>
               saveCredentials({ wallet, monero })
             }
           />
         )}
-        {!askToUnlockWallet && askToUnlockMonero && (
+        {!showWalletForm && showMoneroForm && (
           <MoneroCredentialsBox
             onSubmit={(monero: MoneroCredentials) =>
               saveCredentials({ monero })

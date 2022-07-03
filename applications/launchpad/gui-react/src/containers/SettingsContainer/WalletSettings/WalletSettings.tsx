@@ -23,7 +23,7 @@ const WalletSettings = ({
   start: () => void
 }) => {
   const theme = useTheme()
-  const startWallet = useWithPasswordPrompt(start)
+  const startWallet = useWithPasswordPrompt(start, { wallet: true })
 
   return (
     <>

@@ -27,8 +27,5 @@ export const selectIsParoleSet = createSelector(
 
 export const selectAreMoneroCredentialsPresent = createSelector(
   selectServiceSettings,
-  settings =>
-    settings.moneroUserAuth &&
-    settings.moneroUsername &&
-    settings.moneroPassword,
+  settings => settings.moneroUsername && settings.moneroPassword,
 )

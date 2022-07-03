@@ -1,18 +1,31 @@
-import { useContext } from 'react'
+import { useCallback, useContext } from 'react'
 
-import { Overrides } from './types'
 import { EnsurePasswordsContext } from '.'
 
 const useWithPasswordPrompt = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (...args: any[]) => void,
-  overrides?: Overrides,
+  required: {
+    wallet?: boolean
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    monero?: boolean | ((...args: any[]) => boolean)
+  },
 ) => {
   const { ensureWalletPasswordInStore } = useContext(EnsurePasswordsContext)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (...args: any[]) =>
-    ensureWalletPasswordInStore(() => action(...args), overrides)
+  return useCallback(
+    (...args: any[]) =>
+      ensureWalletPasswordInStore(() => action(...args), {
+        wallet: required.wallet,
+        monero:
+          required.monero &&
+          (typeof required.monero === 'function'
+            ? required.monero(...args)
+            : required.monero),
+      }),
+    [required],
+  )
 }
 
 export default useWithPasswordPrompt

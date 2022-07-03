@@ -8,18 +8,16 @@ import Button from '../../components/Button'
 import t from '../../locales'
 
 import { TariBackgroundSignet } from './styles'
-import { WalletParole, Overrides } from './types'
+import { WalletParole } from './types'
 
 const MINIMAL_PASSWORD_LENGTH = 4
 
 const WalletPasswordBox = ({
   pending,
   onSubmit,
-  overrides,
 }: {
   pending: boolean
   onSubmit: (password: WalletParole) => void
-  overrides?: Overrides
 }) => {
   const theme = useTheme()
   const [walletPassword, setWalletPassword] = useState('')
@@ -38,9 +36,9 @@ const WalletPasswordBox = ({
       <TariBackgroundSignet />
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
-          {overrides?.title || t.wallet.password.title}
+          {t.wallet.password.title}
         </Text>
-        <Text>{overrides?.cta || t.wallet.password.cta}</Text>
+        <Text>{t.wallet.password.cta}</Text>
       </div>
       <form
         onSubmit={formSubmitHandler}

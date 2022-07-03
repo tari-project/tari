@@ -102,7 +102,17 @@ const MiningBox = ({
       }),
     )
   }, [dispatch, node])
-  const startMiningWithPasswordEnsured = useWithPasswordPrompt(startMining)
+  const whichCredentialsAreRequired = useMemo(
+    () => ({
+      wallet: true,
+      mnero: node === 'merged',
+    }),
+    [node],
+  )
+  const startMiningWithPasswordEnsured = useWithPasswordPrompt(
+    startMining,
+    whichCredentialsAreRequired,
+  )
 
   let theCurrentStatus = currentStatus
 
