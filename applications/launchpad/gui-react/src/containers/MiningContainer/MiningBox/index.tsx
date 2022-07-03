@@ -105,7 +105,7 @@ const MiningBox = ({
   const whichCredentialsAreRequired = useMemo(
     () => ({
       wallet: true,
-      mnero: node === 'merged',
+      monero: node === 'merged',
     }),
     [node],
   )

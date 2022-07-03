@@ -13,8 +13,8 @@ const useWithPasswordPrompt = (
 ) => {
   const { ensureWalletPasswordInStore } = useContext(EnsurePasswordsContext)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (...args: any[]) =>
       ensureWalletPasswordInStore(() => action(...args), {
         wallet: required.wallet,
