@@ -38,9 +38,11 @@ const WalletPasswordBox = ({
       </SignetsContainer>
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
-          {t.wallet.password.title}
+          {t.passwordPrompt.walletPassword.title}
         </Text>
-        <Text>{t.wallet.password.cta}</Text>
+        <Text>
+          {t.passwordPrompt.scheduleCTA} {t.passwordPrompt.walletPassword.cta}
+        </Text>
       </div>
       <form
         onSubmit={formSubmitHandler}
