@@ -22,8 +22,11 @@
 
 use std::convert::TryInto;
 
-use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use blake2::Digest;
+use tari_common_types::types::{Challenge, Commitment, FixedHash, PrivateKey, PublicKey, Signature};
+use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use tari_p2p::Network;
+use tari_utilities::ByteArray;
 
 use super::TxDanLayerValidator;
 use crate::{
@@ -217,15 +220,49 @@ pub fn create_contract_checkpoint_schema(
 
 pub fn create_contract_acceptance_schema(
     contract_id: FixedHash,
+    commitment: Commitment,
     input: UnblindedOutput,
-    validator_node_public_key: PublicKey,
+    private_key: RistrettoSecretKey,
+    public_key: RistrettoPublicKey,
 ) -> TransactionSchema {
-    let signature = Signature::default();
+    let signature = create_acceptance_signature(contract_id, commitment, private_key, public_key.clone());
 
-    let acceptance_features =
-        OutputFeatures::for_contract_acceptance(contract_id, validator_node_public_key, signature);
+    let acceptance_features = OutputFeatures::for_contract_acceptance(contract_id, public_key, signature);
 
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
+pub fn create_contract_acceptance_schema_with_signature(
+    contract_id: FixedHash,
+    input: UnblindedOutput,
+    public_key: RistrettoPublicKey,
+    signature: Signature,
+) -> TransactionSchema {
+    let acceptance_features = OutputFeatures::for_contract_acceptance(contract_id, public_key, signature);
+
+    txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
+pub fn create_acceptance_signature(
+    contract_id: FixedHash,
+    commitment: Commitment,
+    private_key: RistrettoSecretKey,
+    public_key: RistrettoPublicKey,
+) -> Signature {
+    let challenge = Challenge::new()
+        .chain(public_key.as_bytes())
+        .chain(commitment.as_bytes())
+        .chain(contract_id)
+        .finalize();
+
+    let nonce = PrivateKey::default();
+
+    Signature::sign(private_key, nonce, &challenge).unwrap()
+}
+
+pub fn create_random_key_pair() -> (RistrettoSecretKey, RistrettoPublicKey) {
+    let mut rng = rand::thread_rng();
+    <RistrettoPublicKey as tari_crypto::keys::PublicKey>::random_keypair(&mut rng)
 }
 
 pub fn create_contract_proposal_schema(

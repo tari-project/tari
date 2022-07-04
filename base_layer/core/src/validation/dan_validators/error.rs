@@ -59,6 +59,8 @@ pub enum DanLayerValidationError {
     UpdatedConstitutionAmendmentMismatch,
     #[error("Acceptance window has expired for contract_id ({contract_id})")]
     AcceptanceWindowHasExpired { contract_id: FixedHash },
+    #[error("Invalid acceptance signature")]
+    InvalidAcceptanceSignature,
     #[error("Proposal acceptance window has expired for contract_id ({contract_id}) and proposal_id ({proposal_id})")]
     ProposalAcceptanceWindowHasExpired { contract_id: FixedHash, proposal_id: u64 },
     #[error("Checkpoint has non-sequential number. Got: {got}, expected: {expected}")]
