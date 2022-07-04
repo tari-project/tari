@@ -61,6 +61,7 @@ const CopyBox = ({
           style={{
             overflowX: 'hidden',
             textOverflow: 'ellipsis',
+            wordBreak: 'keep-all',
           }}
           title={value}
         >
