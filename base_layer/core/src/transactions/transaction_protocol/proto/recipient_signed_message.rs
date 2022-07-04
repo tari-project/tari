@@ -42,8 +42,7 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
         let partial_signature = message
             .partial_signature
             .map(TryInto::try_into)
-            .ok_or_else(|| "Transaction partial signature not provided".to_string())?
-            .map_err(|err| format!("{}", err))?;
+            .ok_or_else(|| "Transaction partial signature not provided".to_string())??;
 
         Ok(Self {
             tx_id: message.tx_id.into(),

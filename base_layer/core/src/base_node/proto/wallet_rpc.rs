@@ -27,7 +27,6 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
-use tari_utilities::ByteArrayError;
 
 use crate::proto::{base_node as proto, types};
 
@@ -220,8 +219,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
                 proto_response
                     .signature
                     .ok_or_else(|| "Signature not present".to_string())?,
-            )
-            .map_err(|err: ByteArrayError| err.to_string())?,
+            )?,
             location: TxLocation::try_from(
                 proto::TxLocation::from_i32(proto_response.location)
                     .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
