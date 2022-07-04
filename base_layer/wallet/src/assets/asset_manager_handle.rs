@@ -41,6 +41,7 @@ use crate::{
         Asset,
     },
     error::WalletError,
+    output_manager_service::storage::models::DbUnblindedOutput,
 };
 
 #[derive(Clone)]
@@ -104,12 +105,14 @@ impl AssetManagerHandle {
     pub async fn create_follow_on_asset_checkpoint(
         &mut self,
         contract_id: FixedHash,
+        checkpoint_number: u64,
         merkle_root: FixedHash,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateFollowOnCheckpoint {
                 contract_id,
+                checkpoint_number,
                 merkle_root,
                 committee_public_keys: Vec::new(),
             })
@@ -300,6 +303,20 @@ impl AssetManagerHandle {
             AssetManagerResponse::CreateContractAmendment { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_contract_amendment".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn list_owned_constitutions(&mut self) -> Result<Vec<DbUnblindedOutput>, WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::ListOwnedConstitutions {})
+            .await??
+        {
+            AssetManagerResponse::ListOwnedConstitutions { contracts_ids } => Ok(contracts_ids),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "list_owned_constitutions".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

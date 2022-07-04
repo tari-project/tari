@@ -30,6 +30,17 @@ use async_trait::async_trait;
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::{chain_storage::UtxoMinedInfo, transactions::transaction_components::OutputType};
 use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_dan_common_types::TemplateId;
+#[cfg(test)]
+use tari_dan_engine::state::mocks::state_db::MockStateDbBackupAdapter;
+use tari_dan_engine::{
+    instructions::Instruction,
+    state::{
+        models::{SchemaState, StateOpLogEntry, StateRoot},
+        StateDbUnitOfWork,
+        StateDbUnitOfWorkReader,
+    },
+};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -40,18 +51,13 @@ use crate::{
         Committee,
         Event,
         HotStuffTreeNode,
-        Instruction,
         InstructionSet,
         Node,
         Payload,
-        SchemaState,
         SideChainBlock,
         SidechainMetadata,
         Signature,
-        StateOpLogEntry,
-        StateRoot,
         TariDanPayload,
-        TemplateId,
         TreeNodeHash,
     },
     services::{
@@ -70,19 +76,14 @@ use crate::{
         ValidatorNodeRpcClient,
         WalletClient,
     },
-    storage::{
-        chain::ChainDbUnitOfWork,
-        state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
-        ChainStorageService,
-        StorageError,
-    },
+    storage::{chain::ChainDbUnitOfWork, ChainStorageService, StorageError},
 };
 #[cfg(test)]
 use crate::{
     models::domain_events::ConsensusWorkerDomainEvent,
     services::infrastructure_services::mocks::{MockInboundConnectionService, MockOutboundService},
     services::{ConcreteAssetProxy, ServiceSpecification},
-    storage::mocks::{chain_db::MockChainDbBackupAdapter, state_db::MockStateDbBackupAdapter, MockDbFactory},
+    storage::mocks::{chain_db::MockChainDbBackupAdapter, MockDbFactory},
 };
 
 #[derive(Debug, Clone)]
@@ -340,7 +341,7 @@ impl WalletClient for MockWalletClient {
         &mut self,
         _contract_id: &FixedHash,
         _state_root: &StateRoot,
-        _is_initial: bool,
+        _checkpoint_number: u64,
     ) -> Result<(), DigitalAssetError> {
         Ok(())
     }

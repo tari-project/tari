@@ -22,6 +22,7 @@
 use diesel;
 use tari_common_types::types::FixedHashSizeError;
 use tari_dan_core::{models::ModelError, storage::StorageError};
+use tari_dan_engine::state::error::StateStorageError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -41,14 +42,14 @@ pub enum SqliteStorageError {
         #[from]
         source: diesel_migrations::RunMigrationsError,
     },
-    #[error("Error decoding bytes:{0}")]
-    DecodeError(#[from] bytecodec::Error),
     #[error("Encountered malformed hash data")]
     MalformedHashData,
     #[error("Malformed DB data: {0}")]
     MalformedDbData(String),
     #[error(transparent)]
     ModelError(#[from] ModelError),
+    #[error("Conversion error:{reason}")]
+    ConversionError { reason: String },
 }
 
 impl From<SqliteStorageError> for StorageError {
@@ -63,8 +64,26 @@ impl From<SqliteStorageError> for StorageError {
             SqliteStorageError::MigrationError { .. } => StorageError::MigrationError {
                 reason: source.to_string(),
             },
-            SqliteStorageError::DecodeError(e) => StorageError::DecodeError(e),
             other => StorageError::General {
+                details: other.to_string(),
+            },
+        }
+    }
+}
+
+impl From<SqliteStorageError> for StateStorageError {
+    fn from(source: SqliteStorageError) -> Self {
+        match source {
+            SqliteStorageError::ConnectionError { .. } => StateStorageError::ConnectionError {
+                reason: source.to_string(),
+            },
+            SqliteStorageError::DieselError { .. } => StateStorageError::QueryError {
+                reason: source.to_string(),
+            },
+            SqliteStorageError::MigrationError { .. } => StateStorageError::MigrationError {
+                reason: source.to_string(),
+            },
+            other => StateStorageError::General {
                 details: other.to_string(),
             },
         }

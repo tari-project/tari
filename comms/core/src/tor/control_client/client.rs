@@ -111,15 +111,13 @@ impl TorControlPortClient {
     }
 
     /// The GETCONF command. Returns configuration keys matching the `conf_name`.
-    #[allow(clippy::needless_lifetimes)]
-    pub async fn get_conf<'a>(&mut self, conf_name: &'a str) -> Result<Vec<Cow<'a, str>>, TorClientError> {
+    pub async fn get_conf(&mut self, conf_name: &'static str) -> Result<Vec<Cow<'_, str>>, TorClientError> {
         let command = commands::get_conf(conf_name);
         self.request_response(command).await
     }
 
     /// The GETINFO command. Returns configuration keys matching the `conf_name`.
-    #[allow(clippy::needless_lifetimes)]
-    pub async fn get_info<'a>(&mut self, key_name: &'a str) -> Result<Vec<Cow<'a, str>>, TorClientError> {
+    pub async fn get_info(&mut self, key_name: &'static str) -> Result<Vec<Cow<'_, str>>, TorClientError> {
         let command = commands::get_info(key_name);
         let response = self.request_response(command).await?;
         if response.is_empty() {

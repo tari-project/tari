@@ -26,11 +26,11 @@ use log::*;
 use thiserror::Error;
 
 use super::RpcError;
-use crate::proto;
+use crate::{proto, traits::OrOptional};
 
 const LOG_TARGET: &str = "comms::rpc::status";
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub struct RpcStatus {
     code: RpcStatusCode,
     details: String,
@@ -141,6 +141,10 @@ impl RpcStatus {
     pub fn is_ok(&self) -> bool {
         self.code.is_ok()
     }
+
+    pub fn is_not_found(&self) -> bool {
+        self.code.is_not_found()
+    }
 }
 
 impl Display for RpcStatus {
@@ -199,6 +203,15 @@ impl<T, E: std::error::Error> RpcStatusResultExt<T> for Result<T, E> {
 
     fn rpc_status_bad_request<S: ToString>(self, message: S) -> Result<T, RpcStatus> {
         self.map_err(|_| RpcStatus::bad_request(&message))
+    }
+}
+
+impl<T> OrOptional<T> for Result<T, RpcStatus> {
+    type Error = RpcStatus;
+
+    fn or_optional(self) -> Result<Option<T>, Self::Error> {
+        self.map(Some)
+            .or_else(|status| if status.is_not_found() { Ok(None) } else { Err(status) })
     }
 }
 
@@ -295,5 +308,18 @@ mod test {
         assert_eq!(RpcStatusCode::from(Forbidden as u32), Forbidden);
         assert_eq!(RpcStatusCode::from(Conflict as u32), Conflict);
         assert_eq!(RpcStatusCode::from(123), InvalidRpcStatusCode);
+    }
+
+    #[test]
+    fn rpc_status_or_optional() {
+        assert!(Result::<(), RpcStatus>::Ok(()).or_optional().is_ok());
+        assert_eq!(
+            Result::<(), _>::Err(RpcStatus::not_found("foo")).or_optional(),
+            Ok(None)
+        );
+        assert_eq!(
+            Result::<(), _>::Err(RpcStatus::general("foo")).or_optional(),
+            Err(RpcStatus::general("foo"))
+        );
     }
 }

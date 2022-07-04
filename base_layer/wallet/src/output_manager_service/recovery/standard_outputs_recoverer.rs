@@ -29,8 +29,7 @@ use tari_common_types::{
     types::{BulletRangeProof, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction_components::{TransactionOutput, UnblindedOutput},
+    transaction_components::{EncryptedValue, TransactionOutput, UnblindedOutput},
     transaction_protocol::RewindData,
     CryptoFactories,
 };
@@ -96,16 +95,19 @@ where
             if output.script != script!(Nop) {
                 continue;
             }
-            // TODO: Fix this logic when 'todo_decrypt' - only commence if the tag is recognized
-            let committed_value = output.encrypted_value.todo_decrypt();
-            if committed_value == output.encrypted_value.todo_decrypt() {
+            let committed_value = EncryptedValue::decrypt_value(
+                &self.rewind_data.encryption_key,
+                &output.commitment,
+                &output.encrypted_value,
+            );
+            if let Ok(committed_value) = committed_value {
                 let blinding_factor =
                     output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
-                if output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value)? {
+                if output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
                     let script_key = PrivateKey::random(&mut OsRng);
                     let uo = UnblindedOutput::new(
                         output.version,
-                        MicroTari::from(committed_value),
+                        committed_value,
                         blinding_factor,
                         output.features,
                         output.script,

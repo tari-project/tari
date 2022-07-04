@@ -20,11 +20,31 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_dan_core::storage::global::ContractState;
+
 use crate::global::schema::*;
 
-#[derive(Queryable, Insertable, Identifiable)]
+#[derive(Queryable, Identifiable)]
 pub struct Contract {
-    pub id: Vec<u8>,
-    pub state: i32,
+    pub id: i32,
+    pub contract_id: Vec<u8>,
     pub height: i64,
+    pub state: i32,
+    pub constitution: Vec<u8>,
+}
+
+#[derive(Insertable)]
+#[table_name = "contracts"]
+pub struct NewContract {
+    pub contract_id: Vec<u8>,
+    pub height: i64,
+    pub state: i32,
+    pub constitution: Vec<u8>,
+}
+
+impl NewContract {
+    pub fn with_state(&mut self, state: ContractState) -> &mut Self {
+        self.state = i32::from(state.as_byte());
+        self
+    }
 }

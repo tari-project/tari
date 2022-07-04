@@ -53,18 +53,23 @@ impl<TGlobalDbBackendAdapter: GlobalDbBackendAdapter> GlobalDb<TGlobalDbBackendA
 
     pub fn save_contract(
         &self,
-        contract_id: FixedHash,
-        mined_height: u64,
+        contract: TGlobalDbBackendAdapter::NewModel,
         state: ContractState,
     ) -> Result<(), StorageError> {
         self.adapter
-            .save_contract(contract_id, mined_height, state)
+            .save_contract(contract, state)
             .map_err(TGlobalDbBackendAdapter::Error::into)
     }
 
     pub fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), StorageError> {
         self.adapter
             .update_contract_state(contract_id, state)
+            .map_err(TGlobalDbBackendAdapter::Error::into)
+    }
+
+    pub fn get_active_contracts(&self) -> Result<Vec<TGlobalDbBackendAdapter::Model>, StorageError> {
+        self.adapter
+            .get_active_contracts()
             .map_err(TGlobalDbBackendAdapter::Error::into)
     }
 }

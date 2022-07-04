@@ -27,6 +27,7 @@ use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
+use strum::IntoEnumIterator;
 use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, HashOutput, PrivateKey, PublicKey},
@@ -140,9 +141,13 @@ where
         let recovery_byte_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
             .await?;
+        let encryption_key = key_manager
+            .get_key_at_index(OutputManagerKeyManagerBranch::ValueEncryption.get_branch_key(), 0)
+            .await?;
         let rewind_data = RewindData {
             rewind_blinding_key,
             recovery_byte_key,
+            encryption_key,
         };
 
         let resources = OutputManagerResources {
@@ -167,16 +172,7 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        const BRANCHES: &[OutputManagerKeyManagerBranch] = &[
-            OutputManagerKeyManagerBranch::Spend,
-            OutputManagerKeyManagerBranch::SpendScript,
-            OutputManagerKeyManagerBranch::Coinbase,
-            OutputManagerKeyManagerBranch::CoinbaseScript,
-            OutputManagerKeyManagerBranch::RecoveryByte,
-            OutputManagerKeyManagerBranch::RecoveryBlinding,
-            OutputManagerKeyManagerBranch::ContractIssuer,
-        ];
-        for branch in BRANCHES {
+        for branch in OutputManagerKeyManagerBranch::iter() {
             key_manager.add_new_branch(branch.get_branch_key()).await?;
         }
         Ok(())
@@ -724,7 +720,11 @@ where
             Some(&self.resources.rewind_data),
             &single_round_sender_data.features.clone(),
         );
-        let encrypted_value = EncryptedValue::todo_encrypt_from(single_round_sender_data.amount);
+        let encrypted_value = EncryptedValue::encrypt_value(
+            &self.resources.rewind_data.encryption_key,
+            &commitment,
+            single_round_sender_data.amount,
+        )?;
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
@@ -1235,7 +1235,13 @@ where
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
         let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
         output_features.set_recovery_byte(recovery_byte);
-        let encrypted_value = EncryptedValue::todo_encrypt_from(amount);
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spending_key, amount.into());
+        let encrypted_value =
+            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             amount,
@@ -1579,7 +1585,13 @@ where
 
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-            let encrypted_value = EncryptedValue::todo_encrypt_from(output_amount);
+            let commitment = self
+                .resources
+                .factories
+                .commitment
+                .commit_value(&spending_key, output_amount.into());
+            let encrypted_value =
+                EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, output_amount)?;
             let metadata_signature = TransactionOutput::create_final_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 output_amount,
@@ -1699,6 +1711,7 @@ where
         Ok(results)
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn create_claim_sha_atomic_swap_transaction(
         &mut self,
         output: TransactionOutput,
@@ -1713,12 +1726,10 @@ where
             .as_bytes(),
         )?;
         let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-        // TODO: This may be usefull for the encrypted value decryption since this is an atomic swap -
-        // TODO: when fixing 'todo_decrypt'
-        let _rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
-        // TODO: Fix this logic when 'todo_decrypt' - only commence if the tag is recognized
-        let amount = MicroTari::from(output.encrypted_value.todo_decrypt());
-        if amount == MicroTari::from(output.encrypted_value.todo_decrypt()) {
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
+        {
             let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
             if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, amount.as_u64())? {
                 let rewound_output = UnblindedOutput::new(
@@ -1946,15 +1957,20 @@ where
                 )?;
                 let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
                 let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-                // TODO: Fix this logic when 'todo_decrypt' - only commence if the tag is recognized
-                let committed_value = output.encrypted_value.todo_decrypt();
-                if committed_value == output.encrypted_value.todo_decrypt() {
+                let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+                let committed_value =
+                    EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
+                if let Ok(committed_value) = committed_value {
                     let blinding_factor =
                         output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
-                    if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, committed_value)? {
+                    if output.verify_mask(
+                        &self.resources.factories.range_proof,
+                        &blinding_factor,
+                        committed_value.into(),
+                    )? {
                         let rewound_output = UnblindedOutput::new(
                             output.version,
-                            MicroTari::from(committed_value),
+                            committed_value,
                             blinding_factor.clone(),
                             output.features,
                             known_one_sided_payment_scripts[i].script.clone(),
@@ -1973,6 +1989,7 @@ where
                             &RewindData {
                                 rewind_blinding_key,
                                 recovery_byte_key,
+                                encryption_key,
                             },
                             None,
                             Some(&output.proof),

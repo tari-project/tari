@@ -22,7 +22,6 @@
 
 pub mod chain_db;
 pub mod global_db;
-pub mod state_db;
 
 use std::{
     collections::HashMap,
@@ -30,16 +29,12 @@ use std::{
 };
 
 use tari_common_types::types::FixedHash;
+use tari_dan_engine::state::{mocks::state_db::MockStateDbBackupAdapter, StateDb};
 
 use crate::storage::{
     chain::{ChainDb, DbInstruction, DbNode, DbQc},
     global::GlobalDb,
-    mocks::{
-        chain_db::MockChainDbBackupAdapter,
-        global_db::MockGlobalDbBackupAdapter,
-        state_db::MockStateDbBackupAdapter,
-    },
-    state::StateDb,
+    mocks::{chain_db::MockChainDbBackupAdapter, global_db::MockGlobalDbBackupAdapter},
     DbFactory,
     StorageError,
 };

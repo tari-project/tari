@@ -262,8 +262,9 @@ message CommitteeMembers {
 }
 
 message ContractCheckpoint {
-    bytes merkle_root = 1;
-    CommitteeSignatures signatures = 2;
+    uint64 checkpoint_number = 1;
+    bytes merkle_root = 2;
+    CommitteeSignatures signatures = 3;
 }
 
 message CheckpointParameters {

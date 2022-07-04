@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The Tari validator node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.32.5"
+version = "0.33.0"
 edition = "2018"
 
 [dependencies]
@@ -25,6 +25,7 @@ tari_dan_core = { path = "../../dan_layer/core" }
 tari_dan_storage_sqlite = { path = "../../dan_layer/storage_sqlite" }
 tari_dan_common_types = { path = "../../dan_layer/common_types" }
 tari_common_types = { path = "../../base_layer/common_types" }
+tari_dan_engine = { path = "../../dan_layer/engine"}
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"

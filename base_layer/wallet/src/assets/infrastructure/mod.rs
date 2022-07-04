@@ -36,12 +36,13 @@ use tari_core::transactions::transaction_components::{
     Transaction,
 };
 
-use crate::assets::Asset;
+use crate::{assets::Asset, output_manager_service::storage::models::DbUnblindedOutput};
 
 pub mod initializer;
 
 #[derive(Debug)]
 pub enum AssetManagerRequest {
+    ListOwnedConstitutions {},
     ListOwned {},
     GetOwnedAsset {
         public_key: PublicKey,
@@ -66,6 +67,7 @@ pub enum AssetManagerRequest {
     },
     CreateFollowOnCheckpoint {
         contract_id: FixedHash,
+        checkpoint_number: u64,
         merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
@@ -97,6 +99,7 @@ pub enum AssetManagerRequest {
 }
 
 pub enum AssetManagerResponse {
+    ListOwnedConstitutions { contracts_ids: Vec<DbUnblindedOutput> },
     ListOwned { assets: Vec<Asset> },
     GetOwnedAsset { asset: Box<Asset> },
     CreateRegistrationTransaction { transaction: Box<Transaction>, tx_id: TxId },

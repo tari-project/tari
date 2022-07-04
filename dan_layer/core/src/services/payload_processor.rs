@@ -21,12 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
+use tari_dan_engine::state::{models::StateRoot, StateDbUnitOfWork};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Payload, StateRoot, TariDanPayload},
+    models::{Payload, TariDanPayload},
     services::AssetProcessor,
-    storage::state::StateDbUnitOfWork,
 };
 
 #[async_trait]

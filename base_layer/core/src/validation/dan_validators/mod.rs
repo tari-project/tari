@@ -35,7 +35,24 @@ use constitution_validator::validate_constitution;
 mod definition_validator;
 use definition_validator::validate_definition;
 
+mod update_proposal_validator;
+use update_proposal_validator::validate_update_proposal;
+
+mod update_proposal_acceptance_validator;
+use update_proposal_acceptance_validator::validate_update_proposal_acceptance;
+
+mod amendment_validator;
+use amendment_validator::validate_amendment;
+
+mod checkpoint_validator;
+use checkpoint_validator::validate_contract_checkpoint;
+
 mod helpers;
+
+mod error;
+pub use error::DanLayerValidationError;
+
+use crate::transactions::transaction_components::TransactionOutput;
 
 #[cfg(test)]
 mod test_helpers;
@@ -59,10 +76,50 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<
                 OutputType::ContractDefinition => validate_definition(&self.db, output)?,
                 OutputType::ContractConstitution => validate_constitution(&self.db, output)?,
                 OutputType::ContractValidatorAcceptance => validate_acceptance(&self.db, output)?,
-                _ => continue,
+                OutputType::ContractCheckpoint => validate_contract_checkpoint(&self.db, output)?,
+                OutputType::ContractConstitutionProposal => validate_update_proposal(&self.db, output)?,
+                OutputType::ContractConstitutionChangeAcceptance => {
+                    validate_update_proposal_acceptance(&self.db, output)?
+                },
+                OutputType::ContractAmendment => validate_amendment(&self.db, output)?,
+                _ => validate_no_sidechain_features(output)?,
             }
         }
 
         Ok(())
+    }
+}
+
+fn validate_no_sidechain_features(output: &TransactionOutput) -> Result<(), ValidationError> {
+    match output.features.sidechain_features {
+        Some(ref features) => Err(ValidationError::NonContractOutputContainsSidechainFeatures {
+            output_type: output.features.output_type,
+            contract_id: features.contract_id,
+        }),
+        None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common_types::types::FixedHash;
+
+    use super::*;
+    use crate::transactions::{
+        test_helpers::{create_unblinded_coinbase, TestParams},
+        transaction_components::SideChainFeatures,
+        CryptoFactories,
+    };
+
+    #[test]
+    fn it_rejects_standard_output_type_with_sidechain_features() {
+        let mut utxo = create_unblinded_coinbase(&TestParams::new(), 1);
+        utxo.features.sidechain_features = Some(SideChainFeatures::builder(FixedHash::default()).finish());
+        let output = utxo.as_transaction_output(&CryptoFactories::default()).unwrap();
+        let err = validate_no_sidechain_features(&output).unwrap_err();
+        assert!(matches!(
+            err,
+            ValidationError::NonContractOutputContainsSidechainFeatures { .. }
+        ))
     }
 }

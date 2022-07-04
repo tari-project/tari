@@ -279,8 +279,9 @@ message CreateInitialAssetCheckpointResponse {
 }
 
 message CreateFollowOnAssetCheckpointRequest {
-    bytes contract_id = 1;
-    bytes merkle_root = 2;
+    uint64 checkpoint_number = 1;
+    bytes contract_id = 2;
+    bytes merkle_root = 3;
 }
 
 message CreateFollowOnAssetCheckpointResponse {

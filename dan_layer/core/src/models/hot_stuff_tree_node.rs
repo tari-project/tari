@@ -22,8 +22,9 @@
 
 use digest::{Digest, FixedOutput};
 use tari_crypto::common::Blake256;
+use tari_dan_engine::state::models::StateRoot;
 
-use crate::models::{Payload, StateRoot, TreeNodeHash};
+use crate::models::{Payload, TreeNodeHash};
 
 #[derive(Debug, Clone)]
 pub struct HotStuffTreeNode<TPayload: Payload> {

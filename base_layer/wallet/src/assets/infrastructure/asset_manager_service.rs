@@ -86,6 +86,9 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
     pub async fn handle_request(&mut self, request: AssetManagerRequest) -> Result<AssetManagerResponse, WalletError> {
         trace!(target: LOG_TARGET, "Handling Service API Request {:?}", request);
         match request {
+            AssetManagerRequest::ListOwnedConstitutions { .. } => Ok(AssetManagerResponse::ListOwnedConstitutions {
+                contracts_ids: self.manager.list_owned_constitutions().await?,
+            }),
             AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
                 assets: self.manager.list_owned().await?,
             }),
@@ -147,12 +150,13 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             },
             AssetManagerRequest::CreateFollowOnCheckpoint {
                 contract_id,
+                checkpoint_number,
                 merkle_root,
                 committee_public_keys: _pks,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_follow_on_contract_checkpoint(contract_id, merkle_root)
+                    .create_follow_on_contract_checkpoint(contract_id, checkpoint_number, merkle_root)
                     .await?;
                 Ok(AssetManagerResponse::CreateFollowOnCheckpoint {
                     transaction: Box::new(transaction),

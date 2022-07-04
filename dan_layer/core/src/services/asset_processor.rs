@@ -23,11 +23,16 @@
 use std::convert::TryInto;
 
 use tari_core::transactions::transaction_components::TemplateParameter;
+use tari_dan_engine::{
+    flow::FlowFactory,
+    instructions::Instruction,
+    state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    wasm::WasmModuleFactory,
+};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Instruction, InstructionSet, TemplateId},
-    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    models::{AssetDefinition, InstructionSet},
     template_command::ExecutionResult,
     templates::{tip002_template, tip004_template, tip721_template},
 };
@@ -50,7 +55,23 @@ pub trait AssetProcessor: Sync + Send + 'static {
 
 #[derive(Default, Clone)]
 pub struct ConcreteAssetProcessor {
+    _asset_definition: AssetDefinition,
     template_factory: TemplateFactory,
+    _wasm_factory: WasmModuleFactory,
+    _function_interface: FunctionInterface,
+    _flow_factory: FlowFactory,
+}
+
+impl ConcreteAssetProcessor {
+    pub fn new(asset_definition: AssetDefinition) -> Self {
+        Self {
+            _wasm_factory: WasmModuleFactory::new(&asset_definition.wasm_modules, &asset_definition.wasm_functions),
+            _flow_factory: FlowFactory::new(&asset_definition.flow_functions),
+            _asset_definition: asset_definition,
+            template_factory: Default::default(),
+            _function_interface: FunctionInterface {},
+        }
+    }
 }
 
 impl AssetProcessor for ConcreteAssetProcessor {
@@ -71,12 +92,39 @@ impl AssetProcessor for ConcreteAssetProcessor {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct FunctionInterface {}
+
+// impl FunctionInterface {
+//     #[allow(dead_code)]
+//     fn find_executor(&self, instruction: &Instruction) -> Result<InstructionExecutor, DigitalAssetError> {
+//         match instruction.template_id() {
+//             // TODO: Put these back
+//             // TemplateId::Tip6000 => Ok(InstructionExecutor::WasmModule {
+//             //     name: instruction.method().to_string(),
+//             // }),
+//             // TemplateId::Tip7000 => Ok(InstructionExecutor::Flow {
+//             //     name: instruction.method().to_string(),
+//             // }),
+//             _ => Ok(InstructionExecutor::Template {
+//                 template_id: instruction.template_id(),
+//             }),
+//         }
+//     }
+// }
+//
+// pub enum InstructionExecutor {
+//     WasmModule { name: String },
+//     Template { template_id: TemplateId },
+//     Flow { name: String },
+// }
+
 #[derive(Default, Clone)]
 pub struct TemplateFactory {}
 
 impl TemplateFactory {
     pub fn initial_instructions(&self, template_param: &TemplateParameter) -> InstructionSet {
-        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
+        use tari_dan_common_types::TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
         // TODO: We may want to use the TemplateId type, so that we know it is known/valid
         let template_id = template_param.template_id.try_into().unwrap();
         match template_id {
@@ -95,7 +143,7 @@ impl TemplateFactory {
         instruction: &Instruction,
         state_db: &TUnitOfWork,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
+        use tari_dan_common_types::TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
         match instruction.template_id() {
             Tip002 => tip002_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
             Tip003 => todo!(),
@@ -112,7 +160,7 @@ impl TemplateFactory {
         instruction: &Instruction,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
+        use tari_dan_common_types::TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
         match instruction.template_id() {
             Tip002 => tip002_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
             Tip003 => todo!(),

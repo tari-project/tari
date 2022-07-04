@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use strum::EnumIter;
 use tari_core::{
     consensus::ConsensusConstants,
     transactions::{transaction_protocol::RewindData, CryptoFactories},
@@ -46,7 +47,7 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub rewind_data: RewindData,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, EnumIter)]
 pub enum OutputManagerKeyManagerBranch {
     Spend,
     SpendScript,
@@ -55,6 +56,7 @@ pub enum OutputManagerKeyManagerBranch {
     RecoveryBlinding,
     RecoveryByte,
     ContractIssuer,
+    ValueEncryption,
 }
 
 impl OutputManagerKeyManagerBranch {
@@ -69,6 +71,7 @@ impl OutputManagerKeyManagerBranch {
             OutputManagerKeyManagerBranch::RecoveryBlinding => "recovery_blinding".to_string(),
             OutputManagerKeyManagerBranch::RecoveryByte => "Recovery_byte".to_string(),
             OutputManagerKeyManagerBranch::ContractIssuer => "contract_issuer".to_string(),
+            OutputManagerKeyManagerBranch::ValueEncryption => "value_encryption".to_string(),
         }
     }
 }

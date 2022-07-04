@@ -464,6 +464,7 @@ impl TryFrom<proto::types::ContractConstitution> for ContractConstitution {
 impl From<ContractCheckpoint> for proto::types::ContractCheckpoint {
     fn from(value: ContractCheckpoint) -> Self {
         Self {
+            checkpoint_number: value.checkpoint_number,
             merkle_root: value.merkle_root.to_vec(),
             signatures: Some(value.signatures.into()),
         }
@@ -477,6 +478,7 @@ impl TryFrom<proto::types::ContractCheckpoint> for ContractCheckpoint {
         let merkle_root = value.merkle_root.try_into().map_err(|_| "Invalid merkle root")?;
         let signatures = value.signatures.map(TryInto::try_into).transpose()?.unwrap_or_default();
         Ok(Self {
+            checkpoint_number: value.checkpoint_number,
             merkle_root,
             signatures,
         })

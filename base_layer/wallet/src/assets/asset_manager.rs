@@ -28,6 +28,7 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{
     CommitteeSignatures,
     ContractAmendment,
+    ContractCheckpoint,
     ContractDefinition,
     ContractUpdateProposal,
     OutputFeatures,
@@ -63,6 +64,21 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             output_database: OutputManagerDatabase::new(backend),
             output_manager,
         }
+    }
+
+    pub async fn list_owned_constitutions(&self) -> Result<Vec<DbUnblindedOutput>, WalletError> {
+        let outputs = self
+            .output_database
+            .fetch_with_features(OutputType::ContractConstitution)
+            .map_err(|err| WalletError::OutputManagerError(err.into()))?;
+
+        error!(
+            target: LOG_TARGET,
+            "Found {} owned outputs that contain constitution",
+            outputs.len()
+        );
+        error!(target: LOG_TARGET, "{:?}", outputs);
+        Ok(outputs)
     }
 
     pub async fn list_owned(&self) -> Result<Vec<Asset>, WalletError> {
@@ -168,12 +184,12 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .output_manager
             .create_output_with_features(
                 10.into(),
-                OutputFeatures::for_checkpoint(
-                    contract_id,
+                OutputFeatures::for_contract_checkpoint(contract_id, ContractCheckpoint {
+                    checkpoint_number: 0,
                     merkle_root,
                     // TODO: add vn signatures
-                    CommitteeSignatures::default(),
-                ),
+                    signatures: CommitteeSignatures::default(),
+                }),
             )
             .await?;
         // TODO: get consensus threshold from somewhere else
@@ -213,18 +229,19 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
     pub async fn create_follow_on_contract_checkpoint(
         &mut self,
         contract_id: FixedHash,
+        checkpoint_number: u64,
         merkle_root: FixedHash,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
             .create_output_with_features(
                 10.into(),
-                OutputFeatures::for_checkpoint(
-                    contract_id,
+                OutputFeatures::for_contract_checkpoint(contract_id, ContractCheckpoint {
+                    checkpoint_number,
                     merkle_root,
-                    // TODO: Add vn sigs
-                    CommitteeSignatures::default(),
-                ),
+                    // TODO: add vn signatures
+                    signatures: CommitteeSignatures::default(),
+                }),
             )
             .await?;
         // TODO: get consensus threshold from somewhere else

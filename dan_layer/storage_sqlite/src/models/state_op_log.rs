@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
 
-use tari_dan_core::models::TreeNodeHash;
+use tari_common_types::types::FixedHash;
+use tari_dan_engine::state::DbStateOpLogEntry;
+
 //  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
@@ -23,8 +25,6 @@ use tari_dan_core::models::TreeNodeHash;
 // CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_dan_core::storage::state::DbStateOpLogEntry;
-
 use crate::{error::SqliteStorageError, schema::*};
 
 #[derive(Debug, Clone, Identifiable, Queryable)]
@@ -55,7 +55,7 @@ impl From<DbStateOpLogEntry> for NewStateOpLogEntry {
     fn from(entry: DbStateOpLogEntry) -> Self {
         Self {
             height: entry.height as i64,
-            merkle_root: entry.merkle_root.map(|r| r.as_bytes().to_vec()),
+            merkle_root: entry.merkle_root.map(|r| r.to_vec()),
             operation: entry.operation.as_op_str().to_string(),
             schema: entry.schema,
             key: entry.key,
@@ -73,13 +73,15 @@ impl TryFrom<StateOpLogEntry> for DbStateOpLogEntry {
             height: entry.height as u64,
             merkle_root: entry
                 .merkle_root
-                .map(TreeNodeHash::try_from)
+                .map(FixedHash::try_from)
                 .transpose()
                 .map_err(|_| SqliteStorageError::MalformedHashData)?,
             operation: entry
                 .operation
                 .parse()
-                .map_err(|_| SqliteStorageError::MalformedDbData("Invalid OpLog operation".to_string()))?,
+                .map_err(|_| SqliteStorageError::ConversionError {
+                    reason: "Invalid OpLog operation".to_string(),
+                })?,
             schema: entry.schema,
             key: entry.key,
             value: entry.value,

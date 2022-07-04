@@ -25,11 +25,12 @@ use futures::stream::FuturesUnordered;
 use log::*;
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::OutputType;
+use tari_dan_common_types::TemplateId;
+use tari_dan_engine::instructions::Instruction;
 use tari_utilities::hex::Hex;
 use tokio_stream::StreamExt;
 
 use crate::{
-    models::{Instruction, TemplateId},
     services::{
         validator_node_rpc_client::ValidatorNodeRpcClient,
         BaseNodeClient,

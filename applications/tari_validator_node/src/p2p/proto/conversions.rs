@@ -24,27 +24,27 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{
-    models::{
-        CheckpointData,
-        HotStuffMessage,
-        HotStuffMessageType,
-        HotStuffTreeNode,
-        Instruction,
-        InstructionSet,
-        KeyValue,
-        Node,
-        QuorumCertificate,
-        SideChainBlock,
-        Signature,
-        StateOpLogEntry,
-        StateRoot,
-        TariDanPayload,
-        TemplateId,
-        TreeNodeHash,
-        ViewId,
+use tari_dan_common_types::TemplateId;
+use tari_dan_core::models::{
+    CheckpointData,
+    HotStuffMessage,
+    HotStuffMessageType,
+    HotStuffTreeNode,
+    InstructionSet,
+    Node,
+    QuorumCertificate,
+    SideChainBlock,
+    Signature,
+    TariDanPayload,
+    TreeNodeHash,
+    ViewId,
+};
+use tari_dan_engine::{
+    instructions::Instruction,
+    state::{
+        models::{KeyValue, StateOpLogEntry, StateRoot},
+        DbStateOpLogEntry,
     },
-    storage::state::DbStateOpLogEntry,
 };
 
 use crate::p2p::proto;
@@ -218,7 +218,7 @@ impl TryFrom<proto::common::Instruction> for Instruction {
     type Error = String;
 
     fn try_from(value: proto::common::Instruction) -> Result<Self, Self::Error> {
-        let template_id = TemplateId::try_from(value.template_id).map_err(|err| err.to_string())?;
+        let template_id = TemplateId::try_from(value.template_id)?;
         Ok(Self::new(
             template_id,
             value.method,

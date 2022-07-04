@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "0.32.5"
+version = "0.33.0"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.32", path = "../../comms/core" }
-tari_comms_dht = { version = "^0.32", path = "../../comms/dht" }
-tari_common = { version = "^0.32", path = "../../common" }
+tari_comms = { version = "^0.33", path = "../../comms/core" }
+tari_comms_dht = { version = "^0.33", path = "../../comms/dht" }
+tari_common = { version = "^0.33", path = "../../common" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.14.0" }
-tari_service_framework = { version = "^0.32", path = "../service_framework" }
-tari_shutdown = { version = "^0.32", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.32", path = "../../infrastructure/storage" }
+tari_service_framework = { version = "^0.33", path = "../service_framework" }
+tari_shutdown = { version = "^0.33", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.33", path = "../../infrastructure/storage" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
 
 anyhow = "1.0.53"
@@ -27,7 +27,8 @@ futures = { version = "^0.3.1" }
 lmdb-zero = "0.4.4"
 log = "0.4.6"
 openssl-sys = { version = "=0.9.66", features = ["vendored"], optional = true }
-pgp = { version = "0.7.2", optional = true }
+#pgp = { version = "0.7.2", optional = true } TODO: Fix this dependency issue
+pgp = { git = "https://github.com/rpgp/rpgp.git", rev = "ef5112654a75abb402c24e1f15301113bd611a8f", optional = true }
 prost = "=0.9.0"
 rand = "0.8"
 reqwest = { version = "0.11", optional = true, default-features = false }
@@ -44,7 +45,7 @@ rustls = "0.20.2"
 webpki = "0.21"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.32", path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.33", path = "../../infrastructure/test_utils" }
 config = "0.13.0"
 
 clap = "2.33.0"
@@ -52,7 +53,7 @@ lazy_static = "1.3.0"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { version = "^0.32", path = "../../common", features = ["build"] }
+tari_common = { version = "^0.33", path = "../../common", features = ["build"] }
 
 [features]
 test-mocks = []
