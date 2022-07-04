@@ -20,3 +20,11 @@ export const FeedbackContainer = styled.div`
   bottom: 120%;
   transform: translateX(-50%);
 `
+
+export const ValueContainer = styled.div`
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+  word-break: keep-all;
+  -webkit-user-select: none;
+  cursor: default;
+`

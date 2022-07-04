@@ -8,7 +8,7 @@ import Tag from '../Tag'
 import CopyIcon from '../../styles/Icons/Copy'
 import t from '../../locales'
 
-import { StyledBox, FeedbackContainer } from './styles'
+import { ValueContainer, StyledBox, FeedbackContainer } from './styles'
 
 /**
  * @name CopyBox
@@ -60,16 +60,7 @@ const CopyBox = ({
     <>
       {label && <Text>{label}</Text>}
       <StyledBox style={style}>
-        <div
-          style={{
-            overflowX: 'hidden',
-            textOverflow: 'ellipsis',
-            wordBreak: 'keep-all',
-          }}
-          title={value}
-        >
-          {value}
-        </div>
+        <ValueContainer title={value}>{value}</ValueContainer>
         <Button
           variant='text'
           style={{
