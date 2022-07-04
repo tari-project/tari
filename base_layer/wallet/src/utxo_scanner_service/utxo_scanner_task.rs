@@ -361,7 +361,9 @@ where TBackend: WalletBackend + 'static
                         last_missing_scanned_block = Some(sb.clone());
                     },
                 }
-            } else {
+            }
+            // Sum up the number of outputs recovered starting from the first found block
+            if found_scanned_block.is_some() {
                 num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
                 amount = amount
                     .checked_add(sb.amount.unwrap_or_else(|| MicroTari::from(0)))
