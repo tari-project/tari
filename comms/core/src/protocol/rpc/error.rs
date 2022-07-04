@@ -30,6 +30,7 @@ use crate::{
     connectivity::ConnectivityError,
     peer_manager::PeerManagerError,
     proto::rpc as rpc_proto,
+    traits::OrOptional,
     PeerConnectionError,
 };
 
@@ -126,5 +127,23 @@ impl From<HandshakeRejectReason> for rpc_proto::rpc_session_reply::HandshakeReje
             HandshakeRejectReason::ProtocolNotSupported => ProtocolNotSupported,
             HandshakeRejectReason::Unknown(_) => Unknown,
         }
+    }
+}
+
+impl<T> OrOptional<T> for Result<T, RpcError> {
+    type Error = RpcError;
+
+    fn or_optional(self) -> Result<Option<T>, Self::Error> {
+        self.map(Some).or_else(|err| {
+            if let RpcError::RequestFailed(ref status) = err {
+                if status.is_not_found() {
+                    Ok(None)
+                } else {
+                    Err(err)
+                }
+            } else {
+                Err(err)
+            }
+        })
     }
 }

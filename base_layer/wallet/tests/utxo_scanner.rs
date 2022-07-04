@@ -351,8 +351,9 @@ async fn test_utxo_scanner_recovery() {
                     final_height,
                     num_recovered,
                     value_recovered,
-                    time_taken: _,} = event.unwrap() {
-                    assert_eq!(final_height, NUM_BLOCKS-1);
+                    time_taken: _,
+                } = event.unwrap() {
+                    assert_eq!(final_height, NUM_BLOCKS - 1);
                     assert_eq!(num_recovered, total_outputs_to_recover);
                     assert_eq!(value_recovered, total_amount_to_recover);
                     break;
