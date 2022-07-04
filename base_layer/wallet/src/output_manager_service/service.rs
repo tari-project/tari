@@ -679,21 +679,11 @@ where
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         let script = script!(Nop);
 
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, value.as_u64());
-        let updated_features = OutputFeatures::features_with_updated_recovery_byte(
-            &commitment,
-            Some(&self.resources.rewind_data),
-            &features.clone(),
-        );
-
         Ok(UnblindedOutputBuilder::new(value, spending_key)
-            .with_features(updated_features)
+            .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
+            .with_rewind_data(self.resources.rewind_data.clone())
             .with_script_private_key(script_private_key))
     }
 
@@ -1104,8 +1094,7 @@ where
             let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
             let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
 
-            unblinded_output
-                .update_recovery_byte_if_required(&self.resources.factories, Some(&self.resources.rewind_data))?;
+            unblinded_output.update_recovery_byte(&self.resources.factories)?;
             unblinded_output.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
             unblinded_output.sign_as_sender(&sender_offset_private_key)?;
 
