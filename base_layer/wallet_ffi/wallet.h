@@ -14,7 +14,7 @@
 #define OutputFields_NUM_FIELDS 10
 
 enum TariTypeTag {
-  String = 0,
+  Text = 0,
   Utxo = 1,
   Commitment = 2,
 };
@@ -163,6 +163,16 @@ struct TransactionSendStatus;
 
 struct TransportConfig;
 
+/**
+ * -------------------------------- Vector ------------------------------------------------ ///
+ */
+struct TariVector {
+  enum TariTypeTag tag;
+  uintptr_t len;
+  uintptr_t cap;
+  void *ptr;
+};
+
 typedef struct TransactionKernel TariTransactionKernel;
 
 /**
@@ -296,13 +306,6 @@ struct TariOutputs {
   struct TariUtxo *ptr;
 };
 
-struct TariVector {
-  enum TariTypeTag tag;
-  uintptr_t len;
-  uintptr_t cap;
-  void *ptr;
-};
-
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
@@ -310,6 +313,48 @@ typedef struct FeePerGramStat TariFeePerGramStat;
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Initialize a new `TariVector`
+ *
+ * ## Arguments
+ * `tag` - A predefined type-tag of the vector's payload.
+ *
+ * ## Returns
+ * `*mut TariVector` - Returns a pointer to a `TariVector`.
+ *
+ * # Safety
+ * `destroy_tari_vector()` must be called to free the allocated memory.
+ */
+struct TariVector *create_tari_vector(enum TariTypeTag tag);
+
+/**
+ * Appending a given value to the back of the vector.
+ *
+ * ## Arguments
+ * `s` - An item to push.
+ *
+ * ## Returns
+ *
+ *
+ * # Safety
+ * `destroy_tari_vector()` must be called to free the allocated memory.
+ */
+void tari_vector_push_string(struct TariVector *tv, const char *s, int32_t *error_ptr);
+
+/**
+ * Frees memory allocated for `TariVector`.
+ *
+ * ## Arguments
+ * `v` - The pointer to `TariVector`
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_tari_vector(struct TariVector *v);
 
 /**
  * -------------------------------- Strings ------------------------------------------------ ///
@@ -2227,20 +2272,6 @@ struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
 void destroy_tari_outputs(struct TariOutputs *x);
 
 /**
- * Frees memory for a `TariVector`
- *
- * ## Arguments
- * `x` - The pointer to `TariVector`
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void destroy_tari_vector(struct TariVector *x);
-
-/**
  * This function will tell the wallet to do a coin split.
  *
  * ## Arguments
@@ -2262,7 +2293,6 @@ void destroy_tari_vector(struct TariVector *x);
  */
 uint64_t wallet_coin_split(struct TariWallet *wallet,
                            struct TariVector *commitments,
-                           uint64_t amount_per_split,
                            uintptr_t number_of_splits,
                            uint64_t fee_per_gram,
                            int32_t *error_ptr);

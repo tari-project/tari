@@ -263,10 +263,10 @@ impl TryFrom<DbUnblindedOutput> for TariUtxo {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(C)]
 pub enum TariTypeTag {
-    String = 0,
+    Text = 0,
     Utxo = 1,
     Commitment = 2,
 }
@@ -274,96 +274,10 @@ pub enum TariTypeTag {
 impl Display for TariTypeTag {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TariTypeTag::String => write!(f, "String"),
+            TariTypeTag::Text => write!(f, "Text"),
             TariTypeTag::Utxo => write!(f, "Utxo"),
             TariTypeTag::Commitment => write!(f, "Commitment"),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[repr(C)]
-pub struct TariVector {
-    pub tag: TariTypeTag,
-    pub len: usize,
-    pub cap: usize,
-    pub ptr: *mut c_void,
-}
-
-#[allow(dead_code)]
-impl TariVector {
-    fn from_string_vec(v: Vec<String>) -> Result<Self, InterfaceError> {
-        let mut strings = ManuallyDrop::new(
-            v.into_iter()
-                .map(|x| CString::new(x.as_str()).unwrap().into_raw())
-                .collect::<Vec<*mut c_char>>(),
-        );
-
-        Ok(Self {
-            tag: TariTypeTag::String,
-            len: strings.len(),
-            cap: strings.capacity(),
-            ptr: strings.as_mut_ptr() as *mut c_void,
-        })
-    }
-
-    fn from_commitment_vec(v: &mut Vec<Commitment>) -> Result<Self, InterfaceError> {
-        Ok(Self {
-            tag: TariTypeTag::Commitment,
-            len: v.len(),
-            cap: v.capacity(),
-            ptr: v.as_mut_ptr() as *mut c_void,
-        })
-    }
-
-    fn to_string_vec(&self) -> Result<Vec<String>, InterfaceError> {
-        if self.tag != TariTypeTag::String {
-            return Err(InterfaceError::InvalidArgument(format!(
-                "expecting String, got {}",
-                self.tag
-            )));
-        }
-
-        if self.ptr.is_null() {
-            return Err(InterfaceError::NullError(String::from(
-                "tari vector of strings has null pointer",
-            )));
-        }
-
-        Ok(unsafe {
-            Vec::from_raw_parts(self.ptr as *mut *mut c_char, self.len, self.cap)
-                .into_iter()
-                .map(|x| CString::from_raw(x).into_string().unwrap())
-                .collect()
-        })
-    }
-
-    fn to_commitment_vec(&self) -> Result<Vec<Commitment>, InterfaceError> {
-        self.to_string_vec()?
-            .into_iter()
-            .map(|x| {
-                Commitment::from_hex(x.as_str())
-                    .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {:?}", e)))
-            })
-            .try_collect::<Commitment, Vec<Commitment>, InterfaceError>()
-    }
-
-    #[allow(dead_code)]
-    fn to_utxo_vec(&self) -> Result<Vec<TariUtxo>, InterfaceError> {
-        if self.tag != TariTypeTag::Utxo {
-            return Err(InterfaceError::InvalidArgument(format!(
-                "expecting Utxo, got {}",
-                self.tag
-            )));
-        }
-
-        if self.ptr.is_null() {
-            return Err(InterfaceError::NullError(String::from(
-                "tari vector of utxos has null pointer",
-            )));
-        }
-
-        Ok(unsafe { Vec::from_raw_parts(self.ptr as *mut TariUtxo, self.len, self.cap) })
     }
 }
 
@@ -405,6 +319,197 @@ impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
             cap: outputs.capacity(),
             ptr: outputs.as_mut_ptr(),
         })
+    }
+}
+
+/// -------------------------------- Vector ------------------------------------------------ ///
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct TariVector {
+    pub tag: TariTypeTag,
+    pub len: usize,
+    pub cap: usize,
+    pub ptr: *mut c_void,
+}
+
+#[allow(dead_code)]
+impl TariVector {
+    fn from_string_vec(v: Vec<String>) -> Result<Self, InterfaceError> {
+        let mut strings = ManuallyDrop::new(
+            v.into_iter()
+                .map(|x| CString::new(x.as_str()).unwrap().into_raw())
+                .collect::<Vec<*mut c_char>>(),
+        );
+
+        Ok(Self {
+            tag: TariTypeTag::Text,
+            len: strings.len(),
+            cap: strings.capacity(),
+            ptr: strings.as_mut_ptr() as *mut c_void,
+        })
+    }
+
+    fn from_commitment_vec(v: &mut Vec<Commitment>) -> Result<Self, InterfaceError> {
+        Ok(Self {
+            tag: TariTypeTag::Commitment,
+            len: v.len(),
+            cap: v.capacity(),
+            ptr: v.as_mut_ptr() as *mut c_void,
+        })
+    }
+
+    fn to_string_vec(&self) -> Result<Vec<String>, InterfaceError> {
+        if self.tag != TariTypeTag::Text {
+            return Err(InterfaceError::InvalidArgument(format!(
+                "expecting String, got {}",
+                self.tag
+            )));
+        }
+
+        if self.ptr.is_null() {
+            return Err(InterfaceError::NullError(String::from(
+                "tari vector of strings has null pointer",
+            )));
+        }
+
+        Ok(unsafe {
+            Vec::from_raw_parts(self.ptr as *mut *mut c_char, self.len, self.cap)
+                .into_iter()
+                .map(|x| {
+                    CStr::from_ptr(x)
+                        .to_str()
+                        .expect("failed to convert from a vector of strings")
+                        .to_string()
+                })
+                .collect()
+        })
+    }
+
+    fn to_commitment_vec(&self) -> Result<Vec<Commitment>, InterfaceError> {
+        self.to_string_vec()?
+            .into_iter()
+            .map(|x| {
+                Commitment::from_hex(x.as_str())
+                    .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {:?}", e)))
+            })
+            .try_collect::<Commitment, Vec<Commitment>, InterfaceError>()
+    }
+
+    #[allow(dead_code)]
+    fn to_utxo_vec(&self) -> Result<Vec<TariUtxo>, InterfaceError> {
+        if self.tag != TariTypeTag::Utxo {
+            return Err(InterfaceError::InvalidArgument(format!(
+                "expecting Utxo, got {}",
+                self.tag
+            )));
+        }
+
+        if self.ptr.is_null() {
+            return Err(InterfaceError::NullError(String::from(
+                "tari vector of utxos has null pointer",
+            )));
+        }
+
+        Ok(unsafe { Vec::from_raw_parts(self.ptr as *mut TariUtxo, self.len, self.cap) })
+    }
+}
+
+/// Initialize a new `TariVector`
+///
+/// ## Arguments
+/// `tag` - A predefined type-tag of the vector's payload.
+///
+/// ## Returns
+/// `*mut TariVector` - Returns a pointer to a `TariVector`.
+///
+/// # Safety
+/// `destroy_tari_vector()` must be called to free the allocated memory.
+#[no_mangle]
+pub unsafe extern "C" fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector {
+    let mut v = ManuallyDrop::new(Vec::with_capacity(2));
+    Box::into_raw(Box::new(TariVector {
+        tag,
+        len: v.len(),
+        cap: v.capacity(),
+        ptr: v.as_mut_ptr() as *mut c_void,
+    }))
+}
+
+/// Appending a given value to the back of the vector.
+///
+/// ## Arguments
+/// `s` - An item to push.
+///
+/// ## Returns
+///
+///
+/// # Safety
+/// `destroy_tari_vector()` must be called to free the allocated memory.
+#[no_mangle]
+pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const c_char, error_ptr: *mut i32) {
+    if tv.is_null() {
+        error!(target: LOG_TARGET, "tari vector pointer is null");
+        ptr::replace(
+            error_ptr,
+            LibWalletError::from(InterfaceError::NullError("vector".to_string())).code,
+        );
+        return;
+    }
+
+    // unpacking into native vector
+    let mut v = match (*tv).to_string_vec() {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "{:#?}", e);
+            ptr::replace(error_ptr, LibWalletError::from(e).code);
+            return;
+        },
+    };
+
+    let s = match CStr::from_ptr(s).to_str() {
+        Ok(cs) => cs.to_string(),
+        Err(e) => {
+            error!(target: LOG_TARGET, "failed to convert `s` into native string {:#?}", e);
+            ptr::replace(
+                error_ptr,
+                LibWalletError::from(InterfaceError::PointerError("invalid string".to_string())).code,
+            );
+            return;
+        },
+    };
+
+    // appending new value
+    // NOTE: relying on native vector's re-allocation
+    v.push(s);
+
+    let mut v = ManuallyDrop::new(
+        v.into_iter()
+            .map(|x| CString::new(x.as_str()).unwrap().into_raw())
+            .collect::<Vec<*mut c_char>>(),
+    );
+
+    (*tv).len = v.len();
+    (*tv).cap = v.capacity();
+    (*tv).ptr = v.as_mut_ptr() as *mut c_void;
+    ptr::replace(error_ptr, 0);
+}
+
+/// Frees memory allocated for `TariVector`.
+///
+/// ## Arguments
+/// `v` - The pointer to `TariVector`
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_tari_vector(v: *mut TariVector) {
+    if !v.is_null() {
+        let x = Box::from_raw(v);
+        let _ = x.ptr;
     }
 }
 
@@ -4011,7 +4116,7 @@ pub unsafe extern "C" fn wallet_create(
             .to_str()
             .expect("A non-null network should be able to be converted to string");
         error!(target: LOG_TARGET, "network set to {}", network);
-        eprintln!("network set to {}", network);
+        // eprintln!("network set to {}", network);
         match Network::from_str(&*network) {
             Ok(n) => n,
             Err(_) => {
@@ -4364,24 +4469,6 @@ pub unsafe extern "C" fn destroy_tari_outputs(x: *mut TariOutputs) {
     }
 }
 
-/// Frees memory for a `TariVector`
-///
-/// ## Arguments
-/// `x` - The pointer to `TariVector`
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn destroy_tari_vector(x: *mut TariVector) {
-    if !x.is_null() {
-        let x = Box::from_raw(x);
-        _ = x.ptr;
-    }
-}
-
 /// This function will tell the wallet to do a coin split.
 ///
 /// ## Arguments
@@ -4404,7 +4491,6 @@ pub unsafe extern "C" fn destroy_tari_vector(x: *mut TariVector) {
 pub unsafe extern "C" fn wallet_coin_split(
     wallet: *mut TariWallet,
     commitments: *mut TariVector,
-    amount_per_split: u64,
     number_of_splits: usize,
     fee_per_gram: u64,
     error_ptr: *mut i32,
@@ -4437,9 +4523,8 @@ pub unsafe extern "C" fn wallet_coin_split(
         },
     };
 
-    match (*wallet).runtime.block_on((*wallet).wallet.coin_split(
+    match (*wallet).runtime.block_on((*wallet).wallet.coin_split_even(
         commitments,
-        MicroTari(amount_per_split),
         number_of_splits,
         MicroTari(fee_per_gram),
         String::new(),
@@ -9307,7 +9392,7 @@ mod test {
 
             let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
 
-            let result = wallet_coin_split(alice_wallet, commitments, 20500, 3, 5, error_ptr);
+            let result = wallet_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
 
@@ -9340,8 +9425,9 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
             assert_eq!(unspent_outputs.len(), 2);
-            assert_eq!(new_pending_outputs.len(), 4);
-            assert!(new_pending_outputs[0..3].iter().all(|x| *x == 20500.into()));
+            assert_eq!(new_pending_outputs.len(), 3);
+            assert_eq!(new_pending_outputs[0], new_pending_outputs[1]);
+            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroTari(1));
 
             destroy_tari_outputs(outputs);
             destroy_tari_vector(commitments);
@@ -9359,20 +9445,45 @@ mod test {
 
     #[test]
     fn test_tari_vector() {
-        let mut strings = ManuallyDrop::new(vec![
-            CString::new("string0").unwrap().into_raw(),
-            CString::new("string1").unwrap().into_raw(),
-            CString::new("string2").unwrap().into_raw(),
-        ]);
+        let mut error = 0;
 
-        let v = TariVector {
-            tag: TariTypeTag::String,
-            len: strings.len(),
-            cap: strings.capacity(),
-            ptr: strings.as_mut_ptr() as *mut c_void,
-        };
+        unsafe {
+            let tv = create_tari_vector(TariTypeTag::Text);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 0);
+            assert_eq!((*tv).cap, 2);
 
-        eprintln!("v = {:#?}", v);
-        eprintln!("result = {:#?}", v.to_string_vec());
+            tari_vector_push_string(
+                tv,
+                CString::new("test string 1").unwrap().into_raw() as *const c_char,
+                &mut error as *mut c_int,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 1);
+            assert_eq!((*tv).cap, 1);
+
+            tari_vector_push_string(
+                tv,
+                CString::new("test string 2").unwrap().into_raw() as *const c_char,
+                &mut error as *mut c_int,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 2);
+            assert_eq!((*tv).cap, 2);
+
+            tari_vector_push_string(
+                tv,
+                CString::new("test string 3").unwrap().into_raw() as *const c_char,
+                &mut error as *mut c_int,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 3);
+            assert_eq!((*tv).cap, 3);
+
+            destroy_tari_vector(tv);
+        }
     }
 }
