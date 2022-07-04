@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,35 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_common_types::types::{FixedHash, PublicKey, Signature};
-use tari_core::transactions::transaction_components::SignerSignature;
-use tari_dan_engine::state::models::StateRoot;
+use digest::Digest;
+use tari_common_types::types::{Commitment, FixedHash, HashDigest};
+use tari_utilities::ByteArray;
 
-use crate::DigitalAssetError;
+#[derive(Debug, Clone, Copy)]
+pub struct CheckpointChallenge(FixedHash);
 
-#[async_trait]
-pub trait WalletClient: Send + Sync {
-    async fn create_new_checkpoint(
-        &mut self,
+impl CheckpointChallenge {
+    pub fn new(
         contract_id: &FixedHash,
-        state_root: &StateRoot,
+        checkpoint_commitment: &Commitment,
+        merkle_root: FixedHash,
         checkpoint_number: u64,
-        checkpoint_signatures: Vec<SignerSignature>,
-    ) -> Result<(), DigitalAssetError>;
+    ) -> Self {
+        // TODO: Use new tari_crypto domain-separated hashing
+        let hash = HashDigest::new()
+            .chain(contract_id.as_slice())
+            .chain(checkpoint_commitment.as_bytes())
+            .chain(merkle_root.as_slice())
+            .chain(&checkpoint_number.to_le_bytes())
+            .finalize()
+            .into();
+        Self(hash)
+    }
+}
 
-    async fn submit_contract_acceptance(
-        &mut self,
-        contract_id: &FixedHash,
-        validator_node_public_key: &PublicKey,
-        signature: &Signature,
-    ) -> Result<u64, DigitalAssetError>;
-
-    async fn submit_contract_update_proposal_acceptance(
-        &mut self,
-        contract_id: &FixedHash,
-        proposal_id: u64,
-        validator_node_public_key: &PublicKey,
-        signature: &Signature,
-    ) -> Result<u64, DigitalAssetError>;
+impl AsRef<[u8]> for CheckpointChallenge {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
 }

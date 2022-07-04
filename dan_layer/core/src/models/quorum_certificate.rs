@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{HotStuffMessageType, Signature, TreeNodeHash, ViewId},
+    models::{HotStuffMessageType, TreeNodeHash, ValidatorSignature, ViewId},
     storage::chain::DbQc,
 };
 
@@ -30,7 +30,7 @@ pub struct QuorumCertificate {
     message_type: HotStuffMessageType,
     node_hash: TreeNodeHash,
     view_number: ViewId,
-    signature: Option<Signature>,
+    signatures: Option<ValidatorSignature>,
 }
 
 impl QuorumCertificate {
@@ -38,13 +38,13 @@ impl QuorumCertificate {
         message_type: HotStuffMessageType,
         view_number: ViewId,
         node_hash: TreeNodeHash,
-        signature: Option<Signature>,
+        signature: Option<ValidatorSignature>,
     ) -> Self {
         Self {
             message_type,
             node_hash,
             view_number,
-            signature,
+            signatures: signature,
         }
     }
 
@@ -53,7 +53,7 @@ impl QuorumCertificate {
             message_type: HotStuffMessageType::Genesis,
             node_hash,
             view_number: 0.into(),
-            signature: None,
+            signatures: None,
         }
     }
 
@@ -69,12 +69,12 @@ impl QuorumCertificate {
         self.message_type
     }
 
-    pub fn signature(&self) -> Option<&Signature> {
-        self.signature.as_ref()
+    pub fn signature(&self) -> Option<&ValidatorSignature> {
+        self.signatures.as_ref()
     }
 
-    pub fn combine_sig(&mut self, partial_sig: &Signature) {
-        self.signature = match &self.signature {
+    pub fn combine_sig(&mut self, partial_sig: &ValidatorSignature) {
+        self.signatures = match &self.signatures {
             None => Some(partial_sig.clone()),
             Some(s) => Some(s.combine(partial_sig)),
         };
@@ -92,7 +92,7 @@ impl From<DbQc> for QuorumCertificate {
             message_type: rec.message_type,
             node_hash: rec.node_hash,
             view_number: rec.view_number,
-            signature: rec.signature,
+            signatures: rec.signature,
         }
     }
 }
