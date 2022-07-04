@@ -22,17 +22,20 @@ const CopyBox = ({
   label,
   value,
   style,
+  valueTransform,
 }: {
   label?: string
   value: string
   style?: CSSProperties
+  valueTransform?: (s: string) => string
 }) => {
   const [copied, setCopied] = useState(false)
   const styles = useSpring({ opacity: copied ? 1 : 0 })
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const copy = async () => {
-    await clipboard.writeText(value)
+    const transformed = valueTransform ? valueTransform(value) : value
+    await clipboard.writeText(transformed)
 
     setCopied(true)
     if (timeout.current) {

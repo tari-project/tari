@@ -9,6 +9,10 @@ import CopyBox from '../../../components/CopyBox'
 import Smiley from './Smiley'
 import { SemiTransparent, TariIdContainer } from './styles'
 
+const SEPARATOR = ' | '
+
+const removeSeparators = (v: string) => v.replaceAll(SEPARATOR, '')
+
 const TariId = ({
   tariId,
   emojiTariId,
@@ -26,7 +30,7 @@ const TariId = ({
       emojiChunks.push(emojis.slice(i, i + 3).join(''))
     }
 
-    return emojiChunks.join(' | ')
+    return emojiChunks.join(SEPARATOR)
   }, [emojiTariId])
 
   return (
@@ -44,6 +48,7 @@ const TariId = ({
       </Text>
       <TariIdContainer>
         <CopyBox
+          valueTransform={showEmoji ? removeSeparators : undefined}
           value={showEmoji ? displayedEmojiTariId : tariId}
           style={{
             maxWidth: 'calc(100% - 2.4em)',
