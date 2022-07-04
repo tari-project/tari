@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_dan_engine::state::error::StateStorageError;
+
 use crate::{services::ValidatorNodeClientError, storage::StorageError};
 
 #[derive(Debug, thiserror::Error)]
@@ -30,6 +32,8 @@ pub enum StateSyncError {
     NoOtherCommitteeMembersToSync,
     #[error("Storage error: {0}")]
     StorageError(#[from] StorageError),
+    #[error("State storage error: {0}")]
+    StateStorageError(#[from] StateStorageError),
     #[error("Invalid state Merkle root")]
     InvalidStateMerkleRoot,
     #[error("Remote peer does not have tip node")]

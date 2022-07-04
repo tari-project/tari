@@ -28,10 +28,12 @@ use tari_common_types::types::{FixedHash, PublicKey};
 use tari_comms::PeerConnection;
 use tari_comms_dht::DhtRequester;
 use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_common_types::TemplateId;
 use tari_dan_core::{
-    models::{Node, SchemaState, SideChainBlock, StateOpLogEntry, TemplateId, TreeNodeHash},
+    models::{Node, SideChainBlock, TreeNodeHash},
     services::{ValidatorNodeClientError, ValidatorNodeClientFactory, ValidatorNodeRpcClient},
 };
+use tari_dan_engine::state::models::{SchemaState, StateOpLogEntry};
 use tokio_stream::StreamExt;
 
 use crate::p2p::{proto::validator_node as proto, rpc};

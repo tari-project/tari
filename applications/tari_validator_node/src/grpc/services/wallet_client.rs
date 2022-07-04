@@ -34,7 +34,8 @@ use tari_app_grpc::{
 };
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{models::StateRoot, services::WalletClient, DigitalAssetError};
+use tari_dan_core::{services::WalletClient, DigitalAssetError};
+use tari_dan_engine::state::models::StateRoot;
 
 type Inner = grpc::wallet_client::WalletClient<tonic::transport::Channel>;
 

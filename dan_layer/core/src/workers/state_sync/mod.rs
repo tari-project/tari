@@ -25,15 +25,18 @@ pub use error::StateSyncError;
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common_types::types::PublicKey;
+use tari_dan_engine::state::{
+    error::StateStorageError,
+    StateDb,
+    StateDbBackendAdapter,
+    StateDbUnitOfWork,
+    StateDbUnitOfWorkReader,
+};
 use tari_utilities::hex::Hex;
 
 use crate::{
     models::CheckpointOutput,
     services::{ValidatorNodeClientFactory, ValidatorNodeRpcClient},
-    storage::{
-        state::{StateDb, StateDbBackendAdapter, StateDbUnitOfWork, StateDbUnitOfWorkReader},
-        StorageError,
-    },
 };
 
 const LOG_TARGET: &str = "tari::dan::workers::state_sync";
@@ -128,8 +131,8 @@ where
         }
         // TODO: Check merkle root before commit
 
-        uow.clear_all_state().map_err(StorageError::from)?;
-        uow.commit().map_err(StorageError::from)?;
+        uow.clear_all_state().map_err(StateStorageError::from)?;
+        uow.commit().map_err(StateStorageError::from)?;
 
         let merkle_root = uow.calculate_root()?;
         if self.last_checkpoint.merkle_root.as_slice() != merkle_root.as_bytes() {

@@ -22,8 +22,9 @@
 
 use async_trait::async_trait;
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use tari_dan_engine::state::models::StateRoot;
 
-use crate::{models::StateRoot, DigitalAssetError};
+use crate::DigitalAssetError;
 
 #[async_trait]
 pub trait WalletClient: Send + Sync {

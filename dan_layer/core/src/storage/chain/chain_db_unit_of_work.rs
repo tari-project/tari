@@ -27,12 +27,13 @@ use std::{
 };
 
 use log::*;
+use tari_dan_common_types::storage::UnitOfWorkTracker;
+use tari_dan_engine::instructions::Instruction;
 
 use crate::{
-    models::{Instruction, Node, QuorumCertificate, TreeNodeHash},
+    models::{Node, QuorumCertificate, TreeNodeHash},
     storage::{
         chain::{db_node::DbNode, ChainDbBackendAdapter, DbInstruction, DbQc},
-        unit_of_work_tracker::UnitOfWorkTracker,
         StorageError,
     },
 };

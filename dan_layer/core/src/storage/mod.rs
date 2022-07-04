@@ -22,19 +22,14 @@
 
 pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
-pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
 pub use store::{AssetDataStore, AssetStore};
 pub mod chain;
 mod chain_storage_service;
 mod db_factory;
 mod error;
 pub mod global;
-pub mod lmdb;
-pub mod state;
 mod store;
-mod unit_of_work_tracker;
 
 pub use db_factory::DbFactory;
-pub use unit_of_work_tracker::UnitOfWorkTracker;
 
 pub mod mocks;

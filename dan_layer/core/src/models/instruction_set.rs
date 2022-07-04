@@ -24,9 +24,10 @@ use std::{convert::TryFrom, hash::Hash, iter::FromIterator};
 
 use tari_common_types::types::FixedHash;
 use tari_crypto::common::Blake256;
+use tari_dan_engine::instructions::Instruction;
 use tari_mmr::MerkleMountainRange;
 
-use crate::models::{ConsensusHash, Instruction};
+use crate::models::ConsensusHash;
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct InstructionSetHash(FixedHash);

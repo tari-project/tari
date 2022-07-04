@@ -23,6 +23,7 @@
 use prost::DecodeError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_dan_engine::state::error::StateStorageError;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 
@@ -105,6 +106,8 @@ pub enum DigitalAssetError {
     SendError(#[from] Box<SendError<(RistrettoPublicKey, HotStuffMessage<TariDanPayload>)>>),
     #[error("Invalid committee public key hex")]
     InvalidCommitteePublicKeyHex,
+    #[error("State storage error:{0}")]
+    StateStorageError(#[from] StateStorageError),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

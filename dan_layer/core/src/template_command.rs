@@ -20,7 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{digital_assets_error::DigitalAssetError, storage::state::StateDbUnitOfWork};
+use tari_dan_engine::state::StateDbUnitOfWork;
+
+use crate::digital_assets_error::DigitalAssetError;
 
 pub trait TemplateCommand {
     fn try_execute<TUnitOfWork: StateDbUnitOfWork>(
