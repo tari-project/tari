@@ -833,8 +833,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let committee_signatures = message
             .committee_signatures
-            .try_into()
-            .map_err(|_| Status::invalid_argument("Invalid committee signatures"))?;
+            .map(TryInto::try_into)
+            .transpose()
+            .map_err(|_| Status::invalid_argument("Invalid committee signatures"))?
+            .unwrap_or_default();
 
         let (tx_id, transaction) = asset_manager
             .create_initial_asset_checkpoint(contract_id, merkle_root, committee_signatures)
@@ -872,8 +874,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let committee_signatures = message
             .committee_signatures
-            .try_into()
-            .map_err(|_| Status::invalid_argument("Invalid committee signatures"))?;
+            .map(TryInto::try_into)
+            .transpose()
+            .map_err(|_| Status::invalid_argument("Invalid committee signatures"))?
+            .unwrap_or_default();
 
         let (tx_id, transaction) = asset_manager
             .create_follow_on_asset_checkpoint(contract_id, checkpoint_number, merkle_root, committee_signatures)
