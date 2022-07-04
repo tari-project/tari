@@ -263,7 +263,7 @@ impl TryFrom<DbUnblindedOutput> for TariUtxo {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(C)]
 pub enum TariTypeTag {
     Text = 0,
@@ -274,12 +274,55 @@ pub enum TariTypeTag {
 impl Display for TariTypeTag {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TariTypeTag::Text => write!(f, "String"),
+            TariTypeTag::Text => write!(f, "Text"),
             TariTypeTag::Utxo => write!(f, "Utxo"),
             TariTypeTag::Commitment => write!(f, "Commitment"),
         }
     }
 }
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct TariOutputs {
+    pub len: usize,
+    pub cap: usize,
+    pub ptr: *mut TariUtxo,
+}
+
+// WARNING: must be destroyed properly after use
+impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
+    type Error = InterfaceError;
+
+    fn try_from(outputs: Vec<DbUnblindedOutput>) -> Result<Self, Self::Error> {
+        let mut outputs = ManuallyDrop::new(
+            outputs
+                .into_iter()
+                .map(|x| {
+                    Ok(TariUtxo {
+                        commitment: CString::new(x.commitment.to_hex())
+                            .map_err(|e| {
+                                InterfaceError::InvalidArgument(format!(
+                                    "failed to obtain hex from a commitment: {:?}",
+                                    e
+                                ))
+                            })?
+                            .into_raw(),
+                        value: x.unblinded_output.value.as_u64(),
+                        mined_height: x.mined_height.unwrap_or(0),
+                    })
+                })
+                .try_collect::<TariUtxo, Vec<TariUtxo>, InterfaceError>()?,
+        );
+
+        Ok(Self {
+            len: outputs.len(),
+            cap: outputs.capacity(),
+            ptr: outputs.as_mut_ptr(),
+        })
+    }
+}
+
+/// -------------------------------- Vector ------------------------------------------------ ///
 
 #[derive(Debug, Clone)]
 #[repr(C)]
@@ -333,7 +376,12 @@ impl TariVector {
         Ok(unsafe {
             Vec::from_raw_parts(self.ptr as *mut *mut c_char, self.len, self.cap)
                 .into_iter()
-                .map(|x| CString::from_raw(x).into_string().unwrap())
+                .map(|x| {
+                    CStr::from_ptr(x)
+                        .to_str()
+                        .expect("failed to convert from a vector of strings")
+                        .to_string()
+                })
                 .collect()
         })
     }
@@ -367,44 +415,101 @@ impl TariVector {
     }
 }
 
-#[derive(Debug, Clone)]
-#[repr(C)]
-pub struct TariOutputs {
-    pub len: usize,
-    pub cap: usize,
-    pub ptr: *mut TariUtxo,
+/// Initialize a new `TariVector`
+///
+/// ## Arguments
+/// `tag` - A predefined type-tag of the vector's payload.
+///
+/// ## Returns
+/// `*mut TariVector` - Returns a pointer to a `TariVector`.
+///
+/// # Safety
+/// `destroy_tari_vector()` must be called to free the allocated memory.
+#[no_mangle]
+pub unsafe extern "C" fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector {
+    let mut v = ManuallyDrop::new(Vec::with_capacity(2));
+    Box::into_raw(Box::new(TariVector {
+        tag,
+        len: v.len(),
+        cap: v.capacity(),
+        ptr: v.as_mut_ptr() as *mut c_void,
+    }))
 }
 
-// WARNING: must be destroyed properly after use
-impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
-    type Error = InterfaceError;
-
-    fn try_from(outputs: Vec<DbUnblindedOutput>) -> Result<Self, Self::Error> {
-        let mut outputs = ManuallyDrop::new(
-            outputs
-                .into_iter()
-                .map(|x| {
-                    Ok(TariUtxo {
-                        commitment: CString::new(x.commitment.to_hex())
-                            .map_err(|e| {
-                                InterfaceError::InvalidArgument(format!(
-                                    "failed to obtain hex from a commitment: {:?}",
-                                    e
-                                ))
-                            })?
-                            .into_raw(),
-                        value: x.unblinded_output.value.as_u64(),
-                        mined_height: x.mined_height.unwrap_or(0),
-                    })
-                })
-                .try_collect::<TariUtxo, Vec<TariUtxo>, InterfaceError>()?,
+/// Appending a given value to the back of the vector.
+///
+/// ## Arguments
+/// `s` - An item to push.
+///
+/// ## Returns
+///
+///
+/// # Safety
+/// `destroy_tari_vector()` must be called to free the allocated memory.
+#[no_mangle]
+pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const c_char, error_ptr: *mut i32) {
+    if tv.is_null() {
+        error!(target: LOG_TARGET, "tari vector pointer is null");
+        ptr::replace(
+            error_ptr,
+            LibWalletError::from(InterfaceError::NullError("vector".to_string())).code,
         );
+        return;
+    }
 
-        Ok(Self {
-            len: outputs.len(),
-            cap: outputs.capacity(),
-            ptr: outputs.as_mut_ptr(),
-        })
+    // unpacking into native vector
+    let mut v = match (*tv).to_string_vec() {
+        Ok(v) => v,
+        Err(e) => {
+            error!(target: LOG_TARGET, "{:#?}", e);
+            ptr::replace(error_ptr, LibWalletError::from(e).code);
+            return;
+        },
+    };
+
+    let s = match CStr::from_ptr(s).to_str() {
+        Ok(cs) => cs.to_string(),
+        Err(e) => {
+            error!(target: LOG_TARGET, "failed to convert `s` into native string {:#?}", e);
+            ptr::replace(
+                error_ptr,
+                LibWalletError::from(InterfaceError::PointerError("invalid string".to_string())).code,
+            );
+            return;
+        },
+    };
+
+    // appending new value
+    // NOTE: relying on native vector's re-allocation
+    v.push(s);
+
+    let mut v = ManuallyDrop::new(
+        v.into_iter()
+            .map(|x| CString::new(x.as_str()).unwrap().into_raw())
+            .collect::<Vec<*mut c_char>>(),
+    );
+
+    (*tv).len = v.len();
+    (*tv).cap = v.capacity();
+    (*tv).ptr = v.as_mut_ptr() as *mut c_void;
+    ptr::replace(error_ptr, 0);
+}
+
+/// Frees memory allocated for `TariVector`.
+///
+/// ## Arguments
+/// `v` - The pointer to `TariVector`
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_tari_vector(v: *mut TariVector) {
+    if !v.is_null() {
+        let x = Box::from_raw(v);
+        let _ = x.ptr;
     }
 }
 
@@ -4361,24 +4466,6 @@ pub unsafe extern "C" fn destroy_tari_outputs(x: *mut TariOutputs) {
     if !x.is_null() {
         Vec::from_raw_parts((*x).ptr, (*x).len, (*x).cap);
         Box::from_raw(x);
-    }
-}
-
-/// Frees memory for a `TariVector`
-///
-/// ## Arguments
-/// `x` - The pointer to `TariVector`
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn destroy_tari_vector(x: *mut TariVector) {
-    if !x.is_null() {
-        let x = Box::from_raw(x);
-        _ = x.ptr;
     }
 }
 
@@ -9353,6 +9440,50 @@ mod test {
             transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
+        }
+    }
+
+    #[test]
+    fn test_tari_vector() {
+        let mut error = 0;
+
+        unsafe {
+            let tv = create_tari_vector(TariTypeTag::Text);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 0);
+            assert_eq!((*tv).cap, 2);
+
+            tari_vector_push_string(
+                tv,
+                CString::new("test string 1").unwrap().into_raw() as *const c_char,
+                &mut error as *mut c_int,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 1);
+            assert_eq!((*tv).cap, 1);
+
+            tari_vector_push_string(
+                tv,
+                CString::new("test string 2").unwrap().into_raw() as *const c_char,
+                &mut error as *mut c_int,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 2);
+            assert_eq!((*tv).cap, 2);
+
+            tari_vector_push_string(
+                tv,
+                CString::new("test string 3").unwrap().into_raw() as *const c_char,
+                &mut error as *mut c_int,
+            );
+            assert_eq!(error, 0);
+            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).len, 3);
+            assert_eq!((*tv).cap, 3);
+
+            destroy_tari_vector(tv);
         }
     }
 }
