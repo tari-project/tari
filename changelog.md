@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.8](https://github.com/tari-project/tari/compare/v0.32.7...v0.32.8) (2022-07-04)
+
+
+### Features
+
+* **wallet_ffi:** wallet_coin_split changes ([#4254](https://github.com/tari-project/tari/issues/4254)) ([d367f0b](https://github.com/tari-project/tari/commit/d367f0b56fc86df3662f1d01b5037f63163892a3))
+
 ### [0.32.7](https://github.com/tari-project/tari/compare/v0.32.6...v0.32.7) (2022-06-30)
 
 
