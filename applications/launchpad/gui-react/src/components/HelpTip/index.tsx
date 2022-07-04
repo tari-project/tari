@@ -16,27 +16,29 @@ import { HelpTipProps } from './types'
  * @prop {CSSProperties} [style] - styles to apply to main wrapper element
  * @prop {boolean} [header] - whether the help tip should be rendered with additional top/bottom margin suitable for headers
  */
-const HelpTip = ({ text, cta, onHelp, style, header }: HelpTipProps) => (
-  <StyledHelpTipWrapper
-    data-testid='mining-header-tip-cmp'
-    style={style}
-    header={header}
-  >
-    <SvgStar height={24} width={24} style={{ marginRight: 8 }} />
-    <Text type='defaultHeavy'>
-      {text}{' '}
-      <Text as='span' type='defaultMedium'>
-        <Button
-          variant='button-in-text'
-          rightIcon={<SvgInfo1 width='20px' height='20px' />}
-          autosizeIcons={false}
-          onClick={onHelp}
-        >
-          {cta}
-        </Button>
+const HelpTip = ({ text, cta, onHelp, style, header }: HelpTipProps) => {
+  return (
+    <StyledHelpTipWrapper
+      data-testid='mining-header-tip-cmp'
+      style={style}
+      header={header}
+    >
+      <SvgStar height={24} width={24} style={{ marginRight: 8 }} />
+      <Text type='defaultHeavy'>
+        {text}{' '}
+        <Text as='span' type='defaultMedium'>
+          <Button
+            variant='button-in-text'
+            rightIcon={<SvgInfo1 width='20px' height='20px' />}
+            autosizeIcons={false}
+            onClick={onHelp}
+          >
+            {cta}
+          </Button>
+        </Text>
       </Text>
-    </Text>
-  </StyledHelpTipWrapper>
-)
+    </StyledHelpTipWrapper>
+  )
+}
 
 export default HelpTip
