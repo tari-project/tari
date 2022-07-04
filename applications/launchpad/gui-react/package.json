@@ -1,7 +1,9 @@
 {
   "name": "tari-launchpad",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": true,
+  "license": "BSD-3-Clause",
+  "description": "A simple single-click UI to launch a Tari node, wallet and miner",
   "dependencies": {
     "@headlessui/react": "^1.5.0",
     "@nivo/bar": "^0.79.1",
