@@ -15,7 +15,7 @@ const useWithPasswordPrompt = (
 
   return useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (...args: any[]) =>
+    (...args: any[]) => {
       ensureWalletPasswordInStore(() => action(...args), {
         wallet: required.wallet,
         monero:
@@ -23,8 +23,9 @@ const useWithPasswordPrompt = (
           (typeof required.monero === 'function'
             ? required.monero(...args)
             : required.monero),
-      }),
-    [required],
+      })
+    },
+    [required, ensureWalletPasswordInStore],
   )
 }
 

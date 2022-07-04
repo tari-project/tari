@@ -1,11 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react'
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
-import { actions as settingsActions } from '../../store/settings'
+import { actions as credentialsActions } from '../../store/credentials'
 import {
   selectIsParoleSet,
   selectAreMoneroCredentialsPresent,
-} from '../../store/settings/selectors'
+} from '../../store/credentials/selectors'
 import Modal from '../../components/Modal'
 
 import WalletPasswordBox from './WalletPasswordBox'
@@ -32,15 +32,15 @@ const PasswordsPrompt = ({
   local?: boolean
 }) => {
   const dispatch = useAppDispatch()
-  const askToUnlockWallet = !useAppSelector(selectIsParoleSet)
-  const askToUnlockMonero = !useAppSelector(selectAreMoneroCredentialsPresent)
+  const isParoleSet = useAppSelector(selectIsParoleSet)
+  const areMoneroCredentialsPresent = useAppSelector(
+    selectAreMoneroCredentialsPresent,
+  )
 
   const [modalOpen, setModalOpen] = useState(false)
   const [action, setAction] = useState<() => void>(() => null)
-  const [required, setRequired] = useState<{
-    wallet?: boolean
-    monero?: boolean
-  }>({ wallet: true, monero: true })
+  const [showWalletForm, setShowWalletForm] = useState(true)
+  const [showMoneroForm, setShowMoneroForm] = useState(true)
 
   const ensureWalletPasswordInStore = useCallback(
     (
@@ -55,14 +55,19 @@ const PasswordsPrompt = ({
       }
 
       if (!required.wallet && !required.monero) {
+        callback()
+
         return
       }
 
+      setShowWalletForm(Boolean(required.wallet && !isParoleSet))
+      setShowMoneroForm(
+        Boolean(required.monero && !areMoneroCredentialsPresent),
+      )
       if (
-        (required.wallet && askToUnlockWallet) ||
-        (required.monero && askToUnlockMonero)
+        (required.wallet && !isParoleSet) ||
+        (required.monero && !areMoneroCredentialsPresent)
       ) {
-        setRequired(required)
         setAction(() => callback)
         setModalOpen(true)
         return
@@ -71,7 +76,7 @@ const PasswordsPrompt = ({
       // TODO await and error handling?
       callback()
     },
-    [askToUnlockWallet, askToUnlockMonero],
+    [modalOpen, isParoleSet, areMoneroCredentialsPresent],
   )
 
   const contextValue = useMemo(
@@ -89,17 +94,14 @@ const PasswordsPrompt = ({
     monero?: MoneroCredentials
   }) => {
     if (wallet) {
-      dispatch(settingsActions.setParole(wallet))
+      dispatch(credentialsActions.setWallet(wallet))
     }
     if (monero) {
-      // dispatch(settingsActions.setMoneroCredentials(monero))
+      dispatch(credentialsActions.setMoneroCredentials(monero))
     }
     setModalOpen(false)
     action()
   }
-
-  const showWalletForm = required.wallet && askToUnlockWallet
-  const showMoneroForm = required.monero && askToUnlockMonero
 
   return (
     <>
