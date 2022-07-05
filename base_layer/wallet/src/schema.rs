@@ -27,6 +27,7 @@ table! {
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
+        mined_timestamp -> Nullable<Timestamp>,
         transaction_signature_nonce -> Binary,
         transaction_signature_key -> Binary,
     }

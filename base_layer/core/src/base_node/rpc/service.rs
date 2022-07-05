@@ -121,6 +121,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                             confirmations,
                             is_synced: true,
                             height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                            mined_timestamp: header.timestamp.as_u64(),
                         };
                         return Ok(response);
                     },
@@ -141,6 +142,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 confirmations: 0,
                 is_synced: true,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                mined_timestamp: 0,
             },
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredOrphan |
@@ -153,6 +155,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 confirmations: 0,
                 is_synced: true,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
+                mined_timestamp: 0,
             },
         };
         Ok(mempool_response)
@@ -292,6 +295,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 block_hash: response.block_hash,
                 confirmations: response.confirmations,
                 block_height: response.height_of_longest_chain - response.confirmations,
+                mined_timestamp: response.mined_timestamp,
             });
         }
         Ok(Response::new(TxQueryBatchResponses {
