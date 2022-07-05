@@ -1,3 +1,4 @@
+import { useTheme } from 'styled-components'
 import Text from '../Text'
 import { CalloutIcon, StyledCallout } from './styles'
 
@@ -17,6 +18,7 @@ const Callout = ({
   inverted,
   children,
 }: CalloutProps) => {
+  const theme = useTheme()
   let content = children
 
   if (typeof children === 'string') {
@@ -28,7 +30,11 @@ const Callout = ({
   }
 
   return (
-    <StyledCallout $type={type} $inverted={inverted}>
+    <StyledCallout
+      $type={type}
+      $inverted={inverted}
+      style={{ background: theme.calloutBackground }}
+    >
       <CalloutIcon>{icon}</CalloutIcon>
       {content}
     </StyledCallout>
