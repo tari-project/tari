@@ -382,6 +382,18 @@ where
                 let outputs = self.fetch_invalid_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
             },
+            OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
+                Ok(OutputManagerResponse::CoinPreview(
+                    self.preview_coin_join_with_commitments(commitments, fee_per_gram)
+                        .await?,
+                ))
+            },
+            OutputManagerRequest::PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => {
+                Ok(OutputManagerResponse::CoinPreview(
+                    self.preview_coin_split_with_commitments_no_amount(commitments, number_of_splits, fee_per_gram)
+                        .await?,
+                ))
+            },
             OutputManagerRequest::CreateCoinSplit((commitments, amount_per_split, split_count, fee_per_gram)) => {
                 if commitments.is_empty() {
                     self.create_coin_split_auto(Some(amount_per_split), split_count, fee_per_gram)
@@ -1714,6 +1726,78 @@ where
             .round_up_metadata_size(
                 script!(Nop).consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
             )
+    }
+
+    pub async fn preview_coin_join_with_commitments(
+        &self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
+
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        let fee = self
+            .get_fee_calc()
+            .calculate(fee_per_gram, 1, src_outputs.len(), 1, self.default_metadata_size());
+
+        Ok((vec![accumulated_amount.saturating_sub(fee)], fee))
+    }
+
+    pub async fn preview_coin_split_with_commitments_no_amount(
+        &mut self,
+        commitments: Vec<Commitment>,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        if commitments.is_empty() {
+            return Err(OutputManagerError::NoCommitmentsProvided);
+        }
+
+        if number_of_splits == 0 {
+            return Err(OutputManagerError::InvalidArgument(
+                "number_of_splits must be greater than 0".to_string(),
+            ));
+        }
+
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
+
+        let fee = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            src_outputs.len(),
+            number_of_splits,
+            self.default_metadata_size() * number_of_splits,
+        );
+
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        let aftertax_amount = accumulated_amount.saturating_sub(fee);
+        let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroTari(aftertax_amount.as_u64() % amount_per_split.as_u64());
+        let mut expected_outputs = vec![];
+
+        for i in 1..=number_of_splits {
+            expected_outputs.push(if i == number_of_splits {
+                amount_per_split + unspent_remainder
+            } else {
+                amount_per_split
+            });
+        }
+
+        Ok((expected_outputs, fee))
     }
 
     async fn create_coin_split_with_commitments(
