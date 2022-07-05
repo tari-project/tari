@@ -20,49 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod contract_acceptance;
-pub use contract_acceptance::ContractAcceptance;
+use digest::Digest;
+use tari_common_types::types::{Commitment, FixedHash, HashDigest};
+use tari_utilities::ByteArray;
 
-mod contract_constitution;
-pub use contract_constitution::{
-    CheckpointParameters,
-    ConstitutionChangeFlags,
-    ConstitutionChangeRules,
-    ContractAcceptanceRequirements,
-    ContractConstitution,
-    RequirementsForConstitutionChange,
-    SideChainConsensus,
-};
+#[derive(Debug, Clone, Copy)]
+pub struct AcceptanceChallenge(FixedHash);
 
-mod contract_definition;
-pub use contract_definition::{
-    vec_into_fixed_string,
-    ContractDefinition,
-    ContractSpecification,
-    FunctionRef,
-    PublicFunction,
-};
+impl AcceptanceChallenge {
+    pub fn new(constiution_commitment: &Commitment, contract_id: &FixedHash) -> Self {
+        // TODO: Use new tari_crypto domain-separated hashing
+        let hash = HashDigest::new()
+            .chain(constiution_commitment.as_bytes())
+            .chain(contract_id.as_slice())
+            .finalize()
+            .into();
+        Self(hash)
+    }
+}
 
-mod contract_update_proposal;
-pub use contract_update_proposal::ContractUpdateProposal;
-
-mod contract_update_proposal_acceptance;
-pub use contract_update_proposal_acceptance::ContractUpdateProposalAcceptance;
-
-mod contract_amendment;
-pub use contract_amendment::ContractAmendment;
-
-mod committee_members;
-pub use committee_members::CommitteeMembers;
-
-mod committee_signatures;
-pub use committee_signatures::CommitteeSignatures;
-
-mod signer_signature;
-pub use signer_signature::SignerSignature;
-
-mod sidechain_features;
-pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};
-
-mod contract_checkpoint;
-pub use contract_checkpoint::ContractCheckpoint;
+impl AsRef<[u8]> for AcceptanceChallenge {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}

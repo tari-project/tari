@@ -51,7 +51,13 @@ use tari_comms::{
 };
 use tari_comms_dht::Dht;
 use tari_dan_core::{
-    services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification},
+    services::{
+        ConcreteAcceptanceManager,
+        ConcreteAssetProcessor,
+        ConcreteAssetProxy,
+        MempoolServiceHandle,
+        ServiceSpecification,
+    },
     storage::{global::GlobalDb, DbFactory},
 };
 use tari_dan_storage_sqlite::{global::SqliteGlobalDbBackendAdapter, SqliteDbFactory};
@@ -149,12 +155,14 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         db_factory.clone(),
     );
     let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
+    let acceptance_manager = ConcreteAcceptanceManager::new(wallet_client.clone());
     let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
         node_identity.as_ref().clone(),
         db_factory.clone(),
         asset_processor,
         asset_proxy,
         wallet_client,
+        acceptance_manager,
     );
 
     if let Some(address) = config.validator_node.grpc_address.clone() {

@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::acceptance_manager::AcceptanceManager;
 use crate::{
     models::{domain_events::ConsensusWorkerDomainEvent, Payload},
     services::{
@@ -50,6 +51,7 @@ use crate::{
 /// simply reference types.
 /// This trait is intended to only include `types` and no methods.
 pub trait ServiceSpecification: Default + Clone {
+    type AcceptanceManager: AcceptanceManager + Clone;
     type Addr: NodeAddressable;
     type AssetProcessor: AssetProcessor + Clone;
     type AssetProxy: AssetProxy + Clone;
