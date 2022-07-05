@@ -482,13 +482,14 @@ impl ConsensusDecoding for TransactionOutput {
     }
 }
 
+/// Performs batched range proof verification for an arbitrary number of outputs. Batched range proof verification gains
+/// above batch sizes of 2^8 = 256 gives diminishing returns, see <https://github.com/tari-project/bulletproofs-plus>,
+/// so the batch sizes are limited to 2^8.
 pub fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {
-    // Batched range proof verification gains above batch sizes of 256 gives diminishing returns,
-    // see <https://github.com/tari-project/bulletproofs-plus>
-    // Example: If we have 15 outputs, then we need chunks of 8, 4, 2, 1.
+    // We need optimized power of two chunks, for example if we have 15 outputs, then we need chunks of 8, 4, 2, 1.
     let power_of_two_vec = power_of_two_chunk_sizes(outputs.len(), 8);
     debug!(
         target: LOG_TARGET,
@@ -513,7 +514,12 @@ pub fn batch_verify_range_proofs(
     Ok(())
 }
 
-pub fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
+// This function will create a vector of integers whose contents will all be powers of two; the entries will sum to the
+// given length and each entry will be limited to the maximum power of two provided.
+// Examples: A length of 15 without restrictions will produce chunks of [8, 4, 2, 1]; a length of 32 limited to 2^3 will
+// produce chunks of [8, 8, 8, 8].
+fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
+    // This function will search for the highest power of two contained within an integer number
     fn highest_power_of_two(n: usize) -> usize {
         let mut res = 0;
         for i in (1..=n).rev() {
