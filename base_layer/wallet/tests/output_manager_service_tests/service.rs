@@ -213,12 +213,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     let key_manager = KeyManagerHandle::new(cipher_seed.clone(), KeyManagerDatabase::new(ks_backend));
 
     let output_manager_service = OutputManagerService::new(
-        OutputManagerServiceConfig {
-            base_node_query_timeout: Duration::from_secs(10),
-            max_utxo_query_size: 2,
-            peer_dial_retry_timeout: Duration::from_secs(5),
-            ..Default::default()
-        },
+        OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
@@ -302,12 +297,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let cipher = CipherSeed::new();
     let key_manager = KeyManagerMock::new(cipher.clone());
     let output_manager_service = OutputManagerService::new(
-        OutputManagerServiceConfig {
-            base_node_query_timeout: Duration::from_secs(10),
-            max_utxo_query_size: 2,
-            peer_dial_retry_timeout: Duration::from_secs(5),
-            ..Default::default()
-        },
+        OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),

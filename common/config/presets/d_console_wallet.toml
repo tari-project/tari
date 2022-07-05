@@ -1,0 +1,348 @@
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Wallet Configuration Options (WalletConfig)                                                     #
+#                                                                                                                      #
+########################################################################################################################
+
+[dibbler.wallet]
+# Selected network (Note: Not parsed at the moment, please specify on the command line) (default = "mainnet")
+#network = "dibbler"
+
+[igor.wallet]
+# Selected network (Note: Not parsed at the moment, please specify on the command line) (default = "mainnet")
+#network = "igor"
+
+[wallet]
+# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
+# (min value = 300, default value = 50000).
+#buffer_size = 50000
+
+# The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
+# accept - any rate attempting to exceed this limit will be throttled (min value = 5, default value = 1000).
+#buffer_rate_limit = 1000
+
+# Selected network (Note: Not implemented properly, please specify on the command line) (default = "mainnet")
+#network = "mainnet"
+
+# The relative path to store persistent data (default = "data/wallet")
+#data_dir = "data/wallet"
+
+# The relative folder to store your local key data and transaction history. (default = "db/console_wallet.db")
+# DO NOT EVER DELETE THIS FILE unless you (a) have backed up your seed phrase and (b) know what you are doing!
+#db_file = "db/console_wallet.db"
+
+# The main wallet db sqlite database backend connection pool size for concurrent reads (default = 5)
+#db_connection_pool_size = 5
+
+# Console wallet password. Should you wish to start your console wallet without typing in your password, the following
+# options are available:
+# 1. Start the console wallet with the --password=secret argument, or
+# 2. Set the environment variable TARI_WALLET_PASSWORD=secret before starting the console wallet, or
+# 3. Set the "password" key in this [wallet] section of the config
+# (default = )
+#password = "secret"
+
+# The auto ping interval to use for contacts liveness data (default = 30 s)
+#contacts_auto_ping_interval = 30
+
+# How long a contact may be not seen before being determined to be offline (default = 30 s)
+#contacts_online_ping_window = 30
+
+# When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
+# for sent transactions.
+# The stages are:
+# - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
+# - "Negotiated" - The recipient replied and the transaction was negotiated.
+# - "Broadcast" - The transaction was broadcast to the base node mempool.
+# - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
+# - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
+# The default values are: "Broadcast", 300
+#command_send_wait_timeout = 300
+#command_send_wait_stage = "Broadcast"
+
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18143")
+#grpc_address = "/ip4/127.0.0.1/tcp/18143"
+
+# A custom base node peer that will be used to obtain metadata from, example
+# "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189"
+# (default = )
+#custom_base_node = "none"
+
+# A list of base node peers that the wallet should use for service requests and tracking chain state in the form
+# ["public_key::net_address", ...] (default = [])
+#base_node_service_peers = []
+
+# The amount of times wallet recovery will be retried before being abandoned (default = 3)
+#recovery_retry_limit = 3
+
+# The default uT fee per gram to use for transaction fees (default = 5)
+#fee_per_gram = 5
+
+# Number of required transaction confirmations used for UI purposes (default = 3)
+#num_required_confirmations = 3
+
+# Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 'tor.control_address' below.
+# This requires that the base node was built with the optional "libtor" feature flag. (default = false)
+#use_libtor = false
+
+# A path to the file that stores your node identity and secret key (default = "none")
+#identity_file = "none"
+
+# Notification script file for a notifier service. Allows you to execute a script or program when these transaction
+# events are received by the console wallet (default = "none"):
+# - transaction received
+# - transaction sent
+# - transaction cancelled
+# - transaction mined but unconfirmed
+# - transaction mined and confirmed
+# An example script is available here: applications/tari_console_wallet/src/notifier/notify_example.sh
+#notify_file = "/path/to/script"
+
+[wallet.transactions]
+# This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
+broadcast_monitoring_timeout = 180
+# This is the timeout period that will be used for chain monitoring tasks (default = 60)
+chain_monitoring_timeout = 60
+# This is the timeout period that will be used for sending transactions directly (default = 20)
+direct_send_timeout = 180
+# This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
+broadcast_send_timeout = 180
+# This is the timeout period that will be used for low power moded polling tasks (default = 300)
+#low_power_polling_timeout = 300
+# This is the timeout period that will be used to resend transactions that did not make any progress (default = 600)
+#transaction_resend_period = 600
+# This is the timeout period that will be used to ignore repeated transactions (default = 300)
+#resend_response_cooldown = 300
+# This is the timeout period that will be used to expire pending transactions (default = 259200)
+#pending_transaction_cancellation_timeout = 259200 # 3 days
+# This is the number of block confirmations required for a transaction to be considered completely mined and
+# confirmed. (default = 3)
+#num_confirmations_required = 3
+# The number of batches the unconfirmed transactions will be divided into before being queried from the base node
+# (default = 20)
+#max_tx_query_batch_size = 20
+# This option specifies the transaction routing mechanism as being directly between wallets, making
+# use of store and forward or using any combination of these.
+# (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
+#transaction_routing_mechanism = "DirectAndStoreAndForward"
+# This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>10000) (default = 1000).
+transaction_event_channel_size = 25000
+# This is the timeout period that will be used to re-submit transactions not found in the mempool (default = 600)
+#transaction_mempool_resubmission_window = 600
+
+[wallet.outputs]
+# If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than the
+# transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued transactions
+# (default = true).
+prevent_fee_gt_amount = false
+# This is the size of the event channel used to communicate output manager events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+event_channel_size = 3500
+# The number of confirmations (difference between tip height and mined height) required for the output to be marked as
+# mined confirmed (default = 3)
+#num_confirmations_required = 3
+# The number of batches the unconfirmed outputs will be divided into before being queried from the base node
+# (default = 100)
+#tx_validator_batch_size = 100
+
+[wallet.base_node]
+# Configuration for the wallet's base node service
+# The refresh interval (default = 3 s)
+#base_node_monitor_refresh_interval = 3
+# The RPC client pool size  (default = 5)
+#base_node_rpc_pool_size = 5
+# This is the size of the event channel used to communicate base node events to the wallet. (default = 250).
+#event_channel_size = 250
+
+[wallet.p2p]
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured
+#public_address = "/ip4/172.2.3.4/tcp/18189"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with
+#   `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+#auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# Path to the LMDB data files
+#datastore_path = "peer_db"
+
+# Name to use for the peer database
+#peer_database_name = "peers"
+
+# The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
+#max_concurrent_inbound_tasks = 50
+
+# The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
+#max_concurrent_outbound_tasks = 100
+
+# The size of the buffer (channel) which holds pending outbound message requests
+#outbound_buffer_size = 100
+
+# Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
+# addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
+# should always be false for non-test nodes.
+#allow_test_addresses = false
+
+# CIDR for addresses allowed to enter into liveness check mode on the listener.
+#listener_liveness_allowlist_cidrs = []
+
+# User agent string for this node
+#user_agent = ""
+
+# The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
+# sessions.
+#rpc_max_simultaneous_sessions = 100
+
+[wallet.p2p.transport]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable. (default = "tor")
+#type = "tor"
+
+# The address and port to listen for peer connections over TCP. (use: type = "tcp")
+#tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address. (default = )
+#tcp.tor_socks_address =
+# Optional tor SOCKS proxy authentication (default = "none")
+#tcp.tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses. (use: type = "tor")
+# Address of the tor control server
+#tor.control_address = "/ip4/127.0.0.1/tcp/9051"
+# SOCKS proxy auth (default = "none")
+#tor.socks_auth = "none"
+# Use this socks address instead of getting it from the tor proxy. (default = )
+#tor.socks_address_override =
+# Authentication to use for the tor control server (default = "none")
+#tor.control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor.onion_port = 18141
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is
+# made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported. (e.g. ["/dns4/my-foo-base-node/tcp/9998"])
+#tor.proxy_bypass_addresses = []
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
+# better privacy
+#tor.proxy_bypass_for_outbound_tcp = false
+# If set, instructs tor to forward traffic the the provided address. (e.g. "/ip4/127.0.0.1/tcp/0") (default = )
+#tor.forward_address =
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+# (use: type = "socks5")
+# The address of the SOCKS5 proxy. Traffic will be forwarded to tcp.listener_address.
+# (Default = "/ip4/127.0.0.1/tcp/8080")
+#socks.proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# SOCKS proxy auth (Default = "none", or assign "username_password=username:xxxxxxx")
+#socks.auth = "none"
+
+# Use a Memory proxy transport. (use: type = "memory")
+#memory.listener_address = "/memory/0"
+
+[wallet.p2p.dht]
+# The `DbConnectionUrl` for the Dht database. Default: In-memory database
+database_url = "data/wallet/dht.db"
+# The size of the buffer (channel) which holds pending outbound message requests. Default: 20
+#outbound_buffer_size = 20
+# The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
+#num_neighbouring_nodes = 8
+# Number of random peers to include. Default: 4
+#num_random_nodes=  4
+# Send to this many peers when using the broadcast strategy. Default: 8
+#broadcast_factor = 8
+# Send to this many peers when using the propagate strategy. Default: 4
+#propagation_factor = 4
+
+# The amount of time added to the current time will be used to check if the message has expired or not. Default: 3 hours
+#saf.msg_validity = 10_800 # 3 * 60 * 60 // 3 hours
+# The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 100,000
+#saf.msg_storage_capacity = 100_000
+# A request to retrieve stored messages will be ignored if the requesting node is not within one of this nodes _n_
+# closest nodes. Default 10
+#saf.num_closest_nodes = 10
+# The maximum number of messages to return from a store and forward retrieval request. Default: 100
+#saf.max_returned_messages = 50
+# The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
+# Default: 6 hours
+#saf.low_priority_msg_storage_ttl = 21_600 # 6 * 60 * 60 // 6 hours
+# The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
+# Default: 3 days
+#saf.high_priority_msg_storage_ttl = 259_200 # 3 * 24 * 60 * 60 // 3 days
+# The limit on the message size to store in SAF storage in bytes. Default 500 KiB
+#saf.max_message_size = 524_288 # 512 * 1024
+# When true, store and forward messages are requested from peers on connect (Default: true)
+#saf.auto_request = true
+# The maximum allowed time between asking for a message and accepting a response
+#saf.max_inflight_request_age = 120
+# The maximum number of peer nodes that a message must be closer than to get stored by SAF. Default: 8
+#saf.num_neighbouring_nodes = 8
+
+# The max capacity of the message hash cache. Default: 2,500
+#dedup_cache_capacity = 2_500
+# The periodic trim interval for items in the message hash cache. Default: 300s (5 mins)
+#dedup_cache_trim_interval = 300 # 5 * 60
+# The number of occurrences of a message is allowed to pass through the DHT pipeline before being deduped/discarded
+# Default: 1
+#dedup_allowed_message_occurrences = 1
+# The duration to wait for a peer discovery to complete before giving up. Default: 2 minutes
+#discovery_request_timeout = 120 # 2 * 60
+# Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
+#auto_join = true
+# The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
+# enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
+# change happens again after this period, another join will be sent. Default: 10 minutes
+#join_cooldown_interval = 120 # 10 * 60
+
+# The interval to update the neighbouring and random pools, if necessary. Default: 2 minutes
+#connectivity.update_interval = 120 # 2 * 60
+# The interval to change the random pool peers. Default = 2 hours
+#connectivity.random_pool_refresh_interval = 7_200 # 2 * 60 * 60
+# Length of cooldown when high connection failure rates are encountered. Default: 45s
+#connectivity.high_failure_rate_cooldown = 45
+# The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
+# making sybil attacks costly. This setting does not guarantee this ratio is maintained.
+# Currently, it only emits a warning if the ratio is below this setting. Default: 0.1 (10%)
+#connectivity.minimum_desired_tcpv4_node_ratio = 0.1
+
+# True to enable network discovery, false to disable it. Default: true
+#network_discovery.enabled = true
+# A threshold for the minimum number of peers this node should ideally be aware of. If below this threshold a
+# more "aggressive" strategy is employed. Default: 50
+#network_discovery.min_desired_peers = 50
+# The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
+#network_discovery.idle_period = 1_800 # 30 * 60
+#  The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less
+#  than `min_desired_peers` then the actual number of rounds performed will exceed this value. Default: 10
+#network_discovery.idle_after_num_rounds = 10
+# Time to idle after a failed round. Default: 5 secs
+#network_discovery.on_failure_idle_period = 5
+# The maximum number of sync peer to select for each round. The selection strategy varies depending on the current state.
+# Default: 5
+#network_discovery.max_sync_peers = 5
+
+# Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
+#ban_duration = 21_600 # 6 * 60 * 60
+# Length of time to ban a peer for a "short" duration. Default: 60 mins
+#ban_duration_short = 3_600 # 60 * 60
+# This allows the use of test addresses in the network like 127.0.0.1. Default: false
+#allow_test_addresses = false
+# The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
+# Default: 100_000 messages
+#flood_ban_max_msg_count = 100_000
+# The timespan over which to calculate the max message rate.
+# `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
+#  Default: 100 seconds
+#flood_ban_timespan = 100
+# Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
+# In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
+# peers that were previously tried. Default: 2 hours
+#offline_peer_cooldown = 7_200 # 2 * 60 * 60

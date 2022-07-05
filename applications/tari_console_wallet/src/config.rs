@@ -22,11 +22,12 @@
 
 use config::Config;
 use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
-use tari_p2p::PeerSeedsConfig;
+use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_wallet::WalletConfig;
 
 pub struct ApplicationConfig {
     pub common: CommonConfig,
+    pub auto_update: AutoUpdateConfig,
     pub wallet: WalletConfig,
     pub peer_seeds: PeerSeedsConfig,
 }
@@ -35,6 +36,7 @@ impl ApplicationConfig {
     pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
         let mut config = Self {
             common: CommonConfig::load_from(cfg)?,
+            auto_update: AutoUpdateConfig::load_from(cfg)?,
             wallet: WalletConfig::load_from(cfg)?,
             peer_seeds: PeerSeedsConfig::load_from(cfg)?,
         };

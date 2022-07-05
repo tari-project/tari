@@ -70,6 +70,7 @@ use tari_core::{
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{
+    auto_update::AutoUpdateConfig,
     comms_connector::InboundDomainConnector,
     initialization::initialize_local_test_comms,
     transport::MemoryTransportConfig,
@@ -202,6 +203,7 @@ async fn create_wallet(
     Wallet::start(
         config,
         PeerSeedsConfig::default(),
+        AutoUpdateConfig::default(),
         Arc::new(node_identity.clone()),
         factories,
         wallet_db,
@@ -710,6 +712,7 @@ async fn test_import_utxo() {
     let mut alice_wallet = Wallet::start(
         config,
         PeerSeedsConfig::default(),
+        AutoUpdateConfig::default(),
         alice_identity.clone(),
         factories.clone(),
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),

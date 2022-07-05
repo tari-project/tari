@@ -1,24 +1,36 @@
+
 ########################################################################################################################
 #                                                                                                                      #
-#                                          Common Configuration Options                                                #
+#                      Common Configuration Options (CommonConfig, AutoUpdateConfig, MetricsConfig)                    #
 #                                                                                                                      #
 ########################################################################################################################
 
 [common]
 #override_from="dibbler"
 #base_path="<HOME>/.tari"
-#data_dir="data"
-
-[auto_update]
-# This interval in seconds to check for software updates. Setting this to 0 disables checking.
-check_interval = 300
 
 [dibbler.auto_update]
 # Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
 update_uris = ["updates.dibbler.taripulse.com"]
+
+[auto_update]
+# Name server for auto update (default = "1.1.1.1:53/cloudflare.net")
+#name_server = "1.1.1.1:53/cloudflare.net"
+
+# Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT
+# records. (default = [])
+#update_uris = []
+
+#use_dnssec = false
+
+#download_base_url = ""
+
 # Customize the location of the update SHA hashes and maintainer-signed signature.
-# "auto_update.hashes_url" = "https://<address>/hashes.txt"
-# "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
+#hashes_url = "https://<address>/hashes.txt"
+#hashes_sig_url = "https://<address>/hashes.txt.sig"
+
+# This interval in seconds to check for software updates. Setting this to 0 disables checking.
+check_interval = 300
 
 [metrics]
 # server_bind_address = "127.0.0.1:5577"

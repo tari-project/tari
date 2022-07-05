@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{cmp, marker::PhantomData, sync::Arc};
 
 use digest::Digest;
 use log::*;
@@ -59,7 +59,7 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
 };
 use tari_p2p::{
-    auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
+    auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
@@ -104,6 +104,8 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet";
+/// The minimum buffer size for the wallet pubsub_connector channel
+const WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
@@ -143,6 +145,7 @@ where
     pub async fn start(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
+        auto_update: AutoUpdateConfig,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
@@ -154,7 +157,8 @@ where
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
-        let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
+        let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
+        let (publisher, subscription_factory) = pubsub_connector(buf_size, config.buffer_rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
@@ -169,7 +173,7 @@ where
             config.output_manager_service_config,
             config.transaction_service_config,
             config.buffer_size,
-            config.rate_limit
+            config.buffer_rate_limit
         );
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
@@ -223,14 +227,14 @@ where
             .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
-        let stack = if config.auto_update.is_update_enabled() {
+        let stack = if auto_update.is_update_enabled() {
             stack.add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::ConsoleWallet,
                 env!("CARGO_PKG_VERSION")
                     .to_string()
                     .parse()
                     .expect("Unable to parse console wallet version."),
-                config.auto_update.clone(),
+                auto_update.clone(),
             ))
         } else {
             stack
@@ -255,7 +259,7 @@ where
         let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
         let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
-        let updater_handle = if config.auto_update.is_update_enabled() {
+        let updater_handle = if auto_update.is_update_enabled() {
             Some(handles.expect_handle::<SoftwareUpdaterHandle>())
         } else {
             None

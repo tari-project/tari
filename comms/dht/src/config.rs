@@ -23,6 +23,7 @@
 use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
 
 use crate::{
     network_discovery::NetworkDiscoveryConfig,
@@ -59,6 +60,7 @@ pub struct DhtConfig {
     pub dedup_cache_capacity: usize,
     /// The periodic trim interval for items in the message hash cache
     /// Default: 300s (5 mins)
+    #[serde(with = "serializers::seconds")]
     pub dedup_cache_trim_interval: Duration,
     /// The number of occurrences of a message is allowed to pass through the DHT pipeline before being
     /// deduped/discarded
@@ -66,6 +68,7 @@ pub struct DhtConfig {
     pub dedup_allowed_message_occurrences: usize,
     /// The duration to wait for a peer discovery to complete before giving up.
     /// Default: 2 minutes
+    #[serde(with = "serializers::seconds")]
     pub discovery_request_timeout: Duration,
     /// Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
     pub auto_join: bool,
@@ -73,15 +76,18 @@ pub struct DhtConfig {
     /// enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
     /// change happens again after this period, another join will be sent.
     /// Default: 10 minutes
+    #[serde(with = "serializers::seconds")]
     pub join_cooldown_interval: Duration,
     pub connectivity: DhtConnectivityConfig,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
     /// Default: 6 hrs
+    #[serde(with = "serializers::seconds")]
     pub ban_duration: Duration,
     /// Length of time to ban a peer for a "short" duration.
     /// Default: 30 mins
+    #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
     /// This allows the use of test addresses in the network.
     /// Default: false
@@ -92,11 +98,13 @@ pub struct DhtConfig {
     /// The timespan over which to calculate the max message rate.
     /// `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
     /// Default: 100 seconds
+    #[serde(with = "serializers::seconds")]
     pub flood_ban_timespan: Duration,
     /// Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
     /// In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
     /// peers that were previously tried.
     /// Default: 2 hours
+    #[serde(with = "serializers::seconds")]
     pub offline_peer_cooldown: Duration,
 }
 
@@ -171,11 +179,14 @@ impl Default for DhtConfig {
 pub struct DhtConnectivityConfig {
     /// The interval to update the neighbouring and random pools, if necessary.
     /// Default: 2 minutes
+    #[serde(with = "serializers::seconds")]
     pub update_interval: Duration,
     /// The interval to change the random pool peers.
     /// Default: 2 hours
+    #[serde(with = "serializers::seconds")]
     pub random_pool_refresh_interval: Duration,
     /// Length of cooldown when high connection failure rates are encountered. Default: 45s
+    #[serde(with = "serializers::seconds")]
     pub high_failure_rate_cooldown: Duration,
     /// The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
     /// making sybil attacks costly. This setting does not guarantee this ratio is maintained.

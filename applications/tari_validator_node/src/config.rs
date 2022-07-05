@@ -61,22 +61,37 @@ impl ApplicationConfig {
 #[serde(deny_unknown_fields)]
 pub struct ValidatorNodeConfig {
     override_from: Option<String>,
+    /// A path to the file that stores your node identity and secret key
     pub identity_file: PathBuf,
+    /// A path to the file that stores the tor hidden service private key, if using the tor transport
     pub tor_identity_file: PathBuf,
+    /// The node's publicly-accessible hostname
     pub public_address: Option<Multiaddr>,
+    /// The asset worker will adhere to this phased timeout for the asset
     pub phase_timeout: u64,
+    /// The Tari base node's GRPC address
     pub base_node_grpc_address: SocketAddr,
+    /// The Tari console wallet's GRPC address
     pub wallet_grpc_address: SocketAddr,
+    /// If set to false, there will be no scanning at all
     pub scan_for_assets: bool,
+    /// How often do we want to scan the base layer for changes
     pub new_asset_scanning_interval: u64,
+    /// If set then only the specific assets will be checked
     pub assets_allow_list: Option<Vec<String>>,
+    /// The relative path to store persistent data
     pub data_dir: PathBuf,
+    /// The p2p configuration settings
     pub p2p: P2pConfig,
+    /// The constitution will auto accept contracts if true
     pub constitution_auto_accept: bool,
-    /// Constitution polling interval in block height
+    /// Constitution confirmation time in block height
     pub constitution_management_confirmation_time: u64,
+    /// Constitution polling interval in block height
     pub constitution_management_polling_interval: u64,
+    /// Constitution polling interval in time (seconds)
     pub constitution_management_polling_interval_in_seconds: u64,
+    /// GRPC address of the validator node  application
     pub grpc_address: Option<Multiaddr>,
 }
 

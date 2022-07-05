@@ -23,6 +23,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
 
 /// Store and forward configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +31,7 @@ use serde::{Deserialize, Serialize};
 pub struct SafConfig {
     /// The amount of time added to the current time will be used to check if the message has expired or not
     /// Default: 3 hours
+    #[serde(with = "serializers::seconds")]
     pub msg_validity: Duration,
     /// The maximum number of messages that can be stored using the Store-and-forward middleware.
     /// Default: 100,000
@@ -43,15 +45,18 @@ pub struct SafConfig {
     pub max_returned_messages: usize,
     /// The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
     /// Default: 6 hours
+    #[serde(with = "serializers::seconds")]
     pub low_priority_msg_storage_ttl: Duration,
     /// The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
     /// Default: 3 days
+    #[serde(with = "serializers::seconds")]
     pub high_priority_msg_storage_ttl: Duration,
     /// The limit on the message size to store in SAF storage in bytes. Default 500 KiB
     pub max_message_size: usize,
     /// When true, store and forward messages are requested from peers on connect (Default: true)
     pub auto_request: bool,
     /// The maximum allowed time between asking for a message and accepting a response
+    #[serde(with = "serializers::seconds")]
     pub max_inflight_request_age: Duration,
     /// The maximum number of peer nodes that a message must be closer than to get stored by SAF
     /// Default: 8
