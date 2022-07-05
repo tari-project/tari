@@ -4,7 +4,10 @@ export enum WalletSetupRequired {
 
 export type WalletState = {
   unlocked: boolean
-  address: string
+  address: {
+    uri: string
+    emoji: string
+  }
   tari: {
     balance: number
     available: number

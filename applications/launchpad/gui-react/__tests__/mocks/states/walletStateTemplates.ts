@@ -1,22 +1,26 @@
 import { WalletState } from '../../../src/store/wallet/types'
 
 export const initialWallet: WalletState = {
-  running: false,
-  pending: false,
-  address: '',
+  address: {
+    uri: '',
+    emoji: '',
+  },
   unlocked: false,
   tari: {
+    pending: false,
     balance: 0,
     available: 0,
   },
 }
 
 export const unlockedWallet: WalletState = {
-  running: false,
-  pending: false,
-  address: 'someWalletAddress',
+  address: {
+    uri: 'someWalletAddress',
+    emoji: '',
+  },
   unlocked: true,
   tari: {
+    pending: false,
     balance: 0,
     available: 0,
   },
@@ -24,11 +28,12 @@ export const unlockedWallet: WalletState = {
 
 export const runningWallet = (
   address = 'the-wallet-address',
-  tari = { balance: 0, available: 0 },
+  tari = { balance: 0, available: 0, pending: false },
 ): WalletState => ({
-  running: true,
-  pending: false,
-  address,
+  address: {
+    uri: address,
+    emoji: '',
+  },
   unlocked: true,
   tari,
 })

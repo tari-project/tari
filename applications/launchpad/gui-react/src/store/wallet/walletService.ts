@@ -2,13 +2,14 @@ import { invoke } from '@tauri-apps/api/tauri'
 
 import { toT } from '../../utils/Format'
 
-interface WalletIdentityDto {
+export interface WalletIdentityDto {
   publicAddress: string
+  emojiId: string
 }
 export const getIdentity: () => Promise<WalletIdentityDto> = () =>
-  invoke('wallet_identity')
+  invoke<WalletIdentityDto>('wallet_identity')
 
-interface WalletBalanceDto {
+export interface WalletBalanceDto {
   availableBalance: number
   pendingIncomingBalance: number
   pendingOutgoingBalance: number

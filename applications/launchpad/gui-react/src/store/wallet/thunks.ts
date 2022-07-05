@@ -6,13 +6,38 @@ import { actions as containersActions } from '../containers'
 
 import * as walletService from './walletService'
 
-// TODO backend communication
-const waitForWalletToBeResponsive = () =>
-  new Promise(resolve => setTimeout(resolve, 200))
+const getWalletDataWithPolling = async (): Promise<
+  [walletService.WalletIdentityDto, walletService.WalletBalanceDto]
+> => {
+  let watchdog = 0
+
+  while (watchdog < 31) {
+    try {
+      const getWalletIdentityPromise = walletService.getIdentity()
+      const getBalancePromise = walletService.getBalance()
+
+      const walletData = await Promise.all([
+        getWalletIdentityPromise,
+        getBalancePromise,
+      ])
+
+      return walletData
+    } catch (e) {
+      if (watchdog === 30) {
+        throw e
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500))
+      watchdog++
+    }
+  }
+
+  throw new Error('No wallet data after 30+ attempts')
+}
 
 export const unlockWallet = createAsyncThunk<
   {
-    address: string
+    address: { uri: string; emoji: string }
     tari: { balance: number; available: number }
   },
   void,
@@ -27,18 +52,13 @@ export const unlockWallet = createAsyncThunk<
       )
       .unwrap()
 
-    await waitForWalletToBeResponsive()
-
-    const getWalletIdentityPromise = walletService.getIdentity()
-    const getBalancePromise = walletService.getBalance()
-
-    const [walletIdentity, tari] = await Promise.all([
-      getWalletIdentityPromise,
-      getBalancePromise,
-    ])
+    const [walletIdentity, tari] = await getWalletDataWithPolling()
 
     return {
-      address: walletIdentity.publicAddress,
+      address: {
+        uri: walletIdentity.publicAddress,
+        emoji: walletIdentity.emojiId,
+      },
       tari: {
         balance:
           tari.availableBalance -

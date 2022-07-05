@@ -39,7 +39,10 @@ describe('starting node', () => {
     const getState = () =>
       ({
         wallet: {
-          address: '',
+          address: {
+            uri: '',
+            emoji: '',
+          },
           unlocked: false,
         },
         mining: {
@@ -74,7 +77,10 @@ describe('starting node', () => {
     const getState = () =>
       ({
         wallet: {
-          address: '',
+          address: {
+            uri: '',
+            emoji: '',
+          },
           unlocked: false,
         },
         mining: {
@@ -110,7 +116,10 @@ describe('starting node', () => {
     const getState = () =>
       ({
         wallet: {
-          address: 'some wallet adress',
+          address: {
+            uri: 'some wallet adress',
+            emoji: '',
+          },
           unlocked: true,
         },
         mining: {
@@ -150,7 +159,10 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
-              address: 'walletAddress',
+              address: {
+                uri: 'walletAddress',
+                emoji: '',
+              },
               unlocked: true,
             },
             mining: {
@@ -189,7 +201,10 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
-              address: 'some wallet adress',
+              address: {
+                uri: 'some wallet adress',
+                emoji: '',
+              },
               unlocked: true,
             },
             mining: {
@@ -234,7 +249,10 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
-              address: 'some wallet adress',
+              address: {
+                uri: 'some wallet adress',
+                emoji: '',
+              },
               unlocked: true,
             },
             mining: {
@@ -281,7 +299,10 @@ describe('start stop mining', () =>
           const getState = () =>
             ({
               wallet: {
-                address: 'some wallet adress',
+                address: {
+                  uri: 'some wallet adress',
+                  emoji: '',
+                },
                 unlocked: true,
               },
               containers: allStopped,
@@ -330,7 +351,10 @@ describe('start stop mining', () =>
           const getState = () =>
             ({
               wallet: {
-                address: 'some wallet adress',
+                address: {
+                  uri: 'some wallet adress',
+                  emoji: '',
+                },
                 unlocked: true,
               },
               containers: allStopped,
@@ -390,7 +414,10 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
-              address: 'some wallet adress',
+              address: {
+                uri: 'some wallet adress',
+                emoji: '',
+              },
               unlocked: true,
             },
             containers: allStopped,
@@ -434,7 +461,10 @@ describe('start stop mining', () =>
         const getState = () =>
           ({
             wallet: {
-              address: 'some wallet adress',
+              address: {
+                uri: 'some wallet adress',
+                emoji: '',
+              },
               unlocked: true,
             },
             containers: allStopped,

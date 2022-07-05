@@ -14,7 +14,7 @@ const TariWallet = ({
   running,
 }: {
   address: string
-  emojiId: string[]
+  emojiId: string
   running: boolean
 }) => {
   const theme = useTheme()

@@ -35,6 +35,7 @@ pub struct WalletIdentity {
     emoji_id: String,
 }
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WalletBalance {
     available_balance: u64,
     pending_incoming_balance: u64,

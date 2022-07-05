@@ -8,7 +8,7 @@ import Tag from '../Tag'
 import CopyIcon from '../../styles/Icons/Copy'
 import t from '../../locales'
 
-import { StyledBox, FeedbackContainer } from './styles'
+import { ValueContainer, StyledBox, FeedbackContainer } from './styles'
 
 /**
  * @name CopyBox
@@ -22,17 +22,20 @@ const CopyBox = ({
   label,
   value,
   style,
+  valueTransform,
 }: {
   label?: string
   value: string
   style?: CSSProperties
+  valueTransform?: (s: string) => string
 }) => {
   const [copied, setCopied] = useState(false)
   const styles = useSpring({ opacity: copied ? 1 : 0 })
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const copy = async () => {
-    await clipboard.writeText(value)
+    const transformed = valueTransform ? valueTransform(value) : value
+    await clipboard.writeText(transformed)
 
     setCopied(true)
     if (timeout.current) {
@@ -57,15 +60,7 @@ const CopyBox = ({
     <>
       {label && <Text>{label}</Text>}
       <StyledBox style={style}>
-        <div
-          style={{
-            overflowX: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-          title={value}
-        >
-          {value}
-        </div>
+        <ValueContainer title={value}>{value}</ValueContainer>
         <Button
           variant='text'
           style={{
