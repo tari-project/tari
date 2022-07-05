@@ -28,6 +28,7 @@ use std::{
 };
 
 use aes_gcm::Aes256Gcm;
+use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
     types::PublicKey,
@@ -96,6 +97,7 @@ pub enum TransactionServiceRequest {
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
+        current_timestamp: Option<NaiveDateTime>,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
@@ -159,8 +161,9 @@ impl fmt::Display for TransactionServiceRequest {
                 import_status,
                 tx_id,
                 current_height,
+                current_timestamp,
             } => f.write_str(&format!(
-                "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?})",
+                "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?} and {:?})",
                 source_public_key,
                 amount,
                 message,
@@ -168,6 +171,7 @@ impl fmt::Display for TransactionServiceRequest {
                 import_status,
                 tx_id,
                 current_height,
+                current_timestamp
             )),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => f.write_str(&format!("SubmitTransaction ({})", tx_id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
@@ -566,6 +570,7 @@ impl TransactionServiceHandle {
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
+        current_timestamp: Option<NaiveDateTime>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -577,6 +582,7 @@ impl TransactionServiceHandle {
                 import_status,
                 tx_id,
                 current_height,
+                current_timestamp,
             })
             .await??
         {

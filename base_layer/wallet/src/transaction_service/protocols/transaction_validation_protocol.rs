@@ -129,7 +129,7 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (mined_tx, mined_height, mined_in_block, num_confirmations) in &mined {
+            for (mined_tx, mined_height, mined_in_block, num_confirmations, mined_timestamp) in &mined {
                 debug!(
                     target: LOG_TARGET,
                     "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
@@ -143,6 +143,7 @@ where
                     mined_in_block,
                     *mined_height,
                     *num_confirmations,
+                    *mined_timestamp,
                 )
                 .await?;
                 state_changed = true;
@@ -276,7 +277,7 @@ where
         base_node_client: &mut BaseNodeWalletRpcClient,
     ) -> Result<
         (
-            Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64)>,
+            Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64, u64)>,
             Vec<UnconfirmedTransactionInfo>,
             Option<(u64, BlockHash)>,
         ),
@@ -328,6 +329,7 @@ where
                         response.block_height,
                         response.block_hash.unwrap(),
                         response.confirmations,
+                        response.block_timestamp,
                     ));
                 } else {
                     warn!(
@@ -395,12 +397,14 @@ where
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
+        mined_timestamp: u64,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_mined_height(
                 tx_id,
                 mined_height,
                 mined_in_block.clone(),
+                mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
                 status.is_faux(),
@@ -456,6 +460,7 @@ where
                 tx_id,
                 mined_height,
                 mined_in_block.clone(),
+                0,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
                 false,

@@ -584,6 +584,7 @@ where
             TransactionDirection::Outbound,
             None,
             None,
+            None,
         );
 
         self.resources

@@ -667,6 +667,7 @@ where
                 import_status,
                 tx_id,
                 current_height,
+                current_timestamp,
             } => self
                 .add_utxo_import_transaction_with_status(
                     amount,
@@ -676,6 +677,7 @@ where
                     import_status,
                     tx_id,
                     current_height,
+                    current_timestamp,
                 )
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
@@ -907,6 +909,7 @@ where
                     TransactionDirection::Inbound,
                     None,
                     None,
+                    None,
                 ),
             )
             .await?;
@@ -1123,6 +1126,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
+                None,
             ),
         )
         .await?;
@@ -1263,6 +1267,7 @@ where
                 message.clone(),
                 Utc::now().naive_utc(),
                 TransactionDirection::Outbound,
+                None,
                 None,
                 None,
             ),
@@ -2178,6 +2183,7 @@ where
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
+        current_timestamp: Option<NaiveDateTime>,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db
@@ -2190,6 +2196,7 @@ where
                 maturity,
                 import_status.clone(),
                 current_height,
+                current_timestamp,
             )
             .await?;
         let transaction_event = match import_status {
@@ -2269,6 +2276,7 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
+                None,
             ),
         )
         .await?;
@@ -2329,6 +2337,7 @@ where
                             Utc::now().naive_utc(),
                             TransactionDirection::Inbound,
                             Some(block_height),
+                            None,
                             None,
                         ),
                     )
