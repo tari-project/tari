@@ -25,20 +25,17 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
-use tari_core::transactions::{
-    transaction_components::{
-        CommitteeSignatures,
-        ContractAmendment,
-        ContractCheckpoint,
-        ContractDefinition,
-        ContractUpdateProposal,
-        OutputFeatures,
-        OutputType,
-        SideChainFeatures,
-        TemplateParameter,
-        Transaction,
-    },
-    CryptoFactories,
+use tari_core::transactions::transaction_components::{
+    CommitteeSignatures,
+    ContractAmendment,
+    ContractCheckpoint,
+    ContractDefinition,
+    ContractUpdateProposal,
+    OutputFeatures,
+    OutputType,
+    SideChainFeatures,
+    TemplateParameter,
+    Transaction,
 };
 
 use crate::{
@@ -309,12 +306,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .create_output_with_features(1.into(), OutputFeatures::default())
             .await?;
 
-        let commitment = output.generate_commitment(&CryptoFactories::default());
-
-        output = output.with_features(OutputFeatures::for_contract_definition(
-            &commitment,
-            contract_definition,
-        ));
+        output = output.with_features(OutputFeatures::for_contract_definition(contract_definition));
 
         let (tx_id, transaction) = self
             .output_manager

@@ -676,6 +676,8 @@ where
         features: OutputFeatures,
     ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
+        let script = script!(Nop);
 
         Ok(UnblindedOutputBuilder::new(value, spending_key)
             .with_features(features)

@@ -281,8 +281,8 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_contract_definition(commitment: &Commitment, definition: ContractDefinition) -> OutputFeatures {
-        let contract_id = definition.calculate_contract_id(commitment);
+    pub fn for_contract_definition(definition: ContractDefinition) -> OutputFeatures {
+        let contract_id = definition.calculate_contract_id();
 
         Self {
             output_type: OutputType::ContractDefinition,

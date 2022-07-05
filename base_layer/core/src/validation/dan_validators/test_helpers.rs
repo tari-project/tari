@@ -23,7 +23,6 @@
 use std::convert::TryInto;
 
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_p2p::Network;
 
 use super::TxDanLayerValidator;
@@ -53,7 +52,6 @@ use crate::{
             Transaction,
             UnblindedOutput,
         },
-        CryptoFactories,
     },
     txn_schema,
     validation::{dan_validators::DanLayerValidationError, MempoolTransactionValidation, ValidationError},
@@ -159,11 +157,8 @@ pub fn create_contract_definition_schema(input: UnblindedOutput) -> (FixedHash, 
             public_functions: vec![],
         },
     };
-    let commitment = CryptoFactories::default()
-        .commitment
-        .commit(&input.spending_key, &input.value.into());
-    let contract_id = definition.calculate_contract_id(&commitment);
-    let definition_features = OutputFeatures::for_contract_definition(&commitment, definition);
+    let contract_id = definition.calculate_contract_id();
+    let definition_features = OutputFeatures::for_contract_definition(definition);
 
     let tx_schema =
         txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: definition_features);

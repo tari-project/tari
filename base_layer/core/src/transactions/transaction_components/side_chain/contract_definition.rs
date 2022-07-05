@@ -23,7 +23,7 @@
 use std::io::{Error, Read, Write};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{FixedHash, PublicKey};
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter, MaxSizeVec},
@@ -49,12 +49,8 @@ impl ContractDefinition {
         }
     }
 
-    pub fn calculate_contract_id(&self, commitment: &Commitment) -> FixedHash {
-        ConsensusHashWriter::default()
-            .chain(commitment)
-            .chain(self)
-            .finalize()
-            .into()
+    pub fn calculate_contract_id(&self) -> FixedHash {
+        ConsensusHashWriter::default().chain(self).finalize().into()
     }
 }
 
