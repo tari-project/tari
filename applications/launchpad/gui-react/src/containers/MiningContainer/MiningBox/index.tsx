@@ -23,7 +23,7 @@ import {
 import { MiningBoxContent, NodeIcons } from './styles'
 import RunningButton from '../../../components/RunningButton'
 import { tbotactions } from '../../../store/tbot'
-import { useWithWalletPassword } from '../../../useWithWalletPassword'
+import useWithPasswordPrompt from '../../../containers/PasswordPrompt/useWithPasswordPrompt'
 
 const parseLastSessionToCoins = (
   lastSession: MiningSession | undefined,
@@ -102,7 +102,17 @@ const MiningBox = ({
       }),
     )
   }, [dispatch, node])
-  const startMiningWithPasswordEnsured = useWithWalletPassword(startMining)
+  const whichCredentialsAreRequired = useMemo(
+    () => ({
+      wallet: true,
+      monero: node === 'merged',
+    }),
+    [node],
+  )
+  const startMiningWithPasswordEnsured = useWithPasswordPrompt(
+    startMining,
+    whichCredentialsAreRequired,
+  )
 
   let theCurrentStatus = currentStatus
 

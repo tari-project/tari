@@ -1,12 +1,11 @@
-import { useMemo, useCallback, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 
 import { MiningNodeType, ScheduleId } from '../types/general'
 import { useAppSelector, useAppDispatch } from '../store/hooks'
 import { selectSchedules } from '../store/app/selectors'
 import { actions as miningActions } from '../store/mining'
 import { MiningActionReason } from '../store/mining/types'
-import { useWithWalletPassword } from '../useWithWalletPassword'
-import t from '../locales'
+import useWithPasswordPrompt from '../containers/PasswordPrompt/useWithPasswordPrompt'
 
 import useMiningScheduling from './useMiningScheduling'
 
@@ -40,17 +39,10 @@ const useMiningSchedulingContainer = () => {
     },
     [],
   )
-  const passwordPromptOverides = useMemo(
-    () => ({
-      title: t.mining.scheduling.passwordPrompt.title,
-      cta: t.mining.scheduling.passwordPrompt.cta,
-    }),
-    [],
-  )
-  const startMiningWithPasswordPrompt = useWithWalletPassword(
-    startMining,
-    passwordPromptOverides,
-  )
+  const startMiningWithPasswordPrompt = useWithPasswordPrompt(startMining, {
+    wallet: true,
+    monero: node => node === 'merged',
+  })
 
   const stopMining = useCallback(
     (node: MiningNodeType) =>

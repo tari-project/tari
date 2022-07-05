@@ -6,7 +6,7 @@ import {
   selectWalletSetupRequired,
 } from '../../store/wallet/selectors'
 import { WalletSetupRequired } from '../../store/wallet/types'
-import { actions as settingsActions } from '../../store/settings'
+import { actions as credentialsActions } from '../../store/credentials'
 import CenteredLayout from '../../components/CenteredLayout'
 
 import WalletContent from './WalletContent'
@@ -33,7 +33,7 @@ const WalletContainer = () => {
         <PasswordBox
           pending={pending}
           onSubmit={password => {
-            dispatch(settingsActions.setParole(password))
+            dispatch(credentialsActions.setWallet(password))
             dispatch(actions.unlockWallet())
           }}
         />

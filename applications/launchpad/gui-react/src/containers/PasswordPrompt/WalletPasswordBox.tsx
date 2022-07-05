@@ -1,4 +1,4 @@
-import { CSSProperties, useState, SyntheticEvent } from 'react'
+import { useState, SyntheticEvent } from 'react'
 import { useTheme } from 'styled-components'
 
 import PasswordInput from '../../components/Inputs/PasswordInput'
@@ -7,52 +7,55 @@ import Text from '../../components/Text'
 import Button from '../../components/Button'
 import t from '../../locales'
 
-import { TariBackgroundSignet } from './styles'
+import { SignetsContainer, TariBackgroundSignet } from './styles'
+import { WalletParole } from './types'
 
 const MINIMAL_PASSWORD_LENGTH = 4
 
-const PasswordBox = ({
+const WalletPasswordBox = ({
   pending,
   onSubmit,
-  style,
 }: {
   pending: boolean
-  onSubmit: (password: string) => void
-  style?: CSSProperties
+  onSubmit: (password: WalletParole) => void
 }) => {
   const theme = useTheme()
-  const [password, setPassword] = useState('')
-  const updatePassword = (v: string) => {
-    setPassword(v)
-  }
+  const [walletPassword, setWalletPassword] = useState('')
 
   const formSubmitHandler = (event: SyntheticEvent) => {
     event.preventDefault()
 
-    onSubmit(password)
+    onSubmit(walletPassword)
   }
 
-  const disableSubmit = pending || password.length < MINIMAL_PASSWORD_LENGTH
+  const disableSubmit =
+    pending || walletPassword.length < MINIMAL_PASSWORD_LENGTH
 
   return (
-    <Box style={{ position: 'relative', ...style }}>
-      <TariBackgroundSignet />
+    <Box style={{ position: 'relative', margin: 0 }}>
+      <SignetsContainer>
+        <TariBackgroundSignet />
+      </SignetsContainer>
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
-          {t.wallet.password.title}
+          {t.passwordPrompt.walletPassword.title}
         </Text>
-        <Text>{t.wallet.password.cta}</Text>
+        <Text>
+          {t.passwordPrompt.scheduleCTA} {t.passwordPrompt.walletPassword.cta}
+        </Text>
       </div>
-      <form onSubmit={formSubmitHandler}>
+      <form
+        onSubmit={formSubmitHandler}
+        style={{
+          margin: `${theme.spacing()} 0`,
+        }}
+      >
         <PasswordInput
           autoFocus
-          onChange={updatePassword}
-          value={password}
+          onChange={setWalletPassword}
+          value={walletPassword}
           disabled={pending}
           placeholder={t.wallet.password.placeholderCta}
-          containerStyle={{
-            margin: `${theme.spacing()} 0`,
-          }}
           useReveal
         />
         <Button disabled={disableSubmit} loading={pending} type='submit'>
@@ -63,4 +66,4 @@ const PasswordBox = ({
   )
 }
 
-export default PasswordBox
+export default WalletPasswordBox

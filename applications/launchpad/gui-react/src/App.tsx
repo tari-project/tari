@@ -18,7 +18,7 @@ import useMiningScheduling from './useMiningScheduling'
 import TBotContainer from './containers/TBotContainer'
 import MiningNotifications from './containers/MiningNotifications'
 import Onboarding from './pages/onboarding'
-import { WalletPasswordPrompt } from './useWithWalletPassword'
+import PasswordPrompt from './containers/PasswordPrompt'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -75,13 +75,13 @@ const App = () => {
             <Onboarding />
           ) : null
         ) : initialized ? (
-          <WalletPasswordPrompt>
+          <PasswordPrompt>
             <OnboardedAppContainer>
               <HomePage />
               <TBotContainer />
               <MiningNotifications />
             </OnboardedAppContainer>
-          </WalletPasswordPrompt>
+          </PasswordPrompt>
         ) : null}
       </AppContainer>
     </ThemeProvider>

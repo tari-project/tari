@@ -11,6 +11,7 @@ import walletReducer from './wallet'
 import containersReducer from './containers'
 import tbotReducer from './tbot'
 import dockerImagesReducer from './dockerImages'
+import credentialsReducer from './credentials'
 
 // exported for tests
 export const rootReducer = {
@@ -22,13 +23,14 @@ export const rootReducer = {
   containers: containersReducer,
   tbot: tbotReducer,
   dockerImages: dockerImagesReducer,
+  credentials: credentialsReducer,
 }
 const reducer = combineReducers(rootReducer)
 
 const persistConfig = {
   key: 'root',
   storage,
-  blacklist: ['containers', 'settings.serviceSettings.parole'],
+  blacklist: ['containers', 'credentials'],
 }
 
 const persistedReducer = persistReducer(persistConfig, reducer)
