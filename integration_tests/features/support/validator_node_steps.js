@@ -80,19 +80,6 @@ Then(
 );
 
 Then(
-  "wallet {word} will have a successfully mined constitution acceptance transaction for contract {word}",
-  { timeout: 40 * 1000 },
-  async function (wallet_name, contract_name) {
-    let wallet = await this.getWallet(wallet_name);
-    let contract_id = await this.fetchContract(contract_name);
-    let message = `Contract acceptance for contract with id=${contract_id}`;
-
-    let utxos = await findUtxoWithOutputMessage(wallet, message);
-    expect(utxos.length).to.equal(1);
-  }
-);
-
-Then(
   "wallet {word} will have a successfully mined contract acceptance transaction for contract {word}",
   { timeout: 40 * 1000 },
   async function (wallet_name, contract_name) {
@@ -101,8 +88,7 @@ Then(
     let message = `Contract acceptance for contract with id=${contract_id}`;
 
     let utxos = await findUtxoWithOutputMessage(wallet, message);
-    // FIXME: it seems that the validator node publishes acceptances for both definitions and constitutions
-    expect(utxos.length).to.be.gte(1);
+    expect(utxos.length).to.equal(1);
   }
 );
 

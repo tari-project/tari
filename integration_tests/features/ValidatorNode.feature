@@ -33,7 +33,7 @@ Feature: Validator Node
         And I add VN1 to the validator committee on COM1
         And I publish the contract constitution COM1 on wallet WALLET1 via command line
         And I mine 9 blocks using wallet WALLET1 on NODE1
-        Then wallet WALLET1 will have a successfully mined constitution acceptance transaction for contract DEF1
+        Then wallet WALLET1 will have a successfully mined contract acceptance transaction for contract DEF1
 
     @critical
     Scenario: Publish contract update proposal acceptance
