@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use blake2::Digest;
-use tari_common_types::types::{Challenge, Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, HashDigest, PublicKey, Signature};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use super::helpers::{
@@ -160,8 +160,10 @@ pub fn validate_signature<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let commitment = fetch_constitution_commitment(db, contract_id)?;
 
-    let challenge = Challenge::new()
+    // TODO: Use domain-seperated hasher from tari_crypto
+    let challenge = HashDigest::new()
         .chain(validator_node_public_key.as_bytes())
+        .chain(signature.get_public_nonce().as_bytes())
         .chain(commitment.as_bytes())
         .chain(contract_id)
         .finalize();

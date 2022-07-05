@@ -23,7 +23,7 @@
 use std::convert::TryInto;
 
 use blake2::Digest;
-use tari_common_types::types::{Challenge, Commitment, FixedHash, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, HashDigest, PublicKey, Signature};
 use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use tari_p2p::Network;
 use tari_utilities::ByteArray;
@@ -249,13 +249,15 @@ pub fn create_acceptance_signature(
     private_key: RistrettoSecretKey,
     public_key: RistrettoPublicKey,
 ) -> Signature {
-    let challenge = Challenge::new()
+    let (nonce, public_nonce) = create_random_key_pair();
+
+    // TODO: Use domain-seperated hasher from tari_crypto
+    let challenge = HashDigest::new()
         .chain(public_key.as_bytes())
+        .chain(public_nonce.as_bytes())
         .chain(commitment.as_bytes())
         .chain(contract_id)
         .finalize();
-
-    let nonce = PrivateKey::default();
 
     Signature::sign(private_key, nonce, &challenge).unwrap()
 }
