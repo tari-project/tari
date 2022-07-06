@@ -180,12 +180,12 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         Ok(())
     }
 
-    fn get_active_contracts(&self) -> Result<Vec<Contract>, Self::Error> {
+    fn get_contracts_with_state(&self, state: ContractState) -> Result<Vec<Contract>, Self::Error> {
         use crate::global::schema::{contracts, contracts::dsl};
         let tx = self.create_transaction()?;
 
         dsl::contracts
-            .filter(contracts::state.eq(i32::from(ContractState::Active.as_byte())))
+            .filter(contracts::state.eq(i32::from(state.as_byte())))
             .load::<Contract>(tx.connection())
             .map_err(|source| SqliteStorageError::DieselError {
                 source,

@@ -172,7 +172,7 @@ impl ContractWorkerManager {
     }
 
     async fn start_active_contracts(&mut self) -> Result<(), WorkerManagerError> {
-        let active_contracts = self.global_db.get_active_contracts()?;
+        let active_contracts = self.global_db.get_contracts_with_state(ContractState::Active)?;
 
         for contract in active_contracts {
             let contract_id = FixedHash::try_from(contract.contract_id)?;
