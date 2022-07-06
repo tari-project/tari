@@ -209,12 +209,14 @@ impl ContractWorkerManager {
     }
 
     async fn start_active_contracts(&mut self) -> Result<(), WorkerManagerError> {
-        let active_contracts = self.global_db.get_contracts_with_state(ContractState::Active)?;
+        // Abandoned contracts can be revived by the VNC so they should continue to monitor them
+        let mut active_contracts = self.global_db.get_contracts_with_state(ContractState::Active)?;
+        active_contracts.append(&mut self.global_db.get_contracts_with_state(ContractState::Abandoned)?);
 
         for contract in active_contracts {
             let contract_id = FixedHash::try_from(contract.contract_id)?;
 
-            println!("Starting contract {}", contract_id);
+            info!("Starting contract {}", contract_id.to_hex());
 
             let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
                 WorkerManagerError::DataCorruption {
