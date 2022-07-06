@@ -2363,6 +2363,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3u64.into(),
@@ -2383,6 +2384,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -2513,6 +2515,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         let coinbase_tx2 = CompletedTransaction {
@@ -2534,6 +2537,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         let coinbase_tx3 = CompletedTransaction {
@@ -2555,6 +2559,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         CompletedTransactionSql::try_from(coinbase_tx1)
@@ -2666,6 +2671,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
@@ -2756,6 +2762,7 @@ mod test {
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
+                mined_timestamp: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
@@ -2881,6 +2888,7 @@ mod test {
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
+                mined_timestamp: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
             completed_tx_sql.commit(&conn).unwrap();

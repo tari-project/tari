@@ -255,14 +255,15 @@ async fn inbound_fetch_txos() {
     let block = store.fetch_block(0).unwrap().block().clone();
     let header_hash = block.header.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), header_hash.clone(), block.header.height, 6000);
-    txn.insert_utxo(stxo.clone(), header_hash.clone(), block.header.height, 6001);
+    txn.insert_utxo(utxo.clone(), header_hash.clone(), block.header.height, 6000, 0);
+    txn.insert_utxo(stxo.clone(), header_hash.clone(), block.header.height, 6001, 0);
     txn.insert_pruned_utxo(
         pruned_utxo_hash.clone(),
         pruned_utxo.witness_hash(),
         header_hash.clone(),
         5,
         6002,
+        0,
     );
     assert!(store.commit(txn).is_ok());
 
@@ -381,7 +382,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Covenant::default(),
     );
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002);
+    txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002, 0);
     assert!(store.commit(txn).is_ok());
 
     let txn = txn_schema!(

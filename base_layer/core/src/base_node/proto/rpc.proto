@@ -95,7 +95,7 @@ message SyncUtxosByBlockResponse {
   repeated tari.types.TransactionOutput outputs = 1;
   uint64 height = 2;
   bytes header_hash = 3;
-  uint64 timestamp = 4;
+  uint64 mined_timestamp = 4;
 }
 
 message GetMempoolFeePerGramStatsRequest {

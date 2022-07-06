@@ -128,7 +128,7 @@ pub struct TxQueryResponse {
     pub confirmations: u64,
     pub is_synced: bool,
     pub height_of_longest_chain: u64,
-    pub mined_timestamp: u64,
+    pub mined_timestamp: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -138,7 +138,7 @@ pub struct TxQueryBatchResponse {
     pub block_hash: Option<BlockHash>,
     pub confirmations: u64,
     pub block_height: u64,
-    pub mined_timestamp: u64,
+    pub mined_timestamp: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

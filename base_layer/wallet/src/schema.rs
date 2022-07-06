@@ -136,6 +136,7 @@ table! {
         features_json -> Text,
         spending_priority -> Integer,
         covenant -> Binary,
+        mined_timestamp -> Nullable<Timestamp>,
     }
 }
 

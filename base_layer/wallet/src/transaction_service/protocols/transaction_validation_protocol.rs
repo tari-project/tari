@@ -148,7 +148,7 @@ where
                 .await?;
                 state_changed = true;
             }
-            if let Some((tip_height, tip_block)) = tip_info {
+            if let Some((tip_height, tip_block, tip_mined_timestamp)) = tip_info {
                 for unmined_tx in &unmined {
                     // Treat coinbases separately
                     if unmined_tx.is_coinbase() {
@@ -163,6 +163,7 @@ where
                                 unmined_tx.tx_id,
                                 &tip_block,
                                 tip_height,
+                                tip_mined_timestamp,
                                 tip_height.saturating_sub(unmined_tx.coinbase_block_height.unwrap_or_default()),
                             )
                             .await?;
@@ -279,7 +280,7 @@ where
         (
             Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64, u64)>,
             Vec<UnconfirmedTransactionInfo>,
-            Option<(u64, BlockHash)>,
+            Option<(u64, BlockHash, u64)>,
         ),
         TransactionServiceError,
     > {
@@ -329,7 +330,7 @@ where
                         response.block_height,
                         response.block_hash.unwrap(),
                         response.confirmations,
-                        response.mined_timestamp,
+                        response.mined_timestamp.unwrap(),
                     ));
                 } else {
                     warn!(
@@ -350,6 +351,9 @@ where
             Some((
                 batch_response.height_of_longest_chain,
                 batch_response.tip_hash.ok_or_else(|| {
+                    TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
+                })?,
+                batch_response.tip_mined_timestamp.ok_or_else(|| {
                     TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
                 })?,
             )),
@@ -453,6 +457,7 @@ where
         tx_id: TxId,
         mined_in_block: &BlockHash,
         mined_height: u64,
+        mined_timestamp: u64,
         num_confirmations: u64,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
@@ -460,7 +465,7 @@ where
                 tx_id,
                 mined_height,
                 mined_in_block.clone(),
-                0,
+                mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
                 false,

@@ -121,7 +121,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                             confirmations,
                             is_synced: true,
                             height_of_longest_chain: chain_metadata.height_of_longest_chain(),
-                            mined_timestamp: header.timestamp.as_u64(),
+                            mined_timestamp: Some(header.timestamp.as_u64()),
                         };
                         return Ok(response);
                     },
@@ -142,7 +142,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 confirmations: 0,
                 is_synced: true,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
-                mined_timestamp: 0,
+                mined_timestamp: None,
             },
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredOrphan |
@@ -155,7 +155,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 confirmations: 0,
                 is_synced: true,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
-                mined_timestamp: 0,
+                mined_timestamp: None,
             },
         };
         Ok(mempool_response)
@@ -303,6 +303,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             is_synced,
             tip_hash: Some(metadata.best_block().clone()),
             height_of_longest_chain: metadata.height_of_longest_chain(),
+            tip_mined_timestamp: Some(metadata.timestamp()),
         }))
     }
 
@@ -396,6 +397,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                         PrunedOutput::Pruned { .. } => None,
                         PrunedOutput::NotPruned { output } => Some(output.into()),
                     },
+                    mined_timestamp: utxo.mined_timestamp,
                 })
                 .collect(),
         }))

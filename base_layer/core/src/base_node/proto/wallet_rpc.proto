@@ -38,7 +38,7 @@ message TxQueryResponse {
   uint64 confirmations = 3;
   bool is_synced = 4;
   uint64 height_of_longest_chain = 5;
-  uint64 mined_timestamp = 6;
+  google.protobuf.UInt64Value mined_timestamp = 6;
 }
 
 message TxQueryBatchResponse {
@@ -47,7 +47,7 @@ message TxQueryBatchResponse {
   google.protobuf.BytesValue block_hash = 3;
   uint64 confirmations = 4;
   uint64 block_height = 5;
-  uint64 mined_timestamp = 6;
+  google.protobuf.UInt64Value mined_timestamp = 6;
 }
 
 message TxQueryBatchResponses {
@@ -55,6 +55,7 @@ message TxQueryBatchResponses {
   bool is_synced = 2;
   google.protobuf.BytesValue tip_hash = 3;
   uint64 height_of_longest_chain = 4;
+  google.protobuf.UInt64Value tip_mined_timestamp = 5;
 }
 
 message FetchMatchingUtxos {
@@ -97,6 +98,7 @@ message UtxoQueryResponse {
   uint64 mined_height = 3;
   bytes mined_in_block = 4;
   bytes output_hash = 5;
+  uint64 mined_timestamp = 6;
 }
 
 message TipInfoResponse {

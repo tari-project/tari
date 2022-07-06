@@ -191,7 +191,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
     ));
 
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), None).unwrap());
-    let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0, 0);
 
     runtime.block_on(db.set_chain_metadata(metadata)).unwrap();
 
@@ -1971,6 +1971,7 @@ fn test_power_mode_updates() {
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
+        mined_timestamp: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1992,6 +1993,7 @@ fn test_power_mode_updates() {
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
+        mined_timestamp: None,
     };
 
     tx_backend
@@ -2025,6 +2027,7 @@ fn test_power_mode_updates() {
             confirmations: 0,
             is_synced: true,
             height_of_longest_chain: 10,
+            mined_timestamp: None,
         });
 
     let result = runtime.block_on(
@@ -3467,6 +3470,7 @@ fn test_coinbase_generation_and_monitoring() {
             block_hash: None,
             confirmations: 0,
             block_height: 0,
+            mined_timestamp: None,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -3476,6 +3480,7 @@ fn test_coinbase_generation_and_monitoring() {
             block_hash: Some(block_headers.get(&1).unwrap().hash()),
             confirmations: 0,
             block_height: 1,
+            mined_timestamp: Some(0),
         },
     ];
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -3483,6 +3488,7 @@ fn test_coinbase_generation_and_monitoring() {
         is_synced: true,
         tip_hash: Some(block_headers.get(&1).unwrap().hash()),
         height_of_longest_chain: 1,
+        tip_mined_timestamp: Some(0),
     };
 
     alice_ts_interface
@@ -3531,6 +3537,7 @@ fn test_coinbase_generation_and_monitoring() {
         block_hash: Some(block_headers.get(&4).unwrap().hash()),
         confirmations: 3,
         block_height: 4,
+        mined_timestamp: Some(0),
     });
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -3538,6 +3545,7 @@ fn test_coinbase_generation_and_monitoring() {
         is_synced: true,
         tip_hash: Some(block_headers.get(&4).unwrap().hash()),
         height_of_longest_chain: 4,
+        tip_mined_timestamp: Some(0),
     };
     alice_ts_interface
         .base_node_rpc_mock_state
@@ -3617,6 +3625,7 @@ fn test_coinbase_abandoned() {
         block_hash: None,
         confirmations: 0,
         block_height: 0,
+        mined_timestamp: None,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -3624,6 +3633,7 @@ fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: Some([5u8; 16].to_vec()),
         height_of_longest_chain: block_height_a + TransactionServiceConfig::default().num_confirmations_required + 1,
+        tip_mined_timestamp: Some(0),
     };
 
     alice_ts_interface
@@ -3743,6 +3753,7 @@ fn test_coinbase_abandoned() {
             block_hash: None,
             confirmations: 0,
             block_height: 0,
+            mined_timestamp: None,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -3750,6 +3761,7 @@ fn test_coinbase_abandoned() {
             block_hash: Some([11u8; 16].to_vec()),
             confirmations: 2,
             block_height: block_height_b,
+            mined_timestamp: Some(0),
         },
     ];
 
@@ -3758,6 +3770,7 @@ fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: Some([13u8; 16].to_vec()),
         height_of_longest_chain: block_height_b + 2,
+        tip_mined_timestamp: Some(0),
     };
 
     alice_ts_interface
@@ -3828,6 +3841,7 @@ fn test_coinbase_abandoned() {
             block_hash: None,
             confirmations: 0,
             block_height: 0,
+            mined_timestamp: None,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -3835,6 +3849,7 @@ fn test_coinbase_abandoned() {
             block_hash: None,
             confirmations: 0,
             block_height: 0,
+            mined_timestamp: None,
         },
     ];
 
@@ -3843,6 +3858,7 @@ fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: Some([12u8; 16].to_vec()),
         height_of_longest_chain: block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1,
+        tip_mined_timestamp: Some(0),
     };
 
     alice_ts_interface
@@ -3942,6 +3958,7 @@ fn test_coinbase_abandoned() {
             block_hash: None,
             confirmations: 0,
             block_height: 0,
+            mined_timestamp: None,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -3949,6 +3966,7 @@ fn test_coinbase_abandoned() {
             block_hash: Some(block_headers.get(&10).unwrap().hash()),
             confirmations: 5,
             block_height: 10,
+            mined_timestamp: Some(0),
         },
     ];
 
@@ -3957,6 +3975,7 @@ fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: Some([20u8; 16].to_vec()),
         height_of_longest_chain: 20,
+        tip_mined_timestamp: Some(0),
     };
 
     alice_ts_interface
@@ -5206,6 +5225,7 @@ fn transaction_service_tx_broadcast() {
             confirmations: TransactionServiceConfig::default().num_confirmations_required,
             is_synced: true,
             height_of_longest_chain: 0,
+            mined_timestamp: None,
         });
 
     runtime.block_on(async {
@@ -5280,6 +5300,7 @@ fn transaction_service_tx_broadcast() {
             confirmations: TransactionServiceConfig::default().num_confirmations_required,
             is_synced: true,
             height_of_longest_chain: 0,
+            mined_timestamp: None,
         });
 
     let alice_completed_tx2 = runtime
@@ -5375,6 +5396,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
+        mined_timestamp: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -5417,6 +5439,7 @@ fn broadcast_all_completed_transactions_on_startup() {
             confirmations: TransactionServiceConfig::default().num_confirmations_required,
             is_synced: true,
             height_of_longest_chain: 0,
+            mined_timestamp: None,
         });
 
     assert!(runtime
@@ -5494,6 +5517,7 @@ fn test_update_faux_tx_on_oms_validation() {
             ImportStatus::Imported,
             None,
             None,
+            None,
         ))
         .unwrap();
     let tx_id_2 = runtime
@@ -5505,6 +5529,7 @@ fn test_update_faux_tx_on_oms_validation() {
             ImportStatus::FauxUnconfirmed,
             None,
             None,
+            None,
         ))
         .unwrap();
     let tx_id_3 = runtime
@@ -5514,6 +5539,7 @@ fn test_update_faux_tx_on_oms_validation() {
             "one-sided 2".to_string(),
             None,
             ImportStatus::FauxConfirmed,
+            None,
             None,
             None,
         ))
