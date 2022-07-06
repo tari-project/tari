@@ -22,5 +22,6 @@ export const IconWrapper = styled.span`
     width: 24px;
     height: 24px;
   }
-  color: ${({ theme }) => theme.inverted.secondary};
+  /* color: ${({ theme }) => theme.inverted.secondary}; */
+  color: yellow;
 `
