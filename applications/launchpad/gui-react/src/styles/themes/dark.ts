@@ -59,6 +59,8 @@ const darkTheme = {
   inputPlaceholder: styles.colors.dark.secondary,
   disabledPrimaryButton: styles.colors.darkMode.borders,
   disabledPrimaryButtonText: styles.colors.darkMode.disabledText,
+  baseNodeGradientStart: styles.colors.darkMode.baseNodeStart,
+  baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -113,6 +115,8 @@ const darkTheme = {
     calloutBackground: styles.colors.darkMode.tags,
     inputPlaceholder: styles.colors.dark.secondary,
     disabledPrimaryButtonText: styles.colors.darkMode.disabledText,
+    baseNodeGradientStart: styles.colors.darkMode.baseNodeStart,
+    baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
   },
 }
 

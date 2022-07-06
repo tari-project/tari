@@ -35,9 +35,13 @@ const BaseNode = ({
         border={!running}
         gradient={
           running
-            ? { start: theme.actionBackground, end: theme.accent }
+            ? {
+                start: theme.baseNodeGradientStart,
+                end: theme.baseNodeGradientEnd,
+              }
             : undefined
         }
+        style={!running ? { background: theme.nodeBackground } : undefined}
       >
         <Text
           type='header'
@@ -47,7 +51,7 @@ const BaseNode = ({
             justifyContent: 'space-between',
             alignItems: 'center',
           }}
-          color={running ? theme.inverted.primary : undefined}
+          color={running ? theme.inverted.primary : theme.helpTipText}
         >
           {t.baseNode.title}
           {running && (

@@ -62,6 +62,8 @@ const lightTheme = {
   inputPlaceholder: styles.colors.dark.placeholder,
   disabledPrimaryButton: styles.colors.light.backgroundImage,
   disabledPrimaryButtonText: styles.colors.dark.placeholder,
+  baseNodeGradientStart: styles.colors.secondary.actionBackground,
+  baseNodeGradientEnd: styles.colors.tari.purple,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -118,6 +120,8 @@ const lightTheme = {
     inputPlaceholder: styles.colors.dark.placeholder,
     disabledPrimaryButton: styles.colors.light.backgroundImage,
     disabledPrimaryButtonText: styles.colors.dark.placeholder,
+    baseNodeGradientStart: styles.colors.secondary.actionBackground,
+    baseNodeGradientEnd: styles.colors.tari.purple,
   },
 }
 

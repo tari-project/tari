@@ -50,6 +50,8 @@ const colors = {
     logoCard: '#00000030',
     darkLogoCard: '#00000060',
     disabledText: '#47434A',
+    baseNodeStart: '#455E5B',
+    baseNodeEnd: '#55208E',
   },
   graph: {
     fuchsia: '#EF5DA8',
