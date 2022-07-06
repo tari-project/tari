@@ -252,6 +252,7 @@ pub struct TariUtxo {
     pub commitment: *mut c_char,
     pub value: u64,
     pub mined_height: u64,
+    pub status: u8,
 }
 
 impl TryFrom<DbUnblindedOutput> for TariUtxo {
@@ -266,6 +267,20 @@ impl TryFrom<DbUnblindedOutput> for TariUtxo {
                 .into_raw(),
             value: x.unblinded_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
+            status: match x.status {
+                OutputStatus::Unspent => 0,
+                OutputStatus::Spent => 1,
+                OutputStatus::EncumberedToBeReceived => 2,
+                OutputStatus::EncumberedToBeSpent => 3,
+                OutputStatus::Invalid => 4,
+                OutputStatus::CancelledInbound => 5,
+                OutputStatus::UnspentMinedUnconfirmed => 6,
+                OutputStatus::ShortTermEncumberedToBeReceived => 7,
+                OutputStatus::ShortTermEncumberedToBeSpent => 8,
+                OutputStatus::SpentMinedUnconfirmed => 9,
+                OutputStatus::AbandonedCoinbase => 10,
+                OutputStatus::NotStored => 11,
+            },
         })
     }
 }
@@ -299,6 +314,7 @@ pub struct TariOutputs {
 }
 
 // WARNING: must be destroyed properly after use
+// TODO: dedup
 impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
     type Error = InterfaceError;
 
@@ -318,6 +334,20 @@ impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
                             .into_raw(),
                         value: x.unblinded_output.value.as_u64(),
                         mined_height: x.mined_height.unwrap_or(0),
+                        status: match x.status {
+                            OutputStatus::Unspent => 0,
+                            OutputStatus::Spent => 1,
+                            OutputStatus::EncumberedToBeReceived => 2,
+                            OutputStatus::EncumberedToBeSpent => 3,
+                            OutputStatus::Invalid => 4,
+                            OutputStatus::CancelledInbound => 5,
+                            OutputStatus::UnspentMinedUnconfirmed => 6,
+                            OutputStatus::ShortTermEncumberedToBeReceived => 7,
+                            OutputStatus::ShortTermEncumberedToBeSpent => 8,
+                            OutputStatus::SpentMinedUnconfirmed => 9,
+                            OutputStatus::AbandonedCoinbase => 10,
+                            OutputStatus::NotStored => 11,
+                        },
                     })
                 })
                 .try_collect::<TariUtxo, Vec<TariUtxo>, InterfaceError>()?,
@@ -4446,6 +4476,86 @@ pub unsafe extern "C" fn wallet_get_utxos(
             TariUtxoSort::ValueAsc => ("value", Asc),
             TariUtxoSort::ValueDesc => ("value", Desc),
         }],
+    };
+
+    match (*wallet).wallet.output_db.fetch_outputs_by(q) {
+        Ok(outputs) => match TariOutputs::try_from(outputs) {
+            Ok(tari_outputs) => {
+                ptr::replace(error_ptr, 0);
+                Box::into_raw(Box::new(tari_outputs))
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "failed to convert outputs to `TariOutputs`: {:#?}", e
+                );
+                ptr::replace(error_ptr, LibWalletError::from(e).code);
+                ptr::null_mut()
+            },
+        },
+
+        Err(e) => {
+            error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
+            ptr::replace(
+                error_ptr,
+                LibWalletError::from(WalletError::OutputManagerError(
+                    OutputManagerError::OutputManagerStorageError(e),
+                ))
+                .code,
+            );
+            ptr::null_mut()
+        },
+    }
+}
+
+/// This function returns a list of all UTXO values, commitment's hex values and states.
+///
+/// ## Arguments
+/// * `wallet` - The TariWallet pointer,
+/// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+/// Functions as an out parameter.
+///
+/// ## Returns
+/// `*mut TariOutputs` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+/// after use).
+///
+/// ## States
+/// 0 - Unspent
+/// 1 - Spent
+/// 2 - EncumberedToBeReceived
+/// 3 - EncumberedToBeSpent
+/// 4 - Invalid
+/// 5 - CancelledInbound
+/// 6 - UnspentMinedUnconfirmed
+/// 7 - ShortTermEncumberedToBeReceived
+/// 8 - ShortTermEncumberedToBeSpent
+/// 9 - SpentMinedUnconfirmed
+/// 10 - AbandonedCoinbase
+/// 11 - NotStored
+///
+/// # Safety
+/// `destroy_tari_outputs()` must be called after use.
+/// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
+/// LOG_TARGET.
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr: *mut i32) -> *mut TariOutputs {
+    if wallet.is_null() {
+        error!(target: LOG_TARGET, "wallet pointer is null");
+        ptr::replace(
+            error_ptr,
+            LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code,
+        );
+        return ptr::null_mut();
+    }
+
+    let q = OutputBackendQuery {
+        tip_height: i64::MAX,
+        status: vec![],
+        commitments: vec![],
+        pagination: None,
+        value_min: None,
+        value_max: None,
+        sorting: vec![],
     };
 
     match (*wallet).wallet.output_db.fetch_outputs_by(q) {
@@ -9356,6 +9466,106 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 0);
             assert_eq!(utxos.len(), 0);
+            destroy_tari_outputs(outputs);
+
+            string_destroy(network_str as *mut c_char);
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            transport_config_destroy(transport_config_alice);
+            comms_config_destroy(alice_config);
+            wallet_destroy(alice_wallet);
+        }
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_wallet_get_all_utxos() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
+
+            let secret_key_alice = private_key_generate();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
+            let alice_temp_dir = tempdir().unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_config_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                10800,
+                error_ptr,
+            );
+
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                ptr::null(),
+                network_str,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
+                transaction_send_result_callback,
+                tx_cancellation_callback,
+                txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
+                balance_updated_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                connectivity_status_callback,
+                recovery_in_progress_ptr,
+                error_ptr,
+            );
+
+            (0..10).for_each(|i| {
+                let (_, uout) = create_test_input((1000 * i).into(), 0, &PedersenCommitmentFactory::default());
+                (*alice_wallet)
+                    .runtime
+                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
+                    .unwrap();
+            });
+
+            let outputs = wallet_get_utxos(alice_wallet, 0, 100, TariUtxoSort::ValueAsc, 0, error_ptr);
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            assert_eq!(error, 0);
+
+            let payload = utxos[0..3]
+                .iter()
+                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
+                .collect::<Vec<String>>();
+
+            let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
+            let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
+            assert_eq!(error, 0);
+            assert!(result > 0);
+
+            let outputs = wallet_get_all_utxos(alice_wallet, error_ptr);
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            assert_eq!(error, 0);
+            assert_eq!((*outputs).len, 11);
+            assert_eq!(utxos.len(), 11);
             destroy_tari_outputs(outputs);
 
             string_destroy(network_str as *mut c_char);
