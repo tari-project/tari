@@ -20,9 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use blake2::Digest;
-use tari_common_types::types::{Commitment, FixedHash, HashDigest, PublicKey, Signature};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_utilities::hex::Hex;
 
 use super::helpers::{
     fetch_contract_constitution,
@@ -39,6 +38,7 @@ use crate::{
         ContractConstitution,
         OutputType,
         SideChainFeatures,
+        SignerSignature,
         TransactionOutput,
     },
     validation::{dan_validators::DanLayerValidationError, ValidationError},
@@ -161,13 +161,8 @@ pub fn validate_signature<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let commitment = fetch_constitution_commitment(db, contract_id)?;
     let challenge = ContractAcceptanceChallenge::new(&commitment, &contract_id);
-    let final_challenge = HashDigest::new()
-        .chain(validator_node_public_key.as_bytes())
-        .chain(signature.get_public_nonce().as_bytes())
-        .chain(challenge)
-        .finalize();
 
-    let is_valid_signature = signature.verify_challenge(validator_node_public_key, &final_challenge);
+    let is_valid_signature = SignerSignature::verify(signature, validator_node_public_key, challenge);
     if !is_valid_signature {
         return Err(ValidationError::DanLayerError(
             DanLayerValidationError::InvalidAcceptanceSignature,
