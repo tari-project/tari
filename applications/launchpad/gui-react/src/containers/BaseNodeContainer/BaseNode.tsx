@@ -125,6 +125,7 @@ const BaseNode = ({
           leftIcon={<SvgSetting2 width='1.5rem' height='1.5rem' />}
           style={{
             paddingLeft: 0,
+            color: theme.helpTipText,
           }}
           onClick={() =>
             dispatch(settingsActions.open({ toOpen: Settings.BaseNode }))
