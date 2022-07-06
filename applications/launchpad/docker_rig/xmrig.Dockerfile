@@ -42,6 +42,12 @@ ARG BUILDPLATFORM
 ARG XMRIG_VERSION
 ARG VERSION
 
+# Add curl for http healthcheck
+RUN apk update && \
+    apk upgrade && \
+    apk add curl && \
+    rm /var/cache/apk/*
+
 # Create a user & group & chown all the files to the app user
 RUN addgroup -g 1000 tari && \
     adduser -u 1000 -g 1000 -S tari -G tari && \
