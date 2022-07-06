@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.9](https://github.com/tari-project/tari/compare/v0.32.8...v0.32.9) (2022-07-06)
+
+
+### Features
+
+* **ffi:** added 3 functions ([#4266](https://github.com/tari-project/tari/issues/4266)) ([2be17df](https://github.com/tari-project/tari/commit/2be17dfa337d9175d56e0879b64f0dd4875bbe66))
+
 ### [0.32.8](https://github.com/tari-project/tari/compare/v0.32.7...v0.32.8) (2022-07-04)
 
 
