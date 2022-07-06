@@ -71,7 +71,7 @@ impl DanNode {
     ) -> Result<(), ExitError> {
         let base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
         let wallet_client = GrpcWalletClient::new(self.config.wallet_grpc_address);
-        let acceptance_manager = ConcreteAcceptanceManager::new(wallet_client);
+        let acceptance_manager = ConcreteAcceptanceManager::new(wallet_client, base_node_client.clone());
         let workers = ContractWorkerManager::new(
             self.config.clone(),
             self.identity.clone(),

@@ -470,7 +470,7 @@ pub struct MockServiceSpecification;
 
 #[cfg(test)]
 impl ServiceSpecification for MockServiceSpecification {
-    type AcceptanceManager = super::ConcreteAcceptanceManager<Self::WalletClient>;
+    type AcceptanceManager = super::ConcreteAcceptanceManager<Self::WalletClient, Self::BaseNodeClient>;
     type Addr = RistrettoPublicKey;
     type AssetProcessor = MockAssetProcessor;
     type AssetProxy = ConcreteAssetProxy<Self>;

@@ -52,6 +52,7 @@ use crate::{
             OutputFeatures,
             RequirementsForConstitutionChange,
             SideChainConsensus,
+            SignerSignature,
             Transaction,
             UnblindedOutput,
         },
@@ -225,7 +226,7 @@ pub fn create_contract_acceptance_schema(
     private_key: RistrettoSecretKey,
     public_key: RistrettoPublicKey,
 ) -> TransactionSchema {
-    let signature = create_acceptance_signature(contract_id, commitment, private_key, public_key.clone());
+    let signature = create_acceptance_signature(contract_id, commitment, private_key);
 
     let acceptance_features = OutputFeatures::for_contract_acceptance(contract_id, public_key, signature);
 
@@ -247,19 +248,13 @@ pub fn create_acceptance_signature(
     contract_id: FixedHash,
     commitment: Commitment,
     private_key: RistrettoSecretKey,
-    public_key: RistrettoPublicKey,
 ) -> Signature {
-    let (nonce, public_nonce) = create_random_key_pair();
-
-    // TODO: Use domain-seperated hasher from tari_crypto
     let challenge = HashDigest::new()
-        .chain(public_key.as_bytes())
-        .chain(public_nonce.as_bytes())
         .chain(commitment.as_bytes())
-        .chain(contract_id)
+        .chain(contract_id.as_slice())
         .finalize();
 
-    Signature::sign(private_key, nonce, &challenge).unwrap()
+    SignerSignature::sign(&private_key, &challenge).signature
 }
 
 pub fn create_random_key_pair() -> (RistrettoSecretKey, RistrettoPublicKey) {

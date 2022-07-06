@@ -21,10 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::{Commitment, FixedHash};
+use tari_common_types::types::FixedHash;
 use tari_comms::NodeIdentity;
-use tari_core::transactions::transaction_components::SignerSignature;
+use tari_core::transactions::transaction_components::{SignerSignature, TransactionOutput};
 
+use super::BaseNodeClient;
 use crate::{models::AcceptanceChallenge, services::wallet_client::WalletClient, DigitalAssetError};
 
 #[async_trait]
@@ -37,30 +38,39 @@ pub trait AcceptanceManager: Send + Sync {
 }
 
 #[derive(Clone)]
-pub struct ConcreteAcceptanceManager<TWallet: WalletClient> {
+pub struct ConcreteAcceptanceManager<TWallet: WalletClient, TBaseNode: BaseNodeClient> {
     wallet: TWallet,
+    base_node: TBaseNode,
 }
 
-impl<TWallet: WalletClient> ConcreteAcceptanceManager<TWallet> {
-    pub fn new(wallet: TWallet) -> Self {
-        Self { wallet }
+impl<TWallet: WalletClient, TBaseNode: BaseNodeClient> ConcreteAcceptanceManager<TWallet, TBaseNode> {
+    pub fn new(wallet: TWallet, base_node: TBaseNode) -> Self {
+        Self { wallet, base_node }
     }
 }
 
 #[async_trait]
-impl<TWallet: WalletClient + Sync + Send> AcceptanceManager for ConcreteAcceptanceManager<TWallet> {
+impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Send> AcceptanceManager
+    for ConcreteAcceptanceManager<TWallet, TBaseNode>
+{
     async fn publish_acceptance(
         &mut self,
         node_identity: &NodeIdentity,
         contract_id: &FixedHash,
     ) -> Result<u64, DigitalAssetError> {
-        // TODO: fetch the real contract constitution commitment from the base_node_client
-        let constitution_commitment = Commitment::default();
         let public_key = node_identity.public_key();
+
+        // FIXME: this is not the proper way to get the constitution commitment, we need a new method in the base node
+        let outputs = self.base_node.get_constitutions(None, public_key).await?;
+        let constitution_outputs: Vec<TransactionOutput> = outputs
+            .into_iter()
+            .filter_map(|utxo| utxo.output.into_unpruned_output())
+            .collect();
+        let constitution_commitment = constitution_outputs.first().unwrap().commitment();
 
         // build the acceptance signature
         let secret_key = node_identity.secret_key();
-        let challenge = AcceptanceChallenge::new(&constitution_commitment, contract_id);
+        let challenge = AcceptanceChallenge::new(constitution_commitment, contract_id);
         let signature = SignerSignature::sign(secret_key, challenge).signature;
 
         // publish the acceptance

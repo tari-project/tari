@@ -58,7 +58,7 @@ use crate::{
 pub struct DefaultServiceSpecification;
 
 impl ServiceSpecification for DefaultServiceSpecification {
-    type AcceptanceManager = ConcreteAcceptanceManager<Self::WalletClient>;
+    type AcceptanceManager = ConcreteAcceptanceManager<Self::WalletClient, Self::BaseNodeClient>;
     type Addr = PublicKey;
     type AssetProcessor = ConcreteAssetProcessor;
     type AssetProxy = ConcreteAssetProxy<Self>;

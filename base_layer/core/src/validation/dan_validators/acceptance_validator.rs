@@ -162,14 +162,16 @@ pub fn validate_signature<B: BlockchainBackend>(
 
     // TODO: Use domain-seperated hasher from tari_crypto
     let challenge = HashDigest::new()
+        .chain(commitment.as_bytes())
+        .chain(contract_id.as_slice())
+        .finalize();
+    let final_challenge = HashDigest::new()
         .chain(validator_node_public_key.as_bytes())
         .chain(signature.get_public_nonce().as_bytes())
-        .chain(commitment.as_bytes())
-        .chain(contract_id)
+        .chain(challenge)
         .finalize();
 
-    let is_valid_signature = signature.verify_challenge(validator_node_public_key, &challenge);
-
+    let is_valid_signature = signature.verify_challenge(validator_node_public_key, &final_challenge);
     if !is_valid_signature {
         return Err(ValidationError::DanLayerError(
             DanLayerValidationError::InvalidAcceptanceSignature,
@@ -379,7 +381,7 @@ mod test {
         // create a valid contract acceptance transaction, but with a signature done by a different private key
         let (altered_private_key, _) = create_random_key_pair();
         let commitment = fetch_constitution_commitment(blockchain.db(), contract_id).unwrap();
-        let signature = create_acceptance_signature(contract_id, commitment, altered_private_key, public_key.clone());
+        let signature = create_acceptance_signature(contract_id, commitment, altered_private_key);
         let schema =
             create_contract_acceptance_schema_with_signature(contract_id, change[2].clone(), public_key, signature);
         let (tx, _) = schema_to_transaction(&schema);
