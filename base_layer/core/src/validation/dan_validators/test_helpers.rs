@@ -22,11 +22,9 @@
 
 use std::convert::TryInto;
 
-use blake2::Digest;
-use tari_common_types::types::{Commitment, FixedHash, HashDigest, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use tari_p2p::Network;
-use tari_utilities::ByteArray;
 
 use super::TxDanLayerValidator;
 use crate::{
@@ -42,6 +40,7 @@ use crate::{
             CommitteeSignatures,
             ConstitutionChangeFlags,
             ConstitutionChangeRules,
+            ContractAcceptanceChallenge,
             ContractAcceptanceRequirements,
             ContractAmendment,
             ContractCheckpoint,
@@ -249,10 +248,7 @@ pub fn create_acceptance_signature(
     commitment: Commitment,
     private_key: RistrettoSecretKey,
 ) -> Signature {
-    let challenge = HashDigest::new()
-        .chain(commitment.as_bytes())
-        .chain(contract_id.as_slice())
-        .finalize();
+    let challenge = ContractAcceptanceChallenge::new(&commitment, &contract_id);
 
     SignerSignature::sign(&private_key, &challenge).signature
 }
