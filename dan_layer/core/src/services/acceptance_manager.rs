@@ -21,9 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_common_types::types::FixedHash;
+use tari_common_types::types::{Commitment, FixedHash};
 use tari_comms::NodeIdentity;
-use tari_core::transactions::transaction_components::{SignerSignature, TransactionOutput};
+use tari_core::{
+    chain_storage::UtxoMinedInfo,
+    transactions::transaction_components::{OutputType, SignerSignature, TransactionOutput},
+};
+use tari_utilities::hex::Hex;
 
 use super::BaseNodeClient;
 use crate::{models::AcceptanceChallenge, services::wallet_client::WalletClient, DigitalAssetError};
@@ -60,22 +64,43 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
     ) -> Result<u64, DigitalAssetError> {
         let public_key = node_identity.public_key();
 
-        // FIXME: this is not the proper way to get the constitution commitment, we need a new method in the base node
-        let outputs = self.base_node.get_constitutions(None, public_key).await?;
-        let constitution_outputs: Vec<TransactionOutput> = outputs
-            .into_iter()
-            .filter_map(|utxo| utxo.output.into_unpruned_output())
-            .collect();
-        let constitution_commitment = constitution_outputs.first().unwrap().commitment();
-
         // build the acceptance signature
         let secret_key = node_identity.secret_key();
-        let challenge = AcceptanceChallenge::new(constitution_commitment, contract_id);
+        let constitution_commitment = self.fetch_constitution_commitment(contract_id).await?;
+        let challenge = AcceptanceChallenge::new(&constitution_commitment, contract_id);
         let signature = SignerSignature::sign(secret_key, challenge).signature;
 
         // publish the acceptance
         self.wallet
             .submit_contract_acceptance(contract_id, public_key, &signature)
             .await
+    }
+}
+
+impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Send>
+    ConcreteAcceptanceManager<TWallet, TBaseNode>
+{
+    async fn fetch_constitution_commitment(
+        &mut self,
+        contract_id: &FixedHash,
+    ) -> Result<Commitment, DigitalAssetError> {
+        let outputs: Vec<UtxoMinedInfo> = self
+            .base_node
+            .get_contract_utxos(*contract_id, OutputType::ContractConstitution)
+            .await?;
+        let transaction_outputs: Vec<TransactionOutput> = outputs
+            .into_iter()
+            .filter_map(|utxo| utxo.output.into_unpruned_output())
+            .collect();
+
+        if transaction_outputs.is_empty() {
+            return Err(DigitalAssetError::NotFound {
+                entity: "constitution",
+                id: contract_id.to_hex(),
+            });
+        }
+        let constitution_commitment = transaction_outputs[0].commitment();
+
+        Ok(constitution_commitment.clone())
     }
 }

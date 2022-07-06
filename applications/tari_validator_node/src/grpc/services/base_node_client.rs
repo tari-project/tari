@@ -124,6 +124,37 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             .collect()
     }
 
+    async fn get_contract_utxos(
+        &mut self,
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
+        let conn = self.connection().await?;
+        let request = grpc::GetCurrentContractOutputsRequest {
+            contract_id: contract_id.to_vec(),
+            output_type: u32::from(output_type.as_byte()),
+        };
+        let result = conn.get_current_contract_outputs(request).await?.into_inner();
+
+        let mut outputs = vec![];
+        for mined_info in result.outputs {
+            let output = mined_info
+                .output
+                .map(TryInto::try_into)
+                .transpose()
+                .map_err(DigitalAssetError::ConversionError)?
+                .ok_or_else(|| DigitalAssetError::InvalidPeerMessage("Mined info contained no output".to_string()))?;
+
+            outputs.push(UtxoMinedInfo {
+                output: PrunedOutput::NotPruned { output },
+                mmr_position: mined_info.mmr_position,
+                mined_height: mined_info.mined_height,
+                header_hash: mined_info.header_hash,
+            });
+        }
+        Ok(outputs)
+    }
+
     async fn get_constitutions(
         &mut self,
         start_block_hash: Option<FixedHash>,

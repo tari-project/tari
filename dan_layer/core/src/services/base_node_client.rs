@@ -46,6 +46,12 @@ pub trait BaseNodeClient: Send + Sync {
         dan_node_public_key: &PublicKey,
     ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
 
+    async fn get_contract_utxos(
+        &mut self,
+        contract_id: FixedHash,
+        output_type: OutputType,
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
+
     async fn check_if_in_committee(
         &mut self,
         asset_public_key: PublicKey,
