@@ -23,7 +23,7 @@
 // TODO: probably want to use something like bors or consensus encoding
 use tari_utilities::message_format::MessageFormat;
 
-use crate::storage::StorageError;
+use crate::storage::AtomicDb;
 
 pub trait MetadataBackendAdapter<K: AsKeyBytes>: AtomicDb + Send + Sync + Clone {
     fn get_metadata<T: MessageFormat>(

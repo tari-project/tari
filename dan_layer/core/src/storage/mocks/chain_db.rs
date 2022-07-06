@@ -208,26 +208,43 @@ impl MetadataBackendAdapter<ChainDbMetadataKey> for MockChainDbBackupAdapter {
     fn get_metadata<T: MessageFormat>(
         &self,
         key: &ChainDbMetadataKey,
-        transaction: &Self::DbTransaction,
+        _transaction: &Self::DbTransaction,
     ) -> Result<Option<T>, Self::Error> {
         let lock = self.db.read()?;
-        Ok(lock.metadata.rows().find(|(k, _)| k == key))
+        let v = lock
+            .metadata
+            .rows()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v)
+            .map(|v| T::from_binary(v).unwrap());
+        Ok(v)
     }
 
     fn set_metadata<T: MessageFormat>(
         &self,
         key: ChainDbMetadataKey,
         value: T,
-        transaction: &Self::DbTransaction,
+        _transaction: &Self::DbTransaction,
     ) -> Result<(), Self::Error> {
         let mut lock = self.db.write()?;
-        Ok(lock.metadata.rows().find(|(k, _)| k == key))
+        let value = value.to_binary().unwrap();
+        let id = lock.metadata.records().find(|(_, (k, _))| *k == key).map(|(id, _)| id);
+        match id {
+            Some(id) => {
+                lock.metadata.update(id, (key, value));
+            },
+            None => {
+                lock.metadata.insert((key, value));
+            },
+        }
+
+        Ok(())
     }
 
     fn metadata_key_exists(
         &self,
         _key: &ChainDbMetadataKey,
-        transaction: &Self::DbTransaction,
+        _transaction: &Self::DbTransaction,
     ) -> Result<bool, Self::Error> {
         todo!()
     }

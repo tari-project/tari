@@ -24,7 +24,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::storage::metadata_backend_adapter::AsKeyBytes;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChainDbMetadataKey {
     CheckpointNumber,
 }
