@@ -189,22 +189,25 @@ impl ContractWorkerManager {
             let contract_id = FixedHash::try_from(contract.contract_id)?;
             info!("Validating contract={} activity", contract_id.to_hex());
 
-            let checkpoint = self.scan_for_last_checkpoint(tip, &contract_id).await?;
+            if let Some(checkpoint) = self.scan_for_last_checkpoint(tip, &contract_id).await? {
+                let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
+                    WorkerManagerError::DataCorruption {
+                        details: error.to_string(),
+                    }
+                })?;
 
-            let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
-                WorkerManagerError::DataCorruption {
-                    details: error.to_string(),
+                if tip.height_of_longest_chain >
+                    checkpoint.mined_height + constitution.checkpoint_params.abandoned_interval
+                {
+                    match self.global_db
+                        .update_contract_state(contract_id, ContractState::Abandoned)
+
+                    info!(
+                        target: LOG_TARGET,
+                        "Contract={} has missed checkpoints and has been marked Abandoned",
+                        contract_id.to_hex()
+                    );
                 }
-            })?;
-
-            if tip.height_of_longest_chain > checkpoint.mined_height + constitution.checkpoint_params.abandoned_interval
-            {
-                info!(
-                    "Contract={} has missed checkpoints and is being marked Abandoned",
-                    contract_id.to_hex()
-                );
-                self.global_db
-                    .update_contract_state(contract_id, ContractState::Abandoned)?;
             }
         }
 
@@ -284,7 +287,7 @@ impl ContractWorkerManager {
         &mut self,
         tip: &BaseLayerMetadata,
         contract_id: &FixedHash,
-    ) -> Result<Checkpoint, WorkerManagerError> {
+    ) -> Result<Option<Checkpoint>, WorkerManagerError> {
         info!(
             target: LOG_TARGET,
             "Scanning base layer (tip: {}) for last checkpoint of contract={}",
@@ -311,12 +314,7 @@ impl ContractWorkerManager {
             .collect::<Vec<Checkpoint>>();
         outputs.sort_by(|l, r| l.mined_height.partial_cmp(&r.mined_height).unwrap());
 
-        match outputs.pop() {
-            Some(checkpoint) => Ok(checkpoint),
-            None => Err(WorkerManagerError::DataCorruption {
-                details: format!("No checkpoint out for contract={}", contract_id),
-            }),
-        }
+        Ok(outputs.pop())
     }
 
     async fn scan_for_new_contracts(
