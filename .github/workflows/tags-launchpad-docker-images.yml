@@ -101,8 +101,8 @@ jobs:
             DOCKERFILE=${IMAGE}.Dockerfile
             DOCKERCONTEXT=./applications/launchpad/docker_rig/
 
-            # Pull the docker image TAG from dockerfile
-            SUBTAG=$(awk -F '=' '/ARG .*_VERSION=/ \
+            # Pull the docker image version TAG from service dockerfile
+            SUBTAG=$(awk -v search="^ARG ${IMAGE^^}?_VERSION=" -F '=' '$0 ~ search \
               { gsub(/["]/, "", $2); printf("%s",$2) }' \
               "${GITHUB_WORKSPACE}/${DOCKERCONTEXT}${DOCKERFILE}")
 
