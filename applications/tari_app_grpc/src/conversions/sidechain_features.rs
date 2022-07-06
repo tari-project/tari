@@ -27,7 +27,7 @@ use std::{
 
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::{
-    vec_into_fixed_string,
+    bytes_into_fixed_string,
     CheckpointParameters,
     CommitteeMembers,
     CommitteeSignatures,
@@ -149,7 +149,7 @@ impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
     type Error = String;
 
     fn try_from(value: grpc::ContractDefinition) -> Result<Self, Self::Error> {
-        let contract_name = vec_into_fixed_string(value.contract_name);
+        let contract_name = bytes_into_fixed_string(value.contract_name);
 
         let contract_issuer =
             PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
@@ -184,7 +184,7 @@ impl TryFrom<grpc::ContractSpecification> for ContractSpecification {
     type Error = String;
 
     fn try_from(value: grpc::ContractSpecification) -> Result<Self, Self::Error> {
-        let runtime = vec_into_fixed_string(value.runtime);
+        let runtime = bytes_into_fixed_string(value.runtime);
         let public_functions = value
             .public_functions
             .into_iter()
@@ -218,7 +218,7 @@ impl TryFrom<grpc::PublicFunction> for PublicFunction {
             .ok_or_else(|| "function is missing".to_string())??;
 
         Ok(Self {
-            name: vec_into_fixed_string(value.name),
+            name: bytes_into_fixed_string(value.name),
             function,
         })
     }

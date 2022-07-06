@@ -34,7 +34,7 @@ use crate::{
         tari_amount::T,
         test_helpers::{spend_utxos, TransactionSchema},
         transaction_components::{
-            vec_into_fixed_string,
+            bytes_into_fixed_string,
             CheckpointParameters,
             CommitteeSignatures,
             ConstitutionChangeFlags,
@@ -151,10 +151,10 @@ pub fn create_block(
 
 pub fn create_contract_definition_schema(input: UnblindedOutput) -> (FixedHash, TransactionSchema) {
     let definition = ContractDefinition {
-        contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
+        contract_name: bytes_into_fixed_string("name"),
         contract_issuer: PublicKey::default(),
         contract_spec: ContractSpecification {
-            runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
+            runtime: bytes_into_fixed_string("runtime"),
             public_functions: vec![],
         },
     };

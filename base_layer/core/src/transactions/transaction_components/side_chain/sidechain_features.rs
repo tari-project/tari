@@ -164,7 +164,7 @@ mod tests {
     use crate::{
         consensus::check_consensus_encoding_correctness,
         transactions::transaction_components::{
-            vec_into_fixed_string,
+            bytes_into_fixed_string,
             CheckpointParameters,
             CommitteeMembers,
             CommitteeSignatures,
@@ -213,20 +213,20 @@ mod tests {
             contract_id: FixedHash::zero(),
             constitution: Some(constitution.clone()),
             definition: Some(ContractDefinition {
-                contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
+                contract_name: bytes_into_fixed_string("name"),
                 contract_issuer: PublicKey::default(),
                 contract_spec: ContractSpecification {
-                    runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
+                    runtime: bytes_into_fixed_string("runtime"),
                     public_functions: vec![
                         PublicFunction {
-                            name: vec_into_fixed_string("foo".as_bytes().to_vec()),
+                            name: bytes_into_fixed_string("foo"),
                             function: FunctionRef {
                                 template_id: FixedHash::zero(),
                                 function_id: 0_u16,
                             },
                         },
                         PublicFunction {
-                            name: vec_into_fixed_string("bar".as_bytes().to_vec()),
+                            name: bytes_into_fixed_string("bar"),
                             function: FunctionRef {
                                 template_id: FixedHash::zero(),
                                 function_id: 1_u16,

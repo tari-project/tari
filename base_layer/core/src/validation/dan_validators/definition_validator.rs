@@ -100,7 +100,7 @@ mod test {
         let expected_contract_id = publish_definition(&mut blockchain, change[0].clone());
 
         // construct a transaction for the duplicated contract definition
-        let (_, schema) = create_contract_definition_schema(change[1].clone());
+        let (_, schema) = create_contract_definition_schema(change[0].clone());
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated definition transaction and check that we get the error

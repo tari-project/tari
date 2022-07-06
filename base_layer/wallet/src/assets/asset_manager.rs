@@ -301,10 +301,12 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         contract_definition: ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
-        let output = self
+        let mut output = self
             .output_manager
-            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition(contract_definition))
+            .create_output_with_features(1.into(), OutputFeatures::default())
             .await?;
+
+        output = output.with_features(OutputFeatures::for_contract_definition(contract_definition));
 
         let (tx_id, transaction) = self
             .output_manager

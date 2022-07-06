@@ -39,7 +39,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
-            vec_into_fixed_string,
+            bytes_into_fixed_string,
             AssetOutputFeatures,
             CheckpointParameters,
             CommitteeDefinitionFeatures,
@@ -951,7 +951,7 @@ impl TryFrom<proto::types::ContractDefinition> for ContractDefinition {
     type Error = String;
 
     fn try_from(value: proto::types::ContractDefinition) -> Result<Self, Self::Error> {
-        let contract_name = vec_into_fixed_string(value.contract_name);
+        let contract_name = bytes_into_fixed_string(value.contract_name);
 
         let contract_issuer =
             PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
@@ -986,7 +986,7 @@ impl TryFrom<proto::types::ContractSpecification> for ContractSpecification {
     type Error = String;
 
     fn try_from(value: proto::types::ContractSpecification) -> Result<Self, Self::Error> {
-        let runtime = vec_into_fixed_string(value.runtime);
+        let runtime = bytes_into_fixed_string(value.runtime);
         let public_functions = value
             .public_functions
             .into_iter()
@@ -1020,7 +1020,7 @@ impl TryFrom<proto::types::PublicFunction> for PublicFunction {
             .ok_or_else(|| "function is missing".to_string())??;
 
         Ok(Self {
-            name: vec_into_fixed_string(value.name),
+            name: bytes_into_fixed_string(value.name),
             function,
         })
     }
