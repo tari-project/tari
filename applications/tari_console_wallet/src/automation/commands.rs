@@ -73,6 +73,7 @@ use tari_wallet::{
         ContractUpdateProposalFileFormat,
         SignatureFileFormat,
     },
+    connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     key_manager_service::{KeyManagerInterface, NextKeyResult},
     output_manager_service::{handle::OutputManagerHandle, resources::OutputManagerKeyManagerBranch},
@@ -811,8 +812,8 @@ pub async fn command_runner(
 async fn handle_contract_command(wallet: &WalletSqlite, command: ContractCommand) -> Result<(), CommandError> {
     match command.subcommand {
         ContractSubcommand::InitDefinition(args) => init_contract_definition_spec(wallet, args).await,
-        ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(args),
-        ContractSubcommand::InitUpdateProposal(args) => init_contract_update_proposal_spec(args),
+        ContractSubcommand::InitConstitution(args) => init_contract_constitution_spec(wallet, args).await,
+        ContractSubcommand::InitUpdateProposal(args) => init_contract_update_proposal_spec(wallet, args).await,
         ContractSubcommand::InitAmendment(args) => init_contract_amendment_spec(args),
         ContractSubcommand::PublishDefinition(args) => publish_contract_definition(wallet, args).await,
         ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
@@ -906,7 +907,10 @@ async fn init_contract_definition_spec(wallet: &WalletSqlite, args: InitDefiniti
     Ok(())
 }
 
-fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), CommandError> {
+async fn init_contract_constitution_spec(
+    wallet: &WalletSqlite,
+    args: InitConstitutionArgs,
+) -> Result<(), CommandError> {
     if args.dest_path.exists() {
         if args.force {
             println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
@@ -924,10 +928,26 @@ fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), Com
         .skip_if_some(args.contract_id)
         .ask_parsed()?;
     let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
-    let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
+    println!("🔗 Waiting for connection to base node...");
+    let tip_height = get_tip_height(wallet).await;
+    let prompt = if let Some(tip) = tip_height {
+        println!("🔗 Connected. Tip is at {}", tip);
+        Prompt::new("Acceptance period expiry (RELATIVE block height):")
+    } else {
+        println!("⚠️  Not online. Unable to determine current tip height");
+        Prompt::new("Acceptance period expiry (ABSOLUTE block height):")
+    };
+    let mut acceptance_period_expiry = prompt
         .skip_if_some(args.acceptance_period_expiry)
         .with_default("50")
         .ask_parsed()?;
+    if let Some(tip) = tip_height {
+        acceptance_period_expiry += tip;
+    }
+    println!(
+        "ℹ️ Acceptance period expiry is set to absolute height {}",
+        acceptance_period_expiry
+    );
     let minimum_quorum_required = Prompt::new("Minimum quorum:")
         .skip_if_some(args.minimum_quorum_required)
         .with_default(committee.len().to_string())
@@ -957,7 +977,10 @@ fn init_contract_constitution_spec(args: InitConstitutionArgs) -> Result<(), Com
     Ok(())
 }
 
-fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<(), CommandError> {
+async fn init_contract_update_proposal_spec(
+    wallet: &WalletSqlite,
+    args: InitUpdateProposalArgs,
+) -> Result<(), CommandError> {
     if args.dest_path.exists() {
         if args.force {
             println!("{} exists and will be overwritten.", args.dest_path.to_string_lossy());
@@ -977,10 +1000,23 @@ fn init_contract_update_proposal_spec(args: InitUpdateProposalArgs) -> Result<()
         .with_default("0".to_string())
         .ask_parsed()?;
     let committee: Vec<String> = Prompt::new("Validator committee ids (hex):").ask_repeatedly()?;
-    let acceptance_period_expiry = Prompt::new("Acceptance period expiry (in blocks, integer):")
+    println!("🔗 Waiting for connection to base node...");
+    let tip_height = get_tip_height(wallet).await;
+    let prompt = if let Some(tip) = tip_height {
+        println!("🔗 Connected. Tip is at {}", tip);
+        Prompt::new("Acceptance period expiry (RELATIVE block height):")
+    } else {
+        println!("⚠️  Not online. Unable to determine current tip height");
+        Prompt::new("Acceptance period expiry (ABSOLUTE block height):")
+    };
+    let mut acceptance_period_expiry = prompt
         .skip_if_some(args.acceptance_period_expiry)
         .with_default("50".to_string())
         .ask_parsed()?;
+    if let Some(tip) = tip_height {
+        acceptance_period_expiry += tip;
+    }
+    println!("ℹ️ Acceptance period expiry is at height {}", acceptance_period_expiry);
     let minimum_quorum_required = Prompt::new("Minimum quorum:")
         .skip_if_some(args.minimum_quorum_required)
         .with_default(committee.len().to_string())
@@ -1256,4 +1292,22 @@ fn write_to_issuer_key_file<P: AsRef<Path>>(path: P, key_result: NextKeyResult) 
     root.push(json);
     write_json_file(path, &root).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     Ok(())
+}
+
+async fn get_tip_height(wallet: &WalletSqlite) -> Option<u64> {
+    let client = wallet
+        .wallet_connectivity
+        .clone()
+        .obtain_base_node_wallet_rpc_client_timeout(Duration::from_secs(10))
+        .await;
+
+    match client {
+        Some(mut client) => client
+            .get_tip_info()
+            .await
+            .ok()
+            .and_then(|t| t.metadata)
+            .and_then(|m| m.height_of_longest_chain),
+        None => None,
+    }
 }
