@@ -143,7 +143,10 @@ impl ContractWorkerManager {
     pub async fn start(mut self) -> Result<(), WorkerManagerError> {
         self.load_initial_state()?;
 
-        info!("constitution_auto_accept is {}", self.config.constitution_auto_accept);
+        info!(
+            target: LOG_TARGET,
+            "constitution_auto_accept is {}", self.config.constitution_auto_accept
+        );
 
         if !self.config.scan_for_assets {
             info!(
@@ -216,7 +219,7 @@ impl ContractWorkerManager {
         for contract in active_contracts {
             let contract_id = FixedHash::try_from(contract.contract_id)?;
 
-            info!("Starting contract {}", contract_id.to_hex());
+            info!(target: LOG_TARGET, "Starting contract {}", contract_id.to_hex());
 
             let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
                 WorkerManagerError::DataCorruption {
@@ -366,8 +369,13 @@ impl ContractWorkerManager {
                 };
 
                 match self.global_db.save_contract(contract.into(), ContractState::Expired) {
-                    Ok(_) => info!("Saving expired contract data id={}", contract_id.to_hex()),
+                    Ok(_) => info!(
+                        target: LOG_TARGET,
+                        "Saving expired contract data id={}",
+                        contract_id.to_hex()
+                    ),
                     Err(error) => error!(
+                        target: LOG_TARGET,
                         "Couldn't save expired contract data id={} received error={}",
                         contract_id.to_hex(),
                         error.to_string()
@@ -387,8 +395,13 @@ impl ContractWorkerManager {
                 .global_db
                 .save_contract(contract.clone().into(), ContractState::Pending)
             {
-                Ok(_) => info!("Saving contract data id={}", contract.contract_id.to_hex()),
+                Ok(_) => info!(
+                    target: LOG_TARGET,
+                    "Saving contract data id={}",
+                    contract.contract_id.to_hex()
+                ),
                 Err(error) => error!(
+                    target: LOG_TARGET,
                     "Couldn't save contract data id={} received error={}",
                     contract.contract_id.to_hex(),
                     error.to_string()
@@ -525,8 +538,8 @@ impl ContractWorkerManager {
             .publish_acceptance(&self.identity, &contract.contract_id)
             .await?;
         info!(
-            "Contract {} acceptance submitted with id={}",
-            contract.contract_id, tx_id
+            target: LOG_TARGET,
+            "Contract {} acceptance submitted with id={}", contract.contract_id, tx_id
         );
         Ok(())
     }
