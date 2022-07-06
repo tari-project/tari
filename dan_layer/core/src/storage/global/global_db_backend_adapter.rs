@@ -69,8 +69,9 @@ pub enum ContractState {
     Expired = 2,
     QuorumMet = 3,
     Active = 4,
-    Quarantined = 5,
-    Shutdown = 6,
+    Abandoned = 5,
+    Quarantined = 6,
+    Shutdown = 7,
 }
 
 impl ContractState {

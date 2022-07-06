@@ -31,8 +31,14 @@ use log::*;
 use tari_common_types::types::{FixedHash, FixedHashSizeError};
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_core::transactions::transaction_components::ContractConstitution;
-use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
+use tari_core::{
+    consensus::ConsensusHashWriter,
+    transactions::transaction_components::{ContractConstitution, OutputType},
+};
+use tari_crypto::{
+    keys::SecretKey,
+    tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray},
+};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, Committee},
     services::{
@@ -156,15 +162,46 @@ impl ContractWorkerManager {
 
             let tip = self.base_node_client.get_tip_info().await?;
             let new_contracts = self.scan_for_new_contracts(&tip).await?;
-            self.set_last_scanned_block(&tip)?;
 
             if self.config.constitution_auto_accept {
                 self.accept_contracts(new_contracts).await?;
             }
 
+            self.validate_contract_activity(&tip).await?;
+
+            self.set_last_scanned_block(&tip)?;
             tokio::select! {
                 _ = time::sleep(Duration::from_secs(self.config.constitution_management_polling_interval_in_seconds)) => {},
                 _ = &mut self.shutdown => break
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn validate_contract_activity(&mut self, tip: &BaseLayerMetadata) -> Result<(), WorkerManagerError> {
+        let active_contracts = self.global_db.get_contracts_with_state(ContractState::Active)?;
+
+        for contract in active_contracts {
+            let contract_id = FixedHash::try_from(contract.contract_id)?;
+            info!("Validating contract={} activity", contract_id.to_hex());
+
+            let checkpoint = self.scan_for_last_checkpoint(tip, &contract_id).await?;
+
+            let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
+                WorkerManagerError::DataCorruption {
+                    details: error.to_string(),
+                }
+            })?;
+
+            if tip.height_of_longest_chain > checkpoint.mined_height + constitution.checkpoint_params.abandoned_interval
+            {
+                info!(
+                    "Contract={} has missed checkpoints and is being marked Abandoned",
+                    contract_id.to_hex()
+                );
+                self.global_db
+                    .update_contract_state(contract_id, ContractState::Abandoned)?;
             }
         }
 
@@ -236,6 +273,45 @@ impl ContractWorkerManager {
             .transpose()?
             .unwrap_or(0);
         Ok(())
+    }
+
+    async fn scan_for_last_checkpoint(
+        &mut self,
+        tip: &BaseLayerMetadata,
+        contract_id: &FixedHash,
+    ) -> Result<Checkpoint, WorkerManagerError> {
+        info!(
+            target: LOG_TARGET,
+            "Scanning base layer (tip: {}) for last checkpoint of contract={}",
+            tip.height_of_longest_chain,
+            contract_id
+        );
+
+        let outputs = self
+            .base_node_client
+            .get_current_contract_outputs(
+                tip.height_of_longest_chain,
+                *contract_id,
+                OutputType::SidechainCheckpoint,
+            )
+            .await?;
+
+        let mut outputs = outputs
+            .iter()
+            .map({
+                |output| Checkpoint {
+                    mined_height: output.height,
+                }
+            })
+            .collect::<Vec<Checkpoint>>();
+        outputs.sort_by(|l, r| l.mined_height.partial_cmp(&r.mined_height).unwrap());
+
+        match outputs.pop() {
+            Some(checkpoint) => Ok(checkpoint),
+            None => Err(WorkerManagerError::DataCorruption {
+                details: format!("No checkpoint out for contract={}", contract_id),
+            }),
+        }
     }
 
     async fn scan_for_new_contracts(
@@ -475,11 +551,16 @@ pub enum WorkerManagerError {
     #[error("Storage error: {0}")]
     StorageError(#[from] StorageError),
     #[error("DigitalAsset error: {0}")]
-    DigitalAssetErrror(#[from] DigitalAssetError),
+    DigitalAssetError(#[from] DigitalAssetError),
     // TODO: remove dead_code
     #[allow(dead_code)]
     #[error("Data corruption: {details}")]
     DataCorruption { details: String },
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct Checkpoint {
+    pub mined_height: u64,
 }
 
 #[derive(Debug, Clone)]
