@@ -199,8 +199,8 @@ impl ContractWorkerManager {
                 if tip.height_of_longest_chain >
                     checkpoint.mined_height + constitution.checkpoint_params.abandoned_interval
                 {
-                    match self.global_db
-                        .update_contract_state(contract_id, ContractState::Abandoned)
+                    self.global_db
+                        .update_contract_state(contract_id, ContractState::Abandoned)?;
 
                     info!(
                         target: LOG_TARGET,
