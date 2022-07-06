@@ -49,6 +49,7 @@ use crate::{
             OutputFeatures,
             RequirementsForConstitutionChange,
             SideChainConsensus,
+            SignerSignature,
             Transaction,
             UnblindedOutput,
         },
@@ -273,7 +274,7 @@ pub fn create_contract_amendment_schema(
         proposal_id,
         updated_constitution: updated_constitution.clone(),
         validator_committee: updated_constitution.validator_committee,
-        validator_signatures: vec![Signature::default()].try_into().unwrap(),
+        validator_signatures: vec![SignerSignature::default()].try_into().unwrap(),
         activation_window: 100,
     };
 

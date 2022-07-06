@@ -25,6 +25,7 @@ use std::{convert::TryFrom, fmt::Debug, hash::Hash};
 mod asset_definition;
 mod base_layer_metadata;
 mod base_layer_output;
+mod checkpoint_challenge;
 mod committee;
 pub mod domain_events;
 mod error;
@@ -44,6 +45,7 @@ mod view_id;
 pub use asset_definition::{AssetDefinition, InitialState};
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::{BaseLayerOutput, CheckpointOutput, CommitteeOutput};
+pub use checkpoint_challenge::CheckpointChallenge;
 pub use committee::Committee;
 pub use error::ModelError;
 pub use hot_stuff_message::HotStuffMessage;
@@ -156,14 +158,14 @@ pub enum ConsensusWorkerState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Signature {}
+pub struct ValidatorSignature {}
 
-impl Signature {
+impl ValidatorSignature {
     pub fn from_bytes(_source: &[u8]) -> Self {
         Self {}
     }
 
-    pub fn combine(&self, other: &Signature) -> Signature {
+    pub fn combine(&self, other: &ValidatorSignature) -> ValidatorSignature {
         other.clone()
     }
 

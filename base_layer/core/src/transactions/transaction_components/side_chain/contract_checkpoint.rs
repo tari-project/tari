@@ -62,17 +62,18 @@ impl ConsensusDecoding for ContractCheckpoint {
 mod tests {
     use std::convert::TryInto;
 
-    use tari_common_types::types::Signature;
-
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
+    use crate::{
+        consensus::check_consensus_encoding_correctness,
+        transactions::transaction_components::SignerSignature,
+    };
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
         let subject = ContractCheckpoint {
             checkpoint_number: u64::MAX,
             merkle_root: FixedHash::zero(),
-            signatures: vec![Signature::default(); 512].try_into().unwrap(),
+            signatures: vec![SignerSignature::default(); 512].try_into().unwrap(),
         };
         check_consensus_encoding_correctness(subject).unwrap();
     }

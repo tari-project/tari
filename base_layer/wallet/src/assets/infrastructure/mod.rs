@@ -27,6 +27,7 @@ use tari_common_types::{
     types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_core::transactions::transaction_components::{
+    CommitteeSignatures,
     ContractAmendment,
     ContractDefinition,
     ContractUpdateProposal,
@@ -63,13 +64,13 @@ pub enum AssetManagerRequest {
     CreateInitialCheckpoint {
         contract_id: FixedHash,
         merkle_root: FixedHash,
-        committee_public_keys: Vec<PublicKey>,
+        committee_signatures: CommitteeSignatures,
     },
     CreateFollowOnCheckpoint {
         contract_id: FixedHash,
         checkpoint_number: u64,
         merkle_root: FixedHash,
-        committee_public_keys: Vec<PublicKey>,
+        committee_signatures: CommitteeSignatures,
     },
     CreateConstitutionDefinition {
         constitution_definition: Box<SideChainFeatures>,

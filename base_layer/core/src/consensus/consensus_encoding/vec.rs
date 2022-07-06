@@ -58,6 +58,15 @@ impl<T, const MAX: usize> MaxSizeVec<T, MAX> {
         }
         Some(Self { inner })
     }
+
+    #[must_use = "resulting bool must be checked to ensure that the item was added"]
+    pub fn push(&mut self, item: T) -> bool {
+        if self.inner.len() + 1 > MAX {
+            return false;
+        }
+        self.inner.push(item);
+        true
+    }
 }
 
 impl<T, const MAX: usize> Deref for MaxSizeVec<T, MAX> {
