@@ -46,7 +46,7 @@ ARG VERSION
 RUN addgroup -g 1000 tari && \
     adduser -u 1000 -g 1000 -S tari -G tari && \
     mkdir -p /home/tari && \
-    chown tari.tari /home/tari
+    chown tari:tari /home/tari
 
 COPY --chown=tari:tari --from=builder /xmrig/build/xmrig /usr/local/bin/
 
