@@ -21,11 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::FixedHash;
+use tari_dan_engine::state::{StateDb, StateDbBackendAdapter};
 
 use crate::storage::{
     chain::{ChainDb, ChainDbBackendAdapter},
     global::{GlobalDb, GlobalDbBackendAdapter},
-    state::{StateDb, StateDbBackendAdapter},
     StorageError,
 };
 

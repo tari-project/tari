@@ -26,13 +26,10 @@ use prost::Message;
 use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_crypto::common::Blake256;
 use tari_dan_common_types::proto::tips::tip004;
+use tari_dan_engine::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader};
 use tari_utilities::hex::Hex;
 
-use crate::{
-    models::InstructionSet,
-    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
-    DigitalAssetError,
-};
+use crate::{models::InstructionSet, DigitalAssetError};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip004_template";
 

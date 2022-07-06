@@ -32,7 +32,7 @@ use tari_common_types::{
     transaction::{ImportStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
+use tari_comms::{peer_manager::NodeId, traits::OrOptional, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -234,7 +234,7 @@ where TBackend: WalletBackend + 'static
                 let next_header_hash = next_header.hash();
 
                 ScannedBlock {
-                    height: last_scanned_block.height + 1,
+                    height: next_header.height,
                     num_outputs: last_scanned_block.num_outputs,
                     amount: last_scanned_block.amount,
                     header_hash: next_header_hash,
@@ -314,8 +314,12 @@ where TBackend: WalletBackend + 'static
         current_tip_height: u64,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
-        // Check for reogs
         let scanned_blocks = self.resources.db.get_scanned_blocks().await?;
+        debug!(
+            target: LOG_TARGET,
+            "Found {} cached previously scanned blocks",
+            scanned_blocks.len()
+        );
 
         if scanned_blocks.is_empty() {
             return Ok(None);
@@ -325,51 +329,66 @@ where TBackend: WalletBackend + 'static
         // Accumulate number of outputs and recovered Tari in the valid blocks
         // Assumption: The blocks are ordered and a reorg will occur to the most recent blocks. Once you have found a
         // valid block the blocks before it are also valid and don't need to be checked
-        let mut missing_scanned_blocks = Vec::new();
+        let mut last_missing_scanned_block = None;
         let mut found_scanned_block = None;
         let mut num_outputs = 0u64;
         let mut amount = MicroTari::from(0);
         for sb in scanned_blocks {
-            if sb.height <= current_tip_height {
-                if found_scanned_block.is_none() {
-                    let header = BlockHeader::try_from(client.get_header_by_height(sb.height).await?)
-                        .map_err(UtxoScannerError::ConversionError)?;
-                    let header_hash = header.hash();
-                    if header_hash == sb.header_hash {
-                        found_scanned_block = Some(sb.clone());
-                    } else {
-                        missing_scanned_blocks.push(sb.clone());
-                    }
+            // The scanned block has a higher height than the current tip, meaning the previously scanned block was
+            // reorged out.
+            if sb.height > current_tip_height {
+                last_missing_scanned_block = Some(sb);
+                continue;
+            }
+
+            if found_scanned_block.is_none() {
+                let header = client.get_header_by_height(sb.height).await.or_optional()?;
+                let header = header
+                    .map(BlockHeader::try_from)
+                    .transpose()
+                    .map_err(UtxoScannerError::ConversionError)?;
+
+                match header {
+                    Some(header) => {
+                        let header_hash = header.hash();
+                        if header_hash == sb.header_hash {
+                            found_scanned_block = Some(sb.clone());
+                        } else {
+                            last_missing_scanned_block = Some(sb.clone());
+                        }
+                    },
+                    None => {
+                        last_missing_scanned_block = Some(sb.clone());
+                    },
                 }
-                if found_scanned_block.is_some() {
-                    num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
-                    amount = amount
-                        .checked_add(sb.amount.unwrap_or_else(|| MicroTari::from(0)))
-                        .ok_or(UtxoScannerError::OverflowError)?;
-                }
-            } else {
-                missing_scanned_blocks.push(sb.clone());
+            }
+            // Sum up the number of outputs recovered starting from the first found block
+            if found_scanned_block.is_some() {
+                num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
+                amount = amount
+                    .checked_add(sb.amount.unwrap_or_else(|| MicroTari::from(0)))
+                    .ok_or(UtxoScannerError::OverflowError)?;
             }
         }
 
+        if let Some(block) = last_missing_scanned_block {
+            warn!(
+                target: LOG_TARGET,
+                "Reorg detected on base node. Removing scanned blocks from height {}", block.height
+            );
+            self.resources
+                .db
+                .clear_scanned_blocks_from_and_higher(block.height)
+                .await?;
+        }
+
         if let Some(sb) = found_scanned_block {
-            if !missing_scanned_blocks.is_empty() {
-                warn!(
-                    target: LOG_TARGET,
-                    "Reorg detected on base node. Last scanned block found at height {} (Header Hash: {})",
-                    sb.height,
-                    sb.header_hash.to_hex()
-                );
-                self.resources
-                    .db
-                    .clear_scanned_blocks_from_and_higher(
-                        missing_scanned_blocks
-                            .last()
-                            .expect("cannot fail, the vector is not empty")
-                            .height,
-                    )
-                    .await?;
-            }
+            warn!(
+                target: LOG_TARGET,
+                "Last scanned block found at height {} (Header Hash: {})",
+                sb.height,
+                sb.header_hash.to_hex()
+            );
             Ok(Some(ScannedBlock {
                 height: sb.height,
                 num_outputs: Some(num_outputs),

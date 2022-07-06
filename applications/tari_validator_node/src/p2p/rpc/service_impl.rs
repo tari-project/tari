@@ -28,16 +28,18 @@ use tari_comms::{
     utils,
 };
 use tari_dan_core::{
-    models::{Instruction, TreeNodeHash},
+    models::TreeNodeHash,
     services::{AssetProcessor, MempoolService},
-    storage::{state::StateDbUnitOfWorkReader, DbFactory},
+    storage::DbFactory,
 };
+use tari_dan_engine::state::StateDbUnitOfWorkReader;
 use tokio::{sync::mpsc, task};
 
 const LOG_TARGET: &str = "vn::p2p::rpc";
 
 use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_engine::instructions::Instruction;
 
 use crate::p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService};
 

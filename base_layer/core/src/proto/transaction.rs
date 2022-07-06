@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -39,7 +39,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction_components::{
-            vec_into_fixed_string,
+            bytes_into_fixed_string,
             AssetOutputFeatures,
             CheckpointParameters,
             CommitteeDefinitionFeatures,
@@ -68,6 +68,7 @@ use crate::{
             SideChainCheckpointFeatures,
             SideChainConsensus,
             SideChainFeatures,
+            SignerSignature,
             TemplateParameter,
             Transaction,
             TransactionInput,
@@ -97,8 +98,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
         let excess_sig = kernel
             .excess_sig
             .ok_or_else(|| "excess_sig not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
         let kernel_features = u8::try_from(kernel.features).map_err(|_| "Kernel features must be a single byte")?;
 
         Ok(TransactionKernel::new(
@@ -526,8 +526,7 @@ impl TryFrom<proto::types::ContractAcceptance> for ContractAcceptance {
         let signature = value
             .signature
             .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
 
         Ok(Self {
             validator_node_public_key,
@@ -555,8 +554,7 @@ impl TryFrom<proto::types::ContractUpdateProposal> for ContractUpdateProposal {
         let signature = value
             .signature
             .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
 
         let updated_constitution = value
             .updated_constitution
@@ -592,8 +590,7 @@ impl TryFrom<proto::types::ContractUpdateProposalAcceptance> for ContractUpdateP
         let signature = value
             .signature
             .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
 
         Ok(Self {
             proposal_id: value.proposal_id,
@@ -786,7 +783,7 @@ impl TryFrom<proto::types::CommitteeMembers> for CommitteeMembers {
 impl From<CommitteeSignatures> for proto::types::CommitteeSignatures {
     fn from(value: CommitteeSignatures) -> Self {
         Self {
-            signatures: value.signatures().into_iter().map(Into::into).collect(),
+            signatures: value.signatures().iter().map(Into::into).collect(),
         }
     }
 }
@@ -808,7 +805,7 @@ impl TryFrom<proto::types::CommitteeSignatures> for CommitteeSignatures {
             .into_iter()
             .enumerate()
             .map(|(i, s)| {
-                Signature::try_from(s)
+                SignerSignature::try_from(s)
                     .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -954,7 +951,7 @@ impl TryFrom<proto::types::ContractDefinition> for ContractDefinition {
     type Error = String;
 
     fn try_from(value: proto::types::ContractDefinition) -> Result<Self, Self::Error> {
-        let contract_name = vec_into_fixed_string(value.contract_name);
+        let contract_name = bytes_into_fixed_string(value.contract_name);
 
         let contract_issuer =
             PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
@@ -989,7 +986,7 @@ impl TryFrom<proto::types::ContractSpecification> for ContractSpecification {
     type Error = String;
 
     fn try_from(value: proto::types::ContractSpecification) -> Result<Self, Self::Error> {
-        let runtime = vec_into_fixed_string(value.runtime);
+        let runtime = bytes_into_fixed_string(value.runtime);
         let public_functions = value
             .public_functions
             .into_iter()
@@ -1023,7 +1020,7 @@ impl TryFrom<proto::types::PublicFunction> for PublicFunction {
             .ok_or_else(|| "function is missing".to_string())??;
 
         Ok(Self {
-            name: vec_into_fixed_string(value.name),
+            name: bytes_into_fixed_string(value.name),
             function,
         })
     }

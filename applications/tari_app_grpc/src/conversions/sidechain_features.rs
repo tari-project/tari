@@ -20,11 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    borrow::Borrow,
+    convert::{TryFrom, TryInto},
+};
 
-use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::{
-    vec_into_fixed_string,
+    bytes_into_fixed_string,
     CheckpointParameters,
     CommitteeMembers,
     CommitteeSignatures,
@@ -44,6 +47,7 @@ use tari_core::transactions::transaction_components::{
     RequirementsForConstitutionChange,
     SideChainConsensus,
     SideChainFeatures,
+    SignerSignature,
 };
 use tari_utilities::ByteArray;
 
@@ -145,7 +149,7 @@ impl TryFrom<grpc::ContractDefinition> for ContractDefinition {
     type Error = String;
 
     fn try_from(value: grpc::ContractDefinition) -> Result<Self, Self::Error> {
-        let contract_name = vec_into_fixed_string(value.contract_name);
+        let contract_name = bytes_into_fixed_string(value.contract_name);
 
         let contract_issuer =
             PublicKey::from_bytes(value.contract_issuer.as_bytes()).map_err(|err| format!("{:?}", err))?;
@@ -180,7 +184,7 @@ impl TryFrom<grpc::ContractSpecification> for ContractSpecification {
     type Error = String;
 
     fn try_from(value: grpc::ContractSpecification) -> Result<Self, Self::Error> {
-        let runtime = vec_into_fixed_string(value.runtime);
+        let runtime = bytes_into_fixed_string(value.runtime);
         let public_functions = value
             .public_functions
             .into_iter()
@@ -214,7 +218,7 @@ impl TryFrom<grpc::PublicFunction> for PublicFunction {
             .ok_or_else(|| "function is missing".to_string())??;
 
         Ok(Self {
-            name: vec_into_fixed_string(value.name),
+            name: bytes_into_fixed_string(value.name),
             function,
         })
     }
@@ -489,7 +493,7 @@ impl TryFrom<grpc::CommitteeMembers> for CommitteeMembers {
 impl From<CommitteeSignatures> for grpc::CommitteeSignatures {
     fn from(value: CommitteeSignatures) -> Self {
         Self {
-            signatures: value.signatures().into_iter().map(Into::into).collect(),
+            signatures: value.signatures().iter().map(Into::into).collect(),
         }
     }
 }
@@ -511,7 +515,7 @@ impl TryFrom<grpc::CommitteeSignatures> for CommitteeSignatures {
             .into_iter()
             .enumerate()
             .map(|(i, s)| {
-                Signature::try_from(s)
+                SignerSignature::try_from(s)
                     .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -521,6 +525,29 @@ impl TryFrom<grpc::CommitteeSignatures> for CommitteeSignatures {
     }
 }
 
+//---------------------------------- SignerSignature --------------------------------------------//
+impl<B: Borrow<SignerSignature>> From<B> for grpc::SignerSignature {
+    fn from(value: B) -> Self {
+        Self {
+            signer: value.borrow().signer.to_vec(),
+            signature: Some(grpc::Signature::from(&value.borrow().signature)),
+        }
+    }
+}
+
+impl TryFrom<grpc::SignerSignature> for SignerSignature {
+    type Error = String;
+
+    fn try_from(value: grpc::SignerSignature) -> Result<Self, Self::Error> {
+        Ok(Self {
+            signer: PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
+            signature: value
+                .signature
+                .map(TryInto::try_into)
+                .ok_or("signature not provided")??,
+        })
+    }
+}
 //---------------------------------- ContractAcceptance --------------------------------------------//
 
 impl From<ContractAcceptance> for grpc::ContractAcceptance {

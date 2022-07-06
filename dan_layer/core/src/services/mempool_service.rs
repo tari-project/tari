@@ -24,12 +24,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tari_common_types::types::FixedHash;
+use tari_dan_engine::instructions::Instruction;
 use tokio::sync::Mutex;
 
-use crate::{
-    digital_assets_error::DigitalAssetError,
-    models::{Instruction, TreeNodeHash},
-};
+use crate::{digital_assets_error::DigitalAssetError, models::TreeNodeHash};
 
 #[async_trait]
 pub trait MempoolService: Sync + Send + 'static {

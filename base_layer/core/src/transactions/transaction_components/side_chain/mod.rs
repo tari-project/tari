@@ -35,13 +35,7 @@ pub use contract_constitution::{
 };
 
 mod contract_definition;
-pub use contract_definition::{
-    vec_into_fixed_string,
-    ContractDefinition,
-    ContractSpecification,
-    FunctionRef,
-    PublicFunction,
-};
+pub use contract_definition::{ContractDefinition, ContractSpecification, FunctionRef, PublicFunction};
 
 mod contract_update_proposal;
 pub use contract_update_proposal::ContractUpdateProposal;
@@ -66,3 +60,11 @@ pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};
 
 mod contract_checkpoint;
 pub use contract_checkpoint::ContractCheckpoint;
+
+// Length of FixedString
+pub const FIXED_STR_LEN: usize = 32;
+pub type FixedString = [u8; FIXED_STR_LEN];
+
+pub fn bytes_into_fixed_string<T: AsRef<[u8]>>(value: T) -> FixedString {
+    tari_common_types::array::copy_into_fixed_array_lossy::<_, FIXED_STR_LEN>(value.as_ref())
+}

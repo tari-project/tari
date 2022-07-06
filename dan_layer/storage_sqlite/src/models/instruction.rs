@@ -39,11 +39,14 @@ pub struct Instruction {
     pub sender: Vec<u8>,
 }
 
-impl TryFrom<Instruction> for tari_dan_core::models::Instruction {
+impl TryFrom<Instruction> for tari_dan_engine::instructions::Instruction {
     type Error = SqliteStorageError;
 
     fn try_from(instruction: Instruction) -> Result<Self, Self::Error> {
-        let template_id = instruction.template_id.try_into()?;
+        let template_id = instruction
+            .template_id
+            .try_into()
+            .map_err(|s| SqliteStorageError::ConversionError { reason: s })?;
         Ok(Self::new(
             template_id,
             instruction.method,

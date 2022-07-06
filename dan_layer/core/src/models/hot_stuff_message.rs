@@ -22,6 +22,7 @@
 
 use digest::Digest;
 use tari_common_types::types::FixedHash;
+use tari_core::transactions::transaction_components::SignerSignature;
 use tari_crypto::common::Blake256;
 
 use crate::models::{
@@ -29,8 +30,8 @@ use crate::models::{
     HotStuffTreeNode,
     Payload,
     QuorumCertificate,
-    Signature,
     TreeNodeHash,
+    ValidatorSignature,
     ViewId,
 };
 
@@ -41,7 +42,8 @@ pub struct HotStuffMessage<TPayload: Payload> {
     justify: Option<QuorumCertificate>,
     node: Option<HotStuffTreeNode<TPayload>>,
     node_hash: Option<TreeNodeHash>,
-    partial_sig: Option<Signature>,
+    partial_sig: Option<ValidatorSignature>,
+    checkpoint_signature: Option<SignerSignature>,
     contract_id: FixedHash,
 }
 
@@ -52,16 +54,18 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         justify: Option<QuorumCertificate>,
         node: Option<HotStuffTreeNode<TPayload>>,
         node_hash: Option<TreeNodeHash>,
-        partial_sig: Option<Signature>,
+        partial_sig: Option<ValidatorSignature>,
+        checkpoint_signature: Option<SignerSignature>,
         contract_id: FixedHash,
     ) -> Self {
-        HotStuffMessage {
+        Self {
             view_number,
             message_type,
             justify,
             node,
             node_hash,
             partial_sig,
+            checkpoint_signature,
             contract_id,
         }
     }
@@ -73,6 +77,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: Some(prepare_qc),
             node: None,
             partial_sig: None,
+            checkpoint_signature: None,
             node_hash: None,
             contract_id,
         }
@@ -90,6 +95,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: high_qc,
             view_number,
             partial_sig: None,
+            checkpoint_signature: None,
             node_hash: None,
             contract_id,
         }
@@ -102,6 +108,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             node: None,
             partial_sig: None,
+            checkpoint_signature: None,
             justify: None,
             contract_id,
         }
@@ -119,6 +126,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: prepare_qc,
             view_number,
             node_hash: None,
+            checkpoint_signature: None,
             partial_sig: None,
             contract_id,
         }
@@ -131,6 +139,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             node: None,
             partial_sig: None,
+            checkpoint_signature: None,
             justify: None,
             contract_id,
         }
@@ -148,18 +157,25 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: pre_commit_qc,
             view_number,
             partial_sig: None,
+            checkpoint_signature: None,
             node_hash: None,
             contract_id,
         }
     }
 
-    pub fn vote_commit(node_hash: TreeNodeHash, view_number: ViewId, contract_id: FixedHash) -> Self {
+    pub fn vote_commit(
+        node_hash: TreeNodeHash,
+        view_number: ViewId,
+        contract_id: FixedHash,
+        checkpoint_signature: SignerSignature,
+    ) -> Self {
         Self {
             message_type: HotStuffMessageType::Commit,
             node_hash: Some(node_hash),
             view_number,
             node: None,
             partial_sig: None,
+            checkpoint_signature: Some(checkpoint_signature),
             justify: None,
             contract_id,
         }
@@ -177,6 +193,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: commit_qc,
             view_number,
             partial_sig: None,
+            checkpoint_signature: None,
             node_hash: None,
             contract_id,
         }
@@ -224,11 +241,15 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         self.message_type() == message_type && view_id == self.view_number()
     }
 
-    pub fn add_partial_sig(&mut self, signature: Signature) {
+    pub fn add_partial_sig(&mut self, signature: ValidatorSignature) {
         self.partial_sig = Some(signature)
     }
 
-    pub fn partial_sig(&self) -> Option<&Signature> {
+    pub fn partial_sig(&self) -> Option<&ValidatorSignature> {
         self.partial_sig.as_ref()
+    }
+
+    pub fn checkpoint_signature(&self) -> Option<&SignerSignature> {
+        self.checkpoint_signature.as_ref()
     }
 }

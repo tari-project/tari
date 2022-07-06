@@ -22,18 +22,20 @@
 
 use async_trait::async_trait;
 use log::*;
+use tari_core::transactions::transaction_components::SignerSignature;
+use tari_dan_engine::state::models::StateRoot;
 
-use crate::{
-    models::{AssetDefinition, StateRoot},
-    services::wallet_client::WalletClient,
-    DigitalAssetError,
-};
+use crate::{models::AssetDefinition, services::wallet_client::WalletClient, DigitalAssetError};
 
 const LOG_TARGET: &str = "tari::dan::checkpoint_manager";
 
 #[async_trait]
 pub trait CheckpointManager {
-    async fn create_checkpoint(&mut self, state_root: StateRoot) -> Result<(), DigitalAssetError>;
+    async fn create_checkpoint(
+        &mut self,
+        state_root: StateRoot,
+        signature: Vec<SignerSignature>,
+    ) -> Result<(), DigitalAssetError>;
 }
 
 #[derive(Default)]
@@ -57,7 +59,11 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
 
 #[async_trait]
 impl<TWallet: WalletClient + Sync + Send> CheckpointManager for ConcreteCheckpointManager<TWallet> {
-    async fn create_checkpoint(&mut self, state_root: StateRoot) -> Result<(), DigitalAssetError> {
+    async fn create_checkpoint(
+        &mut self,
+        state_root: StateRoot,
+        signatures: Vec<SignerSignature>,
+    ) -> Result<(), DigitalAssetError> {
         if self.num_calls == 0 || self.num_calls >= self.checkpoint_interval {
             // TODO: fetch and increment checkpoint number
             let checkpoint_number = u64::from(self.num_calls / self.checkpoint_interval);
@@ -66,7 +72,12 @@ impl<TWallet: WalletClient + Sync + Send> CheckpointManager for ConcreteCheckpoi
                 "Creating checkpoint for contract {}", self.asset_definition.contract_id
             );
             self.wallet
-                .create_new_checkpoint(&self.asset_definition.contract_id, &state_root, checkpoint_number)
+                .create_new_checkpoint(
+                    &self.asset_definition.contract_id,
+                    &state_root,
+                    checkpoint_number,
+                    signatures,
+                )
                 .await?;
         }
         self.num_calls += 1;

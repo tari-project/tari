@@ -26,7 +26,8 @@ use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::embed_migrations;
 use log::*;
 use tari_common_types::types::FixedHash;
-use tari_dan_core::storage::{chain::ChainDb, global::GlobalDb, state::StateDb, DbFactory, StorageError};
+use tari_dan_core::storage::{chain::ChainDb, global::GlobalDb, DbFactory, StorageError};
+use tari_dan_engine::state::StateDb;
 use tari_utilities::hex::Hex;
 
 use crate::{

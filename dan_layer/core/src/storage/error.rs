@@ -23,7 +23,6 @@
 use std::{io, sync::PoisonError};
 
 use lmdb_zero as lmdb;
-use tari_mmr::error::MerkleMountainRangeError;
 use tari_storage::lmdb_store::LMDBError;
 
 #[derive(Debug, thiserror::Error)]
@@ -36,8 +35,6 @@ pub enum StorageError {
     LmdbError(#[from] lmdb::Error),
     #[error("LMDB Error: {0}")]
     LMDBError(#[from] LMDBError),
-    #[error("Decode Error: {0}")]
-    DecodeError(#[from] bytecodec::Error),
     #[error("Query error:{reason}")]
     QueryError { reason: String },
     #[error("Migration error: {reason}")]
@@ -48,8 +45,7 @@ pub enum StorageError {
     NotFound,
     #[error("File system path does not exist")]
     FileSystemPathDoesNotExist,
-    #[error("Merkle error:{0}")]
-    MerkleMountainRangeError(#[from] MerkleMountainRangeError),
+
     #[error("General storage error: {details}")]
     General { details: String },
     #[error("Lock error")]

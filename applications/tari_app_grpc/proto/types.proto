@@ -313,7 +313,12 @@ message ContractAmendment {
 }
 
 message CommitteeSignatures {
-    repeated Signature signatures = 1;
+    repeated SignerSignature signatures = 1;
+}
+
+message SignerSignature {
+    bytes signer = 1;
+    Signature signature = 2;
 }
 
 // TODO: DEPRECATED

@@ -28,9 +28,11 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::DhtActorError;
+use tari_dan_common_types::TemplateId;
+use tari_dan_engine::state::models::{SchemaState, StateOpLogEntry};
 
 use crate::{
-    models::{Node, SchemaState, SideChainBlock, StateOpLogEntry, TemplateId, TreeNodeHash},
+    models::{Node, SideChainBlock, TreeNodeHash},
     services::infrastructure_services::NodeAddressable,
 };
 

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derivative::Derivative;
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey};
+use tari_common_types::types::{BlindingFactor, ComSignature, Commitment, PrivateKey, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{ExecutionStack, TariScript};
 
@@ -45,11 +45,11 @@ use crate::{
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct UnblindedOutputBuilder {
-    pub value: MicroTari,
+    value: MicroTari,
     #[derivative(Debug = "ignore")]
     spending_key: BlindingFactor,
-    pub features: OutputFeatures,
-    pub script: Option<TariScript>,
+    features: OutputFeatures,
+    script: Option<TariScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
     #[derivative(Debug = "ignore")]
@@ -59,6 +59,7 @@ pub struct UnblindedOutputBuilder {
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
     encrypted_value: EncryptedValue,
+    rewind_data: Option<RewindData>,
 }
 
 impl UnblindedOutputBuilder {
@@ -76,16 +77,14 @@ impl UnblindedOutputBuilder {
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
             encrypted_value: EncryptedValue::default(),
+            rewind_data: None,
         }
     }
 
-    pub fn update_recovery_byte_if_required(
-        &mut self,
-        factories: &CryptoFactories,
-        rewind_data: Option<&RewindData>,
-    ) -> Result<(), TransactionError> {
-        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-        self.features.update_recovery_byte(&commitment, rewind_data);
+    pub fn update_recovery_byte(&mut self, factories: &CryptoFactories) -> Result<(), TransactionError> {
+        let commitment = self.generate_commitment(factories);
+        self.features
+            .update_recovery_byte(&commitment, self.rewind_data.as_ref());
         Ok(())
     }
 
@@ -179,13 +178,36 @@ impl UnblindedOutputBuilder {
         self
     }
 
+    pub fn with_rewind_data(mut self, rewind_data: RewindData) -> Self {
+        self.rewind_data = Some(rewind_data);
+        self
+    }
+
     pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
         self.script_private_key = Some(script_private_key);
         self
     }
 
+    pub fn value(&self) -> MicroTari {
+        self.value
+    }
+
+    pub fn features(&self) -> &OutputFeatures {
+        &self.features
+    }
+
+    pub fn script(&self) -> Option<&TariScript> {
+        self.script.as_ref()
+    }
+
     pub fn covenant(&self) -> &Covenant {
         &self.covenant
+    }
+
+    pub fn generate_commitment(&self, factories: &CryptoFactories) -> Commitment {
+        factories
+            .commitment
+            .commit_value(&self.spending_key, self.value.as_u64())
     }
 }
 
@@ -216,8 +238,6 @@ mod test {
     #[test]
     fn test_update_recovery_byte_if_required() {
         let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
-        assert!(uob
-            .update_recovery_byte_if_required(&CryptoFactories::default(), None)
-            .is_ok());
+        assert!(uob.update_recovery_byte(&CryptoFactories::default(),).is_ok());
     }
 }

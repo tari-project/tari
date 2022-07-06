@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_dan_engine::state::StateDbBackendAdapter;
+
 use super::acceptance_manager::AcceptanceManager;
 use crate::{
     models::{domain_events::ConsensusWorkerDomainEvent, Payload},
@@ -38,13 +40,7 @@ use crate::{
         SigningService,
         ValidatorNodeClientFactory,
     },
-    storage::{
-        chain::ChainDbBackendAdapter,
-        global::GlobalDbBackendAdapter,
-        state::StateDbBackendAdapter,
-        ChainStorageService,
-        DbFactory,
-    },
+    storage::{chain::ChainDbBackendAdapter, global::GlobalDbBackendAdapter, ChainStorageService, DbFactory},
 };
 
 /// A trait to describe a specific configuration of services. This type allows other services to

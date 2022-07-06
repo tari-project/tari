@@ -20,31 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    borrow::Borrow,
+    convert::{TryFrom, TryInto},
+};
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+use tari_core::transactions::transaction_components::SignerSignature;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{
-    models::{
-        CheckpointData,
-        HotStuffMessage,
-        HotStuffMessageType,
-        HotStuffTreeNode,
-        Instruction,
-        InstructionSet,
-        KeyValue,
-        Node,
-        QuorumCertificate,
-        SideChainBlock,
-        Signature,
-        StateOpLogEntry,
-        StateRoot,
-        TariDanPayload,
-        TemplateId,
-        TreeNodeHash,
-        ViewId,
+use tari_dan_common_types::TemplateId;
+use tari_dan_core::models::{
+    CheckpointData,
+    HotStuffMessage,
+    HotStuffMessageType,
+    HotStuffTreeNode,
+    InstructionSet,
+    Node,
+    QuorumCertificate,
+    SideChainBlock,
+    TariDanPayload,
+    TreeNodeHash,
+    ValidatorSignature,
+    ViewId,
+};
+use tari_dan_engine::{
+    instructions::Instruction,
+    state::{
+        models::{KeyValue, StateOpLogEntry, StateRoot},
+        DbStateOpLogEntry,
     },
-    storage::state::DbStateOpLogEntry,
 };
 
 use crate::p2p::proto;
@@ -63,6 +67,7 @@ impl From<HotStuffMessage<TariDanPayload>> for proto::consensus::HotStuffMessage
                 .unwrap_or_else(TreeNodeHash::zero)
                 .as_bytes()
                 .to_vec(),
+            checkpoint_signature: source.checkpoint_signature().map(Into::into),
             contract_id: source.contract_id().to_vec(),
         }
     }
@@ -90,8 +95,8 @@ impl From<QuorumCertificate> for proto::consensus::QuorumCertificate {
     }
 }
 
-impl From<Signature> for proto::consensus::Signature {
-    fn from(_s: Signature) -> Self {
+impl From<ValidatorSignature> for proto::consensus::ValidatorSignature {
+    fn from(_s: ValidatorSignature) -> Self {
         Self {}
     }
 }
@@ -139,6 +144,7 @@ impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPaylo
             value.node.map(|n| n.try_into()).transpose()?,
             node_hash,
             value.partial_sig.map(|p| p.try_into()).transpose()?,
+            value.checkpoint_signature.map(|p| p.try_into()).transpose()?,
             value
                 .contract_id
                 .try_into()
@@ -185,10 +191,10 @@ impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPay
     }
 }
 
-impl TryFrom<proto::consensus::Signature> for Signature {
+impl TryFrom<proto::consensus::ValidatorSignature> for ValidatorSignature {
     type Error = String;
 
-    fn try_from(_value: proto::consensus::Signature) -> Result<Self, Self::Error> {
+    fn try_from(_value: proto::consensus::ValidatorSignature) -> Result<Self, Self::Error> {
         Ok(Self {})
     }
 }
@@ -218,7 +224,7 @@ impl TryFrom<proto::common::Instruction> for Instruction {
     type Error = String;
 
     fn try_from(value: proto::common::Instruction) -> Result<Self, Self::Error> {
-        let template_id = TemplateId::try_from(value.template_id).map_err(|err| err.to_string())?;
+        let template_id = TemplateId::try_from(value.template_id)?;
         Ok(Self::new(
             template_id,
             value.method,
@@ -364,5 +370,50 @@ impl TryFrom<proto::validator_node::StateOpLog> for StateOpLogEntry {
             value: Some(value.value).filter(|v| !v.is_empty()),
         }
         .into())
+    }
+}
+
+//---------------------------------- SignerSignature --------------------------------------------//
+impl<B: Borrow<SignerSignature>> From<B> for proto::common::SignerSignature {
+    fn from(signature: B) -> Self {
+        Self {
+            signer: signature.borrow().signer().to_vec(),
+            signature: Some(signature.borrow().signature().into()),
+        }
+    }
+}
+
+impl TryFrom<proto::common::SignerSignature> for SignerSignature {
+    type Error = String;
+
+    fn try_from(value: proto::common::SignerSignature) -> Result<Self, Self::Error> {
+        Ok(Self {
+            signer: PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
+            signature: value
+                .signature
+                .map(TryInto::try_into)
+                .ok_or("signature not provided")??,
+        })
+    }
+}
+
+//---------------------------------- Signature --------------------------------------------//
+impl TryFrom<proto::common::Signature> for Signature {
+    type Error = String;
+
+    fn try_from(sig: proto::common::Signature) -> Result<Self, Self::Error> {
+        let public_nonce = PublicKey::from_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
+        let signature = PrivateKey::from_bytes(&sig.signature).map_err(|e| e.to_string())?;
+
+        Ok(Self::new(public_nonce, signature))
+    }
+}
+
+impl<T: Borrow<Signature>> From<T> for proto::common::Signature {
+    fn from(sig: T) -> Self {
+        Self {
+            public_nonce: sig.borrow().get_public_nonce().to_vec(),
+            signature: sig.borrow().get_signature().to_vec(),
+        }
     }
 }

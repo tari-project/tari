@@ -27,6 +27,7 @@ use std::sync::{
 
 use log::*;
 use tari_common_types::types::PublicKey;
+use tari_dan_engine::state::{StateDbUnitOfWork, StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader};
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
@@ -36,7 +37,6 @@ use crate::{
     services::{CheckpointManager, CommitteeManager, EventsPublisher, PayloadProvider, ServiceSpecification},
     storage::{
         chain::{ChainDb, ChainDbUnitOfWork},
-        state::{StateDbUnitOfWork, StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader},
         DbFactory,
     },
     workers::{states, states::ConsensusWorkerStateEvent},
@@ -312,9 +312,10 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         unit_of_work.commit()?;
         if let Some(mut state_tx) = self.worker.state_db_unit_of_work.take() {
             state_tx.commit()?;
+            let signatures = state.collected_checkpoint_signatures();
             self.worker
                 .checkpoint_manager
-                .create_checkpoint(state_tx.calculate_root()?)
+                .create_checkpoint(state_tx.calculate_root()?, signatures)
                 .await?;
             Ok(res)
         } else {

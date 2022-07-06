@@ -27,3 +27,13 @@ message Instruction {
 message InstructionSet{
   repeated Instruction instructions = 1;
 }
+
+message SignerSignature {
+  bytes signer = 1;
+  Signature signature = 2;
+}
+
+message Signature {
+  bytes public_nonce = 1;
+  bytes signature = 2;
+}

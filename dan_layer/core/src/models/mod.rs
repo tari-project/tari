@@ -20,53 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    fmt::{Debug, Display, Formatter},
-    hash::Hash,
-    str::FromStr,
-};
+use std::{convert::TryFrom, fmt::Debug, hash::Hash};
 
 mod acceptance_challenge;
 mod asset_definition;
 mod base_layer_metadata;
 mod base_layer_output;
+mod checkpoint_challenge;
 mod committee;
 pub mod domain_events;
 mod error;
 mod hot_stuff_message;
 mod hot_stuff_tree_node;
-mod instruction;
 mod instruction_set;
 mod node;
-mod op_log;
 mod payload;
 mod quorum_certificate;
 mod sidechain_block;
 mod sidechain_metadata;
-mod state_root;
 mod tari_dan_payload;
 mod tree_node_hash;
 mod view;
 mod view_id;
 
 pub use acceptance_challenge::AcceptanceChallenge;
-pub use asset_definition::{AssetDefinition, InitialState, KeyValue, SchemaState};
+pub use asset_definition::{AssetDefinition, InitialState};
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::{BaseLayerOutput, CheckpointOutput, CommitteeOutput};
+pub use checkpoint_challenge::CheckpointChallenge;
 pub use committee::Committee;
 pub use error::ModelError;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
-pub use instruction::Instruction;
 pub use instruction_set::InstructionSet;
 pub use node::Node;
-pub use op_log::{StateOpLogEntry, StateOperation};
 pub use payload::Payload;
 pub use quorum_certificate::QuorumCertificate;
 pub use sidechain_block::SideChainBlock;
 pub use sidechain_metadata::SidechainMetadata;
-pub use state_root::StateRoot;
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use tree_node_hash::TreeNodeHash;
 pub use view::View;
@@ -80,69 +71,6 @@ pub struct InstructionCaller {
 impl InstructionCaller {
     pub fn _owner_token_id(&self) -> &TokenId {
         &self.owner_token_id
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum TemplateId {
-    Tip002 = 2,
-    Tip003 = 3,
-    Tip004 = 4,
-    Tip721 = 721,
-    EditableMetadata = 20,
-}
-
-impl FromStr for TemplateId {
-    type Err = ModelError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Tip002" => Ok(TemplateId::Tip002),
-            "Tip003" => Ok(TemplateId::Tip003),
-            "Tip004" => Ok(TemplateId::Tip004),
-            "Tip721" => Ok(TemplateId::Tip721),
-            "EditableMetadata" => Ok(TemplateId::EditableMetadata),
-            _ => {
-                println!("Unrecognised template");
-                Err(ModelError::StringParseError {
-                    details: format!("Unrecognised template ID '{}'", s),
-                })
-            },
-        }
-    }
-}
-
-impl TryFrom<u32> for TemplateId {
-    type Error = ModelError;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        match value {
-            2 => Ok(TemplateId::Tip002),
-            3 => Ok(TemplateId::Tip003),
-            4 => Ok(TemplateId::Tip004),
-            721 => Ok(TemplateId::Tip721),
-            _ => Err(ModelError::InvalidTemplateIdNumber {
-                value: i64::from(value),
-            }),
-        }
-    }
-}
-
-impl TryFrom<i32> for TemplateId {
-    type Error = ModelError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        u32::try_from(value)
-            .map_err(|_| ModelError::InvalidTemplateIdNumber {
-                value: i64::from(value),
-            })?
-            .try_into()
-    }
-}
-
-impl Display for TemplateId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -232,14 +160,14 @@ pub enum ConsensusWorkerState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Signature {}
+pub struct ValidatorSignature {}
 
-impl Signature {
+impl ValidatorSignature {
     pub fn from_bytes(_source: &[u8]) -> Self {
         Self {}
     }
 
-    pub fn combine(&self, other: &Signature) -> Signature {
+    pub fn combine(&self, other: &ValidatorSignature) -> ValidatorSignature {
         other.clone()
     }
 

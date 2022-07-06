@@ -20,12 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{HotStuffMessageType, Signature, TreeNodeHash, ViewId};
+use crate::models::{HotStuffMessageType, TreeNodeHash, ValidatorSignature, ViewId};
 
 #[derive(Debug, Clone)]
 pub struct DbQc {
     pub message_type: HotStuffMessageType,
     pub view_number: ViewId,
     pub node_hash: TreeNodeHash,
-    pub signature: Option<Signature>,
+    pub signature: Option<ValidatorSignature>,
 }

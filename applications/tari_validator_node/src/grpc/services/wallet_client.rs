@@ -23,6 +23,7 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
+use log::*;
 use tari_app_grpc::{
     tari_rpc as grpc,
     tari_rpc::{
@@ -33,8 +34,12 @@ use tari_app_grpc::{
     },
 };
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use tari_core::transactions::transaction_components::SignerSignature;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{models::StateRoot, services::WalletClient, DigitalAssetError};
+use tari_dan_core::{services::WalletClient, DigitalAssetError};
+use tari_dan_engine::state::models::StateRoot;
+
+const LOG_TARGET: &str = "tari::dan::wallet_grpc";
 
 type Inner = grpc::wallet_client::WalletClient<tonic::transport::Channel>;
 
@@ -68,14 +73,20 @@ impl WalletClient for GrpcWalletClient {
         contract_id: &FixedHash,
         state_root: &StateRoot,
         checkpoint_number: u64,
+        checkpoint_signatures: Vec<SignerSignature>,
     ) -> Result<(), DigitalAssetError> {
         let inner = self.connection().await?;
+        let committee_signatures = grpc::CommitteeSignatures {
+            signatures: checkpoint_signatures.into_iter().map(Into::into).collect(),
+        };
+
+        info!(target: LOG_TARGET, "✅ Creating checkpoint #{}", checkpoint_number);
 
         if checkpoint_number == 0 {
             let request = CreateInitialAssetCheckpointRequest {
                 contract_id: contract_id.to_vec(),
                 merkle_root: state_root.as_bytes().to_vec(),
-                committee: vec![],
+                committee_signatures: Some(committee_signatures),
             };
 
             let _res = inner
@@ -87,6 +98,7 @@ impl WalletClient for GrpcWalletClient {
                 checkpoint_number,
                 contract_id: contract_id.to_vec(),
                 merkle_root: state_root.as_bytes().to_vec(),
+                committee_signatures: Some(committee_signatures),
             };
 
             let _res = inner
