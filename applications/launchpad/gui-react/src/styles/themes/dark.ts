@@ -61,6 +61,7 @@ const darkTheme = {
   disabledPrimaryButtonText: styles.colors.darkMode.disabledText,
   baseNodeGradientStart: styles.colors.darkMode.baseNodeStart,
   baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
+  baseNodeRunningLabel: styles.colors.light.textSecondary,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -117,6 +118,7 @@ const darkTheme = {
     disabledPrimaryButtonText: styles.colors.darkMode.disabledText,
     baseNodeGradientStart: styles.colors.darkMode.baseNodeStart,
     baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
+    baseNodeRunningLabel: styles.colors.light.textSecondary,
   },
 }
 

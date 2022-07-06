@@ -59,7 +59,11 @@ const Select = ({
       <Listbox value={value} onChange={onChange} disabled={disabled}>
         {({ open }: { open: boolean }) => (
           <>
-            {label && <Label inverted={inverted}>{label}</Label>}
+            {label && (
+              <Label inverted={inverted} style={{ ...styles?.label }}>
+                {label}
+              </Label>
+            )}
             <SelectButton
               open={open}
               inverted={inverted}

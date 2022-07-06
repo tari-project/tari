@@ -82,6 +82,7 @@ declare module 'styled-components' {
     disabledPrimaryButtonText: string
     baseNodeGradientStart: string
     baseNodeGradientEnd: string
+    baseNodeRunningLabel: string
 
     inverted: {
       controlBackground: string
@@ -133,6 +134,7 @@ declare module 'styled-components' {
       disabledPrimaryButtonText: string
       baseNodeGradientStart: string
       baseNodeGradientEnd: string
+      baseNodeRunningLabel: string
     }
   }
 }

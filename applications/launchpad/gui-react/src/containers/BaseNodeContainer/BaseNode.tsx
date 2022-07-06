@@ -14,7 +14,7 @@ import { useAppDispatch } from '../../store/hooks'
 import { actions as settingsActions } from '../../store/settings'
 import { Settings } from '../../store/settings/types'
 import BaseNodeQRModal from '../BaseNodeQRModal'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 const BaseNode = ({
   running,
@@ -28,6 +28,24 @@ const BaseNode = ({
   const dispatch = useAppDispatch()
 
   const [openQRModal, setOpenQRModal] = useState(false)
+
+  const selectPausedStyleOverrides = useMemo(
+    () => ({
+      label: {
+        color: theme.nodeSubHeading,
+      },
+    }),
+    [theme],
+  )
+
+  const selectRunningStyleOverrides = useMemo(
+    () => ({
+      label: {
+        color: theme.baseNodeRunningLabel,
+      },
+    }),
+    [theme],
+  )
 
   return (
     <>
@@ -76,6 +94,9 @@ const BaseNode = ({
             options={networkOptions}
             onChange={({ value }) => setTariNetwork(value as Network)}
             label={t.baseNode.tari_network_label}
+            styles={
+              running ? selectRunningStyleOverrides : selectPausedStyleOverrides
+            }
           />
         </Box>
         {!running && (

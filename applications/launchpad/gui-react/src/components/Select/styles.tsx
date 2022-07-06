@@ -110,11 +110,12 @@ export const Option = styled.li<
   }
 `
 
-export const Label = styled(Listbox.Label)<SelectInternalProps>`
+export const Label = styled(Listbox.Label)<
+  SelectInternalProps & { style?: { color?: string } }
+>`
   font-size: 1em;
   display: inline-block;
   margin-bottom: ${({ theme }) => theme.spacingVertical()};
-  color: ${({ theme, inverted }) =>
-    inverted ? theme.inverted.primary : theme.primary};
-  font-family 'AvenirMedium';
+  color: ${({ style }) => style?.color};
+  font-family: 'AvenirMedium';
 `

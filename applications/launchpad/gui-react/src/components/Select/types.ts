@@ -28,6 +28,8 @@ export type Option = {
  *    @property {string} [color] - text color of the value
  *    @property {string} [backgroundColor] - background color
  *    @property {(open?: boolean) => string} [borderColor] - allows to set different border color for opened and closed state
+ *  @property {Object} [label] - label styles override
+ *    @property {string} [color] - color of the label
  */
 export type SelectStylesOverrideProps = {
   icon?: {
@@ -37,5 +39,8 @@ export type SelectStylesOverrideProps = {
     color?: string
     backgroundColor?: string
     borderColor?: (open?: boolean) => string
+  }
+  label?: {
+    color?: string
   }
 }
