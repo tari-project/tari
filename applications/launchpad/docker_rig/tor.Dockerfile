@@ -19,7 +19,7 @@ RUN apk update \
 
 ENV dockerfile_version=$VERSION
 ENV dockerfile_build_arch=$BUILDPLATFORM
-ENV apline_verison=$ALPINE_VERSION
+ENV alpine_verison=$ALPINE_VERSION
 ENV tor_version=$TOR_VERSION
 
 # SocksPort
