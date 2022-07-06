@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, FixedHash, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -68,6 +68,7 @@ use crate::{
             SideChainCheckpointFeatures,
             SideChainConsensus,
             SideChainFeatures,
+            SignerSignature,
             TemplateParameter,
             Transaction,
             TransactionInput,
@@ -97,8 +98,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
         let excess_sig = kernel
             .excess_sig
             .ok_or_else(|| "excess_sig not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
         let kernel_features = u8::try_from(kernel.features).map_err(|_| "Kernel features must be a single byte")?;
 
         Ok(TransactionKernel::new(
@@ -526,8 +526,7 @@ impl TryFrom<proto::types::ContractAcceptance> for ContractAcceptance {
         let signature = value
             .signature
             .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
 
         Ok(Self {
             validator_node_public_key,
@@ -555,8 +554,7 @@ impl TryFrom<proto::types::ContractUpdateProposal> for ContractUpdateProposal {
         let signature = value
             .signature
             .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
 
         let updated_constitution = value
             .updated_constitution
@@ -592,8 +590,7 @@ impl TryFrom<proto::types::ContractUpdateProposalAcceptance> for ContractUpdateP
         let signature = value
             .signature
             .ok_or_else(|| "signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .try_into()?;
 
         Ok(Self {
             proposal_id: value.proposal_id,
@@ -786,7 +783,7 @@ impl TryFrom<proto::types::CommitteeMembers> for CommitteeMembers {
 impl From<CommitteeSignatures> for proto::types::CommitteeSignatures {
     fn from(value: CommitteeSignatures) -> Self {
         Self {
-            signatures: value.signatures().into_iter().map(Into::into).collect(),
+            signatures: value.signatures().iter().map(Into::into).collect(),
         }
     }
 }
@@ -808,7 +805,7 @@ impl TryFrom<proto::types::CommitteeSignatures> for CommitteeSignatures {
             .into_iter()
             .enumerate()
             .map(|(i, s)| {
-                Signature::try_from(s)
+                SignerSignature::try_from(s)
                     .map_err(|err| format!("committee signature #{} was not a valid signature: {}", i + 1, err))
             })
             .collect::<Result<Vec<_>, _>>()?;

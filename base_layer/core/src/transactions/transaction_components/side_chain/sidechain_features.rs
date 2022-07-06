@@ -176,6 +176,7 @@ mod tests {
             PublicFunction,
             RequirementsForConstitutionChange,
             SideChainConsensus,
+            SignerSignature,
         },
     };
 
@@ -253,7 +254,7 @@ mod tests {
                 validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
                     .try_into()
                     .unwrap(),
-                validator_signatures: vec![Signature::default(); CommitteeSignatures::MAX_SIGNATURES]
+                validator_signatures: vec![SignerSignature::default(); CommitteeSignatures::MAX_SIGNATURES]
                     .try_into()
                     .unwrap(),
                 updated_constitution: constitution,
@@ -262,7 +263,7 @@ mod tests {
             checkpoint: Some(ContractCheckpoint {
                 checkpoint_number: u64::MAX,
                 merkle_root: FixedHash::zero(),
-                signatures: vec![Signature::default(); 512].try_into().unwrap(),
+                signatures: vec![SignerSignature::default(); 512].try_into().unwrap(),
             }),
         };
 

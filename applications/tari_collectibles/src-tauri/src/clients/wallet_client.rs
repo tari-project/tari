@@ -117,12 +117,11 @@ impl WalletClient {
     merkle_root: Vec<u8>,
   ) -> Result<grpc::CreateInitialAssetCheckpointResponse, CollectiblesError> {
     let inner = self.get_inner_mut()?;
-    let committee = vec![];
     let request = grpc::CreateInitialAssetCheckpointRequest {
       // TODO: contract id
       contract_id: Vec::from_hex(asset_public_key)?,
       merkle_root,
-      committee,
+      committee_signatures: None,
     };
     let result = inner
       .create_initial_asset_checkpoint(request)

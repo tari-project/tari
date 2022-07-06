@@ -24,7 +24,12 @@ use std::convert::{TryFrom, TryInto};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey, Signature};
-use tari_core::transactions::transaction_components::{CommitteeSignatures, ContractAmendment};
+use tari_core::transactions::transaction_components::{
+    CommitteeMembers,
+    CommitteeSignatures,
+    ContractAmendment,
+    SignerSignature,
+};
 use tari_utilities::hex::Hex;
 
 use super::ConstitutionDefinitionFileFormat;
@@ -42,17 +47,16 @@ impl TryFrom<ContractAmendmentFileFormat> for ContractAmendment {
     type Error = String;
 
     fn try_from(value: ContractAmendmentFileFormat) -> Result<Self, Self::Error> {
-        let validator_signature_vec: Vec<Signature> = value
+        let validator_signature_vec = value
             .validator_signatures
             .into_iter()
             .map(TryInto::try_into)
-            .collect::<Result<Vec<_>, _>>()?;
-        let validator_signatures =
-            CommitteeSignatures::try_from(validator_signature_vec).map_err(|e| format!("{}", e))?;
+            .collect::<Result<Vec<SignerSignature>, _>>()?;
+        let validator_signatures = CommitteeSignatures::try_from(validator_signature_vec).map_err(|e| e.to_string())?;
 
         Ok(Self {
             proposal_id: value.proposal_id,
-            validator_committee: value.validator_committee.try_into().map_err(|e| format!("{}", e))?,
+            validator_committee: CommitteeMembers::try_from(value.validator_committee).map_err(|e| e.to_string())?,
             validator_signatures,
             updated_constitution: value.updated_constitution.try_into()?,
             activation_window: value.activation_window,
@@ -62,17 +66,19 @@ impl TryFrom<ContractAmendmentFileFormat> for ContractAmendment {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SignatureFileFormat {
+    pub signer: String,
     pub public_nonce: String,
     pub signature: String,
 }
 
-impl TryFrom<SignatureFileFormat> for Signature {
+impl TryFrom<SignatureFileFormat> for SignerSignature {
     type Error = String;
 
     fn try_from(value: SignatureFileFormat) -> Result<Self, Self::Error> {
-        let public_key = PublicKey::from_hex(&value.public_nonce).map_err(|e| format!("{}", e))?;
-        let signature = PrivateKey::from_hex(&value.signature).map_err(|e| format!("{}", e))?;
+        let signer = PublicKey::from_hex(&value.signer).map_err(|e| e.to_string())?;
+        let public_key = PublicKey::from_hex(&value.public_nonce).map_err(|e| e.to_string())?;
+        let signature = PrivateKey::from_hex(&value.signature).map_err(|e| e.to_string())?;
 
-        Ok(Signature::new(public_key, signature))
+        Ok(SignerSignature::new(signer, Signature::new(public_key, signature)))
     }
 }

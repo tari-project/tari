@@ -1,6 +1,8 @@
 <dl>
-  <dt>Signatures</dt>
+{{#if signatures}}
+    <dt>{{signatures.length}} signatures</dt>
   {{#each signatures as |signature|}}
-    <dd>{{>Signature signature}}</dd>
+      <dd>{{>SignerSignature signature}}</dd>
   {{/each}}
+{{/if}}
 </dl>

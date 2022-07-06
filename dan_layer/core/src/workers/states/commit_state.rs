@@ -23,12 +23,24 @@
 use std::collections::HashMap;
 
 use log::*;
-use tari_common_types::types::FixedHash;
+use rand::rngs::OsRng;
+use tari_common_types::types::{Commitment, FixedHash, PrivateKey};
+use tari_core::transactions::transaction_components::SignerSignature;
+use tari_crypto::keys::SecretKey;
 use tokio::time::{sleep, Duration};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, HotStuffMessageType, QuorumCertificate, TreeNodeHash, View, ViewId},
+    models::{
+        CheckpointChallenge,
+        Committee,
+        HotStuffMessage,
+        HotStuffMessageType,
+        QuorumCertificate,
+        TreeNodeHash,
+        View,
+        ViewId,
+    },
     services::{
         infrastructure_services::{InboundConnectionService, OutboundService},
         ServiceSpecification,
@@ -154,6 +166,21 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
             .await
     }
 
+    fn generate_checkpoint_signature(&self) -> SignerSignature {
+        // TODO: wire in the signer secret (probably node identity)
+        let signer_secret = PrivateKey::random(&mut OsRng);
+        // TODO: Validators should have agreed on a checkpoint commitment and included this in the signature for base
+        //       layer validation
+        let commitment = Commitment::default();
+        // TODO: We need the finalized state root to be able to produce a signature
+        let state_root = FixedHash::zero();
+        // TODO: Load next checkpoint number from db
+        let checkpoint_number = 0;
+
+        let challenge = CheckpointChallenge::new(&self.contract_id, &commitment, state_root, checkpoint_number);
+        SignerSignature::sign(&signer_secret, challenge)
+    }
+
     fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate> {
         // TODO: This can be done in one loop instead of two
         let mut node_hash = None;
@@ -235,7 +262,8 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         view_number: ViewId,
         signing_service: &TSpecification::SigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::vote_commit(node, view_number, self.contract_id);
+        let checkpoint_signature = self.generate_checkpoint_signature();
+        let mut message = HotStuffMessage::vote_commit(node, view_number, self.contract_id, checkpoint_signature);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

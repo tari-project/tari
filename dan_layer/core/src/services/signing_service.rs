@@ -26,12 +26,12 @@ use tari_comms::{types::CommsPublicKey, NodeIdentity};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::Signature,
+    models::ValidatorSignature,
     services::infrastructure_services::NodeAddressable,
 };
 
 pub trait SigningService<TAddr: NodeAddressable> {
-    fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<Signature, DigitalAssetError>;
+    fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError>;
 }
 
 pub struct NodeIdentitySigningService {
@@ -45,12 +45,12 @@ impl NodeIdentitySigningService {
 }
 
 impl SigningService<CommsPublicKey> for NodeIdentitySigningService {
-    fn sign(&self, identity: &CommsPublicKey, _challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
+    fn sign(&self, identity: &CommsPublicKey, _challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError> {
         if identity != self.node_identity.public_key() {
             return Err(DigitalAssetError::InvalidSignature);
         }
 
         // TODO better sig
-        Ok(Signature {})
+        Ok(ValidatorSignature {})
     }
 }

@@ -22,16 +22,17 @@ message HotStuffMessage {
     HotStuffMessageType message_type = 2;
     QuorumCertificate justify = 3;
     HotStuffTreeNode node= 4;
-    Signature partial_sig = 5;
+    ValidatorSignature partial_sig = 5;
     bytes node_hash = 6;
     bytes contract_id = 7;
+    tari.dan.common.SignerSignature checkpoint_signature = 8;
 }
 
 message QuorumCertificate {
     HotStuffMessageType message_type = 1;
     bytes node_hash = 2;
     uint64 view_number = 3;
-    Signature signature = 4;
+    ValidatorSignature signature = 4;
 }
 
 message HotStuffTreeNode {
@@ -41,7 +42,7 @@ message HotStuffTreeNode {
     bytes state_root =4;
 }
 
-message Signature{
+message ValidatorSignature{
 
 }
 

@@ -58,6 +58,9 @@ pub use committee_members::CommitteeMembers;
 mod committee_signatures;
 pub use committee_signatures::CommitteeSignatures;
 
+mod signer_signature;
+pub use signer_signature::SignerSignature;
+
 mod sidechain_features;
 pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};
 

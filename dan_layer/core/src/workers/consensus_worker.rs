@@ -312,9 +312,10 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         unit_of_work.commit()?;
         if let Some(mut state_tx) = self.worker.state_db_unit_of_work.take() {
             state_tx.commit()?;
+            let signatures = state.collected_checkpoint_signatures();
             self.worker
                 .checkpoint_manager
-                .create_checkpoint(state_tx.calculate_root()?)
+                .create_checkpoint(state_tx.calculate_root()?, signatures)
                 .await?;
             Ok(res)
         } else {
