@@ -28,8 +28,12 @@ mod chain_storage_service;
 mod db_factory;
 mod error;
 pub mod global;
+mod metadata_backend_adapter;
 mod store;
 
+pub use atomic_db::AtomicDb;
 pub use db_factory::DbFactory;
+pub use metadata_backend_adapter::{AsKeyBytes, MetadataBackendAdapter};
 
+mod atomic_db;
 pub mod mocks;

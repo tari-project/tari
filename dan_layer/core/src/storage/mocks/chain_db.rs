@@ -22,11 +22,15 @@
 
 use std::sync::{Arc, RwLock};
 
+use tari_utilities::message_format::MessageFormat;
+
 use super::MemoryChainDb;
 use crate::{
     models::{QuorumCertificate, TreeNodeHash},
     storage::{
-        chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
+        chain::{ChainDbBackendAdapter, ChainDbMetadataKey, DbInstruction, DbNode, DbQc},
+        AtomicDb,
+        MetadataBackendAdapter,
         StorageError,
     },
 };
@@ -42,9 +46,20 @@ impl MockChainDbBackupAdapter {
     }
 }
 
-impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
-    type BackendTransaction = ();
+impl AtomicDb for MockChainDbBackupAdapter {
+    type DbTransaction = ();
     type Error = StorageError;
+
+    fn create_transaction(&self) -> Result<Self::DbTransaction, Self::Error> {
+        Ok(())
+    }
+
+    fn commit(&self, _: &Self::DbTransaction) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     type Id = usize;
     type Payload = String;
 
@@ -59,17 +74,13 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
         Ok(exists)
     }
 
-    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
-        Ok(())
-    }
-
-    fn insert_node(&self, node: &DbNode, _: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn insert_node(&self, node: &DbNode, _: &Self::DbTransaction) -> Result<(), Self::Error> {
         let mut lock = self.db.write()?;
         lock.nodes.insert(node.clone());
         Ok(())
     }
 
-    fn update_node(&self, id: &Self::Id, item: &DbNode, _: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn update_node(&self, id: &Self::Id, item: &DbNode, _: &Self::DbTransaction) -> Result<(), Self::Error> {
         let mut lock = self.db.write()?;
         if lock.nodes.update(*id, item.clone()) {
             Ok(())
@@ -78,13 +89,9 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
         }
     }
 
-    fn insert_instruction(&self, item: &DbInstruction, _: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn insert_instruction(&self, item: &DbInstruction, _: &Self::DbTransaction) -> Result<(), Self::Error> {
         let mut lock = self.db.write()?;
         lock.instructions.insert(item.clone());
-        Ok(())
-    }
-
-    fn commit(&self, _: &Self::BackendTransaction) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -157,7 +164,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
         Ok(recs)
     }
 
-    fn update_prepare_qc(&self, item: &DbQc, _transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn update_prepare_qc(&self, item: &DbQc, _transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
         let mut lock = self.db.write()?;
         let id = lock
             .prepare_qc
@@ -169,7 +176,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
         Ok(())
     }
 
-    fn update_locked_qc(&self, locked_qc: &DbQc, _transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn update_locked_qc(&self, locked_qc: &DbQc, _transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
         let mut lock = self.db.write()?;
         let id = lock
             .locked_qc
@@ -194,5 +201,34 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
             .cloned();
 
         Ok(found)
+    }
+}
+
+impl MetadataBackendAdapter<ChainDbMetadataKey> for MockChainDbBackupAdapter {
+    fn get_metadata<T: MessageFormat>(
+        &self,
+        key: &ChainDbMetadataKey,
+        transaction: &Self::DbTransaction,
+    ) -> Result<Option<T>, Self::Error> {
+        let lock = self.db.read()?;
+        Ok(lock.metadata.rows().find(|(k, _)| k == key))
+    }
+
+    fn set_metadata<T: MessageFormat>(
+        &self,
+        key: ChainDbMetadataKey,
+        value: T,
+        transaction: &Self::DbTransaction,
+    ) -> Result<(), Self::Error> {
+        let mut lock = self.db.write()?;
+        Ok(lock.metadata.rows().find(|(k, _)| k == key))
+    }
+
+    fn metadata_key_exists(
+        &self,
+        _key: &ChainDbMetadataKey,
+        transaction: &Self::DbTransaction,
+    ) -> Result<bool, Self::Error> {
+        todo!()
     }
 }

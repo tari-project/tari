@@ -20,12 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::global::schema::*;
+use std::fmt::{Display, Formatter};
 
-#[derive(Queryable, Insertable, Identifiable)]
-#[table_name = "metadata"]
-#[primary_key(key_name)]
-pub struct GlobalMetadata {
-    pub key_name: Vec<u8>,
-    pub value: Vec<u8>,
+use crate::storage::metadata_backend_adapter::AsKeyBytes;
+
+#[derive(Debug, Clone, Copy)]
+pub enum ChainDbMetadataKey {
+    CheckpointNumber,
+}
+
+impl AsKeyBytes for ChainDbMetadataKey {
+    fn as_key_bytes(&self) -> &[u8] {
+        match self {
+            ChainDbMetadataKey::CheckpointNumber => b"checkpoint-number",
+        }
+    }
+}
+
+impl Display for ChainDbMetadataKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", String::from_utf8_lossy(self.as_key_bytes()))
+    }
 }

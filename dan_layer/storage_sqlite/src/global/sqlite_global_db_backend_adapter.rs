@@ -28,7 +28,7 @@ use crate::{
     error::SqliteStorageError,
     global::models::{
         contract::{Contract, NewContract},
-        metadata::Metadata,
+        metadata::GlobalMetadata,
     },
     SqliteTransaction,
 };
@@ -74,7 +74,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         let tx = self.create_transaction()?;
 
         match self.get_data_with_connection(&key, &tx) {
-            Ok(Some(r)) => diesel::update(&Metadata {
+            Ok(Some(r)) => diesel::update(&GlobalMetadata {
                 key_name: key.as_key_bytes().to_vec(),
                 value: r,
             })
@@ -103,7 +103,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
         use crate::global::schema::metadata::dsl;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
 
-        let row: Option<Metadata> = dsl::metadata
+        let row: Option<GlobalMetadata> = dsl::metadata
             .find(key.as_key_bytes())
             .first(&connection)
             .optional()
@@ -122,7 +122,7 @@ impl GlobalDbBackendAdapter for SqliteGlobalDbBackendAdapter {
     ) -> Result<Option<Vec<u8>>, Self::Error> {
         use crate::global::schema::metadata::dsl;
 
-        let row: Option<Metadata> = dsl::metadata
+        let row: Option<GlobalMetadata> = dsl::metadata
             .find(key.as_key_bytes())
             .first(tx.connection())
             .optional()

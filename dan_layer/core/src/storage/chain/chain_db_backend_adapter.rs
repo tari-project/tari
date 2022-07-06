@@ -26,33 +26,20 @@ use crate::{
     models::{Payload, QuorumCertificate, TreeNodeHash},
     storage::{
         chain::{DbInstruction, DbNode, DbQc},
-        StorageError,
+        AtomicDb,
     },
 };
 
-pub trait ChainDbBackendAdapter: Send + Sync + Clone {
-    type BackendTransaction;
-    type Error: Into<StorageError>;
+pub trait ChainDbBackendAdapter: AtomicDb + Send + Sync + Clone {
     type Id: Copy + Send + Sync + Debug + PartialEq;
     type Payload: Payload;
 
     fn is_empty(&self) -> Result<bool, Self::Error>;
-    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
     fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error>;
     fn get_tip_node(&self) -> Result<Option<DbNode>, Self::Error>;
-    fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
-    fn update_node(
-        &self,
-        id: &Self::Id,
-        item: &DbNode,
-        transaction: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error>;
-    fn insert_instruction(
-        &self,
-        item: &DbInstruction,
-        transaction: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error>;
-    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn insert_node(&self, item: &DbNode, transaction: &Self::DbTransaction) -> Result<(), Self::Error>;
+    fn update_node(&self, id: &Self::Id, item: &DbNode, transaction: &Self::DbTransaction) -> Result<(), Self::Error>;
+    fn insert_instruction(&self, item: &DbInstruction, transaction: &Self::DbTransaction) -> Result<(), Self::Error>;
     fn locked_qc_id(&self) -> Self::Id;
     fn prepare_qc_id(&self) -> Self::Id;
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error>;
@@ -61,6 +48,6 @@ pub trait ChainDbBackendAdapter: Send + Sync + Clone {
     fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error>;
     fn find_node_by_parent_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error>;
     fn find_all_instructions_by_node(&self, node_id: Self::Id) -> Result<Vec<DbInstruction>, Self::Error>;
-    fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
-    fn update_locked_qc(&self, locked_qc: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::DbTransaction) -> Result<(), Self::Error>;
+    fn update_locked_qc(&self, locked_qc: &DbQc, transaction: &Self::DbTransaction) -> Result<(), Self::Error>;
 }
