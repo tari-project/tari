@@ -25,9 +25,9 @@ use tari_common_types::types::{Commitment, FixedHash, HashDigest};
 use tari_utilities::ByteArray;
 
 #[derive(Debug, Clone, Copy)]
-pub struct AcceptanceChallenge(FixedHash);
+pub struct ContractAcceptanceChallenge(FixedHash);
 
-impl AcceptanceChallenge {
+impl ContractAcceptanceChallenge {
     pub fn new(constiution_commitment: &Commitment, contract_id: &FixedHash) -> Self {
         // TODO: Use new tari_crypto domain-separated hashing
         let hash = HashDigest::new()
@@ -39,7 +39,7 @@ impl AcceptanceChallenge {
     }
 }
 
-impl AsRef<[u8]> for AcceptanceChallenge {
+impl AsRef<[u8]> for ContractAcceptanceChallenge {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }

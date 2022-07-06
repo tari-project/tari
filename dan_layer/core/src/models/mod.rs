@@ -22,7 +22,6 @@
 
 use std::{convert::TryFrom, fmt::Debug, hash::Hash};
 
-mod acceptance_challenge;
 mod asset_definition;
 mod base_layer_metadata;
 mod base_layer_output;
@@ -43,7 +42,6 @@ mod tree_node_hash;
 mod view;
 mod view_id;
 
-pub use acceptance_challenge::AcceptanceChallenge;
 pub use asset_definition::{AssetDefinition, InitialState};
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::{BaseLayerOutput, CheckpointOutput, CommitteeOutput};

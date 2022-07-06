@@ -25,12 +25,17 @@ use tari_common_types::types::{Commitment, FixedHash};
 use tari_comms::NodeIdentity;
 use tari_core::{
     chain_storage::UtxoMinedInfo,
-    transactions::transaction_components::{OutputType, SignerSignature, TransactionOutput},
+    transactions::transaction_components::{
+        ContractAcceptanceChallenge,
+        OutputType,
+        SignerSignature,
+        TransactionOutput,
+    },
 };
 use tari_utilities::hex::Hex;
 
 use super::BaseNodeClient;
-use crate::{models::AcceptanceChallenge, services::wallet_client::WalletClient, DigitalAssetError};
+use crate::{services::wallet_client::WalletClient, DigitalAssetError};
 
 #[async_trait]
 pub trait AcceptanceManager: Send + Sync {
@@ -67,7 +72,7 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
         // build the acceptance signature
         let secret_key = node_identity.secret_key();
         let constitution_commitment = self.fetch_constitution_commitment(contract_id).await?;
-        let challenge = AcceptanceChallenge::new(&constitution_commitment, contract_id);
+        let challenge = ContractAcceptanceChallenge::new(&constitution_commitment, contract_id);
         let signature = SignerSignature::sign(secret_key, challenge).signature;
 
         // publish the acceptance

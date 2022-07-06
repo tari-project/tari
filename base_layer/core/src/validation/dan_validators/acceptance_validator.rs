@@ -35,6 +35,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
         ContractAcceptance,
+        ContractAcceptanceChallenge,
         ContractConstitution,
         OutputType,
         SideChainFeatures,
@@ -159,12 +160,7 @@ pub fn validate_signature<B: BlockchainBackend>(
     validator_node_public_key: &PublicKey,
 ) -> Result<(), ValidationError> {
     let commitment = fetch_constitution_commitment(db, contract_id)?;
-
-    // TODO: Use domain-seperated hasher from tari_crypto
-    let challenge = HashDigest::new()
-        .chain(commitment.as_bytes())
-        .chain(contract_id.as_slice())
-        .finalize();
+    let challenge = ContractAcceptanceChallenge::new(&commitment, &contract_id);
     let final_challenge = HashDigest::new()
         .chain(validator_node_public_key.as_bytes())
         .chain(signature.get_public_nonce().as_bytes())

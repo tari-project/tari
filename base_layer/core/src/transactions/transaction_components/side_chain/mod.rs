@@ -23,6 +23,9 @@
 mod contract_acceptance;
 pub use contract_acceptance::ContractAcceptance;
 
+mod contract_acceptance_challenge;
+pub use contract_acceptance_challenge::ContractAcceptanceChallenge;
+
 mod contract_constitution;
 pub use contract_constitution::{
     CheckpointParameters,
