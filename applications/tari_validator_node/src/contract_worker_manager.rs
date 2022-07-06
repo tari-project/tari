@@ -294,7 +294,7 @@ impl ContractWorkerManager {
             .get_current_contract_outputs(
                 tip.height_of_longest_chain,
                 *contract_id,
-                OutputType::SidechainCheckpoint,
+                OutputType::ContractCheckpoint,
             )
             .await?;
 
