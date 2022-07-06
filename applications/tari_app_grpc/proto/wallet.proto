@@ -271,7 +271,7 @@ message RegisterAssetResponse {
 message CreateInitialAssetCheckpointRequest {
     bytes contract_id = 1;
     bytes merkle_root = 2;
-    repeated bytes committee = 3;
+    CommitteeSignatures committee_signatures = 3;
 }
 
 message CreateInitialAssetCheckpointResponse {
@@ -282,6 +282,7 @@ message CreateFollowOnAssetCheckpointRequest {
     uint64 checkpoint_number = 1;
     bytes contract_id = 2;
     bytes merkle_root = 3;
+    CommitteeSignatures committee_signatures = 4;
 }
 
 message CreateFollowOnAssetCheckpointResponse {

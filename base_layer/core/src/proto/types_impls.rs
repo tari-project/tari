@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{
+    borrow::Borrow,
+    convert::{TryFrom, TryInto},
+};
 
 use tari_common_types::types::{
     BlindingFactor,
@@ -34,6 +37,7 @@ use tari_common_types::types::{
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
+use crate::transactions::transaction_components::SignerSignature;
 
 //---------------------------------- Commitment --------------------------------------------//
 
@@ -54,24 +58,47 @@ impl From<Commitment> for proto::Commitment {
 }
 
 //---------------------------------- Signature --------------------------------------------//
-
 impl TryFrom<proto::Signature> for Signature {
-    type Error = ByteArrayError;
+    type Error = String;
 
     fn try_from(sig: proto::Signature) -> Result<Self, Self::Error> {
-        let public_nonce = PublicKey::from_bytes(&sig.public_nonce)?;
-        let signature = PrivateKey::from_bytes(&sig.signature)?;
+        let public_nonce = PublicKey::from_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
+        let signature = PrivateKey::from_bytes(&sig.signature).map_err(|e| e.to_string())?;
 
         Ok(Self::new(public_nonce, signature))
     }
 }
 
-impl From<Signature> for proto::Signature {
-    fn from(sig: Signature) -> Self {
+impl<T: Borrow<Signature>> From<T> for proto::Signature {
+    fn from(sig: T) -> Self {
         Self {
-            public_nonce: sig.get_public_nonce().to_vec(),
-            signature: sig.get_signature().to_vec(),
+            public_nonce: sig.borrow().get_public_nonce().to_vec(),
+            signature: sig.borrow().get_signature().to_vec(),
         }
+    }
+}
+
+//---------------------------------- SignerSignature --------------------------------------------//
+impl<B: Borrow<SignerSignature>> From<B> for proto::SignerSignature {
+    fn from(value: B) -> Self {
+        Self {
+            signer: value.borrow().signer.to_vec(),
+            signature: Some(proto::Signature::from(&value.borrow().signature)),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerSignature> for SignerSignature {
+    type Error = String;
+
+    fn try_from(value: proto::SignerSignature) -> Result<Self, Self::Error> {
+        Ok(Self {
+            signer: PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
+            signature: value
+                .signature
+                .map(TryInto::try_into)
+                .ok_or("signature not provided")??,
+        })
     }
 }
 

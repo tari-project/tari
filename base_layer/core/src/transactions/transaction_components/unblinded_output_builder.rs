@@ -45,11 +45,11 @@ use crate::{
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct UnblindedOutputBuilder {
-    pub value: MicroTari,
+    value: MicroTari,
     #[derivative(Debug = "ignore")]
     spending_key: BlindingFactor,
-    pub features: OutputFeatures,
-    pub script: Option<TariScript>,
+    features: OutputFeatures,
+    script: Option<TariScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
     #[derivative(Debug = "ignore")]
@@ -186,6 +186,18 @@ impl UnblindedOutputBuilder {
     pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
         self.script_private_key = Some(script_private_key);
         self
+    }
+
+    pub fn value(&self) -> MicroTari {
+        self.value
+    }
+
+    pub fn features(&self) -> &OutputFeatures {
+        &self.features
+    }
+
+    pub fn script(&self) -> Option<&TariScript> {
+        self.script.as_ref()
     }
 
     pub fn covenant(&self) -> &Covenant {

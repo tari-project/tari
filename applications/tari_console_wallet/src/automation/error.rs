@@ -77,6 +77,8 @@ pub enum CommandError {
     JsonFile(String),
     #[error(transparent)]
     IoError(#[from] io::Error),
+    #[error("General error: {0}")]
+    General(String),
 }
 
 impl From<CommandError> for ExitError {

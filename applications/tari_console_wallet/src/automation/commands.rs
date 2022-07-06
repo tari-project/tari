@@ -1070,7 +1070,6 @@ async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArg
     let contract_definition: ContractDefinitionFileFormat =
         read_json_file(&args.file_path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     let contract_definition_features = ContractDefinition::from(contract_definition);
-    let contract_id_hex = contract_definition_features.calculate_contract_id().to_vec().to_hex();
 
     // create the contract definition transaction
     let mut asset_manager = wallet.asset_manager.clone();
@@ -1079,7 +1078,22 @@ async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArg
         .await?;
 
     // publish the contract definition transaction
-    let message = format!("Contract definition for contract {}", contract_id_hex);
+    let contract_id = transaction
+        .body
+        .outputs()
+        .iter()
+        .filter_map(|o| o.features.sidechain_features.as_ref())
+        .find_map(|f| {
+            if f.definition.is_some() {
+                Some(f.contract_id)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            CommandError::General("Asset manager did not include contract definition in output set".to_string())
+        })?;
+    let message = format!("Contract definition for contract {}", contract_id);
     let mut transaction_service = wallet.transaction_service.clone();
     transaction_service
         .submit_transaction(tx_id, transaction, 0.into(), message)
@@ -1087,7 +1101,7 @@ async fn publish_contract_definition(wallet: &WalletSqlite, args: PublishFileArg
 
     println!(
         "Contract definition submitted: contract_id is {} (TxID: {})",
-        contract_id_hex, tx_id,
+        contract_id, tx_id,
     );
     println!("Done!");
     Ok(())

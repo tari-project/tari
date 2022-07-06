@@ -140,9 +140,7 @@ impl ContractWorkerManager {
     pub async fn start(mut self) -> Result<(), WorkerManagerError> {
         self.load_initial_state()?;
 
-        if self.config.constitution_auto_accept {
-            info!("constitution_auto_accept is true");
-        }
+        info!("constitution_auto_accept is {}", self.config.constitution_auto_accept);
 
         if !self.config.scan_for_assets {
             info!(
@@ -182,7 +180,7 @@ impl ContractWorkerManager {
         for contract in active_contracts {
             let contract_id = FixedHash::try_from(contract.contract_id)?;
 
-            println!("Starting contract {}", contract_id.to_hex());
+            println!("Starting contract {}", contract_id);
 
             let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
                 WorkerManagerError::DataCorruption {

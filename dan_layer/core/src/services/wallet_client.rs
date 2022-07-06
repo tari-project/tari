@@ -22,6 +22,7 @@
 
 use async_trait::async_trait;
 use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use tari_core::transactions::transaction_components::SignerSignature;
 use tari_dan_engine::state::models::StateRoot;
 
 use crate::DigitalAssetError;
@@ -33,6 +34,7 @@ pub trait WalletClient: Send + Sync {
         contract_id: &FixedHash,
         state_root: &StateRoot,
         checkpoint_number: u64,
+        checkpoint_signatures: Vec<SignerSignature>,
     ) -> Result<(), DigitalAssetError>;
 
     async fn submit_contract_acceptance(

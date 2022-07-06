@@ -540,6 +540,7 @@ mod test {
     use crate::{
         consensus::check_consensus_encoding_correctness,
         transactions::transaction_components::{
+            bytes_into_fixed_string,
             side_chain::{
                 CheckpointParameters,
                 CommitteeMembers,
@@ -549,7 +550,6 @@ mod test {
                 RequirementsForConstitutionChange,
                 SideChainConsensus,
             },
-            vec_into_fixed_string,
             CommitteeSignatures,
             ContractAcceptance,
             ContractAmendment,
@@ -560,6 +560,7 @@ mod test {
             ContractUpdateProposalAcceptance,
             FunctionRef,
             PublicFunction,
+            SignerSignature,
         },
     };
 
@@ -606,20 +607,20 @@ mod test {
                 contract_id: FixedHash::zero(),
                 constitution: Some(constitution.clone()),
                 definition: Some(ContractDefinition {
-                    contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
+                    contract_name: bytes_into_fixed_string("name"),
                     contract_issuer: PublicKey::default(),
                     contract_spec: ContractSpecification {
-                        runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
+                        runtime: bytes_into_fixed_string("runtime"),
                         public_functions: vec![
                             PublicFunction {
-                                name: vec_into_fixed_string("foo".as_bytes().to_vec()),
+                                name: bytes_into_fixed_string("foo"),
                                 function: FunctionRef {
                                     template_id: FixedHash::zero(),
                                     function_id: 0_u16,
                                 },
                             },
                             PublicFunction {
-                                name: vec_into_fixed_string("bar".as_bytes().to_vec()),
+                                name: bytes_into_fixed_string("bar"),
                                 function: FunctionRef {
                                     template_id: FixedHash::zero(),
                                     function_id: 1_u16,
@@ -647,7 +648,7 @@ mod test {
                     validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
                         .try_into()
                         .unwrap(),
-                    validator_signatures: vec![Signature::default(); CommitteeSignatures::MAX_SIGNATURES]
+                    validator_signatures: vec![SignerSignature::default(); CommitteeSignatures::MAX_SIGNATURES]
                         .try_into()
                         .unwrap(),
                     updated_constitution: constitution,
@@ -656,7 +657,7 @@ mod test {
                 checkpoint: Some(ContractCheckpoint {
                     checkpoint_number: u64::MAX,
                     merkle_root: FixedHash::zero(),
-                    signatures: vec![Signature::default(); 512].try_into().unwrap(),
+                    signatures: vec![SignerSignature::default(); 512].try_into().unwrap(),
                 }),
             }),
             // Deprecated
@@ -793,7 +794,7 @@ mod test {
         let checkpoint = ContractCheckpoint {
             checkpoint_number: 123,
             merkle_root: hash,
-            signatures: vec![Signature::default()].try_into().unwrap(),
+            signatures: vec![SignerSignature::default()].try_into().unwrap(),
         };
 
         let features = OutputFeatures::for_contract_checkpoint(contract_id, checkpoint.clone());
