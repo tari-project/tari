@@ -38,18 +38,12 @@ pub trait BaseNodeClient: Send + Sync {
         height: u64,
         contract_id: FixedHash,
         output_type: OutputType,
-    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError>;
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
 
     async fn get_constitutions(
         &mut self,
         start_block_hash: Option<FixedHash>,
         dan_node_public_key: &PublicKey,
-    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
-
-    async fn get_contract_utxos(
-        &mut self,
-        contract_id: FixedHash,
-        output_type: OutputType,
     ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
 
     async fn check_if_in_committee(

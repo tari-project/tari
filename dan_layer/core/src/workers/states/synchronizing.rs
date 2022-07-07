@@ -28,7 +28,7 @@ use tari_core::transactions::transaction_components::OutputType;
 use tari_dan_engine::state::StateDbUnitOfWorkReader;
 
 use crate::{
-    models::{AssetDefinition, CheckpointOutput},
+    models::{AssetDefinition, BaseLayerOutput, CheckpointOutput},
     services::{BaseNodeClient, ServiceSpecification},
     storage::DbFactory,
     workers::{state_sync::StateSynchronizer, states::ConsensusWorkerStateEvent},
@@ -70,7 +70,10 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
             .await?;
 
         let last_checkpoint = match last_checkpoint.pop() {
-            Some(o) => CheckpointOutput::try_from(o)?,
+            Some(utxo) => {
+                let output = BaseLayerOutput::try_from(utxo)?;
+                CheckpointOutput::try_from(output)?
+            },
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
         };
 
@@ -83,7 +86,7 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
             .await?;
 
         let current_constitution = match constitution.pop() {
-            Some(o) => o,
+            Some(o) => BaseLayerOutput::try_from(o)?,
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckopintNotFound),
         };
 

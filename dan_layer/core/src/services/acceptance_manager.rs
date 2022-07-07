@@ -91,7 +91,7 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
     ) -> Result<Commitment, DigitalAssetError> {
         let outputs: Vec<UtxoMinedInfo> = self
             .base_node
-            .get_contract_utxos(*contract_id, OutputType::ContractConstitution)
+            .get_current_contract_outputs(0, *contract_id, OutputType::ContractConstitution)
             .await?;
         let transaction_outputs: Vec<TransactionOutput> = outputs
             .into_iter()

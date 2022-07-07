@@ -232,14 +232,6 @@ impl BaseNodeClient for MockBaseNodeClient {
         todo!()
     }
 
-    async fn get_contract_utxos(
-        &mut self,
-        _contract_id: FixedHash,
-        _output_type: OutputType,
-    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
-        todo!()
-    }
-
     async fn check_if_in_committee(
         &mut self,
         _asset_public_key: PublicKey,
@@ -267,7 +259,7 @@ impl BaseNodeClient for MockBaseNodeClient {
         _height: u64,
         _contract_id: FixedHash,
         _output_type: OutputType,
-    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError> {
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
         todo!()
     }
 }

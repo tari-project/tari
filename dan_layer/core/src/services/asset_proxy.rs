@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use log::*;
@@ -31,6 +33,7 @@ use tari_utilities::hex::Hex;
 use tokio_stream::StreamExt;
 
 use crate::{
+    models::BaseLayerOutput,
     services::{
         validator_node_rpc_client::ValidatorNodeRpcClient,
         BaseNodeClient,
@@ -141,7 +144,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         let mut base_node_client = self.base_node_client.clone();
         let tip = base_node_client.get_tip_info().await?;
-        let mut constitution = base_node_client
+        let mut outputs = base_node_client
             .get_current_contract_outputs(
                 tip.height_of_longest_chain,
                 contract_id,
@@ -149,8 +152,8 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
             )
             .await?;
 
-        let constitution = match constitution.pop() {
-            Some(chk) => chk,
+        let constitution = match outputs.pop() {
+            Some(chk) => BaseLayerOutput::try_from(chk)?,
             None => {
                 return Err(DigitalAssetError::NotFound {
                     entity: "checkpoint",
