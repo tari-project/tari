@@ -271,6 +271,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
     }
 
     async fn commit(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let current_checkpoint_num = self.chain_db.get_current_checkpoint_number()?;
         let mut unit_of_work = self.chain_db.new_unit_of_work();
         let mut state = states::CommitState::<T>::new(
             self.worker.node_address.clone(),
@@ -285,6 +286,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
                 &mut self.worker.outbound_service,
                 &self.worker.signing_service,
                 unit_of_work.clone(),
+                current_checkpoint_num,
             )
             .await?;
         unit_of_work.commit()?;
@@ -313,10 +315,15 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         if let Some(mut state_tx) = self.worker.state_db_unit_of_work.take() {
             state_tx.commit()?;
             let signatures = state.collected_checkpoint_signatures();
-            self.worker
-                .checkpoint_manager
-                .create_checkpoint(state_tx.calculate_root()?, signatures)
-                .await?;
+            // TODO: Read checkpoint interval from constitution
+            if self.worker.current_view_id.as_u64() % 50 == 0 {
+                let checkpoint_number = self.chain_db.get_current_checkpoint_number()?;
+                self.worker
+                    .checkpoint_manager
+                    .create_checkpoint(checkpoint_number, state_tx.calculate_root()?, signatures)
+                    .await?;
+                self.chain_db.increment_checkpoint_number()?;
+            }
             Ok(res)
         } else {
             // technically impossible

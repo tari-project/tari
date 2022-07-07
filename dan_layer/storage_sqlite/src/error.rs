@@ -50,6 +50,8 @@ pub enum SqliteStorageError {
     ModelError(#[from] ModelError),
     #[error("Conversion error:{reason}")]
     ConversionError { reason: String },
+    #[error("Malformed metadata for key '{key}'")]
+    MalformedMetadata { key: String },
 }
 
 impl From<SqliteStorageError> for StorageError {

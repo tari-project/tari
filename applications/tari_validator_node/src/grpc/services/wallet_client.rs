@@ -23,7 +23,6 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use log::*;
 use tari_app_grpc::{
     tari_rpc as grpc,
     tari_rpc::{
@@ -39,7 +38,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{services::WalletClient, DigitalAssetError};
 use tari_dan_engine::state::models::StateRoot;
 
-const LOG_TARGET: &str = "tari::dan::wallet_grpc";
+const _LOG_TARGET: &str = "tari::dan::wallet_grpc";
 
 type Inner = grpc::wallet_client::WalletClient<tonic::transport::Channel>;
 
@@ -79,8 +78,6 @@ impl WalletClient for GrpcWalletClient {
         let committee_signatures = grpc::CommitteeSignatures {
             signatures: checkpoint_signatures.into_iter().map(Into::into).collect(),
         };
-
-        info!(target: LOG_TARGET, "✅ Creating checkpoint #{}", checkpoint_number);
 
         if checkpoint_number == 0 {
             let request = CreateInitialAssetCheckpointRequest {

@@ -24,12 +24,13 @@
 use crate::{
     models::{Node, QuorumCertificate, SideChainBlock, TreeNodeHash},
     storage::{
-        chain::{chain_db_unit_of_work::ChainDbUnitOfWorkImpl, ChainDbBackendAdapter},
+        chain::{chain_db_unit_of_work::ChainDbUnitOfWorkImpl, ChainDbBackendAdapter, ChainDbMetadataKey},
+        MetadataBackendAdapter,
         StorageError,
     },
 };
 
-pub struct ChainDb<TBackendAdapter: ChainDbBackendAdapter> {
+pub struct ChainDb<TBackendAdapter> {
     adapter: TBackendAdapter,
 }
 
@@ -104,6 +105,44 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDb<TBackendAdapter> {
     pub fn get_tip_node(&self) -> Result<Option<Node>, StorageError> {
         let db_node = self.adapter.get_tip_node().map_err(TBackendAdapter::Error::into)?;
         Ok(db_node.map(Into::into))
+    }
+}
+
+impl<TBackendAdapter> ChainDb<TBackendAdapter>
+where TBackendAdapter: MetadataBackendAdapter<ChainDbMetadataKey>
+{
+    pub fn get_current_checkpoint_number(&self) -> Result<u64, StorageError> {
+        let tx = self
+            .adapter
+            .create_transaction()
+            .map_err(TBackendAdapter::Error::into)?;
+        let number = self
+            .adapter
+            .get_metadata(&ChainDbMetadataKey::CheckpointNumber, &tx)
+            .map_err(TBackendAdapter::Error::into)?
+            .unwrap_or(0);
+        Ok(number)
+    }
+
+    /// Increments checkpoint number and returns the incremented value. If the key did not previously exist, it
+    /// is created and set to 1.
+    pub fn increment_checkpoint_number(&self) -> Result<u64, StorageError> {
+        let tx = self
+            .adapter
+            .create_transaction()
+            .map_err(TBackendAdapter::Error::into)?;
+        const KEY: ChainDbMetadataKey = ChainDbMetadataKey::CheckpointNumber;
+        let n = self
+            .adapter
+            .get_metadata::<u64>(&KEY, &tx)
+            .map_err(TBackendAdapter::Error::into)?
+            .unwrap_or(0);
+        let next = n + 1;
+        self.adapter
+            .set_metadata(KEY, next, &tx)
+            .map_err(TBackendAdapter::Error::into)?;
+        self.adapter.commit(&tx).map_err(TBackendAdapter::Error::into)?;
+        Ok(next)
     }
 }
 

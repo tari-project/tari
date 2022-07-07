@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::global::schema::*;
+use crate::storage::StorageError;
 
-#[derive(Queryable, Insertable, Identifiable)]
-#[table_name = "metadata"]
-#[primary_key(key_name)]
-pub struct GlobalMetadata {
-    pub key_name: Vec<u8>,
-    pub value: Vec<u8>,
+pub trait AtomicDb {
+    type Error: Into<StorageError>;
+    type DbTransaction;
+
+    fn create_transaction(&self) -> Result<Self::DbTransaction, Self::Error>;
+
+    fn commit(&self, transaction: &Self::DbTransaction) -> Result<(), Self::Error>;
 }

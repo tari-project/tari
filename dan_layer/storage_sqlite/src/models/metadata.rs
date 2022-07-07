@@ -20,12 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::global::schema::*;
+use crate::schema::metadata;
 
 #[derive(Queryable, Insertable, Identifiable)]
 #[table_name = "metadata"]
-#[primary_key(key_name)]
-pub struct GlobalMetadata {
-    pub key_name: Vec<u8>,
+#[primary_key(key)]
+pub struct Metadata {
+    pub key: Vec<u8>,
     pub value: Vec<u8>,
 }
