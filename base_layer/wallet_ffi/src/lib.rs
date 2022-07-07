@@ -246,6 +246,26 @@ pub enum TariUtxoSort {
     MinedHeightDesc = 3,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[repr(C)]
+pub enum TariTypeTag {
+    Text = 0,
+    Utxo = 1,
+    Commitment = 2,
+    MicroTari = 3,
+}
+
+impl Display for TariTypeTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TariTypeTag::Text => write!(f, "Text"),
+            TariTypeTag::Utxo => write!(f, "Utxo"),
+            TariTypeTag::Commitment => write!(f, "Commitment"),
+            TariTypeTag::MicroTari => write!(f, "MicroTari"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct TariUtxo {
@@ -285,26 +305,6 @@ impl TryFrom<DbUnblindedOutput> for TariUtxo {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(C)]
-pub enum TariTypeTag {
-    Text = 0,
-    Utxo = 1,
-    Commitment = 2,
-    MicroTari = 3,
-}
-
-impl Display for TariTypeTag {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TariTypeTag::Text => write!(f, "Text"),
-            TariTypeTag::Utxo => write!(f, "Utxo"),
-            TariTypeTag::Commitment => write!(f, "Commitment"),
-            TariTypeTag::MicroTari => write!(f, "MicroTari"),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct TariOutputs {
@@ -314,7 +314,6 @@ pub struct TariOutputs {
 }
 
 // WARNING: must be destroyed properly after use
-// TODO: dedup
 impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
     type Error = InterfaceError;
 
@@ -322,34 +321,7 @@ impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
         let mut outputs = ManuallyDrop::new(
             outputs
                 .into_iter()
-                .map(|x| {
-                    Ok(TariUtxo {
-                        commitment: CString::new(x.commitment.to_hex())
-                            .map_err(|e| {
-                                InterfaceError::InvalidArgument(format!(
-                                    "failed to obtain hex from a commitment: {:?}",
-                                    e
-                                ))
-                            })?
-                            .into_raw(),
-                        value: x.unblinded_output.value.as_u64(),
-                        mined_height: x.mined_height.unwrap_or(0),
-                        status: match x.status {
-                            OutputStatus::Unspent => 0,
-                            OutputStatus::Spent => 1,
-                            OutputStatus::EncumberedToBeReceived => 2,
-                            OutputStatus::EncumberedToBeSpent => 3,
-                            OutputStatus::Invalid => 4,
-                            OutputStatus::CancelledInbound => 5,
-                            OutputStatus::UnspentMinedUnconfirmed => 6,
-                            OutputStatus::ShortTermEncumberedToBeReceived => 7,
-                            OutputStatus::ShortTermEncumberedToBeSpent => 8,
-                            OutputStatus::SpentMinedUnconfirmed => 9,
-                            OutputStatus::AbandonedCoinbase => 10,
-                            OutputStatus::NotStored => 11,
-                        },
-                    })
-                })
+                .map(TariUtxo::try_from)
                 .try_collect::<TariUtxo, Vec<TariUtxo>, InterfaceError>()?,
         );
 
