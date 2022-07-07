@@ -27,7 +27,6 @@ jobs:
       matrix:
         image_name:
           [
-            frontail,
             monerod,
             tor,
             xmrig,
