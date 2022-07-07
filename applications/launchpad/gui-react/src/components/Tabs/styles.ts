@@ -39,6 +39,7 @@ export const Tab = styled.button<{
   cursor: pointer;
   align-items: center;
   transition: ease-in-out 300ms;
+  color: ${({ theme }) => theme.primary};
   &:hover {
     background-color: ${({ theme, $inverted }) =>
       $inverted

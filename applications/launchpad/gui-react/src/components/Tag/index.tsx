@@ -7,15 +7,17 @@ import { TagProps } from './types'
 import { TagContainer, IconWrapper } from './styles'
 
 /**
- * @name Tag
- * @typedef TagProps
+ * Tag component
  *
  * @prop {ReactNode} [children] - text content to display
  * @prop {CSSProperties} [style] - optional component styles
  * @prop {'info' | 'running' | 'warning' | 'expert' | 'light'} [type] - tag types to determine color settings
+ * @prop {boolean} [expertSec] - specific usage of expert tag type
  * @prop {ReactNode} [icon] - optional SVG icon
  * @prop {ReactNode} [subText] - optional additional tag text
  * @prop {boolean} [inverted] - optional prop indicating whether tag should be rendered in inverted coloring
+//  * @prop {boolean} [dark] - special style case
+ * @prop {boolean} [expertSec] - special style case for expert tag type
  *
  * @example
  * <Tag type='running' style={extraStyles} icon={<someIconComponent/>} subText='Mainnet'>
@@ -31,26 +33,39 @@ const Tag = ({
   icon,
   subText,
   inverted,
+  dark,
+  expertSec,
 }: TagProps) => {
   const theme = useTheme()
 
   let baseStyle: CSSProperties = {}
   let textStyle: CSSProperties = {}
 
+  let runningTagBackgroundColor
+  let runningTagTextColor
+
+  if (dark) {
+    runningTagBackgroundColor = theme.dashboardRunningTagBackground
+    runningTagTextColor = theme.dashboardRunningTagText
+  } else {
+    runningTagBackgroundColor = theme.runningTagBackground
+    runningTagTextColor = theme.runningTagText
+  }
+
   switch (type) {
     case 'running':
       baseStyle = {
         backgroundColor: inverted
           ? theme.transparent(theme.onText, 40)
-          : theme.on,
+          : runningTagBackgroundColor,
       }
       textStyle = {
-        color: inverted ? theme.inverted.accentSecondary : theme.onText,
+        color: inverted ? theme.onTextLight : runningTagTextColor,
       }
       break
     case 'warning':
       baseStyle = {
-        backgroundColor: theme.warning,
+        backgroundColor: theme.warningTag,
       }
       textStyle = {
         color: theme.warningText,
@@ -60,10 +75,16 @@ const Tag = ({
       baseStyle = {
         backgroundColor: theme.expert,
       }
-      textStyle = {
-        backgroundImage: theme.expertText,
-        WebkitBackgroundClip: 'text',
-        color: 'transparent',
+      if (expertSec) {
+        textStyle = {
+          color: theme.expertSecText,
+        }
+      } else {
+        textStyle = {
+          backgroundImage: theme.expertText,
+          WebkitBackgroundClip: 'text',
+          color: 'transparent',
+        }
       }
       break
     case 'light':
@@ -77,7 +98,7 @@ const Tag = ({
     // info tag type is default
     default:
       baseStyle = {
-        backgroundColor: theme.info,
+        backgroundColor: theme.infoTag,
       }
       textStyle = {
         color: theme.infoText,
@@ -106,7 +127,7 @@ const Tag = ({
 
       {subText && (
         <Text
-          style={{ marginLeft: '4px' }}
+          style={{ marginLeft: '6px' }}
           type='microMedium'
           color={theme.onTextLight}
         >

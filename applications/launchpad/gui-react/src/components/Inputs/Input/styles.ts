@@ -23,7 +23,7 @@ export const StyledInput = styled.input<InputHTMLAttributes<HTMLInputElement>>`
   border: none;
   border-radius: 8px;
   ::placeholder {
-    color: ${({ theme }) => theme.placeholderText};
+    color: ${({ theme }) => theme.inputPlaceholder};
   }
   &:focus {
     outline: none;

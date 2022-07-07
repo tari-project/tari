@@ -8,7 +8,9 @@ export const StyledCallout = styled.div<{
   padding: ${({ theme }) =>
     `${theme.spacingVertical(0.62)} ${theme.spacingHorizontal(0.5)}`};
   background: ${({ theme, $inverted }) => {
-    return $inverted ? theme.inverted.backgroundSecondary : theme.warning
+    return $inverted
+      ? theme.inverted.backgroundSecondary
+      : theme.calloutBackground
   }}};
   color: ${({ theme, $inverted }) => {
     return $inverted ? theme.inverted.warningText : theme.warningText

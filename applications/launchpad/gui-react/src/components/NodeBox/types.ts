@@ -13,6 +13,7 @@ export interface NodeBoxProps {
   contentStyle?: CSSWithSpring
   children?: ReactNode
   onHelpPromptClick?: () => void
+  helpSvgGradient?: boolean
   testId?: string
 }
 

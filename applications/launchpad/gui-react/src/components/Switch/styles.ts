@@ -11,8 +11,9 @@ export const SwitchContainer = styled.label<{ disable?: boolean }>`
 export const SwitchController = styled(animated.div)<{ disable?: boolean }>`
   height: 14px;
   width: 24px;
-  border: 1px solid
-    ${({ theme, disable }) => (disable ? theme.disabledText : theme.primary)};
+  border: 1.5px solid
+    ${({ theme, disable }) =>
+      disable ? theme.disabledText : theme.switchBorder};
   border-radius: 6px;
   position: relative;
   box-sizing: border-box;
@@ -28,12 +29,14 @@ export const SwitchCircle = styled(animated.div)<{ disable?: boolean }>`
   width: 14px;
   height: 14px;
   top: 0;
-  margin-top: -1px;
+  margin-top: -1.5px;
+  margin-left: -0.5px;
   border-radius: 6px;
   box-sizing: border-box;
-  background: #fff;
-  border: 1px solid
-    ${({ theme, disable }) => (disable ? theme.disabledText : theme.primary)};
+  background: ${({ theme }) => theme.switchCircle};
+  border: 1.5px solid
+    ${({ theme, disable }) =>
+      disable ? theme.disabledText : theme.switchBorder};
   -webkit-box-shadow: 0px 0px 2px -1px ${colors.dark.primary};
   -moz-box-shadow: 0px 0px 2px -1px ${colors.dark.primary};
   box-shadow: 0px 0px 2px -1px ${colors.dark.primary};

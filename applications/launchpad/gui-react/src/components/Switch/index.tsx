@@ -45,6 +45,7 @@ const Switch = ({
 
   const circleAnim = useSpring({
     left: value ? 10 : -1,
+    background: value ? themeStyle.primary : themeStyle.switchController,
   })
 
   const leftLabelColorAnim = useSpring({
@@ -58,7 +59,7 @@ const Switch = ({
   })
 
   const controllerAnim = useSpring({
-    background: value ? themeStyle.accent : 'transparent',
+    background: value ? themeStyle.accent : themeStyle.switchController,
   })
 
   const leftLabelEl =
