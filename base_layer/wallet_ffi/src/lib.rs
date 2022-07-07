@@ -272,6 +272,7 @@ pub struct TariUtxo {
     pub commitment: *mut c_char,
     pub value: u64,
     pub mined_height: u64,
+    pub mined_timestamp: u64,
     pub status: u8,
 }
 
@@ -287,6 +288,10 @@ impl TryFrom<DbUnblindedOutput> for TariUtxo {
                 .into_raw(),
             value: x.unblinded_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
+            mined_timestamp: x
+                .mined_timestamp
+                .map(|ts| ts.timestamp_millis() as u64)
+                .unwrap_or_default(),
             status: match x.status {
                 OutputStatus::Unspent => 0,
                 OutputStatus::Spent => 1,

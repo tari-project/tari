@@ -304,6 +304,7 @@ struct TariUtxo {
   char *commitment;
   uint64_t value;
   uint64_t mined_height;
+  uint64_t mined_timestamp;
   uint8_t status;
 };
 
