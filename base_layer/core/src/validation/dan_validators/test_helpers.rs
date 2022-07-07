@@ -48,6 +48,7 @@ use crate::{
             ContractDefinition,
             ContractSpecification,
             ContractUpdateProposal,
+            ContractUpdateProposalAcceptanceChallenge,
             OutputFeatures,
             RequirementsForConstitutionChange,
             SideChainConsensus,
@@ -277,20 +278,29 @@ pub fn create_contract_proposal_schema(
 
 pub fn create_contract_update_proposal_acceptance_schema(
     contract_id: FixedHash,
+    commitment: Commitment,
     input: UnblindedOutput,
     proposal_id: u64,
-    validator_node_public_key: PublicKey,
+    private_key: RistrettoSecretKey,
+    public_key: PublicKey,
 ) -> TransactionSchema {
-    let signature = Signature::default();
+    let signature = create_proposal_acceptance_signature(contract_id, proposal_id, commitment, private_key);
 
-    let acceptance_features = OutputFeatures::for_contract_update_proposal_acceptance(
-        contract_id,
-        proposal_id,
-        validator_node_public_key,
-        signature,
-    );
+    let acceptance_features =
+        OutputFeatures::for_contract_update_proposal_acceptance(contract_id, proposal_id, public_key, signature);
 
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
+pub fn create_proposal_acceptance_signature(
+    contract_id: FixedHash,
+    proposal_id: u64,
+    commitment: Commitment,
+    private_key: RistrettoSecretKey,
+) -> Signature {
+    let challenge = ContractUpdateProposalAcceptanceChallenge::new(&commitment, &contract_id, proposal_id);
+
+    SignerSignature::sign(&private_key, &challenge).signature
 }
 
 pub fn create_contract_amendment_schema(
