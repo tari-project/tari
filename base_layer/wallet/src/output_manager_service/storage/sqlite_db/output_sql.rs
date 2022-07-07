@@ -726,6 +726,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             mined_height: o.mined_height.map(|mh| mh as u64),
             mined_in_block: o.mined_in_block,
             mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
+            mined_timestamp: o.mined_timestamp,
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block: o.marked_deleted_in_block,
             spending_priority,
