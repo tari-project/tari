@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::*;
 use tari_common_types::{
@@ -430,6 +430,7 @@ where TBackend: WalletBackend + 'static
             let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
             let current_height = response.height;
             let current_header_hash = response.header_hash;
+            let mined_timestamp = NaiveDateTime::from_timestamp(response.mined_timestamp as i64, 0);
             let outputs = response
                 .outputs
                 .into_iter()
@@ -443,7 +444,7 @@ where TBackend: WalletBackend + 'static
             scan_for_outputs_profiling.push(start.elapsed());
 
             let (count, amount) = self
-                .import_utxos_to_transaction_service(found_outputs, current_height)
+                .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
                 .await?;
 
             self.resources
@@ -540,6 +541,7 @@ where TBackend: WalletBackend + 'static
         &mut self,
         utxos: Vec<(UnblindedOutput, String, ImportStatus, TxId)>,
         current_height: u64,
+        mined_timestamp: NaiveDateTime,
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
@@ -556,6 +558,7 @@ where TBackend: WalletBackend + 'static
                     import_status,
                     tx_id,
                     current_height,
+                    mined_timestamp,
                 )
                 .await
             {
@@ -615,6 +618,7 @@ where TBackend: WalletBackend + 'static
         import_status: ImportStatus,
         tx_id: TxId,
         current_height: u64,
+        mined_timestamp: NaiveDateTime,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .resources
@@ -627,6 +631,7 @@ where TBackend: WalletBackend + 'static
                 import_status,
                 Some(tx_id),
                 Some(current_height),
+                Some(mined_timestamp),
             )
             .await?;
 

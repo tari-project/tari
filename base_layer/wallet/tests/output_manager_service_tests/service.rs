@@ -1384,6 +1384,7 @@ async fn test_txo_validation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output1_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
@@ -1391,6 +1392,7 @@ async fn test_txo_validation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output2_tx_output.hash(),
+            mined_timestamp: 0,
         },
     ];
 
@@ -1524,6 +1526,7 @@ async fn test_txo_validation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output1_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
@@ -1531,6 +1534,7 @@ async fn test_txo_validation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output2_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().into()),
@@ -1538,6 +1542,7 @@ async fn test_txo_validation() {
             mined_height: 5,
             mined_in_block: block5_header.hash(),
             output_hash: output4_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output5_tx_output.clone().into()),
@@ -1545,6 +1550,7 @@ async fn test_txo_validation() {
             mined_height: 5,
             mined_in_block: block5_header.hash(),
             output_hash: output5_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output6_tx_output.clone().into()),
@@ -1552,6 +1558,7 @@ async fn test_txo_validation() {
             mined_height: 5,
             mined_in_block: block5_header.hash(),
             output_hash: output6_tx_output.hash(),
+            mined_timestamp: 0,
         },
     ];
 
@@ -1696,6 +1703,7 @@ async fn test_txo_validation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output1_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
@@ -1703,6 +1711,7 @@ async fn test_txo_validation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output2_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().into()),
@@ -1710,6 +1719,7 @@ async fn test_txo_validation() {
             mined_height: 5,
             mined_in_block: block5_header_reorg.hash(),
             output_hash: output4_tx_output.hash(),
+            mined_timestamp: 0,
         },
     ];
 
@@ -1918,6 +1928,7 @@ async fn test_txo_revalidation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output1_tx_output.hash(),
+            mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
@@ -1925,6 +1936,7 @@ async fn test_txo_revalidation() {
             mined_height: 1,
             mined_in_block: block1_header.hash(),
             output_hash: output2_tx_output.hash(),
+            mined_timestamp: 0,
         },
     ];
 

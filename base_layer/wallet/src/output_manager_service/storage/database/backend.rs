@@ -49,6 +49,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         mined_in_block: Vec<u8>,
         mmr_position: u64,
         confirmed: bool,
+        mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError>;
 
     fn set_output_to_unmined(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;

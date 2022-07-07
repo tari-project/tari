@@ -527,6 +527,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         current_header.hash().clone(),
                         current_header.height(),
                         u32::try_from(mmr_position)?,
+                        current_header.timestamp(),
                     );
                     mmr_position += 1;
                 },
@@ -549,6 +550,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         current_header.hash().clone(),
                         current_header.height(),
                         u32::try_from(mmr_position)?,
+                        current_header.timestamp(),
                     );
                     mmr_position += 1;
                 },
@@ -762,6 +764,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.hash().clone(),
                 header.accumulated_data().total_accumulated_difficulty,
                 metadata.best_block().clone(),
+                header.timestamp(),
             )
             .set_pruned_height(header.height())
             .set_horizon_data(calc_kernel_sum, calc_utxo_sum)

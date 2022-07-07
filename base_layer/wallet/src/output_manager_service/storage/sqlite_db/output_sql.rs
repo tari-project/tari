@@ -23,6 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use aes_gcm::Aes256Gcm;
+use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
@@ -102,6 +103,7 @@ pub struct OutputSql {
     pub features_json: String,
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
+    pub mined_timestamp: Option<NaiveDateTime>,
 }
 
 impl OutputSql {

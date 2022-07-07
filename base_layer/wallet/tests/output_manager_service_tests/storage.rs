@@ -175,7 +175,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Set first pending tx to mined but unconfirmed
     let mut mmr_pos = 0;
     for o in &pending_txs[0].outputs_to_be_received {
-        db.set_received_output_mined_height(o.hash.clone(), 2, vec![], mmr_pos, false)
+        db.set_received_output_mined_height(o.hash.clone(), 2, vec![], mmr_pos, false, 0)
             .unwrap();
         mmr_pos += 1;
     }
@@ -195,7 +195,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Set second pending tx to mined and confirmed
     for o in &pending_txs[1].outputs_to_be_received {
-        db.set_received_output_mined_height(o.hash.clone(), 4, vec![], mmr_pos, true)
+        db.set_received_output_mined_height(o.hash.clone(), 4, vec![], mmr_pos, true, 0)
             .unwrap();
         mmr_pos += 1;
     }
@@ -402,7 +402,7 @@ pub async fn test_no_duplicate_outputs() {
     // add it to the database
     let result = db.add_unspent_output(uo.clone());
     assert!(result.is_ok());
-    let result = db.set_received_output_mined_height(uo.hash.clone(), 1, Vec::new(), 1, true);
+    let result = db.set_received_output_mined_height(uo.hash.clone(), 1, Vec::new(), 1, true, 0);
     assert!(result.is_ok());
     let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);

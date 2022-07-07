@@ -146,6 +146,7 @@ pub struct CompletedTransaction {
     pub confirmations: Option<u64>,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
+    pub mined_timestamp: Option<NaiveDateTime>,
 }
 
 impl CompletedTransaction {
@@ -162,6 +163,7 @@ impl CompletedTransaction {
         direction: TransactionDirection,
         coinbase_block_height: Option<u64>,
         mined_height: Option<u64>,
+        mined_timestamp: Option<NaiveDateTime>,
     ) -> Self {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
@@ -187,6 +189,7 @@ impl CompletedTransaction {
             confirmations: None,
             mined_height,
             mined_in_block: None,
+            mined_timestamp,
         }
     }
 
@@ -291,6 +294,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         }
     }
 }
@@ -320,6 +324,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         }
     }
 }
