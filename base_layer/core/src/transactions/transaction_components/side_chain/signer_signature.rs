@@ -33,8 +33,8 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, Default)]
 pub struct SignerSignature {
-    pub signer: PublicKey,
-    pub signature: Signature,
+    signer: PublicKey,
+    signature: Signature,
 }
 
 impl SignerSignature {

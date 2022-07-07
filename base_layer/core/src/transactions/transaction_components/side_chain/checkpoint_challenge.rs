@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
-use tari_common_types::types::{Commitment, FixedHash, HashDigest};
-use tari_utilities::ByteArray;
+use tari_common_types::types::{Commitment, FixedHash};
+
+use crate::consensus::ConsensusHashWriter;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CheckpointChallenge(FixedHash);
@@ -31,15 +31,15 @@ impl CheckpointChallenge {
     pub fn new(
         contract_id: &FixedHash,
         checkpoint_commitment: &Commitment,
-        merkle_root: FixedHash,
+        merkle_root: &FixedHash,
         checkpoint_number: u64,
     ) -> Self {
         // TODO: Use new tari_crypto domain-separated hashing
-        let hash = HashDigest::new()
-            .chain(contract_id.as_slice())
-            .chain(checkpoint_commitment.as_bytes())
-            .chain(merkle_root.as_slice())
-            .chain(&checkpoint_number.to_le_bytes())
+        let hash = ConsensusHashWriter::default()
+            .chain(contract_id)
+            .chain(checkpoint_commitment)
+            .chain(merkle_root)
+            .chain(&checkpoint_number)
             .finalize()
             .into();
         Self(hash)

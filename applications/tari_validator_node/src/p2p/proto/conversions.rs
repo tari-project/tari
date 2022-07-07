@@ -387,13 +387,13 @@ impl TryFrom<proto::common::SignerSignature> for SignerSignature {
     type Error = String;
 
     fn try_from(value: proto::common::SignerSignature) -> Result<Self, Self::Error> {
-        Ok(Self {
-            signer: PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
-            signature: value
+        Ok(Self::new(
+            PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
+            value
                 .signature
                 .map(TryInto::try_into)
                 .ok_or("signature not provided")??,
-        })
+        ))
     }
 }
 
