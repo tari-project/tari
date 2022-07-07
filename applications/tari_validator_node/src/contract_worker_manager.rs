@@ -31,14 +31,8 @@ use log::*;
 use tari_common_types::types::{FixedHash, FixedHashSizeError};
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_core::{
-    consensus::ConsensusHashWriter,
-    transactions::transaction_components::{ContractConstitution, OutputType},
-};
-use tari_crypto::{
-    keys::SecretKey,
-    tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray},
-};
+use tari_core::transactions::transaction_components::{ContractConstitution, OutputType};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, Committee},
     services::{
@@ -308,7 +302,7 @@ impl ContractWorkerManager {
             .iter()
             .map({
                 |output| Checkpoint {
-                    mined_height: output.height,
+                    mined_height: output.mined_height,
                 }
             })
             .collect::<Vec<Checkpoint>>();
