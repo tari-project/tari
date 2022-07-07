@@ -85,6 +85,8 @@ declare module 'styled-components' {
     baseNodeRunningLabel: string
     baseNodeRunningTagBackground: string
     baseNodeRunningTagText: string
+    selectBorderColor: string
+    selectOptionHover: string
 
     inverted: {
       controlBackground: string
@@ -139,6 +141,8 @@ declare module 'styled-components' {
       baseNodeRunningLabel: string
       baseNodeRunningTagBackground: string
       baseNodeRunningTagText: string
+      selectBorderColor: string
+      selectOptionHover: string
     }
   }
 }

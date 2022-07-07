@@ -31,6 +31,9 @@ const BaseNode = ({
 
   const selectPausedStyleOverrides = useMemo(
     () => ({
+      value: {
+        borderColor: () => theme.selectBorderColor,
+      },
       label: {
         color: theme.nodeSubHeading,
       },
@@ -88,7 +91,7 @@ const BaseNode = ({
             minWidth: 0,
             width: 'auto',
             padding: 0,
-            background: running ? 'transparent' : undefined,
+            background: 'transparent',
           }}
         >
           <Select

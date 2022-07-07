@@ -55,53 +55,51 @@ const Select = ({
   fullWidth?: boolean
 }) => {
   return (
-    <div>
-      <Listbox value={value} onChange={onChange} disabled={disabled}>
-        {({ open }: { open: boolean }) => (
-          <>
-            {label && (
-              <Label inverted={inverted} style={{ ...styles?.label }}>
-                {label}
-              </Label>
+    <Listbox value={value} onChange={onChange} disabled={disabled}>
+      {({ open }: { open: boolean }) => (
+        <>
+          {label && (
+            <Label inverted={inverted} style={{ ...styles?.label }}>
+              {label}
+            </Label>
+          )}
+          <SelectButton
+            open={open}
+            inverted={inverted}
+            disabled={disabled}
+            fullWidth={fullWidth}
+            style={{ ...styles?.value }}
+          >
+            {icon}
+            <Text as='span' type='smallMedium' color='inherit'>
+              {(value || {}).label || ''}
+            </Text>
+            {!disabled && (
+              <SelectorIcon inverted={inverted} style={{ ...styles?.icon }}>
+                <ArrowBottom />
+              </SelectorIcon>
             )}
-            <SelectButton
-              open={open}
-              inverted={inverted}
-              disabled={disabled}
-              fullWidth={fullWidth}
-              style={{ ...styles?.value }}
-            >
-              {icon}
-              <Text as='span' type='smallMedium' color='inherit'>
-                {(value || {}).label || ''}
-              </Text>
-              {!disabled && (
-                <SelectorIcon inverted={inverted} style={{ ...styles?.icon }}>
-                  <ArrowBottom />
-                </SelectorIcon>
-              )}
-            </SelectButton>
-            <OptionsContainer inverted={inverted} fullWidth={fullWidth}>
-              {options.map(option => (
-                <Listbox.Option key={option.key} value={option} as={Fragment}>
-                  {({ active, selected }) => (
-                    <Option
-                      selected={selected}
-                      active={active}
-                      inverted={inverted}
-                    >
-                      <Text as='span' type='smallMedium' color='inherit'>
-                        {option.label}
-                      </Text>
-                    </Option>
-                  )}
-                </Listbox.Option>
-              ))}
-            </OptionsContainer>
-          </>
-        )}
-      </Listbox>
-    </div>
+          </SelectButton>
+          <OptionsContainer inverted={inverted} fullWidth={fullWidth}>
+            {options.map(option => (
+              <Listbox.Option key={option.key} value={option} as={Fragment}>
+                {({ active, selected }) => (
+                  <Option
+                    selected={selected}
+                    active={active}
+                    inverted={inverted}
+                  >
+                    <Text as='span' type='smallMedium' color='inherit'>
+                      {option.label}
+                    </Text>
+                  </Option>
+                )}
+              </Listbox.Option>
+            ))}
+          </OptionsContainer>
+        </>
+      )}
+    </Listbox>
   )
 }
 

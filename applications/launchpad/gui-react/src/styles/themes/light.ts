@@ -67,6 +67,8 @@ const lightTheme = {
   baseNodeRunningLabel: styles.colors.light.primary,
   baseNodeRunningTagBackground: styles.colors.secondary.on,
   baseNodeRunningTagText: styles.colors.secondary.onText,
+  selectBorderColor: styles.colors.dark.borders,
+  selectOptionHover: styles.colors.light.backgroundImage,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -128,6 +130,8 @@ const lightTheme = {
     baseNodeRunningLabel: styles.colors.light.primary,
     baseNodeRunningTagBackground: styles.colors.secondary.on,
     baseNodeRunningTagText: styles.colors.secondary.onText,
+    selectBorderColor: styles.colors.dark.borders,
+    selectOptionHover: styles.colors.light.backgroundImage,
   },
 }
 

@@ -23,7 +23,7 @@ const darkTheme = {
   resetBackground: styles.colors.light.overlay,
   resetBackgroundHover: styles.colors.light.overlayDark,
   moneroDark: styles.colors.monero.dark,
-  controlBackground: 'rgba(255,255,255,.2)',
+  controlBackground: styles.colors.darkMode.input,
   infoTag: styles.colors.darkMode.tags,
   infoText: styles.colors.secondary.infoText,
   on: styles.colors.secondary.on,
@@ -64,6 +64,8 @@ const darkTheme = {
   baseNodeRunningLabel: styles.colors.light.textSecondary,
   baseNodeRunningTagBackground: styles.colors.darkMode.tags,
   baseNodeRunningTagText: styles.colors.secondary.on,
+  selectBorderColor: styles.colors.darkMode.borders,
+  selectOptionHover: styles.colors.darkMode.input,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -122,7 +124,9 @@ const darkTheme = {
     baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
     baseNodeRunningLabel: styles.colors.light.textSecondary,
     baseNodeRunningTagBackground: styles.colors.darkMode.tags,
-    baseNodeRunningTagText: 'red',
+    baseNodeRunningTagText: styles.colors.secondary.on,
+    selectBorderColor: styles.colors.darkMode.borders,
+    selectOptionHover: styles.colors.darkMode.input,
   },
 }
 
