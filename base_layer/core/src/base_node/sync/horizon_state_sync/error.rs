@@ -27,6 +27,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
+use tari_crypto::errors::RangeProofError;
 use tari_mmr::error::MerkleMountainRangeError;
 use thiserror::Error;
 use tokio::task;
@@ -50,6 +51,8 @@ pub enum HorizonSyncError {
     FinalStateValidationFailed(ValidationError),
     #[error("Join error: {0}")]
     JoinError(#[from] task::JoinError),
+    #[error("A range proof verification has produced an error: {0}")]
+    RangeProofError(#[from] RangeProofError),
     #[error("Invalid kernel signature: {0}")]
     InvalidKernelSignature(TransactionError),
     #[error("MMR did not match for {mmr_tree} at height {at_height}. Expected {actual_hex} to equal {expected_hex}")]

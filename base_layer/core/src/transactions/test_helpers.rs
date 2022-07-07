@@ -27,7 +27,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
+    hash::blake2::Blake256,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
 };

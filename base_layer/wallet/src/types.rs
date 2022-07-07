@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::PublicKey;
-use tari_crypto::common::Blake256;
+use tari_crypto::hash::blake2::Blake256;
 
 use crate::error::WalletError;
 

@@ -34,7 +34,7 @@ use chacha20poly1305::{
 };
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
-use tari_crypto::common::Blake256;
+use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
 

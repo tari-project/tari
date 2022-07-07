@@ -23,7 +23,7 @@
 use digest::Digest;
 use tari_common_types::types::FixedHash;
 use tari_core::transactions::transaction_components::SignerSignature;
-use tari_crypto::common::Blake256;
+use tari_crypto::hash::blake2::Blake256;
 
 use crate::models::{
     HotStuffMessageType,

@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use tari_comms::{
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcClientLease,
@@ -43,6 +45,16 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
     async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>>;
+
+    async fn obtain_base_node_wallet_rpc_client_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
+        tokio::time::timeout(timeout, self.obtain_base_node_wallet_rpc_client())
+            .await
+            .ok()
+            .flatten()
+    }
 
     /// Obtain a BaseNodeSyncRpcClient.
     ///
