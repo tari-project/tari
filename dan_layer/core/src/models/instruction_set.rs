@@ -23,7 +23,7 @@
 use std::{convert::TryFrom, hash::Hash, iter::FromIterator};
 
 use tari_common_types::types::FixedHash;
-use tari_crypto::common::Blake256;
+use tari_crypto::hash::blake2::Blake256;
 use tari_dan_engine::instructions::Instruction;
 use tari_mmr::MerkleMountainRange;
 
