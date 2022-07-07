@@ -48,7 +48,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    common::Blake256,
+    hash::blake2::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,

@@ -13,7 +13,7 @@ edition = "2018"
 tari_comms = { version = "^0.33", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.33", path = "../../comms/dht" }
 tari_common = { version = "^0.33", path = "../../common" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.14.0" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.0" }
 tari_service_framework = { version = "^0.33", path = "../service_framework" }
 tari_shutdown = { version = "^0.33", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.33", path = "../../infrastructure/storage" }
@@ -58,7 +58,7 @@ tari_common = { version = "^0.33", path = "../../common", features = ["build"] }
 [features]
 test-mocks = []
 auto-update = ["reqwest/default", "pgp"]
-avx2 = ["tari_crypto/avx2"]
+avx2 = ["tari_crypto/simd_backend"]
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["openssl-sys"]

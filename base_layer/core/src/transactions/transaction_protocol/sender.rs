@@ -776,8 +776,8 @@ mod test {
     use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey, RangeProof};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
-        common::Blake256,
         errors::RangeProofError::ProofConstructionError,
+        hash::blake2::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
         tari_utilities::{hex::Hex, ByteArray},

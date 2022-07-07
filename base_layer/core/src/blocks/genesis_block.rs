@@ -318,7 +318,7 @@ mod test {
     use crate::{
         consensus::ConsensusManager,
         test_helpers::blockchain::create_new_blockchain_with_network,
-        transactions::CryptoFactories,
+        transactions::{transaction_components::transaction_output::batch_verify_range_proofs, CryptoFactories},
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
     };
 
@@ -331,9 +331,8 @@ mod test {
 
         let factories = CryptoFactories::default();
         assert!(block.block().body.outputs().iter().any(|o| o.is_coinbase()));
-        for o in block.block().body.outputs() {
-            o.verify_range_proof(&factories.range_proof).unwrap();
-        }
+        let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
+        batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
         // Coinbase and faucet kernel
         assert_eq!(
             block.block().body.kernels().len() as u64,
