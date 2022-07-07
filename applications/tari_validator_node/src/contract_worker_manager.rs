@@ -28,19 +28,17 @@ use std::{
 };
 
 use log::*;
-use rand::rngs::OsRng;
-use tari_common_types::types::{FixedHash, FixedHashSizeError, HashDigest, PrivateKey, Signature};
+use tari_common_types::types::{FixedHash, FixedHashSizeError};
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_core::{consensus::ConsensusHashWriter, transactions::transaction_components::ContractConstitution};
-use tari_crypto::{
-    keys::SecretKey,
-    tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray},
-};
+use tari_core::transactions::transaction_components::ContractConstitution;
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, Committee},
     services::{
+        AcceptanceManager,
         BaseNodeClient,
+        ConcreteAcceptanceManager,
         ConcreteAssetProcessor,
         ConcreteCheckpointManager,
         ConcreteCommitteeManager,
@@ -49,7 +47,6 @@ use tari_dan_core::{
         NodeIdentitySigningService,
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
-        WalletClient,
     },
     storage::{
         global::{ContractState, GlobalDb, GlobalDbMetadataKey},
@@ -88,7 +85,7 @@ pub struct ContractWorkerManager {
     last_scanned_height: u64,
     last_scanned_hash: Option<FixedHash>,
     base_node_client: GrpcBaseNodeClient,
-    wallet_client: GrpcWalletClient,
+    acceptance_manager: ConcreteAcceptanceManager<GrpcWalletClient, GrpcBaseNodeClient>,
     identity: Arc<NodeIdentity>,
     active_workers: HashMap<FixedHash, Arc<AtomicBool>>,
     mempool: MempoolServiceHandle,
@@ -113,7 +110,7 @@ impl ContractWorkerManager {
         identity: Arc<NodeIdentity>,
         global_db: GlobalDb<SqliteGlobalDbBackendAdapter>,
         base_node_client: GrpcBaseNodeClient,
-        wallet_client: GrpcWalletClient,
+        acceptance_manager: ConcreteAcceptanceManager<GrpcWalletClient, GrpcBaseNodeClient>,
         mempool: MempoolServiceHandle,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
@@ -126,7 +123,7 @@ impl ContractWorkerManager {
             last_scanned_height: 0,
             last_scanned_hash: None,
             base_node_client,
-            wallet_client,
+            acceptance_manager,
             identity,
             mempool,
             handles,
@@ -444,13 +441,10 @@ impl ContractWorkerManager {
     }
 
     async fn post_contract_acceptance(&mut self, contract: &ActiveContract) -> Result<(), WorkerManagerError> {
-        let nonce = PrivateKey::random(&mut OsRng);
-        let challenge = generate_constitution_challenge(&contract.constitution);
-        let signature = Signature::sign(self.identity.secret_key().clone(), nonce, challenge.as_slice()).unwrap();
+        let mut acceptance_manager = self.acceptance_manager.clone();
 
-        let tx_id = self
-            .wallet_client
-            .submit_contract_acceptance(&contract.contract_id, self.identity.public_key(), &signature)
+        let tx_id = acceptance_manager
+            .publish_acceptance(&self.identity, &contract.contract_id)
             .await?;
         info!(
             "Contract {} acceptance submitted with id={}",
@@ -472,12 +466,6 @@ impl ContractWorkerManager {
         self.last_scanned_height = tip.height_of_longest_chain;
         Ok(())
     }
-}
-
-fn generate_constitution_challenge(constitution: &ContractConstitution) -> [u8; 32] {
-    ConsensusHashWriter::new(HashDigest::with_params(&[], &[], b"tari/vn/constsig"))
-        .chain(constitution)
-        .finalize()
 }
 
 #[derive(Debug, thiserror::Error)]

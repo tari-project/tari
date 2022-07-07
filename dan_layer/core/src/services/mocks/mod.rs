@@ -259,7 +259,7 @@ impl BaseNodeClient for MockBaseNodeClient {
         _height: u64,
         _contract_id: FixedHash,
         _output_type: OutputType,
-    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError> {
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
         todo!()
     }
 }
@@ -475,6 +475,7 @@ pub struct MockServiceSpecification;
 
 #[cfg(test)]
 impl ServiceSpecification for MockServiceSpecification {
+    type AcceptanceManager = super::ConcreteAcceptanceManager<Self::WalletClient, Self::BaseNodeClient>;
     type Addr = RistrettoPublicKey;
     type AssetProcessor = MockAssetProcessor;
     type AssetProxy = ConcreteAssetProxy<Self>;

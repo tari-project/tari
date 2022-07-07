@@ -71,24 +71,11 @@ Then(
     let dan_node = this.getNode(vn_name);
     let grpc_dan_node = await dan_node.createGrpcClient();
     let response = await grpc_dan_node.publishContractUpdateProposalAcceptance(
-      "90b1da4524ea0e9479040d906db9194d8af90f28d05ff2d64c0a82eb93125177", // contract_id
+      "a58fb2adefcc40242f20f2d896e14451549dd60839fee78a7bd40ba2cc0a0e91", // contract_id
       0 // proposal_id
     );
     expect(response.status).to.be.equal("Accepted");
     console.debug({ response });
-  }
-);
-
-Then(
-  "wallet {word} will have a successfully mined constitution acceptance transaction for contract {word}",
-  { timeout: 40 * 1000 },
-  async function (wallet_name, contract_name) {
-    let wallet = await this.getWallet(wallet_name);
-    let contract_id = await this.fetchContract(contract_name);
-    let message = `Contract acceptance for contract with id=${contract_id}`;
-
-    let utxos = await findUtxoWithOutputMessage(wallet, message);
-    expect(utxos.length).to.equal(1);
   }
 );
 
@@ -101,8 +88,7 @@ Then(
     let message = `Contract acceptance for contract with id=${contract_id}`;
 
     let utxos = await findUtxoWithOutputMessage(wallet, message);
-    // FIXME: it seems that the validator node publishes acceptances for both definitions and constitutions
-    expect(utxos.length).to.be.gte(1);
+    expect(utxos.length).to.equal(1);
   }
 );
 

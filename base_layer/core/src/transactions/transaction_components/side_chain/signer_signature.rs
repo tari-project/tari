@@ -22,7 +22,7 @@
 
 use std::io;
 
-use digest::Digest;
+use digest::{Digest, Output};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{HashDigest, PrivateKey, PublicKey, Signature};
@@ -45,15 +45,30 @@ impl SignerSignature {
     pub fn sign<C: AsRef<[u8]>>(signer_secret: &PrivateKey, challenge: C) -> Self {
         let signer = PublicKey::from_secret_key(signer_secret);
         let (nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-        // TODO: Use domain-seperated hasher from tari_crypto
-        let final_challenge = HashDigest::new()
-            .chain(signer.as_bytes())
-            .chain(public_nonce.as_bytes())
-            .chain(challenge)
-            .finalize();
+
+        let final_challenge = Self::build_final_challenge(&signer, challenge, &public_nonce);
         let signature =
             Signature::sign(signer_secret.clone(), nonce, &*final_challenge).expect("challenge is the correct length");
         Self { signer, signature }
+    }
+
+    pub fn verify<C: AsRef<[u8]>>(signature: &Signature, signer: &PublicKey, challenge: C) -> bool {
+        let public_nonce = signature.get_public_nonce();
+        let final_challenge = Self::build_final_challenge(signer, challenge, public_nonce);
+        signature.verify_challenge(signer, &final_challenge)
+    }
+
+    fn build_final_challenge<C: AsRef<[u8]>>(
+        signer: &PublicKey,
+        challenge: C,
+        public_nonce: &PublicKey,
+    ) -> Output<HashDigest> {
+        // TODO: Use domain-seperated hasher from tari_crypto
+        HashDigest::new()
+            .chain(signer.as_bytes())
+            .chain(public_nonce.as_bytes())
+            .chain(challenge)
+            .finalize()
     }
 
     pub fn signer(&self) -> &PublicKey {

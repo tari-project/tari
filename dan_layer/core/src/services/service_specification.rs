@@ -22,6 +22,7 @@
 
 use tari_dan_engine::state::StateDbBackendAdapter;
 
+use super::acceptance_manager::AcceptanceManager;
 use crate::{
     models::{domain_events::ConsensusWorkerDomainEvent, Payload},
     services::{
@@ -52,6 +53,7 @@ use crate::{
 /// simply reference types.
 /// This trait is intended to only include `types` and no methods.
 pub trait ServiceSpecification: Default + Clone {
+    type AcceptanceManager: AcceptanceManager + Clone;
     type Addr: NodeAddressable;
     type AssetProcessor: AssetProcessor + Clone;
     type AssetProxy: AssetProxy + Clone;

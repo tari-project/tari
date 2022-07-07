@@ -24,9 +24,12 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::{FixedHash, PublicKey};
-use tari_core::transactions::transaction_components::{OutputFeatures, OutputType};
+use tari_core::{
+    chain_storage::UtxoMinedInfo,
+    transactions::transaction_components::{OutputFeatures, OutputType},
+};
 
-use crate::models::ModelError;
+use crate::{models::ModelError, DigitalAssetError};
 
 #[derive(Debug)]
 pub struct BaseLayerOutput {
@@ -83,6 +86,27 @@ impl TryFrom<BaseLayerOutput> for CheckpointOutput {
             output_type: output.features.output_type,
             contract_id,
             merkle_root,
+        })
+    }
+}
+
+impl TryFrom<UtxoMinedInfo> for BaseLayerOutput {
+    type Error = DigitalAssetError;
+
+    fn try_from(utxo: UtxoMinedInfo) -> Result<Self, Self::Error> {
+        let mined_height = utxo.mined_height;
+        let features = match utxo.output.as_transaction_output() {
+            Some(o) => o.features.clone(),
+            None => {
+                return Err(DigitalAssetError::ConversionError(
+                    "Output was none/pruned or did not contain features".to_string(),
+                ))
+            },
+        };
+
+        Ok(BaseLayerOutput {
+            features,
+            height: mined_height,
         })
     }
 }

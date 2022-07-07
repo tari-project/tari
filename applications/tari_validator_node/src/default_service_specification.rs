@@ -24,6 +24,7 @@ use tari_common_types::types::PublicKey;
 use tari_dan_core::{
     models::{domain_events::ConsensusWorkerDomainEvent, TariDanPayload},
     services::{
+        ConcreteAcceptanceManager,
         ConcreteAssetProcessor,
         ConcreteAssetProxy,
         ConcreteCheckpointManager,
@@ -57,6 +58,7 @@ use crate::{
 pub struct DefaultServiceSpecification;
 
 impl ServiceSpecification for DefaultServiceSpecification {
+    type AcceptanceManager = ConcreteAcceptanceManager<Self::WalletClient, Self::BaseNodeClient>;
     type Addr = PublicKey;
     type AssetProcessor = ConcreteAssetProcessor;
     type AssetProxy = ConcreteAssetProxy<Self>;
