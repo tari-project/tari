@@ -249,8 +249,7 @@ pub fn create_acceptance_signature(
     private_key: RistrettoSecretKey,
 ) -> Signature {
     let challenge = ContractAcceptanceChallenge::new(&commitment, &contract_id);
-
-    SignerSignature::sign(&private_key, &challenge).signature
+    SignerSignature::sign(&private_key, &challenge).signature().clone()
 }
 
 pub fn create_random_key_pair() -> (RistrettoSecretKey, RistrettoPublicKey) {
