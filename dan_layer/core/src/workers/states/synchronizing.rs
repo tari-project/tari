@@ -63,7 +63,8 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
         let tip = base_node_client.get_tip_info().await?;
         let mut last_checkpoint = base_node_client
             .get_current_contract_outputs(
-                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                tip.height_of_longest_chain
+                    .saturating_sub(asset_definition.base_layer_confirmation_time),
                 asset_definition.contract_id,
                 OutputType::ContractCheckpoint,
             )
@@ -79,7 +80,8 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
 
         let mut constitution = base_node_client
             .get_current_contract_outputs(
-                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                tip.height_of_longest_chain
+                    .saturating_sub(asset_definition.base_layer_confirmation_time),
                 asset_definition.contract_id,
                 OutputType::ContractConstitution,
             )
