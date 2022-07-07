@@ -179,6 +179,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         contract_id: FixedHash,
         merkle_root: FixedHash,
+        committee_signatures: CommitteeSignatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
@@ -187,8 +188,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 OutputFeatures::for_contract_checkpoint(contract_id, ContractCheckpoint {
                     checkpoint_number: 0,
                     merkle_root,
-                    // TODO: add vn signatures
-                    signatures: CommitteeSignatures::default(),
+                    signatures: committee_signatures,
                 }),
             )
             .await?;
@@ -231,6 +231,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         contract_id: FixedHash,
         checkpoint_number: u64,
         merkle_root: FixedHash,
+        committee_signatures: CommitteeSignatures,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
@@ -239,8 +240,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 OutputFeatures::for_contract_checkpoint(contract_id, ContractCheckpoint {
                     checkpoint_number,
                     merkle_root,
-                    // TODO: add vn signatures
-                    signatures: CommitteeSignatures::default(),
+                    signatures: committee_signatures,
                 }),
             )
             .await?;
@@ -301,10 +301,12 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         contract_definition: ContractDefinition,
     ) -> Result<(TxId, Transaction), WalletError> {
-        let output = self
+        let mut output = self
             .output_manager
-            .create_output_with_features(0.into(), OutputFeatures::for_contract_definition(contract_definition))
+            .create_output_with_features(1.into(), OutputFeatures::default())
             .await?;
+
+        output = output.with_features(OutputFeatures::for_contract_definition(contract_definition));
 
         let (tx_id, transaction) = self
             .output_manager

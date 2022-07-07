@@ -140,9 +140,7 @@ impl ContractWorkerManager {
     pub async fn start(mut self) -> Result<(), WorkerManagerError> {
         self.load_initial_state()?;
 
-        if self.config.constitution_auto_accept {
-            info!("constitution_auto_accept is true");
-        }
+        info!("constitution_auto_accept is {}", self.config.constitution_auto_accept);
 
         if !self.config.scan_for_assets {
             info!(
@@ -153,16 +151,18 @@ impl ContractWorkerManager {
             return Ok(());
         }
 
-        // TODO: Get statuses of active contracts
         self.start_active_contracts().await?;
 
         loop {
-            // TODO: Get statuses of Accepted contracts to see if quorum is me if quorum is met, start the chain and
+            // TODO: Get statuses of Accepted contracts to see if quorum is met if quorum is met, start the chain and
             // create a checkpoint
 
             let tip = self.base_node_client.get_tip_info().await?;
+            let new_contracts = self.scan_for_new_contracts(&tip).await?;
+            self.set_last_scanned_block(&tip)?;
+
             if self.config.constitution_auto_accept {
-                self.scan_and_accept_contracts(&tip).await?;
+                self.accept_contracts(new_contracts).await?;
             }
 
             tokio::select! {
@@ -180,7 +180,7 @@ impl ContractWorkerManager {
         for contract in active_contracts {
             let contract_id = FixedHash::try_from(contract.contract_id)?;
 
-            println!("Starting contract {}", contract_id.to_hex());
+            println!("Starting contract {}", contract_id);
 
             let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
                 WorkerManagerError::DataCorruption {
@@ -195,29 +195,8 @@ impl ContractWorkerManager {
         Ok(())
     }
 
-    async fn scan_and_accept_contracts(&mut self, tip: &BaseLayerMetadata) -> Result<(), WorkerManagerError> {
-        info!(
-            target: LOG_TARGET,
-            "Base layer tip is {}. Scanning for new contracts.", tip.height_of_longest_chain,
-        );
-
-        let new_contracts = self.scan_for_new_contracts(tip).await?;
-
-        info!(target: LOG_TARGET, "{} new contract(s) found", new_contracts.len());
-
+    async fn accept_contracts(&mut self, new_contracts: Vec<ActiveContract>) -> Result<(), WorkerManagerError> {
         for contract in new_contracts {
-            match self
-                .global_db
-                .save_contract(contract.clone().into(), ContractState::Pending)
-            {
-                Ok(_) => info!("Saving contract data id={}", contract.contract_id.to_hex()),
-                Err(error) => error!(
-                    "Couldn't save contract data id={} received error={}",
-                    contract.contract_id.to_hex(),
-                    error.to_string()
-                ),
-            }
-
             info!(
                 target: LOG_TARGET,
                 "Posting acceptance transaction for contract {}", contract.contract_id
@@ -233,8 +212,6 @@ impl ContractWorkerManager {
             let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
             self.active_workers.insert(contract.contract_id, kill);
         }
-
-        self.set_last_scanned_block(tip)?;
 
         Ok(())
     }
@@ -325,12 +302,28 @@ impl ContractWorkerManager {
                 continue;
             }
 
-            new_contracts.push(ActiveContract {
+            let contract = ActiveContract {
                 constitution,
                 contract_id,
                 mined_height,
-            });
+            };
+
+            match self
+                .global_db
+                .save_contract(contract.clone().into(), ContractState::Pending)
+            {
+                Ok(_) => info!("Saving contract data id={}", contract.contract_id.to_hex()),
+                Err(error) => error!(
+                    "Couldn't save contract data id={} received error={}",
+                    contract.contract_id.to_hex(),
+                    error.to_string()
+                ),
+            }
+
+            new_contracts.push(contract);
         }
+
+        info!(target: LOG_TARGET, "{} new contract(s) found", new_contracts.len());
 
         Ok(new_contracts)
     }

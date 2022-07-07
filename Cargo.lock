@@ -4449,9 +4449,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-src"
-version = "111.21.0+1.1.1p"
+version = "111.22.0+1.1.1q"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d0a8313729211913936f1b95ca47a5fc7f2e04cd658c115388287f8a8361008"
+checksum = "8f31f0d509d1c1ae9cada2f9539ff8f37933831fd5098879e482aa687d659853"
 dependencies = [
  "cc",
 ]
@@ -7151,8 +7151,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.14.0"
-source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.14.0#60c7673ecde85f4cd155b3232e0b9994df88a536"
+version = "0.15.0"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.0#75f9d2c6340ce212d24397cfcc5fc216cc12a02b"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",

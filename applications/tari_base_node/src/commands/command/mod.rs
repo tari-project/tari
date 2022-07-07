@@ -59,7 +59,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
@@ -285,17 +285,20 @@ pub enum TypeOrHex<T> {
 }
 
 impl<T> FromStr for TypeOrHex<T>
-where
-    T: FromStr,
-    Error: From<T::Err>,
+where T: FromStr
 {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok(hex) = FromHex::from_str(s) {
-            Ok(Self::Hex(hex))
+        if let Ok(t) = T::from_str(s) {
+            Ok(Self::Type(t))
         } else {
-            T::from_str(s).map(Self::Type).map_err(Error::from)
+            FromHex::from_str(s).map(Self::Hex).map_err(|_| {
+                anyhow!(
+                    "Argument was not a valid string for {} or hex value",
+                    std::any::type_name::<T>()
+                )
+            })
         }
     }
 }

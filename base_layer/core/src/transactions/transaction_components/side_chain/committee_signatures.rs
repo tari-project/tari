@@ -26,22 +26,21 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::Signature;
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec},
-    transactions::transaction_components::TransactionError,
+    transactions::transaction_components::{SignerSignature, TransactionError},
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, Default)]
 pub struct CommitteeSignatures {
-    signatures: MaxSizeVec<Signature, { CommitteeSignatures::MAX_SIGNATURES }>,
+    signatures: MaxSizeVec<SignerSignature, { CommitteeSignatures::MAX_SIGNATURES }>,
 }
 
 impl CommitteeSignatures {
     pub const MAX_SIGNATURES: usize = 512;
 
-    pub fn new(signatures: MaxSizeVec<Signature, { Self::MAX_SIGNATURES }>) -> Self {
+    pub fn new(signatures: MaxSizeVec<SignerSignature, { Self::MAX_SIGNATURES }>) -> Self {
         Self { signatures }
     }
 
@@ -52,15 +51,29 @@ impl CommitteeSignatures {
         }
     }
 
-    pub fn signatures(&self) -> Vec<Signature> {
-        self.signatures.to_vec()
+    pub fn signatures(&self) -> &[SignerSignature] {
+        &self.signatures
+    }
+
+    #[must_use = "resulting bool must be checked to ensure that the item was added"]
+    pub fn push<T: Into<SignerSignature>>(&mut self, signature: T) -> bool {
+        self.signatures.push(signature.into())
     }
 }
 
-impl TryFrom<Vec<Signature>> for CommitteeSignatures {
+impl IntoIterator for CommitteeSignatures {
+    type IntoIter = <Vec<SignerSignature> as IntoIterator>::IntoIter;
+    type Item = SignerSignature;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.signatures.into_vec().into_iter()
+    }
+}
+
+impl TryFrom<Vec<SignerSignature>> for CommitteeSignatures {
     type Error = TransactionError;
 
-    fn try_from(signatures: Vec<Signature>) -> Result<Self, Self::Error> {
+    fn try_from(signatures: Vec<SignerSignature>) -> Result<Self, Self::Error> {
         let len = signatures.len();
         let signatures = signatures
             .try_into()
@@ -99,7 +112,7 @@ mod tests {
     #[test]
     fn it_encodes_and_decodes_correctly() {
         let subject = CommitteeSignatures::new(
-            vec![Signature::default(); CommitteeSignatures::MAX_SIGNATURES]
+            vec![SignerSignature::default(); CommitteeSignatures::MAX_SIGNATURES]
                 .try_into()
                 .unwrap(),
         );
@@ -111,7 +124,7 @@ mod tests {
 
     #[test]
     fn it_fails_for_more_than_max_signatures() {
-        let v = vec![Signature::default(); CommitteeSignatures::MAX_SIGNATURES + 1];
+        let v = vec![SignerSignature::default(); CommitteeSignatures::MAX_SIGNATURES + 1];
         let encoded = v.to_consensus_bytes();
         CommitteeSignatures::consensus_decode(&mut encoded.as_slice()).unwrap_err();
     }

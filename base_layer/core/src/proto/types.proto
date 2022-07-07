@@ -22,6 +22,12 @@ message Signature {
     bytes signature = 2;
 }
 
+// Signature containing the signer that signed it
+message SignerSignature {
+    bytes signer = 1;
+    Signature signature = 2;
+}
+
 // Define the explicit ComSignature implementation for the Tari base layer. A different signature scheme can be
 // employed by redefining this type.
 message ComSignature {

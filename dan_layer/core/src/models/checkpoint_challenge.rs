@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,38 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Common Tari comms types
+use digest::Digest;
+use tari_common_types::types::{Commitment, FixedHash, HashDigest};
+use tari_utilities::ByteArray;
 
-use tari_crypto::{
-    hash::blake2::Blake256,
-    keys::PublicKey,
-    ristretto::RistrettoPublicKey,
-    signatures::SchnorrSignature,
-};
-use tari_storage::lmdb_store::LMDBStore;
-#[cfg(test)]
-use tari_storage::HashmapDatabase;
-#[cfg(not(test))]
-use tari_storage::LMDBWrapper;
+#[derive(Debug, Clone, Copy)]
+pub struct CheckpointChallenge(FixedHash);
 
-use crate::peer_manager::{Peer, PeerId};
+impl CheckpointChallenge {
+    pub fn new(
+        contract_id: &FixedHash,
+        checkpoint_commitment: &Commitment,
+        merkle_root: FixedHash,
+        checkpoint_number: u64,
+    ) -> Self {
+        // TODO: Use new tari_crypto domain-separated hashing
+        let hash = HashDigest::new()
+            .chain(contract_id.as_slice())
+            .chain(checkpoint_commitment.as_bytes())
+            .chain(merkle_root.as_slice())
+            .chain(&checkpoint_number.to_le_bytes())
+            .finalize()
+            .into();
+        Self(hash)
+    }
+}
 
-/// Public key type
-pub type CommsPublicKey = RistrettoPublicKey;
-pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
-
-/// Specify the digest type for the signature challenges
-pub type Challenge = Blake256;
-/// Comms signature type
-pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
-
-/// Specify the RNG that should be used for random selection
-pub type CommsRng = rand::rngs::OsRng;
-
-/// Datastore and Database used for persistence storage
-pub type CommsDataStore = LMDBStore;
-
-#[cfg(not(test))]
-pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
-#[cfg(test)]
-pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
+impl AsRef<[u8]> for CheckpointChallenge {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}

@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use log::*;
 use tari_dan_core::{
-    models::{HotStuffMessageType, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
+    models::{HotStuffMessageType, QuorumCertificate, TariDanPayload, TreeNodeHash, ValidatorSignature, ViewId},
     storage::chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
 };
 use tari_utilities::ByteArray;
@@ -273,7 +273,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
                 HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
                 ViewId::from(qc.view_number as u64),
                 qc.node_hash.try_into()?,
-                qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
+                qc.signature.map(|s| ValidatorSignature::from_bytes(s.as_slice())),
             ))
         })
         .transpose()
@@ -336,7 +336,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
             ViewId::from(qc.view_number as u64),
             qc.node_hash.try_into()?,
-            qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
+            qc.signature.map(|s| ValidatorSignature::from_bytes(s.as_slice())),
         ))
     }
 
@@ -355,7 +355,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
             ViewId::from(qc.view_number as u64),
             qc.node_hash.try_into()?,
-            qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
+            qc.signature.map(|s| ValidatorSignature::from_bytes(s.as_slice())),
         ))
     }
 

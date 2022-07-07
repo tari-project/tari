@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{borrow::Borrow, convert::TryFrom};
 
 use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_utilities::ByteArray;
@@ -39,11 +39,11 @@ impl TryFrom<grpc::Signature> for Signature {
     }
 }
 
-impl From<Signature> for grpc::Signature {
-    fn from(sig: Signature) -> Self {
+impl<T: Borrow<Signature>> From<T> for grpc::Signature {
+    fn from(sig: T) -> Self {
         Self {
-            public_nonce: sig.get_public_nonce().to_vec(),
-            signature: sig.get_signature().to_vec(),
+            public_nonce: sig.borrow().get_public_nonce().to_vec(),
+            signature: sig.borrow().get_signature().to_vec(),
         }
     }
 }

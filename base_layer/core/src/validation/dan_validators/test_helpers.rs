@@ -34,7 +34,7 @@ use crate::{
         tari_amount::T,
         test_helpers::{spend_utxos, TransactionSchema},
         transaction_components::{
-            vec_into_fixed_string,
+            bytes_into_fixed_string,
             CheckpointParameters,
             CommitteeSignatures,
             ConstitutionChangeFlags,
@@ -49,6 +49,7 @@ use crate::{
             OutputFeatures,
             RequirementsForConstitutionChange,
             SideChainConsensus,
+            SignerSignature,
             Transaction,
             UnblindedOutput,
         },
@@ -150,10 +151,10 @@ pub fn create_block(
 
 pub fn create_contract_definition_schema(input: UnblindedOutput) -> (FixedHash, TransactionSchema) {
     let definition = ContractDefinition {
-        contract_name: vec_into_fixed_string("name".as_bytes().to_vec()),
+        contract_name: bytes_into_fixed_string("name"),
         contract_issuer: PublicKey::default(),
         contract_spec: ContractSpecification {
-            runtime: vec_into_fixed_string("runtime".as_bytes().to_vec()),
+            runtime: bytes_into_fixed_string("runtime"),
             public_functions: vec![],
         },
     };
@@ -273,7 +274,7 @@ pub fn create_contract_amendment_schema(
         proposal_id,
         updated_constitution: updated_constitution.clone(),
         validator_committee: updated_constitution.validator_committee,
-        validator_signatures: vec![Signature::default()].try_into().unwrap(),
+        validator_signatures: vec![SignerSignature::default()].try_into().unwrap(),
         activation_window: 100,
     };
 

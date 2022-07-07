@@ -24,6 +24,7 @@ use std::collections::HashMap;
 
 use log::*;
 use tari_common_types::types::FixedHash;
+use tari_core::transactions::transaction_components::SignerSignature;
 use tari_utilities::hex::Hex;
 use tokio::time::{sleep, Duration};
 
@@ -114,6 +115,7 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
             warn!(target: LOG_TARGET, "Already received message from {:?}", &sender);
             return Ok(None);
         }
+        debug!(target: LOG_TARGET, "MSG={:?}", message);
 
         self.received_new_view_messages.insert(sender.clone(), message);
 
@@ -218,5 +220,12 @@ impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
             warn!(target: LOG_TARGET, "received non justify message");
             Ok(None)
         }
+    }
+
+    pub fn collected_checkpoint_signatures(&self) -> Vec<SignerSignature> {
+        self.received_new_view_messages
+            .values()
+            .filter_map(|msg| msg.checkpoint_signature().cloned())
+            .collect()
     }
 }
