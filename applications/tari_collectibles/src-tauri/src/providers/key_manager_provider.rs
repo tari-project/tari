@@ -28,7 +28,7 @@ use crate::storage::{
 };
 use std::fmt::Display;
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait};
+use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
 use tari_key_manager::key_manager::KeyManager;
 use tari_utilities::{hex::Hex, ByteArrayError};
 use uuid::Uuid;

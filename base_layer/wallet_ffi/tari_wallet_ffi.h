@@ -178,7 +178,7 @@ typedef PrivateKey TariPrivateKey;
  * ```rust
  * # use tari_crypto::ristretto::*;
  * # use tari_crypto::keys::*;
- * # use tari_crypto::common::*;
+ * # use tari_crypto::hash::blake2::Blake256;
  * # use digest::Digest;
  * # use tari_crypto::commitment::HomomorphicCommitmentFactory;
  * # use tari_crypto::ristretto::pedersen::*;
@@ -209,7 +209,7 @@ typedef PrivateKey TariPrivateKey;
  * # use tari_crypto::keys::*;
  * # use tari_crypto::commitment::HomomorphicCommitment;
  * # use tari_crypto::ristretto::pedersen::*;
- * # use tari_crypto::common::*;
+ * # use tari_crypto::hash::blake2::Blake256;
  * # use tari_utilities::hex::*;
  * # use tari_utilities::ByteArray;
  * # use digest::Digest;

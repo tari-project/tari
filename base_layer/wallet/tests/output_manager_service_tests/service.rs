@@ -58,7 +58,7 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
+    hash::blake2::Blake256,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
