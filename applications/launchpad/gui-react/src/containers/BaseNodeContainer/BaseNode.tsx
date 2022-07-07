@@ -40,6 +40,10 @@ const BaseNode = ({
 
   const selectRunningStyleOverrides = useMemo(
     () => ({
+      value: {
+        color: theme.baseNodeRunningLabel,
+        borderColor: () => theme.textSecondary,
+      },
       label: {
         color: theme.baseNodeRunningLabel,
       },
