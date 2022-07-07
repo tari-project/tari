@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.10](https://github.com/tari-project/tari/compare/v0.32.9...v0.32.10) (2022-07-07)
+
+
+### Features
+
+* add mined_timestamp to wallet.db ([#4267](https://github.com/tari-project/tari/issues/4267)) ([c6c9832](https://github.com/tari-project/tari/commit/c6c9832f7ea72b648f4faeebf246677094033a19))
+* **wallet_ffi:** added mined_timestamp to TariUtxo ([#4284](https://github.com/tari-project/tari/issues/4284)) ([6e1b3da](https://github.com/tari-project/tari/commit/6e1b3da20e1b0e54cf64ea9ee7cb8f930065f7c3))
+
+
+### Bug Fixes
+
+* improve GHA docker image builds ([#4257](https://github.com/tari-project/tari/issues/4257)) ([2c01421](https://github.com/tari-project/tari/commit/2c0142121feed0d45ca57a5e19a2fed2aada62bc))
+* removed code duplication in TariUtxo conversion ([#4283](https://github.com/tari-project/tari/issues/4283)) ([455d161](https://github.com/tari-project/tari/commit/455d161e42609a072878b9a99de5890753b828cb))
+
 ### [0.32.9](https://github.com/tari-project/tari/compare/v0.32.8...v0.32.9) (2022-07-06)
 
 
