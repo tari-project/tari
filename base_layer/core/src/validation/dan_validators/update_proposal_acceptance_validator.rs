@@ -161,16 +161,7 @@ pub fn fetch_proposal_height<B: BlockchainBackend>(
             Some(value) => value,
             None => return false,
         };
-        let sidechain_features = match output.features.sidechain_features.as_ref() {
-            Some(value) => value,
-            None => return false,
-        };
-        let proposal = match &sidechain_features.update_proposal {
-            Some(value) => value,
-            None => return false,
-        };
-
-        proposal.proposal_id == proposal_id
+        ContractUpdateProposal::output_contains_proposal(output, &contract_id, proposal_id)
     });
 
     match proposal_utxo {
@@ -213,18 +204,7 @@ pub fn fetch_proposal_commitment<B: BlockchainBackend>(
         fetch_contract_utxos(db, contract_id, OutputType::ContractConstitutionProposal)?
             .into_iter()
             .filter_map(|utxo| utxo.output.into_unpruned_output())
-            .filter(|output| {
-                let sidechain_features = match output.features.sidechain_features.as_ref() {
-                    Some(value) => value,
-                    None => return false,
-                };
-                let proposal = match &sidechain_features.update_proposal {
-                    Some(value) => value,
-                    None => return false,
-                };
-
-                proposal.proposal_id == proposal_id
-            })
+            .filter(|output| ContractUpdateProposal::output_contains_proposal(output, &contract_id, proposal_id))
             .collect();
 
     // Only one constitution should be stored for a particular contract_id
