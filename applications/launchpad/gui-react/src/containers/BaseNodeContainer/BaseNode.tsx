@@ -129,7 +129,12 @@ const BaseNode = ({
         style={{ background: theme.backgroundSecondary, marginTop: 0 }}
       >
         <Tag>{t.common.adjectives.recommended}</Tag>
-        <Text style={{ marginTop: theme.spacingVertical(1.2) }}>
+        <Text
+          style={{
+            marginTop: theme.spacingVertical(1.2),
+            color: theme.helpTipText,
+          }}
+        >
           <Button variant='button-in-text' onClick={() => setOpenQRModal(true)}>
             {t.baseNode.aurora.connectYourAurora}
           </Button>{' '}
