@@ -346,7 +346,7 @@ impl WalletClient for MockWalletClient {
         _contract_id: &FixedHash,
         _state_root: &StateRoot,
         _checkpoint_number: u64,
-        _checkpoint_signatures: Vec<SignerSignature>,
+        _checkpoint_signatures: &[SignerSignature],
     ) -> Result<(), DigitalAssetError> {
         Ok(())
     }

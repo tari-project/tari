@@ -23,24 +23,14 @@
 use std::collections::HashMap;
 
 use log::*;
-use rand::rngs::OsRng;
-use tari_common_types::types::{Commitment, FixedHash, PrivateKey};
-use tari_core::transactions::transaction_components::SignerSignature;
-use tari_crypto::keys::SecretKey;
+use tari_common_types::types::{Commitment, FixedHash};
+use tari_core::transactions::transaction_components::CheckpointChallenge;
+use tari_dan_engine::state::models::StateRoot;
 use tokio::time::{sleep, Duration};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{
-        CheckpointChallenge,
-        Committee,
-        HotStuffMessage,
-        HotStuffMessageType,
-        QuorumCertificate,
-        TreeNodeHash,
-        View,
-        ViewId,
-    },
+    models::{Committee, HotStuffMessage, HotStuffMessageType, QuorumCertificate, TreeNodeHash, View, ViewId},
     services::{
         infrastructure_services::{InboundConnectionService, OutboundService},
         ServiceSpecification,
@@ -82,6 +72,7 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         outbound_service: &mut TSpecification::OutboundService,
         signing_service: &TSpecification::SigningService,
         mut unit_of_work: TUnitOfWork,
+        proposed_state_root: StateRoot,
         checkpoint_number: u64,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
@@ -100,7 +91,17 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
                r =  inbound_services.wait_for_qc(HotStuffMessageType::PreCommit, current_view.view_id()) => {
                    let (from, message) = r?;
                    let leader = self.committee.leader_for_view(current_view.view_id).clone();
-                   if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work, checkpoint_number).await? {
+                   if let Some(result) = self.process_replica_message(
+                        &message,
+                        current_view,
+                        &from,
+                        &leader,
+                        outbound_service,
+                        signing_service,
+                        &mut unit_of_work,
+                        proposed_state_root,
+                        checkpoint_number,
+                    ).await? {
                        break Ok(result);
                    }
                }
@@ -203,6 +204,7 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         outbound: &mut TSpecification::OutboundService,
         signing_service: &TSpecification::SigningService,
         unit_of_work: &mut TUnitOfWork,
+        proposed_state_root: StateRoot,
         checkpoint_number: u64,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
@@ -232,6 +234,7 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
                 view_leader,
                 current_view.view_id,
                 signing_service,
+                proposed_state_root,
                 checkpoint_number,
             )
             .await?;
@@ -249,20 +252,22 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         view_leader: &TSpecification::Addr,
         view_number: ViewId,
         signing_service: &TSpecification::SigningService,
+        proposed_state_root: StateRoot,
         checkpoint_number: u64,
     ) -> Result<(), DigitalAssetError> {
-        // TODO: wire in the signer secret (probably node identity)
-        let signer_secret = PrivateKey::random(&mut OsRng);
         // TODO: Validators should have agreed on a checkpoint commitment and included this in the signature for base
         //       layer validation
         let commitment = Commitment::default();
-        // TODO: We need the finalized state root to be able to produce a signature
-        let state_root = FixedHash::zero();
 
-        let challenge = CheckpointChallenge::new(&self.contract_id, &commitment, state_root, checkpoint_number);
-        let checkpoint_signature = SignerSignature::sign(&signer_secret, challenge);
+        let challenge = CheckpointChallenge::new(
+            &self.contract_id,
+            &commitment,
+            &proposed_state_root.into(),
+            checkpoint_number,
+        );
+        let checkpoint_signature = signing_service.sign_checkpoint(&challenge)?;
         let mut message = HotStuffMessage::vote_commit(node, view_number, self.contract_id, checkpoint_signature);
-        message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
+        message.add_partial_sig(signing_service.sign(&message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }
 }

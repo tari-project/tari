@@ -246,7 +246,7 @@ impl<TSpecification: ServiceSpecification> PreCommitState<TSpecification> {
         signing_service: &TSpecification::SigningService,
     ) -> Result<(), DigitalAssetError> {
         let mut message = HotStuffMessage::vote_pre_commit(node, view_number, self.contract_id);
-        message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
+        message.add_partial_sig(signing_service.sign(&message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }
 }
