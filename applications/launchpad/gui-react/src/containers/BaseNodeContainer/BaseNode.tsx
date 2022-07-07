@@ -114,7 +114,7 @@ const BaseNode = ({
             disabled={pending}
             loading={pending}
             style={{
-              color: theme.inverted.primary,
+              color: theme.textSecondary,
               background: theme.resetBackground,
               border: 'none',
             }}
