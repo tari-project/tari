@@ -22,7 +22,7 @@ use digest::Digest;
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
-    common::Blake256,
+    hash::blake2::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
 };
 use tari_utilities::{
@@ -123,6 +123,10 @@ impl TariScript {
             op.to_bytes(&mut bytes);
             bytes
         })
+    }
+
+    pub fn as_slice(&self) -> &[Opcode] {
+        self.script.as_slice()
     }
 
     /// Calculate the hash of the script.
