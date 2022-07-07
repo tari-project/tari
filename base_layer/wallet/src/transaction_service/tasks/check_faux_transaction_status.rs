@@ -136,6 +136,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
                     tx.tx_id,
                     mined_height,
                     mined_in_block,
+                    0,
                     num_confirmations,
                     is_confirmed,
                     is_valid,

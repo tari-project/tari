@@ -190,7 +190,7 @@ async fn create_wallet(
         ..Default::default()
     };
 
-    let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0, 0);
 
     let _db_value = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 

@@ -57,6 +57,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
             pruning_horizon,
             metadata.pruned_height,
             accumulated_difficulty,
+            metadata.timestamp.unwrap_or_default(),
         ))
     }
 }
@@ -69,6 +70,7 @@ impl From<ChainMetadata> for proto::ChainMetadata {
             best_block: Some(metadata.best_block().clone()),
             pruned_height: metadata.pruned_height(),
             accumulated_difficulty,
+            timestamp: Some(metadata.timestamp()),
         }
     }
 }

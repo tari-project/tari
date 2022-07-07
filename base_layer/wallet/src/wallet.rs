@@ -451,6 +451,7 @@ where
                 ImportStatus::Imported,
                 None,
                 None,
+                None,
             )
             .await?;
 
@@ -491,6 +492,7 @@ where
                 message,
                 Some(unblinded_output.features.maturity),
                 ImportStatus::Imported,
+                None,
                 None,
                 None,
             )

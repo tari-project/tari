@@ -40,6 +40,7 @@ pub(crate) struct TransactionOutputRowData {
     pub hash: HashOutput,
     pub witness_hash: HashOutput,
     pub mined_height: u64,
+    pub mined_timestamp: u64,
 }
 
 /// Transaction input row data taking references and used for serialization.

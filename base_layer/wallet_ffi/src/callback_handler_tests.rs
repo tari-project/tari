@@ -9,7 +9,7 @@ mod test {
         time::Duration,
     };
 
-    use chrono::Utc;
+    use chrono::{NaiveDateTime, Utc};
     use rand::rngs::OsRng;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus},
@@ -270,6 +270,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
+            None,
         );
         runtime
             .block_on(db.insert_completed_transaction(2u64.into(), completed_tx.clone()))
@@ -331,6 +332,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             Some(2),
+            Some(NaiveDateTime::from_timestamp(0, 0)),
         );
         runtime
             .block_on(db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone()))
@@ -355,6 +357,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             Some(5),
+            Some(NaiveDateTime::from_timestamp(0, 0)),
         );
         runtime
             .block_on(db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone()))
