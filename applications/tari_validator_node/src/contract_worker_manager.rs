@@ -444,7 +444,7 @@ impl ContractWorkerManager {
         let mut acceptance_manager = self.acceptance_manager.clone();
 
         let tx_id = acceptance_manager
-            .publish_acceptance(&self.identity, &contract.contract_id)
+            .publish_constitution_acceptance(&self.identity, &contract.contract_id)
             .await?;
         info!(
             "Contract {} acceptance submitted with id={}",

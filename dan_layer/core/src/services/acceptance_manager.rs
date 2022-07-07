@@ -27,6 +27,7 @@ use tari_core::{
     chain_storage::UtxoMinedInfo,
     transactions::transaction_components::{
         ContractAcceptanceChallenge,
+        ContractUpdateProposalAcceptanceChallenge,
         OutputType,
         SignerSignature,
         TransactionOutput,
@@ -39,10 +40,17 @@ use crate::{services::wallet_client::WalletClient, DigitalAssetError};
 
 #[async_trait]
 pub trait AcceptanceManager: Send + Sync {
-    async fn publish_acceptance(
+    async fn publish_constitution_acceptance(
         &mut self,
         node_identity: &NodeIdentity,
         contract_id: &FixedHash,
+    ) -> Result<u64, DigitalAssetError>;
+
+    async fn publish_proposal_acceptance(
+        &mut self,
+        node_identity: &NodeIdentity,
+        contract_id: &FixedHash,
+        proposal_id: u64,
     ) -> Result<u64, DigitalAssetError>;
 }
 
@@ -62,7 +70,7 @@ impl<TWallet: WalletClient, TBaseNode: BaseNodeClient> ConcreteAcceptanceManager
 impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Send> AcceptanceManager
     for ConcreteAcceptanceManager<TWallet, TBaseNode>
 {
-    async fn publish_acceptance(
+    async fn publish_constitution_acceptance(
         &mut self,
         node_identity: &NodeIdentity,
         contract_id: &FixedHash,
@@ -78,6 +86,26 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
         // publish the acceptance
         self.wallet
             .submit_contract_acceptance(contract_id, public_key, &signature)
+            .await
+    }
+
+    async fn publish_proposal_acceptance(
+        &mut self,
+        node_identity: &NodeIdentity,
+        contract_id: &FixedHash,
+        proposal_id: u64,
+    ) -> Result<u64, DigitalAssetError> {
+        let public_key = node_identity.public_key();
+
+        // build the acceptance signature
+        let secret_key = node_identity.secret_key();
+        let proposal_commitment = self.fetch_proposal_commitment(contract_id, proposal_id).await?;
+        let challenge = ContractUpdateProposalAcceptanceChallenge::new(&proposal_commitment, contract_id, proposal_id);
+        let signature = SignerSignature::sign(secret_key, challenge).signature;
+
+        // publish the acceptance
+        self.wallet
+            .submit_contract_update_proposal_acceptance(contract_id, proposal_id, public_key, &signature)
             .await
     }
 }
@@ -107,5 +135,42 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
         let constitution_commitment = transaction_outputs[0].commitment();
 
         Ok(constitution_commitment.clone())
+    }
+
+    async fn fetch_proposal_commitment(
+        &mut self,
+        contract_id: &FixedHash,
+        proposal_id: u64,
+    ) -> Result<Commitment, DigitalAssetError> {
+        let outputs: Vec<UtxoMinedInfo> = self
+            .base_node
+            .get_current_contract_outputs(0, *contract_id, OutputType::ContractConstitutionProposal)
+            .await?;
+        let transaction_outputs: Vec<TransactionOutput> = outputs
+            .into_iter()
+            .filter_map(|utxo| utxo.output.into_unpruned_output())
+            .filter(|output| {
+                let sidechain_features = match output.features.sidechain_features.as_ref() {
+                    Some(value) => value,
+                    None => return false,
+                };
+                let proposal = match &sidechain_features.update_proposal {
+                    Some(value) => value,
+                    None => return false,
+                };
+
+                proposal.proposal_id == proposal_id
+            })
+            .collect();
+
+        if transaction_outputs.is_empty() {
+            return Err(DigitalAssetError::NotFound {
+                entity: "update proposal",
+                id: contract_id.to_hex(),
+            });
+        }
+        let proposal_commitment = transaction_outputs[0].commitment();
+
+        Ok(proposal_commitment.clone())
     }
 }

@@ -162,7 +162,6 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
         db_factory.clone(),
         asset_processor,
         asset_proxy,
-        wallet_client,
         acceptance_manager,
     );
 
