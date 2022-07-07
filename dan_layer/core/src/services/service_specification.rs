@@ -75,7 +75,7 @@ pub trait ServiceSpecification: Default + Clone {
     type Payload: Payload;
     type PayloadProcessor: PayloadProcessor<Self::Payload>;
     type PayloadProvider: PayloadProvider<Self::Payload>;
-    type SigningService: SigningService<Self::Addr>;
+    type SigningService: SigningService;
     type StateDbBackendAdapter: StateDbBackendAdapter;
     type ValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = Self::Addr> + Clone;
     type WalletClient: WalletClient + Clone;
