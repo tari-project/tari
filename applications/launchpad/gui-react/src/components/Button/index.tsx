@@ -22,6 +22,7 @@ import { ButtonProps } from './types'
  * @param {ButtonSizeType} [size='medium'] - the size of the button
  * @param {string} [href] - if applied, it renders <a /> element with a given href
  * @param {ReactNode} [leftIcon] - element rendered on left side of the button
+ * @param {string} [leftIconColor] - custom icon color
  * @param {ReactNode} [rightIcon] - element rendered on right side of the button
  * @param {boolean} [autosizeIcons='true'] - by default, it resizes any svg element set as leftIcon or rightIcon to a given dimensions (16x16px)
  * @param {boolean} [loading] - displays the loader
@@ -40,6 +41,7 @@ import { ButtonProps } from './types'
  *  String or {ReactNode}
  * </Button>
  */
+
 const Button = ({
   children,
   disabled,
@@ -49,6 +51,7 @@ const Button = ({
   size = 'medium',
   href,
   leftIcon,
+  leftIconColor,
   rightIcon,
   autosizeIcons = true,
   onClick,
@@ -80,6 +83,7 @@ const Button = ({
           $autosizeIcon={autosizeIcons}
           $variant={variant}
           $disabled={disabled}
+          $leftIconColor={leftIconColor}
           data-testid='button-left-icon'
         >
           {leftIcon}

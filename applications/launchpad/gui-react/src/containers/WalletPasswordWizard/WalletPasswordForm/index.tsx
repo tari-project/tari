@@ -35,11 +35,13 @@ const WalletPasswordForm = ({
     <WizardContainer>
       <Text
         style={{ maxWidth: '75%', marginBottom: theme.spacingVertical(2.5) }}
-        color={theme.primary}
+        color={theme.nodeSubHeading}
       >
         {t.walletPasswordWizard.description}
       </Text>
-      <Text type='smallMedium'>{t.walletPasswordWizard.warning}</Text>
+      <Text type='smallMedium' color={theme.nodeWarningText}>
+        {t.walletPasswordWizard.warning}
+      </Text>
       <CalloutWrapper>
         <Callout type='warning'>{t.walletPasswordWizard.warningBox}</Callout>
       </CalloutWrapper>

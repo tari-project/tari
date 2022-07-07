@@ -144,17 +144,18 @@ const MiningBox = ({
     }`,
     boxStyle: {
       color: theme.primary,
-      background: theme.background,
+      background: theme.nodeBackground,
     },
     titleStyle: {
-      color: theme.primary,
+      color: theme.helpTipText,
     },
     contentStyle: {
       color: theme.secondary,
     },
     icon: {
-      color: theme.backgroundImage,
+      color: theme.nodeLightIcon,
     },
+    helpSvgGradient: false,
   }
 
   const defaultStates: Partial<{
@@ -164,17 +165,28 @@ const MiningBox = ({
       tag: {
         content: t.common.phrases.startHere,
       },
+      helpSvgGradient: true,
     },
     [MiningBoxStatus.Paused]: {
       tag: {
         content: t.common.adjectives.paused,
         type: 'light',
       },
+      titleStyle: {
+        color: theme.helpTipText,
+      },
+      boxStyle: {
+        background: theme.nodeBackground,
+      },
+      icon: {
+        color: theme.nodeLightIcon,
+      },
     },
     [MiningBoxStatus.PausedNoSession]: {
       tag: {
         content: t.common.phrases.startHere,
       },
+      helpSvgGradient: true,
     },
     [MiningBoxStatus.Running]: {
       tag: {
@@ -188,7 +200,7 @@ const MiningBox = ({
         color: theme.inverted.primary,
       },
       contentStyle: {
-        color: theme.inverted.secondary,
+        color: theme.inverted.primary,
       },
       icon: {
         color: theme.accentDark,
@@ -263,7 +275,9 @@ const MiningBox = ({
       case MiningBoxStatus.Paused:
         return (
           <MiningBoxContent data-testid='mining-box-paused-content'>
-            {coins ? <CoinsList coins={coins} /> : null}
+            {coins ? (
+              <CoinsList coins={coins} color={theme.nodeWarningText} />
+            ) : null}
             <Button
               onClick={startMiningWithPasswordEnsured}
               disabled={disableActions}
@@ -280,8 +294,8 @@ const MiningBox = ({
             {coins ? (
               <CoinsList
                 coins={coins}
-                color={theme.inverted.primary}
-                unitsColor={theme.inverted.secondary}
+                color={theme.textSecondary}
+                unitsColor={theme.textSecondary}
                 showSymbols
               />
             ) : null}
@@ -319,6 +333,7 @@ const MiningBox = ({
       titleStyle={currentState.titleStyle}
       contentStyle={currentState.contentStyle}
       onHelpPromptClick={helpPromptClick}
+      helpSvgGradient={currentState.helpSvgGradient}
       testId={testId}
     >
       {icons && icons.length > 0 ? (

@@ -46,22 +46,40 @@ declare module 'styled-components' {
     titleBar: string
 
     controlBackground: string
-    info: string
+    infoTag: string
     infoText: string
     on: string
     onText: string
     onTextLight: string
     warning: string
+    warningTag: string
     warningText: string
     warningDark: string
     success: string
     error: string
     expert: string
     expertText: string
+    expertSecText: string
     lightTag: string
     lightTagText: string
     placeholderText: string
     textSecondary: string
+    helpTipText: string
+    runningTagBackground: string
+    runningTagText: string
+    dashboardRunningTagText: string
+    dashboardRunningTagBackground: string
+    switchBorder: string
+    switchCircle: string
+    switchController: string
+    nodeBackground: string
+    nodeLightIcon: string
+    nodeSubHeading: string
+    nodeWarningText: string
+    calloutBackground: string
+    inputPlaceholder: string
+    disabledPrimaryButton: string
+    disabledPrimaryButtonText: string
 
     inverted: {
       controlBackground: string
@@ -97,6 +115,20 @@ declare module 'styled-components' {
       expertText: string
       lightTag: string
       lightTagText: string
+      expert: string
+      expertText: string
+      expertSecText: string
+      switchBorder: string
+      switchCircle: string
+      switchController: string
+      nodeBackground: string
+      nodeLightIcon: string
+      nodeSubHeading: string
+      nodeWarningText: string
+      calloutBackground: string
+      inputPlaceholder: string
+      disabledPrimaryButton: string
+      disabledPrimaryButtonText: string
     }
   }
 }

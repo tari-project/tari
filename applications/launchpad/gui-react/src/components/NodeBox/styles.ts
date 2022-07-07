@@ -15,7 +15,7 @@ export const SvgContainer = styled.div<{ running?: boolean }>`
   font-size: 20px;
   margin-left: ${({ theme }) => theme.spacingHorizontal(0.333)};
   cursor: pointer;
-  color: ${({ theme, running }) => (running ? theme.inverted.secondary : null)};
+  color: ${({ theme, running }) => (running ? theme.textSecondary : null)};
 `
 
 export const BoxContent = styled.div`

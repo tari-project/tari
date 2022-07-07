@@ -20,7 +20,7 @@ export const TimeWrapper = styled.span`
     `${theme.spacingVertical(0.2)} ${theme.spacingHorizontal(
       0.83,
     )} ${theme.spacingVertical(0)} ${theme.spacingHorizontal(0.83)}`};
-  border-right: 1px solid ${({ theme }) => theme.inverted.secondary};
+  border-right: 1px solid ${({ theme }) => theme.resetBackground};
   min-width: 61px;
 `
 

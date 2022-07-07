@@ -20,6 +20,7 @@ export interface ButtonProps {
   href?: string
   variant?: ButtonVariantType
   leftIcon?: ReactNode
+  leftIconColor?: string
   rightIcon?: ReactNode
   autosizeIcons?: boolean
   onClick?: () => void

@@ -50,14 +50,14 @@ const RunningButton = ({
       data-testid={testId || 'running-button-cmp'}
     >
       <TimeWrapper>
-        <Text as='span' color={theme.inverted.secondary} testId='timer-test-id'>
+        <Text as='span' color={theme.textSecondary} testId='timer-test-id'>
           <Time startedAt={startedAt} active={active} />
         </Text>
       </TimeWrapper>
       <TextWrapper>
         <Text
           as='span'
-          color={theme.inverted.secondary}
+          color={theme.textSecondary}
           style={{ textAlign: 'center' }}
         >
           {t.common.verbs.pause}

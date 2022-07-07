@@ -27,6 +27,7 @@ export interface NodeBoxStatusConfig {
   icon?: {
     color: string
   }
+  helpSvgGradient?: boolean
 }
 
 export interface MiningCoinIconProp {
