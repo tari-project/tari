@@ -44,6 +44,7 @@ use tari_core::{
             TransactionSchema,
         },
         transaction_components::{
+            transaction_output::batch_verify_range_proofs,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -160,10 +161,9 @@ fn print_new_genesis_block(network: Network) {
     }
     for output in block.body.outputs() {
         output.verify_metadata_signature().unwrap();
-        output
-            .verify_range_proof(&CryptoFactories::default().range_proof)
-            .unwrap();
     }
+    let outputs = block.body.outputs().iter().collect::<Vec<_>>();
+    batch_verify_range_proofs(&CryptoFactories::default().range_proof, &outputs).unwrap();
 
     // Note: This is printed in the same order as needed for 'fn get_dibbler_genesis_block_raw()'
     println!();

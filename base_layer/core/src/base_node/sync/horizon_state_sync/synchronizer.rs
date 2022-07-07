@@ -68,7 +68,11 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{
+        transaction_output::batch_verify_range_proofs,
+        TransactionKernel,
+        TransactionOutput,
+    },
     validation::{helpers, FinalHorizonStateValidation},
 };
 
@@ -713,10 +717,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .map(|chunk| {
                 let prover = self.prover.clone();
                 task::spawn_blocking(move || -> Result<(), HorizonSyncError> {
-                    for o in chunk {
-                        o.verify_range_proof(&prover)
-                            .map_err(|err| HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string()))?;
-                    }
+                    let outputs = chunk.iter().collect::<Vec<_>>();
+                    batch_verify_range_proofs(&prover, &outputs)?;
                     Ok(())
                 })
             })
