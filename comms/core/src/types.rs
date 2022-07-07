@@ -22,7 +22,12 @@
 
 //! Common Tari comms types
 
-use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey, signatures::SchnorrSignature};
+use tari_crypto::{
+    hash::blake2::Blake256,
+    keys::PublicKey,
+    ristretto::RistrettoPublicKey,
+    signatures::SchnorrSignature,
+};
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
 use tari_storage::HashmapDatabase;
