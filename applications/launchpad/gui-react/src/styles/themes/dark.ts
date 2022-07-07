@@ -62,6 +62,8 @@ const darkTheme = {
   baseNodeGradientStart: styles.colors.darkMode.baseNodeStart,
   baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
   baseNodeRunningLabel: styles.colors.light.textSecondary,
+  baseNodeRunningTagBackground: styles.colors.darkMode.tags,
+  baseNodeRunningTagText: styles.colors.secondary.on,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -119,6 +121,8 @@ const darkTheme = {
     baseNodeGradientStart: styles.colors.darkMode.baseNodeStart,
     baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
     baseNodeRunningLabel: styles.colors.light.textSecondary,
+    baseNodeRunningTagBackground: styles.colors.darkMode.tags,
+    baseNodeRunningTagText: 'red',
   },
 }
 

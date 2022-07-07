@@ -77,7 +77,7 @@ const BaseNode = ({
         >
           {t.baseNode.title}
           {running && (
-            <Tag type='running' variant='large'>
+            <Tag type='running' variant='large' baseNode>
               {t.common.adjectives.running}
             </Tag>
           )}

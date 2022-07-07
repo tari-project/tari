@@ -83,6 +83,8 @@ declare module 'styled-components' {
     baseNodeGradientStart: string
     baseNodeGradientEnd: string
     baseNodeRunningLabel: string
+    baseNodeRunningTagBackground: string
+    baseNodeRunningTagText: string
 
     inverted: {
       controlBackground: string
@@ -135,6 +137,8 @@ declare module 'styled-components' {
       baseNodeGradientStart: string
       baseNodeGradientEnd: string
       baseNodeRunningLabel: string
+      baseNodeRunningTagBackground: string
+      baseNodeRunningTagText: string
     }
   }
 }

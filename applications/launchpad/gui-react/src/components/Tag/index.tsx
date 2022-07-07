@@ -34,6 +34,8 @@ const Tag = ({
   subText,
   inverted,
   dark,
+  dashboard,
+  baseNode,
   expertSec,
 }: TagProps) => {
   const theme = useTheme()
@@ -47,6 +49,9 @@ const Tag = ({
   if (dark) {
     runningTagBackgroundColor = theme.dashboardRunningTagBackground
     runningTagTextColor = theme.dashboardRunningTagText
+  } else if (baseNode) {
+    runningTagBackgroundColor = theme.baseNodeRunningTagBackground
+    runningTagTextColor = theme.baseNodeRunningTagText
   } else {
     runningTagBackgroundColor = theme.runningTagBackground
     runningTagTextColor = theme.runningTagText

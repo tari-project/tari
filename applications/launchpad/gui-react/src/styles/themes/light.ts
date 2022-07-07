@@ -65,6 +65,8 @@ const lightTheme = {
   baseNodeGradientStart: styles.colors.secondary.actionBackground,
   baseNodeGradientEnd: styles.colors.tari.purple,
   baseNodeRunningLabel: styles.colors.light.primary,
+  baseNodeRunningTagBackground: styles.colors.secondary.on,
+  baseNodeRunningTagText: styles.colors.secondary.onText,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -124,6 +126,8 @@ const lightTheme = {
     baseNodeGradientStart: styles.colors.secondary.actionBackground,
     baseNodeGradientEnd: styles.colors.tari.purple,
     baseNodeRunningLabel: styles.colors.light.primary,
+    baseNodeRunningTagBackground: styles.colors.secondary.on,
+    baseNodeRunningTagText: styles.colors.secondary.onText,
   },
 }
 
