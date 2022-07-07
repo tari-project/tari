@@ -41,7 +41,7 @@ use crate::{
         tari_amount::{uT, MicroTari, T},
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
-        transaction_components::{EncryptedValue, OutputFeatures},
+        transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedValue, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
@@ -149,6 +149,63 @@ fn range_proof_verification() {
     {
         panic!("Range proof construction should have failed")
     };
+}
+
+#[test]
+fn range_proof_verification_batch() {
+    let factories = CryptoFactories::new(64);
+
+    let unblinded_output1 = TestParams::new().create_unblinded_output(UtxoTestParams {
+        value: (1u64).into(),
+        ..Default::default()
+    });
+    let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
+    assert!(tx_output1.verify_range_proof(&factories.range_proof).is_ok());
+
+    let unblinded_output2 = TestParams::new().create_unblinded_output(UtxoTestParams {
+        value: (2u64).into(),
+        ..Default::default()
+    });
+    let tx_output2 = unblinded_output2.as_transaction_output(&factories).unwrap();
+    assert!(tx_output2.verify_range_proof(&factories.range_proof).is_ok());
+
+    let unblinded_output3 = TestParams::new().create_unblinded_output(UtxoTestParams {
+        value: (3u64).into(),
+        ..Default::default()
+    });
+    let tx_output3 = unblinded_output3.as_transaction_output(&factories).unwrap();
+    assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
+
+    let unblinded_output4 = TestParams::new().create_unblinded_output(UtxoTestParams {
+        value: (4u64).into(),
+        ..Default::default()
+    });
+    let tx_output4 = unblinded_output4.as_transaction_output(&factories).unwrap();
+    assert!(tx_output4.verify_range_proof(&factories.range_proof).is_ok());
+
+    let unblinded_output5 = TestParams::new().create_unblinded_output(UtxoTestParams {
+        value: (5u64).into(),
+        ..Default::default()
+    });
+    let mut tx_output5 = unblinded_output5.as_transaction_output(&factories).unwrap();
+    assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
+
+    // The batch should pass
+    let outputs = vec![
+        tx_output1.clone(),
+        tx_output2.clone(),
+        tx_output3.clone(),
+        tx_output4.clone(),
+        tx_output5.clone(),
+    ];
+    let outputs = outputs.iter().collect::<Vec<_>>();
+    assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_ok());
+
+    // The batch should fail after tampering with a single proof
+    tx_output5.proof = tx_output4.proof.clone();
+    let outputs = vec![tx_output1, tx_output2, tx_output3, tx_output4, tx_output5];
+    let outputs = outputs.iter().collect::<Vec<_>>();
+    assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
 }
 
 #[test]

@@ -39,6 +39,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{
+            transaction_output::batch_verify_range_proofs,
             KernelSum,
             OutputType,
             TransactionError,
@@ -400,14 +401,13 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                         }
 
                         helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
-
                         output.verify_metadata_signature()?;
-                        if !bypass_range_proof_verification {
-                            output.verify_range_proof(&range_proof_prover)?;
-                        }
-
                         helpers::check_not_duplicate_txo(&*db, output)?;
                         commitment_sum = &commitment_sum + &output.commitment;
+                    }
+                    if !bypass_range_proof_verification {
+                        let this_outputs = outputs.iter().map(|o| &o.1).collect::<Vec<_>>();
+                        batch_verify_range_proofs(&range_proof_prover, &this_outputs)?;
                     }
 
                     Ok((outputs, aggregate_sender_offset, commitment_sum, coinbase_index))

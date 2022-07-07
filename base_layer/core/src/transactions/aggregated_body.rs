@@ -52,6 +52,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         tari_amount::MicroTari,
         transaction_components::{
+            transaction_output::batch_verify_range_proofs,
             KernelFeatures,
             KernelSum,
             OutputType,
@@ -478,9 +479,8 @@ impl AggregateBody {
 
     fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking range proofs");
-        for o in &self.outputs {
-            o.verify_range_proof(range_proof_service)?;
-        }
+        let outputs = self.outputs.iter().collect::<Vec<_>>();
+        batch_verify_range_proofs(range_proof_service, &outputs)?;
         Ok(())
     }
 
