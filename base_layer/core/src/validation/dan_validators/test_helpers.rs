@@ -189,12 +189,14 @@ pub fn create_contract_constitution() -> ContractConstitution {
         checkpoint_params: CheckpointParameters {
             minimum_quorum_required: 5,
             abandoned_interval: 100,
+            quarantine_interval: 100,
         },
         constitution_change_rules: ConstitutionChangeRules {
             change_flags: ConstitutionChangeFlags::all(),
             requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                 minimum_constitution_committee_signatures: 5,
                 constitution_committee: Some(vec![].try_into().unwrap()),
+                backup_keys: Some(vec![].try_into().unwrap()),
             }),
         },
         initial_reward: 100.into(),

@@ -414,7 +414,18 @@ impl OutputFeatures {
         self.sidechain_features
             .as_ref()
             .and_then(|f| f.constitution.as_ref())
-            .map(|c| &c.validator_committee)
+            .and_then(|f| f.constitution_change_rules.requirements_for_constitution_change.as_ref())
+            .and_then(|f| f.constitution_committee.as_ref())
+            .map(|c| c)
+    }
+
+    pub fn backup_keys(&self) -> Option<&CommitteeMembers> {
+        self.sidechain_features
+            .as_ref()
+            .and_then(|f| f.constitution.as_ref())
+            .and_then(|f| f.constitution_change_rules.requirements_for_constitution_change.as_ref())
+            .and_then(|f| f.backup_keys.as_ref())
+            .map(|c| c)
     }
 }
 
@@ -578,12 +589,18 @@ mod test {
             checkpoint_params: CheckpointParameters {
                 minimum_quorum_required: 5,
                 abandoned_interval: 100,
+                quarantine_interval: 100,
             },
             constitution_change_rules: ConstitutionChangeRules {
                 change_flags: ConstitutionChangeFlags::all(),
                 requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                     minimum_constitution_committee_signatures: 5,
                     constitution_committee: Some(
+                        vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                            .try_into()
+                            .unwrap(),
+                    ),
+                    backup_keys: Some(
                         vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
                             .try_into()
                             .unwrap(),

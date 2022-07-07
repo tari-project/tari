@@ -1086,6 +1086,7 @@ async fn send_one_sided_transaction_to_self() {
 
 #[tokio::test]
 async fn manage_multiple_transactions() {
+    env_logger::init();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(

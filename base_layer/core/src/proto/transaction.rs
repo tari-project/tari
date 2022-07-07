@@ -677,6 +677,7 @@ impl From<CheckpointParameters> for proto::types::CheckpointParameters {
         Self {
             minimum_quorum_required: value.minimum_quorum_required,
             abandoned_interval: value.abandoned_interval,
+            quarantine_interval: value.quarantine_interval,
         }
     }
 }
@@ -688,6 +689,7 @@ impl TryFrom<proto::types::CheckpointParameters> for CheckpointParameters {
         Ok(Self {
             minimum_quorum_required: value.minimum_quorum_required,
             abandoned_interval: value.abandoned_interval,
+            quarantine_interval: value.quarantine_interval,
         })
     }
 }
@@ -725,6 +727,7 @@ impl From<RequirementsForConstitutionChange> for proto::types::RequirementsForCo
         Self {
             minimum_constitution_committee_signatures: value.minimum_constitution_committee_signatures,
             constitution_committee: value.constitution_committee.map(Into::into),
+            backup_keys: value.backup_keys.map(Into::into),
         }
     }
 }
@@ -739,6 +742,7 @@ impl TryFrom<proto::types::RequirementsForConstitutionChange> for RequirementsFo
                 .constitution_committee
                 .map(CommitteeMembers::try_from)
                 .transpose()?,
+            backup_keys: value.backup_keys.map(CommitteeMembers::try_from).transpose()?,
         })
     }
 }

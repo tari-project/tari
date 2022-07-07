@@ -44,6 +44,12 @@ impl BaseLayerOutput {
             .map(|committee| committee.members())
     }
 
+    pub fn get_backup_keys(&self) -> Option<&[PublicKey]> {
+        self.features
+            .backup_keys()
+            .map(|keys| keys.members())
+    }
+
     pub fn get_checkpoint_merkle_root(&self) -> Option<FixedHash> {
         self.features
             .sidechain_features

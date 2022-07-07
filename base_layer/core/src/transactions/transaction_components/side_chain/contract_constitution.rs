@@ -118,12 +118,16 @@ pub struct CheckpointParameters {
     pub minimum_quorum_required: u32,
     /// If this number of blocks have passed without a checkpoint, the contract becomes abandoned.
     pub abandoned_interval: u64,
+    /// This is the minimum number of blocks that the checkpoint must be in quarantine before the backup keys can take
+    /// over.
+    pub quarantine_interval: u64,
 }
 
 impl ConsensusEncoding for CheckpointParameters {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.minimum_quorum_required.consensus_encode(writer)?;
         self.abandoned_interval.consensus_encode(writer)?;
+        self.quarantine_interval.consensus_encode(writer)?;
         Ok(())
     }
 }
@@ -135,6 +139,7 @@ impl ConsensusDecoding for CheckpointParameters {
         Ok(Self {
             minimum_quorum_required: u32::consensus_decode(reader)?,
             abandoned_interval: u64::consensus_decode(reader)?,
+            quarantine_interval: u64::consensus_decode(reader)?,
         })
     }
 }
@@ -252,6 +257,9 @@ pub struct RequirementsForConstitutionChange {
     /// An allowlist of keys that are able to accept and ratify the initial constitution and its amendments. If this is
     /// None, the constitution cannot be amended.
     pub constitution_committee: Option<CommitteeMembers>,
+    /// An allowlist of keys that can be used in case of checkpoint abandonment. These keys can quarantine the the
+    /// constitution and if the quarantine period is exceeded, the backup keys can take over.
+    pub backup_keys: Option<CommitteeMembers>,
 }
 
 impl ConsensusEncoding for RequirementsForConstitutionChange {
@@ -259,6 +267,7 @@ impl ConsensusEncoding for RequirementsForConstitutionChange {
         self.minimum_constitution_committee_signatures
             .consensus_encode(writer)?;
         self.constitution_committee.consensus_encode(writer)?;
+        self.backup_keys.consensus_encode(writer)?;
         Ok(())
     }
 }
@@ -270,6 +279,7 @@ impl ConsensusDecoding for RequirementsForConstitutionChange {
         Ok(Self {
             minimum_constitution_committee_signatures: u32::consensus_decode(reader)?,
             constitution_committee: ConsensusDecoding::consensus_decode(reader)?,
+            backup_keys: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
 }
@@ -295,12 +305,16 @@ mod tests {
             checkpoint_params: CheckpointParameters {
                 minimum_quorum_required: 123,
                 abandoned_interval: 321,
+                quarantine_interval: 321,
             },
             constitution_change_rules: ConstitutionChangeRules {
                 change_flags: ConstitutionChangeFlags::all(),
                 requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                     minimum_constitution_committee_signatures: 321,
                     constitution_committee: Some(CommitteeMembers::new(
+                        vec![PublicKey::default(); 32].try_into().unwrap(),
+                    )),
+                    backup_keys: Some(CommitteeMembers::new(
                         vec![PublicKey::default(); 32].try_into().unwrap(),
                     )),
                 }),

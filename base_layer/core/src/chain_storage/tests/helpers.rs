@@ -107,6 +107,7 @@ pub fn create_contract_constitution_transaction(
                     checkpoint_params: CheckpointParameters {
                         minimum_quorum_required: 1,
                         abandoned_interval: 20,
+                        quarantine_interval: 20,
                     },
                     constitution_change_rules: ConstitutionChangeRules {
                         change_flags: ConstitutionChangeFlags::empty(),
