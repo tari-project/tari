@@ -25,7 +25,7 @@ mod fixed_hash;
 
 pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
-    common::Blake256,
+    hash::blake2::Blake256,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},

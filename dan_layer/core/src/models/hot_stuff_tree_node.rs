@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::{Digest, FixedOutput};
-use tari_crypto::common::Blake256;
+use tari_crypto::hash::blake2::Blake256;
 use tari_dan_engine::state::models::StateRoot;
 
 use crate::models::{Payload, TreeNodeHash};

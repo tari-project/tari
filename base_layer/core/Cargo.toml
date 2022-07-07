@@ -15,7 +15,7 @@ transactions = []
 mempool_proto = []
 base_node = []
 base_node_proto = []
-avx2 = ["tari_crypto/avx2"]
+avx2 = ["tari_crypto/simd_backend"]
 benches = ["base_node", "criterion"]
 
 [dependencies]
@@ -24,7 +24,7 @@ tari_common_types = { version = "^0.33", path = "../../base_layer/common_types" 
 tari_comms = { version = "^0.33", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.33", path = "../../comms/dht" }
 tari_comms_rpc_macros = { version = "^0.33", path = "../../comms/rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.14.0" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.0" }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = { version = "^0.33", path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = { version = "^0.33", path = "../../base_layer/p2p" }
