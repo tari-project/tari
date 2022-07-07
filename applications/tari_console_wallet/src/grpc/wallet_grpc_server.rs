@@ -884,7 +884,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let message = format!("Sidechain state checkpoint for {}", contract_id);
+        let message = format!("Checkpoint #{} for {}", checkpoint_number, contract_id);
         transaction_service
             .submit_transaction(tx_id, transaction, 10.into(), message)
             .await

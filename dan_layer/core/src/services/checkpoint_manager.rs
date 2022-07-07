@@ -33,6 +33,7 @@ const LOG_TARGET: &str = "tari::dan::checkpoint_manager";
 pub trait CheckpointManager {
     async fn create_checkpoint(
         &mut self,
+        checkpoint_number: u64,
         state_root: StateRoot,
         signature: Vec<SignerSignature>,
     ) -> Result<(), DigitalAssetError>;
@@ -42,8 +43,6 @@ pub trait CheckpointManager {
 pub struct ConcreteCheckpointManager<TWallet: WalletClient> {
     asset_definition: AssetDefinition,
     wallet: TWallet,
-    num_calls: u32,
-    checkpoint_interval: u32,
 }
 
 impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
@@ -51,8 +50,6 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
         Self {
             asset_definition,
             wallet,
-            num_calls: 0,
-            checkpoint_interval: 100,
         }
     }
 }
@@ -61,26 +58,23 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
 impl<TWallet: WalletClient + Sync + Send> CheckpointManager for ConcreteCheckpointManager<TWallet> {
     async fn create_checkpoint(
         &mut self,
+        checkpoint_number: u64,
         state_root: StateRoot,
         signatures: Vec<SignerSignature>,
     ) -> Result<(), DigitalAssetError> {
-        if self.num_calls == 0 || self.num_calls >= self.checkpoint_interval {
-            // TODO: fetch and increment checkpoint number
-            let checkpoint_number = u64::from(self.num_calls / self.checkpoint_interval);
-            info!(
-                target: LOG_TARGET,
-                "Creating checkpoint for contract {}", self.asset_definition.contract_id
-            );
-            self.wallet
-                .create_new_checkpoint(
-                    &self.asset_definition.contract_id,
-                    &state_root,
-                    checkpoint_number,
-                    signatures,
-                )
-                .await?;
-        }
-        self.num_calls += 1;
+        info!(
+            target: LOG_TARGET,
+            "✅ Creating checkpoint #{} for contract {}", checkpoint_number, self.asset_definition.contract_id
+        );
+
+        self.wallet
+            .create_new_checkpoint(
+                &self.asset_definition.contract_id,
+                &state_root,
+                checkpoint_number,
+                signatures,
+            )
+            .await?;
         Ok(())
     }
 }

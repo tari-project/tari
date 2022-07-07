@@ -5,16 +5,16 @@ edition = "2018"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_dan_core = {path="../core"}
-tari_common = { path = "../../common"}
-tari_common_types = {path = "../../base_layer/common_types"}
+tari_dan_core = { path = "../core" }
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../../base_layer/common_types" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
-tari_dan_engine = { path = "../engine"}
+tari_dan_engine = { path = "../engine" }
 
-diesel = { version = "1.4.8", features = ["sqlite"] }
+diesel = { version = "1.4.8", default-features = false, features = ["sqlite"] }
 diesel_migrations = "1.4.0"
 thiserror = "1.0.30"
 async-trait = "0.1.50"
-tokio = { version="1.10", features = ["macros", "time"]}
+tokio = { version = "1.10", features = ["macros", "time"] }
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 log = { version = "0.4.8", features = ["std"] }

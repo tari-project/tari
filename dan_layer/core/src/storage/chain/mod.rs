@@ -26,9 +26,12 @@ mod chain_db_unit_of_work;
 mod db_instruction;
 mod db_node;
 mod db_qc;
+mod metadata_key;
+
 pub use chain_db::ChainDb;
 pub use chain_db_backend_adapter::ChainDbBackendAdapter;
 pub use chain_db_unit_of_work::ChainDbUnitOfWork;
 pub use db_instruction::DbInstruction;
 pub use db_node::DbNode;
 pub use db_qc::DbQc;
+pub use metadata_key::ChainDbMetadataKey;
