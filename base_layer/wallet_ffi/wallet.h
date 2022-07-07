@@ -304,6 +304,7 @@ struct TariUtxo {
   char *commitment;
   uint64_t value;
   uint64_t mined_height;
+  uint8_t status;
 };
 
 struct TariOutputs {
@@ -2276,6 +2277,40 @@ struct TariOutputs *wallet_get_utxos(struct TariWallet *wallet,
                                      enum TariUtxoSort sorting,
                                      uint64_t dust_threshold,
                                      int32_t *error_ptr);
+
+/**
+ * This function returns a list of all UTXO values, commitment's hex values and states.
+ *
+ * ## Arguments
+ * * `wallet` - The TariWallet pointer,
+ * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+ * Functions as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariOutputs` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+ * after use).
+ *
+ * ## States
+ * 0 - Unspent
+ * 1 - Spent
+ * 2 - EncumberedToBeReceived
+ * 3 - EncumberedToBeSpent
+ * 4 - Invalid
+ * 5 - CancelledInbound
+ * 6 - UnspentMinedUnconfirmed
+ * 7 - ShortTermEncumberedToBeReceived
+ * 8 - ShortTermEncumberedToBeSpent
+ * 9 - SpentMinedUnconfirmed
+ * 10 - AbandonedCoinbase
+ * 11 - NotStored
+ *
+ * # Safety
+ * `destroy_tari_outputs()` must be called after use.
+ * Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
+ * LOG_TARGET.
+ */
+struct TariOutputs *wallet_get_all_utxos(struct TariWallet *wallet,
+                                         int32_t *error_ptr);
 
 /**
  * Frees memory for a `TariOutputs`
