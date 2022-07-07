@@ -43,6 +43,10 @@ Feature: Validator Node
         And I wait for wallet WALLET1 to have at least 1000000 uT
         And I publish a contract definition DEF1 from file "fixtures/contract_definition.json" on wallet WALLET1 via command line
         And I mine 4 blocks using wallet WALLET1 on NODE1
+        And I publish a contract constitution from file "fixtures/contract_constitution.json" on wallet WALLET1 via command line
+        And I mine 4 blocks using wallet WALLET1 on NODE1
+        And I publish a contract update proposal from file "fixtures/contract_update_proposal.json" on wallet WALLET1 via command line
+        And I mine 4 blocks using wallet WALLET1 on NODE1
         And I have a validator node VN1 connected to base node NODE1 and wallet WALLET1
         When I publish a contract update proposal acceptance transaction for the validator node VN1
         And I mine 9 blocks using wallet WALLET1 on NODE1
