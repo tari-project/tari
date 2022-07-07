@@ -47,7 +47,7 @@ pub trait AcceptanceManager: Send + Sync {
 }
 
 #[derive(Clone)]
-pub struct ConcreteAcceptanceManager<TWallet: WalletClient, TBaseNode: BaseNodeClient> {
+pub struct ConcreteAcceptanceManager<TWallet, TBaseNode> {
     wallet: TWallet,
     base_node: TBaseNode,
 }
