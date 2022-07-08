@@ -27,4 +27,5 @@ export const ValueContainer = styled.div`
   word-break: keep-all;
   -webkit-user-select: none;
   cursor: default;
+  font-family: 'AvenirMedium';
 `

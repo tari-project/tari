@@ -87,6 +87,7 @@ declare module 'styled-components' {
     baseNodeRunningTagText: string
     selectBorderColor: string
     selectOptionHover: string
+    walletSetupBorderColor: string
 
     inverted: {
       controlBackground: string
@@ -143,6 +144,7 @@ declare module 'styled-components' {
       baseNodeRunningTagText: string
       selectBorderColor: string
       selectOptionHover: string
+      walletSetupBorderColor: string
     }
   }
 }

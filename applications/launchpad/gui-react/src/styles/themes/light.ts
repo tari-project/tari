@@ -69,6 +69,7 @@ const lightTheme = {
   baseNodeRunningTagText: styles.colors.secondary.onText,
   selectBorderColor: styles.colors.dark.borders,
   selectOptionHover: styles.colors.light.backgroundImage,
+  walletSetupBorderColor: 'transparent',
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -132,6 +133,7 @@ const lightTheme = {
     baseNodeRunningTagText: styles.colors.secondary.onText,
     selectBorderColor: styles.colors.dark.borders,
     selectOptionHover: styles.colors.light.backgroundImage,
+    walletSetupBorderColor: 'transparent',
   },
 }
 

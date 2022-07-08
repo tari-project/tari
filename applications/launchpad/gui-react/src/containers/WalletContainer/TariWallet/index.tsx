@@ -30,7 +30,7 @@ const TariWallet = ({
       <TariBackgroundSignet style={{ color: theme.accentDark }} />
       {running && (
         <Tag type='running'>
-          <Text type='smallMedium'>{t.common.adjectives.running}</Text>
+          <Text type='smallHeavy'>{t.common.adjectives.running}</Text>
         </Tag>
       )}
       <Text

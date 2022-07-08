@@ -21,20 +21,22 @@ const WalletSetupBox = () => {
         }}
       >
         <SvgTariSignet
-          color={theme.backgroundImage}
+          color={theme.disabledPrimaryButton}
           width='auto'
           height='33vh'
         />
       </div>
       <NodeBox
         title={t.wallet.setUpTariWalletTitle}
+        titleStyle={{ color: theme.helpTipText }}
         tag={{
           content: t.common.phrases.startHere,
         }}
         style={{
           position: 'relative',
           boxShadow: theme.shadow40,
-          borderColor: 'transparent',
+          borderColor: theme.walletSetupBorderColor,
+          background: theme.nodeBackground,
         }}
       >
         <WalletPasswordWizard

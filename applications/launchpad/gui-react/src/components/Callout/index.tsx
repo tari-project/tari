@@ -1,4 +1,3 @@
-import { useTheme } from 'styled-components'
 import Text from '../Text'
 import { CalloutIcon, StyledCallout } from './styles'
 
@@ -18,7 +17,6 @@ const Callout = ({
   inverted,
   children,
 }: CalloutProps) => {
-  const theme = useTheme()
   let content = children
 
   if (typeof children === 'string') {

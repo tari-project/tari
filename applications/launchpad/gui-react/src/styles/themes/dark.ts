@@ -30,7 +30,7 @@ const darkTheme = {
   onText: styles.colors.secondary.onText,
   onTextLight: styles.colors.secondary.onTextLight,
   warning: styles.colors.secondary.warning,
-  warningTag: styles.colors.darkMode.modalBackground,
+  warningTag: styles.colors.darkMode.tags,
   warningText: styles.colors.secondary.warningText,
   warningDark: styles.colors.secondary.warningDark,
   success: styles.colors.secondary.onTextLight,
@@ -66,6 +66,7 @@ const darkTheme = {
   baseNodeRunningTagText: styles.colors.secondary.on,
   selectBorderColor: styles.colors.darkMode.borders,
   selectOptionHover: styles.colors.darkMode.input,
+  walletSetupBorderColor: styles.colors.darkMode.borders,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -119,6 +120,7 @@ const darkTheme = {
     nodeWarningText: styles.colors.light.textSecondary,
     calloutBackground: styles.colors.darkMode.tags,
     inputPlaceholder: styles.colors.dark.secondary,
+    disabledPrimaryButton: styles.colors.darkMode.borders,
     disabledPrimaryButtonText: styles.colors.darkMode.disabledText,
     baseNodeGradientStart: styles.colors.darkMode.baseNodeStart,
     baseNodeGradientEnd: styles.colors.darkMode.baseNodeEnd,
@@ -127,6 +129,7 @@ const darkTheme = {
     baseNodeRunningTagText: styles.colors.secondary.on,
     selectBorderColor: styles.colors.darkMode.borders,
     selectOptionHover: styles.colors.darkMode.input,
+    walletSetupBorderColor: 'transparent',
   },
 }
 

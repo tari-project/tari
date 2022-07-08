@@ -37,14 +37,16 @@ const TariId = ({
     <>
       <Text
         as='label'
-        color={theme.inverted.primary}
+        color={theme.baseNodeRunningLabel}
         style={{
           display: 'inline-block',
           marginBottom: theme.spacingVertical(0.62),
         }}
       >
         {t.wallet.wallet.walletId}{' '}
-        <SemiTransparent>({t.wallet.wallet.address})</SemiTransparent>
+        <Text as='span' color={theme.textSecondary}>
+          ({t.wallet.wallet.address})
+        </Text>
       </Text>
       <TariIdContainer>
         <CopyBox
