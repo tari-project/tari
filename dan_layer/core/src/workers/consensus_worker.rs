@@ -133,7 +133,9 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             .unwrap_or_else(|| ViewId(0));
         info!(
             target: LOG_TARGET,
-            "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.contract_id, self.current_view_id
+            "🚀 Consensus worker started for asset '{}'. Tip: {}",
+            self.asset_definition.contract_id,
+            self.current_view_id
         );
         let starting_view = self.current_view_id;
         while !stop.load(Ordering::Relaxed) {

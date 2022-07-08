@@ -139,13 +139,13 @@ impl ContractWorkerManager {
 
         info!(
             target: LOG_TARGET,
-            "constitution_auto_accept is {}", self.config.constitution_auto_accept
+            "ℹ️ constitution_auto_accept is {}", self.config.constitution_auto_accept
         );
 
         if !self.config.scan_for_assets {
             info!(
                 target: LOG_TARGET,
-                "scan_for_assets set to false. Contract scanner is shutting down."
+                "⚠️ scan_for_assets turned OFF. Contract scanner is shutting down."
             );
             self.shutdown.await;
             return Ok(());
@@ -160,8 +160,21 @@ impl ContractWorkerManager {
             let tip = self.base_node_client.get_tip_info().await?;
             let new_contracts = self.scan_for_new_contracts(&tip).await?;
 
-            if self.config.constitution_auto_accept {
-                self.accept_contracts(new_contracts).await?;
+            if !new_contracts.is_empty() {
+                if self.config.constitution_auto_accept {
+                    info!(
+                        target: LOG_TARGET,
+                        "ℹ️ Auto accepting {} new contract(s).",
+                        new_contracts.len()
+                    );
+                    self.accept_contracts(new_contracts).await?;
+                } else {
+                    info!(
+                        target: LOG_TARGET,
+                        "ℹ️ Auto accept is OFF. {} new contract(s) will require manual acceptance.",
+                        new_contracts.len()
+                    );
+                }
             }
 
             self.validate_contract_activity(&tip).await?;
@@ -212,11 +225,14 @@ impl ContractWorkerManager {
         // Abandoned contracts can be revived by the VNC so they should continue to monitor them
         let mut active_contracts = self.global_db.get_contracts_with_state(ContractState::Active)?;
         active_contracts.append(&mut self.global_db.get_contracts_with_state(ContractState::Abandoned)?);
+        info!(
+            target: LOG_TARGET,
+            "ℹ️ ready to work on {} active contract(s)",
+            active_contracts.len()
+        );
 
         for contract in active_contracts {
             let contract_id = FixedHash::try_from(contract.contract_id)?;
-
-            info!(target: LOG_TARGET, "Starting contract {}", contract_id.to_hex());
 
             let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
                 WorkerManagerError::DataCorruption {
@@ -235,7 +251,7 @@ impl ContractWorkerManager {
         for contract in new_contracts {
             info!(
                 target: LOG_TARGET,
-                "Posting acceptance transaction for contract {}", contract.contract_id
+                "ℹ️ Posting acceptance transaction for contract {}", contract.contract_id
             );
             self.post_contract_acceptance(&contract).await?;
 
@@ -317,7 +333,7 @@ impl ContractWorkerManager {
     ) -> Result<Vec<ActiveContract>, WorkerManagerError> {
         info!(
             target: LOG_TARGET,
-            "Scanning base layer (tip: {}) for new assets", tip.height_of_longest_chain
+            "🔍 Scanning base layer (tip: {}) for new assets", tip.height_of_longest_chain
         );
 
         let outputs = self
@@ -409,6 +425,7 @@ impl ContractWorkerManager {
     }
 
     fn spawn_asset_worker(&self, contract_id: FixedHash, constitution: &ContractConstitution) -> Arc<AtomicBool> {
+        info!(target: LOG_TARGET, "🚀 starting work on contract {}", contract_id);
         let node_identity = self.identity.clone();
         let mempool = self.mempool.clone();
         let handles = self.handles.clone();
