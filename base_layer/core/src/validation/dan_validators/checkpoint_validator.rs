@@ -101,23 +101,21 @@ fn validate_committee(
 mod test {
     use tari_common_types::types::Signature;
 
-    use crate::{
-        validation::dan_validators::{
-            test_helpers::{
-                assert_dan_validator_err,
-                assert_dan_validator_success,
-                create_committee_signatures,
-                create_contract_checkpoint,
-                create_contract_checkpoint_schema,
-                create_random_key_pair,
-                init_test_blockchain,
-                publish_checkpoint,
-                publish_contract,
-                publish_definition,
-                schema_to_transaction,
-            },
-            DanLayerValidationError,
+    use crate::validation::dan_validators::{
+        test_helpers::{
+            assert_dan_validator_err,
+            assert_dan_validator_success,
+            create_committee_signatures,
+            create_contract_checkpoint,
+            create_contract_checkpoint_schema,
+            create_random_key_pair,
+            init_test_blockchain,
+            publish_checkpoint,
+            publish_contract,
+            publish_definition,
+            schema_to_transaction,
         },
+        DanLayerValidationError,
     };
 
     #[test]
