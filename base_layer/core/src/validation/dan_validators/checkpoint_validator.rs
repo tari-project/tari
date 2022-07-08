@@ -49,36 +49,31 @@ pub fn validate_contract_checkpoint<B: BlockchainBackend>(
     validate_committee(&constitution, &checkpoint.signatures)?;
 
     let prev_cp = fetch_current_contract_checkpoint(db, contract_id)?;
-    validate_checkpoint_number(prev_cp.as_ref(), sidechain_features)?;
+    validate_checkpoint_number(prev_cp.as_ref(), checkpoint)?;
 
     Ok(())
 }
 
-fn get_checkpoint(sidechain_feature: &SideChainFeatures) -> Result<&ContractCheckpoint, DanLayerValidationError> {
-    match sidechain_feature.checkpoint.as_ref() {
+fn get_checkpoint(sidechain_features: &SideChainFeatures) -> Result<&ContractCheckpoint, DanLayerValidationError> {
+    match sidechain_features.checkpoint.as_ref() {
         Some(checkpoint) => Ok(checkpoint),
-        None => Err(DanLayerValidationError::ContractAcceptanceNotFound),
+        None => Err(DanLayerValidationError::MissingContractData {
+            contract_id: sidechain_features.contract_id,
+            output_type: OutputType::ContractCheckpoint,
+        }),
     }
 }
 
 fn validate_checkpoint_number(
     prev_checkpoint: Option<&ContractCheckpoint>,
-    sidechain_features: &SideChainFeatures,
+    current_checkpoint: &ContractCheckpoint,
 ) -> Result<(), DanLayerValidationError> {
-    let checkpoint = sidechain_features
-        .checkpoint
-        .as_ref()
-        .ok_or(DanLayerValidationError::MissingContractData {
-            contract_id: sidechain_features.contract_id,
-            output_type: OutputType::ContractCheckpoint,
-        })?;
-
     let expected_number = prev_checkpoint.map(|cp| cp.checkpoint_number + 1).unwrap_or(0);
-    if checkpoint.checkpoint_number == expected_number {
+    if current_checkpoint.checkpoint_number == expected_number {
         Ok(())
     } else {
         Err(DanLayerValidationError::CheckpointNonSequentialNumber {
-            got: checkpoint.checkpoint_number,
+            got: current_checkpoint.checkpoint_number,
             expected: expected_number,
         })
     }
