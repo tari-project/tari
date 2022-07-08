@@ -7,7 +7,7 @@ import Text from '../../../components/Text'
 import CopyBox from '../../../components/CopyBox'
 
 import Smiley from './Smiley'
-import { SemiTransparent, TariIdContainer } from './styles'
+import { TariIdContainer } from './styles'
 
 const SEPARATOR = ' | '
 
@@ -40,7 +40,6 @@ const TariId = ({
         color={theme.baseNodeRunningLabel}
         style={{
           display: 'inline-block',
-          marginBottom: theme.spacingVertical(0.62),
         }}
       >
         {t.wallet.wallet.walletId}{' '}
@@ -54,9 +53,9 @@ const TariId = ({
           value={showEmoji ? displayedEmojiTariId : tariId}
           style={{
             maxWidth: 'calc(100% - 2.4em)',
-            borderColor: theme.borderColor,
+            borderColor: theme.walletCopyBoxBorder,
             backgroundColor: theme.resetBackground,
-            color: theme.borderColor,
+            color: theme.textSecondary,
           }}
         />
         <div
@@ -70,7 +69,7 @@ const TariId = ({
         >
           <Smiley
             on={showEmoji}
-            style={{ color: theme.borderColor, display: 'inline-block' }}
+            style={{ color: theme.textSecondary, display: 'inline-block' }}
           />
         </div>
       </TariIdContainer>

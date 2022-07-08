@@ -88,6 +88,7 @@ declare module 'styled-components' {
     selectBorderColor: string
     selectOptionHover: string
     walletSetupBorderColor: string
+    walletCopyBoxBorder: string
 
     inverted: {
       controlBackground: string
@@ -145,6 +146,7 @@ declare module 'styled-components' {
       selectBorderColor: string
       selectOptionHover: string
       walletSetupBorderColor: string
+      walletCopyBoxBorder: string
     }
   }
 }

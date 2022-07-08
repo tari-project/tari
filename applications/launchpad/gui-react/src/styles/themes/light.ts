@@ -70,6 +70,7 @@ const lightTheme = {
   selectBorderColor: styles.colors.dark.borders,
   selectOptionHover: styles.colors.light.backgroundImage,
   walletSetupBorderColor: 'transparent',
+  walletCopyBoxBorder: styles.colors.dark.borders,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -134,6 +135,7 @@ const lightTheme = {
     selectBorderColor: styles.colors.dark.borders,
     selectOptionHover: styles.colors.light.backgroundImage,
     walletSetupBorderColor: 'transparent',
+    walletCopyBoxBorder: styles.colors.dark.borders,
   },
 }
 
