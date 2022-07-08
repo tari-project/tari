@@ -639,13 +639,17 @@ pub async fn read_or_create_master_seed<T: WalletBackend + 'static>(
     Ok(master_seed)
 }
 
-pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
+pub fn derive_comms_secret_key(
+    master_seed: &CipherSeed,
+) -> Result<(CommsSecretKey, CommsSecretKey, CommsSecretKey), WalletError> {
     let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
         master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
         0,
     );
-    Ok(comms_key_manager.derive_key(0)?.k)
+    let secret_key = comms_key_manager.derive_key(0)?.k;
+    // Currently we want to use the same key for everything, but that can change in the future.
+    Ok((secret_key.clone(), secret_key.clone(), secret_key))
 }
 
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
