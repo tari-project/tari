@@ -13,6 +13,6 @@ export interface TagProps {
   subText?: ReactNode
   inverted?: boolean
   dark?: boolean
-  baseNode?: boolean
+  darkAlt?: boolean
   expertSec?: boolean
 }

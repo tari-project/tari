@@ -80,7 +80,7 @@ const BaseNode = ({
         >
           {t.baseNode.title}
           {running && (
-            <Tag type='running' variant='large' baseNode>
+            <Tag type='running' variant='large' darkAlt>
               {t.common.adjectives.running}
             </Tag>
           )}
