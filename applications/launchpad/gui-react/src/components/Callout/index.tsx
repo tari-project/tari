@@ -30,11 +30,7 @@ const Callout = ({
   }
 
   return (
-    <StyledCallout
-      $type={type}
-      $inverted={inverted}
-      style={{ background: theme.calloutBackground }}
-    >
+    <StyledCallout $type={type} $inverted={inverted}>
       <CalloutIcon>{icon}</CalloutIcon>
       {content}
     </StyledCallout>

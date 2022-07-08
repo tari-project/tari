@@ -34,7 +34,6 @@ const Tag = ({
   subText,
   inverted,
   dark,
-  dashboard,
   baseNode,
   expertSec,
 }: TagProps) => {
