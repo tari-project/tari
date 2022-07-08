@@ -20,16 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::helpers::get_sidechain_features;
+use super::helpers::{fetch_contract_constitution, get_sidechain_features};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{ContractCheckpoint, OutputType, SideChainFeatures, TransactionOutput},
     validation::{
-        dan_validators::{
-            constitution_validator::validate_definition_existence,
-            helpers::fetch_current_contract_checkpoint,
-            DanLayerValidationError,
-        },
+        dan_validators::{helpers::fetch_current_contract_checkpoint, DanLayerValidationError},
         ValidationError,
     },
 };
@@ -40,7 +36,7 @@ pub fn validate_contract_checkpoint<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let sidechain_features = get_sidechain_features(output)?;
     let contract_id = sidechain_features.contract_id;
-    validate_definition_existence(db, contract_id)?;
+    fetch_contract_constitution(db, contract_id)?;
 
     let prev_cp = fetch_current_contract_checkpoint(db, contract_id)?;
     validate_checkpoint_number(prev_cp.as_ref(), sidechain_features)?;
@@ -82,6 +78,7 @@ mod test {
             init_test_blockchain,
             publish_checkpoint,
             publish_contract,
+            publish_definition,
             schema_to_transaction,
         },
         DanLayerValidationError,
@@ -161,5 +158,28 @@ mod test {
             got: 3,
             expected: 2
         }))
+    }
+
+    #[test]
+    fn constitution_must_exist() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, utxos) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+
+        // skip the contract constitution publication
+
+        // Create checkpoint 0 with no prior checkpoints
+        let checkpoint = create_contract_checkpoint(0);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos[1].clone(), checkpoint);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the acceptance transaction and check that we get the error
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ContractConstitutionNotFound { .. }
+        ));
     }
 }
