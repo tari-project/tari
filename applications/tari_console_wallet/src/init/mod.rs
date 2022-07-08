@@ -395,7 +395,8 @@ async fn setup_identity_from_db<D: WalletBackend + 'static>(
 
     let identity_sig = wallet_db.get_comms_identity_signature().await?;
 
-    let comms_secret_key = derive_comms_secret_key(master_seed)?;
+    let (comms_secret_key, stealth_address_scanning_secret_key, stealth_address_spending_secret_key) =
+        derive_comms_secret_key(master_seed)?;
 
     // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
     // to None
@@ -407,6 +408,8 @@ async fn setup_identity_from_db<D: WalletBackend + 'static>(
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
     let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
         comms_secret_key,
+        stealth_address_scanning_secret_key,
+        stealth_address_spending_secret_key,
         node_address,
         node_features,
         identity_sig,
