@@ -58,9 +58,9 @@ mod test {
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features.maturity = 42;
-            outputs[5].features.sidechain_features = Some(SideChainFeatures::new(hash));
+            outputs[5].features.sidechain_features = Some(Box::new(SideChainFeatures::new(hash)));
             outputs[7].features.maturity = 42;
-            outputs[8].features.sidechain_features = Some(SideChainFeatures::new(hash));
+            outputs[8].features.sidechain_features = Some(Box::new(SideChainFeatures::new(hash)));
         });
         let mut output_set = OutputSet::new(&outputs);
         OrFilter.filter(&mut context, &mut output_set).unwrap();

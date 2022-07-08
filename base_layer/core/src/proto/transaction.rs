@@ -358,7 +358,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
             recovery_byte: u32::from(features.recovery_byte),
-            sidechain_features: features.sidechain_features.map(Into::into),
+            sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
         }
     }
 }
