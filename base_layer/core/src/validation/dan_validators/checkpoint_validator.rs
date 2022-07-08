@@ -20,16 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::helpers::get_sidechain_features;
+use super::helpers::{fetch_contract_constitution, get_sidechain_features};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transactions::transaction_components::{ContractCheckpoint, OutputType, SideChainFeatures, TransactionOutput},
+    transactions::transaction_components::{
+        CommitteeSignatures,
+        ContractCheckpoint,
+        ContractConstitution,
+        OutputType,
+        SideChainFeatures,
+        TransactionOutput,
+    },
     validation::{
-        dan_validators::{
-            constitution_validator::validate_definition_existence,
-            helpers::fetch_current_contract_checkpoint,
-            DanLayerValidationError,
-        },
+        dan_validators::{helpers::fetch_current_contract_checkpoint, DanLayerValidationError},
         ValidationError,
     },
 };
@@ -40,48 +43,71 @@ pub fn validate_contract_checkpoint<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let sidechain_features = get_sidechain_features(output)?;
     let contract_id = sidechain_features.contract_id;
-    validate_definition_existence(db, contract_id)?;
+    let checkpoint = get_checkpoint(sidechain_features)?;
+
+    let constitution = fetch_contract_constitution(db, contract_id)?;
+    validate_committee(&constitution, &checkpoint.signatures)?;
 
     let prev_cp = fetch_current_contract_checkpoint(db, contract_id)?;
-    validate_checkpoint_number(prev_cp.as_ref(), sidechain_features)?;
+    validate_checkpoint_number(prev_cp.as_ref(), checkpoint)?;
 
     Ok(())
 }
 
-fn validate_checkpoint_number(
-    prev_checkpoint: Option<&ContractCheckpoint>,
-    sidechain_features: &SideChainFeatures,
-) -> Result<(), DanLayerValidationError> {
-    let checkpoint = sidechain_features
-        .checkpoint
-        .as_ref()
-        .ok_or(DanLayerValidationError::MissingContractData {
+fn get_checkpoint(sidechain_features: &SideChainFeatures) -> Result<&ContractCheckpoint, DanLayerValidationError> {
+    match sidechain_features.checkpoint.as_ref() {
+        Some(checkpoint) => Ok(checkpoint),
+        None => Err(DanLayerValidationError::MissingContractData {
             contract_id: sidechain_features.contract_id,
             output_type: OutputType::ContractCheckpoint,
-        })?;
+        }),
+    }
+}
 
+fn validate_checkpoint_number(
+    prev_checkpoint: Option<&ContractCheckpoint>,
+    current_checkpoint: &ContractCheckpoint,
+) -> Result<(), DanLayerValidationError> {
     let expected_number = prev_checkpoint.map(|cp| cp.checkpoint_number + 1).unwrap_or(0);
-    if checkpoint.checkpoint_number == expected_number {
+    if current_checkpoint.checkpoint_number == expected_number {
         Ok(())
     } else {
         Err(DanLayerValidationError::CheckpointNonSequentialNumber {
-            got: checkpoint.checkpoint_number,
+            got: current_checkpoint.checkpoint_number,
             expected: expected_number,
         })
     }
 }
 
+fn validate_committee(
+    constitution: &ContractConstitution,
+    signatures: &CommitteeSignatures,
+) -> Result<(), DanLayerValidationError> {
+    let committee = &constitution.validator_committee;
+    let are_all_signers_in_committee = signatures.into_iter().all(|s| committee.contains(s.signer()));
+    if !are_all_signers_in_committee {
+        return Err(DanLayerValidationError::InconsistentCommittee);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::Signature;
+
     use crate::validation::dan_validators::{
         test_helpers::{
             assert_dan_validator_err,
             assert_dan_validator_success,
+            create_committee_signatures,
             create_contract_checkpoint,
             create_contract_checkpoint_schema,
+            create_random_key_pair,
             init_test_blockchain,
             publish_checkpoint,
             publish_contract,
+            publish_definition,
             schema_to_transaction,
         },
         DanLayerValidationError,
@@ -161,5 +187,50 @@ mod test {
             got: 3,
             expected: 2
         }))
+    }
+
+    #[test]
+    fn constitution_must_exist() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, utxos) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+
+        // skip the contract constitution publication
+
+        // Create a checkpoint
+        let checkpoint = create_contract_checkpoint(0);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos[1].clone(), checkpoint);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the acceptance transaction and check that we get the error
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ContractConstitutionNotFound { .. }
+        ));
+    }
+
+    #[test]
+    fn it_rejects_checkpoints_with_non_committee_members() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, utxos) = init_test_blockchain();
+
+        // Publish a new contract specifying a committee with only one member ("alice")
+        let (_, alice) = create_random_key_pair();
+        let contract_id = publish_contract(&mut blockchain, &utxos, vec![alice.clone()]);
+
+        // Create a checkpoint, with a committe that has an extra member ("bob") not present in the constiution
+        let mut checkpoint = create_contract_checkpoint(0);
+        let (_, bob) = create_random_key_pair();
+        checkpoint.signatures =
+            create_committee_signatures(vec![(alice, Signature::default()), (bob, Signature::default())]);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos[1].clone(), checkpoint);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the acceptance transaction and check that we get the error
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(err, DanLayerValidationError::InconsistentCommittee { .. }));
     }
 }

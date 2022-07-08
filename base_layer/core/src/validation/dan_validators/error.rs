@@ -65,4 +65,6 @@ pub enum DanLayerValidationError {
     ProposalAcceptanceWindowHasExpired { contract_id: FixedHash, proposal_id: u64 },
     #[error("Checkpoint has non-sequential number. Got: {got}, expected: {expected}")]
     CheckpointNonSequentialNumber { got: u64, expected: u64 },
+    #[error("Validator committee not consistent with contract constitution")]
+    InconsistentCommittee,
 }
