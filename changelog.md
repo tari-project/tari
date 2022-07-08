@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.34.0](https://github.com/tari-project/tari/compare/v0.33.0...v0.34.0) (2022-07-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** include issuer public key in contract id hash (#4239)
+* **dan_layer:** generate and add checkpoint signatures (#4261)
+* add checkpoint_number to checkpoint with basic base layer validations (#4258)
+
+### Features
+
+* add checkpoint_number to checkpoint with basic base layer validations ([#4258](https://github.com/tari-project/tari/issues/4258)) ([7b76141](https://github.com/tari-project/tari/commit/7b761410cd1dde2c47fd209d4b5e2a77f51aed96))
+* add encryption service ([#4225](https://github.com/tari-project/tari/issues/4225)) ([6ce6b89](https://github.com/tari-project/tari/commit/6ce6b893df46d69a4177ef0130f841994e492a09))
+* add range proof batch verification to validators ([#4260](https://github.com/tari-project/tari/issues/4260)) ([02d3121](https://github.com/tari-project/tari/commit/02d31212731d4a0643dac1f26afe241b4f5b9204))
+* add tari engine for flow and wasm functions ([#4237](https://github.com/tari-project/tari/issues/4237)) ([a997934](https://github.com/tari-project/tari/commit/a99793424815e5b43eb67f7422cb42459636d7af))
+* **base_layer:** basic checkpoint validation ([#4293](https://github.com/tari-project/tari/issues/4293)) ([045997a](https://github.com/tari-project/tari/commit/045997a0a141c4391efc98aeabfbe6d6e550367f))
+* **comms:** add or_optional trait extension for RpcStatus ([#4246](https://github.com/tari-project/tari/issues/4246)) ([11fddf6](https://github.com/tari-project/tari/commit/11fddf6199af670fb4ccb34a99b89c49a42b336e))
+* contract acceptance signatures are submitted and validated ([#4269](https://github.com/tari-project/tari/issues/4269)) ([414be33](https://github.com/tari-project/tari/commit/414be33351781c07358d3850e4e67b750c1fcb8a))
+* **core:** validates non-contract utxos have no sidechain features ([#4259](https://github.com/tari-project/tari/issues/4259)) ([a8ba89f](https://github.com/tari-project/tari/commit/a8ba89fe2195232e7e860342617ddf5f6c6244c2))
+* **dan_layer/core:** track checkpoint number for each checkpoint submitted ([#4268](https://github.com/tari-project/tari/issues/4268)) ([16e07a0](https://github.com/tari-project/tari/commit/16e07a0b4ab9079f84645d8796a4fc6bb27f0303))
+* **dan_layer:** generate and add checkpoint signatures ([#4261](https://github.com/tari-project/tari/issues/4261)) ([0f581ca](https://github.com/tari-project/tari/commit/0f581cafe8bd4f922462757504c772c82d0697c7))
+* **wallet:** uses tip height to calc abs acceptance period ([#4271](https://github.com/tari-project/tari/issues/4271)) ([480d55d](https://github.com/tari-project/tari/commit/480d55dade62339dafc457c98681efcb66304beb))
+
+
+### Bug Fixes
+
+* add saturating sub to prevent potential underflow ([#4286](https://github.com/tari-project/tari/issues/4286)) ([56d184a](https://github.com/tari-project/tari/commit/56d184a7c3c405028e38ef4640804ff3bcb37b1a))
+* **base-node:** minor fixups for hex/type parsing and long running commands ([#4281](https://github.com/tari-project/tari/issues/4281)) ([f910cce](https://github.com/tari-project/tari/commit/f910cce13aa6ba3af021253bd922baddd43e885f))
+* **core:** include issuer public key in contract id hash ([#4239](https://github.com/tari-project/tari/issues/4239)) ([ef62c00](https://github.com/tari-project/tari/commit/ef62c00b10cdf6dafe9e2b24acecfd2006c48125))
+* **dan_layer/core:** include state root in checkpoint signature ([#4285](https://github.com/tari-project/tari/issues/4285)) ([bcaabf0](https://github.com/tari-project/tari/commit/bcaabf04f5cef05d7707293236fb29b1020fa3de))
+* **vn:** scan and save contracts without autoaccept ([#4265](https://github.com/tari-project/tari/issues/4265)) ([a137f53](https://github.com/tari-project/tari/commit/a137f53f35db70031155f9c79a04fd11d8e1996f))
+* **wallet:** handle not found rpc error in utxo scanning ([#4249](https://github.com/tari-project/tari/issues/4249)) ([bcd14c7](https://github.com/tari-project/tari/commit/bcd14c7dcbfc9c2bd63ec896c80d45785cf04714))
+
 ## [0.33.0](https://github.com/tari-project/tari/compare/v0.32.5...v0.33.0) (2022-06-30)
 
 
