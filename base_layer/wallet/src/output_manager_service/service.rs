@@ -88,7 +88,7 @@ use crate::{
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, KnownStealthAddress, SpendingPriority},
             OutputStatus,
         },
         tasks::TxoValidationTask,
@@ -398,6 +398,9 @@ where
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
                 .add_known_script(known_script)
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
+            OutputManagerRequest::AddKnownStealthAddress(known_stealth_address) => self
+                .add_known_stealth_address(known_stealth_address)
+                .map(|_| OutputManagerResponse::AddKnownStealthAddress),
             OutputManagerRequest::ReinstateCancelledInboundTx(tx_id) => self
                 .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                 .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
@@ -1923,6 +1926,30 @@ where
             },
             Err(OutputManagerStorageError::DuplicateScript) => {
                 trace!(target: LOG_TARGET, "Duplicate script not added");
+            },
+            Err(e) => return Err(e.into()),
+        }
+        Ok(())
+    }
+
+    fn add_known_stealth_address(
+        &mut self,
+        known_stealth_address: KnownStealthAddress,
+    ) -> Result<(), OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Adding new stealth address to output manager service"
+        );
+        match self.resources.db.add_known_stealth_address(known_stealth_address) {
+            Ok(_) => (),
+            Err(OutputManagerStorageError::DieselError(DieselError::DatabaseError(
+                DatabaseErrorKind::UniqueViolation,
+                _,
+            ))) => {
+                trace!(target: LOG_TARGET, "Duplicate stealth address not added");
+            },
+            Err(OutputManagerStorageError::DuplicateStealthAddress) => {
+                trace!(target: LOG_TARGET, "Duplicate stealth address not added");
             },
             Err(e) => return Err(e.into()),
         }

@@ -44,7 +44,7 @@ use crate::output_manager_service::{
     input_selection::UtxoSelectionCriteria,
     service::Balance,
     storage::{
-        models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+        models::{DbUnblindedOutput, KnownOneSidedPaymentScript, KnownStealthAddress},
         OutputStatus,
     },
 };
@@ -91,6 +91,7 @@ pub enum DbKey {
     SpentOutputs,
     InvalidOutputs,
     KnownOneSidedPaymentScripts,
+    KnownStealthAddresses,
     OutputsByTxIdAndStatus(TxId, OutputStatus),
 }
 
@@ -102,6 +103,7 @@ pub enum DbValue {
     SpentOutputs(Vec<DbUnblindedOutput>),
     InvalidOutputs(Vec<DbUnblindedOutput>),
     KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
+    KnownStealthAddresses(Vec<KnownStealthAddress>),
     AnyOutput(Box<DbUnblindedOutput>),
     AnyOutputs(Vec<DbUnblindedOutput>),
 }
@@ -111,6 +113,7 @@ pub enum DbKeyValuePair {
     UnspentOutputWithTxId(Commitment, (TxId, Box<DbUnblindedOutput>)),
     OutputToBeReceived(Commitment, (TxId, Box<DbUnblindedOutput>, Option<u64>)),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
+    KnownStealthAddresses(KnownStealthAddress),
 }
 
 pub enum WriteOperation {
@@ -351,6 +354,19 @@ where T: OutputManagerBackend + 'static
         Ok(scripts)
     }
 
+    pub fn get_all_known_stealth_addresses(&self) -> Result<Vec<KnownStealthAddress>, OutputManagerStorageError> {
+        let stealth_addresses = match self.db.fetch(&DbKey::KnownStealthAddresses) {
+            Ok(None) => log_error(
+                DbKey::KnownStealthAddresses,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve known stealth addresses".to_string()),
+            ),
+            Ok(Some(DbValue::KnownStealthAddresses(stealh_addresses))) => Ok(stealh_addresses),
+            Ok(Some(other)) => unexpected_result(DbKey::KnownStealthAddresses, other),
+            Err(e) => log_error(DbKey::KnownStealthAddresses, e),
+        }?;
+        Ok(stealth_addresses)
+    }
+
     pub fn get_unspent_output(&self, output: HashOutput) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let uo = match self.db.fetch(&DbKey::UnspentOutputHash(output.clone())) {
             Ok(None) => log_error(
@@ -378,6 +394,18 @@ where T: OutputManagerBackend + 'static
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::KnownOneSidedPaymentScripts(
                 known_script,
+            )))?;
+
+        Ok(())
+    }
+
+    pub fn add_known_stealth_address(
+        &self,
+        known_stealth_address: KnownStealthAddress,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::KnownStealthAddresses(
+                known_stealth_address,
             )))?;
 
         Ok(())
@@ -472,6 +500,7 @@ impl Display for DbKey {
             DbKey::InvalidOutputs => f.write_str("Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str("Timelocked Outputs"),
             DbKey::KnownOneSidedPaymentScripts => f.write_str("Known claiming scripts"),
+            DbKey::KnownStealthAddresses => f.write_str("Known stealth addresses"),
             DbKey::AnyOutputByCommitment(_) => f.write_str("AnyOutputByCommitment"),
             DbKey::OutputsByTxIdAndStatus(_, _) => f.write_str("OutputsByTxIdAndStatus"),
         }
@@ -487,6 +516,7 @@ impl Display for DbValue {
             DbValue::SpentOutputs(_) => f.write_str("Spent Outputs"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
             DbValue::KnownOneSidedPaymentScripts(_) => f.write_str("Known claiming scripts"),
+            DbValue::KnownStealthAddresses(_) => f.write_str("Known stealth addresses"),
             DbValue::AnyOutput(_) => f.write_str("Any Output"),
             DbValue::AnyOutputs(_) => f.write_str("Any Outputs"),
         }

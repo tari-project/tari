@@ -46,12 +46,12 @@ use crate::{
         service::Balance,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, OutputBackendQuery, OutputManagerBackend, WriteOperation},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, KnownStealthAddress},
             OutputStatus,
         },
         UtxoSelectionCriteria,
     },
-    schema::{known_one_sided_payment_scripts, outputs, outputs::columns},
+    schema::{known_one_sided_payment_scripts, known_stealth_addresses, outputs, outputs::columns},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::{
         diesel_ext::ExpectedRowsExtension,
@@ -136,6 +136,14 @@ impl OutputManagerSqliteDatabase {
                 }
                 self.encrypt_if_necessary(&mut script_sql)?;
                 script_sql.commit(conn)?
+            },
+            DbKeyValuePair::KnownStealthAddresses(stealth_address) => {
+                let mut stealth_address_sql = KnownStealthAddressSql::from(stealth_address);
+                if KnownStealthAddressSql::find(&stealth_address_sql.stealth_address_hash, conn).is_ok() {
+                    return Err(OutputManagerStorageError::DuplicateStealthAddress);
+                }
+                self.encrypt_if_necessary(&mut stealth_address_sql)?;
+                stealth_address_sql.commit(conn)?
             },
         }
         Ok(())
@@ -279,6 +287,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     known_one_sided_payment_scripts
                         .iter()
                         .map(|script| KnownOneSidedPaymentScript::try_from(script.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            },
+            DbKey::KnownStealthAddresses => {
+                let mut known_stealth_addresses = KnownStealthAddressSql::index(&conn)?;
+                for stealth_address in &mut known_stealth_addresses {
+                    self.decrypt_if_necessary(stealth_address)?;
+                }
+
+                Some(DbValue::KnownStealthAddresses(
+                    known_stealth_addresses
+                        .iter()
+                        .map(|script| KnownStealthAddress::try_from(script.clone()))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -429,6 +450,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::KnownStealthAddresses => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::OutputsByTxIdAndStatus(_, _) => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
@@ -1014,6 +1036,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             script.update_encryption(&conn)?;
         }
 
+        let mut known_stealth_addresses = KnownStealthAddressSql::index(&conn)?;
+
+        for stealth_address in &mut known_stealth_addresses {
+            let _spending_secret_key = PrivateKey::from_vec(&stealth_address.spending_private_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might already be encrypted"
+                );
+                OutputManagerStorageError::AlreadyEncrypted
+            })?;
+            stealth_address
+                .encrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            stealth_address.update_encryption(&conn)?;
+        }
+
         (*current_cipher) = Some(cipher);
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1053,6 +1091,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 .decrypt(&cipher)
                 .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
             script.update_encryption(&conn)?;
+        }
+
+        let mut known_stealth_addresses = KnownStealthAddressSql::index(&conn)?;
+
+        for stealth_address in &mut known_stealth_addresses {
+            stealth_address
+                .decrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            stealth_address.update_encryption(&conn)?;
         }
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
@@ -1458,6 +1505,154 @@ impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         self.private_key = decrypt_bytes_integral_nonce(cipher, self.private_key.clone())?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Derivative, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
+#[derivative(Debug)]
+#[table_name = "known_stealth_addresses"]
+#[primary_key(stealth_address_hash)]
+// #[identifiable_options(primary_key(hash))]
+pub struct KnownStealthAddressSql {
+    pub stealth_address_hash: Vec<u8>,
+    #[derivative(Debug = "ignore")]
+    pub scanning_private_key: Vec<u8>,
+    #[derivative(Debug = "ignore")]
+    pub spending_private_key: Vec<u8>,
+}
+
+/// These are the fields that can be updated for an Output
+#[derive(AsChangeset)]
+#[table_name = "known_stealth_addresses"]
+pub struct UpdateKnownStealthAddress {
+    pub scanning_private_key: Option<Vec<u8>>,
+    pub spending_private_key: Option<Vec<u8>>,
+}
+
+impl KnownStealthAddressSql {
+    /// Write this struct to the database
+    pub fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        diesel::insert_into(known_stealth_addresses::table)
+            .values(self.clone())
+            .execute(conn)?;
+        Ok(())
+    }
+
+    /// Find a particular script, if it exists
+    pub fn find(
+        stealth_address_hash: &[u8],
+        conn: &SqliteConnection,
+    ) -> Result<KnownStealthAddressSql, OutputManagerStorageError> {
+        Ok(known_stealth_addresses::table
+            .filter(known_stealth_addresses::stealth_address_hash.eq(stealth_address_hash))
+            .first::<KnownStealthAddressSql>(conn)?)
+    }
+
+    /// Return all known scripts
+    pub fn index(conn: &SqliteConnection) -> Result<Vec<KnownStealthAddressSql>, OutputManagerStorageError> {
+        Ok(known_stealth_addresses::table.load::<KnownStealthAddressSql>(conn)?)
+    }
+
+    pub fn delete(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let num_deleted = diesel::delete(
+            known_stealth_addresses::table
+                .filter(known_stealth_addresses::stealth_address_hash.eq(&self.stealth_address_hash)),
+        )
+        .execute(conn)?;
+
+        if num_deleted == 0 {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        Ok(())
+    }
+
+    pub fn update(
+        &self,
+        updated_known_stealth_address: UpdateKnownStealthAddress,
+        conn: &SqliteConnection,
+    ) -> Result<KnownStealthAddressSql, OutputManagerStorageError> {
+        diesel::update(
+            known_stealth_addresses::table
+                .filter(known_stealth_addresses::stealth_address_hash.eq(&self.stealth_address_hash)),
+        )
+        .set(updated_known_stealth_address)
+        .execute(conn)
+        .num_rows_affected_or_not_found(1)?;
+
+        KnownStealthAddressSql::find(&self.stealth_address_hash, conn)
+    }
+
+    /// Update the changed fields of this record after encryption/decryption is performed
+    pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let _known_stealth_address_sql = self.update(
+            UpdateKnownStealthAddress {
+                scanning_private_key: Some(self.scanning_private_key.clone()),
+                spending_private_key: Some(self.spending_private_key.clone()),
+            },
+            conn,
+        )?;
+        Ok(())
+    }
+}
+
+/// Conversion from an KnownStealthAddress to the Sql datatype form
+impl TryFrom<KnownStealthAddressSql> for KnownStealthAddress {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(o: KnownStealthAddressSql) -> Result<Self, Self::Error> {
+        let stealth_address_hash = o.stealth_address_hash;
+        let scanning_private_key = PrivateKey::from_bytes(&o.scanning_private_key).map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create PrivateKey from stored bytes, They might be encrypted"
+            );
+            OutputManagerStorageError::ConversionError {
+                reason: "PrivateKey could not be converted from bytes".to_string(),
+            }
+        })?;
+        let spending_private_key = PrivateKey::from_bytes(&o.spending_private_key).map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create PrivateKey from stored bytes, They might be encrypted"
+            );
+            OutputManagerStorageError::ConversionError {
+                reason: "PrivateKey could not be converted from bytes".to_string(),
+            }
+        })?;
+        Ok(KnownStealthAddress {
+            stealth_address_hash,
+            scanning_private_key,
+            spending_private_key,
+        })
+    }
+}
+
+/// Conversion from an KnownStealthAddressSQL to the datatype form
+impl From<KnownStealthAddress> for KnownStealthAddressSql {
+    fn from(known_stealth_address: KnownStealthAddress) -> Self {
+        let stealth_address_hash = known_stealth_address.stealth_address_hash.as_bytes().to_vec();
+        let scanning_private_key = known_stealth_address.scanning_private_key.as_bytes().to_vec();
+        let spending_private_key = known_stealth_address.spending_private_key.as_bytes().to_vec();
+        KnownStealthAddressSql {
+            stealth_address_hash,
+            scanning_private_key,
+            spending_private_key,
+        }
+    }
+}
+
+impl Encryptable<Aes256Gcm> for KnownStealthAddressSql {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        self.scanning_private_key = encrypt_bytes_integral_nonce(cipher, self.scanning_private_key.clone())?;
+        self.spending_private_key = encrypt_bytes_integral_nonce(cipher, self.spending_private_key.clone())?;
+        Ok(())
+    }
+
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        self.scanning_private_key = decrypt_bytes_integral_nonce(cipher, self.scanning_private_key.clone())?;
+        self.spending_private_key = decrypt_bytes_integral_nonce(cipher, self.spending_private_key.clone())?;
         Ok(())
     }
 }

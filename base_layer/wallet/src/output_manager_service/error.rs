@@ -175,6 +175,8 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tried to insert a script that already exists in the database")]
     DuplicateScript,
+    #[error("Tried to insert a stealth address that already exists in the database")]
+    DuplicateStealthAddress,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]

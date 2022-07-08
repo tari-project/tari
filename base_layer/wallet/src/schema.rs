@@ -106,6 +106,14 @@ table! {
 }
 
 table! {
+    known_stealth_addresses (stealth_address_hash) {
+        stealth_address_hash -> Binary,
+        scanning_private_key -> Binary,
+        spending_private_key -> Binary,
+    }
+}
+
+table! {
     outbound_transactions (tx_id) {
         tx_id -> BigInt,
         destination_public_key -> Binary,
@@ -184,6 +192,7 @@ allow_tables_to_appear_in_same_query!(
     key_manager_states,
     key_manager_states_old,
     known_one_sided_payment_scripts,
+    known_stealth_addresses,
     outbound_transactions,
     outputs,
     scanned_blocks,

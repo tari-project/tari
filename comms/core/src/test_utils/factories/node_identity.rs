@@ -65,6 +65,8 @@ impl TestFactory for NodeIdentityFactory {
             .unwrap_or(super::net_address::create().build()?);
 
         Ok(NodeIdentity::new(
+            secret_key.clone(),
+            secret_key.clone(),
             secret_key,
             control_service_address,
             self.peer_features,

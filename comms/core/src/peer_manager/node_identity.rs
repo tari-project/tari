@@ -49,6 +49,8 @@ pub struct NodeIdentity {
     public_key: CommsPublicKey,
     features: PeerFeatures,
     secret_key: CommsSecretKey,
+    stealth_address_scanning_private_key: CommsSecretKey,
+    stealth_address_spending_private_key: CommsSecretKey,
     public_address: RwLock<Multiaddr>,
     #[serde(default = "rwlock_none")]
     identity_signature: RwLock<Option<IdentitySignature>>,
@@ -60,7 +62,13 @@ fn rwlock_none() -> RwLock<Option<IdentitySignature>> {
 
 impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
-    pub fn new(secret_key: CommsSecretKey, public_address: Multiaddr, features: PeerFeatures) -> Self {
+    pub fn new(
+        secret_key: CommsSecretKey,
+        stealth_address_scanning_private_key: CommsSecretKey,
+        stealth_address_spending_private_key: CommsSecretKey,
+        public_address: Multiaddr,
+        features: PeerFeatures,
+    ) -> Self {
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key);
 
@@ -69,6 +77,8 @@ impl NodeIdentity {
             public_key,
             features,
             secret_key,
+            stealth_address_scanning_private_key,
+            stealth_address_spending_private_key,
             public_address: RwLock::new(public_address),
             identity_signature: RwLock::new(None),
         };
@@ -83,6 +93,8 @@ impl NodeIdentity {
     /// Prefer using NodeIdentity::new over this function.
     pub fn with_signature_unchecked(
         secret_key: CommsSecretKey,
+        stealth_address_scanning_private_key: CommsSecretKey,
+        stealth_address_spending_private_key: CommsSecretKey,
         public_address: Multiaddr,
         features: PeerFeatures,
         identity_signature: Option<IdentitySignature>,
@@ -95,6 +107,8 @@ impl NodeIdentity {
             public_key,
             features,
             secret_key,
+            stealth_address_scanning_private_key,
+            stealth_address_spending_private_key,
             public_address: RwLock::new(public_address),
             identity_signature: RwLock::new(identity_signature),
         }
@@ -104,7 +118,15 @@ impl NodeIdentity {
     pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
     where R: CryptoRng + Rng {
         let secret_key = CommsSecretKey::random(rng);
-        Self::new(secret_key, public_address, features)
+        let stealth_address_scanning_private_key = CommsSecretKey::random(rng);
+        let stealth_address_spending_private_key = CommsSecretKey::random(rng);
+        Self::new(
+            secret_key,
+            stealth_address_scanning_private_key,
+            stealth_address_spending_private_key,
+            public_address,
+            features,
+        )
     }
 
     /// Retrieve the publicly accessible address that peers must connect to establish a connection
@@ -150,6 +172,22 @@ impl NodeIdentity {
 
     pub fn secret_key(&self) -> &CommsSecretKey {
         &self.secret_key
+    }
+
+    pub fn stealth_address_scanning_public_key(&self) -> CommsPublicKey {
+        CommsPublicKey::from_secret_key(&self.stealth_address_scanning_private_key)
+    }
+
+    pub fn stealth_address_scanning_private_key(&self) -> &CommsSecretKey {
+        &self.stealth_address_scanning_private_key
+    }
+
+    pub fn stealth_address_spending_public_key(&self) -> CommsPublicKey {
+        CommsPublicKey::from_secret_key(&self.stealth_address_spending_private_key)
+    }
+
+    pub fn stealth_address_spending_private_key(&self) -> &CommsSecretKey {
+        &self.stealth_address_spending_private_key
     }
 
     pub fn features(&self) -> PeerFeatures {
@@ -205,6 +243,8 @@ impl Clone for NodeIdentity {
             public_key: self.public_key.clone(),
             features: self.features,
             secret_key: self.secret_key.clone(),
+            stealth_address_scanning_private_key: self.stealth_address_scanning_private_key.clone(),
+            stealth_address_spending_private_key: self.stealth_address_spending_private_key.clone(),
             public_address: RwLock::new(self.public_address()),
             identity_signature: RwLock::new(self.identity_signature_read().as_ref().cloned()),
         }
