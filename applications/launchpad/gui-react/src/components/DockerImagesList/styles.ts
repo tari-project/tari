@@ -21,5 +21,6 @@ export const DockerStatusWrapper = styled.div`
   display: flex;
   width: 70%;
   align-items: center;
+  justify-content: flex-end;
   column-gap: ${({ theme }) => theme.spacingHorizontal(0.5)};
 `
