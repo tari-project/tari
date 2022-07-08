@@ -7,6 +7,7 @@ import './index.css'
 import App from './App'
 import reportWebVitals from './reportWebVitals'
 import { store, persistor } from './store'
+import ErrorBoundary from './ErrorBoundary'
 
 const container = document.getElementById('root')
 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -15,7 +16,9 @@ root.render(
   <React.StrictMode>
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
-        <App />
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
       </PersistGate>
     </Provider>
   </React.StrictMode>,
