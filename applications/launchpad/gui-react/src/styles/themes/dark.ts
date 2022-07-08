@@ -68,6 +68,7 @@ const darkTheme = {
   selectOptionHover: styles.colors.darkMode.input,
   walletSetupBorderColor: styles.colors.darkMode.borders,
   walletCopyBoxBorder: 'transparent',
+  balanceBoxBorder: styles.colors.darkMode.borders,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -132,6 +133,7 @@ const darkTheme = {
     selectOptionHover: styles.colors.darkMode.input,
     walletSetupBorderColor: 'transparent',
     walletCopyBoxBorder: 'transparent',
+    balanceBoxBorder: styles.colors.darkMode.borders,
   },
 }
 

@@ -11,7 +11,7 @@ const AvailableBalanceHelp = () => {
 
   return (
     <IconButton onClick={showAvailableBalanceHelp}>
-      <SvgInfo1 height='1.5em' width='auto' />
+      <SvgInfo1 height={20} width='auto' />
     </IconButton>
   )
 }

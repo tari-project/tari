@@ -23,8 +23,14 @@ const WalletBalance = ({
   const theme = useTheme()
 
   return (
-    <Box>
-      <Text color={theme.secondary}>
+    <Box
+      style={{
+        background: theme.nodeBackground,
+        borderColor: theme.balanceBoxBorder,
+        boxShadow: theme.shadow40,
+      }}
+    >
+      <Text color={theme.nodeWarningText}>
         {t.wallet.balance.title}
         <Loading loading={pending} size='0.9em' style={{ marginLeft: '5px' }} />
       </Text>
@@ -45,12 +51,17 @@ const WalletBalance = ({
           <CoinsList
             coins={[{ amount: balance, unit: 'xtr' }]}
             inline
-            color={pending ? theme.placeholderText : 'inherit'}
+            color={pending ? theme.placeholderText : theme.helpTipText}
           />
         </div>
         <Chart />
       </TariAmountContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+        }}
+      >
         <div>
           <Text
             type='defaultMedium'
@@ -63,7 +74,7 @@ const WalletBalance = ({
             coins={[{ amount: available, unit: 'xtr' }]}
             inline
             small
-            color={pending ? theme.placeholderText : 'inherit'}
+            color={pending ? theme.placeholderText : theme.helpTipText}
           />
         </div>
         <AvailableBalanceHelp />
