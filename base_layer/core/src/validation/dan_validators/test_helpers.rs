@@ -337,3 +337,12 @@ pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Tran
 pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &Transaction) {
     perform_validation(blockchain, transaction).unwrap()
 }
+
+pub fn create_committee_signatures(key_signature_pairs: Vec<(PublicKey, Signature)>) -> CommitteeSignatures {
+    let signer_signatures: Vec<SignerSignature> = key_signature_pairs
+        .iter()
+        .map(|(k, s)| SignerSignature::new(k.clone(), s.clone()))
+        .collect();
+
+    CommitteeSignatures::new(signer_signatures.try_into().unwrap())
+}
