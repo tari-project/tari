@@ -299,7 +299,7 @@ pub fn create_proposal_acceptance_signature(
 ) -> Signature {
     let challenge = ContractUpdateProposalAcceptanceChallenge::new(&commitment, &contract_id, proposal_id);
 
-    SignerSignature::sign(&private_key, &challenge).signature
+    SignerSignature::sign(&private_key, &challenge).signature().clone()
 }
 
 pub fn create_contract_amendment_schema(

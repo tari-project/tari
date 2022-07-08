@@ -82,11 +82,11 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
         let secret_key = node_identity.secret_key();
         let constitution_commitment = self.fetch_constitution_commitment(contract_id).await?;
         let challenge = ContractAcceptanceChallenge::new(&constitution_commitment, contract_id);
-        let signature = SignerSignature::sign(secret_key, challenge);
+        let signer_signature = SignerSignature::sign(secret_key, challenge);
 
         // publish the acceptance
         self.wallet
-            .submit_contract_acceptance(contract_id, public_key, signature.signature())
+            .submit_contract_acceptance(contract_id, public_key, signer_signature.signature())
             .await
     }
 
@@ -102,11 +102,16 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
         let secret_key = node_identity.secret_key();
         let proposal_commitment = self.fetch_proposal_commitment(contract_id, proposal_id).await?;
         let challenge = ContractUpdateProposalAcceptanceChallenge::new(&proposal_commitment, contract_id, proposal_id);
-        let signature = SignerSignature::sign(secret_key, challenge).signature;
+        let signer_signature = SignerSignature::sign(secret_key, challenge);
 
         // publish the acceptance
         self.wallet
-            .submit_contract_update_proposal_acceptance(contract_id, proposal_id, public_key, &signature)
+            .submit_contract_update_proposal_acceptance(
+                contract_id,
+                proposal_id,
+                public_key,
+                signer_signature.signature(),
+            )
             .await
     }
 }
