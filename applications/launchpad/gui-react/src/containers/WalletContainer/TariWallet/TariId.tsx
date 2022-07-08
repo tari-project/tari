@@ -8,6 +8,11 @@ import CopyBox from '../../../components/CopyBox'
 
 import Smiley from './Smiley'
 import { TariIdContainer } from './styles'
+import Button from '../../../components/Button'
+import SvgInfo1 from '../../../styles/Icons/Info1'
+import { tbotactions } from '../../../store/tbot'
+import MessagesConfig from '../../../config/helpMessagesConfig'
+import { useAppDispatch } from '../../../store/hooks'
 
 const SEPARATOR = ' | '
 
@@ -22,6 +27,7 @@ const TariId = ({
 }) => {
   const [showEmoji, setShowEmoji] = useState(false)
   const theme = useTheme()
+  const dispatch = useAppDispatch()
 
   const displayedEmojiTariId = useMemo(() => {
     const emojis = Array.from(emojiTariId)
@@ -35,18 +41,33 @@ const TariId = ({
 
   return (
     <>
-      <Text
-        as='label'
-        color={theme.baseNodeRunningLabel}
-        style={{
-          display: 'inline-block',
-        }}
-      >
-        {t.wallet.wallet.walletId}{' '}
-        <Text as='span' color={theme.textSecondary}>
-          ({t.wallet.wallet.address})
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <Text
+          as='label'
+          color={theme.baseNodeRunningLabel}
+          style={{
+            display: 'inline-block',
+          }}
+        >
+          {t.wallet.wallet.walletId}{' '}
+          <Text as='span' color={theme.textSecondary}>
+            ({t.wallet.wallet.address})
+          </Text>
         </Text>
-      </Text>
+        <Button
+          variant='button-in-text'
+          onClick={() =>
+            dispatch(tbotactions.push(MessagesConfig.WalletIdHelp))
+          }
+          style={{
+            color: theme.textSecondary,
+            marginLeft: theme.spacingHorizontal(0.4),
+            marginBottom: theme.spacingVertical(0.25),
+          }}
+        >
+          <SvgInfo1 fontSize={20} />
+        </Button>
+      </div>
       <TariIdContainer>
         <CopyBox
           valueTransform={showEmoji ? removeSeparators : undefined}

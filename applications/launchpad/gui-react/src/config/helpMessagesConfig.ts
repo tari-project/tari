@@ -9,6 +9,7 @@ import {
   HowWalletWorks,
   WhyBalanceDiffers,
   NoteAboutVerificationPeriod,
+  TariWalletIdHelp,
 } from '../components/TBot/HelpComponents/Wallet'
 import {
   WhatIsBaseNode,
@@ -21,6 +22,7 @@ const MessagesConfig = {
   [TBotMessages.CryptoMiningHelp]: ['cryptoHelpMessage1'],
   [TBotMessages.MergedMiningHelp]: ['mergedHelpMessage1', 'mergedHelpMessage2'],
   [TBotMessages.WalletHelp]: ['walletHelpMessage'],
+  [TBotMessages.WalletIdHelp]: ['walletIdHelpMessage'],
   [TBotMessages.WalletBalanceHelp]: [
     'whyBalanceDiffers',
     'noteAboutVerificationPeriod',
@@ -40,6 +42,7 @@ export const HelpMessagesMap: {
     content: Merged2,
   },
   walletHelpMessage: HowWalletWorks,
+  walletIdHelpMessage: TariWalletIdHelp,
   whyBalanceDiffers: WhyBalanceDiffers,
   noteAboutVerificationPeriod: {
     content: NoteAboutVerificationPeriod,
