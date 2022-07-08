@@ -28,19 +28,17 @@ use std::{
 };
 
 use log::*;
-use rand::rngs::OsRng;
-use tari_common_types::types::{FixedHash, FixedHashSizeError, HashDigest, PrivateKey, Signature};
+use tari_common_types::types::{FixedHash, FixedHashSizeError};
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_core::{consensus::ConsensusHashWriter, transactions::transaction_components::ContractConstitution};
-use tari_crypto::{
-    keys::SecretKey,
-    tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray},
-};
+use tari_core::transactions::transaction_components::ContractConstitution;
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, Committee},
     services::{
+        AcceptanceManager,
         BaseNodeClient,
+        ConcreteAcceptanceManager,
         ConcreteAssetProcessor,
         ConcreteCheckpointManager,
         ConcreteCommitteeManager,
@@ -49,7 +47,6 @@ use tari_dan_core::{
         NodeIdentitySigningService,
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
-        WalletClient,
     },
     storage::{
         global::{ContractState, GlobalDb, GlobalDbMetadataKey},
@@ -88,7 +85,7 @@ pub struct ContractWorkerManager {
     last_scanned_height: u64,
     last_scanned_hash: Option<FixedHash>,
     base_node_client: GrpcBaseNodeClient,
-    wallet_client: GrpcWalletClient,
+    acceptance_manager: ConcreteAcceptanceManager<GrpcWalletClient, GrpcBaseNodeClient>,
     identity: Arc<NodeIdentity>,
     active_workers: HashMap<FixedHash, Arc<AtomicBool>>,
     mempool: MempoolServiceHandle,
@@ -113,7 +110,7 @@ impl ContractWorkerManager {
         identity: Arc<NodeIdentity>,
         global_db: GlobalDb<SqliteGlobalDbBackendAdapter>,
         base_node_client: GrpcBaseNodeClient,
-        wallet_client: GrpcWalletClient,
+        acceptance_manager: ConcreteAcceptanceManager<GrpcWalletClient, GrpcBaseNodeClient>,
         mempool: MempoolServiceHandle,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
@@ -126,7 +123,7 @@ impl ContractWorkerManager {
             last_scanned_height: 0,
             last_scanned_hash: None,
             base_node_client,
-            wallet_client,
+            acceptance_manager,
             identity,
             mempool,
             handles,
@@ -151,16 +148,18 @@ impl ContractWorkerManager {
             return Ok(());
         }
 
-        // TODO: Get statuses of active contracts
         self.start_active_contracts().await?;
 
         loop {
-            // TODO: Get statuses of Accepted contracts to see if quorum is me if quorum is met, start the chain and
+            // TODO: Get statuses of Accepted contracts to see if quorum is met if quorum is met, start the chain and
             // create a checkpoint
 
             let tip = self.base_node_client.get_tip_info().await?;
+            let new_contracts = self.scan_for_new_contracts(&tip).await?;
+            self.set_last_scanned_block(&tip)?;
+
             if self.config.constitution_auto_accept {
-                self.scan_and_accept_contracts(&tip).await?;
+                self.accept_contracts(new_contracts).await?;
             }
 
             tokio::select! {
@@ -193,29 +192,8 @@ impl ContractWorkerManager {
         Ok(())
     }
 
-    async fn scan_and_accept_contracts(&mut self, tip: &BaseLayerMetadata) -> Result<(), WorkerManagerError> {
-        info!(
-            target: LOG_TARGET,
-            "Base layer tip is {}. Scanning for new contracts.", tip.height_of_longest_chain,
-        );
-
-        let new_contracts = self.scan_for_new_contracts(tip).await?;
-
-        info!(target: LOG_TARGET, "{} new contract(s) found", new_contracts.len());
-
+    async fn accept_contracts(&mut self, new_contracts: Vec<ActiveContract>) -> Result<(), WorkerManagerError> {
         for contract in new_contracts {
-            match self
-                .global_db
-                .save_contract(contract.clone().into(), ContractState::Pending)
-            {
-                Ok(_) => info!("Saving contract data id={}", contract.contract_id.to_hex()),
-                Err(error) => error!(
-                    "Couldn't save contract data id={} received error={}",
-                    contract.contract_id.to_hex(),
-                    error.to_string()
-                ),
-            }
-
             info!(
                 target: LOG_TARGET,
                 "Posting acceptance transaction for contract {}", contract.contract_id
@@ -231,8 +209,6 @@ impl ContractWorkerManager {
             let kill = self.spawn_asset_worker(contract.contract_id, &contract.constitution);
             self.active_workers.insert(contract.contract_id, kill);
         }
-
-        self.set_last_scanned_block(tip)?;
 
         Ok(())
     }
@@ -323,12 +299,28 @@ impl ContractWorkerManager {
                 continue;
             }
 
-            new_contracts.push(ActiveContract {
+            let contract = ActiveContract {
                 constitution,
                 contract_id,
                 mined_height,
-            });
+            };
+
+            match self
+                .global_db
+                .save_contract(contract.clone().into(), ContractState::Pending)
+            {
+                Ok(_) => info!("Saving contract data id={}", contract.contract_id.to_hex()),
+                Err(error) => error!(
+                    "Couldn't save contract data id={} received error={}",
+                    contract.contract_id.to_hex(),
+                    error.to_string()
+                ),
+            }
+
+            new_contracts.push(contract);
         }
+
+        info!(target: LOG_TARGET, "{} new contract(s) found", new_contracts.len());
 
         Ok(new_contracts)
     }
@@ -449,13 +441,10 @@ impl ContractWorkerManager {
     }
 
     async fn post_contract_acceptance(&mut self, contract: &ActiveContract) -> Result<(), WorkerManagerError> {
-        let nonce = PrivateKey::random(&mut OsRng);
-        let challenge = generate_constitution_challenge(&contract.constitution);
-        let signature = Signature::sign(self.identity.secret_key().clone(), nonce, challenge.as_slice()).unwrap();
+        let mut acceptance_manager = self.acceptance_manager.clone();
 
-        let tx_id = self
-            .wallet_client
-            .submit_contract_acceptance(&contract.contract_id, self.identity.public_key(), &signature)
+        let tx_id = acceptance_manager
+            .publish_acceptance(&self.identity, &contract.contract_id)
             .await?;
         info!(
             "Contract {} acceptance submitted with id={}",
@@ -477,12 +466,6 @@ impl ContractWorkerManager {
         self.last_scanned_height = tip.height_of_longest_chain;
         Ok(())
     }
-}
-
-fn generate_constitution_challenge(constitution: &ContractConstitution) -> [u8; 32] {
-    ConsensusHashWriter::new(HashDigest::with_params(&[], &[], b"tari/vn/constsig"))
-        .chain(constitution)
-        .finalize()
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,40 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_common_types::types::{FixedHash, PublicKey};
-use tari_core::{chain_storage::UtxoMinedInfo, transactions::transaction_components::OutputType};
+use tari_common_types::types::{Commitment, FixedHash};
 
-use crate::{
-    digital_assets_error::DigitalAssetError,
-    models::{BaseLayerMetadata, BaseLayerOutput},
-};
+use crate::consensus::ConsensusHashWriter;
 
-#[async_trait]
-pub trait BaseNodeClient: Send + Sync {
-    async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError>;
+#[derive(Debug, Clone, Copy)]
+pub struct CheckpointChallenge(FixedHash);
 
-    async fn get_current_contract_outputs(
-        &mut self,
-        height: u64,
-        contract_id: FixedHash,
-        output_type: OutputType,
-    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
+impl CheckpointChallenge {
+    pub fn new(
+        contract_id: &FixedHash,
+        checkpoint_commitment: &Commitment,
+        merkle_root: &FixedHash,
+        checkpoint_number: u64,
+    ) -> Self {
+        // TODO: Use new tari_crypto domain-separated hashing
+        let hash = ConsensusHashWriter::default()
+            .chain(contract_id)
+            .chain(checkpoint_commitment)
+            .chain(merkle_root)
+            .chain(&checkpoint_number)
+            .finalize()
+            .into();
+        Self(hash)
+    }
+}
 
-    async fn get_constitutions(
-        &mut self,
-        start_block_hash: Option<FixedHash>,
-        dan_node_public_key: &PublicKey,
-    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
-
-    async fn check_if_in_committee(
-        &mut self,
-        asset_public_key: PublicKey,
-        dan_node_public_key: PublicKey,
-    ) -> Result<(bool, u64), DigitalAssetError>;
-
-    async fn get_asset_registration(
-        &mut self,
-        asset_public_key: PublicKey,
-    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
+impl AsRef<[u8]> for CheckpointChallenge {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
 }

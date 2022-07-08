@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod acceptance_manager;
 mod asset_processor;
 mod base_node_client;
 mod committee_manager;
@@ -30,6 +31,7 @@ mod payload_processor;
 mod payload_provider;
 mod signing_service;
 
+pub use acceptance_manager::{AcceptanceManager, ConcreteAcceptanceManager};
 pub use asset_processor::{AssetProcessor, ConcreteAssetProcessor, MemoryInstructionLog};
 pub use asset_proxy::{AssetProxy, ConcreteAssetProxy};
 pub use base_node_client::BaseNodeClient;
@@ -39,7 +41,6 @@ pub use mempool_service::{ConcreteMempoolService, MempoolService, MempoolService
 pub use payload_processor::{PayloadProcessor, TariDanPayloadProcessor};
 pub use payload_provider::{PayloadProvider, TariDanPayloadProvider};
 pub use signing_service::{NodeIdentitySigningService, SigningService};
-
 mod asset_proxy;
 mod checkpoint_manager;
 pub mod mocks;

@@ -34,7 +34,7 @@ pub trait WalletClient: Send + Sync {
         contract_id: &FixedHash,
         state_root: &StateRoot,
         checkpoint_number: u64,
-        checkpoint_signatures: Vec<SignerSignature>,
+        checkpoint_signatures: &[SignerSignature],
     ) -> Result<(), DigitalAssetError>;
 
     async fn submit_contract_acceptance(

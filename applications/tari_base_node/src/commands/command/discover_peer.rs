@@ -28,6 +28,7 @@ use clap::Parser;
 use tari_app_utilities::utilities::UniPublicKey;
 use tari_comms_dht::envelope::NodeDestination;
 use tari_crypto::ristretto::RistrettoPublicKey;
+use tokio::task;
 
 use super::{CommandContext, HandleCommand};
 
@@ -48,15 +49,24 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     /// Function to process the discover-peer command
     pub async fn discover_peer(&mut self, dest_pubkey: Box<RistrettoPublicKey>) -> Result<(), Error> {
-        let start = Instant::now();
-        println!("🌎 Peer discovery started.");
-        let peer = self
-            .discovery_service
-            .discover_peer(dest_pubkey.deref().clone(), NodeDestination::PublicKey(dest_pubkey))
-            .await?;
-        println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
-        println!("This peer was found:");
-        println!("{}", peer);
+        let mut discovery_service = self.discovery_service.clone();
+        task::spawn(async move {
+            let start = Instant::now();
+            println!("🌎 Peer discovery started.");
+            match discovery_service
+                .discover_peer(dest_pubkey.deref().clone(), NodeDestination::PublicKey(dest_pubkey))
+                .await
+            {
+                Ok(peer) => {
+                    println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
+                    println!("This peer was found:");
+                    println!("{}", peer);
+                },
+                Err(err) => {
+                    println!("☠️ {}", err);
+                },
+            }
+        });
         Ok(())
     }
 }

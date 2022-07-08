@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use clap::Parser;
 use tari_app_utilities::utilities::UniNodeId;
 use tari_comms::peer_manager::NodeId;
+use tokio::task;
 
 use super::{CommandContext, HandleCommand};
 
@@ -47,12 +48,21 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     /// Function to process the dial-peer command
     pub async fn dial_peer(&self, dest_node_id: NodeId) -> Result<(), Error> {
-        let start = Instant::now();
-        println!("☎️  Dialing peer...");
+        let connectivity = self.connectivity.clone();
+        task::spawn(async move {
+            let start = Instant::now();
+            println!("☎️  Dialing peer...");
 
-        let connection = self.connectivity.dial_peer(dest_node_id).await?;
-        println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
-        println!("Connection: {}", connection);
+            match connectivity.dial_peer(dest_node_id).await {
+                Ok(connection) => {
+                    println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
+                    println!("Connection: {}", connection);
+                },
+                Err(err) => {
+                    println!("☠️ {}", err);
+                },
+            }
+        });
         Ok(())
     }
 }

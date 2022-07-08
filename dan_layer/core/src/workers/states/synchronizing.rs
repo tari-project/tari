@@ -28,7 +28,7 @@ use tari_core::transactions::transaction_components::OutputType;
 use tari_dan_engine::state::StateDbUnitOfWorkReader;
 
 use crate::{
-    models::{AssetDefinition, CheckpointOutput},
+    models::{AssetDefinition, BaseLayerOutput, CheckpointOutput},
     services::{BaseNodeClient, ServiceSpecification},
     storage::DbFactory,
     workers::{state_sync::StateSynchronizer, states::ConsensusWorkerStateEvent},
@@ -63,27 +63,32 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
         let tip = base_node_client.get_tip_info().await?;
         let mut last_checkpoint = base_node_client
             .get_current_contract_outputs(
-                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                tip.height_of_longest_chain
+                    .saturating_sub(asset_definition.base_layer_confirmation_time),
                 asset_definition.contract_id,
                 OutputType::ContractCheckpoint,
             )
             .await?;
 
         let last_checkpoint = match last_checkpoint.pop() {
-            Some(o) => CheckpointOutput::try_from(o)?,
+            Some(utxo) => {
+                let output = BaseLayerOutput::try_from(utxo)?;
+                CheckpointOutput::try_from(output)?
+            },
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
         };
 
         let mut constitution = base_node_client
             .get_current_contract_outputs(
-                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                tip.height_of_longest_chain
+                    .saturating_sub(asset_definition.base_layer_confirmation_time),
                 asset_definition.contract_id,
                 OutputType::ContractConstitution,
             )
             .await?;
 
         let current_constitution = match constitution.pop() {
-            Some(o) => o,
+            Some(o) => BaseLayerOutput::try_from(o)?,
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckopintNotFound),
         };
 

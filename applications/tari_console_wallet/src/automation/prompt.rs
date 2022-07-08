@@ -84,13 +84,12 @@ impl Prompt {
                 io::stdin().read_line(&mut line_buf)?;
                 println!();
 
-                let trimmed = line_buf.trim();
-
-                match trimmed {
-                    "N" => {
+                let trimmed = line_buf.trim().to_lowercase();
+                match trimmed.as_str() {
+                    "n" => {
                         return Ok(collection);
                     },
-                    "Y" => break,
+                    "y" => break,
                     _ => continue,
                 }
             }

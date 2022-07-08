@@ -85,7 +85,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         _height: u64,
         contract_id: FixedHash,
         output_type: OutputType,
-    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError> {
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
         let inner = self.connection().await?;
         let request = grpc::GetCurrentContractOutputsRequest {
             contract_id: contract_id.to_vec(),
@@ -105,23 +105,23 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             Err(err) => return Err(err.into()),
         };
 
-        resp.outputs
-            .into_iter()
-            .map(|output| {
-                let mined_height = output.mined_height;
-                let features = output.output.and_then(|o| o.features).ok_or_else(|| {
-                    DigitalAssetError::ConversionError("Output was none/pruned or did not contain features".to_string())
-                })?;
+        let mut outputs = vec![];
+        for mined_info in resp.outputs {
+            let output = mined_info
+                .output
+                .map(TryInto::try_into)
+                .transpose()
+                .map_err(DigitalAssetError::ConversionError)?
+                .ok_or_else(|| DigitalAssetError::InvalidPeerMessage("Mined info contained no output".to_string()))?;
 
-                match features.try_into() {
-                    Ok(features) => Ok(BaseLayerOutput {
-                        features,
-                        height: mined_height,
-                    }),
-                    Err(e) => Err(DigitalAssetError::ConversionError(e)),
-                }
-            })
-            .collect()
+            outputs.push(UtxoMinedInfo {
+                output: PrunedOutput::NotPruned { output },
+                mmr_position: mined_info.mmr_position,
+                mined_height: mined_info.mined_height,
+                header_hash: mined_info.header_hash,
+            });
+        }
+        Ok(outputs)
     }
 
     async fn get_constitutions(

@@ -25,28 +25,21 @@ use tari_common_types::types::{Commitment, FixedHash, HashDigest};
 use tari_utilities::ByteArray;
 
 #[derive(Debug, Clone, Copy)]
-pub struct CheckpointChallenge(FixedHash);
+pub struct ContractAcceptanceChallenge(FixedHash);
 
-impl CheckpointChallenge {
-    pub fn new(
-        contract_id: &FixedHash,
-        checkpoint_commitment: &Commitment,
-        merkle_root: FixedHash,
-        checkpoint_number: u64,
-    ) -> Self {
+impl ContractAcceptanceChallenge {
+    pub fn new(constiution_commitment: &Commitment, contract_id: &FixedHash) -> Self {
         // TODO: Use new tari_crypto domain-separated hashing
         let hash = HashDigest::new()
+            .chain(constiution_commitment.as_bytes())
             .chain(contract_id.as_slice())
-            .chain(checkpoint_commitment.as_bytes())
-            .chain(merkle_root.as_slice())
-            .chain(&checkpoint_number.to_le_bytes())
             .finalize()
             .into();
         Self(hash)
     }
 }
 
-impl AsRef<[u8]> for CheckpointChallenge {
+impl AsRef<[u8]> for ContractAcceptanceChallenge {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }

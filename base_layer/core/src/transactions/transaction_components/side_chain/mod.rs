@@ -23,6 +23,9 @@
 mod contract_acceptance;
 pub use contract_acceptance::ContractAcceptance;
 
+mod contract_acceptance_challenge;
+pub use contract_acceptance_challenge::ContractAcceptanceChallenge;
+
 mod contract_constitution;
 pub use contract_constitution::{
     CheckpointParameters,
@@ -60,6 +63,9 @@ pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};
 
 mod contract_checkpoint;
 pub use contract_checkpoint::ContractCheckpoint;
+
+mod checkpoint_challenge;
+pub use checkpoint_challenge::CheckpointChallenge;
 
 // Length of FixedString
 pub const FIXED_STR_LEN: usize = 32;

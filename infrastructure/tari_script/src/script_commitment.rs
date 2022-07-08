@@ -99,7 +99,7 @@ impl ScriptCommitment {
 /// # use tari_crypto::ristretto::RistrettoSecretKey;
 /// # use tari_script::{ScriptCommitmentFactory, TariScript};
 /// # use tari_crypto::{
-///     common::Blake256,
+///     hash::blake2::Blake256,
 ///     keys::SecretKey,
 /// };
 ///
@@ -182,7 +182,7 @@ impl ScriptCommitmentFactory {
 mod tests {
     use blake2::Blake2b;
     use rand::RngCore;
-    use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_crypto::{hash::blake2::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 
     use super::*;
     use crate::TariScript;

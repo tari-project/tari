@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,40 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_common_types::types::{FixedHash, PublicKey};
-use tari_core::{chain_storage::UtxoMinedInfo, transactions::transaction_components::OutputType};
+use std::fmt::{Display, Formatter};
 
-use crate::{
-    digital_assets_error::DigitalAssetError,
-    models::{BaseLayerMetadata, BaseLayerOutput},
-};
+use crate::storage::metadata_backend_adapter::AsKeyBytes;
 
-#[async_trait]
-pub trait BaseNodeClient: Send + Sync {
-    async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChainDbMetadataKey {
+    CheckpointNumber,
+}
 
-    async fn get_current_contract_outputs(
-        &mut self,
-        height: u64,
-        contract_id: FixedHash,
-        output_type: OutputType,
-    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
+impl AsKeyBytes for ChainDbMetadataKey {
+    fn as_key_bytes(&self) -> &[u8] {
+        match self {
+            ChainDbMetadataKey::CheckpointNumber => b"checkpoint-number",
+        }
+    }
+}
 
-    async fn get_constitutions(
-        &mut self,
-        start_block_hash: Option<FixedHash>,
-        dan_node_public_key: &PublicKey,
-    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError>;
-
-    async fn check_if_in_committee(
-        &mut self,
-        asset_public_key: PublicKey,
-        dan_node_public_key: PublicKey,
-    ) -> Result<(bool, u64), DigitalAssetError>;
-
-    async fn get_asset_registration(
-        &mut self,
-        asset_public_key: PublicKey,
-    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
+impl Display for ChainDbMetadataKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", String::from_utf8_lossy(self.as_key_bytes()))
+    }
 }

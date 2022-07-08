@@ -22,7 +22,6 @@
 
 use std::{
     collections::VecDeque,
-    marker::PhantomData,
     sync::{Arc, Mutex},
 };
 
@@ -30,7 +29,7 @@ use async_trait::async_trait;
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_core::{
     chain_storage::UtxoMinedInfo,
-    transactions::transaction_components::{OutputType, SignerSignature},
+    transactions::transaction_components::{CheckpointChallenge, OutputType, SignerSignature},
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_dan_common_types::TemplateId;
@@ -201,17 +200,19 @@ impl<TEvent: Event> EventsPublisher<TEvent> for MockEventsPublisher<TEvent> {
     }
 }
 
-pub fn mock_signing_service() -> MockSigningService<RistrettoPublicKey> {
-    MockSigningService::<RistrettoPublicKey> { p: PhantomData }
+pub fn mock_signing_service() -> MockSigningService {
+    MockSigningService
 }
 
-pub struct MockSigningService<TAddr: NodeAddressable> {
-    p: PhantomData<TAddr>,
-}
+pub struct MockSigningService;
 
-impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr> {
-    fn sign(&self, _identity: &TAddr, _challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError> {
+impl SigningService for MockSigningService {
+    fn sign(&self, _challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError> {
         Ok(ValidatorSignature {})
+    }
+
+    fn sign_checkpoint(&self, _challenge: &CheckpointChallenge) -> Result<SignerSignature, DigitalAssetError> {
+        todo!()
     }
 }
 
@@ -259,7 +260,7 @@ impl BaseNodeClient for MockBaseNodeClient {
         _height: u64,
         _contract_id: FixedHash,
         _output_type: OutputType,
-    ) -> Result<Vec<BaseLayerOutput>, DigitalAssetError> {
+    ) -> Result<Vec<UtxoMinedInfo>, DigitalAssetError> {
         todo!()
     }
 }
@@ -345,7 +346,7 @@ impl WalletClient for MockWalletClient {
         _contract_id: &FixedHash,
         _state_root: &StateRoot,
         _checkpoint_number: u64,
-        _checkpoint_signatures: Vec<SignerSignature>,
+        _checkpoint_signatures: &[SignerSignature],
     ) -> Result<(), DigitalAssetError> {
         Ok(())
     }
@@ -475,6 +476,7 @@ pub struct MockServiceSpecification;
 
 #[cfg(test)]
 impl ServiceSpecification for MockServiceSpecification {
+    type AcceptanceManager = super::ConcreteAcceptanceManager<Self::WalletClient, Self::BaseNodeClient>;
     type Addr = RistrettoPublicKey;
     type AssetProcessor = MockAssetProcessor;
     type AssetProxy = ConcreteAssetProxy<Self>;
@@ -492,7 +494,7 @@ impl ServiceSpecification for MockServiceSpecification {
     type Payload = TariDanPayload;
     type PayloadProcessor = MockPayloadProcessor;
     type PayloadProvider = MockStaticPayloadProvider<Self::Payload>;
-    type SigningService = MockSigningService<Self::Addr>;
+    type SigningService = MockSigningService;
     type StateDbBackendAdapter = MockStateDbBackupAdapter;
     type ValidatorNodeClientFactory = MockValidatorNodeClientFactory;
     type WalletClient = MockWalletClient;

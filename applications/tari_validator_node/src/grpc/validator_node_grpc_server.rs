@@ -30,7 +30,7 @@ use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    services::{AssetProcessor, AssetProxy, ServiceSpecification, WalletClient},
+    services::{AcceptanceManager, AssetProcessor, AssetProxy, ServiceSpecification, WalletClient},
     storage::DbFactory,
 };
 use tari_dan_engine::instructions::Instruction;
@@ -45,6 +45,7 @@ pub struct ValidatorNodeGrpcServer<TServiceSpecification: ServiceSpecification> 
     asset_processor: TServiceSpecification::AssetProcessor,
     asset_proxy: TServiceSpecification::AssetProxy,
     wallet_client: TServiceSpecification::WalletClient,
+    acceptance_manager: TServiceSpecification::AcceptanceManager,
 }
 
 impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServiceSpecification> {
@@ -54,6 +55,7 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
         asset_processor: TServiceSpecification::AssetProcessor,
         asset_proxy: TServiceSpecification::AssetProxy,
         wallet_client: TServiceSpecification::WalletClient,
+        acceptance_manager: TServiceSpecification::AcceptanceManager,
     ) -> Self {
         Self {
             node_identity,
@@ -61,6 +63,7 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
             asset_processor,
             asset_proxy,
             wallet_client,
+            acceptance_manager,
         }
     }
 }
@@ -75,15 +78,13 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         &self,
         request: tonic::Request<rpc::PublishContractAcceptanceRequest>,
     ) -> Result<Response<rpc::PublishContractAcceptanceResponse>, tonic::Status> {
-        let mut wallet_client = self.wallet_client.clone();
+        let mut acceptance_manager = self.acceptance_manager.clone();
         let request = request.into_inner();
         let contract_id =
             FixedHash::try_from(request.contract_id).map_err(|err| tonic::Status::invalid_argument(err.to_string()))?;
-        let validator_node_public_key = self.node_identity.public_key();
-        let signature = Signature::default();
 
-        match wallet_client
-            .submit_contract_acceptance(&contract_id, validator_node_public_key, &signature)
+        match acceptance_manager
+            .publish_acceptance(&self.node_identity, &contract_id)
             .await
         {
             Ok(tx_id) => Ok(Response::new(rpc::PublishContractAcceptanceResponse {

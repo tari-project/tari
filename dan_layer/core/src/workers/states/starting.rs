@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::marker::PhantomData;
+use std::{convert::TryInto, marker::PhantomData};
 
 use log::*;
 use tari_core::transactions::transaction_components::OutputType;
@@ -62,16 +62,17 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
         );
         let tip = base_node_client.get_tip_info().await?;
         // get latest checkpoint on the base layer
-        let mut constitution = base_node_client
+        let mut outputs = base_node_client
             .get_current_contract_outputs(
-                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                tip.height_of_longest_chain
+                    .saturating_sub(asset_definition.base_layer_confirmation_time),
                 asset_definition.contract_id,
                 OutputType::ContractConstitution,
             )
             .await?;
 
-        let output = match constitution.pop() {
-            Some(chk) => chk,
+        let output = match outputs.pop() {
+            Some(chk) => chk.try_into()?,
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckopintNotFound),
         };
 

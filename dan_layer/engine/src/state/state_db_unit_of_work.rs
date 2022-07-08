@@ -10,7 +10,7 @@ use std::{
 use digest::Digest;
 use log::*;
 use tari_common_types::types::{FixedHash, HashDigest};
-use tari_crypto::common::Blake256;
+use tari_crypto::hash::blake2::Blake256;
 use tari_dan_common_types::storage::UnitOfWorkTracker;
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::hex::Hex;
@@ -62,7 +62,7 @@ impl UnitOfWorkContext {
     }
 }
 
-pub struct StateDbUnitOfWorkImpl<TBackendAdapter: StateDbBackendAdapter> {
+pub struct StateDbUnitOfWorkImpl<TBackendAdapter> {
     inner: Arc<RwLock<StateDbUnitOfWorkInner<TBackendAdapter>>>,
     context: UnitOfWorkContext,
 }
@@ -101,6 +101,9 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
 
     fn commit(&mut self) -> Result<(), StateStorageError> {
         let mut inner = self.inner.write()?;
+        if !inner.is_dirty() {
+            return Ok(());
+        }
         let tx = inner
             .backend_adapter
             .create_transaction()
@@ -191,6 +194,8 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWorkReader for StateDb
             .map_err(TBackendAdapter::Error::into)
     }
 
+    // TODO: Needs to keep a merkle proof of the latest state and append all updates onto that to get the merkle root
+    // TODO: This does not include _new_ keys that are to be added in the updates
     fn calculate_root(&self) -> Result<StateRoot, StateStorageError> {
         let inner = self.inner.read()?;
         let tx = inner
@@ -236,6 +241,7 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWorkReader for StateDb
             let hasher = HashDigest::new();
             top_level_mmr.push(hasher.chain(schema).chain(mmr.get_merkle_root()?).finalize().to_vec())?;
         }
+
         Ok(StateRoot::new(
             top_level_mmr
                 .get_merkle_root()?
@@ -306,7 +312,7 @@ fn find_update<TBackendAdapter: StateDbBackendAdapter>(
     None
 }
 
-pub struct StateDbUnitOfWorkInner<TBackendAdapter: StateDbBackendAdapter> {
+pub struct StateDbUnitOfWorkInner<TBackendAdapter> {
     backend_adapter: TBackendAdapter,
     updates: Vec<UnitOfWorkTracker<DbKeyValue>>,
 }
@@ -317,5 +323,9 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWorkInner<TBackendAdap
             updates: vec![],
             backend_adapter,
         }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        !self.updates.is_empty()
     }
 }

@@ -388,7 +388,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
     ) -> Result<(), DigitalAssetError> {
         // TODO: Only send node hash, not the full node
         let mut message = HotStuffMessage::vote_prepare(node, view_number, self.contract_id);
-        message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
+        message.add_partial_sig(signing_service.sign(&message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }
 }

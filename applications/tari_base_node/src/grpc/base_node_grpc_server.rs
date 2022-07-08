@@ -1880,7 +1880,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::GetConstitutionsStream>, Status> {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        println!("{:?}", request);
         let dan_node_public_key = PublicKey::from_bytes(&request.dan_node_public_key)
             .map_err(|_| Status::invalid_argument("Dan node public key is not a valid public key"))?;
 
@@ -1890,7 +1889,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .transpose()
             .map_err(|_| Status::invalid_argument("Block hash has an invalid length"))?;
 
-        println!("{:?}", start_hash);
         let mut node_service = self.node_service.clone();
         // Check the start_hash is correct, or if not provided, start from genesis
         let start_header = match start_hash {

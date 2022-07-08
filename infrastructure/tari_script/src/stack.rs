@@ -333,7 +333,7 @@ fn counter(values: [u8; 5], item: &StackItem) -> [u8; 5] {
 mod test {
     use digest::Digest;
     use tari_crypto::{
-        common::Blake256,
+        hash::blake2::Blake256,
         keys::{PublicKey, SecretKey},
         ristretto::{utils, utils::SignatureSet, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };

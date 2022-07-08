@@ -82,8 +82,8 @@ impl<T: Borrow<Signature>> From<T> for proto::Signature {
 impl<B: Borrow<SignerSignature>> From<B> for proto::SignerSignature {
     fn from(value: B) -> Self {
         Self {
-            signer: value.borrow().signer.to_vec(),
-            signature: Some(proto::Signature::from(&value.borrow().signature)),
+            signer: value.borrow().signer().to_vec(),
+            signature: Some(proto::Signature::from(value.borrow().signature())),
         }
     }
 }
@@ -92,13 +92,13 @@ impl TryFrom<proto::SignerSignature> for SignerSignature {
     type Error = String;
 
     fn try_from(value: proto::SignerSignature) -> Result<Self, Self::Error> {
-        Ok(Self {
-            signer: PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
-            signature: value
+        Ok(Self::new(
+            PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
+            value
                 .signature
                 .map(TryInto::try_into)
                 .ok_or("signature not provided")??,
-        })
+        ))
     }
 }
 

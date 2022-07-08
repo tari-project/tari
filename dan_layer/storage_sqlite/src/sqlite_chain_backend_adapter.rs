@@ -20,21 +20,30 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt::Display,
+};
 
 use diesel::{prelude::*, Connection, SqliteConnection};
 use log::*;
 use tari_dan_core::{
     models::{HotStuffMessageType, QuorumCertificate, TariDanPayload, TreeNodeHash, ValidatorSignature, ViewId},
-    storage::chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
+    storage::{
+        chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
+        AsKeyBytes,
+        AtomicDb,
+        MetadataBackendAdapter,
+    },
 };
-use tari_utilities::ByteArray;
+use tari_utilities::{message_format::MessageFormat, ByteArray};
 
 use crate::{
     error::SqliteStorageError,
     models::{
         instruction::{Instruction, NewInstruction},
         locked_qc::LockedQc,
+        metadata::Metadata,
         node::{NewNode, Node},
         prepare_qc::PrepareQc,
     },
@@ -59,26 +68,11 @@ impl SqliteChainBackendAdapter {
     }
 }
 
-impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
-    type BackendTransaction = SqliteTransaction;
+impl AtomicDb for SqliteChainBackendAdapter {
+    type DbTransaction = SqliteTransaction;
     type Error = SqliteStorageError;
-    type Id = i32;
-    type Payload = TariDanPayload;
 
-    fn is_empty(&self) -> Result<bool, Self::Error> {
-        let connection = self.get_connection()?;
-        let n: Option<Node> =
-            nodes::table
-                .first(&connection)
-                .optional()
-                .map_err(|source| SqliteStorageError::DieselError {
-                    source,
-                    operation: "is_empty".to_string(),
-                })?;
-        Ok(n.is_none())
-    }
-
-    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
+    fn create_transaction(&self) -> Result<Self::DbTransaction, Self::Error> {
         let connection = self.get_connection()?;
         connection
             .execute("PRAGMA foreign_keys = ON;")
@@ -94,6 +88,36 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             })?;
 
         Ok(SqliteTransaction::new(connection))
+    }
+
+    fn commit(&self, transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
+        debug!(target: LOG_TARGET, "Committing transaction");
+        transaction
+            .connection()
+            .execute("COMMIT TRANSACTION")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "commit::chain".to_string(),
+            })?;
+        Ok(())
+    }
+}
+
+impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
+    type Id = i32;
+    type Payload = TariDanPayload;
+
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        let connection = self.get_connection()?;
+        let n: Option<Node> =
+            nodes::table
+                .first(&connection)
+                .optional()
+                .map_err(|source| SqliteStorageError::DieselError {
+                    source,
+                    operation: "is_empty".to_string(),
+                })?;
+        Ok(n.is_none())
     }
 
     fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error> {
@@ -137,7 +161,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         }
     }
 
-    fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn insert_node(&self, item: &DbNode, transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
         debug!(target: LOG_TARGET, "Inserting {:?}", item);
         #[allow(clippy::cast_possible_wrap)]
         let new_node = NewNode {
@@ -155,12 +179,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(())
     }
 
-    fn update_node(
-        &self,
-        id: &Self::Id,
-        item: &DbNode,
-        transaction: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error> {
+    fn update_node(&self, id: &Self::Id, item: &DbNode, transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
         use crate::schema::nodes::dsl;
         // Should not be allowed to update hash, parent and height
         diesel::update(dsl::nodes.find(id))
@@ -179,7 +198,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
     }
 
     #[allow(clippy::cast_possible_wrap)]
-    fn update_locked_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn update_locked_qc(&self, item: &DbQc, transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
         use crate::schema::locked_qc::dsl;
         let message_type = i32::from(item.message_type.as_u8());
         let existing: Result<LockedQc, _> = dsl::locked_qc.find(1).first(transaction.connection());
@@ -218,7 +237,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
     }
 
     #[allow(clippy::cast_possible_wrap)]
-    fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
         use crate::schema::prepare_qc::dsl;
         let message_type = i32::from(item.message_type.as_u8());
         let existing: Result<PrepareQc, _> = dsl::prepare_qc.find(1).first(transaction.connection());
@@ -277,18 +296,6 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             ))
         })
         .transpose()
-    }
-
-    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        debug!(target: LOG_TARGET, "Committing transaction");
-        transaction
-            .connection()
-            .execute("COMMIT TRANSACTION")
-            .map_err(|source| SqliteStorageError::DieselError {
-                source,
-                operation: "commit::chain".to_string(),
-            })?;
-        Ok(())
     }
 
     fn locked_qc_id(&self) -> Self::Id {
@@ -406,11 +413,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         }
     }
 
-    fn insert_instruction(
-        &self,
-        item: &DbInstruction,
-        transaction: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error> {
+    fn insert_instruction(&self, item: &DbInstruction, transaction: &Self::DbTransaction) -> Result<(), Self::Error> {
         use crate::schema::nodes::dsl;
         // TODO: this could be made more efficient
         let node: Node = dsl::nodes
@@ -467,5 +470,78 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             .collect::<Result<_, Self::Error>>()?;
 
         Ok(instructions)
+    }
+}
+
+impl<K: AsKeyBytes + Display + Copy> MetadataBackendAdapter<K> for SqliteChainBackendAdapter {
+    fn get_metadata<T: MessageFormat>(
+        &self,
+        key: &K,
+        transaction: &Self::DbTransaction,
+    ) -> Result<Option<T>, Self::Error> {
+        use crate::schema::metadata::dsl;
+        debug!(target: LOG_TARGET, "get_metadata: key = {}", key);
+        let value = dsl::metadata
+            .select(metadata::value)
+            .filter(metadata::key.eq(key.as_key_bytes()))
+            .first::<Vec<u8>>(transaction.connection())
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "chain_db::get_metadata".to_string(),
+            })?;
+
+        value
+            .map(|v| T::from_binary(&v))
+            .transpose()
+            .map_err(|_| SqliteStorageError::MalformedMetadata { key: key.to_string() })
+    }
+
+    fn set_metadata<T: MessageFormat>(&self, key: K, value: T, tx: &Self::DbTransaction) -> Result<(), Self::Error> {
+        use crate::schema::metadata::dsl;
+        debug!(target: LOG_TARGET, "set_metadata: key = {}", key);
+        let value = value
+            .to_binary()
+            .map_err(|_| SqliteStorageError::MalformedMetadata { key: key.to_string() })?;
+
+        // One day we will have upsert in diesel
+        if self.metadata_key_exists(&key, tx)? {
+            debug!(target: LOG_TARGET, "update_metadata: key = {}", key);
+            diesel::update(metadata::table.filter(dsl::key.eq(key.as_key_bytes())))
+                .set(metadata::value.eq(value))
+                .execute(tx.connection())
+                .map_err(|source| SqliteStorageError::DieselError {
+                    source,
+                    operation: "chain_db::set_metadata".to_string(),
+                })?;
+        } else {
+            debug!(target: LOG_TARGET, "insert_metadata: key = {}", key);
+            diesel::insert_into(metadata::table)
+                .values(Metadata {
+                    key: key.as_key_bytes().to_vec(),
+                    value,
+                })
+                .execute(tx.connection())
+                .map_err(|source| SqliteStorageError::DieselError {
+                    source,
+                    operation: "chain_db::set_metadata".to_string(),
+                })?;
+        }
+
+        Ok(())
+    }
+
+    fn metadata_key_exists(&self, key: &K, transaction: &Self::DbTransaction) -> Result<bool, Self::Error> {
+        use crate::schema::metadata::dsl;
+        let v = dsl::metadata
+            .select(metadata::key)
+            .filter(metadata::key.eq(key.as_key_bytes()))
+            .first::<Vec<u8>>(transaction.connection())
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "chain_db::get_metadata".to_string(),
+            })?;
+        Ok(v.is_some())
     }
 }

@@ -793,7 +793,6 @@ pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) ->
 
 #[cfg(test)]
 mod test {
-
     use tari_test_utils::unpack_enum;
 
     use super::*;

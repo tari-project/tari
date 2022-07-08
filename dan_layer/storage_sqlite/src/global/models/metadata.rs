@@ -25,7 +25,7 @@ use crate::global::schema::*;
 #[derive(Queryable, Insertable, Identifiable)]
 #[table_name = "metadata"]
 #[primary_key(key_name)]
-pub struct Metadata {
+pub struct GlobalMetadata {
     pub key_name: Vec<u8>,
     pub value: Vec<u8>,
 }

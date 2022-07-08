@@ -22,6 +22,7 @@
 
 use tari_dan_engine::state::StateDbBackendAdapter;
 
+use super::acceptance_manager::AcceptanceManager;
 use crate::{
     models::{domain_events::ConsensusWorkerDomainEvent, Payload},
     services::{
@@ -39,18 +40,25 @@ use crate::{
         SigningService,
         ValidatorNodeClientFactory,
     },
-    storage::{chain::ChainDbBackendAdapter, global::GlobalDbBackendAdapter, ChainStorageService, DbFactory},
+    storage::{
+        chain::{ChainDbBackendAdapter, ChainDbMetadataKey},
+        global::GlobalDbBackendAdapter,
+        ChainStorageService,
+        DbFactory,
+        MetadataBackendAdapter,
+    },
 };
 
 /// A trait to describe a specific configuration of services. This type allows other services to
 /// simply reference types.
 /// This trait is intended to only include `types` and no methods.
 pub trait ServiceSpecification: Default + Clone {
+    type AcceptanceManager: AcceptanceManager + Clone;
     type Addr: NodeAddressable;
     type AssetProcessor: AssetProcessor + Clone;
     type AssetProxy: AssetProxy + Clone;
     type BaseNodeClient: BaseNodeClient + Clone;
-    type ChainDbBackendAdapter: ChainDbBackendAdapter;
+    type ChainDbBackendAdapter: ChainDbBackendAdapter + MetadataBackendAdapter<ChainDbMetadataKey>;
     type ChainStorageService: ChainStorageService<Self::Payload>;
     type CheckpointManager: CheckpointManager;
     type CommitteeManager: CommitteeManager<Self::Addr>;
@@ -67,7 +75,7 @@ pub trait ServiceSpecification: Default + Clone {
     type Payload: Payload;
     type PayloadProcessor: PayloadProcessor<Self::Payload>;
     type PayloadProvider: PayloadProvider<Self::Payload>;
-    type SigningService: SigningService<Self::Addr>;
+    type SigningService: SigningService;
     type StateDbBackendAdapter: StateDbBackendAdapter;
     type ValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = Self::Addr> + Clone;
     type WalletClient: WalletClient + Clone;

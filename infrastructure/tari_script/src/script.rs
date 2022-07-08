@@ -599,7 +599,7 @@ mod test {
     use sha2::Sha256;
     use sha3::Sha3_256 as Sha3;
     use tari_crypto::{
-        common::Blake256,
+        hash::blake2::Blake256,
         keys::{PublicKey, SecretKey},
         ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };

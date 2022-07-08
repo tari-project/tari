@@ -51,7 +51,13 @@ use tari_comms::{
 };
 use tari_comms_dht::Dht;
 use tari_dan_core::{
-    services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification},
+    services::{
+        ConcreteAcceptanceManager,
+        ConcreteAssetProcessor,
+        ConcreteAssetProxy,
+        MempoolServiceHandle,
+        ServiceSpecification,
+    },
     storage::{global::GlobalDb, DbFactory},
 };
 use tari_dan_storage_sqlite::{global::SqliteGlobalDbBackendAdapter, SqliteDbFactory};
@@ -141,20 +147,23 @@ async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     let asset_processor = ConcreteAssetProcessor::default();
     let validator_node_client_factory =
         TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
+    let base_node_client = GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address);
     let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
-        GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address),
+        base_node_client.clone(),
         validator_node_client_factory,
         5,
         mempool_service.clone(),
         db_factory.clone(),
     );
     let wallet_client = GrpcWalletClient::new(config.validator_node.wallet_grpc_address);
+    let acceptance_manager = ConcreteAcceptanceManager::new(wallet_client.clone(), base_node_client);
     let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
         node_identity.as_ref().clone(),
         db_factory.clone(),
         asset_processor,
         asset_proxy,
         wallet_client,
+        acceptance_manager,
     );
 
     if let Some(address) = config.validator_node.grpc_address.clone() {

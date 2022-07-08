@@ -27,7 +27,7 @@ use std::sync::{
 
 use log::*;
 use tari_common_types::types::PublicKey;
-use tari_dan_engine::state::{StateDbUnitOfWork, StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader};
+use tari_dan_engine::state::{models::StateRoot, StateDbUnitOfWork, StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader};
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
@@ -61,6 +61,7 @@ pub struct ConsensusWorker<TSpecification: ServiceSpecification> {
     db_factory: TSpecification::DbFactory,
     chain_storage_service: TSpecification::ChainStorageService,
     state_db_unit_of_work: Option<StateDbUnitOfWorkImpl<TSpecification::StateDbBackendAdapter>>,
+    state_db_state_root: Option<StateRoot>,
     checkpoint_manager: TSpecification::CheckpointManager,
     validator_node_client_factory: TSpecification::ValidatorNodeClientFactory,
 }
@@ -99,6 +100,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             base_node_client,
             db_factory,
             chain_storage_service,
+            state_db_state_root: None,
             state_db_unit_of_work: None,
             checkpoint_manager,
             validator_node_client_factory,
@@ -244,6 +246,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
             )
             .await?;
         // Will only be committed in DECIDE
+        self.worker.state_db_state_root = Some(state_tx.calculate_root()?);
         self.worker.state_db_unit_of_work = Some(state_tx);
         unit_of_work.commit()?;
         Ok(res)
@@ -271,12 +274,21 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
     }
 
     async fn commit(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let current_checkpoint_num = self.chain_db.get_current_checkpoint_number()?;
         let mut unit_of_work = self.chain_db.new_unit_of_work();
         let mut state = states::CommitState::<T>::new(
             self.worker.node_address.clone(),
             self.worker.asset_definition.contract_id,
             self.worker.committee_manager.current_committee()?.clone(),
         );
+        let proposed_state_root =
+            self.worker
+                .state_db_state_root
+                .as_ref()
+                .copied()
+                .ok_or_else(|| DigitalAssetError::InvalidLogicPath {
+                    reason: "state_db_state_root is None in commit phase".to_string(),
+                })?;
         let res = state
             .next_event(
                 self.worker.timeout,
@@ -285,6 +297,8 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
                 &mut self.worker.outbound_service,
                 &self.worker.signing_service,
                 unit_of_work.clone(),
+                proposed_state_root,
+                current_checkpoint_num,
             )
             .await?;
         unit_of_work.commit()?;
@@ -313,10 +327,15 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         if let Some(mut state_tx) = self.worker.state_db_unit_of_work.take() {
             state_tx.commit()?;
             let signatures = state.collected_checkpoint_signatures();
-            self.worker
-                .checkpoint_manager
-                .create_checkpoint(state_tx.calculate_root()?, signatures)
-                .await?;
+            // TODO: Read checkpoint interval from constitution
+            if self.worker.current_view_id.as_u64() % 50 == 0 {
+                let checkpoint_number = self.chain_db.get_current_checkpoint_number()?;
+                self.worker
+                    .checkpoint_manager
+                    .create_checkpoint(checkpoint_number, state_tx.calculate_root()?, &signatures)
+                    .await?;
+                self.chain_db.increment_checkpoint_number()?;
+            }
             Ok(res)
         } else {
             // technically impossible
@@ -333,6 +352,7 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
             "Status: {} in mempool ",
             self.worker.payload_provider.get_payload_queue().await,
         );
+        self.worker.state_db_state_root = None;
         self.worker.state_db_unit_of_work = None;
         let mut state = states::NextViewState::<T>::new();
         state
