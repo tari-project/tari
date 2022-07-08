@@ -72,11 +72,11 @@ impl WalletClient for GrpcWalletClient {
         contract_id: &FixedHash,
         state_root: &StateRoot,
         checkpoint_number: u64,
-        checkpoint_signatures: Vec<SignerSignature>,
+        checkpoint_signatures: &[SignerSignature],
     ) -> Result<(), DigitalAssetError> {
         let inner = self.connection().await?;
         let committee_signatures = grpc::CommitteeSignatures {
-            signatures: checkpoint_signatures.into_iter().map(Into::into).collect(),
+            signatures: checkpoint_signatures.iter().map(Into::into).collect(),
         };
 
         if checkpoint_number == 0 {

@@ -3,7 +3,7 @@
 
 use tari_common_types::types::FixedHash;
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct StateRoot {
     root: FixedHash,
 }
@@ -21,5 +21,11 @@ impl StateRoot {
         Self {
             root: FixedHash::zero(),
         }
+    }
+}
+
+impl From<StateRoot> for FixedHash {
+    fn from(state_root: StateRoot) -> Self {
+        state_root.root
     }
 }
