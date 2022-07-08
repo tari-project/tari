@@ -6,10 +6,13 @@ import Text from '../../components/Text'
 import Loading from '../../components/Loading'
 import t from '../../locales'
 
-import Chart from './Chart'
+import Chart from './ChartLight'
 import AvailableBalanceHelp from './AvailableBalanceHelp'
 
 import { TariSignet, TariAmountContainer } from './styles'
+import { useAppSelector } from '../../store/hooks'
+import { selectTheme } from '../../store/app/selectors'
+import ChartDark from './ChartDark'
 
 const WalletBalance = ({
   balance,
@@ -21,6 +24,7 @@ const WalletBalance = ({
   pending: boolean
 }) => {
   const theme = useTheme()
+  const currentTheme = useAppSelector(selectTheme)
 
   return (
     <Box
@@ -54,7 +58,7 @@ const WalletBalance = ({
             color={pending ? theme.placeholderText : theme.helpTipText}
           />
         </div>
-        <Chart />
+        {currentTheme === 'light' ? <Chart /> : <ChartDark />}
       </TariAmountContainer>
       <div
         style={{

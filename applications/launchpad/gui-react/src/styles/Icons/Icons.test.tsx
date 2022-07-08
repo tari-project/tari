@@ -30,6 +30,7 @@ const ICONS = [
   'Card',
   'Charge',
   'Chart',
+  'ChartDark',
   'Check',
   'CheckRound',
   'Checklist',
