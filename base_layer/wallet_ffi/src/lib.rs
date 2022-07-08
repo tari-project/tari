@@ -4704,20 +4704,18 @@ pub unsafe extern "C" fn wallet_coin_join(
         },
     };
 
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .create_coin_join(commitments, fee_per_gram.into()),
-    ) {
-        Ok((tx_id, _, _)) => {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.coin_join(commitments, fee_per_gram.into(), None))
+    {
+        Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
             tx_id.as_u64()
         },
 
         Err(e) => {
             error!(target: LOG_TARGET, "failed to join outputs: {:#?}", e);
-            ptr::replace(error_ptr, LibWalletError::from(WalletError::OutputManagerError(e)).code);
+            ptr::replace(error_ptr, LibWalletError::from(e).code);
             0
         },
     }
