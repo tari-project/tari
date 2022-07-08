@@ -1275,166 +1275,6 @@ where
         Ok(tx_id)
     }
 
-    // Sends a one side payment transaction to an obfuscated recipient's address
-    // # Arguments
-    // * `big_a` - The Comms pubkey of the recipient node `A = a * G`
-    // * `big_b` - The Comms pubkey of the recipient node `B = b * G`
-    // * `amount` - The amount of Tari to send to the recipient
-    // * `fee_per_gram` - The amount of fee per transaction gram to be included in transaction
-    // pub async fn send_one_sided_stealth_transaction(
-    // &mut self,
-    // big_a: CommsPublicKey,
-    // big_b: CommsPublicKey,
-    // amount: MicroTari,
-    // message: String,
-    // output_features: OutputFeatures,
-    // fee_per_gram: MicroTari,
-    // transaction_broadcast_join_handles: &mut FuturesUnordered<
-    // JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-    // >,
-    // ) -> Result<TxId, TransactionServiceError> {
-    // if self.node_identity.public_key() == &dest_pubkey {
-    // warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
-    // return Err(TransactionServiceError::OneSidedTransactionError(
-    // "One-sided spend-to-self transactions not supported".to_string(),
-    // ));
-    // }
-    //
-    // Sender generates a random nonce key-pair: R=r⋅G
-    // let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
-    //
-    // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
-    // where H(⋅) is a cryptographic hash function
-    // let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_test")
-    // .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
-    // .finalize();
-    //
-    // computing a spending key: Ks=c⋅G+B
-    // let spending_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;
-    //
-    // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
-    // let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(spending_key)));
-    //
-    // let tx_id = TxId::new_random();
-    //
-    // Prepare sender part of the transaction
-    // let mut stp = self
-    // .output_manager_service
-    // .prepare_transaction_to_send(
-    // tx_id,
-    // amount,
-    // UtxoSelectionCriteria::default(),
-    // output_features,
-    // fee_per_gram,
-    // None,
-    // message.clone(),
-    // script,
-    // Covenant::default(),
-    // )
-    // .await?;
-    //
-    // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-    // but the returned value is not used
-    // let _single_round_sender_data = stp
-    // .build_single_round_message()
-    // .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-    //
-    // self.output_manager_service
-    // .confirm_pending_transaction(tx_id)
-    // .await
-    // .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-    //
-    // Prepare receiver part of the transaction
-    //
-    // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
-    // bytes to enable conversion into a private key to be used as the spending key
-    // let sender_offset_private_key = stp
-    // .get_recipient_sender_offset_private_key(0)
-    // .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-    //
-    // let spend_key = PrivateKey::from_bytes(
-    // CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
-    // )
-    // .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-    //
-    // let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-    // let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-    // let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-    // let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
-    // let rewind_data = RewindData {
-    // rewind_blinding_key: rewind_blinding_key.clone(),
-    // recovery_byte_key: recovery_byte_key.clone(),
-    // encryption_key: encryption_key.clone(),
-    // };
-    //
-    // let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
-    // sender_message,
-    // PrivateKey::random(&mut OsRng),
-    // spend_key,
-    // &self.resources.factories,
-    // &rewind_data,
-    // );
-    //
-    // let recipient_reply = rtp.get_signed_data()?.clone();
-    //
-    // Start finalizing
-    // stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
-    // .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-    //
-    // Finalize
-    // stp.finalize(
-    // KernelFeatures::empty(),
-    // &self.resources.factories,
-    // None,
-    // self.last_seen_tip_height.unwrap_or(u64::MAX),
-    // )
-    // .map_err(|e| {
-    // error!(
-    // target: LOG_TARGET,
-    // "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-    // );
-    // TransactionServiceProtocolError::new(tx_id, e.into())
-    // })?;
-    //
-    // info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
-    //
-    // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-    // there are no subscribers.
-    // let _result = self
-    // .event_publisher
-    // .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-    //
-    // Broadcast one-sided transaction
-    // let tx = stp
-    // .get_transaction()
-    // .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-    //
-    // let fee = stp
-    // .get_fee_amount()
-    // .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-    //
-    // self.submit_transaction(
-    // transaction_broadcast_join_handles,
-    // CompletedTransaction::new(
-    // tx_id,
-    // self.resources.node_identity.public_key().clone(),
-    // dest_pubkey.clone(),
-    // amount,
-    // fee,
-    // tx.clone(),
-    // TransactionStatus::Completed,
-    // message.clone(),
-    // Utc::now().naive_utc(),
-    // TransactionDirection::Outbound,
-    // None,
-    // None,
-    // ),
-    // )
-    // .await?;
-    //
-    // Ok(tx_id)
-    // }
-
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
@@ -2355,6 +2195,7 @@ where
                 current_height,
             )
             .await?;
+
         let transaction_event = match import_status {
             ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
             ImportStatus::FauxUnconfirmed => TransactionEvent::FauxTransactionUnconfirmed {
@@ -2364,6 +2205,7 @@ where
             },
             ImportStatus::FauxConfirmed => TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true },
         };
+
         let _size = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
             trace!(
                 target: LOG_TARGET,
@@ -2372,6 +2214,7 @@ where
             );
             e
         });
+
         Ok(tx_id)
     }
 
@@ -2607,10 +2450,10 @@ mod tests {
             .finalize();
 
         // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
-        let spending_key =
+        let sender_spending_key =
             PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
 
-        let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(spending_key)));
+        let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(sender_spending_key.clone())));
 
         // ----------------------------------------------------------------------------
         // imitating the receiving end, scanning and extraction
@@ -2623,12 +2466,18 @@ mod tests {
                 .chain(PublicKey::shared_secret(&a, &big_r).as_bytes())
                 .finalize();
 
-            // computing a spending key `Ks=c⋅G+b` for comparison
-            let sample_spending_key =
+            // computing a spending key `Ks=(c+b)G` for comparison
+            let receiver_spending_key =
                 PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b.clone()));
 
-            // QUESTION: is this needed for anything at all?
-            // let script_signature = RistrettoSchnorr::new(*big_r.clone(), b);
+            // computing a scanning key `Ks=cG+B` for comparison
+            let scanning_key =
+                PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
+
+            assert_eq!(**provided_spending_key, sender_spending_key);
+            assert_eq!(receiver_spending_key, sender_spending_key);
+            assert_eq!(scanning_key, sender_spending_key);
+            assert_eq!(scanning_key, receiver_spending_key);
         }
     }
 }
