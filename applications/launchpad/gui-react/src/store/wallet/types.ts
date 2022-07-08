@@ -13,4 +13,5 @@ export type WalletState = {
     available: number
     pending: boolean
   }
+  lastTxHistoryUpdateAt?: Date
 }

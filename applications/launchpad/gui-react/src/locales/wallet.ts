@@ -2,6 +2,9 @@
 const translations = {
   setUpTariWalletTitle: 'Tari Wallet',
   setUpTariWalletSubmitBtn: 'Set up Tari Wallet',
+  recentTransactions: 'Recent transactions',
+  seeAllHistory: 'See all history',
+  closeAllHistory: 'Close all history',
   password: {
     title: 'Enter Password',
     cta: 'to unlock your wallet:',
@@ -16,6 +19,11 @@ const translations = {
     title: 'Balance',
     available: 'Available to send',
     sendCta: 'Send funds',
+  },
+  transactions: {
+    youReceivedTariFrom: 'You received Tari from',
+    youSentTariTo: 'You sent Tari to',
+    youEarnedTari: 'You earned Tari',
   },
   settings: {
     title: 'Wallet Settings',

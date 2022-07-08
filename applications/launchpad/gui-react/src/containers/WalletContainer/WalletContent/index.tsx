@@ -10,6 +10,7 @@ import WalletBalance from '../WalletBalance'
 import WalletHelp from '../WalletHelp'
 
 import useWalletBalance from './useWalletBalance'
+import RecentTransactions from '../RecentTransactions'
 
 const WalletContent = () => {
   const walletAddress = useAppSelector(selectWalletAddress)
@@ -32,6 +33,7 @@ const WalletContent = () => {
           pending={balancePending}
         />
       </CenteredLayout>
+      <RecentTransactions />
     </div>
   )
 }

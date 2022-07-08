@@ -24,3 +24,6 @@ export const selectWalletSetupRequired = (state: RootState) =>
 export const selectIsPending = selectRecipePending(Container.Wallet)
 
 export const selectIsRunning = selectRecipeRunning(Container.Wallet)
+
+export const selectLastTxHistoryUpdate = (state: RootState) =>
+  state.wallet.lastTxHistoryUpdateAt
