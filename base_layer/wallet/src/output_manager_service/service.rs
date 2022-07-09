@@ -2057,19 +2057,23 @@ where
                     // Extracting the nonce R and a spending key from the script
                     [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] => {
                         // calculating Ks with the provided R nonce from the script
-                        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_address")
-                            .chain(PublicKey::shared_secret(&stealth_address_scanning_secret_key, &big_r).as_bytes())
-                            .finalize();
+                        let c = RistrettoSecretKey::from_bytes(
+                            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_address")
+                                .chain(
+                                    PublicKey::shared_secret(&stealth_address_scanning_secret_key, &big_r).as_bytes(),
+                                )
+                                .finalize()
+                                .as_ref(),
+                        )
+                        .unwrap();
 
                         // constructing a valid, expected spending key to further
                         // compare with the provided spending key
-                        let spending_key_sample = PublicKey::from_secret_key(
-                            &(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() +
-                                stealth_address_spending_secret_key.clone()),
-                        );
+                        let spending_key_sample =
+                            PublicKey::from_secret_key(&c) + stealth_address_spending_public_key.clone();
 
                         if spending_key_sample == **provided_spending_key {
-                            Some((output.clone(), provided_spending_key.clone()))
+                            Some((output.clone(), c))
                         } else {
                             None
                         }
@@ -2078,7 +2082,7 @@ where
             })
             .collect_vec();
 
-        for (output, provided_spending_key) in outputs {
+        for (output, c) in outputs {
             let spending_key = PrivateKey::from_bytes(
                 CommsPublicKey::shared_secret(&stealth_address_spending_secret_key, &output.sender_offset_public_key)
                     .as_bytes(),
@@ -2104,9 +2108,9 @@ where
                         committed_value,
                         blinding_factor.clone(),
                         output.features,
-                        script!(PushPubKey(provided_spending_key)),
+                        output.script,
                         tari_script::ExecutionStack::new(vec![]),
-                        stealth_address_spending_secret_key.clone(),
+                        c + spending_key,
                         output.sender_offset_public_key,
                         output.metadata_signature,
                         0,
