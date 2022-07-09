@@ -65,10 +65,7 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
-    ristretto::RistrettoSecretKey,
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
@@ -2428,9 +2425,9 @@ mod tests {
     use tari_crypto::{
         hash::blake2::Blake256,
         hashing::{DomainSeparatedHasher, GenericHashDomain},
-        ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+        ristretto::RistrettoSecretKey,
     };
-    use tari_script::{ExecutionStack, Opcode};
+    use tari_script::Opcode;
 
     use super::*;
 

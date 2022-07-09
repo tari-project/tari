@@ -2042,51 +2042,45 @@ where
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = vec![];
 
-        // WARNING: these are stub placeholders
-        let (stealth_address_scanning_secret_key, stealth_address_scanning_public_key) =
-            PublicKey::random_keypair(&mut OsRng);
-
-        let (stealth_address_spending_secret_key, stealth_address_spending_public_key) =
-            PublicKey::random_keypair(&mut OsRng);
+        // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
+        let a = self.node_identity.stealth_address_scanning_secret_key();
+        let b = self.node_identity.stealth_address_spending_secret_key();
+        let big_b = self.node_identity.stealth_address_spending_public_key();
 
         let outputs = outputs
             .into_iter()
+            // Extracting the nonce R and a spending key from the script
             .filter_map(|output| {
-                match output.script.as_slice() {
-                    _ => None,
-                    // Extracting the nonce R and a spending key from the script
-                    [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] => {
-                        // calculating Ks with the provided R nonce from the script
-                        let c = RistrettoSecretKey::from_bytes(
-                            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_address")
-                                .chain(
-                                    PublicKey::shared_secret(&stealth_address_scanning_secret_key, &big_r).as_bytes(),
-                                )
-                                .finalize()
-                                .as_ref(),
-                        )
-                        .unwrap();
+                if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] =
+                    output.script.as_slice()
+                {
+                    // calculating Ks with the provided R nonce from the script
+                    let c = RistrettoSecretKey::from_bytes(
+                        DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_address")
+                            .chain(PublicKey::shared_secret(&a, &big_r).as_bytes())
+                            .finalize()
+                            .as_ref(),
+                    )
+                    .unwrap();
 
-                        // constructing a valid, expected spending key to further
-                        // compare with the provided spending key
-                        let spending_key_sample =
-                            PublicKey::from_secret_key(&c) + stealth_address_spending_public_key.clone();
+                    // constructing a valid, expected spending key to further
+                    // compare with the provided spending key
+                    let spending_key_sample = PublicKey::from_secret_key(&c) + big_b.clone();
 
-                        if spending_key_sample == **provided_spending_key {
-                            Some((output.clone(), c))
-                        } else {
-                            None
-                        }
-                    },
+                    if spending_key_sample == **provided_spending_key {
+                        Some((output.clone(), c))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
             })
             .collect_vec();
 
         for (output, c) in outputs {
-            let spending_key = PrivateKey::from_bytes(
-                CommsPublicKey::shared_secret(&stealth_address_spending_secret_key, &output.sender_offset_public_key)
-                    .as_bytes(),
-            )?;
+            let spending_key =
+                PrivateKey::from_bytes(CommsPublicKey::shared_secret(&b, &output.sender_offset_public_key).as_bytes())?;
 
             let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
             let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
