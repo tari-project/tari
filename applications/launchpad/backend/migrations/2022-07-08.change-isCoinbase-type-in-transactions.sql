@@ -1,3 +1,4 @@
+
 ALTER TABLE transactions RENAME TO tmp_transactions;
 CREATE TABLE transactions (
   event VARCHAR(50) NOT NULL,
@@ -9,10 +10,10 @@ CREATE TABLE transactions (
   message VARCHAR(255) NOT NULL,
   source VARCHAR(255) NOT NULL,
   destination VARCHAR(255) NOT NULL,
-  isCoinbase INTEGER DEFAULT 0,
+  isCoinbase VARCHAR(50) DEFAULT 'false',
   network VARCHAR(50),
   PRIMARY KEY(id)
 );
-INSERT INTO transactions(event, id, receivedAt, status, direction, amount, message, "source", destination, isCoinbase)
-  SELECT event, id, receivedAt, status, direction, amount, message, "source", destination, isCoinbase FROM tmp_transactions WHERE id NOT IN ( SELECT id FROM tmp_transactions GROUP BY id HAVING COUNT(*) > 1);
+INSERT INTO transactions(event, id, receivedAt, status, direction, amount, message, "source", destination, isCoinbase, network)
+  SELECT event, id, receivedAt, status, direction, amount, message, "source", destination, IIF(isCoinbase = 'true', 'true', 'false'), network FROM tmp_transactions;
 DROP TABLE tmp_transactions;

@@ -40,19 +40,15 @@ const trimAddress = (address: string, start = 4, end = 4) => {
 }
 
 const renderStatus = (record: TransactionDBRecord) => {
-  /**
-   * @TODO revisit this - check how the tx status is being changed
-   * and confirm that frontend gets all updates from backend for each tx.
-   */
   if (record.event === 'cancelled') {
     return <Tag type='light'>{t.common.adjectives.cancelled}</Tag>
   }
 
-  if (record.event === 'received' || record.event === 'sent') {
-    return null
+  if (record.event !== 'mined') {
+    return <Tag>{t.common.adjectives.processing}</Tag>
   }
 
-  return <Tag>{t.common.adjectives.processing}</Tag>
+  return null
 }
 
 const addNth = (day: number) => {
@@ -181,12 +177,12 @@ const TransactionsList = ({ records }: TransactionsListProps) => {
     <StyledTable>
       <tbody>
         {records.map((row, idx) => {
-          if (row.direction === 'Outbound') {
-            return <OutboundTxRow record={row} key={idx} />
+          if (row.isCoinbase === 'true') {
+            return <MiningTxRow record={row} key={idx} />
           }
 
-          if (row.isCoinbase) {
-            return <MiningTxRow record={row} key={idx} />
+          if (row.direction === 'Outbound') {
+            return <OutboundTxRow record={row} key={idx} />
           }
 
           return <InboundTxRow record={row} key={idx} />
