@@ -13,7 +13,7 @@ export const OnboardingMessagesIntro: TBotMessage[] = [
   {
     content: introMessages[0],
     barFill: 0.0625,
-    wait: 1000,
+    wait: 3000,
   },
   {
     content: introMessages[1],

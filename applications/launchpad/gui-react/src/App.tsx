@@ -19,6 +19,7 @@ import TBotContainer from './containers/TBotContainer'
 import MiningNotifications from './containers/MiningNotifications'
 import Onboarding from './pages/onboarding'
 import PasswordPrompt from './containers/PasswordPrompt'
+import { hideSplashscreen } from './splashscreen'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -55,6 +56,7 @@ const App = () => {
       try {
         await dispatch(init()).unwrap()
         setInitialized(true)
+        hideSplashscreen()
       } catch (_) {
         // TODO handle error
       }

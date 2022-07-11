@@ -109,6 +109,7 @@ export const MessageContainer = styled(animated.div)<{ $floating?: boolean }>`
   padding-left: ${({ $floating }) => ($floating ? '0px' : '10px')};
   padding-right: ${({ $floating }) => ($floating ? '0px' : '10px')};
   max-width: 100%;
+  width: 100%;
   box-sizing: border-box;
 `
 

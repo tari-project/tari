@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { hideSplashscreen } from '../../splashscreen'
 import { isDockerInstalled } from '../../commands'
 
 import Button from '../../components/Button'
@@ -29,7 +30,7 @@ const OnboardingContainer = () => {
   const [dockerInstalled, setDockerInstalled] = useState<boolean | undefined>(
     undefined,
   )
-  const [current, setCurrent] = useState(1)
+  const [current, setCurrent] = useState(0)
   const [tBotIndex, setTBotIndex] = useState(1)
 
   messagesRef.current = messages
@@ -37,6 +38,8 @@ const OnboardingContainer = () => {
   const checkDocker = async () => {
     const isDocker = await isDockerInstalled()
     setDockerInstalled(isDocker)
+    hideSplashscreen()
+
     if (
       isDocker &&
       lastOnboardingCheckpoint === OnboardingCheckpoints.DOCKER_INSTALL
@@ -57,9 +60,6 @@ const OnboardingContainer = () => {
         ]),
       )
     }
-    /**
-     * @TODO - it's a perfect spot for the splashscreen invoke
-     */
   }
 
   useEffect(() => {
