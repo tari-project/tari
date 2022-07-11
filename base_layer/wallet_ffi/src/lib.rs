@@ -252,7 +252,8 @@ pub enum TariTypeTag {
     Text = 0,
     Utxo = 1,
     Commitment = 2,
-    MicroTari = 3,
+    U64 = 3,
+    I64 = 4,
 }
 
 impl Display for TariTypeTag {
@@ -261,7 +262,8 @@ impl Display for TariTypeTag {
             TariTypeTag::Text => write!(f, "Text"),
             TariTypeTag::Utxo => write!(f, "Utxo"),
             TariTypeTag::Commitment => write!(f, "Commitment"),
-            TariTypeTag::MicroTari => write!(f, "MicroTari"),
+            TariTypeTag::U64 => write!(f, "U64"),
+            TariTypeTag::I64 => write!(f, "I64"),
         }
     }
 }
@@ -269,22 +271,18 @@ impl Display for TariTypeTag {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct TariUtxo {
-    pub commitment: *mut c_char,
+    pub commitment: *const c_char,
     pub value: u64,
     pub mined_height: u64,
     pub mined_timestamp: u64,
     pub status: u8,
 }
 
-impl TryFrom<DbUnblindedOutput> for TariUtxo {
-    type Error = InterfaceError;
-
-    fn try_from(x: DbUnblindedOutput) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<DbUnblindedOutput> for TariUtxo {
+    fn from(x: DbUnblindedOutput) -> Self {
+        Self {
             commitment: CString::new(x.commitment.to_hex())
-                .map_err(|e| {
-                    InterfaceError::InvalidArgument(format!("failed to obtain hex from a commitment: {:?}", e))
-                })?
+                .expect("failed to obtain hex from a commitment")
                 .into_raw(),
             value: x.unblinded_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
@@ -306,35 +304,7 @@ impl TryFrom<DbUnblindedOutput> for TariUtxo {
                 OutputStatus::AbandonedCoinbase => 10,
                 OutputStatus::NotStored => 11,
             },
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-#[repr(C)]
-pub struct TariOutputs {
-    pub len: usize,
-    pub cap: usize,
-    pub ptr: *mut TariUtxo,
-}
-
-// WARNING: must be destroyed properly after use
-impl TryFrom<Vec<DbUnblindedOutput>> for TariOutputs {
-    type Error = InterfaceError;
-
-    fn try_from(outputs: Vec<DbUnblindedOutput>) -> Result<Self, Self::Error> {
-        let mut outputs = ManuallyDrop::new(
-            outputs
-                .into_iter()
-                .map(TariUtxo::try_from)
-                .try_collect::<TariUtxo, Vec<TariUtxo>, InterfaceError>()?,
-        );
-
-        Ok(Self {
-            len: outputs.len(),
-            cap: outputs.capacity(),
-            ptr: outputs.as_mut_ptr(),
-        })
+        }
     }
 }
 
@@ -349,32 +319,94 @@ pub struct TariVector {
     pub ptr: *mut c_void,
 }
 
-#[allow(dead_code)]
-impl TariVector {
-    fn from_string_vec(v: Vec<String>) -> Result<Self, InterfaceError> {
-        let mut strings = ManuallyDrop::new(
+impl From<Vec<i64>> for TariVector {
+    fn from(v: Vec<i64>) -> Self {
+        let mut v = ManuallyDrop::new(v);
+
+        Self {
+            tag: TariTypeTag::I64,
+            len: v.len(),
+            cap: v.capacity(),
+            ptr: v.as_mut_ptr() as *mut c_void,
+        }
+    }
+}
+
+impl From<Vec<u64>> for TariVector {
+    fn from(v: Vec<u64>) -> Self {
+        let mut v = ManuallyDrop::new(v);
+
+        Self {
+            tag: TariTypeTag::U64,
+            len: v.len(),
+            cap: v.capacity(),
+            ptr: v.as_mut_ptr() as *mut c_void,
+        }
+    }
+}
+
+impl From<Vec<String>> for TariVector {
+    fn from(v: Vec<String>) -> Self {
+        let mut v = ManuallyDrop::new(
             v.into_iter()
                 .map(|x| CString::new(x.as_str()).unwrap().into_raw())
                 .collect::<Vec<*mut c_char>>(),
         );
 
-        Ok(Self {
+        Self {
             tag: TariTypeTag::Text,
-            len: strings.len(),
-            cap: strings.capacity(),
-            ptr: strings.as_mut_ptr() as *mut c_void,
-        })
+            len: v.len(),
+            cap: v.capacity(),
+            ptr: v.as_mut_ptr() as *mut c_void,
+        }
     }
+}
 
-    fn from_commitment_vec(v: &mut Vec<Commitment>) -> Result<Self, InterfaceError> {
-        Ok(Self {
+impl From<Vec<Commitment>> for TariVector {
+    fn from(v: Vec<Commitment>) -> Self {
+        let mut v = ManuallyDrop::new(
+            v.into_iter()
+                .map(|x| CString::new(x.to_hex().as_str()).unwrap().into_raw())
+                .collect::<Vec<*mut c_char>>(),
+        );
+
+        Self {
             tag: TariTypeTag::Commitment,
             len: v.len(),
             cap: v.capacity(),
             ptr: v.as_mut_ptr() as *mut c_void,
-        })
+        }
     }
+}
 
+impl From<Vec<DbUnblindedOutput>> for TariVector {
+    fn from(v: Vec<DbUnblindedOutput>) -> TariVector {
+        let mut v = ManuallyDrop::new(v.into_iter().map(TariUtxo::from).collect_vec());
+
+        Self {
+            tag: TariTypeTag::Utxo,
+            len: v.len(),
+            cap: v.capacity(),
+            ptr: v.as_mut_ptr() as *mut c_void,
+        }
+    }
+}
+
+impl From<Vec<OutputStatus>> for TariVector {
+    fn from(v: Vec<OutputStatus>) -> TariVector {
+        let mut v = ManuallyDrop::new(v.into_iter().map(|x| x as i32 as u64).collect_vec());
+
+        Self {
+            tag: TariTypeTag::U64,
+            len: v.len(),
+            cap: v.capacity(),
+            ptr: v.as_mut_ptr() as *mut c_void,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl TariVector {
     fn to_string_vec(&self) -> Result<Vec<String>, InterfaceError> {
         if self.tag != TariTypeTag::Text {
             return Err(InterfaceError::InvalidArgument(format!(
@@ -4410,11 +4442,11 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// Functions as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariOutputs` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+/// `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
 /// after use).
 ///
 /// # Safety
-/// `destroy_tari_outputs()` must be called after use.
+/// `destroy_tari_vector()` must be called after use.
 /// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
 /// LOG_TARGET.
 #[no_mangle]
@@ -4423,9 +4455,10 @@ pub unsafe extern "C" fn wallet_get_utxos(
     page: usize,
     page_size: usize,
     sorting: TariUtxoSort,
+    states: *mut TariVector,
     dust_threshold: u64,
     error_ptr: *mut i32,
-) -> *mut TariOutputs {
+) -> *mut TariVector {
     if wallet.is_null() {
         error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
@@ -4439,10 +4472,21 @@ pub unsafe extern "C" fn wallet_get_utxos(
     let page_size = i64::from_usize(page_size).unwrap_or(i64::MAX);
     let dust_threshold = i64::from_u64(dust_threshold).unwrap_or(0);
 
+    let status = {
+        if states.is_null() {
+            vec![]
+        } else {
+            Vec::from_raw_parts((*states).ptr as *mut u64, (*states).len, (*states).cap)
+                .into_iter()
+                .map(|x| OutputStatus::try_from(x as i32).unwrap())
+                .collect_vec()
+        }
+    };
+
     use SortDirection::{Asc, Desc};
     let q = OutputBackendQuery {
         tip_height: i64::MAX,
-        status: vec![OutputStatus::Unspent, OutputStatus::UnspentMinedUnconfirmed],
+        status,
         commitments: vec![],
         pagination: Some((page, page_size)),
         value_min: Some((dust_threshold, false)),
@@ -4456,19 +4500,9 @@ pub unsafe extern "C" fn wallet_get_utxos(
     };
 
     match (*wallet).wallet.output_db.fetch_outputs_by(q) {
-        Ok(outputs) => match TariOutputs::try_from(outputs) {
-            Ok(tari_outputs) => {
-                ptr::replace(error_ptr, 0);
-                Box::into_raw(Box::new(tari_outputs))
-            },
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "failed to convert outputs to `TariOutputs`: {:#?}", e
-                );
-                ptr::replace(error_ptr, LibWalletError::from(e).code);
-                ptr::null_mut()
-            },
+        Ok(outputs) => {
+            ptr::replace(error_ptr, 0);
+            Box::into_raw(Box::new(TariVector::from(outputs)))
         },
 
         Err(e) => {
@@ -4493,7 +4527,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
 /// Functions as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariOutputs` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+/// `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
 /// after use).
 ///
 /// ## States
@@ -4511,11 +4545,11 @@ pub unsafe extern "C" fn wallet_get_utxos(
 /// 11 - NotStored
 ///
 /// # Safety
-/// `destroy_tari_outputs()` must be called after use.
+/// `destroy_tari_vector()` must be called after use.
 /// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
 /// LOG_TARGET.
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr: *mut i32) -> *mut TariOutputs {
+pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr: *mut i32) -> *mut TariVector {
     if wallet.is_null() {
         error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
@@ -4536,19 +4570,9 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
     };
 
     match (*wallet).wallet.output_db.fetch_outputs_by(q) {
-        Ok(outputs) => match TariOutputs::try_from(outputs) {
-            Ok(tari_outputs) => {
-                ptr::replace(error_ptr, 0);
-                Box::into_raw(Box::new(tari_outputs))
-            },
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "failed to convert outputs to `TariOutputs`: {:#?}", e
-                );
-                ptr::replace(error_ptr, LibWalletError::from(e).code);
-                ptr::null_mut()
-            },
+        Ok(outputs) => {
+            ptr::replace(error_ptr, 0);
+            Box::into_raw(Box::new(TariVector::from(outputs)))
         },
 
         Err(e) => {
@@ -4562,24 +4586,6 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
             );
             ptr::null_mut()
         },
-    }
-}
-
-/// Frees memory for a `TariOutputs`
-///
-/// ## Arguments
-/// `x` - The pointer to `TariOutputs`
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn destroy_tari_outputs(x: *mut TariOutputs) {
-    if !x.is_null() {
-        Vec::from_raw_parts((*x).ptr, (*x).len, (*x).cap);
-        Box::from_raw(x);
     }
 }
 
@@ -4782,7 +4788,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
 
             Box::into_raw(Box::new(TariCoinPreview {
                 expected_outputs: Box::into_raw(Box::new(TariVector {
-                    tag: TariTypeTag::MicroTari,
+                    tag: TariTypeTag::U64,
                     len: expected_outputs.len(),
                     cap: expected_outputs.capacity(),
                     ptr: expected_outputs.as_mut_ptr() as *mut c_void,
@@ -4866,7 +4872,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
 
             Box::into_raw(Box::new(TariCoinPreview {
                 expected_outputs: Box::into_raw(Box::new(TariVector {
-                    tag: TariTypeTag::MicroTari,
+                    tag: TariTypeTag::U64,
                     len: expected_outputs.len(),
                     cap: expected_outputs.capacity(),
                     ptr: expected_outputs.as_mut_ptr() as *mut c_void,
@@ -9406,8 +9412,16 @@ mod test {
             });
 
             // ascending order
-            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, 3000, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                20,
+                TariUtxoSort::ValueAsc,
+                ptr::null_mut(),
+                3000,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 6);
             assert_eq!(utxos.len(), 6);
@@ -9418,11 +9432,19 @@ mod test {
                     .fold((true, utxos[0].value), |acc, x| { (acc.0 && x.value > acc.1, x.value) })
                     .0
             );
-            destroy_tari_outputs(outputs);
+            destroy_tari_vector(outputs);
 
             // descending order
-            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueDesc, 3000, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                20,
+                TariUtxoSort::ValueDesc,
+                ptr::null_mut(),
+                3000,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 6);
             assert_eq!(utxos.len(), 6);
@@ -9433,15 +9455,23 @@ mod test {
                     .fold((true, utxos[0].value), |acc, x| (acc.0 && x.value < acc.1, x.value))
                     .0
             );
-            destroy_tari_outputs(outputs);
+            destroy_tari_vector(outputs);
 
             // result must be empty due to high dust threshold
-            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, 15000, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                20,
+                TariUtxoSort::ValueAsc,
+                ptr::null_mut(),
+                15000,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 0);
             assert_eq!(utxos.len(), 0);
-            destroy_tari_outputs(outputs);
+            destroy_tari_vector(outputs);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -9522,26 +9552,34 @@ mod test {
                     .unwrap();
             });
 
-            let outputs = wallet_get_utxos(alice_wallet, 0, 100, TariUtxoSort::ValueAsc, 0, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                100,
+                TariUtxoSort::ValueAsc,
+                ptr::null_mut(),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let payload = utxos[0..3]
                 .iter()
-                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
+                .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
             let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
 
             let outputs = wallet_get_all_utxos(alice_wallet, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 11);
             assert_eq!(utxos.len(), 11);
-            destroy_tari_outputs(outputs);
+            destroy_tari_vector(outputs);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -9627,34 +9665,50 @@ mod test {
             // ----------------------------------------------------------------------------
             // preview
 
-            let outputs = wallet_get_utxos(alice_wallet, 0, 100, TariUtxoSort::ValueAsc, 0, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                100,
+                TariUtxoSort::ValueAsc,
+                ptr::null_mut(),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let pre_join_total_amount = utxos[0..3].iter().fold(0u64, |acc, x| acc + x.value);
 
             let payload = utxos[0..3]
                 .iter()
-                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
+                .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
             let preview = wallet_preview_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
 
             // ----------------------------------------------------------------------------
             // join
 
-            let outputs = wallet_get_utxos(alice_wallet, 0, 100, TariUtxoSort::ValueAsc, 0, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                100,
+                TariUtxoSort::ValueAsc,
+                ptr::null_mut(),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let payload = utxos[0..3]
                 .iter()
-                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
+                .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
             let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
@@ -9690,8 +9744,16 @@ mod test {
                 (*(*preview).expected_outputs).cap,
             );
 
-            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, 0, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                20,
+                TariUtxoSort::ValueAsc,
+                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent]))),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
             assert_eq!(unspent_outputs.len(), 2);
@@ -9706,7 +9768,7 @@ mod test {
             // checking fee
             assert_eq!(pre_join_total_amount - post_join_total_amount, (*preview).fee);
 
-            destroy_tari_outputs(outputs);
+            destroy_tari_vector(outputs);
             destroy_tari_vector(commitments);
             destroy_tari_coin_preview(preview);
 
@@ -9794,18 +9856,26 @@ mod test {
             // ----------------------------------------------------------------------------
             // preview
 
-            let outputs = wallet_get_utxos(alice_wallet, 0, 100, TariUtxoSort::ValueAsc, 0, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                100,
+                TariUtxoSort::ValueAsc,
+                ptr::null_mut(),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let pre_split_total_amount = utxos[0..3].iter().fold(0u64, |acc, x| acc + x.value);
 
             let payload = utxos[0..3]
                 .iter()
-                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
+                .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
 
             let preview = wallet_preview_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
@@ -9814,16 +9884,24 @@ mod test {
             // ----------------------------------------------------------------------------
             // split
 
-            let outputs = wallet_get_utxos(alice_wallet, 0, 100, TariUtxoSort::ValueAsc, 0, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                100,
+                TariUtxoSort::ValueAsc,
+                ptr::null_mut(),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let payload = utxos[0..3]
                 .iter()
-                .map(|x| CString::from_raw(x.commitment).into_string().unwrap())
+                .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from_string_vec(payload).unwrap())) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
 
             let result = wallet_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
@@ -9860,8 +9938,16 @@ mod test {
                 (*(*preview).expected_outputs).cap,
             );
 
-            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, 0, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr, (*outputs).len);
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                20,
+                TariUtxoSort::ValueAsc,
+                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent]))),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
             assert_eq!(unspent_outputs.len(), 2);
@@ -9882,7 +9968,7 @@ mod test {
             // checking fee
             assert_eq!(pre_split_total_amount - post_split_total_amount, (*preview).fee);
 
-            destroy_tari_outputs(outputs);
+            destroy_tari_vector(outputs);
             destroy_tari_vector(commitments);
             destroy_tari_coin_preview(preview);
 
