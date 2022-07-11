@@ -29,7 +29,6 @@ use std::{
     ops::Shl,
 };
 
-use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -47,7 +46,7 @@ use tari_crypto::{
     extended_range_proof::ExtendedRangeProofService,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
-    tari_utilities::{hex::to_hex, ByteArray},
+    tari_utilities::ByteArray,
 };
 use tari_script::{ExecutionStack, TariScript};
 
@@ -70,8 +69,6 @@ use crate::{
         CryptoFactories,
     },
 };
-
-pub const LOG_TARGET: &str = "c::tx::tx_components::unblinded_output";
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
@@ -219,18 +216,6 @@ impl UnblindedOutput {
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
-        if self.features.recovery_byte != recovery_byte {
-            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
-            error!(
-                target: LOG_TARGET,
-                "Recovery byte set incorrectly - expected {}, got {} for commitment {}",
-                recovery_byte,
-                self.features.recovery_byte,
-                to_hex(commitment.as_bytes()),
-            );
-        }
-
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
@@ -283,18 +268,6 @@ impl UnblindedOutput {
                 ))
             })?
         };
-
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(rewind_data));
-        if self.features.recovery_byte != recovery_byte {
-            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
-            error!(
-                target: LOG_TARGET,
-                "Recovery byte set incorrectly (with rewind) - expected {}, got {} for commitment {}",
-                recovery_byte,
-                self.features.recovery_byte,
-                to_hex(commitment.as_bytes()),
-            );
-        }
 
         let output = TransactionOutput::new(
             self.version,

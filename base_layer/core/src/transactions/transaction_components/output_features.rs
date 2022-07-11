@@ -28,13 +28,8 @@ use std::{
     io::{Read, Write},
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
-use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_utilities::ByteArray;
 
 use super::{
@@ -49,19 +44,16 @@ use super::{
 };
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    transactions::{
-        transaction_components::{
-            side_chain::SideChainFeatures,
-            AssetOutputFeatures,
-            CommitteeDefinitionFeatures,
-            CommitteeMembers,
-            ContractCheckpoint,
-            MintNonFungibleFeatures,
-            OutputType,
-            SideChainCheckpointFeatures,
-            TemplateParameter,
-        },
-        transaction_protocol::RewindData,
+    transactions::transaction_components::{
+        side_chain::SideChainFeatures,
+        AssetOutputFeatures,
+        CommitteeDefinitionFeatures,
+        CommitteeMembers,
+        ContractCheckpoint,
+        MintNonFungibleFeatures,
+        OutputType,
+        SideChainCheckpointFeatures,
+        TemplateParameter,
     },
 };
 
@@ -74,10 +66,6 @@ pub struct OutputFeatures {
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
-    /// The recovery byte - not consensus critical - can help reduce the bandwidth with wallet recovery or in other
-    /// instances when a wallet needs to request the complete UTXO set from a base node.
-    #[serde(default)]
-    pub recovery_byte: u8,
     pub metadata: Vec<u8>,
     pub sidechain_features: Option<Box<SideChainFeatures>>,
     pub unique_id: Option<Vec<u8>>,
@@ -95,7 +83,6 @@ impl OutputFeatures {
         version: OutputFeaturesVersion,
         flags: OutputType,
         maturity: u64,
-        recovery_byte: u8,
         metadata: Vec<u8>,
         unique_id: Option<Vec<u8>>,
         sidechain_features: Option<SideChainFeatures>,
@@ -111,7 +98,6 @@ impl OutputFeatures {
             version,
             output_type: flags,
             maturity,
-            recovery_byte,
             metadata,
             unique_id,
             sidechain_features: boxed_sidechain_features,
@@ -127,7 +113,6 @@ impl OutputFeatures {
     pub fn new_current_version(
         flags: OutputType,
         maturity: u64,
-        recovery_byte: u8,
         metadata: Vec<u8>,
         unique_id: Option<Vec<u8>>,
         sidechain_features: Option<SideChainFeatures>,
@@ -142,7 +127,6 @@ impl OutputFeatures {
             OutputFeaturesVersion::get_current_version(),
             flags,
             maturity,
-            recovery_byte,
             metadata,
             unique_id,
             sidechain_features,
@@ -155,57 +139,12 @@ impl OutputFeatures {
         )
     }
 
-    pub fn create_coinbase(maturity_height: u64, recovery_byte: u8) -> OutputFeatures {
+    pub fn create_coinbase(maturity_height: u64) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::Coinbase,
             maturity: maturity_height,
-            recovery_byte,
             ..Default::default()
         }
-    }
-
-    /// Helper function to create a unique recovery byte based on the commitment and a private recovery byte key,
-    /// with the value '0' never obtainable as it is being reserved as a default value.
-    pub fn create_unique_recovery_byte(commitment: &PedersenCommitment, rewind_data: Option<&RewindData>) -> u8 {
-        let commitment_bytes = commitment.as_bytes();
-        let recovery_key_bytes = if let Some(data) = rewind_data {
-            data.recovery_byte_key.as_bytes()
-        } else {
-            &[]
-        };
-        const RECOVERY_BYTE_SIZE: usize = 1;
-        let blake2_hasher = VarBlake2b::new(RECOVERY_BYTE_SIZE)
-            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
-        let mut hash = [0u8; RECOVERY_BYTE_SIZE];
-        blake2_hasher
-            .chain(commitment_bytes)
-            .chain(recovery_key_bytes)
-            .chain(b"hash my recovery byte")
-            .finalize_variable(|res| hash.copy_from_slice(res));
-        hash[0]
-    }
-
-    /// Helper function to update the unique recovery byte
-    pub fn update_recovery_byte(&mut self, commitment: &PedersenCommitment, rewind_data: Option<&RewindData>) {
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(commitment, rewind_data);
-        self.set_recovery_byte(recovery_byte);
-    }
-
-    /// Helper function to return features with updated unique recovery byte
-    pub fn features_with_updated_recovery_byte(
-        commitment: &PedersenCommitment,
-        rewind_data: Option<&RewindData>,
-        features: &OutputFeatures,
-    ) -> OutputFeatures {
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(commitment, rewind_data);
-        let mut updated_features = features.clone();
-        updated_features.set_recovery_byte(recovery_byte);
-        updated_features
-    }
-
-    /// Provides the ability to update the recovery byte after the commitment has become known
-    pub fn set_recovery_byte(&mut self, recovery_byte: u8) {
-        self.recovery_byte = recovery_byte;
     }
 
     pub fn for_asset_registration(
@@ -391,18 +330,6 @@ impl OutputFeatures {
         matches!(self.output_type, OutputType::Coinbase)
     }
 
-    fn consensus_encode_recovery_byte<W: Write>(recovery_byte: u8, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write_all(&[recovery_byte])?;
-        Ok(1)
-    }
-
-    fn consensus_decode_recovery_byte<R: Read>(reader: &mut R) -> Result<u8, io::Error> {
-        let mut buf = [0u8; 1];
-        reader.read_exact(&mut buf)?;
-        let recovery_byte = buf[0] as u8;
-        Ok(recovery_byte)
-    }
-
     pub fn contract_id(&self) -> Option<FixedHash> {
         self.sidechain_features.as_ref().map(|f| f.contract_id)
     }
@@ -454,12 +381,6 @@ impl ConsensusEncoding for OutputFeatures {
         self.version.consensus_encode(writer)?;
         self.maturity.consensus_encode(writer)?;
         self.output_type.consensus_encode(writer)?;
-        match self.version {
-            OutputFeaturesVersion::V0 => (),
-            _ => {
-                OutputFeatures::consensus_encode_recovery_byte(self.recovery_byte, writer)?;
-            },
-        }
         self.parent_public_key.consensus_encode(writer)?;
         self.unique_id.consensus_encode(writer)?;
         self.sidechain_features.consensus_encode(writer)?;
@@ -486,10 +407,6 @@ impl ConsensusDecoding for OutputFeatures {
         let version = OutputFeaturesVersion::consensus_decode(reader)?;
         let maturity = u64::consensus_decode(reader)?;
         let flags = OutputType::consensus_decode(reader)?;
-        let recovery_byte = match version {
-            OutputFeaturesVersion::V0 => 0,
-            _ => OutputFeatures::consensus_decode_recovery_byte(reader)?,
-        };
         let parent_public_key = <Option<PublicKey> as ConsensusDecoding>::consensus_decode(reader)?;
         const MAX_UNIQUE_ID_SIZE: usize = 256;
         let unique_id = <Option<MaxSizeBytes<MAX_UNIQUE_ID_SIZE>> as ConsensusDecoding>::consensus_decode(reader)?;
@@ -508,7 +425,6 @@ impl ConsensusDecoding for OutputFeatures {
             version,
             output_type: flags,
             maturity,
-            recovery_byte,
             parent_public_key,
             unique_id: unique_id.map(Into::into),
             sidechain_features,
@@ -525,7 +441,6 @@ impl Default for OutputFeatures {
     fn default() -> Self {
         OutputFeatures::new_current_version(
             OutputType::default(),
-            0,
             0,
             vec![],
             None,
@@ -555,8 +470,8 @@ impl Display for OutputFeatures {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "OutputFeatures: Flags = {:?}, Maturity = {}, recovery byte = {:#08b}",
-            self.output_type, self.maturity, self.recovery_byte
+            "OutputFeatures: Flags = {:?}, Maturity = {}",
+            self.output_type, self.maturity
         )
     }
 }
@@ -634,10 +549,6 @@ mod test {
             version,
             output_type: OutputType::ContractDefinition,
             maturity: u64::MAX,
-            recovery_byte: match version {
-                OutputFeaturesVersion::V0 => 0,
-                _ => u8::MAX,
-            },
             metadata: vec![1; 1024],
             unique_id: Some(vec![0u8; 256]),
             sidechain_features: Some(Box::new(SideChainFeatures {

@@ -76,7 +76,6 @@ pub struct OutputSql {
     pub value: i64,
     pub output_type: i32,
     pub maturity: i64,
-    pub recovery_byte: i32,
     pub status: i32,
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,

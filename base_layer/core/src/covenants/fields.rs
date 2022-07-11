@@ -606,7 +606,7 @@ mod test {
 
             #[test]
             fn it_retrieves_the_value_as_ref() {
-                let mut features = OutputFeatures {
+                let features = OutputFeatures {
                     maturity: 42,
                     ..Default::default()
                 };
@@ -616,7 +616,6 @@ mod test {
                 })
                 .pop()
                 .unwrap();
-                features.set_recovery_byte(output.features.recovery_byte);
                 let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);
                 assert_eq!(*r.unwrap(), features);
             }

@@ -195,8 +195,7 @@ impl CoinbaseBuilder {
             .factories
             .commitment
             .commit_value(&spending_key, total_reward.as_u64());
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), recovery_byte);
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
@@ -374,7 +373,6 @@ mod test {
 
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key: PrivateKey::random(&mut OsRng),
             encryption_key: PrivateKey::random(&mut OsRng),
         };
 
