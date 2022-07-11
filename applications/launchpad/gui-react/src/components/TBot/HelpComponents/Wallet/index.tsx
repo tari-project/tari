@@ -32,6 +32,13 @@ export const NoteAboutVerificationPeriod = () => {
   )
 }
 
+export const TariWalletIdHelp = (
+  <Text type='defaultHeavy'>
+    {t.wallet.helpMessages.walletIdHelp.bold}{' '}
+    <Text as='span'>{t.wallet.helpMessages.walletIdHelp.regular}</Text>
+  </Text>
+)
+
 export const TransactionFee = () => {
   return (
     <>

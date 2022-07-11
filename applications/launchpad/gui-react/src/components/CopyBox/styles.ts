@@ -7,7 +7,7 @@ export const StyledBox = styled.div`
   color: ${({ theme }) => theme.secondary};
   padding: ${({ theme }) => theme.spacingVertical()}
     ${({ theme }) => theme.spacingHorizontal()};
-  margin: ${({ theme }) => theme.spacingVertical()} 0;
+  margin: ${({ theme }) => theme.spacingVertical(0.6)} 0;
   box-sizing: border-box;
   display: flex;
   justify-content: space-between;
@@ -27,4 +27,5 @@ export const ValueContainer = styled.div`
   word-break: keep-all;
   -webkit-user-select: none;
   cursor: default;
+  font-family: 'AvenirMedium';
 `

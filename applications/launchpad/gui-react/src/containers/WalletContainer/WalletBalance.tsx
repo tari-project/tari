@@ -6,8 +6,12 @@ import Text from '../../components/Text'
 import Loading from '../../components/Loading'
 import t from '../../locales'
 
-import Chart from './Chart'
+import Chart from './ChartLight'
 import AvailableBalanceHelp from './AvailableBalanceHelp'
+
+import { useAppSelector } from '../../store/hooks'
+import { selectTheme } from '../../store/app/selectors'
+import ChartDark from './ChartDark'
 
 import {
   TariSignet,
@@ -30,13 +34,21 @@ const WalletBalance = ({
   pending: boolean
 }) => {
   const theme = useTheme()
+  const currentTheme = useAppSelector(selectTheme)
 
   const [showSendModal, setShowSendModal] = useState(false)
 
   return (
-    <Box style={{ boxShadow: theme.shadow40, padding: 0 }} border={false}>
+    <Box
+      style={{
+        background: theme.nodeBackground,
+        borderColor: theme.balanceBoxBorder,
+        boxShadow: theme.shadow40,
+        padding: 0,
+      }}
+    >
       <BoxTopContainer>
-        <Text color={theme.secondary}>
+        <Text color={theme.nodeWarningText}>
           {t.wallet.balance.title}
           <Loading
             loading={pending}
@@ -61,14 +73,19 @@ const WalletBalance = ({
             <CoinsList
               coins={[{ amount: balance, unit: 'xtr' }]}
               inline
-              color={pending ? theme.placeholderText : 'inherit'}
+              color={pending ? theme.placeholderText : theme.helpTipText}
             />
           </div>
-          <Chart />
+          {currentTheme === 'light' ? <Chart /> : <ChartDark />}
         </TariAmountContainer>
       </BoxTopContainer>
       <BoxBottomContainer>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+          }}
+        >
           <div>
             <Text
               type='defaultMedium'
@@ -81,12 +98,11 @@ const WalletBalance = ({
               coins={[{ amount: available, unit: 'xtr' }]}
               inline
               small
-              color={pending ? theme.placeholderText : 'inherit'}
+              color={pending ? theme.placeholderText : theme.helpTipText}
             />
           </div>
           <AvailableBalanceHelp />
         </div>
-
         {available && available > 0 ? (
           <Button
             onClick={() => setShowSendModal(true)}

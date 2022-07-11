@@ -54,7 +54,7 @@ export const SelectButton = styled(Listbox.Button)<
       ? inverted
         ? theme.inverted.accent
         : theme.accent
-      : theme.borderColor
+      : theme.selectBorderColor
   }};
   text-align: left;
 `
@@ -71,8 +71,8 @@ const FloatingOptions = styled.ul<SelectInternalProps>`
   border: 1px solid;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
   border-color: ${({ theme, open }) =>
-    open ? theme.accent : theme.borderColor};
-  background-color: ${({ theme }) => theme.background};
+    open ? theme.accent : theme.selectBorderColor};
+  background-color: ${({ theme }) => theme.nodeBackground};
   z-index: 9001;
 `
 
@@ -100,21 +100,21 @@ export const Option = styled.li<
   margin: ${({ theme }) =>
     `${theme.spacingVertical(0.4)} ${theme.spacingHorizontal(0.4)}`};
   border-radius: ${({ theme }) => theme.borderRadius(0.5)};
-  background-color: ${({ theme, selected, active }) =>
-    selected || active ? theme.backgroundImage : 'transparent'};
+
   outline: none;
   cursor: pointer;
 
   &:hover {
-    background-color: ${({ theme }) => theme.backgroundImage};
+    background-color: ${({ theme }) => theme.selectOptionHover};
   }
 `
 
-export const Label = styled(Listbox.Label)<SelectInternalProps>`
+export const Label = styled(Listbox.Label)<
+  SelectInternalProps & { style?: { color?: string } }
+>`
   font-size: 1em;
   display: inline-block;
   margin-bottom: ${({ theme }) => theme.spacingVertical()};
-  color: ${({ theme, inverted }) =>
-    inverted ? theme.inverted.primary : theme.primary};
-  font-family 'AvenirMedium';
+  color: ${({ style }) => style?.color};
+  font-family: 'AvenirMedium';
 `

@@ -83,6 +83,11 @@ const translations = {
       message:
         'Also note that Tari coins are not available immediately after being mined. They show up in your balance, but it takes usually several days (a few hundred blocks to be mined within the network) to verify this transaction.',
     },
+    walletIdHelp: {
+      bold: 'A wallet ID (also known as wallet identifier or wallet address) is like a bank account number.',
+      regular:
+        'Wallet ID is public and you can freely share it with others. That way, people can send you some Tari coins.',
+    },
     /**
      * @TODO text for the transactionFee help
      */

@@ -14,7 +14,7 @@ import { useAppDispatch } from '../../store/hooks'
 import { actions as settingsActions } from '../../store/settings'
 import { Settings } from '../../store/settings/types'
 import BaseNodeQRModal from '../BaseNodeQRModal'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 const BaseNode = ({
   running,
@@ -29,15 +29,44 @@ const BaseNode = ({
 
   const [openQRModal, setOpenQRModal] = useState(false)
 
+  const selectPausedStyleOverrides = useMemo(
+    () => ({
+      value: {
+        borderColor: () => theme.selectBorderColor,
+      },
+      label: {
+        color: theme.nodeSubHeading,
+      },
+    }),
+    [theme],
+  )
+
+  const selectRunningStyleOverrides = useMemo(
+    () => ({
+      value: {
+        color: theme.baseNodeRunningLabel,
+        borderColor: () => theme.textSecondary,
+      },
+      label: {
+        color: theme.baseNodeRunningLabel,
+      },
+    }),
+    [theme],
+  )
+
   return (
     <>
       <Box
         border={!running}
         gradient={
           running
-            ? { start: theme.actionBackground, end: theme.accent }
+            ? {
+                start: theme.baseNodeGradientStart,
+                end: theme.baseNodeGradientEnd,
+              }
             : undefined
         }
+        style={!running ? { background: theme.nodeBackground } : undefined}
       >
         <Text
           type='header'
@@ -47,11 +76,11 @@ const BaseNode = ({
             justifyContent: 'space-between',
             alignItems: 'center',
           }}
-          color={running ? theme.inverted.primary : undefined}
+          color={running ? theme.inverted.primary : theme.helpTipText}
         >
           {t.baseNode.title}
           {running && (
-            <Tag type='running' variant='large'>
+            <Tag type='running' variant='large' darkAlt>
               {t.common.adjectives.running}
             </Tag>
           )}
@@ -62,7 +91,7 @@ const BaseNode = ({
             minWidth: 0,
             width: 'auto',
             padding: 0,
-            background: running ? 'transparent' : undefined,
+            background: 'transparent',
           }}
         >
           <Select
@@ -72,6 +101,9 @@ const BaseNode = ({
             options={networkOptions}
             onChange={({ value }) => setTariNetwork(value as Network)}
             label={t.baseNode.tari_network_label}
+            styles={
+              running ? selectRunningStyleOverrides : selectPausedStyleOverrides
+            }
           />
         </Box>
         {!running && (
@@ -85,7 +117,7 @@ const BaseNode = ({
             disabled={pending}
             loading={pending}
             style={{
-              color: theme.inverted.primary,
+              color: theme.textSecondary,
               background: theme.resetBackground,
               border: 'none',
             }}
@@ -100,7 +132,12 @@ const BaseNode = ({
         style={{ background: theme.backgroundSecondary, marginTop: 0 }}
       >
         <Tag>{t.common.adjectives.recommended}</Tag>
-        <Text style={{ marginTop: theme.spacingVertical(1.2) }}>
+        <Text
+          style={{
+            marginTop: theme.spacingVertical(1.2),
+            color: theme.helpTipText,
+          }}
+        >
           <Button variant='button-in-text' onClick={() => setOpenQRModal(true)}>
             {t.baseNode.aurora.connectYourAurora}
           </Button>{' '}
@@ -125,6 +162,7 @@ const BaseNode = ({
           leftIcon={<SvgSetting2 width='1.5rem' height='1.5rem' />}
           style={{
             paddingLeft: 0,
+            color: theme.helpTipText,
           }}
           onClick={() =>
             dispatch(settingsActions.open({ toOpen: Settings.BaseNode }))
