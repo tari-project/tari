@@ -21,6 +21,7 @@ mod commands;
 mod docker;
 mod error;
 mod grpc;
+mod rest;
 use docker::{shutdown_all_containers, DockerWrapper, ImageType, Workspaces, DOCKER_INSTANCE};
 use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{

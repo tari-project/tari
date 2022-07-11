@@ -60,6 +60,7 @@ use crate::docker::{
 };
 
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
+static GRAFANA_REGISTRY: &str = "grafana";
 static DEFAULT_TAG: &str = "latest";
 
 /// `Workspaces` allows us to spin up multiple [TariWorkspace] recipes or configurations at once. Most users will only
@@ -215,10 +216,18 @@ impl TariWorkspace {
     /// `docker pull {image_name}`.
     ///
     /// It also lets power users customise which version of docker images they want to run in the workspace.
-    pub fn fully_qualified_image(image: ImageType, registry: Option<&str>, tag: Option<&str>) -> String {
-        let reg = registry.unwrap_or(DEFAULT_REGISTRY);
-        let tag = Self::arch_specific_tag(tag);
-        format!("{}/{}:{}", reg, image.image_name(), tag)
+    pub fn fully_qualified_image(image: ImageType, registry: Option<&str>) -> String {
+        let reg = match image {
+            ImageType::Tor |
+            ImageType::BaseNode |
+            ImageType::Wallet |
+            ImageType::XmRig |
+            ImageType::Sha3Miner |
+            ImageType::MmProxy |
+            ImageType::Monerod => registry.unwrap_or(DEFAULT_REGISTRY),
+            ImageType::Loki | ImageType::Promtail | ImageType::Grafana => GRAFANA_REGISTRY,
+        };
+        format!("{}/{}:{}", reg, image.image_name(), "latest")
     }
 
     /// Returns an architecture-specific tag based on the current CPU and the given label. e.g.
@@ -352,8 +361,7 @@ impl TariWorkspace {
     /// * adds the container reference to the current list of containers being managed
     /// * Returns the container name
     pub async fn start_service(&mut self, image: ImageType, docker: Docker) -> Result<String, DockerWrapperError> {
-        let fully_qualified_image_name =
-            TariWorkspace::fully_qualified_image(image, self.config.registry.as_deref(), self.config.tag.as_deref());
+        let fully_qualified_image_name = TariWorkspace::fully_qualified_image(image, self.config.registry.as_deref());
         info!("Creating {}", &fully_qualified_image_name);
         let workspace_image_name = format!("{}_{}", self.name, image.image_name());
         let _unused = try_destroy_container(workspace_image_name.as_str(), docker.clone()).await;

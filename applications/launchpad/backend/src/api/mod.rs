@@ -35,6 +35,7 @@ use crate::{
     commands::{status, AppState, ServiceSettings, DEFAULT_IMAGES},
     docker::{ContainerState, ImageType, TariNetwork, TariWorkspace},
     grpc::{GrpcWalletClient, WalletIdentity, WalletTransaction},
+    rest::quay_io::get_tag_info,
 };
 
 pub const RECEIVED: &str = "received";
@@ -56,42 +57,22 @@ pub struct ImageInfo {
     display_name: String,
     docker_image: String,
     updated: bool,
-    pending: bool,
-    error: String,
-    progress: i32,
-    status: DockerImagePullStatus,
+    created_on: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-enum DockerImagePullStatus {
-    Waiting,
-    Pulling,
-    Ready,
-}
-
-impl DockerImagePullStatus {
-    pub fn lower_case(self) -> &'static str {
-        match self {
-            Self::Pulling => "pulling",
-            Self::Ready => "ready",
-            Self::Waiting => "waiting",
-        }
+async fn from_image_type(image: ImageType, registry: Option<&str>) -> ImageInfo {
+    let mut info = ImageInfo {
+        image_name: image.image_name().to_string(),
+        container_name: image.container_name().to_string(),
+        display_name: image.display_name().to_string(),
+        docker_image: TariWorkspace::fully_qualified_image(image, registry),
+        ..Default::default()
+    };
+    if let Ok(tag) = get_tag_info(image).await {
+        info.updated = tag.latest;
+        info.created_on = Some(tag.created_on);
     }
-
-    pub fn upper_case(self) -> &'static str {
-        match self {
-            Self::Pulling => "PULLING",
-            Self::Ready => "READY",
-            Self::Waiting => "WAITING",
-        }
-    }
-}
-
-/// Default image status is Ready.
-impl Default for DockerImagePullStatus {
-    fn default() -> Self {
-        Self::Ready
-    }
+    info
 }
 
 impl Default for ImageInfo {
@@ -102,23 +83,7 @@ impl Default for ImageInfo {
             container_name: String::default(),
             docker_image: String::default(),
             updated: false,
-            pending: false,
-            error: String::default(),
-            progress: 0,
-            status: DockerImagePullStatus::default(),
-        }
-    }
-}
-
-impl TryFrom<&str> for DockerImagePullStatus {
-    type Error = String;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "pulling" => Ok(DockerImagePullStatus::Pulling),
-            "ready" => Ok(DockerImagePullStatus::Ready),
-            "waiting" => Ok(DockerImagePullStatus::Waiting),
-            _ => Err("unsupported image status".to_string()),
+            created_on: None,
         }
     }
 }
@@ -141,20 +106,12 @@ pub fn network_list() -> Vec<String> {
 
 /// Provide information about docker images and service recipes in Tari "ecosystem"
 #[tauri::command]
-pub fn image_info(settings: ServiceSettings) -> ImageListDto {
+pub async fn image_info(settings: ServiceSettings) -> ImageListDto {
     let registry = settings.docker_registry.as_ref().map(String::as_str);
-    let tag = settings.docker_tag.as_ref().map(String::as_str);
-
-    let images: Vec<ImageInfo> = DEFAULT_IMAGES
-        .iter()
-        .map(|value| ImageInfo {
-            image_name: value.image_name().to_string(),
-            container_name: value.container_name().to_string(),
-            display_name: value.display_name().to_string(),
-            docker_image: TariWorkspace::fully_qualified_image(*value, registry, tag),
-            ..Default::default()
-        })
-        .collect();
+    let mut images: Vec<ImageInfo> = vec![];
+    for image in DEFAULT_IMAGES {
+        images.push(from_image_type(image, registry).await);
+    }
 
     let recipes: Vec<Vec<String>> = [
         [ImageType::BaseNode, ImageType::Tor]
