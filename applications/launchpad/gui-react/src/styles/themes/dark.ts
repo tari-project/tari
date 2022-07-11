@@ -83,6 +83,7 @@ const darkTheme = {
     backgroundSecondary: styles.colors.darkMode.modalBackground,
     backgroundImage: styles.colors.light.backgroundImage,
     accent: styles.colors.tari.purple,
+    accentSecondary: styles.colors.secondary.onTextLight,
     accentDark: styles.colors.tari.purpleDark,
     accentMerged: styles.colors.darkMode.darkLogoCard,
     disabledText: styles.colors.dark.placeholder,
