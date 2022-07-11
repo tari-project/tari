@@ -34,12 +34,13 @@ export interface TransactionDBRecord {
   message: string
   source: string
   destination: string
-  isCoinbase: boolean
+  isCoinbase: string
   network: string
 }
 
 export interface TransactionsRepository {
   addOrReplace: (transactionEvent: WalletTransactionEvent) => Promise<void>
+  delete: (id: string) => Promise<void>
   getMinedXtr: (
     from: Date,
     to?: Date,
@@ -84,6 +85,11 @@ const repositoryFactory: (
       ],
     )
   },
+  delete: async id => {
+    const db = await getDb()
+
+    await db.execute('DELETE FROM transactions WHERE id = $1', [id])
+  },
   getMinedXtr: async (
     from,
     to = new Date(),
@@ -102,6 +108,7 @@ const repositoryFactory: (
         transactions
       WHERE
         event = $1 AND
+        isCoinbase = 'true' AND
         receivedAt >= $2 AND
         receivedAt <= $3`,
       [TransactionEvent.Mined, from, to],
@@ -149,7 +156,8 @@ const repositoryFactory: (
       `SELECT amount FROM
         transactions
       WHERE
-        event = $1`,
+        event = $1 AND
+        isCoinbase = 'true'`,
       [TransactionEvent.Mined],
     )
 
@@ -166,7 +174,8 @@ const repositoryFactory: (
       `SELECT receivedAt FROM
         transactions
       WHERE
-        event = $1
+        event = $1 AND
+        isCoinbase = 'true'
       ORDER BY receivedAt DESC
       LIMIT 1`,
       [TransactionEvent.Mined],
@@ -178,7 +187,8 @@ const repositoryFactory: (
       `SELECT receivedAt FROM
         transactions
       WHERE
-        event = $1
+        event = $1 AND
+        isCoinbase = 'true'
       ORDER BY receivedAt
       LIMIT 1`,
       [TransactionEvent.Mined],

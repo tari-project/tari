@@ -40,3 +40,17 @@ export const TariWalletIdHelp = (
     </Text>
   </>
 )
+
+export const TransactionFee = () => {
+  return (
+    <>
+      <StyledTextContainer>
+        <Text type='defaultMedium' as='span'>
+          {t.wallet.helpMessages.transactionFee.message}
+        </Text>
+      </StyledTextContainer>
+      <GotItButton />
+    </>
+  )
+}
+

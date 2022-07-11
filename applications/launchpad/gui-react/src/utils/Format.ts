@@ -73,3 +73,20 @@ export const toMicroT = (amount: number): number => {
 export const toT = (amount: number): number => {
   return amount / 1000000
 }
+
+/**
+ * Format the coin amount
+ * @param {number} amount
+ * @returns {string}
+ */
+export const formatAmount = (amount: string | number): string => {
+  if (Number(amount) === 0) {
+    return '00,000'
+  } else {
+    try {
+      return Number(amount).toLocaleString([], { maximumFractionDigits: 2 })
+    } catch (err) {
+      return '-'
+    }
+  }
+}

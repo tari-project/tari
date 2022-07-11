@@ -6,9 +6,8 @@ export const DayTimePickerWrapper = styled.div`
   justify-content: space-between;
   align-items: center;
 
-  & .react-time-input-picker .inputWrapper:nth-child(1),
-  & .react-time-input-picker .inputWrapper:nth-child(2) {
-    display: inline-block;
+  & .react-time-input-picker {
+    display: flex;
   }
 
   & .react-time-input-picker input {
@@ -17,16 +16,25 @@ export const DayTimePickerWrapper = styled.div`
     margin: 0;
     text-align: center;
     font-family: AvenirHeavy;
-    font-size: 44px;
-    color: ${({ theme }) => theme.secondary};
+    font-size: 32px;
+    color: ${({ theme }) => theme.primary};
     background: inherit;
+
+    &::-webkit-calendar-picker-indicator {
+      background: none;
+      display: none;
+    }
+
+    &::-webkit-datetime-edit-ampm-field {
+      display: none;
+    }
   }
 
   & .react-time-input-picker .inputWrapper:nth-child(2)::before {
     content: ':';
-    font-size: 44px;
+    font-size: 32px;
     font-family: AvenirHeavy;
-    color: ${({ theme }) => theme.secondary};
+    color: ${({ theme }) => theme.primary};
   }
 
   &

@@ -20,5 +20,16 @@ export const TariAmountContainer = styled.div`
   align-items: center;
   justify-content: space-between;
   margin-top: ${({ theme }) => theme.spacingVertical()};
-  margin-bottom: ${({ theme }) => theme.spacingVertical(2)};
+  margin-bottom: ${({ theme }) => theme.spacingVertical(1.8)};
+`
+
+export const BoxTopContainer = styled.div`
+  padding: ${({ theme }) => theme.spacing()};
+  padding-bottom: 0;
+`
+
+export const BoxBottomContainer = styled.div`
+  padding: ${({ theme }) => theme.spacing()};
+  padding-top: ${({ theme }) => theme.spacing(0.5)};
+  background: ${({ theme }) => theme.backgroundSecondary};
 `

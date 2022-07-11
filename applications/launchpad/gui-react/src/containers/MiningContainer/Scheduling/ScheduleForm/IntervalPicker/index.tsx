@@ -36,6 +36,7 @@ const IntervalPicker = ({
       <div
         style={{
           width: '1px',
+          minWidth: '1px',
           background: theme.borderColor,
           height: '100%',
         }}

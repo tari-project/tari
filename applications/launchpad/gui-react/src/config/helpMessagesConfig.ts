@@ -10,6 +10,7 @@ import {
   WhyBalanceDiffers,
   NoteAboutVerificationPeriod,
   TariWalletIdHelp,
+  TransactionFee,
 } from '../components/TBot/HelpComponents/Wallet'
 import {
   WhatIsBaseNode,
@@ -29,6 +30,7 @@ const MessagesConfig = {
   ],
   [TBotMessages.BaseNodeHelp]: ['whatIsBaseNode'],
   [TBotMessages.ConnectAurora]: ['connectAurora'],
+  [TBotMessages.TransactionFee]: ['transactionFee'],
 }
 
 export const HelpMessagesMap: {
@@ -52,6 +54,9 @@ export const HelpMessagesMap: {
   },
   connectAurora: {
     content: ConnectAurora,
+  },
+  transactionFee: {
+    content: TransactionFee,
   },
 }
 

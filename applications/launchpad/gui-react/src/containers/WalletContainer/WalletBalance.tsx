@@ -9,10 +9,20 @@ import t from '../../locales'
 import Chart from './ChartLight'
 import AvailableBalanceHelp from './AvailableBalanceHelp'
 
-import { TariSignet, TariAmountContainer } from './styles'
 import { useAppSelector } from '../../store/hooks'
 import { selectTheme } from '../../store/app/selectors'
 import ChartDark from './ChartDark'
+
+import {
+  TariSignet,
+  TariAmountContainer,
+  BoxTopContainer,
+  BoxBottomContainer,
+} from './styles'
+import Button from '../../components/Button'
+import SvgArrowRight from '../../styles/Icons/ArrowRight'
+import SendModal from './Send/SendModal'
+import { useState } from 'react'
 
 const WalletBalance = ({
   balance,
@@ -26,14 +36,18 @@ const WalletBalance = ({
   const theme = useTheme()
   const currentTheme = useAppSelector(selectTheme)
 
+  const [showSendModal, setShowSendModal] = useState(false)
+
   return (
     <Box
       style={{
         background: theme.nodeBackground,
         borderColor: theme.balanceBoxBorder,
         boxShadow: theme.shadow40,
+        padding: 0,
       }}
     >
+     <BoxTopContainer>
       <Text color={theme.nodeWarningText}>
         {t.wallet.balance.title}
         <Loading loading={pending} size='0.9em' style={{ marginLeft: '5px' }} />
@@ -45,14 +59,14 @@ const WalletBalance = ({
             alignItems: 'center',
           }}
         >
-          <TariSignet
+          <TariSignet   
             style={{
               color: theme.accent,
               display: 'inline-block',
               marginRight: theme.spacingHorizontal(0.5),
             }}
-          />
-          <CoinsList
+          />     
+         <CoinsList
             coins={[{ amount: balance, unit: 'xtr' }]}
             inline
             color={pending ? theme.placeholderText : theme.helpTipText}
@@ -60,6 +74,8 @@ const WalletBalance = ({
         </div>
         {currentTheme === 'light' ? <Chart /> : <ChartDark />}
       </TariAmountContainer>
+    </BoxTopContainer>
+    <BoxBottomContainer>
       <div
         style={{
           display: 'flex',
@@ -83,6 +99,31 @@ const WalletBalance = ({
         </div>
         <AvailableBalanceHelp />
       </div>
+        {available && available > 0 ? (
+          <Button
+            onClick={() => setShowSendModal(true)}
+            style={{
+              marginTop: theme.spacingVertical(0.5),
+            }}
+            disabled={pending}
+            rightIcon={
+              <SvgArrowRight
+                style={{
+                  transform: 'rotate(-45deg)',
+                }}
+              />
+            }
+          >
+            {t.wallet.balance.sendCta}
+          </Button>
+        ) : null}
+      </BoxBottomContainer>
+
+      <SendModal
+        open={showSendModal}
+        onClose={() => setShowSendModal(false)}
+        available={available}
+      />
     </Box>
   )
 }

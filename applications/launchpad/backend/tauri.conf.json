@@ -75,9 +75,9 @@
       {
         "title": "Tari Launchpad",
         "width": 1200,
-        "minWidth": 700,
+        "minWidth": 1200,
         "height": 800,
-        "minHeight": 400,
+        "minHeight": 796,
         "resizable": true,
         "fullscreen": false,
         "decorations": false,

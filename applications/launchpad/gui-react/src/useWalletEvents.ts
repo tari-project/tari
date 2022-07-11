@@ -62,28 +62,29 @@ export const useWalletEvents = ({
           event: string
           payload: WalletTransactionEvent
         }) => {
-          /**
-           * @TODO add 'if' statement that will filter uninteresting events.
-           * For addMindexTx, we need only 'mined' with 'is_coinbase === true' (?)
-           * (waiting for confirmation)
-           */
-          // if (payload.is_coinbase && status.toLowerCase() === 'mined confirmed') {
-
           // Ignore 'empty/improper' events:
           if (
             payload.tx_id &&
             payload.status !== 'not_supported' &&
             payload.event !== 'unknown'
           ) {
-            dispatch(
-              miningActions.addMinedTx({
-                amount: toT(payload.amount),
-                node: 'tari',
-                txId: payload.tx_id,
-              }),
-            )
+            if (payload.is_coinbase && payload.event === 'mined') {
+              dispatch(
+                miningActions.addMinedTx({
+                  amount: toT(payload.amount),
+                  node: 'tari',
+                  txId: payload.tx_id,
+                }),
+              )
+            }
+
+            if (payload.event === 'cancelled') {
+              transactionsRepository.delete
+            } else {
+              transactionsRepository.addOrReplace(payload)
+            }
+
             dispatch(walletActions.newTxInHistory())
-            transactionsRepository.addOrReplace(payload)
           }
           // }
         },

@@ -1,21 +1,10 @@
+import { formatAmount } from '../../utils/Format'
 import Loading from '../Loading'
 import Text from '../Text'
 import { TextType } from '../Text/types'
 
 import { CoinsListItem, IconWrapper, StyledCoinsList } from './styles'
 import { CoinsListProps } from './types'
-
-const formatAmount = (amount: string | number) => {
-  if (Number(amount) === 0) {
-    return '00,000'
-  } else {
-    try {
-      return Number(amount).toLocaleString([], { maximumFractionDigits: 2 })
-    } catch (err) {
-      return '-'
-    }
-  }
-}
 
 /**
  * Render the list of coins with amount.
