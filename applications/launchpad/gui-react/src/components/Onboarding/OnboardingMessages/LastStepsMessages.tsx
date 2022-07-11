@@ -8,8 +8,11 @@ import Button from '../../Button'
 
 import { useAppDispatch } from '../../../store/hooks'
 import { setOnboardingComplete } from '../../../store/app'
-import { actions as baseNodeActions } from '../../../store/baseNode'
+
+import { actions as containersActions } from '../../../store/containers'
 import {
+  CalcRemainTimeCont,
+  CalcRemainTimeContLoader,
   CtaButtonContainer,
   FlexContent,
   ProgressContainer,
@@ -18,12 +21,22 @@ import {
 import ProgressBar from '../../ProgressBar'
 import { TBotMessage, TBotMessageHOCProps } from '../../TBot/TBotPrompt/types'
 import { useTheme } from 'styled-components'
+import { SyncType, useBaseNodeSync } from '../../../useBaseNodeSync'
+import Loading from '../../Loading'
+import { humanizeEstimatedTime } from '../../../utils/Format'
 
 /**
- * @TODO - how the Blockchain synchronization should to work?
+ * Renders the progress bar and remaining time
  */
-
-const Progress = ({ progress, time }: { progress: number; time: string }) => {
+const Progress = ({
+  progress,
+  time,
+  type,
+}: {
+  progress?: number
+  time?: number
+  type?: SyncType
+}) => {
   const theme = useTheme()
 
   return (
@@ -36,18 +49,38 @@ const Progress = ({ progress, time }: { progress: number; time: string }) => {
           marginBottom: theme.spacingVertical(0.5),
         }}
       >
-        {t.onboarding.lastSteps.blockchainIsSyncing}
+        {t.onboarding.lastSteps.blockchainIsSyncing}{' '}
+        {type && type === 'Header' && '(1/2)'}
+        {type && type === 'Block' && '(2/2)'}
       </Text>
-      <ProgressBar value={progress} />
+      <ProgressBar value={progress || 0} />
       <RemainingTime>
         <Text type='smallMedium'>
-          {time} {t.common.adjectives.remaining.toLowerCase()}
+          {time === undefined ? (
+            <CalcRemainTimeCont>
+              <CalcRemainTimeContLoader>
+                <Loading loading size='14px' />
+              </CalcRemainTimeContLoader>
+              <span>
+                {t.common.phrases.calculatingTheRemainingTime}
+                ...
+              </span>
+            </CalcRemainTimeCont>
+          ) : (
+            <>
+              {humanizeEstimatedTime(time)}{' '}
+              {t.common.adjectives.remaining.toLowerCase()}
+            </>
+          )}
         </Text>
       </RemainingTime>
     </ProgressContainer>
   )
 }
 
+/**
+ * Renders the onboarding message running the blockchain sync
+ */
 export const BlockchainSyncStep = ({
   pushMessages,
   updateMessageBoxSize,
@@ -58,9 +91,8 @@ export const BlockchainSyncStep = ({
 
   const contentRef = useRef<HTMLDivElement | null>(null)
 
+  const [syncStarting, setSyncStarting] = useState(false)
   const [syncStarted, setSyncStarted] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [remainingTime, setRemainingTime] = useState('55 min')
 
   const pushErrorMessage = () => {
     pushMessages([
@@ -86,7 +118,7 @@ export const BlockchainSyncStep = ({
   }
 
   const startSync = async () => {
-    setSyncStarted(true)
+    setSyncStarting(true)
     pushMessages([
       {
         content: <Text>{t.onboarding.lastSteps.message2}</Text>,
@@ -95,11 +127,28 @@ export const BlockchainSyncStep = ({
       },
     ])
     try {
-      await dispatch(baseNodeActions.startNode()).unwrap()
-    } catch (e) {
-      pushErrorMessage()
+      await dispatch(
+        containersActions.startRecipe({ containerName: 'base_node' }),
+      ).unwrap()
+      setSyncStarted(true)
+    } catch (err) {
+      /**
+       * @TODO (#381) on first attempt, it returns :
+       * "Something went wrong with the Docker Wrapper caused by: The designated workspace, default, already exists"
+       * It happens when all containers, local storage and docker volumes are removed before the app launch.
+       */
+      try {
+        await dispatch(
+          containersActions.startRecipe({ containerName: 'base_node' }),
+        ).unwrap()
+        setSyncStarted(true)
+      } catch (err2) {
+        pushErrorMessage()
+      }
     }
   }
+
+  const baseNodeSyncProgress = useBaseNodeSync(syncStarted)
 
   useEffect(() => {
     if (syncStarted && updateMessageBoxSize && contentRef.current) {
@@ -111,32 +160,11 @@ export const BlockchainSyncStep = ({
     dispatch(setOnboardingComplete(true))
   }
 
-  /** MOCK WAITING FOR BASE NODE EVENT ABOUT SYNC PROGRESS */
-  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>()
-  const [intervalStarted, setIntervalStarted] = useState(false)
   useEffect(() => {
-    if (syncStarted && !intervalStarted) {
-      let counter = 1
-      intervalRef.current = setInterval(async () => {
-        setProgress(counter * 10)
-        setRemainingTime(`${55 - counter * 5} min`)
-        if (counter === 6) {
-          pushErrorMessage()
-        }
-        if (counter > 10) {
-          finishSyncing()
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          clearInterval(intervalRef.current!)
-        }
-        counter++
-      }, 2000)
-      setIntervalStarted(true)
+    if (baseNodeSyncProgress.finished) {
+      finishSyncing()
     }
-
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return () => clearInterval(intervalRef.current!)
-  }, [syncStarted])
-  /** END OF MOCK WAITING FOR BASE NODE EVENT ABOUT SYNC PROGRESS */
+  }, [baseNodeSyncProgress.finished])
 
   return (
     <FlexContent ref={contentRef}>
@@ -144,7 +172,7 @@ export const BlockchainSyncStep = ({
         {t.onboarding.lastSteps.message1} ✨💪
       </Text>
 
-      {!syncStarted && (
+      {!syncStarting && (
         <CtaButtonContainer>
           <Button variant='primary' onClick={startSync}>
             {t.onboarding.dockerInstall.startSyncBtn}
@@ -152,9 +180,13 @@ export const BlockchainSyncStep = ({
         </CtaButtonContainer>
       )}
 
-      {syncStarted && (
+      {syncStarting && (
         <>
-          <Progress progress={progress} time={remainingTime} />
+          <Progress
+            progress={baseNodeSyncProgress.progress}
+            time={baseNodeSyncProgress.remainingTime}
+            type={baseNodeSyncProgress.syncType}
+          />
           <CtaButtonContainer style={{ justifyContent: 'center' }}>
             <Button variant='secondary' onClick={() => appWindow.close()}>
               {t.common.verbs.cancel}

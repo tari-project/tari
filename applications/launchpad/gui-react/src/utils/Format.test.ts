@@ -1,4 +1,10 @@
-import { humanizeTime, toT, toMicroT, formatAmount } from './Format'
+import {
+  humanizeTime,
+  toT,
+  toMicroT,
+  formatAmount,
+  humanizeEstimatedTime,
+} from './Format'
 
 describe('Format', () => {
   it('humanizeTime: should properly convert milliseconds to the readable string', () => {
@@ -57,5 +63,12 @@ describe('Format', () => {
     expect(formatAmount(123123123.789)).toBe(
       (123123123.79).toLocaleString([], { maximumFractionDigits: 2 }),
     )
+  })
+
+  it('formats the estimated time', () => {
+    expect(humanizeEstimatedTime(450)).toBe('7 min')
+    expect(humanizeEstimatedTime(65)).toBe('1 min 5 s')
+    expect(humanizeEstimatedTime(7896)).toBe('2h 11 min')
+    expect(humanizeEstimatedTime(7)).toBe('7 s')
   })
 })

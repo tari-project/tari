@@ -45,3 +45,12 @@ export const RemainingTime = styled.div`
   margin-top: ${({ theme }) => theme.spacingVertical(1.5)};
   margin-bottom: ${({ theme }) => theme.spacingVertical(2)};
 `
+
+export const CalcRemainTimeCont = styled.div`
+  display: flex;
+`
+
+export const CalcRemainTimeContLoader = styled.div`
+  padding-top: ${({ theme }) => theme.spacingVertical(0.18)};
+  margin-right: ${({ theme }) => theme.spacingHorizontal(0.4)};
+`

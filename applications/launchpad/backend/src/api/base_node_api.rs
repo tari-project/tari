@@ -39,7 +39,7 @@ pub const ONBOARDING_PROGRESS_DESTINATION: &str = "tari://onboarding_progress";
 pub async fn base_node_sync_progress(app: AppHandle<Wry>) -> Result<(), String> {
     info!("Setting up progress info stream");
     let mut client = GrpcBaseNodeClient::new();
-    let mut stream = client.stream().await.unwrap();
+    let mut stream = client.stream().await.map_err(|e| e.chained_message())?;
 
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
