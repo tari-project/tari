@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.12](https://github.com/tari-project/tari/compare/v0.32.11...v0.32.12) (2022-07-11)
+
+
+### Bug Fixes
+
+* cbindgen fix ([#4298](https://github.com/tari-project/tari/issues/4298)) ([2744d46](https://github.com/tari-project/tari/commit/2744d4601f6e3db461515d894314d25364faa59b))
+
 ### [0.32.11](https://github.com/tari-project/tari/compare/v0.32.10...v0.32.11) (2022-07-11)
 
 
