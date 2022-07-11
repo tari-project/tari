@@ -94,6 +94,7 @@ declare module 'styled-components' {
     modalBackdrop: string
     settingsMenuItem: string
     settingsMenuItemActive: string
+    settingsCopyBoxBackground: string
 
     inverted: {
       controlBackground: string
@@ -157,6 +158,7 @@ declare module 'styled-components' {
       modalBackdrop: string
       settingsMenuItem: string
       settingsMenuItemActive: string
+      settingsCopyBoxBackground: string
     }
   }
 }

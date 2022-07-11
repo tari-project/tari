@@ -48,7 +48,7 @@ const MiningSettings = ({
   return (
     <>
       <SettingsHeader>
-        <Text type='subheader' as='h2' style={{ color: theme.primary }}>
+        <Text type='subheader' as='h2' color={theme.primary}>
           {t.mining.settings.title}
         </Text>
       </SettingsHeader>

@@ -73,6 +73,7 @@ const darkTheme = {
   modalBackdrop: styles.colors.darkMode.input,
   settingsMenuItem: styles.colors.dark.secondary,
   settingsMenuItemActive: styles.colors.darkMode.dashboard,
+  settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -141,6 +142,7 @@ const darkTheme = {
     walletBottomBox: styles.colors.darkMode.tags,
     modalBackdrop: styles.colors.darkMode.input,
     settingsMenuItemActive: styles.colors.darkMode.dashboard,
+    settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
   },
 }
 

@@ -20,11 +20,13 @@ import { ValueContainer, StyledBox, FeedbackContainer } from './styles'
  */
 const CopyBox = ({
   label,
+  labelColor,
   value,
   style,
   valueTransform,
 }: {
   label?: string
+  labelColor?: string
   value: string
   style?: CSSProperties
   valueTransform?: (s: string) => string
@@ -58,7 +60,7 @@ const CopyBox = ({
 
   return (
     <>
-      {label && <Text>{label}</Text>}
+      {label && <Text color={labelColor}>{label}</Text>}
       <StyledBox style={style}>
         <ValueContainer title={value}>{value}</ValueContainer>
         <Button

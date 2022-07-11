@@ -76,6 +76,7 @@ const lightTheme = {
   modalBackdrop: styles.colors.light.primary,
   settingsMenuItem: styles.colors.tari.purpleDark,
   settingsMenuItemActive: styles.colors.light.backgroundImage,
+  settingsCopyBoxBackground: styles.colors.light.backgroundImage,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -146,6 +147,7 @@ const lightTheme = {
     modalBackdrop: styles.colors.light.primary,
     settingsMenuItem: styles.colors.tari.purpleDark,
     settingsMenuItemActive: styles.colors.light.backgroundImage,
+    settingsCopyBoxBackground: styles.colors.light.backgroundImage,
   },
 }
 
