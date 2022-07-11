@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.32.11](https://github.com/tari-project/tari/compare/v0.32.10...v0.32.11) (2022-07-11)
+
+
+### Bug Fixes
+
+* fixed bug in wallet_coin_join ([#4290](https://github.com/tari-project/tari/issues/4290)) ([2f14c3c](https://github.com/tari-project/tari/commit/2f14c3c1e867eff785b5417a72bacedf17df5022))
+
 ### [0.32.10](https://github.com/tari-project/tari/compare/v0.32.9...v0.32.10) (2022-07-07)
 
 
