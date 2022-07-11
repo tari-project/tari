@@ -194,23 +194,15 @@ impl OutputField {
         use OutputField::*;
         match self {
             // Handle edge cases
-            FeaturesParentPublicKey | FeaturesUniqueId => {
-                dbg!(self.get_field_value_ref::<Option<T>>(output));
-                dbg!(val);
-                match self.get_field_value_ref::<Option<T>>(output) {
-                    Some(Some(field_val)) => Ok(field_val == val),
-                    Some(None) => Ok(false),
-                    None => Err(CovenantError::InvalidArgument {
-                        filter: "is_eq",
-                        details: format!("Invalid type for field {}", self),
-                    }),
-                }
+            FeaturesParentPublicKey | FeaturesUniqueId => match self.get_field_value_ref::<Option<T>>(output) {
+                Some(Some(field_val)) => Ok(field_val == val),
+                Some(None) => Ok(false),
+                None => Err(CovenantError::InvalidArgument {
+                    filter: "is_eq",
+                    details: format!("Invalid type for field {}", self),
+                }),
             },
             FeaturesSideChainFeatures => {
-                dbg!(self.get_field_value_ref::<Option<T>>(output));
-                dbg!(self.get_field_value_ref::<T>(output));
-                dbg!(self.get_field_value_ref::<Option<Box<T>>>(output));
-                dbg!(val);
                 match self.get_field_value_ref::<Option<Box<T>>>(output) {
                     Some(Some(field_val)) => Ok(**field_val == *val),
                     Some(None) => Ok(false),
