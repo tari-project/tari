@@ -1,7 +1,9 @@
 import QRCode from 'react-qr-code'
+import { useTheme } from 'styled-components'
 import Button from '../../components/Button'
 
 import Modal from '../../components/Modal'
+import SettingsSectionHeader from '../../components/SettingsSectionHeader'
 import Text from '../../components/Text'
 
 import t from '../../locales'
@@ -28,11 +30,12 @@ const QRContent =
  * @param {() => void} onClose - on modal close
  */
 const BaseNodeQRModal = ({ open, onClose }: BaseNodeQRModalProps) => {
+  const theme = useTheme()
   return (
     <Modal open={open} onClose={onClose} size='small'>
       <ModalContainer>
         <Content>
-          <Text as='h2' type='subheader'>
+          <Text as='h2' type='subheader' color={theme.primary}>
             {t.baseNode.qrModal.heading}
           </Text>
           <Instructions>

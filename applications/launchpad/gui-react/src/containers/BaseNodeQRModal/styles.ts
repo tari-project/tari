@@ -20,15 +20,18 @@ export const CtaButton = styled.div`
 export const Instructions = styled.div`
   margin-top: ${({ theme }) => theme.spacingVertical(2.2)};
   margin-bottom: ${({ theme }) => theme.spacingVertical(3)};
+  color: ${({ theme }) => theme.primary};
 `
 
 export const Steps = styled.ol`
   margin-top: ${({ theme }) => theme.spacingVertical(1.6)};
   padding-left: ${({ theme }) => theme.spacingVertical(2)};
+  font-size: 14px;
 `
 
 export const QRContainer = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
+  margin: 20px;
 `
