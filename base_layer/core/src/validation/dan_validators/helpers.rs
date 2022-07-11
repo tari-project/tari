@@ -99,6 +99,20 @@ pub fn fetch_contract_constitution<B: BlockchainBackend>(
     }
 }
 
+pub fn fetch_constitution_height<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+) -> Result<u64, ValidationError> {
+    let utxos = fetch_contract_utxos(db, contract_id, OutputType::ContractConstitution)?;
+    // Only one constitution should be stored for a particular contract_id
+    match utxos.first() {
+        Some(utxo) => Ok(utxo.mined_height),
+        None => Err(ValidationError::DanLayerError(
+            DanLayerValidationError::ContractConstitutionNotFound { contract_id },
+        )),
+    }
+}
+
 pub fn fetch_contract_update_proposal<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     contract_id: FixedHash,

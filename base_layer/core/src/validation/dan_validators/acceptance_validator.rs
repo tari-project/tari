@@ -24,6 +24,7 @@ use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use super::helpers::{
+    fetch_constitution_height,
     fetch_contract_constitution,
     fetch_contract_features,
     fetch_contract_utxos,
@@ -137,20 +138,6 @@ fn validate_acceptance_window<B: BlockchainBackend>(
     }
 
     Ok(())
-}
-
-pub fn fetch_constitution_height<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    contract_id: FixedHash,
-) -> Result<u64, ValidationError> {
-    let utxos = fetch_contract_utxos(db, contract_id, OutputType::ContractConstitution)?;
-    // Only one constitution should be stored for a particular contract_id
-    match utxos.first() {
-        Some(utxo) => Ok(utxo.mined_height),
-        None => Err(ValidationError::DanLayerError(
-            DanLayerValidationError::ContractConstitutionNotFound { contract_id },
-        )),
-    }
 }
 
 pub fn validate_signature<B: BlockchainBackend>(

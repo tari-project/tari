@@ -20,7 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::helpers::{fetch_contract_constitution, get_sidechain_features};
+use tari_common_types::types::FixedHash;
+
+use super::helpers::{fetch_constitution_height, fetch_contract_constitution, get_sidechain_features};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
@@ -50,6 +52,8 @@ pub fn validate_contract_checkpoint<B: BlockchainBackend>(
 
     let prev_cp = fetch_current_contract_checkpoint(db, contract_id)?;
     validate_checkpoint_number(prev_cp.as_ref(), checkpoint)?;
+
+    validate_interval(db, contract_id, &constitution)?;
 
     Ok(())
 }
@@ -92,25 +96,50 @@ fn validate_committee(
     Ok(())
 }
 
+fn validate_interval<B: BlockchainBackend>(
+    db: &BlockchainDatabase<B>,
+    contract_id: FixedHash,
+    constitution: &ContractConstitution,
+) -> Result<(), ValidationError> {
+    let constitution_height = fetch_constitution_height(db, contract_id)?;
+    let max_allowed_height = constitution_height + constitution.checkpoint_params.abandoned_interval;
+    let current_height = db.get_height()?;
+
+    let interval_has_expired = current_height > max_allowed_height;
+    if interval_has_expired {
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::CheckpointIntervalHasExpired { contract_id },
+        ));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use tari_common_types::types::Signature;
 
-    use crate::validation::dan_validators::{
-        test_helpers::{
-            assert_dan_validator_err,
-            assert_dan_validator_success,
-            create_committee_signatures,
-            create_contract_checkpoint,
-            create_contract_checkpoint_schema,
-            create_random_key_pair,
-            init_test_blockchain,
-            publish_checkpoint,
-            publish_contract,
-            publish_definition,
-            schema_to_transaction,
+    use crate::{
+        txn_schema,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_success,
+                create_block,
+                create_committee_signatures,
+                create_contract_checkpoint,
+                create_contract_checkpoint_schema,
+                create_contract_constitution,
+                create_random_key_pair,
+                init_test_blockchain,
+                publish_checkpoint,
+                publish_constitution,
+                publish_contract,
+                publish_definition,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
         },
-        DanLayerValidationError,
     };
 
     #[test]
@@ -232,5 +261,37 @@ mod test {
         // try to validate the acceptance transaction and check that we get the error
         let err = assert_dan_validator_err(&blockchain, &tx);
         assert!(matches!(err, DanLayerValidationError::InconsistentCommittee { .. }));
+    }
+
+    #[test]
+    fn it_rejects_expired_checkpoints() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, utxos) = init_test_blockchain();
+
+        // publish the contract definition into a block
+        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+
+        // publish the contract constitution into a block, with a very short (1 block) checkpoint interval
+        let mut constitution = create_contract_constitution();
+        constitution.checkpoint_params.abandoned_interval = 1;
+        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution);
+
+        // publish some filler blocks in, just to make the interval height pass
+        let schema = txn_schema!(from: vec![utxos[2].clone()], to: vec![0.into()]);
+        create_block(&mut blockchain, "filler1", schema);
+        let schema = txn_schema!(from: vec![utxos[3].clone()], to: vec![0.into()]);
+        create_block(&mut blockchain, "filler2", schema);
+
+        // create a checkpoint transaction after the interval expiration
+        let checkpoint = create_contract_checkpoint(0);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos[4].clone(), checkpoint);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the checkpoint transaction and check that we get the expiration error
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::CheckpointIntervalHasExpired { .. }
+        ));
     }
 }

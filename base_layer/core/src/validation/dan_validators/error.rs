@@ -67,4 +67,6 @@ pub enum DanLayerValidationError {
     CheckpointNonSequentialNumber { got: u64, expected: u64 },
     #[error("Validator committee not consistent with contract constitution")]
     InconsistentCommittee,
+    #[error("Checkpoint interval has expired for contract_id ({contract_id})")]
+    CheckpointIntervalHasExpired { contract_id: FixedHash },
 }
