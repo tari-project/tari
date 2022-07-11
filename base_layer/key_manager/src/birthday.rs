@@ -22,7 +22,6 @@
 
 use std::convert::TryFrom;
 
-use digest::generic_array::typenum::Negate;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_core::blocks::genesis_block::get_genesis_block;
