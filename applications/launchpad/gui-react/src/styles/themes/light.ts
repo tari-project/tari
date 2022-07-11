@@ -73,6 +73,13 @@ const lightTheme = {
   walletCopyBoxBorder: styles.colors.dark.borders,
   balanceBoxBorder: styles.colors.light.backgroundImage,
   walletBottomBox: styles.colors.light.background,
+  modalBackdrop: styles.colors.light.primary,
+  settingsMenuItem: styles.colors.tari.purpleDark,
+  settingsMenuItemActive: styles.colors.light.backgroundImage,
+  settingsCopyBoxBackground: styles.colors.light.backgroundImage,
+  scrollBarTrack: styles.colors.light.background,
+  scrollBarThumb: styles.colors.darkMode.tags,
+  scrollBarHover: styles.colors.darkMode.darkLogoCard,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -140,6 +147,11 @@ const lightTheme = {
     walletCopyBoxBorder: styles.colors.dark.borders,
     balanceBoxBorder: styles.colors.light.backgroundImage,
     walletBottomBox: styles.colors.light.background,
+    modalBackdrop: styles.colors.light.primary,
+    settingsMenuItem: styles.colors.tari.purpleDark,
+    settingsMenuItemActive: styles.colors.light.backgroundImage,
+    settingsCopyBoxBackground: styles.colors.light.backgroundImage,
+    scrollBarTrack: styles.colors.light.textSecondary,
   },
 }
 

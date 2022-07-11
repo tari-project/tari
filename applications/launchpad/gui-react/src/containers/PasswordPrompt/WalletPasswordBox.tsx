@@ -32,15 +32,22 @@ const WalletPasswordBox = ({
     pending || walletPassword.length < MINIMAL_PASSWORD_LENGTH
 
   return (
-    <Box style={{ position: 'relative', margin: 0 }}>
+    <Box
+      style={{
+        position: 'relative',
+        margin: 0,
+        background: theme.nodeBackground,
+        borderColor: theme.selectBorderColor,
+      }}
+    >
       <SignetsContainer>
-        <TariBackgroundSignet />
+        <TariBackgroundSignet color={theme.disabledPrimaryButton} />
       </SignetsContainer>
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
           {t.passwordPrompt.walletPassword.title}
         </Text>
-        <Text>
+        <Text type='defaultMedium'>
           {t.passwordPrompt.scheduleCTA} {t.passwordPrompt.walletPassword.cta}
         </Text>
       </div>

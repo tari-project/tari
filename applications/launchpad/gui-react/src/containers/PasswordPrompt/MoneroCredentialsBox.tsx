@@ -40,7 +40,14 @@ const MoneroCredentialsBox = ({
     !moneroUsername
 
   return (
-    <Box style={{ position: 'relative', margin: 0 }}>
+    <Box
+      style={{
+        position: 'relative',
+        margin: 0,
+        background: theme.nodeBackground,
+        borderColor: theme.selectBorderColor,
+      }}
+    >
       <SignetsContainer>
         <MoneroBackgroundSignet />
       </SignetsContainer>
@@ -48,7 +55,7 @@ const MoneroCredentialsBox = ({
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
           {t.passwordPrompt.moneroCredentials.title}
         </Text>
-        <Text>
+        <Text type='defaultMedium' as='span'>
           {t.passwordPrompt.scheduleCTA}{' '}
           {t.passwordPrompt.moneroCredentials.cta}
         </Text>

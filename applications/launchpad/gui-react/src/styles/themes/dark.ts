@@ -70,6 +70,13 @@ const darkTheme = {
   walletCopyBoxBorder: 'transparent',
   balanceBoxBorder: styles.colors.darkMode.borders,
   walletBottomBox: styles.colors.darkMode.tags,
+  modalBackdrop: styles.colors.darkMode.input,
+  settingsMenuItem: styles.colors.dark.secondary,
+  settingsMenuItemActive: styles.colors.darkMode.dashboard,
+  settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
+  scrollBarTrack: styles.colors.darkMode.modalBackground,
+  scrollBarThumb: styles.colors.darkMode.borders,
+  scrollBarHover: styles.colors.darkMode.disabledText,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -79,6 +86,7 @@ const darkTheme = {
     backgroundSecondary: styles.colors.darkMode.modalBackground,
     backgroundImage: styles.colors.light.backgroundImage,
     accent: styles.colors.tari.purple,
+    accentSecondary: styles.colors.secondary.onTextLight,
     accentDark: styles.colors.tari.purpleDark,
     accentMerged: styles.colors.darkMode.darkLogoCard,
     disabledText: styles.colors.dark.placeholder,
@@ -136,6 +144,10 @@ const darkTheme = {
     walletCopyBoxBorder: 'transparent',
     balanceBoxBorder: styles.colors.darkMode.borders,
     walletBottomBox: styles.colors.darkMode.tags,
+    modalBackdrop: styles.colors.darkMode.input,
+    settingsMenuItemActive: styles.colors.darkMode.dashboard,
+    settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
+    scrollBarTrack: styles.colors.darkMode.modalBackground,
   },
 }
 

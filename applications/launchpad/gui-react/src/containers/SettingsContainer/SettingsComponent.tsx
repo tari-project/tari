@@ -126,7 +126,11 @@ const SettingsComponent = ({
 
   // Render main Settings modal:
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      style={{ border: `1px solid ${theme.selectBorderColor}` }}
+    >
       <MainContainer data-testid='settings-modal-container'>
         <MainContentContainer>
           <Sidebar>

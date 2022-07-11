@@ -2,7 +2,7 @@ import styled from 'styled-components'
 
 export const AddressDescription = styled.div`
   & > p {
-    color: ${({ theme }) => theme.secondary};
+    color: ${({ theme }) => theme.nodeWarningText};
   }
 `
 

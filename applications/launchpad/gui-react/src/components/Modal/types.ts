@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { CSSProperties, ReactNode } from 'react'
 
 export interface ModalProps {
   open?: boolean
@@ -6,4 +6,5 @@ export interface ModalProps {
   onClose?: () => void
   size?: 'large' | 'small' | 'auto'
   local?: boolean
+  style?: CSSProperties
 }

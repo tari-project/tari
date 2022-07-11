@@ -85,5 +85,5 @@ export const Label = styled.label<{ $inverted?: boolean; $noMargin?: boolean }>`
     $noMargin ? '0px' : theme.spacingVertical()};
   color: ${({ theme, $inverted }) =>
     $inverted ? theme.inverted.primary : theme.primary};
-  font-family 'AvenirMedium';
+  font-family: 'AvenirMedium';
 `

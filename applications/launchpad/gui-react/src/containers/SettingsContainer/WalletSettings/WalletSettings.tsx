@@ -27,7 +27,7 @@ const WalletSettings = ({
 
   return (
     <>
-      <Text type='subheader' as='h2'>
+      <Text type='subheader' as='h2' color={theme.primary}>
         {t.wallet.settings.title}
       </Text>
       <IsWalletRunningRow>
@@ -52,13 +52,18 @@ const WalletSettings = ({
       </IsWalletRunningRow>
       <CopyBox
         label={`${t.wallet.wallet.walletId} (${t.wallet.wallet.address})`}
+        labelColor={theme.primary}
         value={address}
+        style={{
+          background: theme.settingsCopyBoxBackground,
+          borderColor: theme.selectBorderColor,
+        }}
       />
-      <Text type='smallMedium' color={theme.secondary}>
+      <Text type='smallMedium' color={theme.nodeWarningText}>
         {t.wallet.settings.explanations.storage}{' '}
         {t.wallet.settings.explanations.send} (
         {t.wallet.settings.explanations.try}{' '}
-        <Button href='https://aurora.tari.com/'>
+        <Button href='https://aurora.tari.com/' size='small'>
           {t.wallet.settings.explanations.aurora}
         </Button>{' '}
         - {t.wallet.settings.explanations.itsGreat}){' '}

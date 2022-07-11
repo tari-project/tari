@@ -1,9 +1,10 @@
 import { ReactNode } from 'react'
-import styled from 'styled-components'
+import styled, { useTheme } from 'styled-components'
 
 import Box from '../../../components/Box'
 
 export const IsWalletRunningRow = ({ children }: { children: ReactNode }) => {
+  const theme = useTheme()
   return (
     <Box
       style={{
@@ -15,6 +16,8 @@ export const IsWalletRunningRow = ({ children }: { children: ReactNode }) => {
         alignItems: 'center',
         paddingLeft: 0,
         paddingRight: 0,
+        background: theme.nodeBackground,
+        borderColor: theme.selectBorderColor,
       }}
     >
       {children}

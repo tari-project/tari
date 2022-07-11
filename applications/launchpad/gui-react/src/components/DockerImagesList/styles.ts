@@ -8,7 +8,7 @@ export const DockerRow = styled.div<{ $inverted?: boolean }>`
   &:not(:last-of-type) {
     border-bottom: 1px solid
       ${({ theme, $inverted }) =>
-        $inverted ? theme.inverted.resetBackground : theme.borderColor};
+        $inverted ? theme.inverted.resetBackground : theme.selectBorderColor};
   }
 `
 

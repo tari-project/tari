@@ -49,7 +49,7 @@ const BaseNodeSettings = ({
   }, [])
   return (
     <>
-      <Text type='subheader' as='h2'>
+      <Text type='subheader' as='h2' color={theme.primary}>
         {t.baseNode.settings.title}
       </Text>
       <Controller
@@ -67,6 +67,7 @@ const BaseNodeSettings = ({
                 options={networkOptions}
                 onChange={({ value }) => field.onChange(value as Network)}
                 fullWidth
+                styles={{ value: { color: theme.nodeWarningText } }}
               />
             </div>
           </SelectRow>
@@ -88,13 +89,14 @@ const BaseNodeSettings = ({
               value={field?.value?.toString() || ''}
               containerStyle={{ width: '50%' }}
               withError={false}
+              style={{ color: theme.nodeWarningText }}
             />
           </InputRow>
         )}
       />
       <ConnectionRow>
         <TextWrapper>
-          <Text type='smallMedium'>
+          <Text type='smallMedium' color={theme.helpTipText}>
             <Button
               variant='button-in-text'
               style={{ color: theme.onTextLight, fontSize: '14px' }}
@@ -111,7 +113,7 @@ const BaseNodeSettings = ({
             dispatch(tbotactions.push(MessagesConfig.ConnectAurora))
           }
         >
-          <SvgInfo1 fontSize={22} />
+          <SvgInfo1 fontSize={22} color={theme.helpTipText} />
         </Button>
       </ConnectionRow>
     </>

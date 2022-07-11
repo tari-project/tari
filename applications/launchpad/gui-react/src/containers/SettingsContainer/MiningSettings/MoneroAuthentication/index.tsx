@@ -1,4 +1,5 @@
 import { Controller, SubmitHandler, useForm } from 'react-hook-form'
+import { useTheme } from 'styled-components'
 import Button from '../../../../components/Button'
 import Input from '../../../../components/Inputs/Input'
 import PasswordInput from '../../../../components/Inputs/PasswordInput'
@@ -31,6 +32,7 @@ const MoneroAuthentication = ({
   onSubmit: (data: AuthenticationInputs) => void
   close: () => void
 }) => {
+  const theme = useTheme()
   const { control, handleSubmit } = useForm<AuthenticationInputs>({
     mode: 'onChange',
     defaultValues,
@@ -42,13 +44,20 @@ const MoneroAuthentication = ({
   }
 
   return (
-    <ModalContainer>
+    <ModalContainer
+      style={{
+        border: `1px solid ${theme.selectBorderColor}`,
+        borderRadius: 'inherit',
+      }}
+    >
       <ModalContent>
-        <Text as='h2' type='subheader'>
+        <Text as='h2' type='subheader' color={theme.primary}>
           {t.mining.settings.moneroAuthFormTitle}
         </Text>
         <Description>
-          <Text type='smallMedium'>{t.mining.settings.moneroAuthFormDesc}</Text>
+          <Text type='smallMedium' color={theme.primary}>
+            {t.mining.settings.moneroAuthFormDesc}
+          </Text>
         </Description>
 
         <InputWrapper>

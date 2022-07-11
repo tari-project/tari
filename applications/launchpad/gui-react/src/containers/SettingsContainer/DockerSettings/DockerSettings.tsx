@@ -29,12 +29,12 @@ const DockerSettings = ({
   return (
     <>
       <SettingsHeader>
-        <Text type='subheader' as='h2'>
+        <Text type='subheader' as='h2' color={theme.primary}>
           {t.docker.settings.title}
         </Text>
       </SettingsHeader>
 
-      <SettingsSectionHeader noTopMargin>
+      <SettingsSectionHeader noTopMargin noBottomMargin>
         {t.common.nouns.expert}
       </SettingsSectionHeader>
 
@@ -79,18 +79,25 @@ const DockerSettings = ({
             <Input
               onChange={field.onChange}
               value={field?.value?.toString() || ''}
-              containerStyle={{ width: '50%' }}
+              containerStyle={{
+                width: '50%',
+              }}
               withError={false}
             />
           )}
         />
       </div>
 
-      <SettingsSectionHeader>
+      <SettingsSectionHeader noTopMargin>
         {t.docker.settings.imageStatuses}
       </SettingsSectionHeader>
 
-      <DockerImagesList style={{ marginBottom: theme.spacing() }} />
+      <DockerImagesList
+        style={{
+          marginBottom: theme.spacing(),
+          marginLeft: `-${theme.spacingHorizontal(1.2)}`,
+        }}
+      />
     </>
   )
 }

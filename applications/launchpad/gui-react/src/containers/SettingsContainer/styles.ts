@@ -19,7 +19,7 @@ export const Sidebar = styled.aside`
   width: 160px;
   min-width: 160px;
   height: 100%;
-  border-right: 1px solid ${({ theme }) => theme.borderColor};
+  border-right: 1px solid ${({ theme }) => theme.balanceBoxBorder};
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -29,7 +29,7 @@ export const Sidebar = styled.aside`
 export const SidebarTabs = styled.div`
   width: 160px;
   min-width: 160px;
-  border-right: 1px solid ${({ theme }) => theme.borderColor};
+  border-right: 1px solid ${({ theme }) => theme.balanceBoxBorder};
   padding-top: ${({ theme }) => theme.spacing(2)};
   box-sizing: border-box;
   display: flex;
@@ -57,17 +57,17 @@ export const MenuItem = styled.button<{ active?: boolean }>`
   border-top-left-radius: ${({ theme }) => theme.tightBorderRadius(0.75)};
   border-bottom-left-radius: ${({ theme }) => theme.tightBorderRadius(0.75)};
   background: ${({ theme, active }) =>
-    active ? theme.backgroundImage : 'none'};
+    active ? theme.settingsMenuItemActive : 'none'};
   box-sizing: border-box;
   padding: ${({ theme }) => theme.spacingVertical(0.67)} 0;
   padding-left: ${({ theme }) => theme.spacingHorizontal()};
   width: 136px;
-  color: ${({ theme, active }) => (active ? theme.accent : theme.accentDark)};
+  color: ${({ theme, active }) =>
+    active ? theme.accent : theme.settingsMenuItem};
   height: 39px;
 
   &:hover {
-    background: ${({ theme }) => theme.backgroundImage};
-    color: ${({ theme }) => theme.accent};
+    background: ${({ theme }) => theme.settingsMenuItemActive};
   }
 `
 
@@ -91,10 +91,10 @@ export const Footer = styled.footer`
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  padding: ${({ theme }) => theme.spacingVertical()}
-    ${({ theme }) => theme.spacingHorizontal()};
+  padding: ${({ theme }) => theme.spacingVertical()};
+  ${({ theme }) => theme.spacingHorizontal()};
   column-gap: ${({ theme }) => theme.spacing()};
-  border-top: 1px solid ${({ theme }) => theme.borderColor};
+  border-top: 1px solid ${({ theme }) => theme.selectBorderColor};
 `
 
 export const DiscardWarning = styled.div`

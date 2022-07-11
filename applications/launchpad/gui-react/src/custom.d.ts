@@ -91,6 +91,13 @@ declare module 'styled-components' {
     walletCopyBoxBorder: string
     balanceBoxBorder: string
     walletBottomBox: string
+    modalBackdrop: string
+    settingsMenuItem: string
+    settingsMenuItemActive: string
+    settingsCopyBoxBackground: string
+    scrollBarTrack: string
+    scrollBarThumb: string
+    scrollBarHover: string
 
     inverted: {
       controlBackground: string
@@ -151,6 +158,13 @@ declare module 'styled-components' {
       walletCopyBoxBorder: string
       balanceBoxBorder: string
       walletBottomBox: string
+      modalBackdrop: string
+      settingsMenuItem: string
+      settingsMenuItemActive: string
+      settingsCopyBoxBackground: string
+      scrollBarTrack: string
+      scrollBarThumb: string
+      scrollBarHover: string
     }
   }
 }
