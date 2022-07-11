@@ -4,6 +4,7 @@ import { appWindow } from '@tauri-apps/api/window'
 import linksConfig from './config/links'
 import SvgTariLaunchpadLogo from './styles/Icons/TariLaunchpadLogo'
 import SvgTBotBase from './styles/Icons/TBotBase'
+import { hideSplashscreen } from './splashscreen'
 
 interface ErrorBoundaryProps {
   children?: ReactNode
@@ -108,16 +109,17 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     padding: '6px 24px',
-    paddingTop: 10,
+    paddingTop: 8,
     gap: 10,
     background: 'linear-gradient(239.91deg, #9330FF 0%, #593A9B 131%)',
     borderRadius: 8,
     borderWidth: 0,
-    fontFamily: 'AvenirMedium',
+    fontFamily: 'AvenirHeavy',
     boxShadow: 'none',
     fontSize: 14,
     color: '#fff',
     cursor: 'pointer',
+    minHeight: '38px',
   },
   detailsContainer: {
     display: 'none',
@@ -153,6 +155,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // eslint-disable-next-line no-console
     console.error('Uncaught error:', error, errorInfo.componentStack)
+    hideSplashscreen()
   }
 
   render() {
@@ -258,7 +261,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                     style={{
                       ...(styles.button as CSSProperties),
                       color: '#20053D',
-                      borderColor: 'EDECEE',
+                      borderWidth: 2,
+                      borderStyle: 'solid',
+                      borderColor: '#EDECEE',
                       background: '#F6F5F8',
                     }}
                     onClick={() =>
@@ -274,7 +279,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                     style={styles.button as CSSProperties}
                     onClick={() => appWindow.close()}
                   >
-                    Close
+                    Close the app
                   </button>
                 </div>
               </div>
