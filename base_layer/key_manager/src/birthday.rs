@@ -34,7 +34,6 @@ pub struct Birthday {
 }
 
 impl Birthday {
-
     pub fn default() -> Self {
         let network = Network::Dibbler;
         Self::new(network)
