@@ -90,6 +90,7 @@ declare module 'styled-components' {
     walletSetupBorderColor: string
     walletCopyBoxBorder: string
     balanceBoxBorder: string
+    walletBottomBox: string
 
     inverted: {
       controlBackground: string
@@ -149,6 +150,7 @@ declare module 'styled-components' {
       walletSetupBorderColor: string
       walletCopyBoxBorder: string
       balanceBoxBorder: string
+      walletBottomBox: string
     }
   }
 }

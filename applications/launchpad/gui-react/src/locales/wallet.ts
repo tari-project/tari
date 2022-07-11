@@ -87,7 +87,7 @@ const translations = {
       bold: 'A wallet ID (also known as wallet identifier or wallet address) is like a bank account number.',
       regular:
         'Wallet ID is public and you can freely share it with others. That way, people can send you some Tari coins.',
-    }
+    },
     /**
      * @TODO text for the transactionFee help
      */

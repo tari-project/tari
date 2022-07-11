@@ -47,58 +47,62 @@ const WalletBalance = ({
         padding: 0,
       }}
     >
-     <BoxTopContainer>
-      <Text color={theme.nodeWarningText}>
-        {t.wallet.balance.title}
-        <Loading loading={pending} size='0.9em' style={{ marginLeft: '5px' }} />
-      </Text>
-      <TariAmountContainer>
+      <BoxTopContainer>
+        <Text color={theme.nodeWarningText}>
+          {t.wallet.balance.title}
+          <Loading
+            loading={pending}
+            size='0.9em'
+            style={{ marginLeft: '5px' }}
+          />
+        </Text>
+        <TariAmountContainer>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <TariSignet
+              style={{
+                color: theme.accent,
+                display: 'inline-block',
+                marginRight: theme.spacingHorizontal(0.5),
+              }}
+            />
+            <CoinsList
+              coins={[{ amount: balance, unit: 'xtr' }]}
+              inline
+              color={pending ? theme.placeholderText : theme.helpTipText}
+            />
+          </div>
+          {currentTheme === 'light' ? <Chart /> : <ChartDark />}
+        </TariAmountContainer>
+      </BoxTopContainer>
+      <BoxBottomContainer>
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          <TariSignet   
-            style={{
-              color: theme.accent,
-              display: 'inline-block',
-              marginRight: theme.spacingHorizontal(0.5),
-            }}
-          />     
-         <CoinsList
-            coins={[{ amount: balance, unit: 'xtr' }]}
-            inline
-            color={pending ? theme.placeholderText : theme.helpTipText}
-          />
+          <div>
+            <Text
+              type='defaultMedium'
+              style={{ display: 'inline-block' }}
+              color={theme.secondary}
+            >
+              {t.wallet.balance.available}
+            </Text>{' '}
+            <CoinsList
+              coins={[{ amount: available, unit: 'xtr' }]}
+              inline
+              small
+              color={pending ? theme.placeholderText : theme.helpTipText}
+            />
+          </div>
+          <AvailableBalanceHelp />
         </div>
-        {currentTheme === 'light' ? <Chart /> : <ChartDark />}
-      </TariAmountContainer>
-    </BoxTopContainer>
-    <BoxBottomContainer>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div>
-          <Text
-            type='defaultMedium'
-            style={{ display: 'inline-block' }}
-            color={theme.secondary}
-          >
-            {t.wallet.balance.available}
-          </Text>{' '}
-          <CoinsList
-            coins={[{ amount: available, unit: 'xtr' }]}
-            inline
-            small
-            color={pending ? theme.placeholderText : theme.helpTipText}
-          />
-        </div>
-        <AvailableBalanceHelp />
-      </div>
         {available && available > 0 ? (
           <Button
             onClick={() => setShowSendModal(true)}

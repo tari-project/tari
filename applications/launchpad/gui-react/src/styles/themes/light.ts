@@ -72,6 +72,7 @@ const lightTheme = {
   walletSetupBorderColor: 'transparent',
   walletCopyBoxBorder: styles.colors.dark.borders,
   balanceBoxBorder: styles.colors.light.backgroundImage,
+  walletBottomBox: styles.colors.light.background,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -138,6 +139,7 @@ const lightTheme = {
     walletSetupBorderColor: 'transparent',
     walletCopyBoxBorder: styles.colors.dark.borders,
     balanceBoxBorder: styles.colors.light.backgroundImage,
+    walletBottomBox: styles.colors.light.background,
   },
 }
 

@@ -69,6 +69,7 @@ const darkTheme = {
   walletSetupBorderColor: styles.colors.darkMode.borders,
   walletCopyBoxBorder: 'transparent',
   balanceBoxBorder: styles.colors.darkMode.borders,
+  walletBottomBox: styles.colors.darkMode.tags,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -134,6 +135,7 @@ const darkTheme = {
     walletSetupBorderColor: 'transparent',
     walletCopyBoxBorder: 'transparent',
     balanceBoxBorder: styles.colors.darkMode.borders,
+    walletBottomBox: styles.colors.darkMode.tags,
   },
 }
 

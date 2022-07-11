@@ -31,5 +31,5 @@ export const BoxTopContainer = styled.div`
 export const BoxBottomContainer = styled.div`
   padding: ${({ theme }) => theme.spacing()};
   padding-top: ${({ theme }) => theme.spacing(0.5)};
-  background: ${({ theme }) => theme.backgroundSecondary};
+  background: ${({ theme }) => theme.walletBottomBox};
 `
