@@ -15,13 +15,13 @@ export const SignetsContainer = styled.div`
 `
 
 export const TariBackgroundSignet = styled(SvgTariSignet)`
-  color: ${({ theme }) => theme.backgroundImage};
+  color: ${({ theme }) => theme.disabledPrimaryButton};
   height: 80px;
   width: 80px;
 `
 
 export const MoneroBackgroundSignet = styled(SvgMoneroSignet)`
-  color: ${({ theme }) => theme.backgroundImage};
+  color: ${({ theme }) => theme.disabledPrimaryButton};
   height: 80px;
   width: 80px;
 `
