@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, mem::size_of};
+use std::mem::size_of;
 
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use arrayvec::ArrayVec;
@@ -37,6 +37,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_utilities::ByteArray;
 
 use crate::{
+    birthday::Birthday,
     error::KeyManagerError,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
 };
@@ -95,10 +96,8 @@ pub struct CipherSeed {
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
-        const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-        let days = u64::try_from(chrono::Utc::now().timestamp()).unwrap() / SECONDS_PER_DAY;
-        let birthday = u16::try_from(days).unwrap_or(0u16);
-        CipherSeed::new_with_birthday(birthday)
+        let birthday_data = Birthday::new();
+        CipherSeed::new_with_birthday(birthday_data)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -110,14 +109,17 @@ impl CipherSeed {
         CipherSeed::new_with_birthday(birthday)
     }
 
-    fn new_with_birthday(birthday: u16) -> Self {
+    fn new_with_birthday(birthday_data: Birthday) -> Self {
         let mut entropy = [0u8; CIPHER_SEED_ENTROPY_BYTES];
         OsRng.fill_bytes(&mut entropy);
         let mut salt = [0u8; CIPHER_SEED_SALT_BYTES];
         OsRng.fill_bytes(&mut salt);
 
+        let version = birthday_data.version();
+        let birthday = birthday_data.birthday();
+
         Self {
-            version: CIPHER_SEED_VERSION,
+            version,
             birthday,
             entropy,
             salt,
