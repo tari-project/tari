@@ -96,7 +96,7 @@ pub struct CipherSeed {
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
-        let birthday_data = Birthday::new();
+        let birthday_data = Birthday::default();
         CipherSeed::new_with_birthday(birthday_data)
     }
 

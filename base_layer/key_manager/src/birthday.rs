@@ -22,6 +22,7 @@
 
 use std::convert::TryFrom;
 
+use digest::generic_array::typenum::Negate;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_core::blocks::genesis_block::get_genesis_block;
@@ -34,18 +35,18 @@ pub struct Birthday {
 }
 
 impl Birthday {
-    pub fn new() -> Self {
+
+    pub fn default() -> Self {
         let network = Network::Dibbler;
-
-        Self::new_from_network(network)
+        Self::new(network)
     }
 
-    pub fn new_from_network(network: Network) -> Self {
+    pub fn new(network: Network) -> Self {
         let current_time = Self::current_time_in_seconds();
-        Self::new_from_network_and_current_time(network, current_time)
+        Self::new_from_current_time(network, current_time)
     }
 
-    fn new_from_network_and_current_time(network: Network, current_time: u64) -> Self {
+    fn new_from_current_time(network: Network, current_time: u64) -> Self {
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
         const PERIOD_LENGTH: u64 = u16::MAX as u64 + 1; // 2^16
 
@@ -94,7 +95,7 @@ mod tests {
     #[test]
     fn correct_version() {
         let network = Network::Dibbler;
-        let birthday = Birthday::new_from_network(network);
+        let birthday = Birthday::new(network);
         assert_eq!(birthday.version(), 0u8);
     }
 
@@ -102,7 +103,7 @@ mod tests {
     fn correct_zero_point_time() {
         let network = Network::Dibbler;
         let dibbler_genesis_block_time = get_genesis_block(network).block().header.timestamp.as_u64();
-        let birthday = Birthday::new_from_network(network);
+        let birthday = Birthday::new(network);
         assert_eq!(birthday.zero_point_time(), dibbler_genesis_block_time); // admit at most 5 seconds difference
     }
 
@@ -115,7 +116,7 @@ mod tests {
         let now = u64::try_from(chrono::Utc::now().timestamp()).unwrap();
         let current = (now - dibbler_genesis_block_time) / (24 * 60 * 60);
 
-        let birthday = Birthday::new_from_network(network).birthday();
+        let birthday = Birthday::new(network).birthday();
         let suite_birthday = u16::try_from(current % (2u64.pow(16))).unwrap();
 
         assert_eq!(suite_birthday, birthday);
@@ -128,7 +129,7 @@ mod tests {
         for vrsn in 1..10u64 {
             let lapse_period = vrsn * (u64::from(u16::MAX) + 1) + vrsn;
             let current_time = genesis_timestamp + lapse_period * SECONDS_PER_DAY;
-            let birthday_data = Birthday::new_from_network_and_current_time(Network::Dibbler, current_time);
+            let birthday_data = Birthday::new_from_current_time(Network::Dibbler, current_time);
 
             assert_eq!(birthday_data.version, u8::try_from(vrsn).unwrap());
             assert_eq!(birthday_data.birthday, u16::try_from(vrsn).unwrap());
