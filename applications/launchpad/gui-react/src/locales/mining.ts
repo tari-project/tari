@@ -72,10 +72,14 @@ const translations = {
   settings: {
     title: 'Mining Settings',
     moneroAddressLabel: 'Monero mining address',
-    moneroAddressDesc1:
-      'This is the address to which the Monero coins you earn will be sent.',
-    moneroAddressDesc2:
-      'You need to provide a Monero address to be able to start Merged mining.',
+    moneroAddressDesc1: {
+      regular: 'This is the address to which',
+      bold: 'the Monero coins you earn will be sent.',
+    },
+    moneroAddressDesc2: {
+      regular: 'You need to provide a Monero address to be able to start',
+      bold: 'Merged mining.',
+    },
     moneroAddressError: 'The address must be at least 12 characters',
     threadsLabel: 'SHA3 threads',
     moneroUrlLabel: 'Monero node URL',

@@ -1,7 +1,7 @@
 import styled from 'styled-components'
 
 const Backdrop = styled.div<{ opacity?: number; borderRadius?: string }>`
-  background: ${({ theme }) => theme.secondary};
+  background: ${({ theme }) => theme.modalBackdrop};
   opacity: ${({ opacity }) => opacity};
   position: absolute;
   border-radius: ${({ borderRadius }) => borderRadius};

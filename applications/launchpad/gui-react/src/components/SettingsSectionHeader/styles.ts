@@ -19,6 +19,6 @@ export const HeaderContainer = styled.div<{
 export const HeaderLine = styled.div`
   flex: 1;
   height: 1px;
-  background: ${({ theme }) => theme.borderColor};
+  background: ${({ theme }) => theme.selectBorderColor};
   margin-left: ${({ theme }) => theme.spacingHorizontal(0.5)};
 `

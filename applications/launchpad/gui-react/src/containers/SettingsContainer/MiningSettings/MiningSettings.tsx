@@ -48,7 +48,7 @@ const MiningSettings = ({
   return (
     <>
       <SettingsHeader>
-        <Text type='subheader' as='h2'>
+        <Text type='subheader' as='h2' style={{ color: theme.primary }}>
           {t.mining.settings.title}
         </Text>
       </SettingsHeader>
@@ -79,10 +79,18 @@ const MiningSettings = ({
       </div>
 
       <AddressDescription>
-        <Text type='smallMedium'>
-          {t.mining.settings.moneroAddressDesc1}
+        <Text type='smallMedium' style={{ display: 'inline-block' }}>
+          {t.mining.settings.moneroAddressDesc1.regular}{' '}
+          <Text type='smallHeavy' as='span'>
+            {t.mining.settings.moneroAddressDesc1.bold}
+          </Text>
           <br />
-          {t.mining.settings.moneroAddressDesc2}
+        </Text>
+        <Text type='smallMedium'>
+          {t.mining.settings.moneroAddressDesc2.regular}{' '}
+          <Text type='smallHeavy' as='span'>
+            {t.mining.settings.moneroAddressDesc2.bold}
+          </Text>
         </Text>
       </AddressDescription>
 
