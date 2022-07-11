@@ -75,6 +75,8 @@ const translations: { [key: string]: { [key: string]: string } } = {
     readyToGo: 'Ready to go',
     readyToSet: 'Ready to set',
     gotIt: 'Got it',
+    pleaseWait: 'Please wait',
+    yourJobIsDoneHere: 'Your job is done here',
   },
   containers: {
     [Container.Tor]: 'Tor',

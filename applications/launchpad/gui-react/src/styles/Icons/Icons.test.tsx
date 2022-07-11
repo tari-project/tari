@@ -140,6 +140,7 @@ const ICONS = [
   'TariLaunchpadLogo',
   'TariLogo',
   'TariSignet',
+  'TariSignetGradient',
   'TBotBase',
   'TBotDots',
   'TBotHearts',

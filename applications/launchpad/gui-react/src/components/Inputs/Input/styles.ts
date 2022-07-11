@@ -36,7 +36,7 @@ export const StyledInput = styled.input<InputHTMLAttributes<HTMLInputElement>>`
 export const InputContainer = styled.div<{
   disabled?: boolean
   $error: boolean
-  $withError: boolean
+  $withError?: boolean
 }>`
   height: 42px;
   width: 369px;

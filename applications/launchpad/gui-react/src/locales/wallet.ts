@@ -25,6 +25,30 @@ const translations = {
     youSentTariTo: 'You sent Tari to',
     youEarnedTari: 'You earned Tari',
   },
+  transaction: {
+    transactionFee: 'Transaction fee',
+    searchingForRecipient: 'Searching for the recipient on Tari network...',
+    completingFinalProcessing: 'Completing final processing',
+    completingDescription:
+      'It takes usually up to 2 minutes to complete the operation.',
+    transactionPending: 'Transaction pending',
+    transactionPendingDesc1:
+      'It appears that the recipient is not online at the moment and this is necessary to successfully complete the transaction.',
+    transactionPendingDesc2:
+      'If the recipient does not respond within the next 3 days, the transaction will be automatically canceled and the funds will be returned to your Tari Wallet.',
+    form: {
+      recipientIdAddress: 'Recipient ID (address)',
+      recipientIdPlacehoder: 'Enter address of XTR Wallet to send the funds to',
+      messageOptional: 'Message (optional)',
+      messagePlaceholder: 'Save Tari coins and spend them wisely! ',
+      sendFunds: 'Send funds',
+    },
+    errors: {
+      exceedsAvailableAndFee: 'Available funds and fee are exceeded',
+      messageIsTooLong: 'Message is too long',
+      recipientIdError: 'The address must be at least 12 characters',
+    },
+  },
   settings: {
     title: 'Wallet Settings',
     explanations: {
@@ -58,6 +82,13 @@ const translations = {
     noteAboutVerificationPeriod: {
       message:
         'Also note that Tari coins are not available immediately after being mined. They show up in your balance, but it takes usually several days (a few hundred blocks to be mined within the network) to verify this transaction.',
+    },
+    /**
+     * @TODO text for the transactionFee help
+     */
+    transactionFee: {
+      message:
+        'The transaction fee is distributed to the thousands of computers (also known as “miners”) who ensure that your transactions are fast and secure.',
     },
   },
 }

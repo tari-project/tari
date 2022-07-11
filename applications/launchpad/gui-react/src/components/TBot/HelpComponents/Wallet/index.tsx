@@ -31,3 +31,16 @@ export const NoteAboutVerificationPeriod = () => {
     </>
   )
 }
+
+export const TransactionFee = () => {
+  return (
+    <>
+      <StyledTextContainer>
+        <Text type='defaultMedium' as='span'>
+          {t.wallet.helpMessages.transactionFee.message}
+        </Text>
+      </StyledTextContainer>
+      <GotItButton />
+    </>
+  )
+}

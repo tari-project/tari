@@ -6,6 +6,7 @@ export enum TBotMessages {
   BaseNodeHelp = 'BaseNodeHelp',
   Onboarding = 'Onboarding',
   ConnectAurora = 'ConnectAurora',
+  TransactionFee = 'TransactionFee',
 }
 
 export interface TBotState {
