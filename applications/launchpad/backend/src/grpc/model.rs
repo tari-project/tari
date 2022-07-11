@@ -24,8 +24,14 @@ use std::{convert::TryFrom, time::Instant};
 
 use log::info;
 use serde::Serialize;
-use tari_app_grpc::tari_rpc::{GetBalanceResponse, GetIdentityResponse, SyncProgressResponse, TransactionEvent};
-use tari_common_types::emoji::EmojiId;
+use tari_app_grpc::tari_rpc::{
+    GetBalanceResponse,
+    GetIdentityResponse,
+    NodeIdentity,
+    SyncProgressResponse,
+    TransactionEvent,
+};
+use tari_common_types::{emoji::EmojiId, types::PublicKey};
 
 pub const BLOCKS_SYNC_EXPECTED_TIME_SEC: u64 = 7200;
 pub const HEADERS_SYNC_EXPECTED_TIME_SEC: u64 = 1800;
@@ -97,6 +103,15 @@ pub enum SyncType {
     Header,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaseNodeIdentity {
+    public_key: Vec<u8>,
+    public_address: String,
+    node_id: Vec<u8>,
+    emoji_id: String,
+}
+
 impl TryFrom<TransactionEvent> for WalletTransaction {
     type Error = String;
 
@@ -143,6 +158,23 @@ impl TryFrom<GetIdentityResponse> for WalletIdentity {
             .map_err(|e| format!("Failed to create an emoji: {}", e))?
             .to_string();
         Ok(WalletIdentity {
+            public_key: value.public_key,
+            public_address: value.public_address,
+            node_id: value.node_id,
+            emoji_id,
+        })
+    }
+}
+
+impl TryFrom<NodeIdentity> for BaseNodeIdentity {
+    type Error = String;
+
+    fn try_from(value: NodeIdentity) -> Result<Self, Self::Error> {
+        let hex_public_key = hex::encode(value.public_key.clone());
+        let emoji_id = EmojiId::from_hex(&hex_public_key)
+            .map_err(|e| format!("Failed to create an emoji: {}", e))?
+            .to_string();
+        Ok(BaseNodeIdentity {
             public_key: value.public_key,
             public_address: value.public_address,
             node_id: value.node_id,

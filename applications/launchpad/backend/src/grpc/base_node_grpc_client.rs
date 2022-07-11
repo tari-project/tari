@@ -39,6 +39,7 @@ use tari_app_grpc::tari_rpc::{
     GetBalanceResponse,
     GetIdentityRequest,
     GetIdentityResponse,
+    NodeIdentity,
     TransactionEvent,
     TransactionEventRequest,
     TransactionEventResponse,
@@ -123,5 +124,12 @@ impl GrpcBaseNodeClient {
             }
         });
         Ok(receiver)
+    }
+
+    pub async fn identity(&mut self) -> Result<NodeIdentity, GrpcError> {
+        let connection = self.try_connect().await?.clone();
+        let request = Empty {};
+        let identity = connection.clone().identify(request).await?;
+        Ok(identity.into_inner())
     }
 }

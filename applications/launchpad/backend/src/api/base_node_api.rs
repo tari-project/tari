@@ -21,11 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use std::convert::TryFrom;
+
 use futures::StreamExt;
-use log::{info, warn};
+use log::{error, info, warn};
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::grpc::{GrpcBaseNodeClient, SyncProgress, SyncProgressInfo, SyncType};
+use crate::{
+    commands::status,
+    docker::ImageType,
+    grpc::{BaseNodeIdentity, GrpcBaseNodeClient, SyncProgress, SyncProgressInfo, SyncType},
+};
 
 pub const ONBOARDING_PROGRESS_DESTINATION: &str = "tari://onboarding_progress";
 
@@ -69,4 +75,19 @@ pub async fn base_node_sync_progress(app: AppHandle<Wry>) -> Result<(), String> 
         }
     });
     Ok(())
+}
+
+#[tauri::command]
+pub async fn node_identity() -> Result<BaseNodeIdentity, String> {
+    // Check if wallet container is running.
+    let status = status(ImageType::BaseNode).await;
+    if "running" == status.to_lowercase() {
+        let mut node_client = GrpcBaseNodeClient::new();
+        let identity = node_client.identity().await.map_err(|e| e.to_string())?;
+        info!("SUCCESS: IDENTITY: {:?}", identity);
+        BaseNodeIdentity::try_from(identity)
+    } else {
+        error!("Base node container[image = {}] is not running", ImageType::BaseNode);
+        Err("tari_base_node is not running".to_string())
+    }
 }

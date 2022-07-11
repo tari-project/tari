@@ -23,6 +23,7 @@ mod base_node_api;
 mod wallet_api;
 use std::{convert::TryFrom, fmt::format};
 
+pub use base_node_api::{base_node_sync_progress, node_identity};
 use config::Config;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
