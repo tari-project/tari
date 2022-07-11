@@ -62,7 +62,7 @@ const DockerImagesList = ({
             type={header ? 'smallMedium' : 'defaultMedium'}
             color={inverted ? theme.inverted.disabledText : theme.primary}
           >
-            {dockerImage.displayName}
+            {dockerImage.displayName.toLowerCase()}
           </Text>
           {dockerImage.latest && (
             <DockerStatusWrapper>
