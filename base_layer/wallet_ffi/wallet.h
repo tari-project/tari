@@ -305,6 +305,14 @@ typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
 
+struct TariUtxo {
+  const char *commitment;
+  uint64_t value;
+  uint64_t mined_height;
+  uint64_t mined_timestamp;
+  uint8_t status;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
