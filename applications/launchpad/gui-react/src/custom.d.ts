@@ -95,6 +95,9 @@ declare module 'styled-components' {
     settingsMenuItem: string
     settingsMenuItemActive: string
     settingsCopyBoxBackground: string
+    scrollBarTrack: string
+    scrollBarThumb: string
+    scrollBarHover: string
 
     inverted: {
       controlBackground: string
@@ -159,6 +162,9 @@ declare module 'styled-components' {
       settingsMenuItem: string
       settingsMenuItemActive: string
       settingsCopyBoxBackground: string
+      scrollBarTrack: string
+      scrollBarThumb: string
+      scrollBarHover: string
     }
   }
 }

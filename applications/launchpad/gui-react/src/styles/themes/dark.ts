@@ -74,6 +74,9 @@ const darkTheme = {
   settingsMenuItem: styles.colors.dark.secondary,
   settingsMenuItemActive: styles.colors.darkMode.dashboard,
   settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
+  scrollBarTrack: styles.colors.darkMode.modalBackground,
+  scrollBarThumb: styles.colors.darkMode.borders,
+  scrollBarHover: styles.colors.darkMode.disabledText,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -144,6 +147,7 @@ const darkTheme = {
     modalBackdrop: styles.colors.darkMode.input,
     settingsMenuItemActive: styles.colors.darkMode.dashboard,
     settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
+    scrollBarTrack: styles.colors.darkMode.modalBackground,
   },
 }
 

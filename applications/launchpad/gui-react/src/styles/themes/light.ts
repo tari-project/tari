@@ -77,6 +77,9 @@ const lightTheme = {
   settingsMenuItem: styles.colors.tari.purpleDark,
   settingsMenuItemActive: styles.colors.light.backgroundImage,
   settingsCopyBoxBackground: styles.colors.light.backgroundImage,
+  scrollBarTrack: styles.colors.light.background,
+  scrollBarThumb: styles.colors.darkMode.tags,
+  scrollBarHover: styles.colors.darkMode.darkLogoCard,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -148,6 +151,7 @@ const lightTheme = {
     settingsMenuItem: styles.colors.tari.purpleDark,
     settingsMenuItemActive: styles.colors.light.backgroundImage,
     settingsCopyBoxBackground: styles.colors.light.backgroundImage,
+    scrollBarTrack: styles.colors.light.textSecondary,
   },
 }
 
