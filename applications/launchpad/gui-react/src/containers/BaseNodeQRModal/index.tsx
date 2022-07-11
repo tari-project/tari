@@ -3,7 +3,6 @@ import { useTheme } from 'styled-components'
 import Button from '../../components/Button'
 
 import Modal from '../../components/Modal'
-import SettingsSectionHeader from '../../components/SettingsSectionHeader'
 import Text from '../../components/Text'
 
 import t from '../../locales'
