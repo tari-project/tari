@@ -5,8 +5,13 @@ import { StyledTextContainer } from '../styles'
 
 export const HowWalletWorks = (
   <>
-    <Text type='defaultHeavy'>{t.wallet.helpMessages.howItWorks.title}</Text>
-    <Text>{t.wallet.helpMessages.howItWorks.message}</Text>
+    <StyledTextContainer>
+      <Text type='defaultHeavy'>
+        {t.wallet.helpMessages.howItWorks.title}{' '}
+        <Text>{t.wallet.helpMessages.howItWorks.message}</Text>
+      </Text>
+    </StyledTextContainer>
+    <GotItButton />
   </>
 )
 
@@ -33,10 +38,15 @@ export const NoteAboutVerificationPeriod = () => {
 }
 
 export const TariWalletIdHelp = (
-  <Text type='defaultHeavy'>
-    {t.wallet.helpMessages.walletIdHelp.bold}{' '}
-    <Text as='span'>{t.wallet.helpMessages.walletIdHelp.regular}</Text>
-  </Text>
+  <>
+    <StyledTextContainer>
+      <Text type='defaultHeavy'>
+        {t.wallet.helpMessages.walletIdHelp.bold}{' '}
+        <Text as='span'>{t.wallet.helpMessages.walletIdHelp.regular}</Text>
+      </Text>
+    </StyledTextContainer>
+    <GotItButton />
+  </>
 )
 
 export const TransactionFee = () => {

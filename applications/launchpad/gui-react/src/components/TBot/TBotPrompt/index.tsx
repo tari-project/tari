@@ -5,7 +5,7 @@ import { appWindow } from '@tauri-apps/api/window'
 import SvgClose from '../../../styles/Icons/Close'
 import TBot from '..'
 
-import { useAppDispatch } from '../../../store/hooks'
+import { useAppDispatch, useAppSelector } from '../../../store/hooks'
 import { tbotactions } from '../../../store/tbot'
 import { TBotMessage, TBotPromptProps } from './types'
 
@@ -26,9 +26,10 @@ import {
   TBotContainerSizes,
 } from './styles'
 
-import ChatDots from '../DotsComponent'
+import { ChatDotsLight, ChatDotsDark } from '../DotsComponent'
 import MessageBox from './MessageBox'
 import ProgressIndicator from '../../Onboarding/ProgressIndicator'
+import { selectTheme } from '../../../store/app/selectors'
 
 // The default time between rendering messages
 const WAIT_TIME = 2800
@@ -66,6 +67,7 @@ const TBotPrompt = ({
   onSkip,
 }: TBotPromptProps) => {
   const dispatch = useAppDispatch()
+  const currentTheme = useAppSelector(selectTheme)
 
   const lastMsgRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -123,6 +125,14 @@ const TBotPrompt = ({
     setShowFadeOut(
       size.height * 0.9 - PROMPT_HEIGHT_SPACING - fadeHeight < height,
     )
+  }
+
+  const getChatDotsVersion = () => {
+    if (currentTheme === 'light' && !onDarkBg) {
+      return <ChatDotsLight />
+    } else {
+      return <ChatDotsDark />
+    }
   }
 
   useEffect(() => {
@@ -256,6 +266,7 @@ const TBotPrompt = ({
               skipButton={mode === 'onboarding' && skipButtonCheck}
               onSkip={onSkip}
               floating={floating}
+              $onDarkBg={onDarkBg}
             >
               <FuncComponentMsg />
             </MessageBox>
@@ -269,6 +280,7 @@ const TBotPrompt = ({
             skipButton={mode === 'onboarding' && skipButtonCheck}
             onSkip={onSkip}
             floating={floating}
+            $onDarkBg={onDarkBg}
           >
             {'content' in msg ? (msg.content as ReactNode | string) : msg}
           </MessageBox>
@@ -283,6 +295,7 @@ const TBotPrompt = ({
           skipButton={mode === 'onboarding' && skipButtonCheck}
           onSkip={onSkip}
           floating={floating}
+          $onDarkBg={onDarkBg}
         >
           {msg}
         </MessageBox>
@@ -310,11 +323,11 @@ const TBotPrompt = ({
                 </MessageWrapper>
               </HeightAnimationWrapper>
             </ScrollWrapper>
-            {messageLoading && <ChatDots />}
+            {messageLoading && getChatDotsVersion()}
           </MessageContainer>
           <FadeOutSection
             $floating={floating}
-            $onDarkBg={onDarkBg}
+            $onDarkBg={onDarkBg || currentTheme === 'dark'}
             style={fadeOutSectionAnim}
           />
         </ContentContainer>

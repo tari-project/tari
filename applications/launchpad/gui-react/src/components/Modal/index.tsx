@@ -15,8 +15,8 @@ const Modal = ({ open, children, onClose, size, local, style }: ModalProps) => {
       <Backdrop
         onClick={onClose}
         data-testid='modal-backdrop'
-        opacity={0.5}
-        borderRadius={theme.borderRadius(1)}
+        $opacity={0.5}
+        $borderRadius={theme.borderRadius(1)}
       />
       <ModalContent size={size} style={style}>
         {children}

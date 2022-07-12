@@ -1,6 +1,7 @@
 import styled from 'styled-components'
 import { animated } from 'react-spring'
 import { TITLE_BAR_HEIGHT } from '../../TitleBar/styles'
+import colors from '../../../styles/styles/colors'
 
 export const PROMPT_HEIGHT_SPACING = 250
 export const CLOSE_BTN_HEIGHT = 72
@@ -27,7 +28,6 @@ export const PromptContainer = styled(animated.div)<{ $floating?: boolean }>`
   position: ${({ $floating }) => ($floating ? 'fixed' : 'static')};
   right: 40px;
   bottom: 40px;
-  /* z-index: 200; */
   z-index: ${({ $floating }) => ($floating ? '200' : '1')};
   width: ${({ $floating }) =>
     $floating
@@ -66,8 +66,8 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
   max-width: 100%;
   margin-right: 30px;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
-  /* hard-code required here */
-  ${({ $floating }) => ($floating ? 'background-color: #20053d05;' : '')}
+  background-color: ${({ $floating, theme }) =>
+    $floating ? theme.tbotContentBackground : ''};
   backdrop-filter: blur(9px);
   padding-bottom: 12px;
   overflow: hidden;
@@ -171,7 +171,7 @@ export const StyledCloseContainer = styled.div`
 `
 
 export const StyledCloseIcon = styled.div`
-  color: ${({ theme }) => theme.secondary};
+  color: ${({ theme }) => theme.nodeWarningText};
   cursor: pointer;
 `
 
@@ -182,6 +182,7 @@ export const StyledMessageBox = styled.div`
 export const StyledMessage = styled(animated.div)<{
   $floating?: boolean
   $skipButton?: boolean
+  $onDarkBg?: boolean
 }>`
   display: flex;
   flex-direction: column;
@@ -194,11 +195,13 @@ export const StyledMessage = styled(animated.div)<{
   height: fit-content;
   margin-bottom: ${({ theme, $skipButton }) =>
     $skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
-  background-color: ${({ theme }) => theme.background};
+  background-color: ${({ theme, $onDarkBg }) =>
+    $onDarkBg ? colors.darkMode.message : theme.tbotMessage};
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   box-shadow: ${({ theme }) => theme.shadow24};
   padding: 40px;
-  color: ${({ theme }) => theme.primary};
+  color: ${({ theme, $onDarkBg }) =>
+    $onDarkBg ? colors.light.primary : theme.primary};
   &:last-child {
     margin-bottom: 0;
   }

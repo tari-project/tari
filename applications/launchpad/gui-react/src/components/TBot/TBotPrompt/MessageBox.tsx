@@ -24,12 +24,14 @@ const MessageBox = (
     skipButton,
     onSkip,
     floating,
+    $onDarkBg,
   }: {
     animate: boolean
     children: ReactNode
     skipButton?: boolean
     onSkip?: () => void
     floating?: boolean
+    $onDarkBg?: boolean
   },
   ref?: ForwardedRef<HTMLDivElement>,
 ) => {
@@ -62,6 +64,7 @@ const MessageBox = (
         style={{ opacity: 0, height: heightCtrl ? heightCtrl : 'auto' }}
         $skipButton={skipButton}
         $floating={floating}
+        $onDarkBg={$onDarkBg}
       >
         {children}
       </StyledMessage>
@@ -72,6 +75,7 @@ const MessageBox = (
             style={{ ...useOpacityAnim }}
             $skipButton={skipButton}
             $floating={floating}
+            $onDarkBg={$onDarkBg}
           >
             {React.Children.map(children, child => {
               if (React.isValidElement(child)) {

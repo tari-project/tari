@@ -34,8 +34,8 @@ const ScheduleFormError = ({
   return (
     <>
       <Backdrop
-        opacity={0.15}
-        borderRadius={theme.borderRadius()}
+        $opacity={0.15}
+        $borderRadius={theme.borderRadius()}
         onClick={clearError}
       />
       <ScheduleFormErrorWrapper>
