@@ -39,6 +39,7 @@ const colors = {
     actionBackground: '#76A59D',
     borderLight: '#DBDBDD',
     greenMedium: '#5F9C91',
+    tbotBubble: 'rgba(32, 5, 61, 0.02)',
   },
   darkMode: {
     modalBackground: '#141414',

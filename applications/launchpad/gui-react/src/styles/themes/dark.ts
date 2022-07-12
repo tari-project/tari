@@ -78,6 +78,7 @@ const darkTheme = {
   scrollBarThumb: styles.colors.darkMode.borders,
   scrollBarHover: styles.colors.darkMode.disabledText,
   tbotMessage: styles.colors.darkMode.message,
+  tbotContentBackground: styles.colors.secondary.tbotBubble,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -150,6 +151,7 @@ const darkTheme = {
     settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
     scrollBarTrack: styles.colors.darkMode.modalBackground,
     tbotMessage: styles.colors.darkMode.message,
+    tbotContentBackground: styles.colors.secondary.tbotBubble,
   },
 }
 

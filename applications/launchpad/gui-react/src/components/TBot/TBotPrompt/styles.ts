@@ -28,7 +28,6 @@ export const PromptContainer = styled(animated.div)<{ $floating?: boolean }>`
   position: ${({ $floating }) => ($floating ? 'fixed' : 'static')};
   right: 40px;
   bottom: 40px;
-  /* z-index: 200; */
   z-index: ${({ $floating }) => ($floating ? '200' : '1')};
   width: ${({ $floating }) =>
     $floating
@@ -67,8 +66,8 @@ export const ContentContainer = styled(animated.div)<{ $floating?: boolean }>`
   max-width: 100%;
   margin-right: 30px;
   border-radius: ${({ theme }) => theme.borderRadius(2)};
-  /* hard-code required here */
-  ${({ $floating }) => ($floating ? 'background-color: #20053d05;' : '')}
+  background-color: ${({ $floating, theme }) =>
+    $floating ? theme.tbotContentBackground : ''};
   backdrop-filter: blur(9px);
   padding-bottom: 12px;
   overflow: hidden;

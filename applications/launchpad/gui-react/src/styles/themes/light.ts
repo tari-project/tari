@@ -81,6 +81,7 @@ const lightTheme = {
   scrollBarThumb: styles.colors.darkMode.tags,
   scrollBarHover: styles.colors.darkMode.darkLogoCard,
   tbotMessage: styles.colors.light.primary,
+  tbotContentBackground: styles.colors.secondary.tbotBubble,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -154,6 +155,7 @@ const lightTheme = {
     settingsCopyBoxBackground: styles.colors.light.backgroundImage,
     scrollBarTrack: styles.colors.light.textSecondary,
     tbotMessage: styles.colors.light.primary,
+    tbotContentBackground: styles.colors.secondary.tbotBubble,
   },
 }
 
