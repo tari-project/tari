@@ -68,7 +68,7 @@ impl GlobalDbBackendAdapter for MockGlobalDbBackupAdapter {
         todo!()
     }
 
-    fn get_active_contracts(&self) -> Result<Vec<Self::Model>, Self::Error> {
+    fn get_contracts_with_state(&self, _state: ContractState) -> Result<Vec<Self::Model>, Self::Error> {
         todo!()
     }
 }

@@ -22,7 +22,7 @@
 
 use std::convert::TryInto;
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use tari_p2p::Network;
 
@@ -338,4 +338,17 @@ pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Tran
 
 pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &Transaction) {
     perform_validation(blockchain, transaction).unwrap()
+}
+
+pub fn create_committee_signatures(keys: Vec<(PrivateKey, PublicKey)>, challenge: &[u8]) -> CommitteeSignatures {
+    let signer_signatures: Vec<SignerSignature> = keys
+        .into_iter()
+        .map(|(pri_k, pub_k)| {
+            let (nonce, _) = create_random_key_pair();
+            let signature = Signature::sign(pri_k, nonce, challenge).unwrap();
+            SignerSignature::new(pub_k, signature)
+        })
+        .collect();
+
+    CommitteeSignatures::new(signer_signatures.try_into().unwrap())
 }
