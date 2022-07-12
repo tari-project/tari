@@ -327,7 +327,7 @@ const TBotPrompt = ({
           </MessageContainer>
           <FadeOutSection
             $floating={floating}
-            $onDarkBg={onDarkBg}
+            $onDarkBg={onDarkBg || currentTheme === 'dark'}
             style={fadeOutSectionAnim}
           />
         </ContentContainer>
