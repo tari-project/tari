@@ -31,7 +31,7 @@ const MiningViewActions = ({
         variant='text'
         leftIcon={<SvgClock width='1.5rem' height='1.5rem' />}
         testId='mining-action-setup-mining-hours'
-        disabled={!canAnyMiningBeRun}
+        disabled={canAnyMiningBeRun}
         onClick={openScheduling}
         style={{ paddingLeft: 0, color: theme.helpTipText }}
       >
