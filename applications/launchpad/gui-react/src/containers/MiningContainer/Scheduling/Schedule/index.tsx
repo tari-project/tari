@@ -53,7 +53,7 @@ const Schedule = ({
           <Interval {...interval} disabled={!enabled} />
           <MiningType type={type} disabled={!enabled} />
         </ScheduleInfo>
-        <Switch value={enabled} onClick={toggle} />
+        <Switch value={enabled} onClick={toggle} inverted={true} />
       </ScheduleContainer>
     </ScheduleWrapper>
   )

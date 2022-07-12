@@ -89,7 +89,7 @@ const ScheduleList = ({
       {schedules.length !== 0 && (
         <SchedulesListContainer tabIndex={0} onKeyDown={onListKeyDown}>
           <Text
-            type='microRegular'
+            type='smallMedium'
             color={theme.nodeWarningText}
             style={{
               alignSelf: 'flex-start',
