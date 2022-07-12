@@ -77,6 +77,9 @@ const darkTheme = {
   scrollBarTrack: styles.colors.darkMode.modalBackground,
   scrollBarThumb: styles.colors.darkMode.borders,
   scrollBarHover: styles.colors.darkMode.disabledText,
+  calendarText: styles.colors.light.graySecondary,
+  calendarTextSecondary: styles.colors.light.graySecondary,
+  calendarNumber: styles.colors.dark.borders,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -148,6 +151,9 @@ const darkTheme = {
     settingsMenuItemActive: styles.colors.darkMode.dashboard,
     settingsCopyBoxBackground: styles.colors.darkMode.modalBackground,
     scrollBarTrack: styles.colors.darkMode.modalBackground,
+    calendarText: styles.colors.light.graySecondary,
+    calendarTextSecondary: styles.colors.light.graySecondary,
+    calendarNumber: styles.colors.dark.borders,
   },
 }
 

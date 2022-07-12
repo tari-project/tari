@@ -16,7 +16,7 @@ const Day = ({ selected, ...props }: ButtonProps & { selected: boolean }) => {
         justifyContent: 'center',
         backgroundColor: selected ? theme.onTextLight : '',
         border: selected ? `2px solid ${theme.on}` : '',
-        color: selected ? theme.on : theme.primary,
+        color: selected ? theme.on : theme.calendarNumber,
         borderRadius: '50%',
       }}
       {...props}

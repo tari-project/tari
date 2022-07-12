@@ -98,6 +98,9 @@ declare module 'styled-components' {
     scrollBarTrack: string
     scrollBarThumb: string
     scrollBarHover: string
+    calendarText: string
+    calendarTextSecondary: string
+    calendarNumber: string
 
     inverted: {
       controlBackground: string
@@ -165,6 +168,9 @@ declare module 'styled-components' {
       scrollBarTrack: string
       scrollBarThumb: string
       scrollBarHover: string
+      calendarText: string
+      calendarTextSecondary: string
+      calendarTextSecondary: styles.colors.light.graySecondary
     }
   }
 }
