@@ -94,11 +94,11 @@ fn validate_committee(
 ) -> Result<(), DanLayerValidationError> {
     // retrieve the list of commitee member keys of the constiution and the checkpoint
     let checkpoint_members = get_commitee_members(&checkpoint.signatures);
-    let constitution_members = constitution.validator_committee.members().to_vec();
+    let constitution_members = constitution.validator_committee.members();
 
     // we use HashSets to avoid dealing with duplicated members and to easily compare elements
-    let checkpoint_member_set = HashSet::<PublicKey>::from_iter(checkpoint_members);
-    let constitution_member_set = HashSet::<PublicKey>::from_iter(constitution_members);
+    let checkpoint_member_set = HashSet::<&PublicKey>::from_iter(checkpoint_members);
+    let constitution_member_set = HashSet::<&PublicKey>::from_iter(constitution_members.iter());
 
     // an non-empty difference (calculated from the checkpoint) means that there are non-constitution members
     let are_invalid_members = checkpoint_member_set.difference(&constitution_member_set).count() > 0;
@@ -120,11 +120,8 @@ fn validate_committee(
     Ok(())
 }
 
-fn get_commitee_members(signatures: &CommitteeSignatures) -> Vec<PublicKey> {
-    signatures
-        .into_iter()
-        .map(|s| s.signer().clone())
-        .collect::<Vec<PublicKey>>()
+fn get_commitee_members(signatures: &CommitteeSignatures) -> Vec<&PublicKey> {
+    signatures.into_iter().map(|s| s.signer()).collect::<Vec<&PublicKey>>()
 }
 
 pub fn validate_signatures(checkpoint: &ContractCheckpoint, contract_id: &FixedHash) -> Result<(), ValidationError> {
