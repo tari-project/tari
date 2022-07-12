@@ -187,7 +187,7 @@ pub fn create_contract_constitution() -> ContractConstitution {
         },
         consensus: SideChainConsensus::MerkleRoot,
         checkpoint_params: CheckpointParameters {
-            minimum_quorum_required: 5,
+            minimum_quorum_required: 0,
             abandoned_interval: 100,
         },
         constitution_change_rules: ConstitutionChangeRules {
