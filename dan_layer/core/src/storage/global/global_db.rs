@@ -67,9 +67,12 @@ impl<TGlobalDbBackendAdapter: GlobalDbBackendAdapter> GlobalDb<TGlobalDbBackendA
             .map_err(TGlobalDbBackendAdapter::Error::into)
     }
 
-    pub fn get_active_contracts(&self) -> Result<Vec<TGlobalDbBackendAdapter::Model>, StorageError> {
+    pub fn get_contracts_with_state(
+        &self,
+        state: ContractState,
+    ) -> Result<Vec<TGlobalDbBackendAdapter::Model>, StorageError> {
         self.adapter
-            .get_active_contracts()
+            .get_contracts_with_state(state)
             .map_err(TGlobalDbBackendAdapter::Error::into)
     }
 }

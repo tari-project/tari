@@ -43,7 +43,7 @@ pub trait GlobalDbBackendAdapter: Send + Sync + Clone {
     ) -> Result<Option<Vec<u8>>, Self::Error>;
     fn save_contract(&self, contract: Self::NewModel, state: ContractState) -> Result<(), Self::Error>;
     fn update_contract_state(&self, contract_id: FixedHash, state: ContractState) -> Result<(), Self::Error>;
-    fn get_active_contracts(&self) -> Result<Vec<Self::Model>, Self::Error>;
+    fn get_contracts_with_state(&self, state: ContractState) -> Result<Vec<Self::Model>, Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,8 +69,9 @@ pub enum ContractState {
     Expired = 2,
     QuorumMet = 3,
     Active = 4,
-    Quarantined = 5,
-    Shutdown = 6,
+    Abandoned = 5,
+    Quarantined = 6,
+    Shutdown = 7,
 }
 
 impl ContractState {
