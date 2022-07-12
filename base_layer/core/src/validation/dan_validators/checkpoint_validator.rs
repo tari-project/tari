@@ -22,17 +22,19 @@
 
 use std::{collections::HashSet, iter::FromIterator};
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 
 use super::helpers::{fetch_contract_constitution, get_sidechain_features};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
+        CheckpointChallenge,
         CommitteeSignatures,
         ContractCheckpoint,
         ContractConstitution,
         OutputType,
         SideChainFeatures,
+        SignerSignature,
         TransactionOutput,
     },
     validation::{
@@ -54,6 +56,8 @@ pub fn validate_contract_checkpoint<B: BlockchainBackend>(
 
     let prev_cp = fetch_current_contract_checkpoint(db, contract_id)?;
     validate_checkpoint_number(prev_cp.as_ref(), checkpoint)?;
+
+    validate_signatures(checkpoint, &contract_id)?;
 
     Ok(())
 }
@@ -123,29 +127,60 @@ fn get_commitee_members(signatures: &CommitteeSignatures) -> Vec<PublicKey> {
         .collect::<Vec<PublicKey>>()
 }
 
+pub fn validate_signatures(checkpoint: &ContractCheckpoint, contract_id: &FixedHash) -> Result<(), ValidationError> {
+    let challenge = create_checkpoint_challenge(checkpoint, contract_id);
+    let signatures = &checkpoint.signatures;
+
+    let are_all_signatures_valid = signatures
+        .into_iter()
+        .all(|s| SignerSignature::verify(s.signature(), s.signer(), challenge));
+    if !are_all_signatures_valid {
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::InvalidSignature,
+        ));
+    }
+
+    Ok(())
+}
+
+pub fn create_checkpoint_challenge(checkpoint: &ContractCheckpoint, contract_id: &FixedHash) -> CheckpointChallenge {
+    // TODO: update when shared commitment consensus among VNs is implemented
+    let commitment = Commitment::default();
+    CheckpointChallenge::new(
+        contract_id,
+        &commitment,
+        &checkpoint.merkle_root,
+        checkpoint.checkpoint_number,
+    )
+}
+
 #[cfg(test)]
 mod test {
     use std::convert::TryInto;
 
-    use tari_common_types::types::Signature;
+    use tari_common_types::types::FixedHash;
 
-    use crate::validation::dan_validators::{
-        test_helpers::{
-            assert_dan_validator_err,
-            assert_dan_validator_success,
-            create_committee_signatures,
-            create_contract_checkpoint,
-            create_contract_checkpoint_schema,
-            create_contract_constitution,
-            create_random_key_pair,
-            init_test_blockchain,
-            publish_checkpoint,
-            publish_constitution,
-            publish_contract,
-            publish_definition,
-            schema_to_transaction,
+    use super::create_checkpoint_challenge;
+    use crate::{
+        consensus::ConsensusHashWriter,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_success,
+                create_committee_signatures,
+                create_contract_checkpoint,
+                create_contract_checkpoint_schema,
+                create_contract_constitution,
+                create_random_key_pair,
+                init_test_blockchain,
+                publish_checkpoint,
+                publish_constitution,
+                publish_contract,
+                publish_definition,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
         },
-        DanLayerValidationError,
     };
 
     #[test]
@@ -253,20 +288,47 @@ mod test {
         let (mut blockchain, utxos) = init_test_blockchain();
 
         // Publish a new contract specifying a committee with only one member ("alice")
-        let (_, alice) = create_random_key_pair();
-        let contract_id = publish_contract(&mut blockchain, &utxos, vec![alice.clone()]);
+        let alice = create_random_key_pair();
+        let contract_id = publish_contract(&mut blockchain, &utxos, vec![alice.1.clone()]);
 
         // Create a checkpoint, with a committe that has an extra member ("bob") not present in the constiution
         let mut checkpoint = create_contract_checkpoint(0);
-        let (_, bob) = create_random_key_pair();
-        checkpoint.signatures =
-            create_committee_signatures(vec![(alice, Signature::default()), (bob, Signature::default())]);
+        let bob = create_random_key_pair();
+        let challenge = create_checkpoint_challenge(&checkpoint, &contract_id);
+        checkpoint.signatures = create_committee_signatures(vec![alice, bob], challenge.as_ref());
         let schema = create_contract_checkpoint_schema(contract_id, utxos[1].clone(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
         let err = assert_dan_validator_err(&blockchain, &tx);
         assert!(matches!(err, DanLayerValidationError::InconsistentCommittee { .. }));
+    }
+
+    #[test]
+    fn it_rejects_checkpoint_with_invalid_signatures() {
+        // initialise a blockchain with enough funds to spend at contract transactions
+        let (mut blockchain, utxos) = init_test_blockchain();
+
+        // Publish a new contract specifying a committee with two members
+        let alice = create_random_key_pair();
+        let bob = create_random_key_pair();
+        let contract_id = publish_contract(&mut blockchain, &utxos, vec![alice.1.clone(), bob.1.clone()]);
+
+        // To create an invalid signature, let's use a challenge from a different checkpoint
+        let mut checkpoint = create_contract_checkpoint(0);
+        let challenge: FixedHash = ConsensusHashWriter::default()
+            .chain(&"invalid data".as_bytes())
+            .finalize()
+            .into();
+        checkpoint.signatures = create_committee_signatures(vec![alice, bob], challenge.as_ref());
+
+        // Create the invalid transaction
+        let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
+        let (tx, _) = schema_to_transaction(&schema);
+
+        // try to validate the checkpoint transaction and check that we get the error
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(err, DanLayerValidationError::InvalidSignature { .. }));
     }
 
     #[test]
@@ -282,15 +344,14 @@ mod test {
         let alice = create_random_key_pair();
         let bob = create_random_key_pair();
         let carol = create_random_key_pair();
-        constitution.validator_committee = vec![alice.1.clone(), bob.1, carol.1]
-            .try_into()
-            .unwrap();
+        constitution.validator_committee = vec![alice.1.clone(), bob.1, carol.1].try_into().unwrap();
         constitution.checkpoint_params.minimum_quorum_required = 2;
         publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution);
 
         // create a checkpoint with an insufficient quorum
         let mut checkpoint = create_contract_checkpoint(0);
-        checkpoint.signatures = create_committee_signatures(vec![(alice.1, Signature::default())]);
+        let challenge = create_checkpoint_challenge(&checkpoint, &contract_id);
+        checkpoint.signatures = create_committee_signatures(vec![alice], challenge.as_ref());
         let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
@@ -320,8 +381,8 @@ mod test {
 
         // create a checkpoint with an enough quorum
         let mut checkpoint = create_contract_checkpoint(0);
-        checkpoint.signatures =
-            create_committee_signatures(vec![(alice.1, Signature::default()), (bob.1, Signature::default())]);
+        let challenge = create_checkpoint_challenge(&checkpoint, &contract_id);
+        checkpoint.signatures = create_committee_signatures(vec![alice, bob], challenge.as_ref());
         let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
