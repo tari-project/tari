@@ -165,7 +165,7 @@ pub fn validate_signature<B: BlockchainBackend>(
     let is_valid_signature = SignerSignature::verify(signature, validator_node_public_key, challenge);
     if !is_valid_signature {
         return Err(ValidationError::DanLayerError(
-            DanLayerValidationError::InvalidAcceptanceSignature,
+            DanLayerValidationError::InvalidSignature,
         ));
     }
 
@@ -200,20 +200,24 @@ mod test {
     use super::fetch_constitution_commitment;
     use crate::{
         txn_schema,
-        validation::dan_validators::test_helpers::{
-            assert_dan_validator_fail,
-            assert_dan_validator_success,
-            create_acceptance_signature,
-            create_block,
-            create_contract_acceptance_schema,
-            create_contract_acceptance_schema_with_signature,
-            create_contract_constitution,
-            create_contract_constitution_schema,
-            create_random_key_pair,
-            init_test_blockchain,
-            publish_constitution,
-            publish_definition,
-            schema_to_transaction,
+        validation::dan_validators::{
+            test_helpers::{
+                assert_dan_validator_err,
+                assert_dan_validator_fail,
+                assert_dan_validator_success,
+                create_acceptance_signature,
+                create_block,
+                create_contract_acceptance_schema,
+                create_contract_acceptance_schema_with_signature,
+                create_contract_constitution,
+                create_contract_constitution_schema,
+                create_random_key_pair,
+                init_test_blockchain,
+                publish_constitution,
+                publish_definition,
+                schema_to_transaction,
+            },
+            DanLayerValidationError,
         },
     };
 
@@ -378,6 +382,7 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Invalid acceptance signature");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(err, DanLayerValidationError::InvalidSignature { .. }));
     }
 }
