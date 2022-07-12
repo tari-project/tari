@@ -43,7 +43,7 @@ const Checkbox = ({
     ? theme.placeholderText
     : checked
     ? theme.primary
-    : theme.secondary
+    : theme.nodeWarningText
 
   return (
     <Wrapper

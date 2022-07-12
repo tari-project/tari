@@ -16,7 +16,7 @@ const IntervalPicker = ({
   return (
     <div
       style={{
-        backgroundColor: theme.backgroundImage,
+        backgroundColor: theme.selectOptionHover,
         borderRadius: theme.borderRadius(),
         display: 'flex',
         justifyContent: 'space-around',

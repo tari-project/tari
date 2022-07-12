@@ -40,7 +40,7 @@ const WeekdaySelector = ({
       {Object.values(t.common.weekdayCapitals).map((capital, index) => {
         const color = days.includes(index)
           ? theme.accent
-          : theme.placeholderText
+          : theme.inputPlaceholder
 
         return (
           <Weekday key={`${capital}${index}`} onClick={() => toggle(index)}>

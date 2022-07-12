@@ -19,7 +19,7 @@ export const CheckWrapper = styled.div<{
       if (disabled) {
         return theme.placeholderText
       }
-      return checked ? theme.accent : theme.secondary
+      return checked ? theme.accent : theme.nodeWarningText
     }};
   border-radius: 3px;
   margin-right: ${({ theme }) => theme.spacing(0.5)};

@@ -55,7 +55,7 @@ export const selectActiveMiningTypes = createSelector(
   selectTariSetupRequired,
   selectMergedSetupRequired,
   (tariSetupRequired, mergedSetupRequired) => {
-    const active = [] as MiningNodeType[]
+    const active = ['tari', 'merged'] as MiningNodeType[]
 
     if (!tariSetupRequired) {
       active.push('tari')

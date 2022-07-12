@@ -57,7 +57,7 @@ const DayTimePicker = ({
             marginTop: theme.spacing(0.5),
           }}
         >
-          <Text color={theme.secondary} type='smallMedium'>
+          <Text color={theme.nodeWarningText} type='smallMedium'>
             {label}
           </Text>
         </label>
