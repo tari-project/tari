@@ -171,7 +171,7 @@ export const StyledCloseContainer = styled.div`
 `
 
 export const StyledCloseIcon = styled.div`
-  color: ${({ theme }) => theme.secondary};
+  color: ${({ theme }) => theme.nodeWarningText};
   cursor: pointer;
 `
 
@@ -194,7 +194,7 @@ export const StyledMessage = styled(animated.div)<{
   height: fit-content;
   margin-bottom: ${({ theme, $skipButton }) =>
     $skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
-  background-color: ${({ theme }) => theme.background};
+  background-color: ${({ theme }) => theme.tbotMessage};
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   box-shadow: ${({ theme }) => theme.shadow24};
   padding: 40px;

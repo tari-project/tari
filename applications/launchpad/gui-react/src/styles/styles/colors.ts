@@ -52,6 +52,7 @@ const colors = {
     disabledText: '#47434A',
     baseNodeStart: '#455E5B',
     baseNodeEnd: '#55208E',
+    message: '#262626',
   },
   graph: {
     fuchsia: '#EF5DA8',

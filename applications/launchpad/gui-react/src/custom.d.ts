@@ -98,6 +98,7 @@ declare module 'styled-components' {
     scrollBarTrack: string
     scrollBarThumb: string
     scrollBarHover: string
+    tbotMessage: string
 
     inverted: {
       controlBackground: string
@@ -165,6 +166,7 @@ declare module 'styled-components' {
       scrollBarTrack: string
       scrollBarThumb: string
       scrollBarHover: string
+      tbotMessage: string
     }
   }
 }
