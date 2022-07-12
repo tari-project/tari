@@ -128,7 +128,7 @@ const TBotPrompt = ({
   }
 
   const getChatDotsVersion = () => {
-    if (currentTheme === 'light') {
+    if (currentTheme === 'light' && !onDarkBg) {
       return <ChatDotsLight />
     } else {
       return <ChatDotsDark />
@@ -266,6 +266,7 @@ const TBotPrompt = ({
               skipButton={mode === 'onboarding' && skipButtonCheck}
               onSkip={onSkip}
               floating={floating}
+              $onDarkBg={onDarkBg}
             >
               <FuncComponentMsg />
             </MessageBox>
@@ -279,6 +280,7 @@ const TBotPrompt = ({
             skipButton={mode === 'onboarding' && skipButtonCheck}
             onSkip={onSkip}
             floating={floating}
+            $onDarkBg={onDarkBg}
           >
             {'content' in msg ? (msg.content as ReactNode | string) : msg}
           </MessageBox>
@@ -293,6 +295,7 @@ const TBotPrompt = ({
           skipButton={mode === 'onboarding' && skipButtonCheck}
           onSkip={onSkip}
           floating={floating}
+          $onDarkBg={onDarkBg}
         >
           {msg}
         </MessageBox>

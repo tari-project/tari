@@ -1,6 +1,7 @@
 import styled from 'styled-components'
 import { animated } from 'react-spring'
 import { TITLE_BAR_HEIGHT } from '../../TitleBar/styles'
+import colors from '../../../styles/styles/colors'
 
 export const PROMPT_HEIGHT_SPACING = 250
 export const CLOSE_BTN_HEIGHT = 72
@@ -182,6 +183,7 @@ export const StyledMessageBox = styled.div`
 export const StyledMessage = styled(animated.div)<{
   $floating?: boolean
   $skipButton?: boolean
+  $onDarkBg?: boolean
 }>`
   display: flex;
   flex-direction: column;
@@ -194,11 +196,13 @@ export const StyledMessage = styled(animated.div)<{
   height: fit-content;
   margin-bottom: ${({ theme, $skipButton }) =>
     $skipButton ? theme.spacingVertical(5) : theme.spacingVertical(0.6)};
-  background-color: ${({ theme }) => theme.tbotMessage};
+  background-color: ${({ theme, $onDarkBg }) =>
+    $onDarkBg ? colors.darkMode.message : theme.tbotMessage};
   border-radius: ${({ theme }) => theme.borderRadius(2)};
   box-shadow: ${({ theme }) => theme.shadow24};
   padding: 40px;
-  color: ${({ theme }) => theme.primary};
+  color: ${({ theme, $onDarkBg }) =>
+    $onDarkBg ? colors.light.primary : theme.primary};
   &:last-child {
     margin-bottom: 0;
   }
