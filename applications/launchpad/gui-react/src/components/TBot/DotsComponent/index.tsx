@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react'
 import lottie from 'lottie-web'
-import dotsChatLottie from '../../../styles/lotties/tbot-dots-animation.json'
+import dotsChatLottieLight from '../../../styles/lotties/tbot-dots-animation-light.json'
+import dotsChatLottieDark from '../../../styles/lotties/tbot-dots-animation-dark.json'
 import { DotsContainer, StyledRow } from './styles'
 
 /**
- * @name ChatDots
+ * @name ChatDots light version
  */
 
-const ChatDots = () => {
+const ChatDotsLight = () => {
   const animation = useRef(null)
   useEffect(() => {
     if (animation.current) {
@@ -17,7 +18,7 @@ const ChatDots = () => {
         renderer: 'svg',
         loop: true,
         autoplay: true,
-        animationData: dotsChatLottie,
+        animationData: dotsChatLottieLight,
       })
     }
     return lottie.destroy
@@ -30,4 +31,31 @@ const ChatDots = () => {
   )
 }
 
-export default ChatDots
+/**
+ * @name ChatDots dark version
+ */
+
+const ChatDotsDark = () => {
+  const animation = useRef(null)
+  useEffect(() => {
+    if (animation.current) {
+      lottie.loadAnimation({
+        name: 'dotsAnimation',
+        container: animation.current,
+        renderer: 'svg',
+        loop: true,
+        autoplay: true,
+        animationData: dotsChatLottieDark,
+      })
+    }
+    return lottie.destroy
+  }, [animation])
+
+  return (
+    <StyledRow>
+      <DotsContainer ref={animation} />
+    </StyledRow>
+  )
+}
+
+export { ChatDotsLight, ChatDotsDark }
