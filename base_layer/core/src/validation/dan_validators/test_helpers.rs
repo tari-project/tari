@@ -22,7 +22,7 @@
 
 use std::convert::TryInto;
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
 use tari_p2p::Network;
 
@@ -187,7 +187,7 @@ pub fn create_contract_constitution() -> ContractConstitution {
         },
         consensus: SideChainConsensus::MerkleRoot,
         checkpoint_params: CheckpointParameters {
-            minimum_quorum_required: 5,
+            minimum_quorum_required: 0,
             abandoned_interval: 100,
         },
         constitution_change_rules: ConstitutionChangeRules {
@@ -336,4 +336,13 @@ pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Tran
 
 pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &Transaction) {
     perform_validation(blockchain, transaction).unwrap()
+}
+
+pub fn create_committee_signatures(keys: Vec<(PrivateKey, PublicKey)>, challenge: &[u8]) -> CommitteeSignatures {
+    let signer_signatures: Vec<SignerSignature> = keys
+        .into_iter()
+        .map(|(pri_k, _)| SignerSignature::sign(&pri_k, challenge))
+        .collect();
+
+    CommitteeSignatures::new(signer_signatures.try_into().unwrap())
 }
