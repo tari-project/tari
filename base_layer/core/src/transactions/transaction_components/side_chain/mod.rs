@@ -64,6 +64,9 @@ pub use sidechain_features::{SideChainFeatures, SideChainFeaturesBuilder};
 mod contract_checkpoint;
 pub use contract_checkpoint::ContractCheckpoint;
 
+mod checkpoint_challenge;
+pub use checkpoint_challenge::CheckpointChallenge;
+
 // Length of FixedString
 pub const FIXED_STR_LEN: usize = 32;
 pub type FixedString = [u8; FIXED_STR_LEN];

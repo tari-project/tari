@@ -35,7 +35,7 @@ pub trait CheckpointManager {
         &mut self,
         checkpoint_number: u64,
         state_root: StateRoot,
-        signature: Vec<SignerSignature>,
+        signature: &[SignerSignature],
     ) -> Result<(), DigitalAssetError>;
 }
 
@@ -60,7 +60,7 @@ impl<TWallet: WalletClient + Sync + Send> CheckpointManager for ConcreteCheckpoi
         &mut self,
         checkpoint_number: u64,
         state_root: StateRoot,
-        signatures: Vec<SignerSignature>,
+        signatures: &[SignerSignature],
     ) -> Result<(), DigitalAssetError> {
         info!(
             target: LOG_TARGET,

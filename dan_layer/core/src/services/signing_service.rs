@@ -22,16 +22,15 @@
 
 use std::sync::Arc;
 
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms::NodeIdentity;
+use tari_core::transactions::transaction_components::{CheckpointChallenge, SignerSignature};
 
-use crate::{
-    digital_assets_error::DigitalAssetError,
-    models::ValidatorSignature,
-    services::infrastructure_services::NodeAddressable,
-};
+use crate::{digital_assets_error::DigitalAssetError, models::ValidatorSignature};
 
-pub trait SigningService<TAddr: NodeAddressable> {
-    fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError>;
+pub trait SigningService {
+    fn sign(&self, challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError>;
+
+    fn sign_checkpoint(&self, challenge: &CheckpointChallenge) -> Result<SignerSignature, DigitalAssetError>;
 }
 
 pub struct NodeIdentitySigningService {
@@ -44,13 +43,13 @@ impl NodeIdentitySigningService {
     }
 }
 
-impl SigningService<CommsPublicKey> for NodeIdentitySigningService {
-    fn sign(&self, identity: &CommsPublicKey, _challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError> {
-        if identity != self.node_identity.public_key() {
-            return Err(DigitalAssetError::InvalidSignature);
-        }
-
+impl SigningService for NodeIdentitySigningService {
+    fn sign(&self, _challenge: &[u8]) -> Result<ValidatorSignature, DigitalAssetError> {
         // TODO better sig
         Ok(ValidatorSignature {})
+    }
+
+    fn sign_checkpoint(&self, challenge: &CheckpointChallenge) -> Result<SignerSignature, DigitalAssetError> {
+        Ok(SignerSignature::sign(self.node_identity.secret_key(), challenge))
     }
 }

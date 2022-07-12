@@ -64,7 +64,8 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
         // get latest checkpoint on the base layer
         let mut outputs = base_node_client
             .get_current_contract_outputs(
-                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                tip.height_of_longest_chain
+                    .saturating_sub(asset_definition.base_layer_confirmation_time),
                 asset_definition.contract_id,
                 OutputType::ContractConstitution,
             )
