@@ -31,6 +31,7 @@ const MiningViewActions = ({
         variant='text'
         leftIcon={<SvgClock width='1.5rem' height='1.5rem' />}
         testId='mining-action-setup-mining-hours'
+        // @TODO: ADD BANG OPERATOR IN DISABLED PROP!!
         disabled={canAnyMiningBeRun}
         onClick={openScheduling}
         style={{ paddingLeft: 0, color: theme.helpTipText }}

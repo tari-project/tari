@@ -88,6 +88,17 @@ const ScheduleList = ({
       )}
       {schedules.length !== 0 && (
         <SchedulesListContainer tabIndex={0} onKeyDown={onListKeyDown}>
+          <Text
+            type='microRegular'
+            color={theme.nodeWarningText}
+            style={{
+              alignSelf: 'flex-start',
+              marginLeft: theme.spacingHorizontal(),
+              marginBottom: theme.spacingVertical(0.5),
+            }}
+          >
+            {t.mining.scheduling.doubleClick}
+          </Text>
           {schedules.map(schedule => (
             <SchedulePresentation
               key={schedule.id}

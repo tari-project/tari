@@ -23,7 +23,7 @@ const MiningType = ({
     .join(', ')
   const theme = useTheme()
 
-  const color = disabled ? theme.placeholderText : undefined
+  const color = disabled ? theme.inputPlaceholder : theme.primary
 
   return (
     <Text type='smallMedium' color={color}>

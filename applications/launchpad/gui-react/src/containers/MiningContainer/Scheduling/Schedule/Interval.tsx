@@ -23,7 +23,7 @@ const Interval = ({
 }: IntervalType & { disabled: boolean }) => {
   const theme = useTheme()
 
-  const color = disabled ? theme.placeholderText : undefined
+  const color = disabled ? theme.inputPlaceholder : theme.primary
   return (
     <Text type='subheader' color={color}>
       {utcHour(from)} - {utcHour(to)}
