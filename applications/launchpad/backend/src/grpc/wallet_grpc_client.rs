@@ -34,13 +34,15 @@ use tari_app_grpc::tari_rpc::{
     GetBalanceResponse,
     GetIdentityRequest,
     GetIdentityResponse,
+    PaymentRecipient,
     TransactionEvent,
     TransactionEventRequest,
     TransactionEventResponse,
+    TransferRequest,
 };
-use tonic::transport::Channel;
+use tonic::{transport::Channel, Request};
 
-use super::error::GrpcError;
+use super::{error::GrpcError, TransferFunds, TransferFundsResult};
 use crate::{
     docker::{DockerWrapperError, LaunchpadConfig, WALLET_GRPC_ADDRESS_URL},
     error::LauncherError,
@@ -86,5 +88,24 @@ impl GrpcWalletClient {
         let request = GetBalanceRequest {};
         let identity = inner.get_balance(request).await?;
         Ok(identity.into_inner())
+    }
+
+    pub async fn transfer_funds(&mut self, funds: TransferFunds) -> Result<TransferFundsResult, GrpcError> {
+        let inner = self.connection().await?;
+        let recipients: Vec<PaymentRecipient> = funds
+            .payments
+            .into_iter()
+            .map(|p| PaymentRecipient {
+                amount: p.amount,
+                address: p.address,
+                fee_per_gram: p.fee_per_gram,
+                message: p.message,
+                payment_type: p.payment_type,
+            })
+            .collect();
+
+        let request = TransferRequest { recipients };
+        let response = inner.transfer(request).await?.into_inner();
+        Ok(TransferFundsResult::from(response))
     }
 }

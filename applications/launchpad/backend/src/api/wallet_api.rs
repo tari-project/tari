@@ -31,7 +31,7 @@ use tauri::{http::status, AppHandle, Manager, Wry};
 use crate::{
     commands::{status, AppState, DEFAULT_IMAGES},
     docker::{ContainerState, ImageType, TariNetwork},
-    grpc::{GrpcWalletClient, WalletBalance, WalletIdentity, WalletTransaction},
+    grpc::{GrpcWalletClient, TransferFunds, TransferFundsResult, WalletBalance, WalletIdentity, WalletTransaction},
 };
 
 #[tauri::command]
@@ -92,4 +92,28 @@ pub async fn wallet_events(app: AppHandle<Wry>) -> Result<(), String> {
         info!("Event stream has closed.");
     });
     Ok(())
+}
+
+#[tauri::command]
+pub async fn transfer(app: AppHandle<Wry>, funds: TransferFunds) -> Result<TransferFundsResult, String> {
+    // Check if wallet container is running.
+    debug!("Transfer funds: {:?}", funds);
+    let app_clone = app.clone();
+    let status = status(ImageType::Wallet).await;
+    if "running" == status.to_lowercase() {
+        let mut wallet_client = GrpcWalletClient::new();
+        let response = wallet_client
+            .transfer_funds(funds.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        info!("Transfering funds {:?} succeeded: {:?}", funds, response);
+
+        if let Err(err) = app_clone.emit_all("tari://wallet_transaction", response.clone()) {
+            warn!("Could not emit transaction event to front-end, {:?}", err);
+        }
+        Ok(response)
+    } else {
+        error!("Wallet container[image = {}] is not running", ImageType::Wallet);
+        Err("Wallet is not running".to_string())
+    }
 }

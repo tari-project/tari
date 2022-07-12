@@ -30,6 +30,7 @@ use tari_app_grpc::tari_rpc::{
     NodeIdentity,
     SyncProgressResponse,
     TransactionEvent,
+    TransferResponse,
 };
 use tari_common_types::{emoji::EmojiId, types::PublicKey};
 
@@ -37,6 +38,9 @@ pub const BLOCKS_SYNC_EXPECTED_TIME_SEC: u64 = 7200;
 pub const HEADERS_SYNC_EXPECTED_TIME_SEC: u64 = 1800;
 pub const HEADER: i32 = 2;
 pub const BLOCK: i32 = 4;
+
+pub const STANDARD_MIMBLEWIMBLE: i32 = 0;
+pub const ONE_SIDED: i32 = 1;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WalletTransaction {
@@ -64,6 +68,33 @@ pub struct WalletBalance {
     available_balance: u64,
     pending_incoming_balance: u64,
     pending_outgoing_balance: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TransferFunds {
+    pub payments: Vec<Payment>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Payment {
+    pub address: String,
+    pub amount: u64,
+    pub fee_per_gram: u64,
+    pub message: String,
+    pub payment_type: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PaymentResult {
+    address: String,
+    transaction_id: u64,
+    is_success: bool,
+    failure_message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TransferFundsResult {
+    payments: Vec<PaymentResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -280,5 +311,21 @@ impl From<SyncProgress> for SyncProgressInfo {
             max_estimated_time_sec: source.max_remaining_time,
             min_estimated_time_sec: source.min_remaining_time,
         }
+    }
+}
+
+impl From<TransferResponse> for TransferFundsResult {
+    fn from(source: TransferResponse) -> TransferFundsResult {
+        let payments: Vec<PaymentResult> = source
+            .results
+            .into_iter()
+            .map(|p| PaymentResult {
+                address: p.address,
+                transaction_id: p.transaction_id,
+                is_success: p.is_success,
+                failure_message: p.failure_message,
+            })
+            .collect();
+        TransferFundsResult { payments }
     }
 }

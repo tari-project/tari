@@ -30,12 +30,12 @@ use log::{debug, error, info, warn};
 use serde::Serialize;
 use tari_app_grpc::tari_rpc::wallet_client;
 use tauri::{http::status, AppHandle, Manager, Wry};
-pub use wallet_api::{wallet_balance, wallet_events, wallet_identity};
+pub use wallet_api::{transfer, wallet_balance, wallet_events, wallet_identity};
 
 use crate::{
     commands::{status, AppState, ServiceSettings, DEFAULT_IMAGES},
     docker::{ContainerState, ImageType, TariNetwork, TariWorkspace},
-    grpc::{GrpcWalletClient, WalletIdentity, WalletTransaction},
+    grpc::{GrpcWalletClient, Payment, TransferFunds, WalletIdentity, WalletTransaction},
     rest::quay_io::get_tag_info,
 };
 
@@ -161,4 +161,28 @@ pub async fn health_check(image: &str) -> String {
         Ok(img) => status(img).await,
         Err(_err) => format!("image {} not found", image),
     }
+}
+
+#[tokio::test]
+#[ignore = "The test requires running wallet instance (docker or local)"]
+async fn make_transfer() {
+    let pk = "f09993a0e472f630fde1624eef8ef0f709073f1047457f80595ee2b7cf653616";
+    let payments = vec![Payment {
+        amount: 1000,
+        address: pk.to_string(),
+        fee_per_gram: 5,
+        message: "Hopefully it works and now you are rich.".to_string(),
+        payment_type: 0,
+    }];
+    let transfer = TransferFunds { payments };
+    let mut wallet_client = GrpcWalletClient::new();
+    let response = match wallet_client.transfer_funds(transfer).await {
+        Ok(response) => response,
+        Err(e) => {
+            println!("{}", e);
+            std::process::exit(1);
+        },
+    };
+    println!("{:?}", response);
+    println!("TRANSFER is successful: {:?}", response);
 }
