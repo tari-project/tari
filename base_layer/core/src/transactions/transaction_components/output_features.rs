@@ -416,6 +416,19 @@ impl OutputFeatures {
             .and_then(|f| f.constitution.as_ref())
             .map(|c| &c.validator_committee)
     }
+
+    pub fn contains_sidechain_proposal(&self, contract_id: &FixedHash, proposal_id: u64) -> bool {
+        let sidechain_features = match self.sidechain_features.as_ref() {
+            Some(value) => value,
+            None => return false,
+        };
+        let proposal = match sidechain_features.update_proposal.as_ref() {
+            Some(value) => value,
+            None => return false,
+        };
+
+        sidechain_features.contract_id == *contract_id && proposal.proposal_id == proposal_id
+    }
 }
 
 impl ConsensusEncoding for OutputFeatures {
