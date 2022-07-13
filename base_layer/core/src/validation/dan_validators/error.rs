@@ -67,4 +67,6 @@ pub enum DanLayerValidationError {
     CheckpointNonSequentialNumber { got: u64, expected: u64 },
     #[error("Validator committee not consistent with contract constitution")]
     InconsistentCommittee,
+    #[error("Validator committee quorum not met: Got: {got}, minimum expected: {minimum} ")]
+    InsufficientQuorum { got: u32, minimum: u32 },
 }

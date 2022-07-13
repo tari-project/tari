@@ -188,7 +188,7 @@ pub fn create_contract_constitution() -> ContractConstitution {
         },
         consensus: SideChainConsensus::MerkleRoot,
         checkpoint_params: CheckpointParameters {
-            minimum_quorum_required: 5,
+            minimum_quorum_required: 0,
             abandoned_interval: 100,
         },
         constitution_change_rules: ConstitutionChangeRules {
@@ -351,11 +351,7 @@ pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &T
 pub fn create_committee_signatures(keys: Vec<(PrivateKey, PublicKey)>, challenge: &[u8]) -> CommitteeSignatures {
     let signer_signatures: Vec<SignerSignature> = keys
         .into_iter()
-        .map(|(pri_k, pub_k)| {
-            let (nonce, _) = create_random_key_pair();
-            let signature = Signature::sign(pri_k, nonce, challenge).unwrap();
-            SignerSignature::new(pub_k, signature)
-        })
+        .map(|(pri_k, _)| SignerSignature::sign(&pri_k, challenge))
         .collect();
 
     CommitteeSignatures::new(signer_signatures.try_into().unwrap())
