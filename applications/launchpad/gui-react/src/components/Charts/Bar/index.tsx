@@ -20,7 +20,9 @@ const BarChart = ({
     <div style={style}>
       <ResponsiveBarCanvas
         theme={{
-          grid: { line: { strokeWidth: 0.5 } },
+          grid: {
+            line: { stroke: theme.disabledPrimaryButton, strokeWidth: 0.5 },
+          },
           textColor: theme.nodeWarningText,
           fontSize: 12,
           fontFamily: 'AvenirMedium',
