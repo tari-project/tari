@@ -56,7 +56,7 @@ const Account = ({ data }: { data: AccountData }) => {
                 <Text
                   as='span'
                   type='smallMedium'
-                  color={theme.secondary}
+                  color={theme.helpTipText}
                   style={{ display: 'inline-block', marginLeft: '4px' }}
                 >
                   {t.mining.statistics.deltas[delta.interval as string]}
@@ -89,7 +89,7 @@ const Account = ({ data }: { data: AccountData }) => {
                 <Text
                   as='span'
                   type='smallMedium'
-                  color={theme.secondary}
+                  color={theme.helpTipText}
                   style={{ display: 'inline-block', marginLeft: '4px' }}
                 >
                   {t.mining.statistics.deltas[delta.interval as string]}

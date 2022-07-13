@@ -57,7 +57,14 @@ const Statistics = ({
   const theme = useTheme()
 
   return (
-    <Box style={{ width: 866, maxWidth: '100%' }}>
+    <Box
+      style={{
+        width: 866,
+        maxWidth: '100%',
+        background: theme.nodeBackground,
+        border: `1px solid ${theme.selectBorderColor}`,
+      }}
+    >
       <div
         style={{
           display: 'flex',
@@ -67,7 +74,7 @@ const Statistics = ({
       >
         <Text type='defaultHeavy'>{t.mining.statistics.title}</Text>
         <div onClick={onClose} style={{ cursor: 'pointer' }}>
-          <CloseIcon height='24px' width='24px' color={theme.secondary} />
+          <CloseIcon height='24px' width='24px' color={theme.helpTipText} />
         </div>
       </div>
       <div

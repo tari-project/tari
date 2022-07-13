@@ -85,6 +85,8 @@ const lightTheme = {
   calendarNumber: styles.colors.dark.primary,
   tbotMessage: styles.colors.light.primary,
   tbotContentBackground: styles.colors.secondary.tbotBubble,
+  buttonRadioBackground: styles.colors.light.primary,
+  buttonRadioBorder: styles.colors.dark.borders,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -162,6 +164,8 @@ const lightTheme = {
     calendarNumber: styles.colors.dark.primary,
     tbotMessage: styles.colors.light.primary,
     tbotContentBackground: styles.colors.secondary.tbotBubble,
+    buttonRadioBackground: 'transparent',
+    buttonRadioBorder: styles.colors.dark.borders,
   },
 }
 
