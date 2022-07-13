@@ -56,8 +56,12 @@ export const selectTariSetupRequired = createSelector(
 export const selectMergedMiningState = (r: RootState) => r.mining.merged
 export const selectMergedMiningAddress = (r: RootState) =>
   r.mining.merged.address
+export const selectMergedMiningThreads = (r: RootState) =>
+  r.mining.merged.threads
 export const selectMoneroUrls = (r: RootState) =>
   (r.mining.merged.urls || []).map(u => u.url).join(',')
+export const selectMergedAuthentication = (r: RootState) =>
+  r.mining.merged.authentication
 
 export const selectMergedContainers = createSelector(
   selectContainerStatusWithStats(Container.Tor),

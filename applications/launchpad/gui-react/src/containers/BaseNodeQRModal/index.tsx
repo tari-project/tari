@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import QRCode from 'react-qr-code'
 import { useTheme } from 'styled-components'
 import Button from '../../components/Button'
@@ -6,6 +7,13 @@ import Modal from '../../components/Modal'
 import Text from '../../components/Text'
 
 import t from '../../locales'
+import {
+  selectBaseNodeIdentity,
+  selectNetwork,
+  selectRunning,
+} from '../../store/baseNode/selectors'
+import { useAppDispatch, useAppSelector } from '../../store/hooks'
+import { actions as baseNodeActions } from '../../store/baseNode'
 import {
   ModalContainer,
   Content,
@@ -18,18 +26,34 @@ import {
 import { BaseNodeQRModalProps } from './types'
 
 /**
- * @TODO Replace with real data
- */
-const QRContent =
-  'tari://dibbler/base_nodes/add?name=00000000000000000000000000&peer=::/onion3/0000000000000000000000000000000000000000000000000000000000000000:00000'
-
-/**
  * The modal rendering the Base Node address as QR code.
  * @param {boolean} open - show modal
  * @param {() => void} onClose - on modal close
  */
 const BaseNodeQRModal = ({ open, onClose }: BaseNodeQRModalProps) => {
   const theme = useTheme()
+  const network = useAppSelector(selectNetwork)
+  const baseNodeIdentity = useAppSelector(selectBaseNodeIdentity)
+  const isBaseNodeRunning = useAppSelector(selectRunning)
+
+  const dispatch = useAppDispatch()
+
+  const [qrUrl, setQrUrl] = useState('')
+
+  useEffect(() => {
+    if (baseNodeIdentity) {
+      setQrUrl(
+        `tari://${network}/base_nodes/add?name=${baseNodeIdentity.nodeId}&peer=${baseNodeIdentity.publicKey}::${baseNodeIdentity.publicAddress}`,
+      )
+    }
+  }, [baseNodeIdentity, network])
+
+  useEffect(() => {
+    if (isBaseNodeRunning && open) {
+      dispatch(baseNodeActions.getBaseNodeIdentity())
+    }
+  }, [isBaseNodeRunning, open])
+
   return (
     <Modal open={open} onClose={onClose} size='small'>
       <ModalContainer>
@@ -65,7 +89,7 @@ const BaseNodeQRModal = ({ open, onClose }: BaseNodeQRModalProps) => {
 
           <QRContainer>
             <QRCode
-              value={QRContent}
+              value={qrUrl}
               level='H'
               size={220}
               data-testid='base-node-qr-code'

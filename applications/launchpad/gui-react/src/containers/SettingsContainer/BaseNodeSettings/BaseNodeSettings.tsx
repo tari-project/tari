@@ -47,6 +47,7 @@ const BaseNodeSettings = ({
       })
     }
   }, [])
+
   return (
     <>
       <Text type='subheader' as='h2' color={theme.primary}>

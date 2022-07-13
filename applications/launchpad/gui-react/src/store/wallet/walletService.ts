@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/tauri'
 import { toT } from '../../utils/Format'
 
 export interface WalletIdentityDto {
+  publicKey: string
+  nodeId: string
   publicAddress: string
   emojiId: string
 }
