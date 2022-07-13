@@ -11,7 +11,7 @@ import {
   selectActiveSettings,
   selectServiceSettings,
 } from '../../store/settings/selectors'
-import { selectState as selectBaseNodeState } from '../../store/baseNode/selectors'
+import { selectNetwork, selectRootFolder } from '../../store/baseNode/selectors'
 import { saveSettings } from '../../store/settings/thunks'
 import { ThemeType } from '../../styles/themes/types'
 
@@ -25,7 +25,8 @@ const SettingsContainer = () => {
 
   const miningMerged = useAppSelector(selectMergedMiningState)
   const serviceSettings = useAppSelector(selectServiceSettings)
-  const baseNodeSettings = useAppSelector(selectBaseNodeState)
+  const baseNodeNetwork = useAppSelector(selectNetwork)
+  const baseNodeRootFolder = useAppSelector(selectRootFolder)
   const currentTheme = useAppSelector(selectTheme)
 
   const [openMiningAuthForm, setOpenMiningAuthForm] = useState(false)
@@ -47,8 +48,8 @@ const SettingsContainer = () => {
         registry: serviceSettings.dockerRegistry,
       },
       baseNode: {
-        rootFolder: baseNodeSettings.rootFolder,
-        network: baseNodeSettings.network,
+        rootFolder: baseNodeRootFolder,
+        network: baseNodeNetwork,
       },
     }),
     [miningMerged, serviceSettings],

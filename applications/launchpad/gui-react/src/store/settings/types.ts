@@ -23,13 +23,15 @@ export interface InitialSettings {
   rootFolder: string
 }
 
+export type ServiceSettingsState = {
+  parole?: string
+  dockerRegistry: string
+  dockerTag: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} & any
+
 export type SettingsState = {
   open: boolean
   which: Settings
-  serviceSettings: {
-    parole?: string
-    dockerRegistry: string
-    dockerTag: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } & any
+  serviceSettings: ServiceSettingsState
 }

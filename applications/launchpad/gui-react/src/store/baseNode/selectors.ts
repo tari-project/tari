@@ -14,7 +14,11 @@ export const selectState = (state: RootState): BaseNodeState => ({
 })
 
 export const selectNetwork = (state: RootState) => state.baseNode.network
+export const selectRootFolder = (state: RootState) => state.baseNode.rootFolder
 
 export const selectRunning = selectRecipeRunning(Container.BaseNode)
 
 export const selectPending = selectRecipePending(Container.BaseNode)
+
+export const selectBaseNodeIdentity = (state: RootState) =>
+  state.baseNode.identity

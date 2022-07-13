@@ -101,6 +101,8 @@ declare module 'styled-components' {
     calendarText: string
     calendarTextSecondary: string
     calendarNumber: string
+    tbotMessage: string
+    tbotContentBackground: string
 
     inverted: {
       controlBackground: string
@@ -171,6 +173,8 @@ declare module 'styled-components' {
       calendarText: string
       calendarTextSecondary: string
       calendarTextSecondary: styles.colors.light.graySecondary
+      tbotMessage: string
+      tbotContentBackground: string
     }
   }
 }

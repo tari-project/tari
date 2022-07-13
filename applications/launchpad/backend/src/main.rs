@@ -41,7 +41,15 @@ use tauri::{
 use tauri_plugin_sql::{Migration, MigrationKind, TauriSql};
 
 use crate::{
-    api::{base_node_sync_progress, image_info, network_list, wallet_balance, wallet_events, wallet_identity},
+    api::{
+        base_node_sync_progress,
+        image_info,
+        network_list,
+        node_identity,
+        wallet_balance,
+        wallet_events,
+        wallet_identity,
+    },
     commands::{
         create_default_workspace,
         create_new_workspace,
@@ -155,6 +163,7 @@ fn main() {
             create_default_workspace,
             events,
             launch_docker,
+            node_identity,
             start_service,
             stop_service,
             shutdown,

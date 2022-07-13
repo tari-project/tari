@@ -17,19 +17,7 @@ import { TransactionsListProps } from './types'
 import { TransactionDBRecord } from '../../persistence/transactionsRepository'
 import SvgArrowLeft from '../../styles/Icons/ArrowLeft'
 import Tag from '../Tag'
-import { toT } from '../../utils/Format'
-
-const convertU8ToString = (data: string) => {
-  try {
-    if (!data || data === '[]') {
-      return ''
-    }
-    const parsed = data.replace('[', '').replace(']', '').split(',')
-    return parsed.map(c => String.fromCharCode(Number(c))).join('')
-  } catch (_) {
-    return ''
-  }
-}
+import { convertU8ToString, toT } from '../../utils/Format'
 
 const trimAddress = (address: string, start = 4, end = 4) => {
   return (

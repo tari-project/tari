@@ -120,3 +120,34 @@ export const formatAmount = (amount: string | number): string => {
     }
   }
 }
+
+/**
+ * Convert array of U8 into string
+ * (ie. base node's public key)
+ * @param {string} data - array of U8 as a string
+ */
+export const convertU8ToString = (data: string) => {
+  try {
+    if (!data || data === '[]') {
+      return ''
+    }
+    const parsed = data.replace('[', '').replace(']', '').split(',')
+    return parsed.map(c => String.fromCharCode(Number(c))).join('')
+  } catch (_) {
+    return ''
+  }
+}
+
+/**
+ * Convert Bytes array into the Hex (as string)
+ * @param {number[]} bytes - U8 bytes array
+ */
+export const bytesToHex = (bytes: number[]): string => {
+  const hex = []
+  for (let i = 0; i < bytes.length; i++) {
+    const current = bytes[i] < 0 ? bytes[i] + 256 : bytes[i]
+    hex.push((current >>> 4).toString(16))
+    hex.push((current & 0xf).toString(16))
+  }
+  return hex.join('')
+}
