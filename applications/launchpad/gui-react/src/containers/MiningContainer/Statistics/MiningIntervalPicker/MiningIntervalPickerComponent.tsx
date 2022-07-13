@@ -123,6 +123,7 @@ const MiningIntervalPickerComponent = ({
           textDecoration: viewingToday(value, interval) ? 'underline' : '',
           paddingRight: 0,
           paddingLeft: 0,
+          color: theme.helpTipText,
         }}
       >
         {t.common.nouns.today}

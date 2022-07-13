@@ -79,6 +79,8 @@ const darkTheme = {
   scrollBarHover: styles.colors.darkMode.disabledText,
   tbotMessage: styles.colors.darkMode.message,
   tbotContentBackground: styles.colors.secondary.tbotBubble,
+  buttonRadioBackground: styles.colors.darkMode.borders,
+  buttonRadioBorder: styles.colors.dark.secondary,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -152,6 +154,8 @@ const darkTheme = {
     scrollBarTrack: styles.colors.darkMode.modalBackground,
     tbotMessage: styles.colors.darkMode.message,
     tbotContentBackground: styles.colors.secondary.tbotBubble,
+    buttonRadioBackground: styles.colors.darkMode.borders,
+    buttonRadioBorder: styles.colors.dark.secondary,
   },
 }
 

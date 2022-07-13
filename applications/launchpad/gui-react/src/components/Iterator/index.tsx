@@ -44,14 +44,14 @@ const Iterator = ({
         testId='iterator-btn-prev'
         onClick={previous}
         style={{
-          color: theme.secondary,
+          color: theme.nodeWarningText,
           marginBottom: '-3px',
           marginRight: theme.spacing(0.5),
         }}
       >
         <ArrowLeft width='28px' height='28px' />
       </IconButton>
-      <Text color={theme.secondary} style={{ marginBottom: '-3px' }}>
+      <Text color={theme.nodeWarningText} style={{ marginBottom: '-3px' }}>
         {value}
       </Text>
       <IconButton
@@ -59,7 +59,7 @@ const Iterator = ({
         testId='iterator-btn-next'
         onClick={next}
         style={{
-          color: theme.secondary,
+          color: theme.nodeWarningText,
           marginBottom: '-3px',
           marginLeft: theme.spacing(0.5),
         }}

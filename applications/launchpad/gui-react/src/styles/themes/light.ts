@@ -82,6 +82,8 @@ const lightTheme = {
   scrollBarHover: styles.colors.darkMode.darkLogoCard,
   tbotMessage: styles.colors.light.primary,
   tbotContentBackground: styles.colors.secondary.tbotBubble,
+  buttonRadioBackground: styles.colors.light.primary,
+  buttonRadioBorder: styles.colors.dark.borders,
 
   inverted: {
     primary: styles.colors.light.primary,
@@ -156,6 +158,8 @@ const lightTheme = {
     scrollBarTrack: styles.colors.light.textSecondary,
     tbotMessage: styles.colors.light.primary,
     tbotContentBackground: styles.colors.secondary.tbotBubble,
+    buttonRadioBackground: 'transparent',
+    buttonRadioBorder: styles.colors.dark.borders,
   },
 }
 

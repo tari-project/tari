@@ -100,6 +100,8 @@ declare module 'styled-components' {
     scrollBarHover: string
     tbotMessage: string
     tbotContentBackground: string
+    buttonRadioBackground: string
+    buttonRadioBorder: string
 
     inverted: {
       controlBackground: string
@@ -169,6 +171,8 @@ declare module 'styled-components' {
       scrollBarHover: string
       tbotMessage: string
       tbotContentBackground: string
+      buttonRadioBackground: string
+      buttonRadioBorder: string
     }
   }
 }

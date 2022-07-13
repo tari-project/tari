@@ -33,8 +33,15 @@ const ButtonRadio = ({
           key={option}
           variant='secondary'
           style={{
-            backgroundColor: value === option ? '' : 'transparent',
-            color: theme.secondary,
+            backgroundColor:
+              value === option
+                ? theme.disabledPrimaryButton
+                : theme.buttonRadioBackground,
+            color: theme.nodeWarningText,
+            borderColor:
+              value === option
+                ? theme.buttonRadioBorder
+                : theme.selectBorderColor,
           }}
           onClick={() => onChange(option)}
         >
