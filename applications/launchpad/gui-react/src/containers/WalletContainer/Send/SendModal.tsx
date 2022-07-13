@@ -171,12 +171,17 @@ const SendModal = ({ open, onClose, available }: SendModalProps) => {
   }
 
   return (
-    <Modal open={open} onClose={cancel} size='small'>
+    <Modal
+      open={open}
+      onClose={cancel}
+      size='small'
+      style={{ border: `1px solid ${theme.selectBorderColor}` }}
+    >
       <StyledSendForm onSubmit={handleSubmit(onSubmitForm)}>
         <SendFormContent>
           <TagWrapper>
             <TagBox>
-              <Text type='smallMedium' color={theme.secondary}>
+              <Text type='smallMedium' color={theme.nodeWarningText}>
                 {t.wallet.balance.available}{' '}
                 <Text as='span' type='smallHeavy' color={theme.primary}>
                   {formatAmount(available)}

@@ -11,7 +11,7 @@ export const IconWrapper = styled.div`
 `
 
 export const InputWrapper = styled.span`
-  oveflow: hidden;
+  overflow: hidden;
   padding: 0 4px 0 6px;
   box-sizing: border-box;
   max-width: 50%;
@@ -31,6 +31,7 @@ export const StyledInput = styled.input`
   border: none;
   text-align: right;
   box-sizing: border-box;
+  color: ${({ theme }) => theme.primary};
 
   :focus-within {
     outline: none;

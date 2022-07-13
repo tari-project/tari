@@ -8,6 +8,7 @@ import t from '../../../locales'
 
 import TariText from './TariText'
 import { ContentWrapper, MessageWrapper } from './styles'
+import { useTheme } from 'styled-components'
 
 /**
  * @name TariNotificationComponent
@@ -26,6 +27,7 @@ const TariNotificationComponent = ({
   open: boolean
   onClose: () => void
 }) => {
+  const theme = useTheme()
   return (
     <Modal open={open} onClose={onClose} size='small'>
       <ContentWrapper>
@@ -41,8 +43,9 @@ const TariNotificationComponent = ({
             coins={[
               { amount: notification.amount, unit: notification.currency },
             ]}
+            color={theme.primary}
           />
-          <Text>{t.mining.notification.added}</Text>
+          <Text color={theme.primary}>{t.mining.notification.added}</Text>
         </MessageWrapper>
         <Button
           style={{ width: '100%', justifyContent: 'center' }}
