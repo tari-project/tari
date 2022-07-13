@@ -28,4 +28,28 @@ export const SchedulesListContainer = styled.div`
   overflow: auto;
   box-sizing: border-box;
   padding: 0 ${({ theme }) => theme.spacing()};
+  ::-webkit-scrollbar {
+    width: 15px;
+  }
+
+  /* Track */
+  ::-webkit-scrollbar-track {
+    background: ${({ theme }) => theme.scrollBarTrack};
+  }
+
+  /* Handle */
+  ::-webkit-scrollbar-thumb {
+    background: ${({ theme }) => theme.scrollBarThumb};
+    border-radius: 6px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+
+  /* Handle on hover */
+  ::-webkit-scrollbar-thumb:hover {
+    background: ${({ theme }) => theme.scrollBarHover};
+    border-radius: 6px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
 `

@@ -102,7 +102,7 @@ const DatePickerComponent = ({
               ? isSelected(day)
                 ? theme.on
                 : undefined
-              : theme.placeholderText
+              : theme.disabledPrimaryButtonText
             const disabled =
               !allowPast && startOfDay(day) < startOfDay(new Date())
 
