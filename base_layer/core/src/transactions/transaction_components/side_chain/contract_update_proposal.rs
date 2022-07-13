@@ -23,13 +23,10 @@
 use std::io::{Error, Read, Write};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, Signature};
+use tari_common_types::types::Signature;
 
 use super::ContractConstitution;
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction_components::TransactionOutput,
-};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 /// # ContractUpdateProposal
 ///
@@ -64,21 +61,6 @@ impl ConsensusDecoding for ContractUpdateProposal {
             signature: Signature::consensus_decode(reader)?,
             updated_constitution: ContractConstitution::consensus_decode(reader)?,
         })
-    }
-}
-
-impl ContractUpdateProposal {
-    pub fn output_contains_proposal(output: &TransactionOutput, contract_id: &FixedHash, proposal_id: u64) -> bool {
-        let sidechain_features = match output.features.sidechain_features.as_ref() {
-            Some(value) => value,
-            None => return false,
-        };
-        let proposal = match &sidechain_features.update_proposal {
-            Some(value) => value,
-            None => return false,
-        };
-
-        sidechain_features.contract_id == *contract_id && proposal.proposal_id == proposal_id
     }
 }
 

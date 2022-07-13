@@ -27,7 +27,6 @@ use tari_core::{
     chain_storage::UtxoMinedInfo,
     transactions::transaction_components::{
         ContractAcceptanceChallenge,
-        ContractUpdateProposal,
         ContractUpdateProposalAcceptanceChallenge,
         OutputType,
         SignerSignature,
@@ -155,7 +154,7 @@ impl<TWallet: WalletClient + Sync + Send, TBaseNode: BaseNodeClient + Sync + Sen
         let transaction_outputs: Vec<TransactionOutput> = outputs
             .into_iter()
             .filter_map(|utxo| utxo.output.into_unpruned_output())
-            .filter(|output| ContractUpdateProposal::output_contains_proposal(output, contract_id, proposal_id))
+            .filter(|output| output.features.contains_sidechain_proposal(contract_id, proposal_id))
             .collect();
 
         if transaction_outputs.is_empty() {
