@@ -2460,16 +2460,15 @@ mod tests {
         {
             // calculating Ks with the provided R nonce from the script
             let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_test")
-                .chain(PublicKey::shared_secret(&a, &big_r).as_bytes())
+                .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
                 .finalize();
 
             // computing a spending key `Ks=(c+b)G` for comparison
             let receiver_spending_key =
-                PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b.clone()));
+                PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b));
 
             // computing a scanning key `Ks=cG+B` for comparison
-            let scanning_key =
-                PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
+            let scanning_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;
 
             assert_eq!(**provided_spending_key, sender_spending_key);
             assert_eq!(receiver_spending_key, sender_spending_key);

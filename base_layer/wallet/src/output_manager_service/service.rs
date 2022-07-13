@@ -25,6 +25,7 @@ use std::{convert::TryInto, fmt, sync::Arc};
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
+use itertools::Itertools;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
@@ -61,9 +62,12 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
+    hash::blake2::Blake256,
+    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::RistrettoSecretKey,
 };
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -1956,99 +1960,153 @@ where
         Ok(())
     }
 
-    /// Attempt to scan and then rewind all of the given transaction outputs into unblinded outputs based on known
-    /// pubkeys
+    #[allow(clippy::too_many_lines)]
     fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
-        let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
-            self.resources.db.get_all_known_one_sided_payment_scripts()?;
+        // ----------------------------------------------------------------------------
+        // scanning
 
-        let mut rewound_outputs: Vec<RecoveredOutput> = Vec::new();
-        for output in outputs {
-            let position = known_one_sided_payment_scripts
-                .iter()
-                .position(|known_one_sided_script| known_one_sided_script.script == output.script);
-            if let Some(i) = position {
-                let spending_key = PrivateKey::from_bytes(
-                    CommsPublicKey::shared_secret(
-                        &known_one_sided_payment_scripts[i].private_key,
-                        &output.sender_offset_public_key,
-                    )
-                    .as_bytes(),
-                )?;
-                let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-                let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-                let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
-                let committed_value =
-                    EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
-                if let Ok(committed_value) = committed_value {
-                    let blinding_factor =
-                        output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
-                    if output.verify_mask(
-                        &self.resources.factories.range_proof,
-                        &blinding_factor,
-                        committed_value.into(),
-                    )? {
-                        let rewound_output = UnblindedOutput::new(
-                            output.version,
-                            committed_value,
-                            blinding_factor.clone(),
-                            output.features,
-                            known_one_sided_payment_scripts[i].script.clone(),
-                            known_one_sided_payment_scripts[i].input.clone(),
-                            known_one_sided_payment_scripts[i].private_key.clone(),
-                            output.sender_offset_public_key,
-                            output.metadata_signature,
-                            known_one_sided_payment_scripts[i].script_lock_height,
-                            output.covenant,
-                            output.encrypted_value,
-                        );
+        let outputs = outputs
+            .into_iter()
+            .filter_map(|output| {
+                // TODO: use MultiKey
+                match output.script.as_slice() {
+                    // ----------------------------------------------------------------------------
+                    // simple one-sided address
+                    [Opcode::PushPubKey(spending_key_public)] => {
+                        let keys = match self.resources.db.get_all_known_one_sided_payment_scripts() {
+                            Ok(keys) => keys,
+                            Err(_) => return None,
+                        };
 
-                        let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
-                            rewound_output.clone(),
-                            &self.resources.factories,
-                            &RewindData {
-                                rewind_blinding_key,
-                                recovery_byte_key,
-                                encryption_key,
-                            },
-                            None,
-                            Some(&output.proof),
-                        )?;
+                        match keys
+                            .into_iter()
+                            .find(|x| PublicKey::from_secret_key(&x.private_key) == **spending_key_public)
+                        {
+                            None => None,
+                            Some(x) => Some((output.clone(), x.private_key.clone(), x.private_key)),
+                        }
+                    },
 
-                        let output_hex = output.commitment.to_hex();
-                        let tx_id = TxId::new_random();
+                    // ----------------------------------------------------------------------------
+                    // one-sided stealth address
+                    // NOTE: Extracting the nonce R and a spending (public) key from the script
+                    // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
+                    [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(provided_spending_public)] => {
+                        let keys = match self.resources.db.get_all_known_stealth_addresses() {
+                            Ok(keys) => keys,
+                            Err(_) => return None,
+                        };
 
-                        match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
-                            Ok(_) => {
-                                rewound_outputs.push(RecoveredOutput {
-                                    output: rewound_output,
-                                    tx_id,
-                                });
-                            },
-                            Err(OutputManagerStorageError::DuplicateOutput) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Attempt to add scanned output {} that already exists. Ignoring the output.",
-                                    output_hex
-                                );
-                            },
-                            Err(err) => {
-                                return Err(err.into());
+                        match keys
+                            .into_iter()
+                            .find(|x| PublicKey::from_secret_key(&x.scanning_private_key) == **provided_spending_public)
+                        {
+                            None => None,
+                            Some(x) => {
+                                // calculating Ks(spending secret key) with the provided R nonce from the script
+                                let c = RistrettoSecretKey::from_bytes(
+                                    DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_address")
+                                        .chain(PublicKey::shared_secret(&x.scanning_private_key, nonce).as_bytes())
+                                        .finalize()
+                                        .as_ref(),
+                                )
+                                .unwrap();
+
+                                Some((
+                                    output.clone(),
+                                    x.spending_private_key.clone() + c,
+                                    x.spending_private_key,
+                                ))
                             },
                         }
-                        trace!(
-                            target: LOG_TARGET,
-                            "One-sided payment Output {} with value {} recovered",
-                            output_hex,
-                            committed_value,
-                        );
+                    },
+
+                    _ => None,
+                }
+            })
+            .collect_vec();
+
+        // ----------------------------------------------------------------------------
+        // processing
+
+        let mut rewound_outputs = Vec::with_capacity(outputs.len());
+
+        for (output, script_private_key, spending_secret) in outputs {
+            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_secret))?;
+            let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+            let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+            let committed_value =
+                EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
+
+            if let Ok(committed_value) = committed_value {
+                let blinding_factor =
+                    output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
+
+                if output.verify_mask(
+                    &self.resources.factories.range_proof,
+                    &blinding_factor,
+                    committed_value.into(),
+                )? {
+                    let rewound_output = UnblindedOutput::new(
+                        output.version,
+                        committed_value,
+                        blinding_factor.clone(),
+                        output.features,
+                        output.script,
+                        tari_script::ExecutionStack::new(vec![]),
+                        script_private_key,
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
+                        0,
+                        output.covenant,
+                        output.encrypted_value,
+                    );
+
+                    let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                        rewound_output.clone(),
+                        &self.resources.factories,
+                        &RewindData {
+                            rewind_blinding_key,
+                            recovery_byte_key,
+                            encryption_key,
+                        },
+                        None,
+                        Some(&output.proof),
+                    )?;
+
+                    let output_hex = output.commitment.to_hex();
+                    let tx_id = TxId::new_random();
+
+                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
+                        Ok(_) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "One-sided payment Output {} with value {} recovered",
+                                output_hex,
+                                committed_value,
+                            );
+
+                            rewound_outputs.push(RecoveredOutput {
+                                output: rewound_output,
+                                tx_id,
+                            })
+                        },
+                        Err(OutputManagerStorageError::DuplicateOutput) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Attempt to add scanned output {} that already exists. Ignoring the output.",
+                                output_hex
+                            );
+                        },
+                        Err(err) => return Err(err.into()),
                     }
                 }
             }
         }
+
         Ok(rewound_outputs)
     }
 
