@@ -21,6 +21,9 @@ const BarChart = ({
       <ResponsiveBarCanvas
         theme={{
           grid: { line: { strokeWidth: 0.5 } },
+          textColor: theme.nodeWarningText,
+          fontSize: 12,
+          fontFamily: 'AvenirMedium',
         }}
         margin={{
           top: 15,
