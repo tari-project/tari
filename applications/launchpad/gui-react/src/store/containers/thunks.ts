@@ -40,6 +40,36 @@ export const persistStats = createAsyncThunk<
   await repository.add(configuredNetwork, container, timestamp, stats)
 })
 
+export const extractStatsFromEvent = (
+  stats: StatsEventPayload,
+): SerializableContainerStats & { timestamp: string } => {
+  const secondTimestamp = startOfSecond(new Date(stats.read)).toISOString()
+
+  const cs = stats.cpu_stats
+  const pcs = stats.precpu_stats
+  const cpu_delta = cs.cpu_usage.total_usage - pcs.cpu_usage.total_usage
+  const system_cpu_delta = cs.system_cpu_usage - pcs.system_cpu_usage
+  const numCpu = cs.online_cpus
+  const cpu = (cpu_delta / system_cpu_delta) * numCpu * 100.0
+
+  const ms = stats.memory_stats
+  const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
+  const network = Object.values(stats.networks).reduce(
+    (accu, current) => ({
+      upload: accu.upload + current.tx_bytes,
+      download: accu.download + current.rx_bytes,
+    }),
+    { upload: 0, download: 0 },
+  )
+
+  return {
+    cpu,
+    memory,
+    network,
+    timestamp: secondTimestamp,
+  }
+}
+
 export const addStats = createAsyncThunk<
   {
     containerId: ContainerId
@@ -59,33 +89,11 @@ export const addStats = createAsyncThunk<
     throw new Error('stats for this container dont exist yet')
   }
 
-  const cs = stats.cpu_stats
-  const pcs = stats.precpu_stats
-  const cpu_delta = cs.cpu_usage.total_usage - pcs.cpu_usage.total_usage
-  const system_cpu_delta = cs.system_cpu_usage - pcs.system_cpu_usage
-  const numCpu = cs.online_cpus
-  const cpu = (cpu_delta / system_cpu_delta) * numCpu * 100.0
-
-  const ms = stats.memory_stats
-  const memory = (ms.usage - (ms.stats.cache || 0)) / (1024 * 1024)
-  const network = Object.values(stats.networks).reduce(
-    (accu, current) => ({
-      upload: accu.upload + current.tx_bytes,
-      download: accu.download + current.rx_bytes,
-    }),
-    { upload: 0, download: 0 },
-  )
-
-  const currentStats = {
-    cpu,
-    memory,
-    network,
-  }
-  const secondTimestamp = startOfSecond(new Date(stats.read)).toISOString()
+  const currentStats = extractStatsFromEvent(stats)
   thunkApi.dispatch(
     persistStats({
       container,
-      timestamp: secondTimestamp,
+      timestamp: currentStats.timestamp,
       stats: currentStats,
     }),
   )
@@ -97,7 +105,11 @@ export const addStats = createAsyncThunk<
 })
 
 export const start = createAsyncThunk<
-  { id: ContainerId; unsubscribeStats: UnlistenFn },
+  {
+    id: ContainerId
+    containerEventsChannel: string
+    unsubscribeStats: UnlistenFn
+  },
   { container: ContainerName },
   { state: RootState }
 >('containers/start', async ({ container }, thunkApi) => {
@@ -125,6 +137,7 @@ export const start = createAsyncThunk<
 
     return {
       id: descriptor.id,
+      containerEventsChannel: descriptor.statsEventsName,
       unsubscribeStats: unsubscribe,
     }
   } catch (error) {

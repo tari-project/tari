@@ -81,7 +81,7 @@ describe('containers/thunks', () => {
 
       // then
       expect(result.type.endsWith('/fulfilled')).toBe(true)
-      expect(result.payload).toStrictEqual({
+      expect(result.payload).toMatchObject({
         containerId: expectedContainerId,
         stats: expectedFromStandardStats(),
       })

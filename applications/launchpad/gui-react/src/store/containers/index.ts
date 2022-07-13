@@ -100,6 +100,8 @@ const containersSlice = createSlice({
 
       state.pending = state.pending.filter(p => p !== action.meta.arg.container)
       state.containers[action.payload.id].name = action.meta.arg.container
+      state.containers[action.payload.id].eventsChannel =
+        action.payload.containerEventsChannel
       state.stats[action.payload.id].unsubscribe =
         action.payload.unsubscribeStats
       state.errors[action.meta.arg.container] = undefined

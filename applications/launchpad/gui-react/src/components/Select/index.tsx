@@ -57,7 +57,7 @@ const Select = ({
   return (
     <Listbox value={value} onChange={onChange} disabled={disabled}>
       {({ open }: { open: boolean }) => (
-        <>
+        <div>
           {label && (
             <Label inverted={inverted} style={{ ...styles?.label }}>
               {label}
@@ -97,7 +97,7 @@ const Select = ({
               </Listbox.Option>
             ))}
           </OptionsContainer>
-        </>
+        </div>
       )}
     </Listbox>
   )

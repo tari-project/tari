@@ -1,6 +1,6 @@
 import Database from 'tauri-plugin-sql-api'
 
-let db: Database
+export let db: Database
 const getDb = async () => {
   if (!db) {
     db = await Database.load('sqlite:launchpad.db')

@@ -1,17 +1,16 @@
-import groupby from 'lodash.groupby'
-
-import { Dictionary, ContainerName } from '../types/general'
+import { ContainerName } from '../types/general'
 import { SerializableContainerStats } from '../store/containers/types'
-import getDb from './db'
+import { db } from './db'
 
 export interface StatsEntry {
   timestamp: string
+  timestampS: number
   network: string
   service: ContainerName
-  cpu: number
-  memory: number
-  upload: number
-  download: number
+  cpu: number | null
+  memory: number | null
+  upload: number | null
+  download: number | null
 }
 
 export interface StatsRepository {
@@ -21,18 +20,13 @@ export interface StatsRepository {
     secondTimestamp: string,
     stats: SerializableContainerStats,
   ) => Promise<void>
-  getGroupedByContainer: (
-    network: string,
-    from: Date,
-    to: Date,
-  ) => Promise<Dictionary<StatsEntry[]>>
+  getEntries: (network: string, since: Date) => Promise<StatsEntry[]>
+  removeOld: (age?: number) => Promise<void>
 }
 
 const repositoryFactory: () => StatsRepository = () => {
   return {
     add: async (network, container, secondTimestamp, stats) => {
-      const db = await getDb()
-
       await db.execute(
         `INSERT INTO stats(timestamp, network, service, cpu, memory, upload, download) VALUES($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT(timestamp, network, service)
@@ -53,15 +47,23 @@ const repositoryFactory: () => StatsRepository = () => {
         ],
       )
     },
-    getGroupedByContainer: async (network, from, to) => {
-      const db = await getDb()
-
-      const results: StatsEntry[] = await db.select(
-        'SELECT * FROM stats WHERE network = $1 AND "timestamp" >= $2 AND "timestamp" <= $3 ORDER BY "timestamp"',
-        [network, from, to],
+    removeOld: async (age = 24 * 3600 * 1000) => {
+      const nowTS = new Date().getTime()
+      const whenTS = new Date(nowTS - age)
+      await db.execute('DELETE from stats WHERE "timestamp" < $1', [
+        whenTS.toISOString(),
+      ])
+    },
+    getEntries: async (network, since) => {
+      const results: Omit<StatsEntry, 'timestampS'>[] = await db.select(
+        'SELECT timestamp, service, cpu, memory, upload, download FROM stats WHERE network = $1 AND "timestamp" > $2 ORDER BY "timestamp"',
+        [network, since.toISOString()],
       )
 
-      return groupby(results, 'service')
+      return results.map(r => ({
+        ...r,
+        timestampS: new Date(r.timestamp).getTime() / 1000,
+      }))
     },
   }
 }

@@ -98,6 +98,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
   },
   units: {
     mib: 'MiB',
+    kbs: 'kiB/s',
   },
 }
 

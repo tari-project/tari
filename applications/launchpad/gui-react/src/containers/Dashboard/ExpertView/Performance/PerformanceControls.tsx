@@ -7,31 +7,40 @@ import FilterIcon from '../../../../styles/Icons/Filter'
 import RefreshRateIcon from '../../../../styles/Icons/RotateRight'
 import t from '../../../../locales'
 
-const renderWindowOptions = [
+export interface TimeWindowOption extends Option {
+  resolution: number
+}
+
+const renderWindowOptions: TimeWindowOption[] = [
   {
     value: 30 * 60 * 1000,
     key: '30m',
     label: t.expertView.performance.renderWindowOptionsLabels.last30m,
+    resolution: 1,
   },
   {
     value: 60 * 60 * 1000,
     key: '1h',
     label: t.expertView.performance.renderWindowOptionsLabels.last1h,
+    resolution: 1,
   },
   {
     value: 2 * 60 * 60 * 1000,
     key: '2h',
     label: t.expertView.performance.renderWindowOptionsLabels.last2h,
+    resolution: 1,
   },
   {
     value: 8 * 60 * 60 * 1000,
     key: '8h',
     label: t.expertView.performance.renderWindowOptionsLabels.last8h,
+    resolution: 60,
   },
   {
     value: 24 * 60 * 60 * 1000,
     key: '24h',
     label: t.expertView.performance.renderWindowOptionsLabels.last24h,
+    resolution: 60,
   },
 ]
 export const defaultRenderWindow = renderWindowOptions[0]
@@ -63,8 +72,8 @@ const PerformanceControls = ({
 }: {
   refreshRate: Option
   onRefreshRateChange: (option: Option) => void
-  timeWindow: Option
-  onTimeWindowChange: (option: Option) => void
+  timeWindow: TimeWindowOption
+  onTimeWindowChange: (option: TimeWindowOption) => void
 }) => {
   const theme = useTheme()
 
@@ -90,7 +99,9 @@ const PerformanceControls = ({
         fullWidth={false}
         value={timeWindow}
         options={renderWindowOptions}
-        onChange={onTimeWindowChange}
+        onChange={(option: Option) =>
+          onTimeWindowChange(option as TimeWindowOption)
+        }
         styles={selectStyleOverrides}
       />
       <Select

@@ -14,7 +14,7 @@ export interface SelectInternalProps {
  * @property {string} label - label shown in option
  * @property {string} key - key to be used in react map
  */
-export type Option = {
+export interface Option {
   value: string | number
   label: string
   key: string

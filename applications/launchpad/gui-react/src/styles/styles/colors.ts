@@ -62,4 +62,15 @@ const colors = {
   },
 }
 
+export const chartColors = [
+  colors.secondary.infoText,
+  colors.secondary.onTextLight,
+  colors.secondary.warningDark,
+  colors.graph.fuchsia,
+  colors.secondary.warning,
+  colors.tari.purple,
+  colors.graph.yellow,
+  colors.graph.lightGreen,
+]
+
 export default colors

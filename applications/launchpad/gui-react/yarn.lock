@@ -9317,6 +9317,16 @@ update-browserslist-db@^1.0.0:
     escalade "^3.1.1"
     picocolors "^1.0.0"
 
+uplot-react@^1.1.1:
+  version "1.1.1"
+  resolved "https://registry.yarnpkg.com/uplot-react/-/uplot-react-1.1.1.tgz#b3203f4948d68fa1ced0a35e3b7a69c0b98bf67f"
+  integrity sha512-zCvwyZVm4nfYDi+KjaK0FppqftGzga/x+u0h2baRWj1vXMB9/hfJ1qb9gXAdXMfp17C9Rk57HoZDE9MewNWLfg==
+
+uplot@^1.6.21:
+  version "1.6.21"
+  resolved "https://registry.yarnpkg.com/uplot/-/uplot-1.6.21.tgz#39030f64dccf3c777ce2cc04742d46111ceec7f8"
+  integrity sha512-Xd7m2GSHyzhz+mP9CzYTalzp9WDlHzTorNY1yDvg6E+wiCwMIIY+MLfNveObyp3qVMH4kP8mOhRX4k4S9YLHRQ==
+
 uri-js@^4.2.2:
   version "4.4.1"
   resolved "https://registry.yarnpkg.com/uri-js/-/uri-js-4.4.1.tgz#9b1a52595225859e55f669d928f88c6c57f2a77e"
