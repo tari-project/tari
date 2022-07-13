@@ -34,10 +34,6 @@ pub struct Birthday {
 }
 
 impl Birthday {
-    pub fn default() -> Self {
-        let network = Network::Dibbler;
-        Self::new(network)
-    }
 
     pub fn new(network: Network) -> Self {
         let current_time = Self::current_time_in_seconds();
@@ -51,10 +47,10 @@ impl Birthday {
         let mut zero_point_time = Self::get_network_genesis_time(network);
 
         let days = (current_time - zero_point_time) / SECONDS_PER_DAY;
-        let birthday = u16::try_from(days % PERIOD_LENGTH).unwrap();
+        let birthday = (days % PERIOD_LENGTH) as u16;
         let version = u8::try_from(days / PERIOD_LENGTH).unwrap();
 
-        zero_point_time += PERIOD_LENGTH * u64::from(version);
+        zero_point_time += PERIOD_LENGTH * (version as u64);
 
         Self {
             birthday,
@@ -81,6 +77,13 @@ impl Birthday {
 
     pub fn get_network_genesis_time(network: Network) -> u64 {
         get_genesis_block(network).block().header.timestamp.as_u64()
+    }
+}
+
+impl Default for Birthday {
+    fn default() -> Self {
+        let network = Network::Dibbler;
+        Self::new(network)
     }
 }
 
