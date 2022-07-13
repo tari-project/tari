@@ -38,12 +38,34 @@ Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
 });
 
-Given("I have {int} seed nodes", { timeout: 20 * 1000 }, async function (n) {
-  const promises = [];
+Given("I have {int} seed nodes", { timeout: 60 * 1000 }, async function (n) {
   for (let i = 0; i < n; i++) {
-    promises.push(this.createSeedNode(`SeedNode${i}`));
+    const seedName = `SeedNode${i}`;
+    let initialized = false;
+    let count = 0;
+    while (!initialized) {
+      try {
+        await this.createSeedNode(seedName);
+        initialized = true;
+      } catch {
+        if (this.clients[seedName] !== undefined) {
+          delete this.clients[seedName];
+        }
+        if (this.seeds[seedName] !== undefined) {
+          await this.seeds[seedName].stop();
+          delete this.seeds[seedName];
+        }
+        count += 1;
+        if (count >= 10) {
+          console.log(
+            seedName,
+            "could not be initialized, suspecting port conflicts"
+          );
+          expect(initialized).to.equal(true);
+        }
+      }
+    }
   }
-  await Promise.all(promises);
 });
 
 Given(
@@ -131,9 +153,33 @@ Given(
   }
 );
 
-Given("I have {int} base nodes", { timeout: 20 * 1000 }, async function (n) {
+Given("I have {int} base nodes", { timeout: 60 * 1000 }, async function (n) {
   for (let i = 0; i < n; i++) {
-    await this.createAndAddNode(`basenode${i}`);
+    const nodeName = `BaseNode${i}`;
+    let initialized = false;
+    let count = 0;
+    while (!initialized) {
+      try {
+        await this.createAndAddNode(nodeName);
+        initialized = true;
+      } catch {
+        if (this.clients[nodeName] !== undefined) {
+          delete this.clients[nodeName];
+        }
+        if (this.nodes[nodeName] !== undefined) {
+          await this.nodes[nodeName].stop();
+          delete this.nodes[nodeName];
+        }
+        count += 1;
+        if (count >= 10) {
+          console.log(
+            nodeName,
+            "could not be initialized, suspecting port conflicts"
+          );
+          expect(initialized).to.equal(true);
+        }
+      }
+    }
   }
 });
 
@@ -197,17 +243,38 @@ Given(
 
 Given(
   "I have {int} base nodes connected to all seed nodes",
-  { timeout: 20 * 1000 },
+  { timeout: 60 * 1000 },
   async function (n) {
-    const promises = [];
     for (let i = 0; i < n; i++) {
-      const miner = this.createNode(`BaseNode${i}`);
-      miner.setPeerSeeds([this.seedAddresses()]);
-      promises.push(
-        miner.startNew().then(() => this.addNode(`BaseNode${i}`, miner))
-      );
+      const nodeName = `BaseNode${i}`;
+      let initialized = false;
+      let count = 0;
+      while (!initialized) {
+        try {
+          const miner = this.createNode(nodeName);
+          miner.setPeerSeeds([this.seedAddresses()]);
+          await miner.startNew();
+          await this.addNode(nodeName, miner);
+          initialized = true;
+        } catch {
+          if (this.clients[nodeName] !== undefined) {
+            delete this.clients[nodeName];
+          }
+          if (this.nodes[nodeName] !== undefined) {
+            await this.nodes[nodeName].stop();
+            delete this.nodes[nodeName];
+          }
+          count += 1;
+          if (count >= 10) {
+            console.log(
+              nodeName,
+              "could not be initialized, suspecting port conflicts"
+            );
+            expect(initialized).to.equal(true);
+          }
+        }
+      }
     }
-    await Promise.all(promises);
   }
 );
 

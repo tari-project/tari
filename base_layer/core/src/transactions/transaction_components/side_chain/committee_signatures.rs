@@ -23,6 +23,7 @@
 use std::{
     convert::{TryFrom, TryInto},
     io,
+    slice,
 };
 
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,15 @@ impl IntoIterator for CommitteeSignatures {
 
     fn into_iter(self) -> Self::IntoIter {
         self.signatures.into_vec().into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a CommitteeSignatures {
+    type IntoIter = slice::Iter<'a, SignerSignature>;
+    type Item = <Self::IntoIter as Iterator>::Item;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.signatures.iter()
     }
 }
 
