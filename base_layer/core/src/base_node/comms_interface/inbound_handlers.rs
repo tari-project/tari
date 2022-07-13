@@ -64,7 +64,13 @@ const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
 #[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
     ValidBlockAdded(Arc<Block>, BlockAddResult),
-    AddBlockFailed(Arc<Block>),
+    AddBlockValidationFailed {
+        block: Arc<Block>,
+        source_peer: Option<NodeId>,
+    },
+    AddBlockErrored {
+        block: Arc<Block>,
+    },
     BlockSyncComplete(Arc<ChainBlock>),
     BlockSyncRewind(Vec<Arc<ChainBlock>>),
 }
@@ -781,7 +787,7 @@ where B: BlockchainBackend + 'static
                         .unwrap_or_else(|| "<local request>".to_string()),
                     e
                 );
-                if let Some(source_peer) = source_peer {
+                if let Some(source_peer) = source_peer.clone() {
                     if let Err(e) = self
                         .connectivity
                         .ban_peer(source_peer, format!("Peer propagated invalid block: {}", e))
@@ -790,13 +796,13 @@ where B: BlockchainBackend + 'static
                         error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
                     }
                 }
-                self.publish_block_event(BlockEvent::AddBlockFailed(block));
+                self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
             },
 
             Err(e) => {
                 metrics::rejected_blocks(block.header.height, &block.hash()).inc();
-                self.publish_block_event(BlockEvent::AddBlockFailed(block));
+                self.publish_block_event(BlockEvent::AddBlockErrored { block });
                 Err(e.into())
             },
         }
