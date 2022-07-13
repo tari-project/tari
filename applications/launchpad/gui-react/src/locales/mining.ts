@@ -54,6 +54,7 @@ const translations = {
       title: 'Unlock your wallet',
       cta: 'According to your schedule we should be mining! Provide password to unlock your wallet:',
     },
+    doubleClick: 'Double-click schedule to edit',
   },
   statistics: {
     title: 'Mined coins',

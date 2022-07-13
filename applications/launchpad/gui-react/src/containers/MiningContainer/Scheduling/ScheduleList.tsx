@@ -62,16 +62,25 @@ const ScheduleList = ({
           width: '100%',
           marginBottom: 0,
           padding: `${theme.spacing(1)} ${theme.spacing(2)}`,
+          background: theme.nodeBackground,
         }}
       >
         <Text type='header'>{t.mining.scheduling.title}</Text>
-        <Text as='p' style={{ marginTop: theme.spacing() }}>
+        <Text
+          as='p'
+          style={{ marginTop: theme.spacing() }}
+          color={theme.helpTipText}
+        >
           {t.mining.scheduling.launchpadOpen}
         </Text>
       </Box>
       {schedules.length === 0 && (
         <NoSchedulesContainer>
-          <Text as='p' style={{ marginBottom: theme.spacing() }}>
+          <Text
+            as='p'
+            style={{ marginBottom: theme.spacing() }}
+            color={theme.primary}
+          >
             {t.mining.scheduling.noSchedules}
           </Text>
           <Button onClick={addSchedule}>{t.mining.scheduling.add}</Button>
@@ -79,6 +88,17 @@ const ScheduleList = ({
       )}
       {schedules.length !== 0 && (
         <SchedulesListContainer tabIndex={0} onKeyDown={onListKeyDown}>
+          <Text
+            type='smallMedium'
+            color={theme.nodeWarningText}
+            style={{
+              alignSelf: 'flex-start',
+              marginLeft: theme.spacingHorizontal(),
+              marginBottom: theme.spacingVertical(0.5),
+            }}
+          >
+            {t.mining.scheduling.doubleClick}
+          </Text>
           {schedules.map(schedule => (
             <SchedulePresentation
               key={schedule.id}

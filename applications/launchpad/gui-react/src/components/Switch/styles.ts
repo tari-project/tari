@@ -33,7 +33,7 @@ export const SwitchCircle = styled(animated.div)<{ disable?: boolean }>`
   margin-left: -0.5px;
   border-radius: 6px;
   box-sizing: border-box;
-  background: ${({ theme }) => theme.switchCircle};
+  background: ${({ theme }) => theme.accent};
   border: 1.5px solid
     ${({ theme, disable }) =>
       disable ? theme.disabledText : theme.switchBorder};

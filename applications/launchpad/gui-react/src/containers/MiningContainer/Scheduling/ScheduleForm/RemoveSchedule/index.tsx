@@ -17,16 +17,19 @@ const RemoveSchedule = ({ remove }: { remove: () => void }) => {
     <div>
       <Button
         variant='text'
-        leftIcon={
-          <TrashIcon width='1em' height='1em' color={theme.secondary} />
-        }
+        leftIcon={<TrashIcon width='1em' height='1em' />}
         onClick={remove}
         style={{
           paddingLeft: 0,
-          display: 'inline',
+          display: 'flex',
+          color: theme.helpTipText,
         }}
       >
-        <Text as='label' color={theme.secondary} style={{ cursor: 'pointer' }}>
+        <Text
+          as='label'
+          color={theme.helpTipText}
+          style={{ cursor: 'pointer', marginTop: theme.spacingVertical(0.3) }}
+        >
           {t.mining.scheduling.removeSchedule}
         </Text>
       </Button>

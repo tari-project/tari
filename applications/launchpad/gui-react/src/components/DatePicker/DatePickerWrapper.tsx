@@ -17,6 +17,8 @@ const DatePickerWrapper = ({ style, ...props }: BoxProps) => {
         justifyItems: 'center',
         alignItems: 'center',
         justifyContent: 'center',
+        background: theme.nodeBackground,
+        border: `1px solid ${theme.selectBorderColor}`,
         ...style,
       }}
       {...props}

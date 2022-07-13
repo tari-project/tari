@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 
 const useSingleAndDoubleClick = (
   { single, double }: { single: () => void; double: () => void },
-  delay = 150,
+  delay = 300,
 ) => {
   const [click, setClick] = useState(0)
 

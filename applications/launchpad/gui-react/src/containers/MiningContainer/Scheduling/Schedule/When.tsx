@@ -26,7 +26,7 @@ const When = ({
 }: Pick<Schedule, 'days' | 'date'> & { disabled: boolean }) => {
   const theme = useTheme()
 
-  const color = disabled ? theme.placeholderText : undefined
+  const color = disabled ? theme.inputPlaceholder : theme.primary
 
   return (
     <div>

@@ -98,6 +98,9 @@ declare module 'styled-components' {
     scrollBarTrack: string
     scrollBarThumb: string
     scrollBarHover: string
+    calendarText: string
+    calendarTextSecondary: string
+    calendarNumber: string
     tbotMessage: string
     tbotContentBackground: string
 
@@ -167,6 +170,9 @@ declare module 'styled-components' {
       scrollBarTrack: string
       scrollBarThumb: string
       scrollBarHover: string
+      calendarText: string
+      calendarTextSecondary: string
+      calendarTextSecondary: styles.colors.light.graySecondary
       tbotMessage: string
       tbotContentBackground: string
     }

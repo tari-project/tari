@@ -6,14 +6,14 @@ export const StyledIndicatorContainer = styled.div<{
 }>`
   color: ${({ theme, enabled, disabled }) => {
     if (disabled) {
-      return theme.placeholderText
+      return theme.inputPlaceholder
     }
 
     if (enabled) {
       return theme.onTextLight
     }
 
-    return theme.secondary
+    return theme.nodeWarningText
   }};
   display: inline-block;
   position: relative;
@@ -24,7 +24,7 @@ export const StyledIndicatorContainer = styled.div<{
 
 export const EnabledDot = styled.div<{ disabled: boolean }>`
   background-color: ${({ theme, disabled }) =>
-    disabled ? theme.placeholderText : theme.onTextLight};
+    disabled ? theme.inputPlaceholder : theme.onTextLight};
   position: absolute;
   border-radius: 50%;
   width: 3px;
@@ -38,7 +38,7 @@ export const ScheduleWrapper = styled.div<{ selected: boolean }>`
   box-sizing: border-box;
   padding: 0 ${({ theme }) => theme.spacing()};
   background-color: ${({ theme, selected }) =>
-    selected ? theme.backgroundImage : 'none'};
+    selected ? theme.selectOptionHover : 'none'};
   border-radius: ${({ theme, selected }) =>
     selected ? theme.borderRadius() : 0};
   &:not(:first-of-type) > div {

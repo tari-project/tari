@@ -99,6 +99,7 @@ const ScheduleForm = ({
           marginBottom: 0,
           borderRadius: 0,
           overflow: 'auto',
+          background: theme.nodeBackground,
         }}
       >
         <MiningTypeSelector

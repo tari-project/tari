@@ -66,7 +66,7 @@ const DatePickerComponent = ({
         >
           <ArrowLeft width='28px' height='28px' color={theme.onTextLight} />
         </Button>
-        <Text color={theme.secondary}>{month(viewing)}</Text>
+        <Text color={theme.calendarText}>{month(viewing)}</Text>
         <Button
           variant='text'
           onClick={viewNextMonth}
@@ -85,6 +85,7 @@ const DatePickerComponent = ({
           as='span'
           style={{ textTransform: 'uppercase' }}
           type='smallMedium'
+          color={theme.calendarTextSecondary}
         >
           {weekDay}
         </Text>
@@ -101,7 +102,7 @@ const DatePickerComponent = ({
               ? isSelected(day)
                 ? theme.on
                 : undefined
-              : theme.placeholderText
+              : theme.disabledPrimaryButtonText
             const disabled =
               !allowPast && startOfDay(day) < startOfDay(new Date())
 

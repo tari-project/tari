@@ -16,6 +16,7 @@ import {
 import ScheduleList from './ScheduleList'
 import ScheduleForm from './ScheduleForm'
 import { ScheduleContainer } from './styles'
+import { useTheme } from 'styled-components'
 
 /**
  * @name SchedulingContainer
@@ -37,6 +38,7 @@ const SchedulingContainer = ({
   const scheduleToEdit = useAppSelector(selectSchedule(idToEdit))
   const miningTypesActive = useAppSelector(selectActiveMiningTypes)
   const dispatch = useAppDispatch()
+  const theme = useTheme()
 
   const stopEditing = () => {
     setEditOpen(false)
@@ -64,7 +66,12 @@ const SchedulingContainer = ({
   }
 
   return (
-    <Modal open={open} onClose={close} size='small'>
+    <Modal
+      open={open}
+      onClose={close}
+      size='small'
+      style={{ border: `1px solid ${theme.selectBorderColor}` }}
+    >
       <ScheduleContainer>
         {!editOpen && (
           <ScheduleList

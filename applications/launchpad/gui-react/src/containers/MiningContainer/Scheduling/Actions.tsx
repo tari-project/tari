@@ -26,9 +26,10 @@ const Actions = ({
         width: '100%',
         borderTopLeftRadius: 0,
         borderTopRightRadius: 0,
-        borderTop: `1px solid ${theme.borderColor}`,
+        borderTop: `1px solid ${theme.selectBorderColor}`,
         marginBottom: 0,
         marginTop: 0,
+        background: theme.nodeBackground,
       }}
     >
       {content && (

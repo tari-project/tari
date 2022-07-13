@@ -58,10 +58,10 @@ const DateScheduler = ({
         <div>
           {!date && days && (
             <>
-              <Text as='span' color={theme.secondary} type='smallMedium'>
+              <Text as='span' color={theme.nodeWarningText} type='smallMedium'>
                 Every
               </Text>{' '}
-              <Text as='span' type='smallMedium'>
+              <Text as='span' type='smallMedium' color={theme.primary}>
                 {days &&
                   days
                     .map(
@@ -85,7 +85,11 @@ const DateScheduler = ({
           )}
         </div>
         <div onClick={toggleCalendar} style={{ cursor: 'pointer' }}>
-          <CalendarIcon height='18px' width='18px' />
+          <CalendarIcon
+            height='18px'
+            width='18px'
+            color={theme.nodeWarningText}
+          />
         </div>
       </HumanReadableScheduledDate>
       <DatePicker

@@ -15,6 +15,7 @@ const colors = {
     backgroundImage: '#F6F5F8',
     background: '#FAFAFA',
     gray: '#E5E5E5',
+    graySecondary: '#EEECF1',
   },
   tari: {
     purpleDark: '#662FA1',
