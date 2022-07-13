@@ -59,12 +59,14 @@ pub enum DanLayerValidationError {
     UpdatedConstitutionAmendmentMismatch,
     #[error("Acceptance window has expired for contract_id ({contract_id})")]
     AcceptanceWindowHasExpired { contract_id: FixedHash },
-    #[error("Invalid acceptance signature")]
-    InvalidAcceptanceSignature,
+    #[error("Invalid signature")]
+    InvalidSignature,
     #[error("Proposal acceptance window has expired for contract_id ({contract_id}) and proposal_id ({proposal_id})")]
     ProposalAcceptanceWindowHasExpired { contract_id: FixedHash, proposal_id: u64 },
     #[error("Checkpoint has non-sequential number. Got: {got}, expected: {expected}")]
     CheckpointNonSequentialNumber { got: u64, expected: u64 },
     #[error("Validator committee not consistent with contract constitution")]
     InconsistentCommittee,
+    #[error("Validator committee quorum not met: Got: {got}, minimum expected: {minimum} ")]
+    InsufficientQuorum { got: u32, minimum: u32 },
 }
