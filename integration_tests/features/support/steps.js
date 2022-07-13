@@ -618,20 +618,41 @@ Then(
 
 When(
   "I have {int} base nodes with pruning horizon {int} force syncing on node {word}",
-  { timeout: 20 * 1000 },
+  { timeout: 60 * 1000 },
   async function (nodes_count, horizon, force_sync_to) {
-    const promises = [];
     const force_sync_address = this.getNode(force_sync_to).peerAddress();
     for (let i = 0; i < nodes_count; i++) {
-      const base_node = this.createNode(`BaseNode${i}`, {
-        pruningHorizon: horizon,
-      });
-      base_node.setPeerSeeds([force_sync_address]);
-      base_node.setForceSyncPeers([force_sync_address]);
-      promises.push(
-        base_node.startNew().then(() => this.addNode(`BaseNode${i}`, base_node))
-      );
+      const nodeName = `BaseNode${i}`;
+      let initialized = false;
+      let count = 0;
+      while (!initialized) {
+        try {
+          const base_node = this.createNode(nodeName, {
+            pruningHorizon: horizon,
+          });
+          base_node.setPeerSeeds([force_sync_address]);
+          base_node.setForceSyncPeers([force_sync_address]);
+          await base_node.startNew();
+          await this.addNode(nodeName, base_node);
+          initialized = true;
+        } catch {
+          if (this.clients[nodeName] !== undefined) {
+            delete this.clients[nodeName];
+          }
+          if (this.nodes[nodeName] !== undefined) {
+            await this.nodes[nodeName].stop();
+            delete this.nodes[nodeName];
+          }
+          count += 1;
+          if (count >= 10) {
+            console.log(
+              nodeName,
+              "could not be initialized, suspecting port conflicts"
+            );
+            expect(initialized).to.equal(true);
+          }
+        }
+      }
     }
-    await Promise.all(promises);
   }
 );
