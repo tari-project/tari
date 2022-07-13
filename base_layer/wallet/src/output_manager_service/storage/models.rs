@@ -160,3 +160,17 @@ impl PartialEq for KnownOneSidedPaymentScript {
         self.script_hash == other.script_hash
     }
 }
+
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
+pub struct KnownStealthAddress {
+    pub stealth_address_hash: Vec<u8>,
+    pub scanning_private_key: PrivateKey,
+    pub spending_private_key: PrivateKey,
+}
+
+impl PartialEq for KnownStealthAddress {
+    fn eq(&self, other: &KnownStealthAddress) -> bool {
+        self.stealth_address_hash == other.stealth_address_hash
+    }
+}

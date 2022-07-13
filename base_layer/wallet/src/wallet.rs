@@ -88,7 +88,7 @@ use crate::{
         handle::OutputManagerHandle,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
-            models::KnownOneSidedPaymentScript,
+            models::{KnownOneSidedPaymentScript, KnownStealthAddress},
         },
         OutputManagerServiceInitializer,
     },
@@ -262,6 +262,13 @@ where
         };
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "{:?}", e);
+                e
+            })?;
+
+        persist_stealth_address_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "{:?}", e);
@@ -672,5 +679,32 @@ pub async fn persist_one_sided_payment_script_for_node_identity(
     };
 
     output_manager_service.add_known_script(known_script).await?;
+    Ok(())
+}
+
+/// Persist the one-sided stealth_address for the current wallet NodeIdentity for use during scanning for one-sided
+/// stealth address payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan
+/// for outputs using old node addresses.
+pub async fn persist_stealth_address_for_node_identity(
+    output_manager_service: &mut OutputManagerHandle,
+    node_identity: Arc<NodeIdentity>,
+) -> Result<(), WalletError> {
+    let h = Blake256::digest(
+        format!(
+            "{}::{}",
+            node_identity.stealth_address_scanning_private_key().to_hex(),
+            node_identity.stealth_address_spending_private_key().to_hex()
+        )
+        .as_bytes(),
+    );
+    let known_stealth_address = KnownStealthAddress {
+        stealth_address_hash: h.as_slice()[..32].to_vec(),
+        scanning_private_key: node_identity.stealth_address_scanning_private_key().clone(),
+        spending_private_key: node_identity.stealth_address_spending_private_key().clone(),
+    };
+
+    output_manager_service
+        .add_known_stealth_address(known_stealth_address)
+        .await?;
     Ok(())
 }

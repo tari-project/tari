@@ -28,6 +28,7 @@ use std::{
     time::Duration,
 };
 
+use blake2::Digest;
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -98,7 +99,7 @@ use tari_script::{inputs, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 use tari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
@@ -115,7 +116,7 @@ use tari_wallet::{
         service::{Balance, OutputManagerService},
         storage::{
             database::OutputManagerDatabase,
-            models::KnownOneSidedPaymentScript,
+            models::{KnownOneSidedPaymentScript, KnownStealthAddress},
             sqlite_db::OutputManagerSqliteDatabase,
         },
         OutputManagerServiceInitializer,
@@ -842,6 +843,26 @@ async fn recover_one_sided_transaction() {
     };
     let mut cloned_bob_oms = bob_oms.clone();
     cloned_bob_oms.add_known_script(known_script).await.unwrap();
+
+    let h = Blake256::digest(
+        format!(
+            "{}::{}",
+            bob_node_identity.stealth_address_scanning_private_key().to_hex(),
+            bob_node_identity.stealth_address_spending_private_key().to_hex()
+        )
+        .as_bytes(),
+    );
+
+    let known_stealth_address = KnownStealthAddress {
+        stealth_address_hash: h.as_slice()[..32].to_vec(),
+        scanning_private_key: bob_node_identity.stealth_address_scanning_private_key().clone(),
+        spending_private_key: bob_node_identity.stealth_address_spending_private_key().clone(),
+    };
+    let mut cloned_bob_oms = bob_oms.clone();
+    cloned_bob_oms
+        .add_known_stealth_address(known_stealth_address)
+        .await
+        .unwrap();
 
     alice_connectivity.set_base_node(base_node_identity.to_peer());
 

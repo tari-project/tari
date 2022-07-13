@@ -55,7 +55,7 @@ use crate::output_manager_service::{
     service::{Balance, OutputStatusesByTxId},
     storage::{
         database::OutputBackendQuery,
-        models::{KnownOneSidedPaymentScript, SpendingPriority},
+        models::{KnownOneSidedPaymentScript, KnownStealthAddress, SpendingPriority},
     },
     UtxoSelectionCriteria,
 };
@@ -127,6 +127,7 @@ pub enum OutputManagerRequest {
     ScanForRecoverableOutputs(Vec<TransactionOutput>),
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
+    AddKnownStealthAddress(KnownStealthAddress),
     CreateOutputWithFeatures {
         value: MicroTari,
         features: Box<OutputFeatures>,
@@ -196,6 +197,7 @@ impl fmt::Display for OutputManagerRequest {
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
+            AddKnownStealthAddress(_) => write!(f, "AddKnownStealthAddress"),
             CreateOutputWithFeatures { value, features } => {
                 write!(f, "CreateOutputWithFeatures({}, {})", value, features,)
             },
@@ -250,6 +252,7 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
+    AddKnownStealthAddress,
     CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
@@ -751,6 +754,20 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::AddKnownOneSidedPaymentScript => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_known_stealth_address(
+        &mut self,
+        stealth_address: KnownStealthAddress,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddKnownStealthAddress(stealth_address))
+            .await??
+        {
+            OutputManagerResponse::AddKnownStealthAddress => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

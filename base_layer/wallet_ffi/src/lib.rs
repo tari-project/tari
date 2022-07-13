@@ -3600,6 +3600,8 @@ pub unsafe extern "C" fn comms_config_create(
         Ok(public_address) => {
             let node_identity = NodeIdentity::new(
                 CommsSecretKey::default(),
+                CommsSecretKey::default(),
+                CommsSecretKey::default(),
                 public_address,
                 PeerFeatures::COMMUNICATION_CLIENT,
             );
@@ -4007,7 +4009,7 @@ pub unsafe extern "C" fn wallet_create(
         let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
             .await
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-        let comms_secret_key = derive_comms_secret_key(&master_seed)
+        let (comms_secret_key, scanning_private_key, spending_private_key) = derive_comms_secret_key(&master_seed)
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
 
         let node_features = wallet_database.get_node_features().await?.unwrap_or_default();
@@ -4028,6 +4030,8 @@ pub unsafe extern "C" fn wallet_create(
         // SAFETY: we are manually checking the validity of this signature before adding Some(..)
         let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
             comms_secret_key,
+            scanning_private_key,
+            spending_private_key,
             node_address,
             node_features,
             identity_sig,
