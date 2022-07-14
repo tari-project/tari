@@ -1,4 +1,5 @@
 # Runs daily
+---
 name: Security audit
 on:
   schedule:
