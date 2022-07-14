@@ -48,6 +48,7 @@ use crate::{
             ContractDefinition,
             ContractSpecification,
             ContractUpdateProposal,
+            ContractUpdateProposalAcceptanceChallenge,
             OutputFeatures,
             RequirementsForConstitutionChange,
             SideChainConsensus,
@@ -189,12 +190,14 @@ pub fn create_contract_constitution() -> ContractConstitution {
         checkpoint_params: CheckpointParameters {
             minimum_quorum_required: 0,
             abandoned_interval: 100,
+            quarantine_interval: 100,
         },
         constitution_change_rules: ConstitutionChangeRules {
             change_flags: ConstitutionChangeFlags::all(),
             requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                 minimum_constitution_committee_signatures: 5,
                 constitution_committee: Some(vec![].try_into().unwrap()),
+                backup_keys: Some(vec![].try_into().unwrap()),
             }),
         },
         initial_reward: 100.into(),
@@ -276,20 +279,29 @@ pub fn create_contract_proposal_schema(
 
 pub fn create_contract_update_proposal_acceptance_schema(
     contract_id: FixedHash,
+    commitment: Commitment,
     input: UnblindedOutput,
     proposal_id: u64,
-    validator_node_public_key: PublicKey,
+    private_key: RistrettoSecretKey,
+    public_key: PublicKey,
 ) -> TransactionSchema {
-    let signature = Signature::default();
+    let signature = create_proposal_acceptance_signature(contract_id, proposal_id, commitment, private_key);
 
-    let acceptance_features = OutputFeatures::for_contract_update_proposal_acceptance(
-        contract_id,
-        proposal_id,
-        validator_node_public_key,
-        signature,
-    );
+    let acceptance_features =
+        OutputFeatures::for_contract_update_proposal_acceptance(contract_id, proposal_id, public_key, signature);
 
     txn_schema!(from: vec![input], to: vec![0.into()], fee: 5.into(), lock: 0, features: acceptance_features)
+}
+
+pub fn create_proposal_acceptance_signature(
+    contract_id: FixedHash,
+    proposal_id: u64,
+    commitment: Commitment,
+    private_key: RistrettoSecretKey,
+) -> Signature {
+    let challenge = ContractUpdateProposalAcceptanceChallenge::new(&commitment, &contract_id, proposal_id);
+
+    SignerSignature::sign(&private_key, &challenge).signature().clone()
 }
 
 pub fn create_contract_amendment_schema(

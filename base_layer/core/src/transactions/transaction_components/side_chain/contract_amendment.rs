@@ -105,12 +105,16 @@ mod tests {
             checkpoint_params: CheckpointParameters {
                 minimum_quorum_required: 123,
                 abandoned_interval: 321,
+                quarantine_interval: 321,
             },
             constitution_change_rules: ConstitutionChangeRules {
                 change_flags: ConstitutionChangeFlags::all(),
                 requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                     minimum_constitution_committee_signatures: 321,
                     constitution_committee: Some(CommitteeMembers::new(
+                        vec![PublicKey::default(); 32].try_into().unwrap(),
+                    )),
+                    backup_keys: Some(CommitteeMembers::new(
                         vec![PublicKey::default(); 32].try_into().unwrap(),
                     )),
                 }),
