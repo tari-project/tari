@@ -31,7 +31,7 @@ const TariText = ({
     <Text
       key={`${part}-${index}`}
       as='span'
-      color={part.toLowerCase() === 'tari' ? theme.accent : undefined}
+      color={part.toLowerCase() === 'tari' ? theme.accent : theme.primary}
       type={type}
     >
       {part}

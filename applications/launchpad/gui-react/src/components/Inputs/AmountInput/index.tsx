@@ -80,11 +80,14 @@ const AmountInput = ({
             autoFocus={autoFocus}
             data-testid={testId || 'amount-input-cmp'}
             disabled={disabled}
+            style={{ background: 'transparent' }}
           />
         </InputWrapper>
         {currency && (
           <Currency>
-            <Text as='span'>{currency}</Text>
+            <Text as='span' color={theme.helpTipText}>
+              {currency}
+            </Text>
           </Currency>
         )}
       </InputContainer>
@@ -93,10 +96,10 @@ const AmountInput = ({
         <TransactionFee>
           {value > 0 ? (
             <>
-              <Text as='span' type='microMedium' color={theme.secondary}>
+              <Text as='span' type='microMedium' color={theme.helpTipText}>
                 {t.wallet.transaction.transactionFee}
               </Text>
-              <Text as='span' type='microMedium'>
+              <Text as='span' type='microMedium' color={theme.primary}>
                 +{fee}
               </Text>
               <Button
@@ -105,7 +108,7 @@ const AmountInput = ({
                 onClick={() =>
                   dispatch(tbotactions.push(MessagesConfig.TransactionFee))
                 }
-                style={{ marginTop: -2 }}
+                style={{ marginTop: -2, color: theme.primary }}
               />
             </>
           ) : null}

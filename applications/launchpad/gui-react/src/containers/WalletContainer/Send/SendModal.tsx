@@ -85,27 +85,36 @@ const SendModal = ({ open, onClose, available }: SendModalProps) => {
 
   if (result === 'pending') {
     return (
-      <Modal open={open} onClose={cancel} size='small'>
+      <Modal
+        open={open}
+        onClose={cancel}
+        size='small'
+        style={{ border: `1px solid ${theme.selectBorderColor}` }}
+      >
         <ResultModal>
           <ResultModalContent>
             <ResultHeader>
-              <Text type='subheader'>
+              <Text type='subheader' color={theme.primary}>
                 {t.common.phrases.yourJobIsDoneHere}!
               </Text>
               <Tag>{t.wallet.transaction.transactionPending}</Tag>
-              <Text type='smallMedium' style={{ textAlign: 'center' }}>
+              <Text
+                type='smallMedium'
+                style={{ textAlign: 'center' }}
+                color={theme.primary}
+              >
                 {t.wallet.transaction.transactionPendingDesc1}
               </Text>
             </ResultHeader>
             <SvgTBotSearch
-              width={88}
-              height={88}
+              width={100}
+              height={100}
               style={{ marginBottom: theme.spacingVertical(1.5) }}
             />
             <Text
               type='microMedium'
               style={{ textAlign: 'center' }}
-              color={theme.secondary}
+              color={theme.nodeWarningText}
             >
               {t.wallet.transaction.transactionPendingDesc2}
             </Text>
@@ -122,21 +131,30 @@ const SendModal = ({ open, onClose, available }: SendModalProps) => {
 
   if (result === 'completing') {
     return (
-      <Modal open={open} onClose={cancel} size='small'>
+      <Modal
+        open={open}
+        onClose={cancel}
+        size='small'
+        style={{ border: `1px solid ${theme.selectBorderColor}` }}
+      >
         <ResultModal>
           <ResultModalContent>
             <ResultHeader>
-              <Text type='subheader'>
+              <Text type='subheader' color={theme.primary}>
                 {t.common.phrases.yourJobIsDoneHere}!
               </Text>
               <Tag>{t.wallet.transaction.completingFinalProcessing}</Tag>
             </ResultHeader>
             <SvgTBotLoading
-              width={88}
-              height={88}
+              width={100}
+              height={100}
               style={{ marginBottom: theme.spacingVertical(1.5) }}
             />
-            <Text type='smallMedium' style={{ textAlign: 'center' }}>
+            <Text
+              type='smallMedium'
+              style={{ textAlign: 'center' }}
+              color={theme.primary}
+            >
               {t.wallet.transaction.completingDescription}
             </Text>
           </ResultModalContent>
@@ -152,17 +170,24 @@ const SendModal = ({ open, onClose, available }: SendModalProps) => {
 
   if (isProcessing) {
     return (
-      <Modal open={open} size='small'>
+      <Modal
+        open={open}
+        size='small'
+        style={{ border: `1px solid ${theme.selectBorderColor}` }}
+      >
         <PleaseWaitContainer>
           <SvgTBotLoading
-            width={88}
-            height={88}
+            width={100}
+            height={100}
             style={{ marginBottom: theme.spacingVertical(1.5) }}
           />
-          <Text type='subheader'>{t.common.phrases.pleaseWait}</Text>
-          <Text type='smallMedium'>
+          <Text type='subheader' color={theme.primary}>
+            {t.common.phrases.pleaseWait}
+          </Text>
+          <Text type='smallMedium' color={theme.primary}>
             {t.wallet.transaction.searchingForRecipient}
           </Text>
+          {/* @TODO: remove these buttons when transactions are finalised */}
           <button onClick={() => setResult('pending')}>Result 1</button>
           <button onClick={() => setResult('completing')}>Result 2</button>
         </PleaseWaitContainer>
@@ -171,12 +196,17 @@ const SendModal = ({ open, onClose, available }: SendModalProps) => {
   }
 
   return (
-    <Modal open={open} onClose={cancel} size='small'>
+    <Modal
+      open={open}
+      onClose={cancel}
+      size='small'
+      style={{ border: `1px solid ${theme.selectBorderColor}` }}
+    >
       <StyledSendForm onSubmit={handleSubmit(onSubmitForm)}>
         <SendFormContent>
           <TagWrapper>
             <TagBox>
-              <Text type='smallMedium' color={theme.secondary}>
+              <Text type='smallMedium' color={theme.nodeWarningText}>
                 {t.wallet.balance.available}{' '}
                 <Text as='span' type='smallHeavy' color={theme.primary}>
                   {formatAmount(available)}
