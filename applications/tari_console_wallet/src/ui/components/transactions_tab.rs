@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local};
 use log::*;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_comms::types::CommsPublicKey;
 use tari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tokio::runtime::Handle;
 use tui::{
@@ -224,7 +225,11 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.source_public_key),
+                    if t.source_public_key == CommsPublicKey::default() {
+                        "Imported one sided Tx".to_string()
+                    } else {
+                        app_state.get_alias(&t.source_public_key)
+                    },
                     Style::default().fg(text_color),
                 )));
                 let color = match (t.cancelled.is_some(), chain_height) {

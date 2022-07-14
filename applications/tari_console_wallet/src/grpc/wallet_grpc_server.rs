@@ -451,6 +451,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut standard_transfers = Vec::new();
         let mut one_sided_transfers = Vec::new();
+        let mut one_sided_transfers_to_stealth_address = Vec::new();
         for (address, pk, amount, fee_per_gram, message, payment_type) in recipients {
             let mut transaction_service = self.get_transaction_service();
             if payment_type == PaymentType::StandardMimblewimble as i32 {
@@ -483,16 +484,34 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .await,
                     )
                 });
+            } else if payment_type == PaymentType::OneSidedToStealthAddress as i32 {
+                one_sided_transfers_to_stealth_address.push(async move {
+                    (
+                        address,
+                        transaction_service
+                            .send_one_sided_to_stealth_address_transaction(
+                                pk,
+                                amount.into(),
+                                OutputFeatures::default(),
+                                fee_per_gram.into(),
+                                message,
+                            )
+                            .await,
+                    )
+                });
             } else {
             }
         }
 
         let standard_results = future::join_all(standard_transfers).await;
         let one_sided_results = future::join_all(one_sided_transfers).await;
+        let one_sided_transfers_to_stealth_address_results =
+            future::join_all(one_sided_transfers_to_stealth_address).await;
 
         let results = standard_results
             .into_iter()
             .chain(one_sided_results.into_iter())
+            .chain(one_sided_transfers_to_stealth_address_results.into_iter())
             .map(|(address, result)| match result {
                 Ok(tx_id) => TransferResult {
                     address,

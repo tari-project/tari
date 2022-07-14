@@ -65,6 +65,8 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
+    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -597,6 +599,23 @@ where
                 message,
             } => self
                 .send_one_sided_transaction(
+                    dest_pubkey,
+                    amount,
+                    *output_features,
+                    fee_per_gram,
+                    message,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
+                dest_pubkey,
+                amount,
+                output_features,
+                fee_per_gram,
+                message,
+            } => self
+                .send_one_sided_to_stealth_address_transaction(
                     dest_pubkey,
                     amount,
                     *output_features,
@@ -1252,6 +1271,155 @@ where
                 tx_id,
                 self.resources.node_identity.public_key().clone(),
                 dest_pubkey.clone(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                message.clone(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+            ),
+        )
+        .await?;
+
+        Ok(tx_id)
+    }
+
+    /// Sends a one side payment transaction to a recipient
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn send_one_sided_to_stealth_address_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        if self.node_identity.public_key() == &dest_pubkey {
+            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
+            return Err(TransactionServiceError::OneSidedTransactionError(
+                "One-sided spend-to-self transactions not supported".to_string(),
+            ));
+        }
+
+        let tx_id = TxId::new_random();
+
+        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+
+        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth address")
+            .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
+            .finalize();
+
+        let script_spending_key =
+            PublicKey::from_secret_key(&PrivateKey::from_bytes(c.into_vec().as_bytes()).unwrap()) + dest_pubkey.clone();
+
+        // Prepare sender part of the transaction
+        let mut stp = self
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                amount,
+                UtxoSelectionCriteria::default(),
+                output_features,
+                fee_per_gram,
+                None,
+                message.clone(),
+                script!(PushPubKey(Box::new(nonce_public_key)) Drop PushPubKey(Box::new(script_spending_key))),
+                Covenant::default(),
+            )
+            .await?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used
+        let _single_round_sender_data = stp
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Prepare receiver part of the transaction
+
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
+        // bytes to enable conversion into a private key to be used as the spending key
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key(0)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let spend_key = PrivateKey::from_bytes(
+            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+        )
+        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let rewind_data = RewindData {
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            encryption_key: encryption_key.clone(),
+        };
+
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+            sender_message,
+            PrivateKey::random(&mut OsRng),
+            spend_key,
+            &self.resources.factories,
+            &rewind_data,
+        );
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+
+        // Start finalizing
+
+        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize
+
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast one-sided transaction
+
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.node_identity.public_key().clone(),
+                dest_pubkey,
                 amount,
                 fee,
                 tx.clone(),
