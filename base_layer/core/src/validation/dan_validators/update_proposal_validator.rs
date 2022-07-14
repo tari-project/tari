@@ -104,21 +104,26 @@ mod test {
     #[test]
     fn it_allows_valid_proposals() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution.clone());
+        publish_constitution(
+            &mut blockchain,
+            utxos.next().unwrap(),
+            contract_id,
+            constitution.clone(),
+        );
 
         // create a valid proposal transaction
         let proposal_id: u64 = 1;
-        let schema = create_contract_proposal_schema(contract_id, utxos[3].clone(), proposal_id, constitution);
+        let schema = create_contract_proposal_schema(contract_id, utxos.next().unwrap(), proposal_id, constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -127,10 +132,10 @@ mod test {
     #[test]
     fn constitution_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // skip the contract constitution publication
 
@@ -140,7 +145,8 @@ mod test {
         let proposal_id: u64 = 1;
         let mut updated_constitution = create_contract_constitution();
         updated_constitution.validator_committee = committee.try_into().unwrap();
-        let schema = create_contract_proposal_schema(contract_id, utxos[3].clone(), proposal_id, updated_constitution);
+        let schema =
+            create_contract_proposal_schema(contract_id, utxos.next().unwrap(), proposal_id, updated_constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
@@ -154,30 +160,35 @@ mod test {
     #[test]
     fn it_rejects_duplicated_proposals() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let validator_node_public_key = PublicKey::default();
         let committee = vec![validator_node_public_key];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution.clone());
+        publish_constitution(
+            &mut blockchain,
+            utxos.next().unwrap(),
+            contract_id,
+            constitution.clone(),
+        );
 
         // publish a contract update proposal into a block
         let proposal_id: u64 = 1;
         publish_update_proposal(
             &mut blockchain,
-            utxos[2].clone(),
+            utxos.next().unwrap(),
             contract_id,
             proposal_id,
             constitution.clone(),
         );
 
         // create a (duplicated) contract proposal transaction
-        let schema = create_contract_proposal_schema(contract_id, utxos[3].clone(), proposal_id, constitution);
+        let schema = create_contract_proposal_schema(contract_id, utxos.next().unwrap(), proposal_id, constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated proposal transaction and check that we get the error

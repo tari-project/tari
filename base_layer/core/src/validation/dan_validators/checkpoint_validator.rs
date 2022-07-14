@@ -160,14 +160,14 @@ mod test {
     #[test]
     fn it_allows_initial_checkpoint_output_with_zero_checkpoint_number() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // Publish a new contract
-        let contract_id = publish_contract(&mut blockchain, &utxos, vec![]);
+        let contract_id = publish_contract(&mut blockchain, &mut utxos, vec![]);
 
         // Create checkpoint 0 with no prior checkpoints
         let checkpoint = create_contract_checkpoint(0);
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -176,16 +176,16 @@ mod test {
     #[test]
     fn it_allows_checkpoint_output_with_correct_sequential_checkpoint_number() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // Publish a new contract
-        let contract_id = publish_contract(&mut blockchain, &utxos, vec![]);
+        let contract_id = publish_contract(&mut blockchain, &mut utxos, vec![]);
 
-        publish_checkpoint(&mut blockchain, "cp0", utxos[2].clone(), contract_id, 0);
-        publish_checkpoint(&mut blockchain, "cp1", utxos[3].clone(), contract_id, 1);
+        publish_checkpoint(&mut blockchain, "cp0", utxos.next().unwrap(), contract_id, 0);
+        publish_checkpoint(&mut blockchain, "cp1", utxos.next().unwrap(), contract_id, 1);
         // Create checkpoint 0 with no prior checkpoints
         let checkpoint = create_contract_checkpoint(2);
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[4].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -194,14 +194,14 @@ mod test {
     #[test]
     fn it_rejects_initial_checkpoint_output_with_non_zero_checkpoint_number() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // Publish a new contract
-        let contract_id = publish_contract(&mut blockchain, &utxos, vec![]);
+        let contract_id = publish_contract(&mut blockchain, &mut utxos, vec![]);
 
         // Create checkpoint 1 with no prior checkpoints
         let checkpoint = create_contract_checkpoint(1);
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         let err = assert_dan_validator_err(&blockchain, &tx);
@@ -214,16 +214,16 @@ mod test {
     #[test]
     fn it_rejects_checkpoint_output_with_non_sequential_checkpoint_number() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // Publish a new contract
-        let contract_id = publish_contract(&mut blockchain, &utxos, vec![]);
+        let contract_id = publish_contract(&mut blockchain, &mut utxos, vec![]);
 
-        publish_checkpoint(&mut blockchain, "cp0", utxos[2].clone(), contract_id, 0);
-        publish_checkpoint(&mut blockchain, "cp1", utxos[3].clone(), contract_id, 1);
+        publish_checkpoint(&mut blockchain, "cp0", utxos.next().unwrap(), contract_id, 0);
+        publish_checkpoint(&mut blockchain, "cp1", utxos.next().unwrap(), contract_id, 1);
         // Create checkpoint 0 with no prior checkpoints
         let checkpoint = create_contract_checkpoint(3);
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         let err = assert_dan_validator_err(&blockchain, &tx);
@@ -236,16 +236,16 @@ mod test {
     #[test]
     fn constitution_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // skip the contract constitution publication
 
         // Create a checkpoint
         let checkpoint = create_contract_checkpoint(0);
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[1].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
@@ -259,18 +259,18 @@ mod test {
     #[test]
     fn it_rejects_checkpoints_with_non_committee_members() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // Publish a new contract specifying a committee with only one member ("alice")
         let alice = create_random_key_pair();
-        let contract_id = publish_contract(&mut blockchain, &utxos, vec![alice.1.clone()]);
+        let contract_id = publish_contract(&mut blockchain, &mut utxos, vec![alice.1.clone()]);
 
         // Create a checkpoint, with a committe that has an extra member ("bob") not present in the constiution
         let mut checkpoint = create_contract_checkpoint(0);
         let bob = create_random_key_pair();
         let challenge = create_checkpoint_challenge(&checkpoint, &contract_id);
         checkpoint.signatures = create_committee_signatures(vec![alice, bob], challenge.as_ref());
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[1].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
@@ -281,12 +281,12 @@ mod test {
     #[test]
     fn it_rejects_checkpoint_with_invalid_signatures() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // Publish a new contract specifying a committee with two members
         let alice = create_random_key_pair();
         let bob = create_random_key_pair();
-        let contract_id = publish_contract(&mut blockchain, &utxos, vec![alice.1.clone(), bob.1.clone()]);
+        let contract_id = publish_contract(&mut blockchain, &mut utxos, vec![alice.1.clone(), bob.1.clone()]);
 
         // To create an invalid signature, let's use a challenge from a different checkpoint
         let mut checkpoint = create_contract_checkpoint(0);
@@ -297,7 +297,7 @@ mod test {
         checkpoint.signatures = create_committee_signatures(vec![alice, bob], challenge.as_ref());
 
         // Create the invalid transaction
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the checkpoint transaction and check that we get the error
@@ -308,10 +308,10 @@ mod test {
     #[test]
     fn it_rejects_checkpoints_with_insufficient_quorum() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // Publish a new contract constitution specifying a minimum quorum of 2
         let mut constitution = create_contract_constitution();
@@ -320,13 +320,13 @@ mod test {
         let carol = create_random_key_pair();
         constitution.validator_committee = vec![alice.1.clone(), bob.1, carol.1].try_into().unwrap();
         constitution.checkpoint_params.minimum_quorum_required = 2;
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution);
+        publish_constitution(&mut blockchain, utxos.next().unwrap(), contract_id, constitution);
 
         // create a checkpoint with an insufficient quorum
         let mut checkpoint = create_contract_checkpoint(0);
         let challenge = create_checkpoint_challenge(&checkpoint, &contract_id);
         checkpoint.signatures = create_committee_signatures(vec![alice], challenge.as_ref());
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
@@ -340,10 +340,10 @@ mod test {
     #[test]
     fn it_accepts_checkpoints_with_sufficient_quorum() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // Publish a new contract constitution specifying a minimum quorum of 2
         let mut constitution = create_contract_constitution();
@@ -351,13 +351,13 @@ mod test {
         let bob = create_random_key_pair();
         constitution.validator_committee = vec![alice.1.clone(), bob.1.clone()].try_into().unwrap();
         constitution.checkpoint_params.minimum_quorum_required = 2;
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution);
+        publish_constitution(&mut blockchain, utxos.next().unwrap(), contract_id, constitution);
 
         // create a checkpoint with an enough quorum
         let mut checkpoint = create_contract_checkpoint(0);
         let challenge = create_checkpoint_challenge(&checkpoint, &contract_id);
         checkpoint.signatures = create_committee_signatures(vec![alice, bob], challenge.as_ref());
-        let schema = create_contract_checkpoint_schema(contract_id, utxos[2].clone(), checkpoint);
+        let schema = create_contract_checkpoint_schema(contract_id, utxos.next().unwrap(), checkpoint);
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);

@@ -192,23 +192,28 @@ mod test {
     #[test]
     fn it_allows_valid_acceptances() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let (private_key, public_key) = create_random_key_pair();
         let committee = vec![public_key.clone()];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution.clone());
+        publish_constitution(
+            &mut blockchain,
+            utxos.next().unwrap(),
+            contract_id,
+            constitution.clone(),
+        );
 
         // publish the contract update proposal into a block
         let proposal_id: u64 = 1;
         publish_update_proposal(
             &mut blockchain,
-            change[2].clone(),
+            utxos.next().unwrap(),
             contract_id,
             proposal_id,
             constitution,
@@ -219,7 +224,7 @@ mod test {
         let schema = create_contract_update_proposal_acceptance_schema(
             contract_id,
             commitment,
-            change[4].clone(),
+            utxos.next().unwrap(),
             proposal_id,
             private_key,
             public_key,
@@ -232,17 +237,17 @@ mod test {
     #[test]
     fn proposal_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let (private_key, public_key) = create_random_key_pair();
         let committee = vec![public_key.clone()];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution);
+        publish_constitution(&mut blockchain, utxos.next().unwrap(), contract_id, constitution);
 
         // skip the publication of the contract update proposal
 
@@ -252,7 +257,7 @@ mod test {
         let schema = create_contract_update_proposal_acceptance_schema(
             contract_id,
             commitment,
-            change[2].clone(),
+            utxos.next().unwrap(),
             proposal_id,
             private_key,
             public_key,
@@ -270,23 +275,28 @@ mod test {
     #[test]
     fn it_rejects_duplicated_acceptances() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let (private_key, public_key) = create_random_key_pair();
         let committee = vec![public_key.clone()];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution.clone());
+        publish_constitution(
+            &mut blockchain,
+            utxos.next().unwrap(),
+            contract_id,
+            constitution.clone(),
+        );
 
         // publish the contract update proposal into a block
         let proposal_id: u64 = 1;
         publish_update_proposal(
             &mut blockchain,
-            utxos[2].clone(),
+            utxos.next().unwrap(),
             contract_id,
             proposal_id,
             constitution,
@@ -298,7 +308,7 @@ mod test {
         let schema = create_contract_update_proposal_acceptance_schema(
             contract_id,
             commitment.clone(),
-            utxos[3].clone(),
+            utxos.next().unwrap(),
             proposal_id,
             private_key.clone(),
             public_key.clone(),
@@ -309,7 +319,7 @@ mod test {
         let schema = create_contract_update_proposal_acceptance_schema(
             contract_id,
             commitment,
-            utxos[4].clone(),
+            utxos.next().unwrap(),
             proposal_id,
             private_key,
             public_key,
@@ -333,16 +343,16 @@ mod test {
     #[test]
     fn it_rejects_acceptances_of_non_committee_members() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let committee = vec![];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution);
+        publish_constitution(&mut blockchain, utxos.next().unwrap(), contract_id, constitution);
 
         // publish the contract update proposal into a block
         // we deliberately use a committee with only a defult public key to be able to trigger the committee error later
@@ -352,7 +362,7 @@ mod test {
         constitution.validator_committee = committee.try_into().unwrap();
         publish_update_proposal(
             &mut blockchain,
-            utxos[2].clone(),
+            utxos.next().unwrap(),
             contract_id,
             proposal_id,
             constitution,
@@ -365,7 +375,7 @@ mod test {
         let schema = create_contract_update_proposal_acceptance_schema(
             contract_id,
             commitment,
-            utxos[3].clone(),
+            utxos.next().unwrap(),
             proposal_id,
             private_key,
             public_key,
@@ -380,33 +390,38 @@ mod test {
     #[test]
     fn it_rejects_expired_acceptances() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let (private_key, public_key) = create_random_key_pair();
         let committee = vec![public_key.clone()];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution.clone());
+        publish_constitution(
+            &mut blockchain,
+            utxos.next().unwrap(),
+            contract_id,
+            constitution.clone(),
+        );
 
         // publish the contract update proposal into a block,  with a very short (1 block) expiration time
         let proposal_id: u64 = 1;
         constitution.acceptance_requirements.acceptance_period_expiry = 1;
         publish_update_proposal(
             &mut blockchain,
-            utxos[2].clone(),
+            utxos.next().unwrap(),
             contract_id,
             proposal_id,
             constitution,
         );
 
         // publish some filler blocks in, just to make the expiration height pass
-        let schema = txn_schema!(from: vec![utxos[3].clone()], to: vec![0.into()]);
+        let schema = txn_schema!(from: vec![utxos.next().unwrap()], to: vec![0.into()]);
         create_block(&mut blockchain, "filler1", schema);
-        let schema = txn_schema!(from: vec![utxos[4].clone()], to: vec![0.into()]);
+        let schema = txn_schema!(from: vec![utxos.next().unwrap()], to: vec![0.into()]);
         create_block(&mut blockchain, "filler2", schema);
 
         // create a contract acceptance after the expiration block height
@@ -414,7 +429,7 @@ mod test {
         let schema = create_contract_update_proposal_acceptance_schema(
             contract_id,
             commitment,
-            utxos[5].clone(),
+            utxos.next().unwrap(),
             proposal_id,
             private_key,
             public_key,
@@ -432,23 +447,28 @@ mod test {
     #[test]
     fn it_rejects_acceptances_with_invalid_signatures() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, utxos) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let (_, public_key) = create_random_key_pair();
         let committee = vec![public_key.clone()];
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
-        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution.clone());
+        publish_constitution(
+            &mut blockchain,
+            utxos.next().unwrap(),
+            contract_id,
+            constitution.clone(),
+        );
 
         // publish the contract update proposal into a block
         let proposal_id: u64 = 1;
         publish_update_proposal(
             &mut blockchain,
-            utxos[2].clone(),
+            utxos.next().unwrap(),
             contract_id,
             proposal_id,
             constitution,
@@ -460,7 +480,7 @@ mod test {
         let schema = create_contract_update_proposal_acceptance_schema(
             contract_id,
             commitment,
-            utxos[4].clone(),
+            utxos.next().unwrap(),
             proposal_id,
             altered_private_key,
             public_key,
