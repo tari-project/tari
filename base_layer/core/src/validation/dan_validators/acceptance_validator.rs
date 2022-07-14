@@ -82,14 +82,16 @@ fn validate_uniqueness<B: BlockchainBackend>(
         .filter_map(|feature| feature.acceptance)
         .find(|feature| feature.validator_node_public_key == *validator_node_public_key)
     {
-        Some(_) => Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
-            contract_id,
-            output_type: OutputType::ContractValidatorAcceptance,
-            details: format!(
-                "Validator ({}) sent duplicate acceptance UTXO",
-                validator_node_public_key.to_hex(),
-            ),
-        })),
+        Some(_) => Err(ValidationError::DanLayerError(
+            DanLayerValidationError::DuplicatedUtxo {
+                contract_id,
+                output_type: OutputType::ContractValidatorAcceptance,
+                details: format!(
+                    "Validator ({}) sent duplicate acceptance UTXO",
+                    validator_node_public_key.to_hex(),
+                ),
+            },
+        )),
         None => Ok(()),
     }
 }
@@ -247,7 +249,7 @@ mod test {
 
         // try to validate the duplicated acceptance transaction and check that we get the error
         let err = assert_dan_validator_err(&blockchain, &tx);
-        assert!(matches!(err, DanLayerValidationError::DuplicateUtxo { .. }));
+        assert!(matches!(err, DanLayerValidationError::DuplicatedUtxo { .. }));
     }
 
     #[test]

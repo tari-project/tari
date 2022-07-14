@@ -50,11 +50,13 @@ fn validate_uniqueness<B: BlockchainBackend>(
     let features = fetch_contract_features(db, contract_id, OutputType::ContractDefinition)?;
     let is_duplicated = !features.is_empty();
     if is_duplicated {
-        return Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
-            contract_id,
-            output_type: OutputType::ContractDefinition,
-            details: String::new(),
-        }));
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::DuplicatedUtxo {
+                contract_id,
+                output_type: OutputType::ContractDefinition,
+                details: String::new(),
+            },
+        ));
     }
 
     Ok(())
@@ -106,7 +108,7 @@ mod test {
         // try to validate the duplicated definition transaction and check that we get the error
         let err = assert_dan_validator_err(&blockchain, &tx);
         unpack_enum!(
-            DanLayerValidationError::DuplicateUtxo {
+            DanLayerValidationError::DuplicatedUtxo {
                 output_type,
                 contract_id,
                 ..

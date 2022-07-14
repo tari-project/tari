@@ -84,11 +84,13 @@ fn validate_uniqueness<B: BlockchainBackend>(
         .find(|feature| {
             feature.validator_node_public_key == *validator_node_public_key && feature.proposal_id == proposal_id
         }) {
-        Some(_) => Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
-            contract_id,
-            output_type: OutputType::ContractConstitutionChangeAcceptance,
-            details: format!("validator_node_public_key = {}", validator_node_public_key.to_hex()),
-        })),
+        Some(_) => Err(ValidationError::DanLayerError(
+            DanLayerValidationError::DuplicatedUtxo {
+                contract_id,
+                output_type: OutputType::ContractConstitutionChangeAcceptance,
+                details: format!("validator_node_public_key = {}", validator_node_public_key.to_hex()),
+            },
+        )),
         None => Ok(()),
     }
 }
@@ -318,7 +320,7 @@ mod test {
         let err = assert_dan_validator_err(&blockchain, &tx);
         let expected_contract_id = contract_id;
         unpack_enum!(
-            DanLayerValidationError::DuplicateUtxo {
+            DanLayerValidationError::DuplicatedUtxo {
                 output_type,
                 contract_id,
                 ..

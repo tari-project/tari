@@ -98,8 +98,9 @@ pub fn fetch_contract_constitution<B: BlockchainBackend>(
     match feature.constitution {
         Some(value) => Ok(value),
         None => Err(ValidationError::DanLayerError(
-            DanLayerValidationError::DataInconsistency {
-                details: "Contract constitution data not found in the output features".to_string(),
+            DanLayerValidationError::MissingContractData {
+                contract_id: feature.contract_id,
+                output_type: OutputType::ContractConstitution,
             },
         )),
     }
@@ -146,21 +147,25 @@ pub fn fetch_current_contract_checkpoint<B: BlockchainBackend>(
 
 /// Retrieves a contract acceptance object from the sidechain features, returns an error if not present
 pub fn get_contract_acceptance(
-    sidechain_feature: &SideChainFeatures,
+    sidechain_features: &SideChainFeatures,
 ) -> Result<&ContractAcceptance, DanLayerValidationError> {
-    match sidechain_feature.acceptance.as_ref() {
+    match sidechain_features.acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
-        None => Err(DanLayerValidationError::ContractAcceptanceNotFound),
+        None => Err(DanLayerValidationError::MissingContractData {
+            contract_id: sidechain_features.contract_id,
+            output_type: OutputType::ContractValidatorAcceptance,
+        }),
     }
 }
 
 pub fn get_contract_amendment(
-    sidechain_feature: &SideChainFeatures,
+    sidechain_features: &SideChainFeatures,
 ) -> Result<&ContractAmendment, DanLayerValidationError> {
-    match sidechain_feature.amendment.as_ref() {
+    match sidechain_features.amendment.as_ref() {
         Some(amendment) => Ok(amendment),
-        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
-            field_name: "amendment",
+        None => Err(DanLayerValidationError::MissingContractData {
+            contract_id: sidechain_features.contract_id,
+            output_type: OutputType::ContractAmendment,
         }),
     }
 }
@@ -177,23 +182,25 @@ pub fn get_checkpoint(sidechain_features: &SideChainFeatures) -> Result<&Contrac
 
 /// Retrieves a contract update proposal acceptance object from the sidechain features, returns an error if not present
 pub fn get_contract_update_proposal_acceptance(
-    sidechain_feature: &SideChainFeatures,
+    sidechain_features: &SideChainFeatures,
 ) -> Result<&ContractUpdateProposalAcceptance, DanLayerValidationError> {
-    match sidechain_feature.update_proposal_acceptance.as_ref() {
+    match sidechain_features.update_proposal_acceptance.as_ref() {
         Some(acceptance) => Ok(acceptance),
-        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
-            field_name: "update_proposal_acceptance",
+        None => Err(DanLayerValidationError::MissingContractData {
+            contract_id: sidechain_features.contract_id,
+            output_type: OutputType::ContractConstitutionChangeAcceptance,
         }),
     }
 }
 
 pub fn get_update_proposal(
-    sidechain_feature: &SideChainFeatures,
+    sidechain_features: &SideChainFeatures,
 ) -> Result<&ContractUpdateProposal, DanLayerValidationError> {
-    match sidechain_feature.update_proposal.as_ref() {
+    match sidechain_features.update_proposal.as_ref() {
         Some(proposal) => Ok(proposal),
-        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
-            field_name: "update_proposal",
+        None => Err(DanLayerValidationError::MissingContractData {
+            contract_id: sidechain_features.contract_id,
+            output_type: OutputType::ContractConstitutionProposal,
         }),
     }
 }
