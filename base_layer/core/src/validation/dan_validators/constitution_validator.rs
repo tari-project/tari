@@ -100,14 +100,14 @@ mod test {
     #[test]
     fn it_allows_valid_constitutions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
 
         // construct a valid constitution transaction
         let constitution = create_contract_constitution();
-        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
+        let schema = create_contract_constitution_schema(contract_id, utxos[2].clone(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -116,12 +116,12 @@ mod test {
     #[test]
     fn definition_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (blockchain, change) = init_test_blockchain();
+        let (blockchain, utxos) = init_test_blockchain();
 
         // construct a transaction for a constitution, without a prior definition
         let contract_id = FixedHash::default();
         let constitution = create_contract_constitution();
-        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
+        let schema = create_contract_constitution_schema(contract_id, utxos[2].clone(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the constitution transaction and check that we get the error
@@ -135,22 +135,22 @@ mod test {
     #[test]
     fn it_rejects_duplicated_constitutions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let expected_contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let expected_contract_id = publish_definition(&mut blockchain, utxos[0].clone());
 
         // publish the contract constitution into a block
         let constitution = create_contract_constitution();
         publish_constitution(
             &mut blockchain,
-            change[1].clone(),
+            utxos[1].clone(),
             expected_contract_id,
             constitution.clone(),
         );
 
         // construct a transaction for the duplicated contract constitution
-        let schema = create_contract_constitution_schema(expected_contract_id, change[2].clone(), constitution);
+        let schema = create_contract_constitution_schema(expected_contract_id, utxos[2].clone(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated constitution transaction and check that we get the error

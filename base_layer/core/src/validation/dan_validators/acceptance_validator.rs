@@ -241,10 +241,10 @@ mod test {
     #[test]
     fn constitution_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
 
         // skip the contract constitution publication
 
@@ -252,7 +252,7 @@ mod test {
         let (private_key, public_key) = create_random_key_pair();
         let commitment = Commitment::default();
         let schema =
-            create_contract_acceptance_schema(contract_id, commitment, change[1].clone(), private_key, public_key);
+            create_contract_acceptance_schema(contract_id, commitment, utxos[1].clone(), private_key, public_key);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
@@ -318,10 +318,10 @@ mod test {
     #[test]
     fn it_rejects_expired_acceptances() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos[0].clone());
 
         // publish the contract constitution into a block, with a very short (1 block) expiration time
         let (private_key, public_key) = create_random_key_pair();
@@ -329,18 +329,18 @@ mod test {
         let mut constitution = create_contract_constitution();
         constitution.validator_committee = committee.try_into().unwrap();
         constitution.acceptance_requirements.acceptance_period_expiry = 1;
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution);
+        publish_constitution(&mut blockchain, utxos[1].clone(), contract_id, constitution);
 
         // publish some filler blocks in, just to make the expiration height pass
-        let schema = txn_schema!(from: vec![change[2].clone()], to: vec![0.into()]);
+        let schema = txn_schema!(from: vec![utxos[2].clone()], to: vec![0.into()]);
         create_block(&mut blockchain, "filler1", schema);
-        let schema = txn_schema!(from: vec![change[3].clone()], to: vec![0.into()]);
+        let schema = txn_schema!(from: vec![utxos[3].clone()], to: vec![0.into()]);
         create_block(&mut blockchain, "filler2", schema);
 
         // create a contract acceptance after the expiration block height
         let commitment = fetch_constitution_commitment(blockchain.db(), contract_id).unwrap();
         let schema =
-            create_contract_acceptance_schema(contract_id, commitment, change[4].clone(), private_key, public_key);
+            create_contract_acceptance_schema(contract_id, commitment, utxos[4].clone(), private_key, public_key);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the expiration error

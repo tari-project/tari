@@ -82,10 +82,10 @@ mod test {
     #[test]
     fn it_allows_valid_definitions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (blockchain, change) = init_test_blockchain();
+        let (blockchain, utxos) = init_test_blockchain();
 
         // construct a valid definition transaction
-        let (_, schema) = create_contract_definition_schema(change[1].clone());
+        let (_, schema) = create_contract_definition_schema(utxos[1].clone());
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -94,13 +94,13 @@ mod test {
     #[test]
     fn it_rejects_duplicated_definitions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let expected_contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let expected_contract_id = publish_definition(&mut blockchain, utxos[0].clone());
 
         // construct a transaction for the duplicated contract definition
-        let (_, schema) = create_contract_definition_schema(change[0].clone());
+        let (_, schema) = create_contract_definition_schema(utxos[0].clone());
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated definition transaction and check that we get the error
