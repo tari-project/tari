@@ -209,10 +209,10 @@ mod test {
                 create_contract_acceptance_schema,
                 create_contract_acceptance_schema_with_signature,
                 create_contract_constitution,
-                create_contract_constitution_schema,
                 create_random_key_pair,
                 init_test_blockchain,
                 publish_constitution,
+                publish_contract,
                 publish_definition,
                 schema_to_transaction,
             },
@@ -223,21 +223,16 @@ mod test {
     #[test]
     fn it_allows_valid_acceptances() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
-        // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
-
-        // publish the contract constitution into a block
+        // publish the contract definition and constitution into a block
         let (private_key, public_key) = create_random_key_pair();
-        let mut constitution = create_contract_constitution();
-        constitution.validator_committee = vec![public_key.clone()].try_into().unwrap();
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution);
+        let contract_id = publish_contract(&mut blockchain, &utxos, vec![public_key.clone()]);
 
         // create a valid contract acceptance transaction
         let commitment = fetch_constitution_commitment(blockchain.db(), contract_id).unwrap();
         let schema =
-            create_contract_acceptance_schema(contract_id, commitment, change[2].clone(), private_key, public_key);
+            create_contract_acceptance_schema(contract_id, commitment, utxos[2].clone(), private_key, public_key);
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -271,23 +266,18 @@ mod test {
     #[test]
     fn it_rejects_duplicated_acceptances() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
-        // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
-
-        // publish the contract constitution into a block
+        // publish the contract definition and constitution into a block
         let (private_key, public_key) = create_random_key_pair();
-        let mut constitution = create_contract_constitution();
-        constitution.validator_committee = vec![public_key.clone()].try_into().unwrap();
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution);
+        let contract_id = publish_contract(&mut blockchain, &utxos, vec![public_key.clone()]);
 
         // publish a contract acceptance into a block
         let commitment = fetch_constitution_commitment(blockchain.db(), contract_id).unwrap();
         let schema = create_contract_acceptance_schema(
             contract_id,
             commitment.clone(),
-            change[2].clone(),
+            utxos[2].clone(),
             private_key.clone(),
             public_key.clone(),
         );
@@ -295,7 +285,7 @@ mod test {
 
         // create a (duplicated) contract acceptance transaction
         let schema =
-            create_contract_acceptance_schema(contract_id, commitment, change[3].clone(), private_key, public_key);
+            create_contract_acceptance_schema(contract_id, commitment, utxos[3].clone(), private_key, public_key);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated acceptance transaction and check that we get the error
@@ -306,25 +296,18 @@ mod test {
     #[test]
     fn it_rejects_acceptances_of_non_committee_members() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
-        // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
-
-        // publish the contract constitution into a block
+        // publish the contract definition and constitution into a block
         // we deliberately use a committee with only a defult public key to be able to trigger the committee error later
-        let committee = vec![PublicKey::default()];
-        let mut constitution = create_contract_constitution();
-        constitution.validator_committee = committee.try_into().unwrap();
-        let schema = create_contract_constitution_schema(contract_id, change[1].clone(), constitution);
-        create_block(&mut blockchain, "constitution", schema);
+        let contract_id = publish_contract(&mut blockchain, &utxos, vec![PublicKey::default()]);
 
         // create a contract acceptance transaction
         // we use a public key that is not included in the constitution committee, to trigger the error
         let (private_key, public_key) = create_random_key_pair();
         let commitment = fetch_constitution_commitment(blockchain.db(), contract_id).unwrap();
         let schema =
-            create_contract_acceptance_schema(contract_id, commitment, change[2].clone(), private_key, public_key);
+            create_contract_acceptance_schema(contract_id, commitment, utxos[2].clone(), private_key, public_key);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the committee error
@@ -371,23 +354,18 @@ mod test {
     #[test]
     fn it_rejects_acceptances_with_invalid_signatures() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, utxos) = init_test_blockchain();
 
-        // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
-
-        // publish the contract constitution into a block
+        // publish the contract definition and constitution into a block
         let (_, public_key) = create_random_key_pair();
-        let mut constitution = create_contract_constitution();
-        constitution.validator_committee = vec![public_key.clone()].try_into().unwrap();
-        publish_constitution(&mut blockchain, change[1].clone(), contract_id, constitution);
+        let contract_id = publish_contract(&mut blockchain, &utxos, vec![public_key.clone()]);
 
         // create a valid contract acceptance transaction, but with a signature done by a different private key
         let (altered_private_key, _) = create_random_key_pair();
         let commitment = fetch_constitution_commitment(blockchain.db(), contract_id).unwrap();
         let signature = create_acceptance_signature(contract_id, commitment, altered_private_key);
         let schema =
-            create_contract_acceptance_schema_with_signature(contract_id, change[2].clone(), public_key, signature);
+            create_contract_acceptance_schema_with_signature(contract_id, utxos[2].clone(), public_key, signature);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
