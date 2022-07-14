@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use super::helpers::{
     fetch_contract_features,
     fetch_contract_update_proposal,
-    fetch_contract_utxos,
+    fetch_proposal_commitment,
+    fetch_proposal_height,
+    get_contract_update_proposal_acceptance,
     get_sidechain_features,
     validate_output_type,
 };
@@ -34,10 +36,8 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
         ContractUpdateProposal,
-        ContractUpdateProposalAcceptance,
         ContractUpdateProposalAcceptanceChallenge,
         OutputType,
-        SideChainFeatures,
         SignerSignature,
         TransactionOutput,
     },
@@ -68,18 +68,6 @@ pub fn validate_update_proposal_acceptance<B: BlockchainBackend>(
     // TODO: check that the stake of the transaction is at least the minimum specified in the constitution
 
     Ok(())
-}
-
-/// Retrieves a contract update proposal acceptance object from the sidechain features, returns an error if not present
-fn get_contract_update_proposal_acceptance(
-    sidechain_feature: &SideChainFeatures,
-) -> Result<&ContractUpdateProposalAcceptance, DanLayerValidationError> {
-    match sidechain_feature.update_proposal_acceptance.as_ref() {
-        Some(acceptance) => Ok(acceptance),
-        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
-            field_name: "update_proposal_acceptance",
-        }),
-    }
 }
 
 /// Checks that the validator node has not already published the acceptance for the contract
@@ -150,31 +138,6 @@ fn validate_acceptance_window<B: BlockchainBackend>(
     Ok(())
 }
 
-pub fn fetch_proposal_height<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    contract_id: FixedHash,
-    proposal_id: u64,
-) -> Result<u64, ValidationError> {
-    let utxos = fetch_contract_utxos(db, contract_id, OutputType::ContractConstitutionProposal)?;
-    let proposal_utxo = utxos.into_iter().find(|utxo| {
-        let output = match utxo.output.as_transaction_output() {
-            Some(value) => value,
-            None => return false,
-        };
-        output.features.contains_sidechain_proposal(&contract_id, proposal_id)
-    });
-
-    match proposal_utxo {
-        Some(utxo) => Ok(utxo.mined_height),
-        None => Err(ValidationError::DanLayerError(
-            DanLayerValidationError::ContractUpdateProposalNotFound {
-                contract_id,
-                proposal_id,
-            },
-        )),
-    }
-}
-
 pub fn validate_signature<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     signature: &Signature,
@@ -193,28 +156,6 @@ pub fn validate_signature<B: BlockchainBackend>(
     }
 
     Ok(())
-}
-
-pub fn fetch_proposal_commitment<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    contract_id: FixedHash,
-    proposal_id: u64,
-) -> Result<Commitment, ValidationError> {
-    let outputs: Vec<TransactionOutput> =
-        fetch_contract_utxos(db, contract_id, OutputType::ContractConstitutionProposal)?
-            .into_iter()
-            .filter_map(|utxo| utxo.output.into_unpruned_output())
-            .filter(|output| output.features.contains_sidechain_proposal(&contract_id, proposal_id))
-            .collect();
-
-    // Only one constitution should be stored for a particular contract_id
-    if outputs.is_empty() {
-        return Err(ValidationError::DanLayerError(
-            DanLayerValidationError::ContractConstitutionNotFound { contract_id },
-        ));
-    }
-
-    Ok(outputs[0].commitment().clone())
 }
 
 #[cfg(test)]

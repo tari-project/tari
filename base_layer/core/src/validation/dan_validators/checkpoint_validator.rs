@@ -22,18 +22,20 @@
 
 use std::{collections::HashSet, iter::FromIterator};
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{FixedHash, PublicKey};
 
-use super::helpers::{fetch_contract_constitution, get_sidechain_features};
+use super::helpers::{
+    create_checkpoint_challenge,
+    fetch_contract_constitution,
+    get_checkpoint,
+    get_commitee_members,
+    get_sidechain_features,
+};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
-        CheckpointChallenge,
-        CommitteeSignatures,
         ContractCheckpoint,
         ContractConstitution,
-        OutputType,
-        SideChainFeatures,
         SignerSignature,
         TransactionOutput,
     },
@@ -60,16 +62,6 @@ pub fn validate_contract_checkpoint<B: BlockchainBackend>(
     validate_signatures(checkpoint, &contract_id)?;
 
     Ok(())
-}
-
-fn get_checkpoint(sidechain_features: &SideChainFeatures) -> Result<&ContractCheckpoint, DanLayerValidationError> {
-    match sidechain_features.checkpoint.as_ref() {
-        Some(checkpoint) => Ok(checkpoint),
-        None => Err(DanLayerValidationError::MissingContractData {
-            contract_id: sidechain_features.contract_id,
-            output_type: OutputType::ContractCheckpoint,
-        }),
-    }
 }
 
 fn validate_checkpoint_number(
@@ -120,10 +112,6 @@ fn validate_committee(
     Ok(())
 }
 
-fn get_commitee_members(signatures: &CommitteeSignatures) -> Vec<&PublicKey> {
-    signatures.into_iter().map(|s| s.signer()).collect::<Vec<&PublicKey>>()
-}
-
 pub fn validate_signatures(checkpoint: &ContractCheckpoint, contract_id: &FixedHash) -> Result<(), ValidationError> {
     let challenge = create_checkpoint_challenge(checkpoint, contract_id);
     let signatures = &checkpoint.signatures;
@@ -140,27 +128,16 @@ pub fn validate_signatures(checkpoint: &ContractCheckpoint, contract_id: &FixedH
     Ok(())
 }
 
-pub fn create_checkpoint_challenge(checkpoint: &ContractCheckpoint, contract_id: &FixedHash) -> CheckpointChallenge {
-    // TODO: update when shared commitment consensus among VNs is implemented
-    let commitment = Commitment::default();
-    CheckpointChallenge::new(
-        contract_id,
-        &commitment,
-        &checkpoint.merkle_root,
-        checkpoint.checkpoint_number,
-    )
-}
-
 #[cfg(test)]
 mod test {
     use std::convert::TryInto;
 
     use tari_common_types::types::FixedHash;
 
-    use super::create_checkpoint_challenge;
     use crate::{
         consensus::ConsensusHashWriter,
         validation::dan_validators::{
+            helpers::create_checkpoint_challenge,
             test_helpers::{
                 assert_dan_validator_err,
                 assert_dan_validator_success,

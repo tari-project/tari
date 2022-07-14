@@ -20,24 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use super::helpers::{
+    fetch_constitution_commitment,
+    fetch_constitution_height,
     fetch_contract_constitution,
     fetch_contract_features,
-    fetch_contract_utxos,
+    get_contract_acceptance,
     get_sidechain_features,
     validate_output_type,
 };
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::transaction_components::{
-        ContractAcceptance,
         ContractAcceptanceChallenge,
         ContractConstitution,
         OutputType,
-        SideChainFeatures,
         SignerSignature,
         TransactionOutput,
     },
@@ -68,16 +68,6 @@ pub fn validate_acceptance<B: BlockchainBackend>(
     // TODO: check that the stake of the transaction is at least the minimum specified in the constitution
 
     Ok(())
-}
-
-/// Retrieves a contract acceptance object from the sidechain features, returns an error if not present
-fn get_contract_acceptance(
-    sidechain_feature: &SideChainFeatures,
-) -> Result<&ContractAcceptance, DanLayerValidationError> {
-    match sidechain_feature.acceptance.as_ref() {
-        Some(acceptance) => Ok(acceptance),
-        None => Err(DanLayerValidationError::ContractAcceptanceNotFound),
-    }
 }
 
 /// Checks that the validator node has not already published the acceptance for the contract
@@ -139,20 +129,6 @@ fn validate_acceptance_window<B: BlockchainBackend>(
     Ok(())
 }
 
-pub fn fetch_constitution_height<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    contract_id: FixedHash,
-) -> Result<u64, ValidationError> {
-    let utxos = fetch_contract_utxos(db, contract_id, OutputType::ContractConstitution)?;
-    // Only one constitution should be stored for a particular contract_id
-    match utxos.first() {
-        Some(utxo) => Ok(utxo.mined_height),
-        None => Err(ValidationError::DanLayerError(
-            DanLayerValidationError::ContractConstitutionNotFound { contract_id },
-        )),
-    }
-}
-
 pub fn validate_signature<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     signature: &Signature,
@@ -170,25 +146,6 @@ pub fn validate_signature<B: BlockchainBackend>(
     }
 
     Ok(())
-}
-
-pub fn fetch_constitution_commitment<B: BlockchainBackend>(
-    db: &BlockchainDatabase<B>,
-    contract_id: FixedHash,
-) -> Result<Commitment, ValidationError> {
-    let outputs: Vec<TransactionOutput> = fetch_contract_utxos(db, contract_id, OutputType::ContractConstitution)?
-        .into_iter()
-        .filter_map(|utxo| utxo.output.into_unpruned_output())
-        .collect();
-
-    // Only one constitution should be stored for a particular contract_id
-    if outputs.is_empty() {
-        return Err(ValidationError::DanLayerError(
-            DanLayerValidationError::ContractConstitutionNotFound { contract_id },
-        ));
-    }
-
-    Ok(outputs[0].commitment().clone())
 }
 
 #[cfg(test)]

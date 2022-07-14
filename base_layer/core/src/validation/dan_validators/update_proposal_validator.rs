@@ -26,11 +26,12 @@ use super::helpers::{
     fetch_contract_constitution,
     fetch_contract_features,
     get_sidechain_features,
+    get_update_proposal,
     validate_output_type,
 };
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transactions::transaction_components::{ContractUpdateProposal, OutputType, SideChainFeatures, TransactionOutput},
+    transactions::transaction_components::{OutputType, TransactionOutput},
     validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
@@ -51,17 +52,6 @@ pub fn validate_update_proposal<B: BlockchainBackend>(
     validate_uniqueness(db, contract_id, proposal_id)?;
 
     Ok(())
-}
-
-fn get_update_proposal(
-    sidechain_feature: &SideChainFeatures,
-) -> Result<&ContractUpdateProposal, DanLayerValidationError> {
-    match sidechain_feature.update_proposal.as_ref() {
-        Some(proposal) => Ok(proposal),
-        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
-            field_name: "update_proposal",
-        }),
-    }
 }
 
 fn validate_uniqueness<B: BlockchainBackend>(

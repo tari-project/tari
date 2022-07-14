@@ -25,18 +25,13 @@ use tari_common_types::types::FixedHash;
 use super::helpers::{
     fetch_contract_features,
     fetch_contract_update_proposal,
+    get_contract_amendment,
     get_sidechain_features,
     validate_output_type,
 };
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transactions::transaction_components::{
-        ContractAmendment,
-        ContractUpdateProposal,
-        OutputType,
-        SideChainFeatures,
-        TransactionOutput,
-    },
+    transactions::transaction_components::{ContractAmendment, ContractUpdateProposal, OutputType, TransactionOutput},
     validation::{dan_validators::DanLayerValidationError, ValidationError},
 };
 
@@ -57,17 +52,6 @@ pub fn validate_amendment<B: BlockchainBackend>(
     validate_updated_constiution(amendment, &proposal)?;
 
     Ok(())
-}
-
-fn get_contract_amendment(
-    sidechain_feature: &SideChainFeatures,
-) -> Result<&ContractAmendment, DanLayerValidationError> {
-    match sidechain_feature.amendment.as_ref() {
-        Some(amendment) => Ok(amendment),
-        None => Err(DanLayerValidationError::SideChainFeaturesDataNotProvided {
-            field_name: "amendment",
-        }),
-    }
 }
 
 fn validate_uniqueness<B: BlockchainBackend>(
