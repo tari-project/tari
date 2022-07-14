@@ -5224,6 +5224,11 @@ hoopy@^0.1.4:
   resolved "https://registry.yarnpkg.com/hoopy/-/hoopy-0.1.4.tgz#609207d661100033a9a9402ad3dea677381c1b1d"
   integrity sha512-HRcs+2mr52W0K+x8RzcLzuPPmVIKMSv97RGHy0Ea9y/mpcaK+xTrjICA04KAHi4GRzxliNqNJEFYWHghy3rSfQ==
 
+hotkeys-js@3.9.3:
+  version "3.9.3"
+  resolved "https://registry.yarnpkg.com/hotkeys-js/-/hotkeys-js-3.9.3.tgz#4b755cc695b388d7f93a83aff4b0c2a45719996c"
+  integrity sha512-s+f0xyvDmf6+DyrFQ2SY+eA7lbvMbjqkqi0I0SpMgnN5tZx7DeH8nsWhkJR4KEq3pxDPHJppDUhdt1rZFW5LeQ==
+
 hpack.js@^2.1.6:
   version "2.1.6"
   resolved "https://registry.yarnpkg.com/hpack.js/-/hpack.js-2.1.6.tgz#87774c0949e513f42e84575b3c45681fade2a0b2"
@@ -7921,6 +7926,13 @@ react-hook-form@^7.30.0:
   version "7.33.0"
   resolved "https://registry.yarnpkg.com/react-hook-form/-/react-hook-form-7.33.0.tgz#44a87ddd630f00ebeb0f15aa978f69ca74b8a77b"
   integrity sha512-h8XoeUHQs1Snx1s/sSvM+eVTSKkWQt8TcrbL+3/Rt5gugxpy4ueL5ZZkubffyNpUyyTz0qM0kwOi2c+JgGTjLA==
+
+react-hotkeys-hook@^3.4.6:
+  version "3.4.6"
+  resolved "https://registry.yarnpkg.com/react-hotkeys-hook/-/react-hotkeys-hook-3.4.6.tgz#21eda8e97121583a14056479e3eea9e51d2e2a69"
+  integrity sha512-SiGKHnauaAQglRA7qeiW5LTa0KoT2ssv8YGYKZQoM3P9v5JFEHJdXOSFml1N6K86oKQ8dLCLlxqBqGlSJWGmxQ==
+  dependencies:
+    hotkeys-js "3.9.3"
 
 react-is@^16.13.1, react-is@^16.7.0:
   version "16.13.1"

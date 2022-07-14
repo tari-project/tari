@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
+use std::{convert::TryFrom, path::PathBuf, process::Command, time::Duration};
 
 use bollard::Docker;
 use derivative::Derivative;

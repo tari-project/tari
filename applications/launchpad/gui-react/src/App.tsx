@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import styled, { ThemeProvider } from 'styled-components'
+import { useHotkeys } from 'react-hotkeys-hook'
 import 'uplot/dist/uPlot.min.css'
 
 import { useAppSelector, useAppDispatch } from './store/hooks'
@@ -23,6 +24,7 @@ import MiningNotifications from './containers/MiningNotifications'
 import Onboarding from './pages/onboarding'
 import PasswordPrompt from './containers/PasswordPrompt'
 import { hideSplashscreen } from './splashscreen'
+import { openTerminalCmd } from './commands'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -41,7 +43,6 @@ const OnboardedAppContainer = ({
   const dispatch = useAppDispatch()
   const statsRepository = useMemo(getStatsRepository, [])
 
-  useSystemEvents({ dispatch })
   useWalletEvents({ dispatch, transactionsRepository })
   useMiningScheduling()
   useEffect(() => {
@@ -57,6 +58,10 @@ const App = () => {
   const onboardingComplete = useAppSelector(selectOnboardingComplete)
 
   const [initialized, setInitialized] = useState(false)
+
+  useHotkeys('ctrl+t,cmd+t', () => {
+    openTerminalCmd()
+  })
 
   useEffect(() => {
     const callInitActionInStore = async () => {
