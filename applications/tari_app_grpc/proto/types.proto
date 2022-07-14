@@ -249,7 +249,6 @@ message ContractConstitution {
     SideChainConsensus consensus = 3;
     CheckpointParameters checkpoint_params = 4;
     ConstitutionChangeRules constitution_change_rules = 5;
-    uint64 initial_reward = 6;
 }
 
 message ContractAcceptanceRequirements {

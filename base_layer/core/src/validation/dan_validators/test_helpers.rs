@@ -200,7 +200,6 @@ pub fn create_contract_constitution() -> ContractConstitution {
                 backup_keys: Some(vec![].try_into().unwrap()),
             }),
         },
-        initial_reward: 100.into(),
     }
 }
 
