@@ -113,7 +113,6 @@ mod test {
         validation::dan_validators::{
             test_helpers::{
                 assert_dan_validator_err,
-                assert_dan_validator_fail,
                 assert_dan_validator_success,
                 create_block,
                 create_contract_amendment_schema,
@@ -183,7 +182,11 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Contract update proposal not found");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ContractUpdateProposalNotFound { .. }
+        ))
     }
 
     #[test]
@@ -267,10 +270,10 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the amendment transaction and check that we get the error
-        assert_dan_validator_fail(
-            &blockchain,
-            &tx,
-            "The updated_constitution of the amendment does not match the one in the update proposal",
-        );
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::UpdatedConstitutionAmendmentMismatch { .. }
+        ))
     }
 }

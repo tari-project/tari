@@ -203,7 +203,6 @@ mod test {
         validation::dan_validators::{
             test_helpers::{
                 assert_dan_validator_err,
-                assert_dan_validator_fail,
                 assert_dan_validator_success,
                 create_acceptance_signature,
                 create_block,
@@ -262,7 +261,11 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Contract constitution not found");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ContractConstitutionNotFound { .. }
+        ))
     }
 
     #[test]
@@ -296,7 +299,8 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated acceptance transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "sent duplicate acceptance UTXO");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(err, DanLayerValidationError::DuplicateUtxo { .. }));
     }
 
     #[test]
@@ -324,7 +328,8 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the committee error
-        assert_dan_validator_fail(&blockchain, &tx, "Validator node public key is not in committee");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(err, DanLayerValidationError::ValidatorNotInCommittee { .. }));
     }
 
     #[test]
@@ -356,7 +361,11 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the expiration error
-        assert_dan_validator_fail(&blockchain, &tx, "Acceptance window has expired");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::AcceptanceWindowHasExpired { .. }
+        ));
     }
 
     #[test]

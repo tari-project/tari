@@ -85,7 +85,6 @@ mod test {
         validation::dan_validators::{
             test_helpers::{
                 assert_dan_validator_err,
-                assert_dan_validator_fail,
                 assert_dan_validator_success,
                 create_contract_constitution,
                 create_contract_constitution_schema,
@@ -126,7 +125,11 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the constitution transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Contract definition not found");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ContractDefnintionNotFound { .. }
+        ))
     }
 
     #[test]

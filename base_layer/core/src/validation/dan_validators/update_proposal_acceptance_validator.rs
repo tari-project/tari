@@ -231,7 +231,6 @@ mod test {
         validation::dan_validators::{
             test_helpers::{
                 assert_dan_validator_err,
-                assert_dan_validator_fail,
                 assert_dan_validator_success,
                 create_block,
                 create_contract_constitution,
@@ -318,7 +317,11 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Contract update proposal not found");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ContractUpdateProposalNotFound { .. }
+        ))
     }
 
     #[test]
@@ -427,7 +430,8 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the proposal acceptance transaction and check that we get the committee error
-        assert_dan_validator_fail(&blockchain, &tx, "Validator node public key is not in committee");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(err, DanLayerValidationError::ValidatorNotInCommittee { .. }))
     }
 
     #[test]
@@ -475,7 +479,11 @@ mod test {
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the acceptance transaction and check that we get the expiration error
-        assert_dan_validator_fail(&blockchain, &tx, "Proposal acceptance window has expired");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ProposalAcceptanceWindowHasExpired { .. }
+        ))
     }
 
     #[test]

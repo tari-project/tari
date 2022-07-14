@@ -336,16 +336,6 @@ pub fn assert_dan_validator_err(blockchain: &TestBlockchain, transaction: &Trans
     perform_validation(blockchain, transaction).unwrap_err()
 }
 
-pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
-    let err = assert_dan_validator_err(blockchain, transaction);
-    assert!(
-        err.to_string().contains(expected_message),
-        "Message \"{}\" does not contain \"{}\"",
-        err,
-        expected_message
-    );
-}
-
 pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &Transaction) {
     perform_validation(blockchain, transaction).unwrap()
 }
