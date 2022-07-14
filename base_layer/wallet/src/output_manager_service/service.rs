@@ -1976,22 +1976,31 @@ where
                     // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
                     // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                     [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(provided_spending_public)] => {
-                        if self.node_identity.public_key() != provided_spending_public.as_ref() {
-                            return None;
-                        }
+                        let secret_key = self.node_identity.secret_key().clone();
+                        let public_key = self.node_identity.public_key();
 
-                        let private_key = self.node_identity.secret_key().clone();
-
-                        // calculating Ks(spending secret key) with the provided R nonce from the script
+                        // computing shared secret
                         let c = RistrettoSecretKey::from_bytes(
-                            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_address")
-                                .chain(PublicKey::shared_secret(&private_key, nonce.as_ref()).as_bytes())
+                            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth address")
+                                .chain(PublicKey::shared_secret(&secret_key, nonce.as_ref()).as_bytes())
                                 .finalize()
                                 .as_ref(),
                         )
                         .unwrap();
 
-                        Some((output.clone(), private_key.clone() + c, private_key))
+                        // calculating spending (public) key
+                        let ks = PublicKey::from_secret_key(&c) + public_key;
+
+                        if &ks != provided_spending_public.as_ref() {
+                            return None;
+                        }
+
+                        match PrivateKey::from_bytes(
+                            CommsPublicKey::shared_secret(&secret_key, &output.sender_offset_public_key).as_bytes(),
+                        ) {
+                            Err(_) => None,
+                            Ok(spend_key) => Some((output.clone(), secret_key.clone() + c, spend_key)),
+                        }
                     },
 
                     _ => None,
