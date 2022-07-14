@@ -288,7 +288,10 @@ impl LaunchpadConfig {
     }
 
     fn wallet_cmd(&self) -> Vec<String> {
-        let args = vec!["--log-config=/var/tari/config/log4rs.yml"];
+        let args = vec![
+            "--log-config=/var/tari/config/log4rs.yml",
+            "--seed-words-file=/var/tari/config/seed_words.txt",
+        ];
         args.into_iter().map(String::from).collect()
     }
 

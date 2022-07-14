@@ -117,3 +117,31 @@ pub async fn transfer(app: AppHandle<Wry>, funds: TransferFunds) -> Result<Trans
         Err("Wallet is not running".to_string())
     }
 }
+
+#[tauri::command]
+pub async fn get_seed_words() -> Result<Vec<String>, String> {
+    // Check if wallet container is running.
+    let status = status(ImageType::Wallet).await;
+    if "running" == status.to_lowercase() {
+        let mut wallet_client = GrpcWalletClient::new();
+        let seed_words = wallet_client.seed_words().await.map_err(|e| e.to_string())?;
+        Ok(seed_words)
+    } else {
+        error!("Wallet container[image = {}] is not running", ImageType::Wallet);
+        Err("Wallet is not running".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn delete_seed_words() -> Result<(), String> {
+    // Check if wallet container is running.
+    let status = status(ImageType::Wallet).await;
+    if "running" == status.to_lowercase() {
+        let mut wallet_client = GrpcWalletClient::new();
+        wallet_client.delete_seed_words().await.map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        error!("Wallet container[image = {}] is not running", ImageType::Wallet);
+        Err("Wallet is not running".to_string())
+    }
+}

@@ -20,8 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    fs,
+};
 
+use clap::Parser;
 use futures::{
     channel::mpsc::{self, Sender},
     future,
@@ -47,6 +51,7 @@ use tari_app_grpc::{
         CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
         CreateInitialAssetCheckpointResponse,
+        FileDeletedResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -70,6 +75,7 @@ use tari_app_grpc::{
         RegisterAssetResponse,
         RevalidateRequest,
         RevalidateResponse,
+        SeedWordsResponse,
         SendShaAtomicSwapRequest,
         SendShaAtomicSwapResponse,
         SetBaseNodeRequest,
@@ -110,6 +116,7 @@ use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
 
 use crate::{
+    cli::Cli,
     grpc::{convert_to_transaction_event, TransactionWrapper},
     notifier::{CANCELLED, CONFIRMATION, MINED, NEW_BLOCK_MINED, QUEUED, RECEIVED, SENT},
 };
@@ -1087,6 +1094,50 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }))
             },
         }
+    }
+
+    async fn seed_words(&self, _: Request<tari_rpc::Empty>) -> Result<Response<SeedWordsResponse>, Status> {
+        let cli = Cli::parse();
+        let file_path = cli.seed_words_file_name.unwrap();
+
+        if !file_path.is_file() {
+            return Err(Status::not_found("file not found"));
+        }
+
+        let file_name = file_path.clone().into_os_string().into_string().unwrap();
+
+        if file_name.is_empty() {
+            return Err(Status::not_found("seed_words_file_name is empty"));
+        }
+
+        let contents = fs::read_to_string(file_path)?;
+        let words = contents
+            .split(" ")
+            .collect::<Vec<&str>>()
+            .iter()
+            .map(|&x| x.into())
+            .collect::<Vec<String>>();
+        Ok(Response::new(SeedWordsResponse { words }))
+    }
+
+    async fn delete_seed_words_file(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<FileDeletedResponse>, Status> {
+        let cli = Cli::parse();
+        let file_path = cli.seed_words_file_name.unwrap();
+
+        if !file_path.is_file() {
+            return Err(Status::not_found("file not found"));
+        }
+
+        let file_name = file_path.clone().into_os_string().into_string().unwrap();
+
+        if file_name.is_empty() {
+            return Err(Status::not_found("seed_words_file_name is empty"));
+        }
+        fs::remove_file(file_path)?;
+        Ok(Response::new(FileDeletedResponse {}))
     }
 }
 
