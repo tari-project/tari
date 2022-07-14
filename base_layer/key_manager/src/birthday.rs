@@ -20,42 +20,45 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{
+    convert::TryFrom,
+    time::{Duration, Instant},
+};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_core::blocks::genesis_block::get_genesis_block;
+
+/// Implementation of a [`Birthday`] type. The goal of the current logic is to define a birthday date dependent on
+/// a fixed genesis time. There are two subfields, `birthday` and `version`. Whereas `birthday` keeps track of the
+/// numbers of days between the time of runtime instantiation from genesis time, `version` tracks an epoch counter.
+/// The idea behind adding a versioning to the logic permits to extend the birthday definition beyond the u16::MAX.
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Birthday {
-    zero_point_time: u64,
     birthday: u16,
     version: u8,
 }
 
 impl Birthday {
-
     pub fn new(network: Network) -> Self {
         let current_time = Self::current_time_in_seconds();
         Self::new_from_current_time(network, current_time)
     }
+    use tari_core::blocks::genesis_block::get_genesis_block;
 
     fn new_from_current_time(network: Network, current_time: u64) -> Self {
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-        const PERIOD_LENGTH: u64 = u16::MAX as u64 + 1; // 2^16
+        const EPOCH_LENGTH: u64 = u16::MAX as u64 + 1; // 2^16
 
-        let mut zero_point_time = Self::get_network_genesis_time(network);
+        let genesis_time = Self::get_genesis_time(network);
 
-        let days = (current_time - zero_point_time) / SECONDS_PER_DAY;
-        let birthday = (days % PERIOD_LENGTH) as u16;
-        let version = u8::try_from(days / PERIOD_LENGTH).unwrap();
-
-        zero_point_time += PERIOD_LENGTH * (version as u64);
+        let days = (Instant::now() - genesis_time).as_secs() / SECONDS_PER_DAY;
+        let birthday = (days % EPOCH_LENGTH) as u16;
+        let version = u8::try_from(days / EPOCH_LENGTH).unwrap();
 
         Self {
             birthday,
             version,
-            zero_point_time,
         }
     }
 
@@ -68,15 +71,15 @@ impl Birthday {
     }
 
     pub fn zero_point_time(&self) -> u64 {
-        self.zero_point_time
+        self.get_genesis_time() + Duration::seconds(EPOCH_LENGTH * (version as u64) * SECONDS_PER_DAY)
     }
 
     pub fn current_time_in_seconds() -> u64 {
         u64::try_from(chrono::Utc::now().timestamp()).unwrap()
     }
 
-    pub fn get_network_genesis_time(network: Network) -> u64 {
-        get_genesis_block(network).block().header.timestamp.as_u64()
+    pub fn get_genesis_time(network: Network) -> Instant {
+        Instant::at(network.block().header.timestamp.as_u64())
     }
 }
 
@@ -112,7 +115,7 @@ mod tests {
     fn birthday_is_correctly_computed() {
         let network = Network::Dibbler;
 
-        let dibbler_genesis_block_time = Birthday::get_network_genesis_time(network);
+        let dibbler_genesis_block_time = Birthday::get_genesis_time(network);
 
         let now = u64::try_from(chrono::Utc::now().timestamp()).unwrap();
         let current = (now - dibbler_genesis_block_time) / (24 * 60 * 60);
@@ -125,7 +128,7 @@ mod tests {
 
     #[test]
     fn works_after_successful_versions() {
-        let genesis_timestamp = Birthday::get_network_genesis_time(Network::Dibbler);
+        let genesis_timestamp = Birthday::get_genesis_time(Network::Dibbler);
 
         for vrsn in 1..10u64 {
             let lapse_period = vrsn * (u64::from(u16::MAX) + 1) + vrsn;
