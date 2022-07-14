@@ -56,7 +56,7 @@ const Progress = ({
       <ProgressBar value={progress || 0} />
       <RemainingTime>
         <Text type='smallMedium'>
-          {time === undefined ? (
+          {time === undefined || type === 'Startup' ? (
             <CalcRemainTimeCont>
               <CalcRemainTimeContLoader>
                 <Loading loading size='14px' />

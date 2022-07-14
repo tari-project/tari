@@ -24,53 +24,32 @@
 use std::convert::TryFrom;
 
 use futures::StreamExt;
-use log::{error, info, warn};
+use log::*;
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::{
     commands::status,
     docker::ImageType,
-    grpc::{BaseNodeIdentity, GrpcBaseNodeClient, SyncProgress, SyncProgressInfo, SyncType},
+    grpc::{BaseNodeIdentity, GrpcBaseNodeClient},
 };
 
 pub const ONBOARDING_PROGRESS_DESTINATION: &str = "tari://onboarding_progress";
 
+const LOG_TARGET: &str = "tari_launchpad::base_node_api";
+
 #[tauri::command]
 pub async fn base_node_sync_progress(app: AppHandle<Wry>) -> Result<(), String> {
-    info!("Setting up progress info stream");
+    info!(target: LOG_TARGET, "Setting up progress info stream");
     let mut client = GrpcBaseNodeClient::new();
     let mut stream = client.stream().await.map_err(|e| e.chained_message())?;
 
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        let block_progress = &mut SyncProgress::new(SyncType::Block, 0, 0);
-        let header_progress = &mut SyncProgress::new(SyncType::Header, 0, 0);
-        info!("Syncing blocks progress is started....");
-        while let Some(message) = stream.next().await {
-            if let Some(sync_type) = message.sync_type {
-                match sync_type {
-                    SyncType::Header => {
-                        if header_progress.started {
-                            header_progress.sync(message.local_height, message.tip_height);
-                            let progress = SyncProgressInfo::from(header_progress.clone());
-                            if let Err(err) = app_clone.emit_all(ONBOARDING_PROGRESS_DESTINATION, progress) {
-                                warn!("Could not emit event to front-end, {:?}", err);
-                            }
-                        } else {
-                            header_progress.start(message.local_height, message.tip_height);
-                        }
-                    },
-                    SyncType::Block => {
-                        if block_progress.started {
-                            let progress = SyncProgressInfo::from(block_progress.clone());
-                            if let Err(err) = app_clone.emit_all(ONBOARDING_PROGRESS_DESTINATION, progress) {
-                                warn!("Could not emit event to front-end, {:?}", err);
-                            }
-                        } else {
-                            block_progress.start(message.local_height, message.tip_height);
-                        }
-                    },
-                }
+        info!(target: LOG_TARGET, "Syncing blocks progress is started....");
+        while let Some(progress) = stream.next().await {
+            debug!(target: LOG_TARGET, "Blockchain sync progress: {:?}", progress);
+            if let Err(err) = app_clone.emit_all(ONBOARDING_PROGRESS_DESTINATION, progress) {
+                warn!(target: LOG_TARGET, "Could not emit event to front-end, {:?}", err);
             }
         }
     });
@@ -84,10 +63,14 @@ pub async fn node_identity() -> Result<BaseNodeIdentity, String> {
     if "running" == status.to_lowercase() {
         let mut node_client = GrpcBaseNodeClient::new();
         let identity = node_client.identity().await.map_err(|e| e.to_string())?;
-        info!("SUCCESS: IDENTITY: {:?}", identity);
+        info!(target: LOG_TARGET, "SUCCESS: IDENTITY: {:?}", identity);
         BaseNodeIdentity::try_from(identity)
     } else {
-        error!("Base node container[image = {}] is not running", ImageType::BaseNode);
+        error!(
+            target: LOG_TARGET,
+            "Base node container[image = {}] is not running",
+            ImageType::BaseNode
+        );
         Err("tari_base_node is not running".to_string())
     }
 }

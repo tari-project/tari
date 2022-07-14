@@ -30,7 +30,7 @@ use futures::{
     StreamExt,
     TryStreamExt,
 };
-use log::{error, info};
+use log::*;
 use tari_app_grpc::tari_rpc::{
     base_node_client::BaseNodeClient,
     wallet_client::WalletClient,
@@ -55,8 +55,10 @@ use super::{error::GrpcError, BlockStateInfo};
 use crate::{
     docker::{DockerWrapperError, LaunchpadConfig, BASE_NODE_GRPC_ADDRESS_URL},
     error::LauncherError,
+    grpc::{SyncProgress, SyncProgressInfo},
 };
 
+const LOG_TARGET: &str = "tari_launchpad::base_node_grpc";
 type Inner = BaseNodeClient<tonic::transport::Channel>;
 
 #[derive(Clone)]
@@ -83,45 +85,48 @@ impl GrpcBaseNodeClient {
         loop {
             match self.try_connect().await {
                 Ok(_) => {
-                    info!("#### Connected....");
+                    info!(target: LOG_TARGET, "#### Connected....");
                     break;
                 },
                 Err(_) => {
                     sleep(Duration::from_secs(3)).await;
-                    info!("---> Waiting for base node....");
+                    info!(target: LOG_TARGET, "---> Waiting for base node....");
                 },
             }
         }
     }
 
-    pub async fn stream(&mut self) -> Result<impl Stream<Item = BlockStateInfo>, GrpcError> {
+    pub async fn stream(&mut self) -> Result<impl Stream<Item = SyncProgressInfo>, GrpcError> {
         let (mut sender, receiver) = mpsc::channel(100);
         let connection = self.try_connect().await?.clone();
         task::spawn(async move {
+            let mut progress = SyncProgress::new(0, 100);
             loop {
                 let request = Empty {};
                 let response = match connection.clone().get_sync_progress(request).await {
                     Ok(response) => response.into_inner(),
                     Err(status) => {
-                        error!("Failed reading progress from base node: {}", status);
+                        error!(target: LOG_TARGET, "Failed reading progress from base node: {}", status);
                         return;
                     },
                 };
-
-                info!("Response: {:?}", response);
-
-                match response.clone().state() {
-                    tari_app_grpc::tari_rpc::SyncState::Done => {
-                        info!("GONGRATS....Base node is synced.");
-                        return;
-                    },
-                    tari_app_grpc::tari_rpc::SyncState::Header | tari_app_grpc::tari_rpc::SyncState::Block => {
-                        sender.try_send(BlockStateInfo::from(response)).unwrap()
-                    },
-                    sync_state => info!("Syncing is being started. Current state: {:?}", sync_state),
+                let done = matches!(response.state(), tari_app_grpc::tari_rpc::SyncState::Done);
+                debug!(target: LOG_TARGET, "Response: {:?}", response);
+                progress.update(response);
+                if let Err(err) = sender.try_send(progress.progress_info()) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not send progress to tokio_stream. {}",
+                        err.to_string()
+                    );
+                }
+                if done {
+                    info!(target: LOG_TARGET, "Blockchain has synced.");
+                    break;
                 }
                 sleep(Duration::from_secs(10)).await;
             }
+            info!(target: LOG_TARGET, "Closing blockchain sync stream.");
         });
         Ok(receiver)
     }

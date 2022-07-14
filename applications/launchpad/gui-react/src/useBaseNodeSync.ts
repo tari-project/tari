@@ -2,16 +2,15 @@ import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/tauri'
 import { listen } from '@tauri-apps/api/event'
 
-export type SyncType = 'Header' | 'Block'
+export type SyncType = 'Startup' | 'Header' | 'Block'
 
 export type BaseNodeSyncProgress = {
-  elapsed_time_sec: number
-  max_estimated_time_sec: number
-  min_estimated_time_sec: number
-  starting_items_index: number
-  sync_type: SyncType
-  synced_items: number
-  total_items: number
+  estimatedTimeSec: number
+  syncType: SyncType
+  headerProgress: number
+  blockProgress: number
+  totalBlocks: number
+  done: boolean
 }
 
 export type SyncProgress = {
@@ -69,16 +68,13 @@ export const useBaseNodeSync = (started: boolean) => {
         }) => {
           try {
             setProgress({
-              progress: Math.round(
-                (payload.synced_items / payload.total_items) * 100,
-              ),
-              remainingTime: Math.round(
-                (payload.max_estimated_time_sec +
-                  payload.min_estimated_time_sec) /
-                  2,
-              ),
-              syncType: payload.sync_type,
-              finished: payload.synced_items >= payload.total_items,
+              progress:
+                payload.syncType === 'Block'
+                  ? payload.blockProgress
+                  : payload.headerProgress,
+              remainingTime: payload.estimatedTimeSec,
+              syncType: payload.syncType,
+              finished: payload.done,
             })
           } catch (_) {
             setProgress({
