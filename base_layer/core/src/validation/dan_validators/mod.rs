@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn it_rejects_standard_output_type_with_sidechain_features() {
         let mut utxo = create_unblinded_coinbase(&TestParams::new(), 1);
-        utxo.features.sidechain_features = Some(SideChainFeatures::builder(FixedHash::default()).finish());
+        utxo.features.sidechain_features = Some(Box::new(SideChainFeatures::builder(FixedHash::default()).finish()));
         let output = utxo.as_transaction_output(&CryptoFactories::default()).unwrap();
         let err = validate_no_sidechain_features(&output).unwrap_err();
         assert!(matches!(

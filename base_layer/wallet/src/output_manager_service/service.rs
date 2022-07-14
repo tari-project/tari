@@ -294,7 +294,7 @@ where
                     fee_per_gram,
                     lock_height,
                     message,
-                    output_features,
+                    *output_features,
                     script,
                     covenant,
                 )
@@ -313,7 +313,7 @@ where
                     tx_id,
                     amount,
                     utxo_selection,
-                    output_features,
+                    *output_features,
                     fee_per_gram,
                     lock_height,
                     message,

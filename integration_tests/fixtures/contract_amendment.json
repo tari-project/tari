@@ -23,7 +23,8 @@
     "consensus": "MerkleRoot",
     "checkpoint_parameters": {
       "minimum_quorum_required": 2,
-      "abandoned_interval": 100
+      "abandoned_interval": 100,
+      "quarantine_interval": 100
     },
     "constitution_change_rules": {
       "change_flags": 1

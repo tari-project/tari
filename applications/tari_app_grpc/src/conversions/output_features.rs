@@ -93,7 +93,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             metadata: features.metadata,
             unique_id: features.unique_id.unwrap_or_default(),
             recovery_byte: u32::from(features.recovery_byte),
-            sidechain_features: features.sidechain_features.map(Into::into),
+            sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
 
             // TODO: Deprecated
             asset: None,

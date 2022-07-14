@@ -62,7 +62,7 @@ pub fn create_blockchain_without_validation() -> TestBlockchain {
 pub fn create_contract_definition_features(contract_id: FixedHash) -> OutputFeatures {
     OutputFeatures {
         output_type: OutputType::ContractDefinition,
-        sidechain_features: Some(
+        sidechain_features: Some(Box::new(
             SideChainFeatures::builder(contract_id)
                 .with_contract_definition(ContractDefinition {
                     contract_name: [1u8; 32],
@@ -73,7 +73,7 @@ pub fn create_contract_definition_features(contract_id: FixedHash) -> OutputFeat
                     },
                 })
                 .finish(),
-        ),
+        )),
         ..Default::default()
     }
 }
@@ -95,7 +95,7 @@ pub fn create_contract_constitution_transaction(
 ) -> (Transaction, Vec<UnblindedOutput>) {
     let features = OutputFeatures {
         output_type: OutputType::ContractConstitution,
-        sidechain_features: Some(
+        sidechain_features: Some(Box::new(
             SideChainFeatures::builder(contract_id)
                 .with_contract_constitution(ContractConstitution {
                     validator_committee: CommitteeMembers::default(),
@@ -107,6 +107,7 @@ pub fn create_contract_constitution_transaction(
                     checkpoint_params: CheckpointParameters {
                         minimum_quorum_required: 1,
                         abandoned_interval: 20,
+                        quarantine_interval: 20,
                     },
                     constitution_change_rules: ConstitutionChangeRules {
                         change_flags: ConstitutionChangeFlags::empty(),
@@ -115,7 +116,7 @@ pub fn create_contract_constitution_transaction(
                     initial_reward: 10u64.into(),
                 })
                 .finish(),
-        ),
+        )),
         ..Default::default()
     };
     let (transactions, outputs) =

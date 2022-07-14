@@ -66,6 +66,7 @@ pub fn fetch_contract_features<B: BlockchainBackend>(
         .into_iter()
         .filter_map(|utxo| utxo.output.into_unpruned_output())
         .filter_map(|output| output.features.sidechain_features)
+        .map(|v| *v)
         .collect();
 
     Ok(features)

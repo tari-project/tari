@@ -270,6 +270,7 @@ message ContractCheckpoint {
 message CheckpointParameters {
     uint64 abandoned_interval = 1;
     uint32 minimum_quorum_required = 2;
+    uint64 quarantine_interval = 3;
 }
 
 message ConstitutionChangeRules {
@@ -283,6 +284,9 @@ message RequirementsForConstitutionChange {
     // An allowlist of keys that are able to accept and ratify the initial constitution and its amendments. If this is
     // None, the constitution cannot be amended.
     CommitteeMembers constitution_committee = 2;
+    // An allowlist of keys that can be used in case of checkpoint abandonment. These keys can quarantine the the constitution
+    // and if the quarantine period is exceeded, the backup keys can take over.
+    CommitteeMembers backup_keys = 3;
 }
 
 enum SideChainConsensus {

@@ -965,6 +965,7 @@ async fn init_contract_constitution_spec(
         checkpoint_parameters: CheckpointParameters {
             minimum_quorum_required: 0,
             abandoned_interval: 0,
+            quarantine_interval: 0,
         },
         constitution_change_rules: ConstitutionChangeRulesFileFormat {
             change_flags: 0,
@@ -1034,6 +1035,7 @@ async fn init_contract_update_proposal_spec(
         checkpoint_parameters: CheckpointParameters {
             minimum_quorum_required: 0,
             abandoned_interval: 0,
+            quarantine_interval: 0,
         },
         constitution_change_rules: ConstitutionChangeRulesFileFormat {
             change_flags: 0,

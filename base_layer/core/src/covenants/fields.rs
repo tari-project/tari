@@ -39,7 +39,7 @@ use crate::{
         encoder::CovenentWriteExt,
         error::CovenantError,
     },
-    transactions::transaction_components::{SideChainFeatures, TransactionInput, TransactionOutput},
+    transactions::transaction_components::{TransactionInput, TransactionOutput},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +86,7 @@ impl OutputField {
         self as u8
     }
 
-    pub(super) fn get_field_value_ref<T: 'static>(self, output: &TransactionOutput) -> Option<&T> {
+    pub(super) fn get_field_value_ref<T: 'static + std::fmt::Debug>(self, output: &TransactionOutput) -> Option<&T> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         let val = match self {
@@ -105,7 +105,7 @@ impl OutputField {
                 // sidechain_features because there is no reference to Option<FixedHash> for
                 // sidechain_features.contract_id to return.
                 match &output.features.sidechain_features {
-                    Some(SideChainFeatures { ref contract_id, .. }) => contract_id as &dyn Any,
+                    Some(v) => &v.contract_id as &dyn Any,
                     none => none as &dyn Any,
                 }
             },
@@ -185,19 +185,39 @@ impl OutputField {
         }
     }
 
-    pub fn is_eq<T: PartialEq + 'static>(self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
+    pub fn is_eq<T: PartialEq + std::fmt::Debug + 'static>(
+        self,
+        output: &TransactionOutput,
+        val: &T,
+    ) -> Result<bool, CovenantError> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
             // Handle edge cases
-            FeaturesParentPublicKey | FeaturesUniqueId | FeaturesSideChainFeatures => {
-                match self.get_field_value_ref::<Option<T>>(output) {
-                    Some(Some(field_val)) => Ok(field_val == val),
+            FeaturesParentPublicKey | FeaturesUniqueId => match self.get_field_value_ref::<Option<T>>(output) {
+                Some(Some(field_val)) => Ok(field_val == val),
+                Some(None) => Ok(false),
+                None => Err(CovenantError::InvalidArgument {
+                    filter: "is_eq",
+                    details: format!("Invalid type for field {}", self),
+                }),
+            },
+            FeaturesSideChainFeatures => {
+                match self.get_field_value_ref::<Option<Box<T>>>(output) {
+                    Some(Some(field_val)) => Ok(**field_val == *val),
                     Some(None) => Ok(false),
-                    None => Err(CovenantError::InvalidArgument {
-                        filter: "is_eq",
-                        details: format!("Invalid type for field {}", self),
-                    }),
+                    None => {
+                        // We need to check this, if T is of type output, then we need to check for a boxed<T>
+                        // otherwise we need to check for a T, so we check both cases.
+                        match self.get_field_value_ref::<Option<T>>(output) {
+                            Some(Some(field_val)) => Ok(field_val == val),
+                            Some(None) => Ok(false),
+                            None => Err(CovenantError::InvalidArgument {
+                                filter: "is_eq",
+                                details: format!("Invalid type for field {}", self),
+                            }),
+                        }
+                    },
                 }
             },
             FeaturesSideChainFeaturesContractId => match self.get_field_value_ref::<T>(output) {
@@ -403,7 +423,7 @@ mod test {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
                         parent_public_key: Some(Default::default()),
-                        sidechain_features: Some(SideChainFeatures::new(FixedHash::zero())),
+                        sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::zero()))),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -420,6 +440,9 @@ mod test {
                     .unwrap());
                 assert!(OutputField::FeaturesFlags
                     .is_eq(&output, &output.features.output_type)
+                    .unwrap());
+                assert!(OutputField::FeaturesSideChainFeatures
+                    .is_eq(&output, &SideChainFeatures::new(FixedHash::zero()))
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
@@ -441,7 +464,7 @@ mod test {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
                         parent_public_key: Some(parent_pk),
-                        sidechain_features: Some(SideChainFeatures::new(FixedHash::hash_bytes(b"A"))),
+                        sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::hash_bytes(b"A")))),
                         ..Default::default()
                     },
                     script: script![Drop Nop],

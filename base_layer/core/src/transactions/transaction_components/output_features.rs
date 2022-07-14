@@ -79,7 +79,7 @@ pub struct OutputFeatures {
     #[serde(default)]
     pub recovery_byte: u8,
     pub metadata: Vec<u8>,
-    pub sidechain_features: Option<SideChainFeatures>,
+    pub sidechain_features: Option<Box<SideChainFeatures>>,
     pub unique_id: Option<Vec<u8>>,
 
     // TODO: Deprecated
@@ -106,6 +106,7 @@ impl OutputFeatures {
         sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
         committee_definition: Option<CommitteeDefinitionFeatures>,
     ) -> OutputFeatures {
+        let boxed_sidechain_features = sidechain_features.map(Box::new);
         OutputFeatures {
             version,
             output_type: flags,
@@ -113,7 +114,7 @@ impl OutputFeatures {
             recovery_byte,
             metadata,
             unique_id,
-            sidechain_features,
+            sidechain_features: boxed_sidechain_features,
             // Deprecated
             parent_public_key,
             asset,
@@ -253,7 +254,7 @@ impl OutputFeatures {
 
         Self {
             output_type: OutputType::ContractCheckpoint,
-            sidechain_features: Some(features),
+            sidechain_features: Some(Box::new(features)),
             ..Default::default()
         }
     }
@@ -286,11 +287,11 @@ impl OutputFeatures {
 
         Self {
             output_type: OutputType::ContractDefinition,
-            sidechain_features: Some(
+            sidechain_features: Some(Box::new(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_contract_definition(definition)
                     .finish(),
-            ),
+            )),
             ..Default::default()
         }
     }
@@ -298,11 +299,11 @@ impl OutputFeatures {
     pub fn for_contract_constitution(contract_id: FixedHash, constitution: ContractConstitution) -> OutputFeatures {
         Self {
             output_type: OutputType::ContractConstitution,
-            sidechain_features: Some(
+            sidechain_features: Some(Box::new(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_contract_constitution(constitution)
                     .finish(),
-            ),
+            )),
             ..Default::default()
         }
     }
@@ -314,14 +315,14 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         Self {
             output_type: OutputType::ContractValidatorAcceptance,
-            sidechain_features: Some(
+            sidechain_features: Some(Box::new(
                 SideChainFeatures::builder(contract_id)
                     .with_contract_acceptance(ContractAcceptance {
                         validator_node_public_key,
                         signature,
                     })
                     .finish(),
-            ),
+            )),
             ..Default::default()
         }
     }
@@ -334,7 +335,7 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         Self {
             output_type: OutputType::ContractConstitutionChangeAcceptance,
-            sidechain_features: Some(
+            sidechain_features: Some(Box::new(
                 SideChainFeatures::builder(contract_id)
                     .with_contract_update_proposal_acceptance(ContractUpdateProposalAcceptance {
                         proposal_id,
@@ -342,7 +343,7 @@ impl OutputFeatures {
                         signature,
                     })
                     .finish(),
-            ),
+            )),
             ..Default::default()
         }
     }
@@ -353,11 +354,11 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         Self {
             output_type: OutputType::ContractConstitutionProposal,
-            sidechain_features: Some(
+            sidechain_features: Some(Box::new(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_update_proposal(update_proposal)
                     .finish(),
-            ),
+            )),
             ..Default::default()
         }
     }
@@ -365,11 +366,11 @@ impl OutputFeatures {
     pub fn for_contract_amendment(contract_id: FixedHash, amendment: ContractAmendment) -> OutputFeatures {
         Self {
             output_type: OutputType::ContractAmendment,
-            sidechain_features: Some(
+            sidechain_features: Some(Box::new(
                 SideChainFeaturesBuilder::new(contract_id)
                     .with_contract_amendment(amendment)
                     .finish(),
-            ),
+            )),
             ..Default::default()
         }
     }
@@ -414,7 +415,24 @@ impl OutputFeatures {
         self.sidechain_features
             .as_ref()
             .and_then(|f| f.constitution.as_ref())
-            .map(|c| &c.validator_committee)
+            .and_then(|f| {
+                f.constitution_change_rules
+                    .requirements_for_constitution_change
+                    .as_ref()
+            })
+            .and_then(|f| f.constitution_committee.as_ref())
+    }
+
+    pub fn backup_keys(&self) -> Option<&CommitteeMembers> {
+        self.sidechain_features
+            .as_ref()
+            .and_then(|f| f.constitution.as_ref())
+            .and_then(|f| {
+                f.constitution_change_rules
+                    .requirements_for_constitution_change
+                    .as_ref()
+            })
+            .and_then(|f| f.backup_keys.as_ref())
     }
 
     pub fn contains_sidechain_proposal(&self, contract_id: &FixedHash, proposal_id: u64) -> bool {
@@ -475,7 +493,7 @@ impl ConsensusDecoding for OutputFeatures {
         let parent_public_key = <Option<PublicKey> as ConsensusDecoding>::consensus_decode(reader)?;
         const MAX_UNIQUE_ID_SIZE: usize = 256;
         let unique_id = <Option<MaxSizeBytes<MAX_UNIQUE_ID_SIZE>> as ConsensusDecoding>::consensus_decode(reader)?;
-        let sidechain_features = <Option<SideChainFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
+        let sidechain_features = <Option<Box<SideChainFeatures>> as ConsensusDecoding>::consensus_decode(reader)?;
         let asset = <Option<AssetOutputFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         let mint_non_fungible = <Option<MintNonFungibleFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         let sidechain_checkpoint =
@@ -591,12 +609,18 @@ mod test {
             checkpoint_params: CheckpointParameters {
                 minimum_quorum_required: 5,
                 abandoned_interval: 100,
+                quarantine_interval: 100,
             },
             constitution_change_rules: ConstitutionChangeRules {
                 change_flags: ConstitutionChangeFlags::all(),
                 requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                     minimum_constitution_committee_signatures: 5,
                     constitution_committee: Some(
+                        vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
+                            .try_into()
+                            .unwrap(),
+                    ),
+                    backup_keys: Some(
                         vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
                             .try_into()
                             .unwrap(),
@@ -616,7 +640,7 @@ mod test {
             },
             metadata: vec![1; 1024],
             unique_id: Some(vec![0u8; 256]),
-            sidechain_features: Some(SideChainFeatures {
+            sidechain_features: Some(Box::new(SideChainFeatures {
                 contract_id: FixedHash::zero(),
                 constitution: Some(constitution.clone()),
                 definition: Some(ContractDefinition {
@@ -672,7 +696,7 @@ mod test {
                     merkle_root: FixedHash::zero(),
                     signatures: vec![SignerSignature::default(); 512].try_into().unwrap(),
                 }),
-            }),
+            })),
             // Deprecated
             parent_public_key: Some(PublicKey::default()),
             asset: Some(AssetOutputFeatures {
