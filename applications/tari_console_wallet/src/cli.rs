@@ -25,6 +25,7 @@ use std::{path::PathBuf, time::Duration};
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
+use tari_common_types::types::FixedHash;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
 use tari_utilities::hex::{Hex, HexError};
@@ -230,6 +231,9 @@ pub enum ContractSubcommand {
 
     /// Creates and publishes a contract amendment UTXO from the JSON spec file.
     PublishAmendment(PublishFileArgs),
+
+    /// Moves a contract into a quarantine state
+    Quarantine(QuarantineArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -308,4 +312,14 @@ pub struct PublishFileArgs {
 #[derive(Debug, Args, Clone)]
 pub struct PublishUpdateProposalArgs {
     pub file_path: PathBuf,
+}
+
+fn parse_contract_id(s: &str) -> Result<FixedHash, HexError> {
+    FixedHash::from_hex(s)
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct QuarantineArgs {
+    #[clap(short, long, parse(try_from_str = parse_contract_id), required = true)]
+    pub contract_id: FixedHash,
 }

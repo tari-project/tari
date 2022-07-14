@@ -247,6 +247,13 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
+            AssetManagerRequest::QuarantineContract { contract_id } => {
+                let (tx_id, transaction) = self.manager.quarantine_contract(contract_id).await?;
+                Ok(AssetManagerResponse::QuarantineContract {
+                    transaction: Box::new(transaction),
+                    tx_id,
+                })
+            },
         }
     }
 }

@@ -77,13 +77,14 @@ where T: Deref<Target = ConstTransaction<'a>>
     ) -> Result<Vec<FixedHash>, ChainStorageError> {
         let key = ContractIndexKey::new(contract_id, output_type);
         match output_type {
-            OutputType::ContractDefinition | OutputType::ContractCheckpoint | OutputType::ContractConstitution => {
-                Ok(self
-                    .get::<_, ContractIndexValue>(&key)?
-                    .into_iter()
-                    .map(|v| v.output_hash)
-                    .collect())
-            },
+            OutputType::ContractDefinition |
+            OutputType::ContractCheckpoint |
+            OutputType::ContractConstitution |
+            OutputType::ContractQuarantine => Ok(self
+                .get::<_, ContractIndexValue>(&key)?
+                .into_iter()
+                .map(|v| v.output_hash)
+                .collect()),
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
             OutputType::ContractConstitutionChangeAcceptance |
@@ -107,9 +108,10 @@ where T: Deref<Target = ConstTransaction<'a>>
     ) -> Result<Vec<FixedHash>, ChainStorageError> {
         let key = BlockContractIndexKey::prefixed(block_hash, output_type);
         match output_type {
-            OutputType::ContractDefinition | OutputType::ContractCheckpoint | OutputType::ContractConstitution => {
-                self.get_all_matching::<_, FixedHash>(&key)
-            },
+            OutputType::ContractDefinition |
+            OutputType::ContractCheckpoint |
+            OutputType::ContractConstitution |
+            OutputType::ContractQuarantine => self.get_all_matching::<_, FixedHash>(&key),
             OutputType::ContractValidatorAcceptance |
             OutputType::ContractConstitutionProposal |
             OutputType::ContractConstitutionChangeAcceptance |
@@ -228,9 +230,9 @@ impl<'a> ContractIndex<'a, WriteTransaction<'a>> {
                 self.insert(&block_key, &output_hash)?;
                 Ok(())
             },
-            // Only one contract checkpoint and constitution can exist at a time and can be overwritten. Consensus rules
-            // decide whether this is valid but we just assume this is valid here.
-            OutputType::ContractConstitution | OutputType::ContractCheckpoint => {
+            // Only one contract checkpoint, constitution, and quarantine can exist at a time and can be overwritten.
+            // Consensus rules decide whether this is valid but we just assume this is valid here.
+            OutputType::ContractConstitution | OutputType::ContractCheckpoint | OutputType::ContractQuarantine => {
                 self.assert_definition_exists(contract_id)?;
                 self.set(&contract_key, &ContractIndexValue {
                     block_hash,

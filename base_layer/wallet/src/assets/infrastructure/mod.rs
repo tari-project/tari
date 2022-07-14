@@ -97,6 +97,9 @@ pub enum AssetManagerRequest {
         contract_id: FixedHash,
         contract_amendment: Box<ContractAmendment>,
     },
+    QuarantineContract {
+        contract_id: FixedHash,
+    },
 }
 
 pub enum AssetManagerResponse {
@@ -113,4 +116,5 @@ pub enum AssetManagerResponse {
     CreateContractUpdateProposalAcceptance { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractUpdateProposal { transaction: Box<Transaction>, tx_id: TxId },
     CreateContractAmendment { transaction: Box<Transaction>, tx_id: TxId },
+    QuarantineContract { transaction: Box<Transaction>, tx_id: TxId },
 }

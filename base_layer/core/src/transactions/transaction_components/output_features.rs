@@ -375,6 +375,14 @@ impl OutputFeatures {
         }
     }
 
+    pub fn for_quarantine(contract_id: FixedHash) -> OutputFeatures {
+        Self {
+            output_type: OutputType::ContractQuarantine,
+            sidechain_features: Some(Box::new(SideChainFeaturesBuilder::new(contract_id).finish())),
+            ..Default::default()
+        }
+    }
+
     pub fn unique_asset_id(&self) -> Option<&[u8]> {
         self.unique_id.as_deref()
     }

@@ -69,4 +69,6 @@ pub enum DanLayerValidationError {
     InconsistentCommittee,
     #[error("Validator committee quorum not met: Got: {got}, minimum expected: {minimum} ")]
     InsufficientQuorum { got: u32, minimum: u32 },
+    #[error("Constitution committee not present in the change rules")]
+    NoConstitutionCommittee,
 }

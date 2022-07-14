@@ -47,6 +47,9 @@ use amendment_validator::validate_amendment;
 mod checkpoint_validator;
 use checkpoint_validator::validate_contract_checkpoint;
 
+mod quarantine_validator;
+use quarantine_validator::validate_quarantine;
+
 mod helpers;
 
 mod error;
@@ -82,6 +85,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxDanLayerValidator<
                     validate_update_proposal_acceptance(&self.db, output)?
                 },
                 OutputType::ContractAmendment => validate_amendment(&self.db, output)?,
+                OutputType::ContractQuarantine => validate_quarantine(&self.db, output)?,
                 _ => validate_no_sidechain_features(output)?,
             }
         }

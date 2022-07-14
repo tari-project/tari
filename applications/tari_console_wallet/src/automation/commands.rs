@@ -99,6 +99,7 @@ use crate::{
         InitDefinitionArgs,
         InitUpdateProposalArgs,
         PublishFileArgs,
+        QuarantineArgs,
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
@@ -819,6 +820,7 @@ async fn handle_contract_command(wallet: &WalletSqlite, command: ContractCommand
         ContractSubcommand::PublishConstitution(args) => publish_contract_constitution(wallet, args).await,
         ContractSubcommand::PublishUpdateProposal(args) => publish_contract_update_proposal(wallet, args).await,
         ContractSubcommand::PublishAmendment(args) => publish_contract_amendment(wallet, args).await,
+        ContractSubcommand::Quarantine(args) => quarantine_contract(wallet, args).await,
     }
 }
 
@@ -1228,6 +1230,20 @@ async fn publish_contract_amendment(wallet: &WalletSqlite, args: PublishFileArgs
         "Contract amendment transaction submitted with tx_id={} for contract with contract_id={}",
         tx_id, contract_id_hex
     );
+
+    Ok(())
+}
+
+async fn quarantine_contract(wallet: &WalletSqlite, args: QuarantineArgs) -> Result<(), CommandError> {
+    let mut asset_manager = wallet.asset_manager.clone();
+    let (tx_id, transaction) = asset_manager.quarantine_contract(&args.contract_id).await?;
+
+    let message = format!("Moving contract={} into quarantine", args.contract_id);
+
+    let mut transaction_service = wallet.transaction_service.clone();
+    transaction_service
+        .submit_transaction(tx_id, transaction, 0.into(), message)
+        .await?;
 
     Ok(())
 }

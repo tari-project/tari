@@ -404,6 +404,24 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         Ok((tx_id, transaction))
     }
+
+    pub async fn quarantine_contract(&mut self, contract_id: FixedHash) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(0.into(), OutputFeatures::for_quarantine(contract_id))
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(
+                vec![output],
+                ASSET_FPG.into(),
+                UtxoSelectionCriteria::for_contract(contract_id, OutputType::ContractCheckpoint),
+            )
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
 }
 
 fn convert_to_asset(unblinded_output: DbUnblindedOutput) -> Result<Asset, WalletError> {

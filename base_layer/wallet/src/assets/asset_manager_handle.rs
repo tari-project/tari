@@ -311,6 +311,22 @@ impl AssetManagerHandle {
         }
     }
 
+    pub async fn quarantine_contract(&mut self, contract_id: &FixedHash) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::QuarantineContract {
+                contract_id: *contract_id,
+            })
+            .await??
+        {
+            AssetManagerResponse::QuarantineContract { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "quarantine_contract".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
     pub async fn list_owned_constitutions(&mut self) -> Result<Vec<DbUnblindedOutput>, WalletError> {
         match self
             .handle

@@ -56,16 +56,18 @@ pub enum OutputType {
     ContractConstitutionChangeAcceptance = 7,
     /// Output that defines an amendment of a contract constitution.
     ContractAmendment = 8,
+    /// Output that defines a quarantined contract
+    ContractQuarantine = 9,
 
     // TODO: Remove these deprecated flags
-    NonFungible = 9,
-    AssetRegistration = 10,
-    MintNonFungible = 11,
-    BurnNonFungible = 12,
-    SidechainInitialCheckpoint = 13,
-    SidechainCheckpoint = 14,
-    CommitteeInitialDefinition = 15,
-    CommitteeDefinition = 16,
+    NonFungible = 10,
+    AssetRegistration = 11,
+    MintNonFungible = 12,
+    BurnNonFungible = 13,
+    SidechainInitialCheckpoint = 14,
+    SidechainCheckpoint = 15,
+    CommitteeInitialDefinition = 16,
+    CommitteeDefinition = 17,
 }
 
 impl OutputType {
@@ -91,7 +93,8 @@ impl OutputType {
                 ContractCheckpoint |
                 ContractConstitutionProposal |
                 ContractConstitutionChangeAcceptance |
-                ContractAmendment
+                ContractAmendment |
+                ContractQuarantine
         )
     }
 }

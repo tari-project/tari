@@ -23,7 +23,10 @@
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -56,7 +59,10 @@ use tari_dan_core::{
     DigitalAssetError,
 };
 use tari_dan_storage_sqlite::{
-    global::{models::contract::NewContract, SqliteGlobalDbBackendAdapter},
+    global::{
+        models::contract::{Contract, NewContract},
+        SqliteGlobalDbBackendAdapter,
+    },
     SqliteDbFactory,
     SqliteStorageService,
 };
@@ -180,28 +186,79 @@ impl ContractWorkerManager {
         let active_contracts = self.global_db.get_contracts_with_state(ContractState::Active)?;
 
         for contract in active_contracts {
-            let contract_id = FixedHash::try_from(contract.contract_id)?;
+            let contract_id = FixedHash::try_from(contract.contract_id.clone())?;
             info!("Validating contract={} activity", contract_id.to_hex());
 
-            if let Some(checkpoint) = self.scan_for_last_checkpoint(tip, &contract_id).await? {
-                let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
-                    WorkerManagerError::DataCorruption {
-                        details: error.to_string(),
-                    }
-                })?;
+            self.validate_contract_not_abandoned(tip, &contract_id, &contract)
+                .await?;
+            self.validate_contract_not_quarantined(tip, &contract_id).await?;
+        }
 
-                if tip.height_of_longest_chain >
-                    checkpoint.mined_height + constitution.checkpoint_params.abandoned_interval
-                {
-                    self.global_db
-                        .update_contract_state(contract_id, ContractState::Abandoned)?;
+        Ok(())
+    }
 
-                    info!(
-                        target: LOG_TARGET,
-                        "Contract={} has missed checkpoints and has been marked Abandoned",
-                        contract_id.to_hex()
-                    );
+    async fn validate_contract_not_quarantined(
+        &mut self,
+        tip: &BaseLayerMetadata,
+        contract_id: &FixedHash,
+    ) -> Result<(), WorkerManagerError> {
+        info!(
+            target: LOG_TARGET,
+            "Scanning base layer (tip: {}) for quarantine state of contract_id={}",
+            tip.height_of_longest_chain,
+            contract_id
+        );
+
+        let outputs = self
+            .base_node_client
+            .get_current_contract_outputs(
+                tip.height_of_longest_chain,
+                *contract_id,
+                OutputType::ContractQuarantine,
+            )
+            .await?;
+
+        if !outputs.is_empty() {
+            self.global_db
+                .update_contract_state(*contract_id, ContractState::Quarantined)?;
+
+            info!(
+                target: LOG_TARGET,
+                "Contract={} has been marked Quarantined. Stopping contract work.",
+                contract_id.to_hex()
+            );
+
+            if let Some(worker) = self.active_workers.get(contract_id) {
+                worker.store(false, Ordering::Relaxed);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn validate_contract_not_abandoned(
+        &mut self,
+        tip: &BaseLayerMetadata,
+        contract_id: &FixedHash,
+        contract: &Contract,
+    ) -> Result<(), WorkerManagerError> {
+        if let Some(checkpoint) = self.scan_for_last_checkpoint(tip, contract_id).await? {
+            let constitution = ContractConstitution::from_binary(&*contract.constitution).map_err(|error| {
+                WorkerManagerError::DataCorruption {
+                    details: error.to_string(),
                 }
+            })?;
+
+            if tip.height_of_longest_chain > checkpoint.mined_height + constitution.checkpoint_params.abandoned_interval
+            {
+                self.global_db
+                    .update_contract_state(*contract_id, ContractState::Abandoned)?;
+
+                info!(
+                    target: LOG_TARGET,
+                    "Contract={} has missed checkpoints and has been marked Abandoned",
+                    contract_id.to_hex()
+                );
             }
         }
 
