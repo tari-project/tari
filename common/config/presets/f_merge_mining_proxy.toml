@@ -1,0 +1,65 @@
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Merge Mining Configuration Options (MergeMiningProxyConfig)                                     #
+#                                                                                                                      #
+########################################################################################################################
+
+[merge_mining_proxy]
+
+# URL to monerod (default = "")
+monerod_url = [# stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+]
+
+#monerod_url = [ # mainnet
+#    # more reliable
+#    "http://xmr.support:18081",
+#    "http://node1.xmr-tw.org:18081",
+#    "http://xmr.nthrow.nyc:18081",
+#    # not so reliable
+#    "http://node.xmrig.com:18081",
+#    "http://monero.exan.tech:18081",
+#    "http://18.132.124.81:18081",
+#]
+
+# Username for curl. (default = "")
+#monerod_username = ""
+
+# Password for curl. (default = "")
+#monerod_password = ""
+
+# If authentication is being used for curl. (default = false)
+#monerod_use_auth = false
+
+# The Tari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# The Tari console wallet's GRPC address. (default = "/ip4/127.0.0.1/tcp/18143")
+#console_wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
+
+# Address of the tari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
+#listener_address = "/ip4/127.0.0.1/tcp/18081"
+
+# In sole merged mining, the block solution is usually submitted to the Monero blockchain
+# (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
+# merged mining, there is no sense in submitting the solution to the Monero blockchain as the
+# pool does that, then this setting should be "false". (default = true)
+#submit_to_origin = true
+
+# The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
+# or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
+# accepted. (default = true)
+#wait_for_initial_sync_at_startup = true
+
+# When mining for tari, you might want to check the achieved difficulty of the mined tari block before submitting
+# This setting this can be disabled to allow you to always submit tari blocks even if the difficulty does not meet the
+# required.  (default = true)
+#check_tari_difficulty_before_submit = true
+
+# The maximum amount of VMs that RandomX will be use (default = 5)
+#max_randomx_vms = 5

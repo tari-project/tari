@@ -1,7 +1,24 @@
-# Configuration options for dibbler testnet
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Peer Seeds Configuration Options (PeerSeedsConfig)                                              #
+#                                                                                                                      #
+########################################################################################################################
+
+[peer_seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
+#dns_seeds = []
+# Custom specified peer seed nodes
+#peer_seeds = []
+# DNS name server to use for DNS seeds
+#dns_seeds_name_server = "1.1.1.1:853/cloudflare-dns.com"
+# All DNS seed records must pass DNSSEC validation
+#dns_seeds_use_dnssec = false
 
 [dibbler.p2p.seeds]
+# DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
 dns_seeds = ["seeds.dibbler.tari.com"]
+# Custom specified peer seed nodes
 peer_seeds = [
     # 333388d1cbe3e2bd17453d052f
     "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
@@ -24,4 +41,5 @@ peer_seeds = [
 ]
 
 [igor.p2p.seeds]
+# Custom specified peer seed nodes
 peer_seeds = ["bc1e742c3af35e4e6998169b9bf8f102a6c0f54e207842a6a2c659e67d938077::/onion3/mmdxq25om5optfjnhd7yry75px6pdom2nqcmbiqmy6xwozjpil3mhkid:18141"]

@@ -235,19 +235,19 @@ mod test {
             Some(o) => {
                 format!(
                     r#"
-[auto_update]
-override_from="{}"
-check_interval=31
-name_server="127.0.0.1:80/localtest"
-update_uris = ["http://none", "http://local"]
-[config_a.auto_update]
-check_interval=33
-name_server="127.0.0.1:80/localtest2"
-use_dnssec=true
-[config_b.auto_update]
-# spelling error in name
-use_dns_sec=true
-"#,
+                    [auto_update]
+                    override_from="{}"
+                    check_interval=31
+                    name_server="127.0.0.1:80/localtest"
+                    update_uris = ["http://none", "http://local"]
+                    [config_a.auto_update]
+                    check_interval=33
+                    name_server="127.0.0.1:80/localtest2"
+                    use_dnssec=true
+                    [config_b.auto_update]
+                    # spelling error in name
+                    use_dns_sec=true
+                    "#,
                     o
                 )
             },

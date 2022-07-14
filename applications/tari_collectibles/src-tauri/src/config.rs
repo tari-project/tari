@@ -28,8 +28,11 @@ use tari_common::SubConfigPath;
 #[serde(deny_unknown_fields)]
 pub struct CollectiblesConfig {
   override_from: Option<String>,
+  /// GRPC address of validator node
   pub validator_node_grpc_address: Multiaddr,
+  /// GRPC address of base node
   pub base_node_grpc_address: Multiaddr,
+  /// GRPC address of console wallet
   pub wallet_grpc_address: Multiaddr,
 }
 
