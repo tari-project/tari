@@ -3,15 +3,13 @@ import { useEffect, useState } from 'react'
 import Text from '../../Text'
 import t from '../../../locales'
 import Button from '../../Button'
-import { useAppDispatch } from '../../../store/hooks'
+import { useAppDispatch, useAppSelector } from '../../../store/hooks'
 import { setExpertView } from '../../../store/app'
 import { setExpertSwitchDisabled } from '../../../store/app'
+import { actions as dockerImagesActions } from '../../../store/dockerImages'
 import { ActionStatusContainer, CtaButtonContainer, StatusRow } from './styles'
 import Loading from '../../Loading'
-
-/**
- * @TODO - temporary components for Docker Images Download - #309
- */
+import { selectDockerImages } from '../../../store/dockerImages/selectors'
 
 type StatusType =
   | 'not_started'
@@ -67,11 +65,48 @@ export const DownloadImagesMessage = ({
   onSuccess: () => void
 }) => {
   const dispatch = useAppDispatch()
+
+  const dockerImages = useAppSelector(selectDockerImages)
+
   const [status, setStatus] = useState<StatusType>('in_progress')
+  const [fetching, setFetching] = useState(false)
+  const [accomplished, setAccomplished] = useState(false)
 
   useEffect(() => {
     dispatch(setExpertSwitchDisabled(false))
+    dispatch(dockerImagesActions.pullImages())
+    setFetching(true)
   }, [])
+
+  useEffect(() => {
+    const anyNotUpToDate = dockerImages.find(f => !f.updated)
+
+    if (fetching && !accomplished) {
+      const anyError = dockerImages.find(f => Boolean(f.error))
+      const anyInProgess = dockerImages.find(f => !f.updated && f.pending)
+
+      if (anyError) {
+        /**
+         * @TODO handle no space error?
+         */
+        onError('server_error')
+        setFetching(false)
+      } else if (!anyInProgess) {
+        setStatus('success')
+        setAccomplished(true)
+        onSuccess()
+        setFetching(false)
+      }
+    }
+
+    if (!anyNotUpToDate && !accomplished) {
+      setStatus('success')
+      setAccomplished(true)
+      onSuccess()
+      setFetching(false)
+      return
+    }
+  }, [dockerImages])
 
   useEffect(() => {
     if (['no_space_error', 'server_error'].includes(status)) {
@@ -94,29 +129,6 @@ export const DownloadImagesMessage = ({
       </Text>
 
       <Status status={status} />
-
-      <Button
-        onClick={() => {
-          setStatus('success')
-          onSuccess()
-        }}
-      >
-        Success
-      </Button>
-      <Button
-        onClick={() => {
-          setStatus('server_error')
-        }}
-      >
-        Error 1 - server error
-      </Button>
-      <Button
-        onClick={() => {
-          setStatus('no_space_error')
-        }}
-      >
-        Error 2 - no space
-      </Button>
     </>
   )
 }
@@ -130,13 +142,45 @@ export const DownloadImagesErrorMessage = ({
   onError: (type: 'no_space_error' | 'server_error') => void
   onSuccess: () => void
 }) => {
+  const dispatch = useAppDispatch()
+
+  const dockerImages = useAppSelector(selectDockerImages)
+
   const [status, setStatus] = useState<StatusType>('not_started')
+  const [fetching, setFetching] = useState(false)
+  const [accomplished, setAccomplished] = useState(false)
 
   useEffect(() => {
     if (['no_space_error', 'server_error'].includes(status)) {
       onError(status as 'no_space_error' | 'server_error')
     }
+
+    if (status === 'in_progress' && !fetching) {
+      dispatch(dockerImagesActions.pullImages())
+      setFetching(true)
+    }
   }, [status])
+
+  useEffect(() => {
+    if (fetching && !accomplished) {
+      const anyError = dockerImages.find(f => Boolean(f.error))
+      const anyInProgess = dockerImages.find(f => !f.updated && f.pending)
+
+      if (anyError) {
+        /**
+         * @TODO handle no space error?
+         */
+        onError('server_error')
+        setAccomplished(true)
+      } else if (!anyInProgess) {
+        setStatus('success')
+        setAccomplished(true)
+        onSuccess()
+      }
+
+      setFetching(false)
+    }
+  }, [dockerImages])
 
   const text =
     errorType === 'no_space_error' ? (
@@ -174,33 +218,6 @@ export const DownloadImagesErrorMessage = ({
       )}
 
       <Status status={status} />
-
-      {status === 'in_progress' && (
-        <>
-          <Button
-            onClick={() => {
-              setStatus('success')
-              onSuccess()
-            }}
-          >
-            Success
-          </Button>
-          <Button
-            onClick={() => {
-              setStatus('server_error')
-            }}
-          >
-            Error 1 - server error
-          </Button>
-          <Button
-            onClick={() => {
-              setStatus('no_space_error')
-            }}
-          >
-            Error 2 - no space
-          </Button>
-        </>
-      )}
     </>
   )
 }

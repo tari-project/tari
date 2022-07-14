@@ -23,6 +23,7 @@ const ExpertView = () => {
           style={{
             backgroundColor: theme.inverted.backgroundSecondary,
             marginTop: 0,
+            width: '100%',
           }}
           border={false}
         >

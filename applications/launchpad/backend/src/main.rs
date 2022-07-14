@@ -55,6 +55,7 @@ use crate::{
         create_new_workspace,
         events,
         launch_docker,
+        pull_image,
         pull_images,
         shutdown,
         start_service,
@@ -158,6 +159,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             image_info,
             network_list,
+            pull_image,
             pull_images,
             create_new_workspace,
             create_default_workspace,

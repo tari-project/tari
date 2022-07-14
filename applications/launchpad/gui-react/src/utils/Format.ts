@@ -151,3 +151,11 @@ export const bytesToHex = (bytes: number[]): string => {
   }
   return hex.join('')
 }
+
+/**
+ * Convert snake case to the camel case
+ * @param {string} text - text to convert
+ */
+export const snakeCaseToCamelCase = (text: string) => {
+  return text.replace(/[^a-zA-Z0-9]+(.)/g, (m, chr) => chr.toUpperCase())
+}

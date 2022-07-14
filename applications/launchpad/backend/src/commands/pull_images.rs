@@ -104,7 +104,7 @@ pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
     debug!("Command pull_images invoked");
     let futures = DEFAULT_IMAGES
         .iter()
-        .map(|image| pull_image(image.image_name(), app.clone()).map_err(|e| format!("error pulling image: {}", e)));
+        .map(|image| pull_image(app.clone(), image.image_name()).map_err(|e| format!("error pulling image: {}", e)));
     let results: Vec<Result<_, String>> = join_all(futures).await;
     let errors = results
         .into_iter()
@@ -119,7 +119,7 @@ pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn pull_image(image_name: &str, app: AppHandle<Wry>) -> Result<(), String> {
+pub async fn pull_image(app: AppHandle<Wry>, image_name: &str) -> Result<(), String> {
     let image = ImageType::try_from(image_name).map_err(|_err| format!("invalid image name: {}", image_name))?;
     let full_image_name = match image {
         ImageType::Loki | ImageType::Promtail | ImageType::Grafana => format!("grafana/{}:latest", image.image_name()),

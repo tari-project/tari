@@ -13,7 +13,11 @@ import {
   DownloadImagesErrorMessage,
   BlockchainSyncStep,
 } from '../../config/onboardingMessagesConfig'
-import { setOnboardingComplete } from '../../store/app'
+import {
+  setExpertSwitchDisabled,
+  setExpertView,
+  setOnboardingComplete,
+} from '../../store/app'
 import { selectOnboardingCheckpoint } from '../../store/app/selectors'
 import { OnboardingCheckpoints } from '../../store/app/types'
 import { useAppDispatch, useAppSelector } from '../../store/hooks'
@@ -32,6 +36,11 @@ const OnboardingContainer = () => {
   )
   const [current, setCurrent] = useState(0)
   const [tBotIndex, setTBotIndex] = useState(1)
+
+  useEffect(() => {
+    dispatch(setExpertView('hidden'))
+    dispatch(setExpertSwitchDisabled(true))
+  }, [])
 
   messagesRef.current = messages
 
@@ -74,7 +83,6 @@ const OnboardingContainer = () => {
     setMessages(newMsgs)
   }
 
-  /** MOCK FOR DOCKER IMAGE DOWNLOAD */
   const onImagesDowloadSuccess = () => {
     pushMessages([
       {
@@ -123,7 +131,6 @@ const OnboardingContainer = () => {
       },
     ])
   }
-  /** END OF MOCK FOR DOCKER IMAGE DOWNLOAD */
 
   /** IS DOCKER INSTALLED */
   useEffect(() => {

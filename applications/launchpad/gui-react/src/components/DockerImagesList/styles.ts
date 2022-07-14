@@ -24,3 +24,31 @@ export const DockerStatusWrapper = styled.div`
   justify-content: flex-end;
   column-gap: ${({ theme }) => theme.spacingHorizontal(0.5)};
 `
+
+export const ErrorWrapper = styled.span`
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+  overflow: hidden;
+  cursor: pointer;
+  color: ${({ theme }) => theme.error};
+
+  &:hover {
+    text-decoration: underline;
+  }
+`
+
+export const ProgressContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  width: 80%;
+`
+
+export const TextProgessContainer = styled.span`
+  font-size: 12px;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  overflow: hidden;
+`

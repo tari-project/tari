@@ -1,4 +1,4 @@
-import { useEffect, CSSProperties } from 'react'
+import { useEffect, CSSProperties, useState } from 'react'
 import { useTheme } from 'styled-components'
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
@@ -13,10 +13,17 @@ import LoadingOverlay from '../../components/LoadingOverlay'
 import Tag from '../../components/Tag'
 import Button from '../../components/Button'
 import CheckIcon from '../../styles/Icons/CheckRound'
-import QuestionMarkIcon from '../../styles/Icons/Info1'
 import t from '../../locales'
 
-import { DockerRow, DockerList, DockerStatusWrapper } from './styles'
+import {
+  DockerRow,
+  DockerList,
+  DockerStatusWrapper,
+  ErrorWrapper,
+  TextProgessContainer,
+  ProgressContainer,
+} from './styles'
+import Alert from '../Alert'
 
 const DockerImagesList = ({
   inverted,
@@ -34,6 +41,10 @@ const DockerImagesList = ({
   useEffect(() => {
     dispatch(actions.getDockerImageList())
   }, [dispatch])
+
+  const [errorInAlert, setErrorInAlert] = useState<string | undefined>(
+    undefined,
+  )
 
   const dockerImages = useAppSelector(selectDockerImages)
   const dockerImagesLoading = useAppSelector(selectDockerImagesLoading)
@@ -55,94 +66,134 @@ const DockerImagesList = ({
           </Text>
         </DockerRow>
       )}
-      {dockerImages.map(dockerImage => (
-        <DockerRow key={dockerImage.dockerImage} $inverted={inverted}>
-          <Text
-            style={{ flexBasis: '30%' }}
-            type={header ? 'smallMedium' : 'defaultMedium'}
-            color={inverted ? theme.inverted.disabledText : theme.primary}
-          >
-            {dockerImage.displayName.toLowerCase()}
-          </Text>
-          {dockerImage.latest && (
-            <DockerStatusWrapper>
-              {!disableIcons && (
-                <CheckIcon
-                  color={theme.onTextLight}
-                  height='1.25em'
-                  width='1.25em'
+      {dockerImages.map(dockerImage => {
+        return (
+          <DockerRow key={dockerImage.dockerImage} $inverted={inverted}>
+            <Text
+              style={{ flexBasis: '30%' }}
+              type={header ? 'smallMedium' : 'defaultMedium'}
+              color={inverted ? theme.inverted.disabledText : theme.primary}
+            >
+              {dockerImage.displayName.toLowerCase()}
+            </Text>
+            {dockerImage.updated && (
+              <DockerStatusWrapper>
+                {!disableIcons && (
+                  <CheckIcon
+                    color={theme.onTextLight}
+                    height='1.25em'
+                    width='1.25em'
+                    style={{
+                      flexShrink: 0,
+                      flexBasis: '2em',
+                    }}
+                  />
+                )}
+                <Text
+                  type='smallMedium'
+                  as='span'
                   style={{
-                    flexShrink: 0,
-                    flexBasis: '2em',
+                    flexShrink: 1,
+                    overflowX: 'hidden',
+                    textOverflow: 'ellipsis',
+                    wordBreak: 'keep-all',
                   }}
+                  color={inverted ? theme.inverted.secondary : theme.primary}
+                >
+                  {t.docker.imageUpToDate}{' '}
+                  <span
+                    style={{
+                      color: inverted
+                        ? theme.inverted.primary
+                        : theme.secondary,
+                    }}
+                    title={dockerImage.dockerImage}
+                  >
+                    {dockerImage.dockerImage}
+                  </span>
+                </Text>
+              </DockerStatusWrapper>
+            )}
+            {!dockerImage.updated && !dockerImage.pending && (
+              <DockerStatusWrapper>
+                {dockerImage.error ? (
+                  <ErrorWrapper
+                    onClick={() => setErrorInAlert(dockerImage.error)}
+                  >
+                    <Text
+                      as='span'
+                      style={{ fontSize: 12, color: theme.error }}
+                    >
+                      {dockerImage.error}
+                    </Text>
+                  </ErrorWrapper>
+                ) : (
+                  <Tag type='warning'>{t.docker.newerVersion}</Tag>
+                )}
+                <Button
+                  variant='button-in-text'
+                  type='link'
+                  style={{ color: theme.onTextLight }}
+                  onClick={() =>
+                    dispatch(
+                      actions.pullImage({
+                        dockerImage: dockerImage.containerName,
+                      }),
+                    )
+                  }
+                >
+                  {t.docker.pullImage}
+                </Button>
+              </DockerStatusWrapper>
+            )}
+            {!dockerImage.updated && dockerImage.pending && (
+              <DockerStatusWrapper>
+                <Loading
+                  loading
+                  size='1em'
+                  color={inverted ? theme.inverted.primary : theme.primary}
                 />
-              )}
-              <Text
-                type='smallMedium'
-                as='span'
-                style={{
-                  flexShrink: 1,
-                  overflowX: 'hidden',
-                  textOverflow: 'ellipsis',
-                  wordBreak: 'keep-all',
-                }}
-                color={inverted ? theme.inverted.secondary : theme.primary}
-              >
-                {t.docker.imageUpToDate}{' '}
-                <span
-                  style={{
-                    color: inverted ? theme.inverted.primary : theme.secondary,
-                  }}
-                  title={dockerImage.dockerImage}
-                >
-                  {dockerImage.dockerImage}
-                </span>
-              </Text>
-            </DockerStatusWrapper>
-          )}
-          {!dockerImage.latest && !dockerImage.pending && (
-            <DockerStatusWrapper>
-              <Tag type='warning'>{t.docker.newerVersion}</Tag>
-              <Button
-                variant='button-in-text'
-                type='link'
-                style={{ color: theme.onTextLight }}
-                rightIcon={<QuestionMarkIcon />}
-                onClick={() =>
-                  dispatch(
-                    actions.pullImage({ dockerImage: dockerImage.dockerImage }),
-                  )
-                }
-              >
-                {t.docker.pullImage}
-              </Button>
-            </DockerStatusWrapper>
-          )}
-          {!dockerImage.latest && dockerImage.pending && (
-            <DockerStatusWrapper>
-              <Loading
-                loading
-                size='1em'
-                color={inverted ? theme.inverted.primary : theme.primary}
-              />
-              {dockerImage.status && (
-                <Text
-                  color={inverted ? theme.inverted.primary : theme.secondary}
-                >
-                  {t.docker.status[dockerImage.status]}
-                </Text>
-              )}
-              {dockerImage.progress !== undefined && (
-                <Text
-                  color={inverted ? theme.inverted.primary : theme.secondary}
-                >
-                  {dockerImage.progress}%
-                </Text>
-              )}
-            </DockerStatusWrapper>
-          )}
-        </DockerRow>
-      ))}
+                <ProgressContainer>
+                  {dockerImage.status && (
+                    <TextProgessContainer>
+                      <Text
+                        color={
+                          inverted ? theme.inverted.primary : theme.secondary
+                        }
+                        style={{ fontSize: 12 }}
+                      >
+                        {dockerImage.status}
+                      </Text>
+                    </TextProgessContainer>
+                  )}
+                  {dockerImage.progress !== undefined && (
+                    <TextProgessContainer>
+                      <Text
+                        color={
+                          inverted ? theme.inverted.primary : theme.secondary
+                        }
+                        style={{
+                          fontSize: '9px',
+                          whiteSpace: 'pre-line',
+                          lineHeight: '10px',
+                        }}
+                      >
+                        {dockerImage.progress?.split(']').join(']\n')}
+                      </Text>
+                    </TextProgessContainer>
+                  )}
+                </ProgressContainer>
+              </DockerStatusWrapper>
+            )}
+          </DockerRow>
+        )
+      })}
+      <Alert
+        title='Error'
+        open={Boolean(errorInAlert)}
+        onClose={() => setErrorInAlert(undefined)}
+        content={errorInAlert}
+      />
     </DockerList>
   )
 }

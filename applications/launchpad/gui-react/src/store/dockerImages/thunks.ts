@@ -3,11 +3,7 @@ import { createAsyncThunk } from '@reduxjs/toolkit'
 import { invoke } from '@tauri-apps/api/tauri'
 
 import { RootState } from '../'
-import {
-  DockerImage,
-  DockerImagePullStatus,
-  ServiceRecipe,
-} from '../../types/general'
+import { DockerImage, ServiceRecipe } from '../../types/general'
 
 export const getDockerImageList = createAsyncThunk<
   { images: DockerImage[]; recipes: ServiceRecipe[] },
@@ -18,79 +14,44 @@ export const getDockerImageList = createAsyncThunk<
     const state = thunkApi.getState()
     const settings = selectServiceSettings(state)
 
-    const { imageInfo, serviceRecipes } = await invoke<{
+    const result = await invoke<{
       imageInfo: DockerImage[]
       serviceRecipes: ServiceRecipe[]
     }>('image_info', {
       settings,
     })
 
-    // TODO get status from backend after https://github.com/Altalogy/tari/issues/311
+    /**
+     *  @TODO remove `updated: false` after the backend starts returning correct value
+     */
     return {
-      images: imageInfo.map(img => ({ ...img, latest: true })),
-      recipes: serviceRecipes,
+      images: result.imageInfo.map(img => ({ ...img, updated: false })),
+      recipes: result.serviceRecipes,
     }
   } catch (e) {
     return thunkApi.rejectWithValue(e)
   }
 })
 
-export const pullImage = createAsyncThunk<void, { dockerImage: string }>(
-  'dockerImages/pullImage',
-  async ({ dockerImage }, thunkApi) => {
-    try {
-      thunkApi.dispatch({
-        type: 'dockerImages/setProgress',
-        payload: {
-          dockerImage,
-          status: DockerImagePullStatus.Waiting,
-        },
-      })
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      thunkApi.dispatch({
-        type: 'dockerImages/setProgress',
-        payload: {
-          dockerImage,
-          status: DockerImagePullStatus.Pulling,
-          progress: 0,
-        },
-      })
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      thunkApi.dispatch({
-        type: 'dockerImages/setProgress',
-        payload: {
-          dockerImage,
-          progress: 20,
-        },
-      })
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      thunkApi.dispatch({
-        type: 'dockerImages/setProgress',
-        payload: {
-          dockerImage,
-          progress: 60,
-        },
-      })
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      thunkApi.dispatch({
-        type: 'dockerImages/setProgress',
-        payload: {
-          dockerImage,
-          progress: 80,
-        },
-      })
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      thunkApi.dispatch({
-        type: 'dockerImages/setProgress',
-        payload: {
-          dockerImage,
-          status: DockerImagePullStatus.Ready,
-          progress: 100,
-        },
-      })
-      // TODO pull image after https://github.com/Altalogy/tari/issues/311
-    } catch (e) {
-      return thunkApi.rejectWithValue(e)
-    }
+export const pullImages = createAsyncThunk<void, void, { state: RootState }>(
+  'dockerImages/pullImages',
+  async (_, thunkApi) => {
+    thunkApi.getState().dockerImages.images.map(image => {
+      thunkApi.dispatch(pullImage({ dockerImage: image.containerName }))
+    })
   },
 )
+
+export const pullImage = createAsyncThunk<
+  { dockerImage: string },
+  { dockerImage: string },
+  { state: RootState }
+>('dockerImages/pullImage', async ({ dockerImage }, thunkApi) => {
+  try {
+    invoke('pull_image', { imageName: dockerImage })
+
+    return { dockerImage }
+  } catch (e) {
+    return thunkApi.rejectWithValue(e)
+  }
+})

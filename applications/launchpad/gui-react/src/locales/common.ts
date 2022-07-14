@@ -79,6 +79,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     yourJobIsDoneHere: 'Your job is done here',
     calculatingTheRemainingTime:
       'Calculating remaining time (this may take a few minutes)',
+    somethingWentWrong: 'Something went wrong',
   },
   containers: {
     [Container.Tor]: 'Tor',
