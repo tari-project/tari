@@ -2416,3 +2416,61 @@ pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: TransactionStatus,
 }
+
+#[cfg(test)]
+mod tests {
+    use tari_crypto::{
+        hash::blake2::Blake256,
+        hashing::{DomainSeparatedHasher, GenericHashDomain},
+        ristretto::RistrettoSecretKey,
+    };
+    use tari_script::Opcode;
+
+    use super::*;
+
+    #[test]
+    fn test_stealth_addresses() {
+        // recipient's keys
+        let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
+        let (b, big_b) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender generates a random nonce key-pair: R=r⋅G
+        let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
+        // where H(⋅) is a cryptographic hash function
+        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_test")
+            .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
+            .finalize();
+
+        // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
+        let sender_spending_key =
+            PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
+
+        let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(sender_spending_key.clone())));
+
+        // ----------------------------------------------------------------------------
+        // imitating the receiving end, scanning and extraction
+
+        // Extracting the nonce R and a spending key from the script
+        if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
+        {
+            // calculating Ks with the provided R nonce from the script
+            let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_test")
+                .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
+                .finalize();
+
+            // computing a spending key `Ks=(c+b)G` for comparison
+            let receiver_spending_key =
+                PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b));
+
+            // computing a scanning key `Ks=cG+B` for comparison
+            let scanning_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;
+
+            assert_eq!(provided_spending_key.as_ref(), &sender_spending_key);
+            assert_eq!(receiver_spending_key, sender_spending_key);
+            assert_eq!(scanning_key, sender_spending_key);
+            assert_eq!(scanning_key, receiver_spending_key);
+        }
+    }
+}
