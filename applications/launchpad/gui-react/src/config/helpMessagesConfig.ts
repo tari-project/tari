@@ -18,6 +18,12 @@ import {
 } from '../components/TBot/HelpComponents/BaseNode'
 import { TBotMessage } from '../components/TBot/TBotPrompt/types'
 import { TBotMessages } from '../store/tbot/types'
+import {
+  DockerImageDownloadSuccess,
+  DockerImageDownloadError,
+  DownloadDockerImage,
+  NewDockerImageToDownload,
+} from '../components/TBot/HelpComponents/DockerComponents'
 
 const MessagesConfig = {
   [TBotMessages.CryptoMiningHelp]: ['cryptoHelpMessage1'],
@@ -31,6 +37,12 @@ const MessagesConfig = {
   [TBotMessages.BaseNodeHelp]: ['whatIsBaseNode'],
   [TBotMessages.ConnectAurora]: ['connectAurora'],
   [TBotMessages.TransactionFee]: ['transactionFee'],
+  [TBotMessages.NewDockerImageToDownload]: [
+    'newDockerImageToDownload',
+    'downloadDockerImage',
+  ],
+  [TBotMessages.DockerImageDownloadSuccess]: ['dockerImageDownloadSuccess'],
+  [TBotMessages.DockerImageDownloadError]: ['dockerImageDownloadError'],
 }
 
 export const HelpMessagesMap: {
@@ -57,6 +69,18 @@ export const HelpMessagesMap: {
   },
   transactionFee: {
     content: TransactionFee,
+  },
+  newDockerImageToDownload: {
+    content: NewDockerImageToDownload,
+  },
+  downloadDockerImage: {
+    content: DownloadDockerImage,
+  },
+  dockerImageDownloadSuccess: {
+    content: DockerImageDownloadSuccess,
+  },
+  dockerImageDownloadError: {
+    content: DockerImageDownloadError,
   },
 }
 

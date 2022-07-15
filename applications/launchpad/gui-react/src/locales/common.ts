@@ -5,6 +5,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     accept: 'Accept',
     apply: 'Apply',
     cancel: 'Cancel',
+    dismiss: 'Dismiss',
     tryAgain: 'Try again',
     stop: 'Stop',
     start: 'Start',

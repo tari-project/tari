@@ -6,4 +6,9 @@ export type DockerImagesState = {
   loaded: boolean
   images: DockerImage[]
   recipes: Recipes
+  downloadWithTBot: DockerImage[]
+  dismissedDownloads: {
+    dismissedAt: number // Date as integer [ms]
+    containerName: ContainerName
+  }[]
 }

@@ -8,6 +8,9 @@ export enum TBotMessages {
   Onboarding = 'Onboarding',
   ConnectAurora = 'ConnectAurora',
   TransactionFee = 'TransactionFee',
+  NewDockerImageToDownload = 'NewDockerImageToDownload',
+  DockerImageDownloadSuccess = 'DockerImageDownloadSuccess',
+  DockerImageDownloadError = 'DockerImageDownloadError',
 }
 
 export interface TBotState {

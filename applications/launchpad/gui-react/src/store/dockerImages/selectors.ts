@@ -11,3 +11,6 @@ export const selectRecipe =
   (container: ContainerName) =>
   ({ dockerImages }: RootState) =>
     dockerImages.recipes[container] || [container]
+
+export const selectDockerTBotQueue = ({ dockerImages }: RootState) =>
+  dockerImages.downloadWithTBot

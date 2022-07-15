@@ -14,6 +14,7 @@ import {
 import { useSystemEvents } from './useSystemEvents'
 import { useWalletEvents } from './useWalletEvents'
 import { useDockerEvents } from './useDockerEvents'
+import { useCheckDockerImages } from './useCheckDockerImages'
 import { useDockerImageDownloadListener } from './hooks/useDockerImageDownloadListener'
 import HomePage from './pages/home'
 import './styles/App.css'
@@ -25,6 +26,7 @@ import Onboarding from './pages/onboarding'
 import PasswordPrompt from './containers/PasswordPrompt'
 import { hideSplashscreen } from './splashscreen'
 import { openTerminalCmd } from './commands'
+import { useDockerTBotQueue } from './useDockerTBotQueue'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -45,6 +47,9 @@ const OnboardedAppContainer = ({
 
   useWalletEvents({ dispatch, transactionsRepository })
   useMiningScheduling()
+  useCheckDockerImages({ dispatch })
+  useDockerTBotQueue({ dispatch })
+
   useEffect(() => {
     statsRepository.removeOld()
   }, [])
