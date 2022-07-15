@@ -212,7 +212,6 @@ mod tests {
                     ),
                 }),
             },
-            initial_reward: 100.into(),
         };
 
         let subject = SideChainFeatures {

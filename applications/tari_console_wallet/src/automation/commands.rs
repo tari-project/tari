@@ -957,7 +957,6 @@ async fn init_contract_constitution_spec(
         contract_id,
         validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
         consensus: SideChainConsensus::MerkleRoot,
-        initial_reward: 0,
         acceptance_parameters: ContractAcceptanceRequirements {
             acceptance_period_expiry,
             minimum_quorum_required,
@@ -1027,7 +1026,6 @@ async fn init_contract_update_proposal_spec(
         contract_id,
         validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
         consensus: SideChainConsensus::MerkleRoot,
-        initial_reward: 0,
         acceptance_parameters: ContractAcceptanceRequirements {
             acceptance_period_expiry,
             minimum_quorum_required,

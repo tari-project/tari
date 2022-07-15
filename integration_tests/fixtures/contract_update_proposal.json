@@ -23,7 +23,6 @@
     },
     "constitution_change_rules": {
       "change_flags": 1
-    },
-    "initial_reward": 5
+    }
   }
 }

@@ -627,7 +627,6 @@ mod test {
                     ),
                 }),
             },
-            initial_reward: 100.into(),
         };
 
         OutputFeatures {
