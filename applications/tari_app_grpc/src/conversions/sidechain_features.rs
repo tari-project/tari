@@ -134,7 +134,6 @@ impl TryFrom<grpc::CreateConstitutionDefinitionRequest> for SideChainFeatures {
                         backup_keys: Some(validator_committee),
                     }),
                 },
-                initial_reward: 100.into(),
             }),
             acceptance: None,
             update_proposal: None,
@@ -269,7 +268,6 @@ impl From<ContractConstitution> for grpc::ContractConstitution {
             consensus: value.consensus.into(),
             checkpoint_params: Some(value.checkpoint_params.into()),
             constitution_change_rules: Some(value.constitution_change_rules.into()),
-            initial_reward: value.initial_reward.into(),
         }
     }
 }
@@ -296,7 +294,6 @@ impl TryFrom<grpc::ContractConstitution> for ContractConstitution {
             .constitution_change_rules
             .map(TryInto::try_into)
             .ok_or("constitution_change_rules not provided")??;
-        let initial_reward = value.initial_reward.into();
 
         Ok(Self {
             validator_committee,
@@ -304,7 +301,6 @@ impl TryFrom<grpc::ContractConstitution> for ContractConstitution {
             consensus,
             checkpoint_params,
             constitution_change_rules,
-            initial_reward,
         })
     }
 }

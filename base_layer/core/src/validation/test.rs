@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::commitment::HomomorphicCommitment;
@@ -186,7 +185,7 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1),
         &script!(Nop),
         &Covenant::default(),
     );
@@ -238,7 +237,7 @@ fn chain_balance_validation() {
     let (coinbase, key, _) = create_utxo(
         v,
         &factories,
-        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1),
         &script!(Nop),
         &Covenant::default(),
     );
@@ -291,7 +290,7 @@ mod transaction_validator {
         let db = create_store_with_consensus(consensus_manager);
         let factories = CryptoFactories::default();
         let validator = TxInternalConsistencyValidator::new(factories, true, db);
-        let features = OutputFeatures::create_coinbase(0, 0);
+        let features = OutputFeatures::create_coinbase(0);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
         let err = validator.validate(&tx).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);

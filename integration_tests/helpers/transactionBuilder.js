@@ -11,7 +11,6 @@ const {
 const { OutputType } = require("./types");
 
 class TransactionBuilder {
-  recovery_byte_key;
   constructor() {
     this.kv = tari_crypto.KeyRing.new();
     this.inputs = [];
@@ -61,9 +60,6 @@ class TransactionBuilder {
       Buffer.from([OUTPUT_FEATURES_VERSION]),
       Buffer.from([parseInt(features.maturity || 0)]),
       Buffer.from([features.output_type]),
-      OUTPUT_FEATURES_VERSION === 0x00
-        ? Buffer.from([])
-        : Buffer.from([features.recovery_byte]),
       bufFromOpt(features.parent_public_key, "hex"),
       bufFromOpt(unique_id, false),
       // TODO: SideChainFeatures
@@ -148,19 +144,6 @@ class TransactionBuilder {
     blake2bUpdate(context, sender_offset_public_key);
     let final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
-  }
-
-  create_unique_recovery_byte(commitment, recovery_byte_key) {
-    let KEY = null; // optional key
-    const OUTPUT_LENGTH = 1; // bytes
-    const context = blake2bInit(OUTPUT_LENGTH, KEY);
-    blake2bUpdate(context, Buffer.from(commitment, "hex"));
-    if (recovery_byte_key != undefined) {
-      blake2bUpdate(context, Buffer.from(recovery_byte_key, "hex"));
-    }
-    blake2bUpdate(context, Buffer.from("hash my recovery byte", "hex"));
-    const final = blake2bFinal(context);
-    return final;
   }
 
   changeFee(fee) {
@@ -271,11 +254,9 @@ class TransactionBuilder {
       Buffer.from(toLittleEndian(amount, 64)),
       Buffer.alloc(16),
     ]);
-    const recoveryByte = this.create_unique_recovery_byte(commitment);
     const outputFeatures = Object.assign({
       output_type: OutputType.STANDARD,
       maturity: 0,
-      recovery_byte: recoveryByte,
       metadata: [],
       // In case any of these change, update the buildMetaChallenge function
       unique_id: features.unique_id
@@ -471,11 +452,9 @@ class TransactionBuilder {
       Buffer.from(toLittleEndian(value, 64)),
       Buffer.alloc(16),
     ]);
-    const recoveryByte = this.create_unique_recovery_byte(commitment);
     let outputFeatures = {
       output_type: OutputType.COINBASE,
       maturity: lockHeight,
-      recovery_byte: recoveryByte,
       metadata: [],
       // In case any of these change, update the buildMetaChallenge function
       unique_id: null,

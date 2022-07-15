@@ -31,10 +31,7 @@ use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 
 use super::CommitteeMembers;
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::tari_amount::MicroTari,
-};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 /// # ContractConstitution
 ///
@@ -53,8 +50,6 @@ pub struct ContractConstitution {
     pub checkpoint_params: CheckpointParameters,
     /// The rules or restrictions on how and if a constitution may be changed.
     pub constitution_change_rules: ConstitutionChangeRules,
-    /// The initial reward paid to validator committee members.
-    pub initial_reward: MicroTari,
 }
 
 impl ConsensusEncoding for ContractConstitution {
@@ -64,7 +59,6 @@ impl ConsensusEncoding for ContractConstitution {
         self.consensus.consensus_encode(writer)?;
         self.checkpoint_params.consensus_encode(writer)?;
         self.constitution_change_rules.consensus_encode(writer)?;
-        self.initial_reward.consensus_encode(writer)?;
 
         Ok(())
     }
@@ -80,7 +74,6 @@ impl ConsensusDecoding for ContractConstitution {
             consensus: SideChainConsensus::consensus_decode(reader)?,
             checkpoint_params: CheckpointParameters::consensus_decode(reader)?,
             constitution_change_rules: ConstitutionChangeRules::consensus_decode(reader)?,
-            initial_reward: MicroTari::consensus_decode(reader)?,
         })
     }
 }
@@ -319,7 +312,6 @@ mod tests {
                     )),
                 }),
             },
-            initial_reward: MicroTari::from(123u64),
         };
 
         check_consensus_encoding_correctness(subject).unwrap();
