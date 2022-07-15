@@ -128,7 +128,7 @@ macro_rules! non_overlapping_iter_impl {
                     let rem = (self.end - self.current) % size;
 
                     // Would there be an overflow (if iterating from the forward to back)
-                    if self.current_end.saturating_sub(rem).checked_add(size).is_none() {
+                    if rem > 0 && self.current_end.saturating_sub(rem).checked_add(size).is_none() {
                         self.current_end = self.current_end.saturating_sub(rem);
                         let chunk = (self.current_end, <$ty>::MAX - 1);
                         return Some(chunk);
@@ -272,6 +272,14 @@ mod test {
         assert_eq!(iter.next().unwrap(), (254, 254));
         assert!(iter.next().is_none());
 
+        let mut iter = NonOverlappingIntegerPairIter::new(87u8, u8::MAX, 6).rev();
+        assert_eq!(iter.next().unwrap(), (249, 254));
+        assert_eq!(iter.next().unwrap(), (243, 248));
+        for _ in 0..((255 - 87) / 6) - 2 {
+            assert!(iter.next().is_some());
+        }
+        assert!(iter.next().is_none());
+
         let mut iter = NonOverlappingIntegerPairIter::new(255u8, u8::MAX, 1000).rev();
         assert!(iter.next().is_none());
     }
@@ -283,15 +291,20 @@ mod test {
         let rand_end = OsRng.gen::<u8>().saturating_add(rand_start);
 
         // If the iterator never ends, we have the params used
-        println!(
+        eprintln!(
             "iterator_symmetry: rand_start = {}, rand_end = {}, size = {}",
             rand_start, rand_end, size
         );
-        let iter_rev = NonOverlappingIntegerPairIter::new(rand_start, rand_end, size).rev();
-        let iter = NonOverlappingIntegerPairIter::new(rand_start, rand_end, size);
+        let iter_rev = NonOverlappingIntegerPairIter::<u8>::new(rand_start, rand_end, size).rev();
+        let iter = NonOverlappingIntegerPairIter::<u8>::new(rand_start, rand_end, size);
 
-        let collect1 = iter.collect::<Vec<_>>();
-        let collect2 = iter_rev.collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>();
+        let collect1 = iter.take(1000).collect::<Vec<_>>();
+        let collect2 = iter_rev
+            .take(1000)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>();
         assert_eq!(
             collect1, collect2,
             "Failed with rand_start = {}, rand_end = {}, size = {}",
