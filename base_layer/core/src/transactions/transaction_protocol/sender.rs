@@ -900,6 +900,8 @@ mod test {
         let encryption_key = PrivateKey::random(&mut OsRng);
         let encrypted_value = EncryptedValue::encrypt_value(&encryption_key, &commitment, value.into()).unwrap();
 
+        let minimum_value_promise = MicroTari::zero();
+
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             value.into(),
@@ -910,6 +912,7 @@ mod test {
             &sender_public_commitment_nonce,
             &covenant,
             &encrypted_value,
+            minimum_value_promise,
         )
         .unwrap();
 
@@ -922,6 +925,7 @@ mod test {
             partial_metadata_signature.clone(),
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         assert!(output.verify_metadata_signature().is_err());
         assert!(partial_metadata_signature.verify_challenge(

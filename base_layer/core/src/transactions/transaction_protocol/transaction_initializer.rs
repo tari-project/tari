@@ -236,6 +236,7 @@ impl SenderTransactionInitializer {
             &commitment,
             &output.covenant,
             &output.encrypted_value,
+            output.minimum_value_promise,
         );
         if !output.metadata_signature.verify_challenge(
             &(&commitment + &output.sender_offset_public_key),
@@ -402,6 +403,8 @@ impl SenderTransactionInitializer {
                             .map_err(|e| e.to_string())?
                             .unwrap_or_default();
 
+                        let minimum_value_promise = MicroTari::zero();
+
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
                             TransactionOutputVersion::get_current_version(),
                             v,
@@ -411,8 +414,10 @@ impl SenderTransactionInitializer {
                             &change_sender_offset_private_key,
                             &self.change_covenant,
                             &encrypted_value,
+                            minimum_value_promise,
                         )
                         .map_err(|e| e.to_string())?;
+
                         let change_unblinded_output = UnblindedOutput::new_current_version(
                             v,
                             change_key.clone(),
@@ -431,6 +436,7 @@ impl SenderTransactionInitializer {
                             0,
                             self.change_covenant.clone(),
                             encrypted_value,
+                            minimum_value_promise,
                         );
                         Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))
                     },

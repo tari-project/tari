@@ -104,6 +104,7 @@ pub struct OutputSql {
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
     pub contract_id: Option<Vec<u8>>,
+    pub minimum_value_promise: i64,
 }
 
 impl OutputSql {
@@ -690,6 +691,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 }
             })?,
             encrypted_value,
+            MicroTari::from(o.minimum_value_promise as u64),
         );
 
         let hash = match o.hash {

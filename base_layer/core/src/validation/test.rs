@@ -143,6 +143,7 @@ fn chain_balance_validation() {
         &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
@@ -189,6 +190,7 @@ fn chain_balance_validation() {
         &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     // let _coinbase_hash = coinbase.hash();
     let (pk, sig) = create_random_signature_from_s_key(coinbase_key, 0.into(), 0);
@@ -241,6 +243,7 @@ fn chain_balance_validation() {
         &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);

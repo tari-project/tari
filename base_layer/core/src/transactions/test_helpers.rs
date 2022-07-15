@@ -183,6 +183,9 @@ impl TestParams {
         } else {
             EncryptedValue::default()
         };
+
+        let minimum_value_promise = MicroTari::zero();
+
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             params.value,
@@ -192,6 +195,7 @@ impl TestParams {
             &self.sender_offset_private_key,
             &params.covenant,
             &encrypted_value,
+            minimum_value_promise,
         )
         .unwrap();
 
@@ -212,6 +216,7 @@ impl TestParams {
             0,
             params.covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -229,6 +234,7 @@ impl TestParams {
             &self.sender_offset_private_key,
             &uo.covenant,
             &uo.encrypted_value,
+            uo.minimum_value_promise,
         )
         .unwrap();
 
@@ -244,6 +250,7 @@ impl TestParams {
             uo.script_lock_height,
             uo.covenant,
             uo.encrypted_value,
+            uo.minimum_value_promise,
         )
     }
 
@@ -733,6 +740,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             &test_params.sender_offset_private_key,
             &utxo.covenant,
             &utxo.encrypted_value,
+            utxo.minimum_value_promise,
         )
         .unwrap();
         utxo.sender_offset_public_key = test_params.sender_offset_public_key;
@@ -760,6 +768,8 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
 
     let encrypted_value = EncryptedValue::default();
 
+    let minimum_value_promise = MicroTari::zero();
+
     let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
         output_version,
         change,
@@ -769,6 +779,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         &test_params_change_and_txn.sender_offset_private_key,
         &covenant,
         &encrypted_value,
+        minimum_value_promise,
     )
     .unwrap();
 
@@ -786,6 +797,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         0,
         covenant,
         encrypted_value,
+        minimum_value_promise,
     );
     outputs.push(change_output);
     (stx_protocol, outputs)
@@ -821,6 +833,7 @@ pub fn create_utxo(
     features: &OutputFeatures,
     script: &TariScript,
     covenant: &Covenant,
+    minimum_value_promise: MicroTari,
 ) -> (TransactionOutput, PrivateKey, PrivateKey) {
     let keys = generate_keys();
     let offset_keys = generate_keys();
@@ -838,6 +851,7 @@ pub fn create_utxo(
         &offset_keys.k,
         covenant,
         &EncryptedValue::default(),
+        minimum_value_promise,
     )
     .unwrap();
 
@@ -850,6 +864,7 @@ pub fn create_utxo(
         metadata_sig,
         covenant.clone(),
         EncryptedValue::default(),
+        minimum_value_promise,
     );
     utxo.verify_range_proof(&CryptoFactories::default().range_proof)
         .unwrap();

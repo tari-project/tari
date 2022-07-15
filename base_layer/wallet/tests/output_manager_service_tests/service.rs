@@ -2171,6 +2171,7 @@ async fn scan_for_recovery_test() {
             0,
             Covenant::new(),
             encrypted_value,
+            MicroTari::zero(),
         );
         rewindable_unblinded_outputs.push(uo);
     }

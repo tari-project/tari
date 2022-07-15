@@ -42,11 +42,12 @@ use tari_common_types::types::{
     RangeProof,
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
+    commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
     errors::RangeProofError,
     extended_range_proof::ExtendedRangeProofService,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
+    ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
     tari_utilities::{hex::to_hex, ByteArray},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -91,6 +92,7 @@ pub struct UnblindedOutput {
     pub metadata_signature: ComSignature,
     pub script_lock_height: u64,
     pub encrypted_value: EncryptedValue,
+    pub minimum_value_promise: MicroTari,
 }
 
 impl UnblindedOutput {
@@ -109,6 +111,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Self {
         Self {
             version,
@@ -123,6 +126,7 @@ impl UnblindedOutput {
             script_lock_height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         }
     }
 
@@ -138,6 +142,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Self {
         Self::new(
             TransactionOutputVersion::get_current_version(),
@@ -152,6 +157,7 @@ impl UnblindedOutput {
             script_lock_height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -189,6 +195,7 @@ impl UnblindedOutput {
                 covenant: self.covenant.clone(),
                 version: self.version,
                 encrypted_value: self.encrypted_value.clone(),
+                minimum_value_promise: self.minimum_value_promise,
             },
             self.input_data.clone(),
             script_signature,
@@ -231,28 +238,52 @@ impl UnblindedOutput {
             );
         }
 
+        let range_proof = self.construct_range_proof(factories)?;
+
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
             commitment,
-            RangeProof::from_bytes(
-                &factories
-                    .range_proof
-                    .construct_proof(&self.spending_key, self.value.into())?,
-            )
-            .map_err(|_| {
-                TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                    "Creating transaction output".to_string(),
-                ))
-            })?,
+            range_proof,
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
             self.covenant.clone(),
             self.encrypted_value.clone(),
+            self.minimum_value_promise,
         );
 
         Ok(output)
+    }
+
+    fn construct_range_proof(&self, factories: &CryptoFactories) -> Result<RangeProof, TransactionError> {
+        let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
+            factories
+                .range_proof
+                .construct_proof(&self.spending_key, self.value.into())
+        } else {
+            let extension_degree = ExtensionDegree::DefaultPedersen;
+            let secrets = vec![self.spending_key.clone(); extension_degree as usize];
+            let extended_mask = RistrettoExtendedMask::assign(extension_degree, secrets)?;
+
+            let extended_witness = RistrettoExtendedWitness {
+                mask: extended_mask,
+                value: self.value.into(),
+                minimum_value_promise: self.minimum_value_promise.as_u64(),
+            };
+
+            factories
+                .range_proof
+                .construct_extended_proof(vec![extended_witness], None)
+        };
+
+        let transaction_error = TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+            "Creating transaction output".to_string(),
+        ));
+
+        let proof_bytes = proof_bytes_result.map_err(|_| transaction_error.clone())?;
+
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| transaction_error)
     }
 
     pub fn as_rewindable_transaction_output(
@@ -306,6 +337,7 @@ impl UnblindedOutput {
             self.metadata_signature.clone(),
             self.covenant.clone(),
             self.encrypted_value.clone(),
+            self.minimum_value_promise,
         );
 
         Ok(output)
@@ -328,6 +360,7 @@ impl UnblindedOutput {
             &self.script,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )
         .to_vec()
     }

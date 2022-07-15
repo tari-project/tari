@@ -156,6 +156,7 @@ table! {
         covenant -> Binary,
         encrypted_value -> Binary,
         contract_id -> Nullable<Binary>,
+        minimum_value_promise -> BigInt,
     }
 }
 

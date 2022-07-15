@@ -79,6 +79,8 @@ message TransactionOutput {
     uint32 version = 8;
     // The encrypted value
     bytes encrypted_value = 9;
+    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    uint64 minimum_value_promise = 10;
 }
 
 // Options for UTXOs

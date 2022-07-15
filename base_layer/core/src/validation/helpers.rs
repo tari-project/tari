@@ -416,6 +416,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_value,
+                        output.minimum_value_promise,
                     );
                     let input_hash = input.canonical_hash()?;
                     if compact.canonical_hash()? != input_hash {
@@ -902,6 +903,7 @@ mod test {
                 Default::default(),
                 Default::default(),
                 Default::default(),
+                MicroTari::zero(),
             );
 
             assert!(matches!(

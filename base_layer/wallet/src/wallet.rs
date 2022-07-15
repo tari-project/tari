@@ -445,6 +445,7 @@ where
             script_lock_height,
             covenant,
             encrypted_value,
+            MicroTari::zero(),
         );
 
         let tx_id = self

@@ -50,7 +50,6 @@ use tari_crypto::{
     errors::RangeProofError,
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::RangeProofService as RangeProofServiceTrait,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
@@ -92,6 +91,9 @@ pub struct TransactionOutput {
     pub covenant: Covenant,
     /// Encrypted value.
     pub encrypted_value: EncryptedValue,
+    /// The minimum value of the commitment that is proven by the range proof
+    #[serde(default)]
+    pub minimum_value_promise: MicroTari,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -108,6 +110,7 @@ impl TransactionOutput {
         metadata_signature: ComSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> TransactionOutput {
         TransactionOutput {
             version,
@@ -119,6 +122,7 @@ impl TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         }
     }
 
@@ -131,6 +135,7 @@ impl TransactionOutput {
         metadata_signature: ComSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> TransactionOutput {
         TransactionOutput::new(
             TransactionOutputVersion::get_current_version(),
@@ -142,6 +147,7 @@ impl TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -157,12 +163,18 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
-        if prover.verify(&self.proof.0, &self.commitment) {
-            Ok(())
-        } else {
-            Err(TransactionError::ValidationError(
-                "Recipient output range proof failed to verify".to_string(),
-            ))
+        let statement = RistrettoAggregatedPublicStatement {
+            statements: vec![Statement {
+                commitment: self.commitment.clone(),
+                minimum_value_promise: self.minimum_value_promise.as_u64(),
+            }],
+        };
+        match prover.verify_batch(vec![&self.proof.0], vec![&statement]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(TransactionError::ValidationError(format!(
+                "Recipient output range proof failed to verify ({})",
+                e
+            ))),
         }
     }
 
@@ -177,6 +189,7 @@ impl TransactionOutput {
             &self.commitment,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         );
         if !self.metadata_signature.verify_challenge(
             &(&self.commitment + &self.sender_offset_public_key),
@@ -236,6 +249,7 @@ impl TransactionOutput {
             &self.commitment,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )
     }
 
@@ -249,17 +263,20 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Challenge {
+        let common = ConsensusHashWriter::default()
+            .chain(public_commitment_nonce)
+            .chain(script)
+            .chain(features)
+            .chain(sender_offset_public_key)
+            .chain(commitment)
+            .chain(covenant)
+            .chain(encrypted_value);
+
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
-                .chain(public_commitment_nonce)
-                .chain(script)
-                .chain(features)
-                .chain(sender_offset_public_key)
-                .chain(commitment)
-                .chain(covenant)
-                .chain(encrypted_value)
-                .into_digest(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.into_digest(),
+            TransactionOutputVersion::V2 => common.chain(&minimum_value_promise).into_digest(),
         }
     }
 
@@ -276,6 +293,7 @@ impl TransactionOutput {
         sender_offset_private_key: Option<&PrivateKey>,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<ComSignature, TransactionError> {
         let nonce_a = PrivateKey::random(&mut OsRng);
         let nonce_b = PrivateKey::random(&mut OsRng);
@@ -295,6 +313,7 @@ impl TransactionOutput {
             &commitment,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         let secret_x = match sender_offset_private_key {
             None => spending_key.clone(),
@@ -321,6 +340,7 @@ impl TransactionOutput {
         partial_commitment_nonce: &PublicKey,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
             version,
@@ -333,6 +353,7 @@ impl TransactionOutput {
             None,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -346,6 +367,7 @@ impl TransactionOutput {
         sender_offset_private_key: &PrivateKey,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
@@ -359,6 +381,7 @@ impl TransactionOutput {
             Some(sender_offset_private_key),
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -387,6 +410,7 @@ impl Hashable for TransactionOutput {
             &self.script,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )
         .to_vec()
     }
@@ -403,6 +427,7 @@ impl Default for TransactionOutput {
             ComSignature::default(),
             Covenant::default(),
             EncryptedValue::default(),
+            MicroTari::zero(),
         )
     }
 }
@@ -452,6 +477,7 @@ impl ConsensusEncoding for TransactionOutput {
         self.sender_offset_public_key.consensus_encode(writer)?;
         self.metadata_signature.consensus_encode(writer)?;
         self.covenant.consensus_encode(writer)?;
+        self.minimum_value_promise.consensus_encode(writer)?;
         Ok(())
     }
 }
@@ -467,6 +493,7 @@ impl ConsensusDecoding for TransactionOutput {
         let metadata_signature = ComSignature::consensus_decode(reader)?;
         let covenant = Covenant::consensus_decode(reader)?;
         let encrypted_value = EncryptedValue::consensus_decode(reader)?;
+        let minimum_value_promise = MicroTari::consensus_decode(reader)?;
         let output = TransactionOutput::new(
             version,
             features,
@@ -477,6 +504,7 @@ impl ConsensusDecoding for TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         Ok(output)
     }

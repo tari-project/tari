@@ -216,6 +216,8 @@ impl CoinbaseBuilder {
             .map_err(|_| CoinbaseBuildError::ValueEncryptionFailed)?
             .unwrap_or_default();
 
+        let minimum_value_promise = MicroTari::zero();
+
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             total_reward,
@@ -225,6 +227,7 @@ impl CoinbaseBuilder {
             &sender_offset_private_key,
             &covenant,
             &encrypted_value,
+            minimum_value_promise,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
@@ -240,6 +243,7 @@ impl CoinbaseBuilder {
             0,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output

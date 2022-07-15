@@ -1082,6 +1082,7 @@ impl LMDBDatabase {
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_value,
+                        output.minimum_value_promise,
                     );
                 },
             }
