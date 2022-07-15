@@ -1972,10 +1972,9 @@ where
 
         let mut rewound_outputs = Vec::with_capacity(outputs.len());
 
-        for (output, script_private_key, spend_key) in outputs {
-            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-            let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-            let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+        for (output, script_private_key, spending_key) in outputs {
+            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+            let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
             let committed_value =
                 EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
 
