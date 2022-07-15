@@ -24,16 +24,11 @@ use rand::{CryptoRng, Rng};
 use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    test_helpers::{
-        create_unblinded_output,
-        update_unblinded_output_with_updated_output_features,
-        TestParams as TestParamsHelpers,
-    },
+    test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
     transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_script::script;
-use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 
 pub struct TestParams {
     pub spend_key: PrivateKey,
@@ -59,26 +54,9 @@ pub async fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
     val: MicroTari,
     factory: &CommitmentFactory,
-    oms: Option<OutputManagerHandle>,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let mut utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params.clone(), val);
-    // If an 'OutputManagerHandle' is present it will have its own internal 'RewindData', thus do not use those provided
-    // by 'TestParamsHelpers::new()'; this will influence validation of output features and the metadata signature
-    // further down the line
-    if let Some(mut oms) = oms {
-        if let Ok(val) = oms
-            .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64(), true)
-            .await
-        {
-            utxo.features.set_recovery_byte(val);
-            utxo = update_unblinded_output_with_updated_output_features(
-                &test_params.clone(),
-                utxo.clone(),
-                utxo.features.clone(),
-            );
-        };
-    }
+    let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val);
     (
         utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),
@@ -91,20 +69,9 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     value: MicroTari,
     factory: &CommitmentFactory,
     features: Option<OutputFeatures>,
-    mut oms: OutputManagerHandle,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let mut utxo = create_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params.clone(), value);
-    // 'OutputManagerHandle' has its own internal 'RewindData', thus do not use those provided by
-    // 'TestParamsHelpers::new()'; this will influence validation of output features and the metadata signature
-    // further down the line
-    if let Ok(val) = oms
-        .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64(), true)
-        .await
-    {
-        utxo.features.set_recovery_byte(val);
-        utxo = update_unblinded_output_with_updated_output_features(&test_params, utxo.clone(), utxo.features.clone());
-    };
+    let utxo = create_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params, value);
     (
         utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),

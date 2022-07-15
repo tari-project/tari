@@ -138,15 +138,11 @@ where
         let rewind_blinding_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
             .await?;
-        let recovery_byte_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
-            .await?;
         let encryption_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::ValueEncryption.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
             rewind_blinding_key,
-            recovery_byte_key,
             encryption_key,
         };
 
@@ -374,15 +370,6 @@ where
                 .map(|_| OutputManagerResponse::EncryptionRemoved)
                 .map_err(OutputManagerError::OutputManagerStorageError),
 
-            OutputManagerRequest::CalculateRecoveryByte {
-                spending_key,
-                value,
-                with_rewind_data,
-            } => Ok(OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(
-                spending_key,
-                value,
-                with_rewind_data,
-            )?)),
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.rewind_data.clone(),
@@ -542,22 +529,6 @@ where
         self.validate_outputs()
     }
 
-    pub fn calculate_recovery_byte(
-        &mut self,
-        spending_key: PrivateKey,
-        value: u64,
-        with_rewind_data: bool,
-    ) -> Result<u8, OutputManagerError> {
-        let commitment = self.resources.factories.commitment.commit_value(&spending_key, value);
-        let rewind_data = if with_rewind_data {
-            Some(&self.resources.rewind_data)
-        } else {
-            None
-        };
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, rewind_data);
-        Ok(recovery_byte)
-    }
-
     /// Add an unblinded non-rewindable output to the outputs table and mark it as `Unspent`.
     pub fn add_output(
         &mut self,
@@ -715,11 +686,7 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, single_round_sender_data.amount.as_u64());
-        let updated_features = OutputFeatures::features_with_updated_recovery_byte(
-            &commitment,
-            Some(&self.resources.rewind_data),
-            &single_round_sender_data.features.clone(),
-        );
+        let features = single_round_sender_data.features.clone();
         let encrypted_value = EncryptedValue::encrypt_value(
             &self.resources.rewind_data.encryption_key,
             &commitment,
@@ -729,7 +696,7 @@ where
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
                 spending_key.clone(),
-                updated_features.clone(),
+                features.clone(),
                 single_round_sender_data.script.clone(),
                 // TODO: The input data should be variable; this will only work for a Nop script #LOGGED
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -741,7 +708,7 @@ where
                     single_round_sender_data.amount,
                     &spending_key,
                     &single_round_sender_data.script,
-                    &updated_features,
+                    &features,
                     &single_round_sender_data.sender_offset_public_key,
                     &single_round_sender_data.public_commitment_nonce,
                     &single_round_sender_data.covenant,
@@ -1090,7 +1057,6 @@ where
             let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
             let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
 
-            unblinded_output.update_recovery_byte(&self.resources.factories)?;
             unblinded_output.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
             unblinded_output.sign_as_sender(&sender_offset_private_key)?;
 
@@ -1183,7 +1149,7 @@ where
         tx_id: TxId,
         amount: MicroTari,
         utxo_selection: UtxoSelectionCriteria,
-        mut output_features: OutputFeatures,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -1229,8 +1195,6 @@ where
         }
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
-        output_features.set_recovery_byte(recovery_byte);
         let commitment = self
             .resources
             .factories
@@ -1573,11 +1537,7 @@ where
             let output_amount = amount_per_split;
 
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64(), true)?;
-            let output_features = OutputFeatures {
-                recovery_byte,
-                ..Default::default()
-            };
+            let output_features = OutputFeatures::default();
 
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
@@ -1722,8 +1682,7 @@ where
             .as_bytes(),
         )?;
         let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
         if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
         {
             let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
@@ -1822,7 +1781,7 @@ where
             }
         } else {
             Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
-                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decryptes!".to_string()),
+                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decrypted!".to_string()),
             )))
         }
     }
@@ -1952,8 +1911,7 @@ where
                     .as_bytes(),
                 )?;
                 let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-                let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-                let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+                let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
                 let committed_value =
                     EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
                 if let Ok(committed_value) = committed_value {
@@ -1984,7 +1942,6 @@ where
                             &self.resources.factories,
                             &RewindData {
                                 rewind_blinding_key,
-                                recovery_byte_key,
                                 encryption_key,
                             },
                             None,

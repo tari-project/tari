@@ -129,7 +129,6 @@ table! {
         value -> BigInt,
         output_type -> Integer,
         maturity -> BigInt,
-        recovery_byte -> Integer,
         status -> Integer,
         hash -> Nullable<Binary>,
         script -> Binary,

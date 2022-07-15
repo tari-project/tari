@@ -735,7 +735,7 @@ mod fetch_utxo_by_unique_id {
         // Height 1
         let (blocks, outputs) = add_many_chained_blocks(1, &db);
 
-        let mut features = OutputFeatures {
+        let features = OutputFeatures {
             output_type: OutputType::MintNonFungible,
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
@@ -746,9 +746,8 @@ mod fetch_utxo_by_unique_id {
             to: vec![500 * T],
             fee: 5.into(),
             lock: 0,
-            features: features.clone()
+            features: features
         )]);
-        features.set_recovery_byte(tx_outputs[0].features.recovery_byte);
 
         let asset_utxo1 = tx_outputs.iter().find(|o| o.features == features).unwrap();
 
@@ -763,7 +762,6 @@ mod fetch_utxo_by_unique_id {
             .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), None)
             .unwrap()
             .unwrap();
-        features.set_recovery_byte(info.output.as_transaction_output().unwrap().features.recovery_byte);
         assert_eq!(info.output.as_transaction_output().unwrap().features, features);
         let expected_commitment =
             CommitmentFactory::default().commit_value(&asset_utxo1.spending_key, asset_utxo1.value.as_u64());
@@ -772,7 +770,7 @@ mod fetch_utxo_by_unique_id {
             expected_commitment
         );
 
-        let mut features = OutputFeatures {
+        let features = OutputFeatures {
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
             ..Default::default()
@@ -784,7 +782,6 @@ mod fetch_utxo_by_unique_id {
             lock: 0,
             features: features
         )]);
-        features.set_recovery_byte(tx_outputs[0].features.recovery_byte);
 
         let asset_utxo2 = tx_outputs.iter().find(|o| o.features == features).unwrap();
 
