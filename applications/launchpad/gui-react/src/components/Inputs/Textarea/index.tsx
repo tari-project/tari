@@ -45,6 +45,7 @@ const Textarea = ({
           data-testid={testId || 'textarea-cmp'}
           onChange={onChangeTextLocal}
           disabled={disabled}
+          data-testId='textarea-cmp'
         ></StyledTextarea>
       </InputContainer>
       {withError && (

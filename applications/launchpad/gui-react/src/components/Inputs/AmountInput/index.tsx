@@ -99,7 +99,12 @@ const AmountInput = ({
               <Text as='span' type='microMedium' color={theme.helpTipText}>
                 {t.wallet.transaction.transactionFee}
               </Text>
-              <Text as='span' type='microMedium' color={theme.primary}>
+              <Text
+                as='span'
+                type='microMedium'
+                color={theme.primary}
+                data-testId='fee-text'
+              >
                 +{fee}
               </Text>
               <Button
@@ -109,6 +114,7 @@ const AmountInput = ({
                   dispatch(tbotactions.push(MessagesConfig.TransactionFee))
                 }
                 style={{ marginTop: -2, color: theme.primary }}
+                testId='fee-help-button'
               />
             </>
           ) : null}
