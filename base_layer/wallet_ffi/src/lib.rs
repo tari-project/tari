@@ -3374,7 +3374,7 @@ pub unsafe extern "C" fn transport_tor_create(
         TorControlAuthentication::None
     } else {
         let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
-        TorControlAuthentication::Cookie(cookie_hex)
+        TorControlAuthentication::hex(cookie_hex)
     };
 
     let onion_port = match NonZeroU16::new(tor_port) {

@@ -172,8 +172,11 @@ impl TorTransportConfig {
         Ok(tor::PortMapping::new(self.onion_port.get(), forward_addr))
     }
 
-    pub fn to_control_auth(&self) -> tor::Authentication {
-        self.control_auth.clone().into()
+    pub fn to_control_auth(&self) -> Result<tor::Authentication, CommsInitializationError> {
+        self.control_auth
+            .clone()
+            .make_tor_auth()
+            .map_err(CommsInitializationError::from)
     }
 
     pub fn to_socks_auth(&self) -> socks::Authentication {
