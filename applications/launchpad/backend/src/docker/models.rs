@@ -210,7 +210,7 @@ impl ImageType {
         match self {
             Self::Tor => "tor",
             Self::BaseNode => "tari_base_node",
-            Self::Wallet => "tari_console_wallet",
+            Self::Wallet => "tari_wallet",
             Self::XmRig => "xmrig",
             Self::Sha3Miner => "tari_sha3_miner",
             Self::MmProxy => "tari_mm_proxy",
