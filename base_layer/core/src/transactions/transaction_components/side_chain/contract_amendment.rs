@@ -79,17 +79,14 @@ mod tests {
     use super::*;
     use crate::{
         consensus::check_consensus_encoding_correctness,
-        transactions::{
-            tari_amount::MicroTari,
-            transaction_components::{
-                CheckpointParameters,
-                CommitteeMembers,
-                ConstitutionChangeFlags,
-                ConstitutionChangeRules,
-                ContractAcceptanceRequirements,
-                RequirementsForConstitutionChange,
-                SideChainConsensus,
-            },
+        transactions::transaction_components::{
+            CheckpointParameters,
+            CommitteeMembers,
+            ConstitutionChangeFlags,
+            ConstitutionChangeRules,
+            ContractAcceptanceRequirements,
+            RequirementsForConstitutionChange,
+            SideChainConsensus,
         },
     };
 
@@ -119,7 +116,6 @@ mod tests {
                     )),
                 }),
             },
-            initial_reward: MicroTari::from(123u64),
         };
 
         let amendment = ContractAmendment {

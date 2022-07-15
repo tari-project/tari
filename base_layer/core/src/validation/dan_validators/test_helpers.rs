@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use std::{convert::TryInto, vec::IntoIter};
 
 use tari_common_types::types::{Commitment, FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
@@ -61,7 +61,7 @@ use crate::{
     validation::{dan_validators::DanLayerValidationError, MempoolTransactionValidation, ValidationError},
 };
 
-pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
+pub fn init_test_blockchain() -> (TestBlockchain, Box<IntoIter<UnblindedOutput>>) {
     // initialize a brand new taest blockchain with a genesis block
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
     let mut blockchain = TestBlockchain::create(consensus_manager);
@@ -70,22 +70,23 @@ pub fn init_test_blockchain() -> (TestBlockchain, Vec<UnblindedOutput>) {
     // create a block with some UTXOs to spend later at contract transactions
     let schema = txn_schema!(from: vec![coinbase_a], to: vec![50 * T; 10]);
     let change_outputs = create_block(&mut blockchain, "change", schema);
+    let utxos_iter = Box::new(change_outputs.into_iter());
 
-    (blockchain, change_outputs)
+    (blockchain, utxos_iter)
 }
 
 pub fn publish_contract(
     blockchain: &mut TestBlockchain,
-    inputs: &[UnblindedOutput],
+    utxos: &mut Box<IntoIter<UnblindedOutput>>,
     committee: Vec<PublicKey>,
 ) -> FixedHash {
     // publish the contract definition into a block
-    let contract_id = publish_definition(blockchain, inputs[0].clone());
+    let contract_id = publish_definition(blockchain, utxos.next().unwrap());
 
     // construct a transaction for the duplicated contract definition
     let mut constitution = create_contract_constitution();
     constitution.validator_committee = committee.try_into().unwrap();
-    publish_constitution(blockchain, inputs[1].clone(), contract_id, constitution);
+    publish_constitution(blockchain, utxos.next().unwrap(), contract_id, constitution);
     contract_id
 }
 
@@ -200,7 +201,6 @@ pub fn create_contract_constitution() -> ContractConstitution {
                 backup_keys: Some(vec![].try_into().unwrap()),
             }),
         },
-        initial_reward: 100.into(),
     }
 }
 
@@ -334,16 +334,6 @@ fn perform_validation(blockchain: &TestBlockchain, transaction: &Transaction) ->
 
 pub fn assert_dan_validator_err(blockchain: &TestBlockchain, transaction: &Transaction) -> DanLayerValidationError {
     perform_validation(blockchain, transaction).unwrap_err()
-}
-
-pub fn assert_dan_validator_fail(blockchain: &TestBlockchain, transaction: &Transaction, expected_message: &str) {
-    let err = assert_dan_validator_err(blockchain, transaction);
-    assert!(
-        err.to_string().contains(expected_message),
-        "Message \"{}\" does not contain \"{}\"",
-        err,
-        expected_message
-    );
 }
 
 pub fn assert_dan_validator_success(blockchain: &TestBlockchain, transaction: &Transaction) {

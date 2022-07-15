@@ -41,7 +41,6 @@ pub struct ConstitutionDefinitionFileFormat {
     pub contract_id: String,
     pub validator_committee: Vec<PublicKey>,
     pub consensus: SideChainConsensus,
-    pub initial_reward: u64,
     pub acceptance_parameters: ContractAcceptanceRequirements,
     pub checkpoint_parameters: CheckpointParameters,
     pub constitution_change_rules: ConstitutionChangeRulesFileFormat,
@@ -57,7 +56,6 @@ impl TryFrom<ConstitutionDefinitionFileFormat> for ContractConstitution {
             consensus: value.consensus,
             checkpoint_params: value.checkpoint_parameters,
             constitution_change_rules: value.constitution_change_rules.try_into()?,
-            initial_reward: value.initial_reward.into(),
         })
     }
 }

@@ -113,7 +113,6 @@ pub fn create_contract_constitution_transaction(
                         change_flags: ConstitutionChangeFlags::empty(),
                         requirements_for_constitution_change: None,
                     },
-                    initial_reward: 10u64.into(),
                 })
                 .finish(),
         )),

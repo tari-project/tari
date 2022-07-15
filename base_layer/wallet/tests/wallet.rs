@@ -22,7 +22,7 @@
 
 use std::{panic, path::Path, sync::Arc, time::Duration};
 
-use rand::{rngs::OsRng, Rng};
+use rand::rngs::OsRng;
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common::configuration::StringList;
 use tari_common_types::{
@@ -264,7 +264,7 @@ async fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None).await;
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -580,7 +580,7 @@ async fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None).await;
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -708,7 +708,7 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let temp_features = OutputFeatures::create_coinbase(50, rand::thread_rng().gen::<u8>());
+    let temp_features = OutputFeatures::create_coinbase(50);
 
     let p = TestParams::new();
     let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);

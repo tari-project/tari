@@ -328,7 +328,6 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             )?,
             OutputType::from_byte(flags).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
-            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             sidechain_features,
@@ -357,7 +356,6 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
-            recovery_byte: u32::from(features.recovery_byte),
             sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
         }
     }
@@ -420,7 +418,6 @@ impl From<ContractConstitution> for proto::types::ContractConstitution {
             consensus: value.consensus.into(),
             checkpoint_params: Some(value.checkpoint_params.into()),
             constitution_change_rules: Some(value.constitution_change_rules.into()),
-            initial_reward: value.initial_reward.into(),
         }
     }
 }
@@ -447,7 +444,6 @@ impl TryFrom<proto::types::ContractConstitution> for ContractConstitution {
             .constitution_change_rules
             .map(TryInto::try_into)
             .ok_or("constitution_change_rules not provided")??;
-        let initial_reward = value.initial_reward.into();
 
         Ok(Self {
             validator_committee,
@@ -455,7 +451,6 @@ impl TryFrom<proto::types::ContractConstitution> for ContractConstitution {
             consensus,
             checkpoint_params,
             constitution_change_rules,
-            initial_reward,
         })
     }
 }
