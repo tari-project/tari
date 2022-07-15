@@ -11,6 +11,7 @@ describe('Mining Redux slice', () => {
       merged: {
         address: undefined,
         threads: 1,
+        useAuth: false,
       },
     }
     const expected: MiningState = {
@@ -19,6 +20,7 @@ describe('Mining Redux slice', () => {
       merged: {
         address: testAddress,
         threads: 1,
+        useAuth: false,
       },
     }
 
@@ -45,6 +47,7 @@ describe('Mining Redux slice', () => {
         address: undefined,
         threads: 1,
         urls: [],
+        useAuth: false,
       },
     }
     const expected: MiningState = {
@@ -54,6 +57,7 @@ describe('Mining Redux slice', () => {
         address: testAddress,
         threads: testThreads,
         urls: testUrls,
+        useAuth: false,
       },
     }
 
@@ -87,6 +91,7 @@ describe('Mining Redux slice', () => {
         address: undefined,
         threads: 1,
         urls: [],
+        useAuth: false,
       },
       notifications: [],
     }
@@ -109,6 +114,7 @@ describe('Mining Redux slice', () => {
         address: undefined,
         threads: 1,
         urls: [],
+        useAuth: false,
       },
 
       notifications: [],

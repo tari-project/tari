@@ -1,9 +1,9 @@
 import { RootState } from '../'
 import { createSelector } from '@reduxjs/toolkit'
 import {
-  selectMergedAuthentication,
   selectMergedMiningAddress,
   selectMergedMiningThreads,
+  selectMergedUseAuth,
   selectMoneroUrls,
 } from '../mining/selectors'
 import {
@@ -14,10 +14,6 @@ import {
 import { selectNetwork, selectRootFolder } from '../baseNode/selectors'
 import { ServiceSettingsState } from './types'
 import { Network } from '../../containers/BaseNodeContainer/types'
-
-const isAuthActive = (auth?: { username?: string; password?: string }) => {
-  return Boolean(auth?.username || auth?.password)
-}
 
 export const selectSettingsOpen = (state: RootState) => state.settings.open
 export const selectActiveSettings = (state: RootState) => state.settings.which
@@ -34,7 +30,7 @@ export const selectServiceSettings = createSelector(
   selectMergedMiningThreads,
   selectMoneroUrls,
   selectMergedMiningAddress,
-  selectMergedAuthentication,
+  selectMergedUseAuth,
   (
     serviceSettings: ServiceSettingsState,
     network: Network,
@@ -45,17 +41,14 @@ export const selectServiceSettings = createSelector(
     threads: number,
     moneroUrls: string,
     mergedMiningAddress?: string,
-    mergedAuthentication?: {
-      username?: string | undefined
-      password?: string | undefined
-    },
+    mergedUseAuth?: boolean,
   ) => ({
     ...serviceSettings,
     tariNetwork: network,
     numMiningThreads: threads,
     moneroMiningAddress: mergedMiningAddress,
     monerodUrl: moneroUrls,
-    moneroUseAuth: isAuthActive(mergedAuthentication),
+    moneroUseAuth: mergedUseAuth,
     parole,
     walletPassword: parole,
     moneroUsername: moneroUsername,

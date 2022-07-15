@@ -34,6 +34,7 @@ export interface MiningSettingsInputs {
   threads: number
   urls: MoneroUrl[]
   authentication?: AuthenticationInputs
+  useAuth: boolean
 }
 
 export interface BaseNodeSettingsInputs {

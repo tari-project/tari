@@ -40,7 +40,7 @@ const SettingsContainer = () => {
           address: miningMerged.address,
           threads: miningMerged.threads,
           urls: miningMerged.urls,
-          authentication: miningMerged.authentication,
+          useAuth: miningMerged.useAuth,
         },
       },
       docker: {

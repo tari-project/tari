@@ -57,7 +57,8 @@ export const selectContainerStatus: ContainerStatusSelector =
       pending:
         pending ||
         (containerStatus.status !== SystemEventAction.Start &&
-          containerStatus.status !== SystemEventAction.Destroy),
+          containerStatus.status !== SystemEventAction.Destroy &&
+          containerStatus.status !== SystemEventAction.Die),
       running: containerStatus.status === SystemEventAction.Start,
       containerName,
       error: containerStatus.error || typeError,

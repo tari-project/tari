@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import {
   Controller,
   Control,
@@ -23,11 +24,9 @@ import MoneroURLs from './MoneroURLs'
 import { AddressDescription, NarrowInlineInput } from './styles'
 
 const isAuthenticationApplied = (values: SettingsInputs): boolean => {
-  const { authentication } = values.mining.merged
+  const { useAuth } = values.mining.merged
 
-  return Boolean(
-    authentication && (authentication.username || authentication.password),
-  )
+  return useAuth
 }
 
 const MiningSettings = ({
@@ -44,6 +43,14 @@ const MiningSettings = ({
   setOpenMiningAuthForm: (value: boolean) => void
 }) => {
   const theme = useTheme()
+
+  const [isAuthApplied, setIsAuthApplied] = useState(
+    isAuthenticationApplied(values),
+  )
+
+  useEffect(() => {
+    setIsAuthApplied(isAuthenticationApplied(values))
+  }, [values])
 
   return (
     <>
@@ -128,7 +135,7 @@ const MiningSettings = ({
         />
       </NarrowInlineInput>
 
-      {isAuthenticationApplied(values) ? (
+      {isAuthApplied ? (
         <RowSpacedBetween>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <SvgShieldCheck
@@ -143,11 +150,15 @@ const MiningSettings = ({
             <Label $noMargin>{t.mining.settings.moneroAuthApplied}</Label>
           </div>
           <IconButton
-            onClick={() =>
+            onClick={() => {
               setValue('mining.merged.authentication', undefined, {
                 shouldDirty: true,
               })
-            }
+              setValue('mining.merged.useAuth', false, {
+                shouldDirty: true,
+              })
+              setIsAuthApplied(false)
+            }}
             style={{ color: theme.warningDark }}
           >
             <SvgTrash2 width='16' height='16' color={theme.warningDark} />

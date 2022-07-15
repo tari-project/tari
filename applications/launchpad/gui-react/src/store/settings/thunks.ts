@@ -6,6 +6,7 @@ import { actions as baseNodeActions } from '../baseNode'
 import { actions as miningActions } from '../mining'
 import { actions as containersActions } from '../containers'
 import { actions as dockerImagesActions } from '../dockerImages'
+import { actions as credentialsActions } from '../credentials'
 
 import { SettingsInputs } from '../../containers/SettingsContainer/types'
 
@@ -63,7 +64,21 @@ export const saveSettings = createAsyncThunk<
 
   // Set Mining config
   if ('mining' in newSettings && 'merged' in newSettings.mining) {
-    dispatch(miningActions.setMergedConfig(newSettings.mining.merged))
+    const useAuth = newSettings.mining.merged.authentication
+
+    dispatch(
+      miningActions.setMergedConfig({
+        ...newSettings.mining.merged,
+        useAuth: Boolean(useAuth),
+      }),
+    )
+
+    dispatch(
+      credentialsActions.setMoneroCredentials({
+        username: useAuth?.username || '',
+        password: useAuth?.password || '',
+      }),
+    )
   }
 
   if ('docker' in newSettings) {

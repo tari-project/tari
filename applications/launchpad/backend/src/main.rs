@@ -51,6 +51,7 @@ use crate::{
         wallet_identity,
     },
     commands::{
+        check_docker,
         create_default_workspace,
         create_new_workspace,
         events,
@@ -68,6 +69,7 @@ use crate::{
     grpc::WalletTransaction,
 };
 
+#[warn(clippy::too_many_lines)]
 fn main() {
     env_logger::init();
     let context = tauri::generate_context!();
@@ -147,6 +149,7 @@ fn main() {
             create_new_workspace,
             create_default_workspace,
             events,
+            check_docker,
             launch_docker,
             open_terminal,
             node_identity,

@@ -5,6 +5,7 @@ import {
   MiningNodeState,
 } from '../../../store/mining/types'
 import { MiningNodeType } from '../../../types/general'
+import { WithRequiredCredentials } from '../../PasswordPrompt/useWithPasswordPrompt'
 
 export enum MiningBoxStatus {
   Custom = 'custom',
@@ -47,4 +48,5 @@ export interface MiningBoxProps {
   nodeState: MiningNodeState
   containersState: MiningContainersState
   helpMessages?: string[]
+  requiredAuthentication?: WithRequiredCredentials
 }

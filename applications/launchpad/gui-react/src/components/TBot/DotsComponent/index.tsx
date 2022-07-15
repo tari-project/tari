@@ -10,6 +10,7 @@ import { DotsContainer, StyledRow } from './styles'
 
 const ChatDotsLight = () => {
   const animation = useRef(null)
+
   useEffect(() => {
     if (animation.current) {
       lottie.loadAnimation({
@@ -21,7 +22,14 @@ const ChatDotsLight = () => {
         animationData: dotsChatLottieLight,
       })
     }
-    return lottie.destroy
+
+    return () => {
+      try {
+        lottie.destroy()
+      } catch (_) {
+        // Do not propagate it further
+      }
+    }
   }, [animation])
 
   return (
@@ -48,7 +56,14 @@ const ChatDotsDark = () => {
         animationData: dotsChatLottieDark,
       })
     }
-    return lottie.destroy
+
+    return () => {
+      try {
+        lottie.destroy()
+      } catch (_) {
+        // Do not propagate it further
+      }
+    }
   }, [animation])
 
   return (

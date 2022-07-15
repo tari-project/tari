@@ -5,6 +5,7 @@ import {
   selectMergedContainers,
   selectMergedMiningState,
   selectMergedSetupRequired,
+  selectMergedUseAuth,
 } from '../../../store/mining/selectors'
 import SvgMoneroSignet from '../../../styles/Icons/MoneroSignet'
 import SvgTariSignet from '../../../styles/Icons/TariSignet'
@@ -21,6 +22,7 @@ import {
   BestChoiceTagText,
   StyledBestChoiceTag,
 } from './styles'
+import { selectAreMoneroCredentialsPresent } from '../../../store/credentials/selectors'
 
 const BestChoiceTag = () => {
   return (
@@ -42,6 +44,9 @@ const MiningBoxMerged = () => {
   const nodeState = useAppSelector(selectMergedMiningState)
   const containersState = useAppSelector(selectMergedContainers)
   const mergedSetupRequired = useAppSelector(selectMergedSetupRequired)
+  const mergedAuthentication = useAppSelector(selectMergedUseAuth)
+
+  const credentials = useAppSelector(selectAreMoneroCredentialsPresent)
 
   const statuses = {
     [MiningBoxStatus.SetupRequired]: {
@@ -94,6 +99,10 @@ const MiningBoxMerged = () => {
       nodeState={nodeState}
       containersState={containersState}
       helpMessages={MessagesConfig.MergedMiningHelp}
+      requiredAuthentication={{
+        wallet: true,
+        monero: mergedAuthentication && !credentials,
+      }}
     >
       {boxContent}
     </MiningBox>

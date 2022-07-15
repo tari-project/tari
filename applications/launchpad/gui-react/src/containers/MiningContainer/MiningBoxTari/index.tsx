@@ -53,6 +53,9 @@ const MiningBoxTari = () => {
       currentStatus={currentStatus}
       nodeState={nodeState}
       containersState={containersState}
+      requiredAuthentication={{
+        wallet: true,
+      }}
     >
       {boxContent}
     </MiningBox>

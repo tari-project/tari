@@ -74,8 +74,10 @@ const App = () => {
         await dispatch(init()).unwrap()
         setInitialized(true)
         hideSplashscreen()
-      } catch (_) {
-        // TODO handle error
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('App exception:', err)
+        throw err
       }
     }
 
@@ -86,7 +88,6 @@ const App = () => {
   useDockerEvents({ dispatch })
   useDockerImageDownloadListener({ dispatch })
 
-  // TODO could return loader instead of null if not initialized
   return (
     <ThemeProvider theme={themeConfig}>
       <AppContainer>

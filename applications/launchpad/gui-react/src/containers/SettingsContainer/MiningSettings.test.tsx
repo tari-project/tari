@@ -22,6 +22,7 @@ describe('MiningSettings', () => {
             address: 'initial-address-value',
             threads: 1,
             urls: [],
+            useAuth: false,
           },
         },
       },

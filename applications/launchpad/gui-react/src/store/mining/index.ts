@@ -25,7 +25,7 @@ export const initialState: MiningState = {
     threads: 1,
     address: undefined,
     urls: MiningConfig.defaultMoneroUrls.map(url => ({ url })),
-    authentication: undefined,
+    useAuth: false,
     session: undefined,
   },
   notifications: [],
@@ -87,9 +87,13 @@ const miningSlice = createSlice({
           username?: string
           password?: string
         }
+        useAuth?: boolean
       }>,
     ) {
-      state.merged = { ...state.merged, ...action.payload }
+      const safePayload = { ...action.payload }
+      delete safePayload['authentication']
+
+      state.merged = { ...state.merged, ...safePayload }
     },
     acknowledgeNotification(state) {
       const [_head, ...notificationsLeft] = state.notifications

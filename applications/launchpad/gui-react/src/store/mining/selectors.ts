@@ -40,6 +40,18 @@ export const selectTariContainers = createSelector(
       dependsOn: [tor, baseNode, wallet, sha3],
     } as MiningContainersState
   },
+  {
+    memoizeOptions: {
+      equalityCheck: (a, b) => {
+        return (
+          a.running === b.running &&
+          a.pending === b.pending &&
+          a.error === b.error &&
+          a.id === b.id
+        )
+      },
+    },
+  },
 )
 
 export const selectTariSetupRequired = createSelector(
@@ -60,8 +72,7 @@ export const selectMergedMiningThreads = (r: RootState) =>
   r.mining.merged.threads
 export const selectMoneroUrls = (r: RootState) =>
   (r.mining.merged.urls || []).map(u => u.url).join(',')
-export const selectMergedAuthentication = (r: RootState) =>
-  r.mining.merged.authentication
+export const selectMergedUseAuth = (r: RootState) => r.mining.merged.useAuth
 
 export const selectMergedContainers = createSelector(
   selectContainerStatusWithStats(Container.Tor),
@@ -86,6 +97,18 @@ export const selectMergedContainers = createSelector(
       error: errors.length > 0 ? errors : undefined,
       dependsOn: [tor, baseNode, wallet, xmrig, mmproxy],
     } as MiningContainersState
+  },
+  {
+    memoizeOptions: {
+      equalityCheck: (a, b) => {
+        return (
+          a.running === b.running &&
+          a.pending === b.pending &&
+          a.error === b.error &&
+          a.id === b.id
+        )
+      },
+    },
   },
 )
 

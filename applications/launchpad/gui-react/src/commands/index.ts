@@ -1,13 +1,34 @@
 import { invoke, os } from '@tauri-apps/api'
-import { ChildProcess, Command } from '@tauri-apps/api/shell'
+
+export type DockerVersion = {
+  ApiVersion: string
+  Arch: string
+  BuildTime: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Components: any[]
+  GitCommit: string
+  GoVersion: string
+  KernelVersion: string
+  MinAPIVersion: string
+  Os: string
+  Platform: { Name: string }
+  Version: string
+  experimental: null
+}
 
 /**
  * Check the Docker version on the host machine
- * @returns {Promise<ChildProcess>}
+ * @returns {Promise<VersionInfo>}
  */
-export const dockerVersionCmd = async (): Promise<ChildProcess> => {
-  const command = new Command('docker', ['-v'])
-  return command.execute()
+export const checkDocker = async () => {
+  try {
+    const res: DockerVersion = await invoke('check_docker')
+    return res
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Error: invoke(check_error)', err)
+    return
+  }
 }
 
 /**
@@ -15,8 +36,8 @@ export const dockerVersionCmd = async (): Promise<ChildProcess> => {
  * @returns {Promise<boolean>}
  */
 export const isDockerInstalled = async (): Promise<boolean> => {
-  const dockerVerCmd = await dockerVersionCmd()
-  return Boolean(dockerVerCmd.stdout.match(/docker version/i))
+  const dockerVerCmd = await checkDocker()
+  return Boolean(dockerVerCmd)
 }
 
 /**

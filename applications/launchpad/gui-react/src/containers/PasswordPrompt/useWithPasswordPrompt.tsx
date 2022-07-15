@@ -2,14 +2,16 @@ import { useCallback, useContext } from 'react'
 
 import { EnsurePasswordsContext } from '.'
 
+export type WithRequiredCredentials = {
+  wallet?: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  monero?: boolean | ((...args: any[]) => boolean)
+}
+
 const useWithPasswordPrompt = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (...args: any[]) => void,
-  required: {
-    wallet?: boolean
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    monero?: boolean | ((...args: any[]) => boolean)
-  },
+  required: WithRequiredCredentials,
 ) => {
   const { ensureWalletPasswordInStore } = useContext(EnsurePasswordsContext)
 

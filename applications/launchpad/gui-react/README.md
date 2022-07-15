@@ -121,8 +121,10 @@ Recommendations:
 - `types` - (?) not sure if we need this. It should contain common types used across the application. we keep it for now and remove at the end if not needed.
 - `utils` - helpers etc.
 
-### CI with GitHub actions
+## File locations
 
-1. For every pull request when branch name starts with `launchpad`. It runs lint and tests. (`.github/workflows/launchpad_v2.yml`)
+MacOS:
 
-1. Daily NPM audit (`.github/workflows/launchpad_v2_audit.yml`)
+- `~/Library/Application Support/*` `{com.tari.launchpad}` (SQLite database)
+- `~/Library/Caches/*` `{tari, tari_launchpad}` (Config and data files used by Docker containers)
+- `~/Library/Webkit/*` `{tari_launchpad}` (LocalStorage and IndexedDB)

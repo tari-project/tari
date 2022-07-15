@@ -104,13 +104,18 @@ const SettingsComponent = ({
       <Modal size='small' open={open}>
         <MoneroAuthentication
           defaultValues={
-            defaultMiningMergedValues?.authentication as
+            defaultMiningMergedValues?.useAuth as
               | AuthenticationInputs
               | undefined
           }
-          onSubmit={val =>
+          onSubmit={val => {
             setValue('mining.merged.authentication', val, { shouldDirty: true })
-          }
+            setValue(
+              'mining.merged.useAuth',
+              Boolean(val.username || val.password),
+              { shouldDirty: true },
+            )
+          }}
           close={() => setOpenMiningAuthForm(false)}
         />
       </Modal>

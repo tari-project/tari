@@ -9,8 +9,8 @@ export const StyledRow = styled.div`
 `
 
 export const DotsContainer = styled.div`
-  width: 155px;
-  margin-right: -25px;
+  width: 99px;
+  margin-right: 10px;
 `
 
 export const StyledDots = styled.div``

@@ -17,7 +17,6 @@ const MoneroURL = ({
   index,
 }: {
   url: string
-  useAuth?: boolean
   username?: string
   password?: string
   control: Control<SettingsInputs>

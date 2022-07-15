@@ -60,16 +60,7 @@
       "dialog": {
         "open": true
       },
-      "all": true,
-      "shell": {
-        "scope": [
-          {
-            "name": "docker",
-            "cmd": "docker",
-            "args": ["-v"]
-          }
-        ]
-      }
+      "all": true
     },
     "windows": [
       {

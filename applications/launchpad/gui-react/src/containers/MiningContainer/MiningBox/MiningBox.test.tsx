@@ -46,42 +46,6 @@ describe('MiningBox', () => {
     expect(el).toBeInTheDocument()
   })
 
-  it('should render mining box for the error status', () => {
-    const containersState = {
-      running: true,
-      pending: false,
-      error: [{ type: Container.Tor, error: 'Something went wrong' }],
-      dependsOn: [
-        {
-          containerName: Container.Tor,
-          id: 'test-tor-container-id',
-          running: false,
-          pending: false,
-          error: 'Something went wrong',
-        },
-      ],
-    }
-
-    render(
-      <Provider
-        store={configureStore({
-          reducer: rootReducer,
-          preloadedState: {},
-        })}
-      >
-        <ThemeProvider theme={themes.light}>
-          <MiningBox
-            node='tari'
-            nodeState={emptyNodeState}
-            containersState={containersState}
-          />
-        </ThemeProvider>
-      </Provider>,
-    )
-    const el = screen.getByTestId('node-box-placeholder--error')
-    expect(el).toBeInTheDocument()
-  })
-
   it('should render mining box for the paused status', () => {
     render(
       <Provider

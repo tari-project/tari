@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTheme } from 'styled-components'
 import deepmerge from 'deepmerge'
 
@@ -24,10 +24,11 @@ import { MiningBoxContent, NodeIcons } from './styles'
 import RunningButton from '../../../components/RunningButton'
 import { tbotactions } from '../../../store/tbot'
 import useWithPasswordPrompt from '../../../containers/PasswordPrompt/useWithPasswordPrompt'
+import Alert from '../../../components/Alert'
 
 const parseLastSessionToCoins = (
   lastSession: MiningSession | undefined,
-  theCurrentStatus: MiningBoxStatus,
+  theCurrentStatus?: MiningBoxStatus,
   icons?: MiningCoinIconProp[],
 ) => {
   if (lastSession && lastSession.total) {
@@ -90,9 +91,13 @@ const MiningBox = ({
   nodeState,
   containersState,
   helpMessages,
+  requiredAuthentication,
 }: MiningBoxProps) => {
   const dispatch = useAppDispatch()
   const theme = useTheme()
+
+  const [theCurrentStatus, setTheCurrentStatus] = useState(currentStatus)
+  const [showAlert, setShowAlert] = useState<string | undefined>(undefined)
 
   const startMining = useCallback(() => {
     dispatch(
@@ -102,40 +107,39 @@ const MiningBox = ({
       }),
     )
   }, [dispatch, node])
-  const whichCredentialsAreRequired = useMemo(
-    () => ({
-      wallet: true,
-      monero: node === 'merged',
-    }),
-    [node],
-  )
+
   const startMiningWithPasswordEnsured = useWithPasswordPrompt(
     startMining,
-    whichCredentialsAreRequired,
+    requiredAuthentication || { wallet: false, monero: false },
   )
-
-  let theCurrentStatus = currentStatus
 
   const lastSession = nodeState.session
 
-  if (!theCurrentStatus) {
-    if (
-      containersState.error ||
-      containersState.dependsOn?.some(c => c.error)
-    ) {
-      theCurrentStatus = MiningBoxStatus.Error
-    } else if (containersState.running) {
-      theCurrentStatus = MiningBoxStatus.Running
-    } else if (!lastSession) {
-      theCurrentStatus = MiningBoxStatus.PausedNoSession
-    } else {
-      theCurrentStatus = MiningBoxStatus.Paused
+  useEffect(() => {
+    if (containersState.error) {
+      if (typeof containersState.error === 'string') {
+        setShowAlert(containersState.error)
+      } else {
+        setShowAlert(containersState.error[0]?.error)
+      }
     }
-  }
+
+    if (currentStatus) {
+      return
+    }
+
+    if (containersState.running) {
+      setTheCurrentStatus(MiningBoxStatus.Running)
+    } else if (!lastSession) {
+      setTheCurrentStatus(MiningBoxStatus.PausedNoSession)
+    } else {
+      setTheCurrentStatus(MiningBoxStatus.Paused)
+    }
+  }, [containersState, currentStatus])
 
   const coins = parseLastSessionToCoins(lastSession, theCurrentStatus, icons)
 
-  // Is there any outgoing action, so the buttons should be disabled?
+  // Is there any ongoing action, so the buttons should be disabled?
   const disableActions = containersState.pending
 
   const defaultConfig: NodeBoxStatusConfig = {
@@ -308,7 +312,11 @@ const MiningBox = ({
                   }),
                 )
               }
-              startedAt={Number(Date.now())}
+              startedAt={
+                nodeState?.session?.finishedAt
+                  ? Number(Date.now())
+                  : Number(nodeState?.session?.startedAt) || Number(Date.now())
+              }
               testId={`${node}-pause-btn`}
             />
           </MiningBoxContent>
@@ -326,25 +334,32 @@ const MiningBox = ({
     }
   }
   return (
-    <NodeBox
-      title={currentState.title}
-      tag={currentState.tag}
-      style={{ position: 'relative', ...currentState.boxStyle }}
-      titleStyle={currentState.titleStyle}
-      contentStyle={currentState.contentStyle}
-      onHelpPromptClick={helpPromptClick}
-      helpSvgGradient={currentState.helpSvgGradient}
-      testId={testId}
-    >
-      {icons && icons.length > 0 ? (
-        <NodeIcons
-          $color={currentState.icon?.color || theme.backgroundSecondary}
-        >
-          {icons.map(icon => icon.component)}
-        </NodeIcons>
-      ) : null}
-      {content}
-    </NodeBox>
+    <>
+      <NodeBox
+        title={currentState.title}
+        tag={currentState.tag}
+        style={{ position: 'relative', ...currentState.boxStyle }}
+        titleStyle={currentState.titleStyle}
+        contentStyle={currentState.contentStyle}
+        onHelpPromptClick={helpPromptClick}
+        helpSvgGradient={currentState.helpSvgGradient}
+        testId={testId}
+      >
+        {icons && icons.length > 0 ? (
+          <NodeIcons
+            $color={currentState.icon?.color || theme.backgroundSecondary}
+          >
+            {icons.map(icon => icon.component)}
+          </NodeIcons>
+        ) : null}
+        {content}
+      </NodeBox>
+      <Alert
+        open={Boolean(showAlert)}
+        content={showAlert}
+        onClose={() => setShowAlert(undefined)}
+      />
+    </>
   )
 }
 
