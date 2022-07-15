@@ -133,24 +133,6 @@ fn main() {
             sql: include_str!("../migrations/2022-06-14.create-transactions-table.sql"),
             kind: MigrationKind::Up,
         },
-        Migration {
-            version: 3,
-            description: "update transactions table",
-            sql: include_str!("../migrations/2022-06-21.include-event-in-transaction-id.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 4,
-            description: "update transactions table",
-            sql: include_str!("../migrations/2022-07-06.remove-event-in-transaction-id.sql"),
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 5,
-            description: "change transactions table",
-            sql: include_str!("../migrations/2022-07-08.change-isCoinbase-type-in-transactions.sql"),
-            kind: MigrationKind::Up,
-        },
     ];
 
     tauri::Builder::default()

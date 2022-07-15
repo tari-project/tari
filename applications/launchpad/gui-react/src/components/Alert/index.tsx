@@ -38,7 +38,10 @@ const Alert = ({
 
   return (
     <Modal open={open} onClose={onClose} size='auto'>
-      <Box border={false} style={{ wordBreak: 'break-all' }}>
+      <Box
+        border={false}
+        style={{ wordBreak: 'break-all', background: 'transparent' }}
+      >
         {Boolean(title) && (
           <Text type='subheader' style={{ marginTop: `-${theme.spacing()}` }}>
             {title}
@@ -56,6 +59,7 @@ const Alert = ({
           borderTop: `1px solid ${theme.borderColor}`,
           display: 'flex',
           justifyContent: 'flex-end',
+          background: 'transparent',
         }}
       >
         <Button variant='secondary' onClick={onClose}>
