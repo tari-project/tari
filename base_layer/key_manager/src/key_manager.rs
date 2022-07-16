@@ -26,11 +26,14 @@ use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
+    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},
 };
 
 use crate::cipher_seed::CipherSeed;
+
+const DOMAIN_SEPARATION_LABEL: &str = "com.tari.key_manager.key_manager";
 
 #[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
@@ -84,13 +87,14 @@ where
 
     /// Derive a new private key from master key: derived_key=SHA256(master_key||branch_seed||index)
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
-        let concatenated = format!(
-            "{}{}{}",
-            self.seed.entropy().to_vec().to_hex(),
-            self.branch_seed,
-            key_index
-        );
-        match K::from_bytes(D::digest(&concatenated.into_bytes()).as_slice()) {
+        let derive_key = DomainSeparatedHasher::<D, GenericHashDomain>::new(DOMAIN_SEPARATION_LABEL)
+            .chain(self.seed.entropy().to_vec().to_hex())
+            .chain(self.branch_seed.as_str().as_bytes())
+            .chain(key_index.to_le_bytes())
+            .finalize()
+            .into_vec();
+
+        match K::from_bytes(D::digest(derive_key.as_slice()).as_slice()) {
             Ok(k) => Ok(DerivedKey { k, key_index }),
             Err(e) => Err(e),
         }
