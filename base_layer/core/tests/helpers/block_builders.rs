@@ -23,7 +23,7 @@
 use std::{iter::repeat_with, sync::Arc};
 
 use croaring::Bitmap;
-use rand::{rngs::OsRng, Rng, RngCore};
+use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
 use tari_core::{
@@ -81,7 +81,7 @@ pub fn create_coinbase(
 
     let unblinded_output = create_unblinded_output(
         script!(Nop),
-        OutputFeatures::create_coinbase(maturity_height, rand::thread_rng().gen::<u8>()),
+        OutputFeatures::create_coinbase(maturity_height),
         &p,
         value,
     );
@@ -135,7 +135,7 @@ fn print_new_genesis_block(network: Network) {
     let (utxo, key, _) = create_utxo(
         value,
         &factories,
-        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1),
         &script![Nop],
         &Covenant::default(),
         MicroTari::zero(),

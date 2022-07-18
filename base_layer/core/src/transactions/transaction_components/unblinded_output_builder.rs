@@ -83,13 +83,6 @@ impl UnblindedOutputBuilder {
         }
     }
 
-    pub fn update_recovery_byte(&mut self, factories: &CryptoFactories) -> Result<(), TransactionError> {
-        let commitment = self.generate_commitment(factories);
-        self.features
-            .update_recovery_byte(&commitment, self.rewind_data.as_ref());
-        Ok(())
-    }
-
     pub fn sign_as_receiver(
         &mut self,
         sender_offset_public_key: PublicKey,
@@ -238,11 +231,5 @@ mod test {
         let uob = uob.with_script_private_key(RistrettoSecretKey::default());
         let uob = uob.with_features(OutputFeatures::default());
         assert!(uob.try_build().is_ok());
-    }
-
-    #[test]
-    fn test_update_recovery_byte_if_required() {
-        let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
-        assert!(uob.update_recovery_byte(&CryptoFactories::default(),).is_ok());
     }
 }

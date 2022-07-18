@@ -253,7 +253,6 @@ async fn generate_block_headers_and_utxos(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
-                None,
             )
             .await;
             block_outputs.push(uo);
@@ -884,7 +883,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment, None).await;
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment).await;
 
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,

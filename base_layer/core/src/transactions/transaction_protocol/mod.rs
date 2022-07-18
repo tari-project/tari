@@ -147,7 +147,6 @@ pub struct TransactionMetadata {
 pub struct RewindData {
     #[derivative(Debug = "ignore")]
     pub rewind_blinding_key: PrivateKey,
-    pub recovery_byte_key: PrivateKey,
     pub encryption_key: PrivateKey,
 }
 

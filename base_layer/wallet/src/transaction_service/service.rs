@@ -1025,12 +1025,10 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
 
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key: recovery_byte_key.clone(),
             encryption_key: encryption_key.clone(),
         };
 
@@ -1198,11 +1196,9 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key: recovery_byte_key.clone(),
             encryption_key: encryption_key.clone(),
         };
 

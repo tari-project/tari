@@ -244,7 +244,6 @@ fn get_dibbler_genesis_block_raw() -> Block {
                 version: OutputFeaturesVersion::get_current_version(),
                 output_type: OutputType::Coinbase,
                 maturity: 60,
-                recovery_byte: 0,
                 metadata: Vec::new(),
                 unique_id: None,
                 sidechain_features: None,

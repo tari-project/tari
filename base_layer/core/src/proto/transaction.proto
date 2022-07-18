@@ -93,9 +93,6 @@ message OutputFeatures {
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 3;
     bytes metadata = 4;
-    // The recovery byte - not consensus critical - can help reduce the bandwidth with wallet recovery or in other
-    // instances when a wallet needs to request the complete UTXO set from a base node.
-    uint32 recovery_byte = 5;
     SideChainFeatures sidechain_features = 6;
 
 

@@ -333,7 +333,6 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             )?,
             OutputType::from_byte(flags).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
-            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             sidechain_features,
@@ -362,7 +361,6 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
-            recovery_byte: u32::from(features.recovery_byte),
             sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
         }
     }
