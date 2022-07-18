@@ -63,7 +63,13 @@ const formatDate = (dateStr: string) => {
   return splt[0] + addNth(date.getDate()) + ' ' + splt[1]
 }
 
-const InboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
+const InboundTxRow = ({
+  record,
+  inverted,
+}: {
+  record: TransactionDBRecord
+  inverted: boolean
+}) => {
   return (
     <tr>
       <DirectionTd>
@@ -71,7 +77,7 @@ const InboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
           <SvgArrowLeft style={{ transform: 'rotate(-45deg)' }} />
         </DirectionTag>
       </DirectionTd>
-      <EventTd>
+      <EventTd $inverted={inverted}>
         <Text as='span'>
           {t.wallet.transactions.youReceivedTariFrom}{' '}
           <StyledAddress>
@@ -85,7 +91,7 @@ const InboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
           {formatDate(record.receivedAt.toString())}
         </Text>
       </DateTd>
-      <AmountTd $variant='earned'>
+      <AmountTd $variant='earned' $inverted={inverted}>
         <Text as='span' type='defaultHeavy'>
           {parseFloat(toT(record.amount).toString()).toFixed(2)}{' '}
         </Text>
@@ -97,7 +103,13 @@ const InboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
   )
 }
 
-const OutboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
+const OutboundTxRow = ({
+  record,
+  inverted,
+}: {
+  record: TransactionDBRecord
+  inverted: boolean
+}) => {
   return (
     <tr>
       <DirectionTd>
@@ -105,7 +117,7 @@ const OutboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
           <SvgArrowLeft style={{ transform: 'rotate(135deg)' }} />
         </DirectionTag>
       </DirectionTd>
-      <EventTd>
+      <EventTd $inverted={inverted}>
         <Text as='span'>
           {t.wallet.transactions.youSentTariTo}{' '}
           <StyledAddress>
@@ -119,7 +131,7 @@ const OutboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
           {formatDate(record.receivedAt.toString())}
         </Text>
       </DateTd>
-      <AmountTd $variant='out'>
+      <AmountTd $variant='out' $inverted={inverted}>
         <Text as='span' type='defaultHeavy'>
           -{parseFloat(toT(record.amount).toString()).toFixed(2)}{' '}
         </Text>
@@ -131,7 +143,13 @@ const OutboundTxRow = ({ record }: { record: TransactionDBRecord }) => {
   )
 }
 
-const MiningTxRow = ({ record }: { record: TransactionDBRecord }) => {
+const MiningTxRow = ({
+  record,
+  inverted,
+}: {
+  record: TransactionDBRecord
+  inverted: boolean
+}) => {
   return (
     <tr>
       <DirectionTd>
@@ -139,7 +157,7 @@ const MiningTxRow = ({ record }: { record: TransactionDBRecord }) => {
           <EmojiWrapper>{'\u26CF'}</EmojiWrapper>
         </DirectionTag>
       </DirectionTd>
-      <EventTd>
+      <EventTd $inverted={inverted}>
         <Text as='span'>{t.wallet.transactions.youEarnedTari}</Text>
       </EventTd>
       <StatusTd>{renderStatus(record)}</StatusTd>
@@ -148,7 +166,7 @@ const MiningTxRow = ({ record }: { record: TransactionDBRecord }) => {
           {formatDate(record.receivedAt.toString())}
         </Text>
       </DateTd>
-      <AmountTd $variant='earned'>
+      <AmountTd $variant='earned' $inverted={inverted}>
         <Text as='span' type='defaultHeavy'>
           {parseFloat(toT(record.amount).toString()).toFixed(2)}{' '}
         </Text>
@@ -160,20 +178,20 @@ const MiningTxRow = ({ record }: { record: TransactionDBRecord }) => {
   )
 }
 
-const TransactionsList = ({ records }: TransactionsListProps) => {
+const TransactionsList = ({ records, inverted }: TransactionsListProps) => {
   return (
     <StyledTable>
       <tbody>
         {records.map((row, idx) => {
           if (row.isCoinbase === 'true') {
-            return <MiningTxRow record={row} key={idx} />
+            return <MiningTxRow record={row} key={idx} inverted={inverted} />
           }
 
           if (row.direction === 'Outbound') {
-            return <OutboundTxRow record={row} key={idx} />
+            return <OutboundTxRow record={row} key={idx} inverted={inverted} />
           }
 
-          return <InboundTxRow record={row} key={idx} />
+          return <InboundTxRow record={row} key={idx} inverted={inverted} />
         })}
       </tbody>
     </StyledTable>

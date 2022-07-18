@@ -69,6 +69,12 @@ describe('WalletContainer', () => {
               address: { uri: 'configuredWalletAddress', emoji: '' },
               unlocked: true,
             },
+            temporary: {
+              walletPasswordConfirmation: 'success',
+            },
+            credentials: {
+              wallet: 'pass',
+            },
           },
         })}
       >
@@ -92,6 +98,12 @@ describe('WalletContainer', () => {
               ...walletInitialState,
               address: { uri: 'configuredWalletAddress', emoji: '' },
               unlocked: true,
+            },
+            temporary: {
+              walletPasswordConfirmation: 'success',
+            },
+            credentials: {
+              wallet: 'pass',
             },
           },
         })}

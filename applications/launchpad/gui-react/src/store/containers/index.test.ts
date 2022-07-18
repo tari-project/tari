@@ -11,6 +11,7 @@ describe('store containers slice', () => {
         containers: {
           someContainerId: {
             status: SystemEventAction.Create,
+            exitCode: undefined,
           },
         },
         stats: {
@@ -26,6 +27,7 @@ describe('store containers slice', () => {
         containers: {
           someContainerId: {
             status: SystemEventAction.Start,
+            exitCode: undefined,
           },
         },
         stats: {

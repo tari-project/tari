@@ -40,14 +40,23 @@ export const StyledTable = styled.table`
   }
 `
 
-export const AmountTd = styled.td<{ $variant: 'earned' | 'out' }>`
+export const AmountTd = styled.td<{
+  $variant: 'earned' | 'out'
+  $inverted: boolean
+}>`
   text-align: right;
   max-width: ${({ theme }) => theme.spacingHorizontal(4)};
   box-sizing: border-box;
 
   & > * {
-    color: ${({ $variant, theme }) =>
-      $variant === 'earned' ? theme.onTextLight : theme.primary};
+    color: ${({ $variant, theme, $inverted }) =>
+      $variant === 'earned'
+        ? $inverted
+          ? theme.accent
+          : theme.onTextLight
+        : $inverted
+        ? theme.primary
+        : theme.secondary};
   }
 `
 
@@ -66,11 +75,12 @@ export const DirectionTd = styled.td`
   box-sizing: border-box;
 `
 
-export const EventTd = styled.td`
+export const EventTd = styled.td<{ $inverted: boolean }>`
   padding-top: ${({ theme }) => theme.spacingVertical(1.6)} !important;
   & > span {
     line-height: 20px !important;
   }
+  color: ${({ theme, $inverted }) => ($inverted ? theme.secondary : '')};
 `
 
 export const StatusTd = styled.td`

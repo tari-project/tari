@@ -23,6 +23,10 @@ export const selectContainer = (c: ContainerName) => (r: RootState) => {
   return { containerId, containerStatus }
 }
 
+export const selectContainerError = (c: ContainerName) => (r: RootState) => {
+  return r.containers.errors[c]
+}
+
 const selectContainerStats = (containerId: string) => (r: RootState) =>
   r.containers.stats[containerId]
 

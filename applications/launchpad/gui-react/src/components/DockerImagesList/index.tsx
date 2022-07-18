@@ -74,7 +74,7 @@ const DockerImagesList = ({
               type={header ? 'smallMedium' : 'defaultMedium'}
               color={inverted ? theme.inverted.disabledText : theme.primary}
             >
-              {dockerImage.displayName.toLowerCase()}
+              {dockerImage?.displayName?.toLowerCase() || ''}
             </Text>
             {dockerImage.updated && (
               <DockerStatusWrapper>

@@ -5,6 +5,7 @@ const translations = {
   recentTransactions: 'Recent transactions',
   seeAllHistory: 'See all history',
   closeAllHistory: 'Close all history',
+  theEnteredPasswordIsIncorrect: 'The entered password is incorrect',
   password: {
     title: 'Enter Password',
     cta: 'to unlock your wallet:',

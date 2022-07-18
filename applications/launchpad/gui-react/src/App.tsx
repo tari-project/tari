@@ -28,6 +28,7 @@ import { hideSplashscreen } from './splashscreen'
 import { openTerminalCmd } from './commands'
 import { useDockerTBotQueue } from './useDockerTBotQueue'
 import { useInternetCheck } from './useInternetCheck'
+import { useWaitingWalletPassConfirm } from './useWaitingWalletPassConfirm'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -50,6 +51,7 @@ const OnboardedAppContainer = ({
   useMiningScheduling()
   useCheckDockerImages({ dispatch })
   useDockerTBotQueue({ dispatch })
+  useWaitingWalletPassConfirm({ dispatch })
 
   useEffect(() => {
     statsRepository.removeOld()

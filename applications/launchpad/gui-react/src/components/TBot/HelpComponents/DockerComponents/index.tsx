@@ -21,18 +21,23 @@ import {
   ProgressContainer,
 } from './styles'
 import Button from '../../../Button'
+import { selectExpertView, selectTheme } from '../../../../store/app/selectors'
 
 export const NewDockerImageToDownload = () => {
   const dockerImages = useAppSelector(selectDockerTBotQueue)
+  const expertView = useAppSelector(selectExpertView)
+  const currentTheme = useAppSelector(selectTheme)
 
   const dockerImage = useMemo(() => dockerImages[0], [])
 
   return (
     <div>
       <DockerDwnlTagContainer>
-        <DockerDwnlTag>
+        <DockerDwnlTag
+          $dark={currentTheme === 'dark' || expertView !== 'hidden'}
+        >
           <Text type='microMedium' as='span' style={{ flex: 1 }}>
-            {dockerImage.displayName}
+            {dockerImage?.displayName || ''}
           </Text>
           <DockerDwnlInnerTag>
             <Text type='microMedium' as='span'>

@@ -24,6 +24,7 @@ import {
 import Pagination from '../../../components/Pagination'
 import { useAppSelector } from '../../../store/hooks'
 import { selectLastTxHistoryUpdate } from '../../../store/wallet/selectors'
+import { selectTheme } from '../../../store/app/selectors'
 
 const CLOSE_HISTORY_PAGE_SIZE = 3
 const ALL_HISTORY_PAGE_SIZE = 10
@@ -33,6 +34,7 @@ const RecentTransactions = () => {
   const theme = useTheme()
 
   const lastTxHistoryUpdate = useAppSelector(selectLastTxHistoryUpdate)
+  const currentTheme = useAppSelector(selectTheme)
 
   const [txs, setTxs] = useState<TransactionDBRecord[]>([])
   const [total, setTotal] = useState(0)
@@ -72,7 +74,10 @@ const RecentTransactions = () => {
           <Text
             as='span'
             type='defaultHeavy'
-            style={{ marginLeft: theme.spacingVertical(1) }}
+            style={{
+              marginLeft: theme.spacingVertical(1),
+              color: currentTheme === 'dark' ? theme.secondary : '',
+            }}
           >
             {t.wallet.recentTransactions}
           </Text>
@@ -101,7 +106,7 @@ const RecentTransactions = () => {
           )}
         </RightHeader>
       </Header>
-      <TransactionsList records={txs} />
+      <TransactionsList records={txs} inverted={currentTheme === 'dark'} />
       {seeAllHistory && total > ALL_HISTORY_PAGE_SIZE ? (
         <PaginationContainer>
           <Pagination

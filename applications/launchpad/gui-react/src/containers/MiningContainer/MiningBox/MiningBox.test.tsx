@@ -7,7 +7,6 @@ import MiningBox from '.'
 
 import { rootReducer } from '../../../store'
 import themes from '../../../styles/themes'
-import { Container } from '../../../store/containers/types'
 
 const emptyNodeState = {
   session: undefined,

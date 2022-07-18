@@ -5,6 +5,7 @@ import { Container } from '../containers/types'
 import { actions as containersActions } from '../containers'
 
 import * as walletService from './walletService'
+import { temporaryActions } from '../temporary'
 
 const getWalletDataWithPolling = async (): Promise<
   [walletService.WalletIdentityDto, walletService.WalletBalanceDto]
@@ -44,6 +45,12 @@ export const unlockWallet = createAsyncThunk<
   { state: RootState }
 >('wallet/unlock', async (_, thunkApi) => {
   try {
+    thunkApi.dispatch(
+      temporaryActions.setWalletPasswordConfirmation(
+        'waiting_for_confirmation',
+      ),
+    )
+
     await thunkApi
       .dispatch(
         containersActions.startRecipe({

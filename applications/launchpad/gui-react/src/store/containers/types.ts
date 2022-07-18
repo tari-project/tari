@@ -51,6 +51,7 @@ export type ContainerStatus = {
   name?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
+  exitCode?: number
   eventsChannel?: string
 }
 

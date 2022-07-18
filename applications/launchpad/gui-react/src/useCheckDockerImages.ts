@@ -28,10 +28,7 @@ const checkImages = async (serviceSettings: any, dispatch: AppDispatch) => {
       settings: serviceSettings,
     })
 
-    /**
-     *  @TODO - invert condition after the #410
-     */
-    const outdated = result.imageInfo.filter(i => i.updated)
+    const outdated = result.imageInfo.filter(i => !i.updated)
     outdated.map(i => {
       dispatch(dockerImagesActions.pushToTBotQueue(i))
     })

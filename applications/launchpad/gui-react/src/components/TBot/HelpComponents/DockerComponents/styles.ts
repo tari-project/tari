@@ -5,8 +5,10 @@ export const DockerDwnlTagContainer = styled.div`
   margin-bottom: ${({ theme }) => theme.spacingVertical(2)};
 `
 
-export const DockerDwnlTag = styled.div`
-  background: ${({ theme }) => theme.backgroundSecondary};
+export const DockerDwnlTag = styled.div<{ $dark: boolean }>`
+  background: ${({ theme, $dark }) =>
+    $dark ? theme.inverted.backgroundSecondary : theme.backgroundSecondary};
+  color: ${({ theme, $dark }) => ($dark ? '#fff' : theme.accentDark)};
   border-radius: ${({ theme }) => theme.borderRadius(1)};
   width: 100%;
   display: flex;

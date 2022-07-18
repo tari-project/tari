@@ -8,19 +8,25 @@ import Button from '../../components/Button'
 import t from '../../locales'
 
 import { TariBackgroundSignet } from './styles'
+import { WalletPasswordConfirmationStatus } from '../../store/temporary/types'
+import { useAppSelector } from '../../store/hooks'
+import { selectTheme } from '../../store/app/selectors'
 
 const MINIMAL_PASSWORD_LENGTH = 4
 
 const PasswordBox = ({
   pending,
+  passwordConfirmStatus,
   onSubmit,
   style,
 }: {
   pending: boolean
+  passwordConfirmStatus?: WalletPasswordConfirmationStatus
   onSubmit: (password: string) => void
   style?: CSSProperties
 }) => {
   const theme = useTheme()
+  const currentTheme = useAppSelector(selectTheme)
   const [password, setPassword] = useState('')
   const updatePassword = (v: string) => {
     setPassword(v)
@@ -33,10 +39,15 @@ const PasswordBox = ({
   }
 
   const disableSubmit = pending || password.length < MINIMAL_PASSWORD_LENGTH
+  const failed =
+    passwordConfirmStatus === 'failed' ||
+    passwordConfirmStatus === 'wrong_password'
 
   return (
     <Box style={{ position: 'relative', ...style }}>
-      <TariBackgroundSignet />
+      <TariBackgroundSignet
+        style={{ opacity: currentTheme === 'light' ? 1 : 0.2 }}
+      />
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
           {t.wallet.password.title}
@@ -48,15 +59,35 @@ const PasswordBox = ({
           autoFocus
           onChange={updatePassword}
           value={password}
-          disabled={pending}
+          disabled={pending && !failed}
           placeholder={t.wallet.password.placeholderCta}
           containerStyle={{
             margin: `${theme.spacing()} 0`,
           }}
           useReveal
         />
-        <Button disabled={disableSubmit} loading={pending} type='submit'>
-          {t.common.verbs.continue}
+        {passwordConfirmStatus === 'wrong_password' && (
+          <Text
+            color={theme.error}
+            style={{ marginBottom: theme.spacingVertical(1) }}
+          >
+            {t.wallet.theEnteredPasswordIsIncorrect}
+          </Text>
+        )}
+        {passwordConfirmStatus === 'failed' && (
+          <Text
+            color={theme.error}
+            style={{ marginBottom: theme.spacingVertical(1) }}
+          >
+            {t.common.phrases.somethingWentWrong}
+          </Text>
+        )}
+        <Button
+          disabled={disableSubmit && !failed}
+          loading={pending && !failed}
+          type='submit'
+        >
+          {failed ? t.common.verbs.tryAgain : t.common.verbs.continue}
         </Button>
       </form>
     </Box>

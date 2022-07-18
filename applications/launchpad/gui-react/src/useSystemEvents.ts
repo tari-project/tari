@@ -31,8 +31,17 @@ export const useSystemEvents = ({ dispatch }: { dispatch: AppDispatch }) => {
             if (!image.startsWith('quay.io/tarilabs')) {
               return
             }
+            let exitCode: number | undefined
 
-            dispatch(actions.updateStatus({ containerId, action }))
+            try {
+              exitCode = event.payload.Actor?.Attributes?.exitCode
+                ? Number(event.payload.Actor?.Attributes?.exitCode)
+                : undefined
+            } catch (_) {
+              // Exit code is not a number
+            }
+
+            dispatch(actions.updateStatus({ containerId, action, exitCode }))
 
             return
           }

@@ -18,9 +18,11 @@ import {
 
 const getInitialServiceStatus = (
   lastAction: SystemEventAction,
+  exitCode?: number,
 ): ContainerStatus => ({
   timestamp: Date.now(),
   status: lastAction,
+  exitCode,
 })
 
 export const initialState: ContainersState = {
@@ -47,15 +49,22 @@ const containersSlice = createSlice({
   reducers: {
     updateStatus: (
       state,
-      action: PayloadAction<{ containerId: string; action: SystemEventAction }>,
+      action: PayloadAction<{
+        containerId: string
+        action: SystemEventAction
+        exitCode?: number
+      }>,
     ) => {
       if (!state.containers[action.payload.containerId]) {
         state.containers[action.payload.containerId] = getInitialServiceStatus(
           action.payload.action,
+          action.payload.exitCode,
         )
       } else {
         state.containers[action.payload.containerId].status =
           action.payload.action
+        state.containers[action.payload.containerId].exitCode =
+          action.payload.exitCode
       }
 
       if (!state.stats) {

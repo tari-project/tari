@@ -12,6 +12,7 @@ import containersReducer from './containers'
 import tbotReducer from './tbot'
 import dockerImagesReducer from './dockerImages'
 import credentialsReducer from './credentials'
+import temporaryReducer from './temporary'
 
 // exported for tests
 export const rootReducer = {
@@ -24,13 +25,14 @@ export const rootReducer = {
   tbot: tbotReducer,
   dockerImages: dockerImagesReducer,
   credentials: credentialsReducer,
+  temporary: temporaryReducer,
 }
 const reducer = combineReducers(rootReducer)
 
 const persistConfig = {
   key: 'root',
   storage,
-  blacklist: ['containers', 'credentials'],
+  blacklist: ['containers', 'credentials', 'temporary'],
 }
 
 const persistedReducer = persistReducer(persistConfig, reducer)

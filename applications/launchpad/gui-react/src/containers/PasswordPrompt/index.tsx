@@ -12,6 +12,7 @@ import WalletPasswordBox from './WalletPasswordBox'
 import AllCredentialsBox from './AllCredentialsBox'
 import MoneroCredentialsBox from './MoneroCredentialsBox'
 import { WalletParole, MoneroCredentials } from './types'
+import { selectWalletPasswordConfirmation } from '../../store/temporary/selectors'
 
 export const EnsurePasswordsContext = React.createContext<{
   ensureWalletPasswordInStore: (
@@ -33,6 +34,7 @@ const PasswordsPrompt = ({
 }) => {
   const dispatch = useAppDispatch()
   const isParoleSet = useAppSelector(selectIsParoleSet)
+  const walletPassConfirm = useAppSelector(selectWalletPasswordConfirmation)
   const areMoneroCredentialsPresent = useAppSelector(
     selectAreMoneroCredentialsPresent,
   )
@@ -60,12 +62,17 @@ const PasswordsPrompt = ({
         return
       }
 
-      setShowWalletForm(Boolean(required.wallet && !isParoleSet))
+      setShowWalletForm(
+        Boolean(
+          (required.wallet && !isParoleSet) || walletPassConfirm !== 'success',
+        ),
+      )
       setShowMoneroForm(
         Boolean(required.monero && !areMoneroCredentialsPresent),
       )
       if (
         (required.wallet && !isParoleSet) ||
+        walletPassConfirm !== 'success' ||
         (required.monero && !areMoneroCredentialsPresent)
       ) {
         setAction(() => callback)
