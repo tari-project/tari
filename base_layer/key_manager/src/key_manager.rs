@@ -26,7 +26,7 @@ use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
+    hashing::{DomainSeparatedHasher, GenericHashDomain, LengthExtensionAttackResistant},
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},
 };
@@ -48,7 +48,7 @@ where K: SecretKey
 
 #[derive(Clone, Derivative, PartialEq, Serialize, Deserialize)]
 #[derivative(Debug)]
-pub struct KeyManager<K: SecretKey, D: Digest> {
+pub struct KeyManager<K: SecretKey, D: Digest + LengthExtensionAttackResistant> {
     #[derivative(Debug = "ignore")]
     seed: CipherSeed,
     #[derivative(Debug = "ignore")]
@@ -61,7 +61,7 @@ pub struct KeyManager<K: SecretKey, D: Digest> {
 impl<K, D> KeyManager<K, D>
 where
     K: SecretKey,
-    D: Digest,
+    D: Digest + LengthExtensionAttackResistant,
 {
     /// Creates a new KeyManager with a new randomly selected entropy
     pub fn new() -> KeyManager<K, D> {
@@ -125,7 +125,7 @@ where
 impl<K, D> Default for KeyManager<K, D>
 where
     K: SecretKey,
-    D: Digest,
+    D: Digest + LengthExtensionAttackResistant,
 {
     fn default() -> Self {
         Self::new()
@@ -134,21 +134,20 @@ where
 
 #[cfg(test)]
 mod test {
-    use sha2::Sha256;
-    use tari_crypto::ristretto::RistrettoSecretKey;
+    use tari_crypto::{ristretto::RistrettoSecretKey, hash::blake2::Blake256};
 
     use crate::key_manager::*;
 
     #[test]
     fn test_new_keymanager() {
-        let km1 = KeyManager::<RistrettoSecretKey, Sha256>::new();
-        let km2 = KeyManager::<RistrettoSecretKey, Sha256>::new();
+        let km1 = KeyManager::<RistrettoSecretKey, Blake256>::new();
+        let km2 = KeyManager::<RistrettoSecretKey, Blake256>::new();
         assert_ne!(km1.seed, km2.seed);
     }
 
     #[test]
     fn test_derive_and_next_key() {
-        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::new();
+        let mut km = KeyManager::<RistrettoSecretKey, Blake256>::new();
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -168,7 +167,7 @@ mod test {
 
     #[test]
     fn test_derive_and_next_key_with_branch_seed() {
-        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::from(CipherSeed::new(), "Test".to_string(), 0);
+        let mut km = KeyManager::<RistrettoSecretKey, Blake256>::from(CipherSeed::new(), "Test".to_string(), 0);
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -189,8 +188,8 @@ mod test {
     #[test]
     fn test_use_of_branch_seed() {
         let x = CipherSeed::new();
-        let mut km1 = KeyManager::<RistrettoSecretKey, Sha256>::from(x.clone(), "some".to_string(), 0);
-        let mut km2 = KeyManager::<RistrettoSecretKey, Sha256>::from(x, "other".to_string(), 0);
+        let mut km1 = KeyManager::<RistrettoSecretKey, Blake256>::from(x.clone(), "some".to_string(), 0);
+        let mut km2 = KeyManager::<RistrettoSecretKey, Blake256>::from(x, "other".to_string(), 0);
         let next_key1 = km1.next_key().unwrap();
         let next_key2 = km2.next_key().unwrap();
         assert_ne!(next_key1.k, next_key2.k);
