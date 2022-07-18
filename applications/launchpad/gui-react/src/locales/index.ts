@@ -20,6 +20,7 @@ import settingsI18n from './settings'
 import onboardingI18n from './onboarding'
 import dockerI18n from './docker'
 import passwordPromptI18n from './passwordPrompt'
+import onlineIl8n from './online'
 
 const translations = {
   common: commonI18n,
@@ -35,6 +36,7 @@ const translations = {
   onboarding: onboardingI18n,
   docker: dockerI18n,
   passwordPrompt: passwordPromptI18n,
+  online: onlineIl8n,
 }
 
 export default translations

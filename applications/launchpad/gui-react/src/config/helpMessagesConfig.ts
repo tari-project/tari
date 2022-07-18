@@ -24,6 +24,10 @@ import {
   DownloadDockerImage,
   NewDockerImageToDownload,
 } from '../components/TBot/HelpComponents/DockerComponents'
+import {
+  LooksLikeYoureOffline,
+  ReconnectToInternet,
+} from '../components/TBot/HelpComponents/OnlineCheck'
 
 const MessagesConfig = {
   [TBotMessages.CryptoMiningHelp]: ['cryptoHelpMessage1'],
@@ -43,6 +47,7 @@ const MessagesConfig = {
   ],
   [TBotMessages.DockerImageDownloadSuccess]: ['dockerImageDownloadSuccess'],
   [TBotMessages.DockerImageDownloadError]: ['dockerImageDownloadError'],
+  [TBotMessages.OnlineCheck]: ['youreOffline', 'reconnect'],
 }
 
 export const HelpMessagesMap: {
@@ -81,6 +86,12 @@ export const HelpMessagesMap: {
   },
   dockerImageDownloadError: {
     content: DockerImageDownloadError,
+  },
+  youreOffline: {
+    content: LooksLikeYoureOffline,
+  },
+  reconnect: {
+    content: ReconnectToInternet,
   },
 }
 

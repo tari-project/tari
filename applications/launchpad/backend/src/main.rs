@@ -52,6 +52,7 @@ use crate::{
     },
     commands::{
         check_docker,
+        check_internet_connection,
         create_default_workspace,
         create_new_workspace,
         events,
@@ -151,6 +152,7 @@ fn main() {
             events,
             check_docker,
             launch_docker,
+            check_internet_connection,
             open_terminal,
             node_identity,
             start_service,

@@ -11,6 +11,7 @@ export enum TBotMessages {
   NewDockerImageToDownload = 'NewDockerImageToDownload',
   DockerImageDownloadSuccess = 'DockerImageDownloadSuccess',
   DockerImageDownloadError = 'DockerImageDownloadError',
+  OnlineCheck = 'OnlineCheck',
 }
 
 export interface TBotState {

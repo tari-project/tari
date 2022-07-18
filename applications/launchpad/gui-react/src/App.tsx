@@ -27,6 +27,7 @@ import PasswordPrompt from './containers/PasswordPrompt'
 import { hideSplashscreen } from './splashscreen'
 import { openTerminalCmd } from './commands'
 import { useDockerTBotQueue } from './useDockerTBotQueue'
+import { useInternetCheck } from './useInternetCheck'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -87,6 +88,7 @@ const App = () => {
   useSystemEvents({ dispatch })
   useDockerEvents({ dispatch })
   useDockerImageDownloadListener({ dispatch })
+  useInternetCheck({ dispatch })
 
   return (
     <ThemeProvider theme={themeConfig}>
