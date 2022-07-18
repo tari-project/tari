@@ -325,6 +325,7 @@ impl CipherSeed {
             .chain(birthday)
             .chain(entropy)
             .chain(cipher_seed_version)
+            .chain(salt)
             .chain(passphrase_key.as_slice())
             .finalize()
             .into_vec();
