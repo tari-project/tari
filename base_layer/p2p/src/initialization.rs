@@ -256,7 +256,7 @@ async fn initialize_hidden_service(
         .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.to_port_mapping()?)
         .with_socks_authentication(config.to_socks_auth())
-        .with_control_server_auth(config.to_control_auth())
+        .with_control_server_auth(config.to_control_auth()?)
         .with_socks_address_override(config.socks_address_override)
         .with_control_server_address(config.control_address)
         .with_bypass_proxy_addresses(config.proxy_bypass_addresses.into());
