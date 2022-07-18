@@ -262,13 +262,18 @@ impl UnblindedOutput {
                 .construct_extended_proof(vec![extended_witness], None)
         };
 
-        let transaction_error = TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-            "Creating transaction output".to_string(),
-        ));
+        let proof_bytes = proof_bytes_result.map_err(|err| {
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
+                "Failed to construct range proof: {}",
+                err
+            )))
+        })?;
 
-        let proof_bytes = proof_bytes_result.map_err(|_| transaction_error.clone())?;
-
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| transaction_error)
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| {
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                "Rangeproof factory returned invalid range proof bytes".to_string(),
+            ))
+        })
     }
 
     pub fn as_rewindable_transaction_output(

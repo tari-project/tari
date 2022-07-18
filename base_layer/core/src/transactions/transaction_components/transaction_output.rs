@@ -626,4 +626,23 @@ mod test {
             .verify_mask(&factories.range_proof, &test_params.spend_key, utxo.value.into())
             .is_ok());
     }
+
+    #[test]
+    fn it_does_not_validate_incorrect_minimum_value() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        // To test the range proof validation, we need first to craete a valid minimum value
+        // because the API will not let us create the transaction otherwise
+        let utxo = test_params.create_unblinded_output(UtxoTestParams {
+            value: MicroTari(10),
+            minimum_value_promise: MicroTari(10),
+            ..Default::default()
+        });
+        let mut transaction_output = utxo.as_transaction_output(&factories).unwrap();
+
+        // Now we put a minimum value is that is invalid (greater than the actual value)
+        transaction_output.minimum_value_promise = MicroTari(11);
+        assert!(transaction_output.verify_range_proof(&factories.range_proof).is_err());
+    }
 }
