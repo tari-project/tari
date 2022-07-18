@@ -37,10 +37,11 @@ use chacha20::{
     Nonce,
 };
 use crc32fast::Hasher as CrcHasher;
+use digest::Digest;
 use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{
     hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
+    hashing::{DomainSeparatedHasher, GenericHashDomain, LengthExtensionAttackResistant, MacDomain},
 };
 use tari_utilities::ByteArray;
 
@@ -282,6 +283,13 @@ impl CipherSeed {
 }
 
 impl CipherSeed {
+    // TODO: Remove when generic `HashingDomain::mac_hasher` implementation is ready
+    fn mac_hasher<D: Digest + LengthExtensionAttackResistant>(
+        domain_label: &'static str,
+    ) -> DomainSeparatedHasher<D, MacDomain> {
+        DomainSeparatedHasher::<D, MacDomain>::new(domain_label)
+    }
+
     fn generate_mac(
         birthday: &[u8],
         entropy: &[u8],
@@ -312,7 +320,8 @@ impl CipherSeed {
         // we take the first 32 bytes of the generated derived encryption key for MAC generation, see documentation
         let passphrase_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?[..32].to_vec();
 
-        let mac = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new(DOMAIN_SEPARATION_LABEL)
+        // TODO: Replace with generic `HashingDomain::mac_hasher` implementation, when it is ready
+        let mac = Self::mac_hasher::<Blake256>(DOMAIN_SEPARATION_LABEL)
             .chain(birthday)
             .chain(entropy)
             .chain(cipher_seed_version)
