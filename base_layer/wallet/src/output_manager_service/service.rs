@@ -25,7 +25,6 @@ use std::{convert::TryInto, fmt, sync::Arc};
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
-use itertools::Itertools;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
@@ -1892,15 +1891,11 @@ where
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines)]
     fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
-        // ----------------------------------------------------------------------------
-        // scanning
-
-        let outputs = outputs
+        let scanned_outputs = outputs
             .into_iter()
             .filter_map(|output| {
                 // TODO: use MultiKey
@@ -1965,14 +1960,18 @@ where
                     _ => None,
                 }
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
 
-        // ----------------------------------------------------------------------------
-        // processing
+        self.import_onesided_outputs(scanned_outputs)
+    }
 
-        let mut rewound_outputs = Vec::with_capacity(outputs.len());
+    fn import_onesided_outputs(
+        &self,
+        scanned_outputs: Vec<(TransactionOutput, PrivateKey, RistrettoSecretKey)>,
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
+        let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, script_private_key, spending_key) in outputs {
+        for (output, script_private_key, spending_key) in scanned_outputs {
             let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
             let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
             let committed_value =

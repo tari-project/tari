@@ -55,7 +55,6 @@ tempfile = "3.1.0"
 thiserror = "1.0.26"
 tower = "0.4"
 prost = "0.9"
-itertools = "0.10.3"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
