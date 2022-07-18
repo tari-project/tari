@@ -177,10 +177,7 @@ const OnboardingContainer = () => {
 
   return (
     <StyledOnboardingContainer>
-      {/**
-       * @TODO remove this temporary button after onboarding development is done.
-       */}
-      <Button
+      {/* <Button
         onClick={() => dispatch(setOnboardingComplete(true))}
         style={{
           position: 'absolute',
@@ -189,7 +186,7 @@ const OnboardingContainer = () => {
         }}
       >
         EXIT TO HOME
-      </Button>
+      </Button>*/}
       <TBotPrompt
         open={true}
         messages={messages}
