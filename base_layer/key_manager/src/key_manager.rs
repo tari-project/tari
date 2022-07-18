@@ -134,7 +134,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::{ristretto::RistrettoSecretKey, hash::blake2::Blake256};
+    use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoSecretKey};
 
     use crate::key_manager::*;
 
