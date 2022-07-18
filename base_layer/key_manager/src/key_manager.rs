@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use tari_crypto::{
     hashing::{DomainSeparatedHasher, GenericHashDomain, LengthExtensionAttackResistant},
     keys::SecretKey,
-    tari_utilities::{byte_array::ByteArrayError, hex::Hex},
+    tari_utilities::{byte_array::ByteArrayError},
 };
 
 use crate::cipher_seed::CipherSeed;
