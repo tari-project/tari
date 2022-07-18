@@ -433,15 +433,6 @@ mod test {
     };
 
     #[test]
-    fn aux_test() {
-        let bytes = &[
-            0, 119, 156, 172, 30, 41, 29, 120, 191, 26, 160, 11, 200, 249, 193, 163, 245, 33, 159, 11, 7, 107, 217, 34,
-            96, 103, 4, 29, 218, 98, 253, 211, 250,
-        ];
-        let _seed = CipherSeed::from_enciphered_bytes(bytes, None).unwrap();
-    }
-
-    #[test]
     fn test_cipher_seed_generation_and_deciphering() {
         let seed = CipherSeed::new();
 
