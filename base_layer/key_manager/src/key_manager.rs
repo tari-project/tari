@@ -85,13 +85,14 @@ where
         }
     }
 
-    /// Derive a new private key from master key: derived_key=SHA256(master_key||branch_seed||index)
+    /// Derive a new private key from master key: derived_key=H(master_key||branch_seed||index), for some
+    /// hash function H which is Length attack resistant, such as Blake2b.
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
         // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
         // piece of data for concatenation, reducing the risk of collisions due to redundance of variable length
         // input
         let derive_key = DomainSeparatedHasher::<D, GenericHashDomain>::new(DOMAIN_SEPARATION_LABEL)
-            .chain(self.seed.entropy().to_vec().to_hex())
+            .chain(self.seed.entropy())
             .chain(self.branch_seed.as_str().as_bytes())
             .chain(key_index.to_le_bytes())
             .finalize()
