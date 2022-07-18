@@ -401,6 +401,7 @@ impl Debug for UnblindedOutput {
             .field("sender_offset_public_key", &self.sender_offset_public_key)
             .field("metadata_signature", &self.metadata_signature)
             .field("script_lock_height", &self.script_lock_height)
+            .field("minimum_value_promise", &self.minimum_value_promise)
             .finish()
     }
 }

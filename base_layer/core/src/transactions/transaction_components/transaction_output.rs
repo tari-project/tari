@@ -1,6 +1,6 @@
 // Copyright 2018 The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// Redistribution an&&d use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
 //
 // 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
@@ -578,7 +578,12 @@ fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::transaction_components::transaction_output::power_of_two_chunk_sizes;
+    use crate::transactions::{
+        tari_amount::MicroTari,
+        test_helpers::{TestParams, UtxoTestParams},
+        transaction_components::transaction_output::power_of_two_chunk_sizes,
+        CryptoFactories,
+    };
 
     #[test]
     fn it_creates_power_of_two_chunks() {
@@ -602,5 +607,23 @@ mod test {
         assert_eq!(p2vec, vec![
             1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 64, 2, 1
         ]);
+    }
+
+    #[test]
+    fn it_builds_correctly_from_unblinded_output() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+        let utxo = test_params.create_unblinded_output(UtxoTestParams {
+            value: MicroTari(10),
+            minimum_value_promise: MicroTari(10),
+            ..Default::default()
+        });
+
+        let transaction_output = utxo.as_transaction_output(&factories).unwrap();
+        assert!(transaction_output.verify_range_proof(&factories.range_proof).is_ok());
+        assert!(transaction_output.verify_metadata_signature().is_ok());
+        assert!(transaction_output
+            .verify_mask(&factories.range_proof, &test_params.spend_key, utxo.value.into())
+            .is_ok());
     }
 }

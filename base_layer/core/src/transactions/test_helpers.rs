@@ -103,6 +103,7 @@ pub struct UtxoTestParams {
     pub input_data: Option<ExecutionStack>,
     pub covenant: Covenant,
     pub output_version: Option<TransactionOutputVersion>,
+    pub minimum_value_promise: MicroTari,
 }
 
 impl UtxoTestParams {
@@ -126,6 +127,7 @@ impl Default for UtxoTestParams {
             input_data: None,
             covenant: Covenant::default(),
             output_version: None,
+            minimum_value_promise: MicroTari::zero(),
         }
     }
 }
@@ -184,8 +186,6 @@ impl TestParams {
             EncryptedValue::default()
         };
 
-        let minimum_value_promise = MicroTari::zero();
-
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             params.value,
@@ -195,7 +195,7 @@ impl TestParams {
             &self.sender_offset_private_key,
             &params.covenant,
             &encrypted_value,
-            minimum_value_promise,
+            params.minimum_value_promise,
         )
         .unwrap();
 
@@ -216,7 +216,7 @@ impl TestParams {
             0,
             params.covenant,
             encrypted_value,
-            minimum_value_promise,
+            params.minimum_value_promise,
         )
     }
 
@@ -718,6 +718,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             input_data: schema.input_data.clone(),
             covenant: schema.covenant.clone(),
             output_version: schema.output_version,
+            minimum_value_promise: MicroTari::zero(),
         });
         outputs.push(utxo.clone());
         stx_builder
