@@ -240,6 +240,10 @@ impl CipherSeed {
             return Err(KeyManagerError::DecryptionFailed);
         }
 
+        for val in mac {
+            println!("the value of the mac is: {}", val);
+        }
+
         let salt_vec: ArrayVec<_, CIPHER_SEED_SALT_BYTES> = salt.into_iter().collect();
         let salt_bytes = salt_vec.into_inner().map_err(|_| KeyManagerError::InvalidData)?;
 
@@ -427,6 +431,15 @@ mod test {
         error::KeyManagerError,
         mnemonic::{Mnemonic, MnemonicLanguage},
     };
+
+    #[test]
+    fn aux_test() {
+        let bytes = &[
+            0, 119, 156, 172, 30, 41, 29, 120, 191, 26, 160, 11, 200, 249, 193, 163, 245, 33, 159, 11, 7, 107, 217, 34,
+            96, 103, 4, 29, 218, 98, 253, 211, 250,
+        ];
+        let _seed = CipherSeed::from_enciphered_bytes(bytes, None).unwrap();
+    }
 
     #[test]
     fn test_cipher_seed_generation_and_deciphering() {
