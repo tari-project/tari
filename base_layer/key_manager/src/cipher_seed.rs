@@ -433,6 +433,18 @@ mod test {
     };
 
     #[test]
+    fn aux_test() {
+        let seed = CipherSeed::new();
+        let mnemonic_seq = seed
+            .to_mnemonic(MnemonicLanguage::English, None)
+            .expect("Couldn't convert CipherSeed to Mnemonic");
+
+        for val in mnemonic_seq {
+            println!("the value is: {}", val);
+        }
+    }
+
+    #[test]
     fn test_cipher_seed_generation_and_deciphering() {
         let seed = CipherSeed::new();
 

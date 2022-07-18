@@ -777,9 +777,8 @@ async fn test_recovery_birthday() {
     let shutdown = Shutdown::new();
 
     let seed_words: Vec<String> = [
-        "scale", "first", "lamp", "impact", "animal", "cage", "tourist", "observe", "junior", "digital", "charge",
-        "key", "must", "pool", "wood", "tray", "include", "approve", "orbit", "knee", "walnut", "nasty", "wear",
-        "remain",
+        "cactus", "check", "undo", "jaguar", "bus", "gate", "guide", "bounce", "grow", "mushroom", "fetch", "muscle",
+        "very", "hip", "early", "cream", "party", "cruel", "decide", "census", "slow", "bulk", "prefer", "farm",
     ]
     .iter()
     .map(|w| w.to_string())
