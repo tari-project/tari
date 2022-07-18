@@ -272,6 +272,7 @@ impl SendTab {
         f.render_stateful_widget(table, area, &mut self.table_state)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
         if self.confirmation_dialog.is_some() {
             if 'n' == c {
@@ -459,6 +460,7 @@ impl SendTab {
 }
 
 impl<B: Backend> Component<B> for SendTab {
+    #[allow(clippy::too_many_lines)]
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
         let areas = Layout::default()
             .constraints(
