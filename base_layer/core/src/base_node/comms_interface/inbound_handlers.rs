@@ -777,7 +777,8 @@ where B: BlockchainBackend + 'static
             },
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
-                metrics::rejected_blocks(block.header.height, &block.hash()).inc();
+                let block_hash = block.hash();
+                metrics::rejected_blocks(block.header.height, &block_hash).inc();
                 warn!(
                     target: LOG_TARGET,
                     "Peer {} sent an invalid header: {}",
@@ -787,14 +788,18 @@ where B: BlockchainBackend + 'static
                         .unwrap_or_else(|| "<local request>".to_string()),
                     e
                 );
-                if let Some(source_peer) = source_peer.clone() {
-                    if let Err(e) = self
-                        .connectivity
-                        .ban_peer(source_peer, format!("Peer propagated invalid block: {}", e))
-                        .await
-                    {
-                        error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                    }
+                match source_peer {
+                    Some(ref source_peer) => {
+                        if let Err(e) = self
+                            .connectivity
+                            .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", e))
+                            .await
+                        {
+                            error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                        }
+                    },
+                    // SECURITY: This indicates an issue in the transaction validator.
+                    None => metrics::rejected_local_blocks(block.header.height, &block_hash).inc(),
                 }
                 self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
