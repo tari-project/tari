@@ -1935,7 +1935,7 @@ where
 
                         // computing shared secret
                         let c = RistrettoSecretKey::from_bytes(
-                            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth address")
+                            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
                                 .chain(PublicKey::shared_secret(&secret_key, nonce.as_ref()).as_bytes())
                                 .finalize()
                                 .as_ref(),
