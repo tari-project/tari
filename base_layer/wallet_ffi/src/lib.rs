@@ -8673,9 +8673,9 @@ mod test {
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let mnemonic = vec![
-                "parade", "genius", "cradle", "milk", "perfect", "ride", "online", "world", "lady", "apple", "rent",
-                "business", "oppose", "force", "tumble", "escape", "tongue", "camera", "ceiling", "edge", "shine",
-                "gauge", "fossil", "orphan",
+                "cactus", "check", "undo", "jaguar", "bus", "gate", "guide", "bounce", "grow", "mushroom", "fetch",
+                "muscle", "very", "hip", "early", "cream", "party", "cruel", "decide", "census", "slow", "bulk",
+                "prefer", "farm",
             ];
 
             let seed_words = seed_words_create();

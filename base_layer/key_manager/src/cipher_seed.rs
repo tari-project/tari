@@ -240,10 +240,6 @@ impl CipherSeed {
             return Err(KeyManagerError::DecryptionFailed);
         }
 
-        for val in mac {
-            println!("the value of the mac is: {}", val);
-        }
-
         let salt_vec: ArrayVec<_, CIPHER_SEED_SALT_BYTES> = salt.into_iter().collect();
         let salt_bytes = salt_vec.into_inner().map_err(|_| KeyManagerError::InvalidData)?;
 
@@ -431,18 +427,6 @@ mod test {
         error::KeyManagerError,
         mnemonic::{Mnemonic, MnemonicLanguage},
     };
-
-    #[test]
-    fn aux_test() {
-        let seed = CipherSeed::new();
-        let mnemonic_seq = seed
-            .to_mnemonic(MnemonicLanguage::English, None)
-            .expect("Couldn't convert CipherSeed to Mnemonic");
-
-        for val in mnemonic_seq {
-            println!("the value is: {}", val);
-        }
-    }
 
     #[test]
     fn test_cipher_seed_generation_and_deciphering() {
