@@ -55,6 +55,8 @@ message TransactionInput {
     uint32 version = 10;
     // The encrypted value
     bytes encrypted_value = 11;
+    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    uint64 minimum_value_promise = 12;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a

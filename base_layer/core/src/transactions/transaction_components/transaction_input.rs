@@ -234,6 +234,16 @@ impl TransactionInput {
         }
     }
 
+    pub fn minimum_value_promise(&self) -> Result<&MicroTari, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref minimum_value_promise,
+                ..
+            } => Ok(minimum_value_promise),
+        }
+    }
+
     /// Checks if the given un-blinded input instance corresponds to this blinded Transaction Input
     pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> Result<bool, TransactionError> {
         match self.spent_output {
