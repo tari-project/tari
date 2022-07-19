@@ -25,6 +25,7 @@ use std::fmt::Display;
 use console_error_panic_hook;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::hash::blake2::Blake256;
 use wasm_bindgen::prelude::*;
 
@@ -60,7 +61,7 @@ impl From<DerivedKey<PrivateKey>> for DerivedKeypair {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 struct KeyManagerResponse {
     key_manager: KeyManager,
     success: bool,
