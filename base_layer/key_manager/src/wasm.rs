@@ -26,7 +26,7 @@ use console_error_panic_hook;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, keys::PublicKey};
 use wasm_bindgen::prelude::*;
 
 use crate::{
