@@ -76,9 +76,6 @@ cp -f "${project_dir}/target/release/tari_collectibles" "${tarball_folder}/runti
 # Validator node
 cp -f "${project_dir}/target/release/tari_validator_node" "${tarball_folder}/runtime/tari_validator_node"
 
-# Launchpad
-cp -f "${project_dir}/target/release/tari_launchpad" "${tarball_folder}/runtime/tari_launchpad"
-
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"
 cp -f "${local_dir}/get_xmrig_osx.ps1" "${tarball_folder}/runtime/get_xmrig_osx.ps1"
