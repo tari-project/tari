@@ -26,7 +26,7 @@ use console_error_panic_hook;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{hash::blake2::Blake256, keys::PublicKey};
+use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
 use wasm_bindgen::prelude::*;
 
 use crate::{
@@ -162,6 +162,7 @@ where T: for<'a> Deserialize<'a> {
 }
 
 mod test {
+    use tari_utilities::hex::Hex;
     use wasm_bindgen_test::*;
 
     use super::*;
