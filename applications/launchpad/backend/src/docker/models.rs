@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use core::fmt;
 use std::{
     convert::TryFrom,
     fmt::{Display, Formatter},
@@ -30,6 +31,7 @@ use bollard::{container::LogOutput, models::ContainerCreateResponse};
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
+use super::TariWorkspace;
 use crate::docker::DockerWrapperError;
 
 //-------------------------------------------     ContainerId      ----------------------------------------------
@@ -72,6 +74,7 @@ pub enum ContainerStatus {
 
 //-------------------------------------------     ContainerState      ----------------------------------------------
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContainerState {
     name: String,
     id: ContainerId,
@@ -197,7 +200,9 @@ pub enum ImageType {
     Sha3Miner,
     MmProxy,
     Monerod,
-    Frontail,
+    Loki,
+    Promtail,
+    Grafana,
 }
 
 impl ImageType {
@@ -205,12 +210,29 @@ impl ImageType {
         match self {
             Self::Tor => "tor",
             Self::BaseNode => "tari_base_node",
-            Self::Wallet => "tari_console_wallet",
+            Self::Wallet => "tari_wallet",
             Self::XmRig => "xmrig",
             Self::Sha3Miner => "tari_sha3_miner",
             Self::MmProxy => "tari_mm_proxy",
             Self::Monerod => "monerod",
-            Self::Frontail => "frontail",
+            Self::Loki => "loki",
+            Self::Promtail => "promtail",
+            Self::Grafana => "grafana",
+        }
+    }
+
+    pub fn display_name(&self) -> &str {
+        match self {
+            Self::Tor => "Tor",
+            Self::BaseNode => "Base Node",
+            Self::Wallet => "Wallet",
+            Self::XmRig => "Xmrig",
+            Self::Sha3Miner => "SHA3 miner",
+            Self::MmProxy => "MM proxy",
+            Self::Monerod => "Monerod",
+            Self::Loki => "Loki",
+            Self::Promtail => "Promtail",
+            Self::Grafana => "Grafana",
         }
     }
 
@@ -223,7 +245,9 @@ impl ImageType {
             Self::Sha3Miner => "sha3_miner",
             Self::MmProxy => "mm_proxy",
             Self::Monerod => "monerod",
-            Self::Frontail => "frontail",
+            Self::Loki => "loki",
+            Self::Promtail => "promtail",
+            Self::Grafana => "grafana",
         }
     }
 
@@ -236,7 +260,9 @@ impl ImageType {
             Self::Sha3Miner => "sha3_miner",
             Self::MmProxy => "mm_proxy",
             Self::Monerod => "monerod",
-            Self::Frontail => "frontail",
+            Self::Loki => "grafana",
+            Self::Promtail => "grafana",
+            Self::Grafana => "grafana",
         }
     }
 }
@@ -254,8 +280,22 @@ impl TryFrom<&str> for ImageType {
             "sha3_miner" | "sha3 miner" => Ok(Self::Sha3Miner),
             "mm_proxy" | "mm proxy" => Ok(Self::MmProxy),
             "monerod" | "monero" => Ok(Self::Monerod),
-            "frontail" => Ok(Self::Frontail),
+            "loki" => Ok(Self::Loki),
+            "promtail" => Ok(Self::Promtail),
+            "grafana" => Ok(Self::Grafana),
             _ => Err(DockerWrapperError::InvalidImageType),
         }
+    }
+}
+
+impl fmt::Display for TariNetwork {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl fmt::Display for ImageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

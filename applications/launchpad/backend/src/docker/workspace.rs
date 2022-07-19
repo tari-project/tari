@@ -27,8 +27,10 @@ use bollard::{
     container::{
         Config,
         CreateContainerOptions,
+        ListContainersOptions,
         LogsOptions,
         NetworkingConfig,
+        RemoveContainerOptions,
         Stats,
         StatsOptions,
         StopContainerOptions,
@@ -44,8 +46,13 @@ use strum::IntoEnumIterator;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
+use super::{add_container, container_state, CONTAINERS};
 use crate::docker::{
+    change_container_status,
     models::{ContainerId, ContainerState},
+    try_create_container,
+    try_destroy_container,
+    ContainerStatus,
     DockerWrapperError,
     ImageType,
     LaunchpadConfig,
@@ -53,6 +60,7 @@ use crate::docker::{
 };
 
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
+static GRAFANA_REGISTRY: &str = "grafana";
 static DEFAULT_TAG: &str = "latest";
 
 /// `Workspaces` allows us to spin up multiple [TariWorkspace] recipes or configurations at once. Most users will only
@@ -177,11 +185,10 @@ impl Workspaces {
 /// * Base node - ports 18142 and 18149. TODO - currently the same port is mapped to the host. For multiple Workspaces
 ///   we'd need to expose a different port to the host. e.g. 1n142 where n is the workspace number.
 /// * Wallet - 18143 and 18188
-/// * Frontail - 18130
+/// * Loki (18130), promtail (18980) and grafana (18300) and
 pub struct TariWorkspace {
     name: String,
     config: LaunchpadConfig,
-    containers: HashMap<String, ContainerState>,
 }
 
 impl TariWorkspace {
@@ -190,7 +197,6 @@ impl TariWorkspace {
         Self {
             name: name.to_string(),
             config,
-            containers: HashMap::new(),
         }
     }
 
@@ -210,10 +216,18 @@ impl TariWorkspace {
     /// `docker pull {image_name}`.
     ///
     /// It also lets power users customise which version of docker images they want to run in the workspace.
-    pub fn fully_qualified_image(image: ImageType, registry: Option<&str>, tag: Option<&str>) -> String {
-        let reg = registry.unwrap_or(DEFAULT_REGISTRY);
-        let tag = Self::arch_specific_tag(tag);
-        format!("{}/{}:{}", reg, image.image_name(), tag)
+    pub fn fully_qualified_image(image: ImageType, registry: Option<&str>) -> String {
+        let reg = match image {
+            ImageType::Tor |
+            ImageType::BaseNode |
+            ImageType::Wallet |
+            ImageType::XmRig |
+            ImageType::Sha3Miner |
+            ImageType::MmProxy |
+            ImageType::Monerod => registry.unwrap_or(DEFAULT_REGISTRY),
+            ImageType::Loki | ImageType::Promtail | ImageType::Grafana => GRAFANA_REGISTRY,
+        };
+        format!("{}/{}:{}", reg, image.image_name(), "latest")
     }
 
     /// Returns an architecture-specific tag based on the current CPU and the given label. e.g.
@@ -241,13 +255,9 @@ impl TariWorkspace {
         }
         // Create or restart the volume
 
-        let registry = self.config.registry.clone();
-        let tag = self.config.tag.clone();
         for image in self.images_to_start() {
             // Start each container
-            let name = self
-                .start_service(image, registry.clone(), tag.clone(), docker.clone())
-                .await?;
+            let name = self.start_service(image, docker.clone()).await?;
             info!(
                 "Docker container {} ({}) successfully started",
                 image.image_name(),
@@ -301,7 +311,7 @@ impl TariWorkspace {
             stderr: true,
             ..Default::default()
         };
-        self.containers.get(container_name).map(move |container| {
+        CONTAINERS.read().unwrap().get(container_name).map(move |container| {
             let id = container.id();
             docker
                 .logs(id.as_str(), Some(options))
@@ -315,7 +325,7 @@ impl TariWorkspace {
         name: &str,
         docker: &Docker,
     ) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
-        if let Some(container) = self.containers.get(name) {
+        if let Some(container) = CONTAINERS.read().unwrap().get(name) {
             let options = StatsOptions {
                 stream: true,
                 one_shot: false,
@@ -350,64 +360,28 @@ impl TariWorkspace {
     /// * starts the container
     /// * adds the container reference to the current list of containers being managed
     /// * Returns the container name
-    pub async fn start_service(
-        &mut self,
-        image: ImageType,
-        registry: Option<String>,
-        tag: Option<String>,
-        docker: Docker,
-    ) -> Result<String, DockerWrapperError> {
-        let args = self.config.command(image);
-        let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
-        let options = Some(CreateContainerOptions {
-            name: format!("{}_{}", self.name, image.image_name()),
-        });
-        let envars = self.config.environment(image);
-        let volumes = self.config.volumes(image);
-        let ports = self.config.ports(image);
-        let port_map = self.config.port_map(image);
-        let mounts = self.config.mounts(image, self.tari_blockchain_volume_name());
-        let mut endpoints = HashMap::new();
-        let endpoint = EndpointSettings {
-            aliases: Some(vec![image.container_name().to_string()]),
-            ..Default::default()
-        };
-        endpoints.insert(self.network_name(), endpoint);
-        let config = Config::<String> {
-            image: Some(image_name.clone()),
-            attach_stdin: Some(false),
-            attach_stdout: Some(false),
-            attach_stderr: Some(false),
-            exposed_ports: Some(ports),
-            open_stdin: Some(true),
-            stdin_once: Some(false),
-            tty: Some(true),
-            env: Some(envars),
-            volumes: Some(volumes),
-            cmd: Some(args),
-            host_config: Some(HostConfig {
-                binds: Some(vec![]),
-                network_mode: Some("bridge".to_string()),
-                port_bindings: Some(port_map),
-                mounts: Some(mounts),
-                ..Default::default()
-            }),
-            networking_config: Some(NetworkingConfig {
-                endpoints_config: endpoints,
-            }),
-            ..Default::default()
-        };
-        info!("Creating {}", image_name);
-        debug!("Options: {:?}", options);
-        debug!("{} has configuration object: {:#?}", image_name, config);
-        let container = docker.create_container(options, config).await?;
+    pub async fn start_service(&mut self, image: ImageType, docker: Docker) -> Result<String, DockerWrapperError> {
+        let fully_qualified_image_name = TariWorkspace::fully_qualified_image(image, self.config.registry.as_deref());
+        info!("Creating {}", &fully_qualified_image_name);
+        let workspace_image_name = format!("{}_{}", self.name, image.image_name());
+        let _unused = try_destroy_container(workspace_image_name.as_str(), docker.clone()).await;
+        let container = try_create_container(
+            image,
+            fully_qualified_image_name.clone(),
+            self.name().to_string(),
+            &self.config,
+            docker.clone(),
+        )
+        .await?;
         let name = image.container_name();
         let id = container.id.clone();
         self.add_container(name, container);
-        info!("Starting {}.", image_name);
+
+        info!("Starting {}.", fully_qualified_image_name);
         docker.start_container::<String>(id.as_str(), None).await?;
+
         self.mark_container_running(name)?;
-        info!("{} started with id {}", image_name, id);
+        info!("{} started with id {}", fully_qualified_image_name, id);
 
         Ok(name.to_string())
     }
@@ -436,27 +410,16 @@ impl TariWorkspace {
         images
     }
 
-    /// Returns a reference to the set of managed containers. You can only retrieve immutable references from this
-    /// hash map. If you need a mutable reference tot a container's state, see [`container_mut`].
-    pub fn managed_containers(&self) -> &HashMap<String, ContainerState> {
-        &self.containers
-    }
-
-    /// Return a mutable reference to the named container's [`ContainerState`].
-    pub fn container_mut(&mut self, container_name: &str) -> Option<&mut ContainerState> {
-        self.containers.get_mut(container_name)
-    }
-
     /// Add the container info to the list of containers the wrapper is managing
     fn add_container(&mut self, name: &str, container: ContainerCreateResponse) {
         let id = ContainerId::from(container.id.clone());
         let state = ContainerState::new(name.to_string(), id, container);
-        self.containers.insert(name.to_string(), state);
+        add_container(name, state);
     }
 
     // Tag the container with id `id` as Running
     fn mark_container_running(&mut self, name: &str) -> Result<(), DockerWrapperError> {
-        if let Some(container) = self.containers.get_mut(name) {
+        if let Some(container) = CONTAINERS.write().unwrap().get_mut(name) {
             container.running();
             Ok(())
         } else {
@@ -466,7 +429,7 @@ impl TariWorkspace {
 
     /// Stop the container with the given `name` and optionally delete it
     pub async fn stop_container(&mut self, name: &str, delete: bool, docker: &Docker) {
-        let container = match self.container_mut(name) {
+        let container = match container_state(name) {
             Some(c) => c,
             None => {
                 info!(
@@ -480,8 +443,15 @@ impl TariWorkspace {
         let id = container.id().clone();
         match docker.stop_container(id.as_str(), Some(options)).await {
             Ok(_res) => {
-                info!("Container {} stopped", id);
-                container.set_stop();
+                info!("Container {} stopped", id.clone());
+                match change_container_status(id.as_str(), ContainerStatus::Stopped) {
+                    Ok(_) => (),
+                    Err(err) => warn!(
+                        "Could not update launchpad cache for {} due to: {}",
+                        id,
+                        err.to_string()
+                    ),
+                }
             },
             Err(err) => {
                 warn!("Could not stop container {} due to {}", id, err.to_string());
@@ -492,7 +462,14 @@ impl TariWorkspace {
             match docker.remove_container(id.as_str(), None).await {
                 Ok(()) => {
                     info!("Container {} deleted", id);
-                    container.set_deleted();
+                    match change_container_status(id.as_str(), ContainerStatus::Deleted) {
+                        Ok(_) => (),
+                        Err(err) => warn!(
+                            "Could not update launchpad cache for {} due to: {}",
+                            id,
+                            err.to_string()
+                        ),
+                    }
                 },
                 Err(err) => {
                     warn!("Could not delete container {} due to: {}", id, err.to_string())
@@ -503,7 +480,7 @@ impl TariWorkspace {
 
     /// Stop all running containers and optionally delete them
     pub async fn stop_containers(&mut self, delete: bool, docker: &Docker) {
-        let names = self.containers.keys().cloned().collect::<Vec<String>>();
+        let names = CONTAINERS.write().unwrap().keys().cloned().collect::<Vec<String>>();
         for name in names {
             // Stop the container immediately
             self.stop_container(name.as_str(), delete, docker).await;

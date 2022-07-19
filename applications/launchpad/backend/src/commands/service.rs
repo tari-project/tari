@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
+use std::{convert::TryFrom, path::PathBuf, process::Command, time::Duration};
 
 use bollard::Docker;
 use derivative::Derivative;
@@ -33,6 +33,7 @@ use tauri::{AppHandle, Manager, State, Wry};
 use crate::{
     commands::{create_workspace::copy_config_file, AppState},
     docker::{
+        container_state,
         create_workspace_folders,
         helpers::create_password,
         BaseNodeConfig,
@@ -48,19 +49,20 @@ use crate::{
         XmRigConfig,
         DEFAULT_MINING_ADDRESS,
         DEFAULT_MONEROD_URL,
+        DEFAULT_WORKSPACE_NAME,
     },
     error::LauncherError,
 };
 
 /// "Global" settings from the launcher front-end
 #[derive(Clone, Derivative, Deserialize)]
-#[derivative(Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceSettings {
     pub tari_network: String,
     pub root_folder: String,
     #[derivative(Debug = "ignore")]
-    pub wallet_password: String,
+    pub parole: Option<String>,
+    pub wallet_password: Option<String>,
     pub monero_mining_address: Option<String>,
     pub num_mining_threads: i64,
     pub docker_registry: Option<String>,
@@ -83,7 +85,7 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
         let base_node = BaseNodeConfig { delay: zero_delay };
         let wallet = WalletConfig {
             delay: zero_delay,
-            password: settings.wallet_password,
+            password: settings.wallet_password.unwrap_or_else(|| "".to_string()),
         };
         let sha3_miner = Sha3MinerConfig {
             delay: zero_delay,
@@ -133,7 +135,7 @@ pub struct StartServiceResult {
     /// What action was taken. Currently not used.
     action: String,
     /// The name of the event stream to subscribe to for log events. These are the _docker_ logs and not the base node
-    /// _et. al._ logs. Those are saved to disk and accessible using the usual means, or with frontail.
+    /// _et. al._ logs. Those are saved to disk and accessible using the usual means, or with grafana.
     log_events_name: String,
     /// The name of the event stream to subscribe to for resource events (CPU, memory etc).
     stats_events_name: String,
@@ -193,7 +195,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
     let app_config = app.config();
     let should_create_workspace = {
         let wrapper = state.workspaces.read().await;
-        !wrapper.workspace_exists("default")
+        !wrapper.workspace_exists(DEFAULT_WORKSPACE_NAME)
     }; // drop read-only lock
     if should_create_workspace {
         let package_info = &state.package_info;
@@ -202,7 +204,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "config.toml")?;
         // Only get a write-lock if we need one
         let mut wrapper = state.workspaces.write().await;
-        wrapper.create_workspace("default", config)?;
+        wrapper.create_workspace(DEFAULT_WORKSPACE_NAME, config)?;
     }
     Ok(should_create_workspace)
 }
@@ -231,13 +233,9 @@ async fn start_service_impl(
         workspace.create_network(&docker).await?;
     }
     // Launch the container
-    let registry = workspace.config().registry.clone();
-    let tag = workspace.config().tag.clone();
     let image = ImageType::try_from(service_name.as_str())?;
-    let container_name = workspace.start_service(image, registry, tag, docker.clone()).await?;
-    let state = workspace
-        .container_mut(container_name.as_str())
-        .ok_or(DockerWrapperError::UnexpectedError)?;
+    let container_name = workspace.start_service(image, docker.clone()).await?;
+    let state = container_state(container_name.as_str()).ok_or(DockerWrapperError::UnexpectedError)?;
     let id = state.id().to_string();
     let stats_events_name = stats_event_name(state.id());
     let log_events_name = log_event_name(state.name());

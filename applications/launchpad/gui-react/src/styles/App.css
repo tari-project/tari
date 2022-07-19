@@ -1,0 +1,37 @@
+html {
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  width: 100%;
+  height: 100vh;
+  border-radius: 10px;
+  display: flex;
+  overflow: hidden;
+  background: #fff;
+}
+
+div#root {
+  display: flex;
+  flex: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+}
+
+@font-face {
+  src: url('../assets/fonts/AvenirLTStd-Book.otf');
+  font-family: 'AvenirRegular'
+}
+
+@font-face {
+  src: url('../assets/fonts/AvenirLTStd-Medium.otf');
+  font-family: 'AvenirMedium'
+}
+
+@font-face {
+  src: url('../assets/fonts/AvenirLTStd-Heavy.otf');
+  font-family: 'AvenirHeavy'
+}
