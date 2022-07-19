@@ -29,6 +29,8 @@
 /// ! - Map results to JSON and errors to String.
 mod create_workspace;
 mod events;
+mod health_check;
+mod host;
 mod launch_docker;
 mod pull_images;
 mod service;
@@ -37,8 +39,10 @@ mod state;
 
 pub use create_workspace::create_new_workspace;
 pub use events::events;
+pub use health_check::status;
+pub use host::{check_docker, check_internet_connection, open_terminal};
 pub use launch_docker::launch_docker;
-pub use pull_images::{image_list, pull_images};
-pub use service::{create_default_workspace, start_service, stop_service};
+pub use pull_images::{pull_image, pull_images, DEFAULT_IMAGES};
+pub use service::{create_default_workspace, start_service, stop_service, ServiceSettings};
 pub use shutdown::shutdown;
 pub use state::AppState;

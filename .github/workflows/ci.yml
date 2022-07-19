@@ -151,11 +151,6 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: build launchpad gui-vue
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
       - name: build collectibles web-app
         run: |
           cd applications/tari_collectibles/web-app

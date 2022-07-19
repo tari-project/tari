@@ -1,0 +1,22 @@
+[
+  {
+    "image_name": "tari_base_node",
+    "app_name":   "base_node",
+    "app_exec":   "tari_base_node"
+  },
+  {
+    "image_name": "tari_wallet",
+    "app_name":   "wallet",
+    "app_exec":   "tari_console_wallet"
+  },
+  {
+    "image_name": "tari_mm_proxy",
+    "app_name":   "mm_proxy",
+    "app_exec":   "tari_merge_mining_proxy"
+  },
+  {
+    "image_name": "tari_sha3_miner",
+    "app_name":   "sha3_miner",
+    "app_exec":   "tari_miner"
+  }
+]

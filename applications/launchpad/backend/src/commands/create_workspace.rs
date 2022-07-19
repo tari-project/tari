@@ -53,6 +53,13 @@ pub fn create_new_workspace(app: AppHandle<Wry>, root_path: Option<String>) -> R
     create_workspace_folders(&path).map_err(|e| e.chained_message())?;
     copy_config_file(path.as_path(), config.as_ref(), package_info, "log4rs.yml").map_err(|e| e.chained_message())?;
     copy_config_file(path.as_path(), config.as_ref(), package_info, "config.toml").map_err(|e| e.chained_message())?;
+    copy_config_file(path.as_path(), config.as_ref(), package_info, "promtail.config.yml")
+        .map_err(|e| e.chained_message())?;
+    copy_config_file(path.as_path(), config.as_ref(), package_info, "sources_provision.yml")
+        .map_err(|e| e.chained_message())?;
+    copy_config_file(path.as_path(), config.as_ref(), package_info, "defaults.ini").map_err(|e| e.chained_message())?;
+    copy_config_file(path.as_path(), config.as_ref(), package_info, "loki_config.yml")
+        .map_err(|e| e.chained_message())?;
     info!("Workspace at {:?} complete!", path);
     Ok(())
 }
@@ -72,10 +79,10 @@ pub fn copy_config_file<S: AsRef<Path>>(
         Some(BaseDirectory::Resource),
     )?;
     let cfg = std::fs::read_to_string(&config_path).expect("The config assets were not bundled with the App");
-    info!("Log Configuration file ({}) loaded", file);
+    info!("Configuration file ({}) loaded", file);
     debug!("{}", cfg);
     let dest = root_path.as_ref().join("config").join(file);
     std::fs::write(&dest, &cfg)?;
-    info!("Log configuration file ({}) saved to workspace", file);
+    info!("Configuration file ({}) saved to workspace", file);
     Ok(())
 }

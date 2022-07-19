@@ -11,29 +11,43 @@ build = "src/build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "1.0.0-rc.5", features = [] }
+tauri-build = { version = "1.0.1", features = [] }
 
 [dependencies]
-tari_app_utilities = { version = "^0.32", path = "../../tari_app_utilities" }
+tari_common_types = { path = "../../../base_layer/common_types"}
+tari_app_utilities = {  path = "../../tari_app_utilities" }
 tari_comms = { version = "^0.32", path = "../../../comms/core" }
+tari_app_grpc = { path = "../../tari_app_grpc" }
 tari_common = { path="../../../common"}
 
 bollard = "0.11.1"
 config = "0.13.0"
 env_logger = "0.9.0"
+lazy_static = "1.3.0"
 log = "0.4.14"
 rand = "0.8.4"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 strum = "0.23.0"
 strum_macros = "0.23.0"
-tauri = { version = "1.0.0-rc.6", features = ["api-all", "cli"] }
+tauri = { version = "1.0.1", features = ["api-all", "cli", "macos-private-api"] }
 tor-hash-passwd = "1.0.1"
 thiserror = "1.0.30"
 tokio = { version = "1.9", features= ["sync"] }
 futures = "0.3"
 regex= "1.5.4"
 derivative = "2.2.0"
+tonic = "0.6.2"
+# need to force this version to avoid circular dependency in tauri-plugin-sql deps
+# https://github.com/tkaitchuck/aHash/issues/95#issuecomment-881152315
+indexmap = "~1.6.2"
+hex = "0.4.3"
+reqwest = {version = "0.11", features= ["json"] }
+
+[dependencies.tauri-plugin-sql]
+git = "https://github.com/tauri-apps/tauri-plugin-sql"
+features = ["sqlite"] # or "postgres", or "mysql"
+branch = "release"
 
 [features]
 default = [ "custom-protocol" ]

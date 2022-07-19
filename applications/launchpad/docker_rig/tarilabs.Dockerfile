@@ -10,6 +10,7 @@ ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
+ARG RUST_TOOLCHAIN
 
 # Disable anti-cache
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
@@ -54,10 +55,16 @@ RUN if [ "${TARGETARCH}" = "arm64" ] ; then \
       echo "Setup x86-64" ; \
     fi
 
+# Install a non-standard toolchain if it has been requested. By default we use the toolchain specified in rust-toolchain.toml
+RUN if [ -n "${RUST_TOOLCHAIN}" ]; then \
+    rustup toolchain install ${RUST_TOOLCHAIN}; \
+    fi
+
 WORKDIR /tari
 
 ADD Cargo.toml .
 ADD Cargo.lock .
+ADD rust-toolchain.toml .
 ADD applications applications
 ADD base_layer base_layer
 ADD clients clients
@@ -85,8 +92,11 @@ RUN --mount=type=cache,id=rust-git-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},sha
       export RUSTFLAGS="-C target_cpu=generic" && \
       export ROARING_ARCH=generic ; \
     fi && \
+    if [ -n "${RUST_TOOLCHAIN}" ]; then \
+      export toolchain=+${RUST_TOOLCHAIN}; \
+    fi && \
     cargo update && \
-    cargo build ${RUST_TARGET} \
+    cargo ${toolchain} build ${RUST_TARGET} \
       --bin ${APP_EXEC} --release --features $FEATURES --locked && \
     # Copy executable out of the cache so it is available in the runtime image.
     cp -v /tari/target/${BUILD_TARGET}release/${APP_EXEC} /tari/${APP_EXEC}
