@@ -432,6 +432,7 @@ where
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -445,7 +446,7 @@ where
             script_lock_height,
             covenant,
             encrypted_value,
-            MicroTari::zero(),
+            minimum_value_promise,
         );
 
         let tx_id = self
