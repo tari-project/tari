@@ -1333,7 +1333,7 @@ where
             ));
         }
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
-        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth address")
+        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
             .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
             .finalize();
         let script_spending_key =
