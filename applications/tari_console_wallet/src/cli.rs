@@ -95,6 +95,7 @@ pub enum CliCommands {
     GetBalance,
     SendTari(SendTariArgs),
     SendOneSided(SendTariArgs),
+    SendOneSidedToStealthAddress(SendTariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
     DiscoverPeer(DiscoverPeerArgs),
