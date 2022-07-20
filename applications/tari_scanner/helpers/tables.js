@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const gen_table_route_path = (table_name) =>
   `/:${table_name}_page(\\d+)?(-:${table_name}_sort-:${table_name}_reverse)?`;
 const gen_render_params = (req, ...tables) => {

@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 var createError = require("http-errors");
 var express = require("express");
 var path = require("path");

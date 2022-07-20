@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 var express = require("express");
 const { client } = require("../baseNodeClient");
 const { gen_table_route_path, gen_render_params } = require("../helpers/tables");

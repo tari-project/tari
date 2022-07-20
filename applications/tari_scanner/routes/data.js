@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 var express = require("express");
 const { client } = require("../baseNodeClient");
 const { contracts } = require("../helpers/contracts");

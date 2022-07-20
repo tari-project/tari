@@ -1,4 +1,6 @@
-//▲△⯅🞁▴▵▿▽△
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const arrow_up_full = "▲";
 const arrow_up_empty = "△";
 const arrow_down_full = "▼";
