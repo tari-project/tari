@@ -8,26 +8,29 @@
     "fmt": "prettier --end-of-line auto -w **/*.{js,hbs}",
     "check-fmt": "prettier --end-of-line auto -c .",
     "lint": "eslint .",
-    "lint-fix": "eslint --fix ."
+    "lint-fix": "eslint --fix .",
+    "watch": "nodemon --ext *"
   },
   "dependencies": {
     "asciichart": "^1.5.25",
     "base-node-grpc-client": "file:../../clients/base_node_grpc_client",
-    "validator-node-grpc-client": "file:../../clients/validator_node_grpc_client",
     "cookie-parser": "~1.4.4",
     "express": "~4.16.1",
     "hbs": "^4.1.2",
     "http-errors": "~1.6.3",
-    "morgan": "~1.9.1"
+    "morgan": "~1.9.1",
+    "validator-node-grpc-client": "file:../../clients/validator_node_grpc_client"
   },
   "devDependencies": {
     "@babel/core": "^7.15.8",
     "@babel/eslint-parser": "^7.15.8",
     "@babel/eslint-plugin": "^7.14.5",
-    "nodemon": "^2.0.7",
+    "connect-livereload": "^0.6.1",
     "eslint": "^7.32.0",
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-prettier": "^3.4.1",
+    "livereload": "^0.9.3",
+    "nodemon": "^2.0.16",
     "prettier": "^2.4.1"
   }
 }
