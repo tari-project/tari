@@ -984,6 +984,9 @@ where
         // Empty covenant
         let covenant = Covenant::default();
 
+        // Default range proof
+        let minimum_value_promise = MicroTari::zero();
+
         // Prepare sender part of the transaction
         let mut stp = self
             .output_manager_service
@@ -997,6 +1000,7 @@ where
                 message.clone(),
                 script.clone(),
                 covenant.clone(),
+                minimum_value_promise,
             )
             .await?;
 
@@ -1168,6 +1172,7 @@ where
                 message.clone(),
                 script!(PushPubKey(Box::new(dest_pubkey.clone()))),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .await?;
 

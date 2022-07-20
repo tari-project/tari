@@ -129,6 +129,8 @@ pub enum TransactionProtocolError {
     ConversionError(String),
     #[error("The script offset private key could not be found")]
     ScriptOffsetPrivateKeyNotFound,
+    #[error("The minimum value promise could not be found")]
+    MinimumValuePromiseNotFound,
     #[error("Value encryption failed")]
     EncryptionError,
 }

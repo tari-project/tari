@@ -282,6 +282,7 @@ where
                 message,
                 script,
                 covenant,
+                minimum_value_promise,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -293,6 +294,7 @@ where
                     *output_features,
                     script,
                     covenant,
+                    minimum_value_promise,
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
@@ -805,6 +807,7 @@ where
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
+        recipient_minimum_value_promise: MicroTari,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -844,6 +847,7 @@ where
                 recipient_output_features,
                 PrivateKey::random(&mut OsRng),
                 recipient_covenant,
+                recipient_minimum_value_promise,
             )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)

@@ -85,6 +85,7 @@ pub enum OutputManagerRequest {
         message: String,
         script: TariScript,
         covenant: Covenant,
+        minimum_value_promise: MicroTari,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -510,6 +511,7 @@ impl OutputManagerHandle {
         message: String,
         script: TariScript,
         covenant: Covenant,
+        minimum_value_promise: MicroTari,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -523,6 +525,7 @@ impl OutputManagerHandle {
                 message,
                 script,
                 covenant,
+                minimum_value_promise,
             })
             .await??
         {

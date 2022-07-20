@@ -220,6 +220,7 @@ mod test {
             sender_offset_public_key,
             public_commitment_nonce,
             covenant: Default::default(),
+            minimum_value_promise: MicroTari::zero(),
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), &factories, None).unwrap();
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");

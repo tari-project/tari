@@ -2220,6 +2220,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 

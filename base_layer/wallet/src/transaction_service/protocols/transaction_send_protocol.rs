@@ -225,6 +225,7 @@ where
                 self.message.clone(),
                 script!(Nop),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .await
         {
