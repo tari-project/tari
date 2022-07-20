@@ -22,16 +22,18 @@
 
 use std::time::Duration;
 
-use log::*;
 use serde::{Deserialize, Serialize};
-
-const LOG_TARGET: &str = "wallet::base_node_service::config";
+use tari_common::configuration::serializers;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BaseNodeServiceConfig {
+    /// The refresh interval
+    #[serde(with = "serializers::seconds")]
     pub base_node_monitor_refresh_interval: Duration,
+    /// The RPC client pool size
     pub base_node_rpc_pool_size: usize,
-    pub request_max_age: Duration,
+    /// This is the size of the event channel used to communicate base node events to the wallet
     pub event_channel_size: usize,
 }
 
@@ -40,27 +42,7 @@ impl Default for BaseNodeServiceConfig {
         Self {
             base_node_monitor_refresh_interval: Duration::from_secs(3),
             base_node_rpc_pool_size: 10,
-            request_max_age: Duration::from_secs(60),
             event_channel_size: 250,
-        }
-    }
-}
-
-impl BaseNodeServiceConfig {
-    pub fn new(refresh_interval: u64, request_max_age: u64, event_channel_size: usize) -> Self {
-        info!(
-            target: LOG_TARGET,
-            "Setting new wallet base node service config, refresh interval: {}s, request max age: {}s, event channel \
-             size : {}",
-            refresh_interval,
-            request_max_age,
-            event_channel_size
-        );
-        Self {
-            base_node_monitor_refresh_interval: Duration::from_secs(refresh_interval),
-            request_max_age: Duration::from_secs(request_max_age),
-            event_channel_size,
-            ..Default::default()
         }
     }
 }

@@ -115,6 +115,7 @@ use tari_crypto::{
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
+    auto_update::AutoUpdateConfig,
     transport::MemoryTransportConfig,
     Network,
     PeerSeedsConfig,
@@ -1157,7 +1158,6 @@ pub unsafe extern "C" fn encrypted_value_destroy(encrypted_value: *mut TariEncry
 /// `version` - The encoded value of the version as a byte
 /// `output_type` - The encoded value of the output type as a byte
 /// `maturity` - The encoded value maturity as bytes
-/// `recovery_byte` - The encoded value of the recovery byte as a byte
 /// `metadata` - The metadata componenet as a ByteVector. It cannot be null
 /// `unique_id` - The unique id componenet as a ByteVector. It can be null
 /// `mparent_public_key` - The parent public key component as a ByteVector. It can be null
@@ -1176,7 +1176,6 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     version: c_uchar,
     output_type: c_ushort,
     maturity: c_ulonglong,
-    recovery_byte: c_uchar,
     metadata: *const ByteVector,
     unique_id: *const ByteVector,
     parent_public_key: *const ByteVector,
@@ -1247,7 +1246,6 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         decoded_version,
         output_type,
         maturity,
-        recovery_byte,
         decoded_metadata,
         decoded_unique_id,
         None,
@@ -3376,7 +3374,7 @@ pub unsafe extern "C" fn transport_tor_create(
         TorControlAuthentication::None
     } else {
         let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
-        TorControlAuthentication::Cookie(cookie_hex)
+        TorControlAuthentication::hex(cookie_hex)
     };
 
     let onion_port = match NonZeroU16::new(tor_port) {
@@ -4079,9 +4077,12 @@ pub unsafe extern "C" fn wallet_create(
         ..Default::default()
     };
 
+    let auto_update = AutoUpdateConfig::default();
+
     let w = runtime.block_on(Wallet::start(
         wallet_config,
         peer_seeds,
+        auto_update,
         node_identity,
         factories,
         wallet_database,
@@ -7741,7 +7742,6 @@ mod test {
             let version: c_uchar = 0;
             let output_type: c_ushort = 0;
             let maturity: c_ulonglong = 20;
-            let recovery_byte: c_uchar = 1;
             let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
             let unique_id = ptr::null_mut();
             let parent_public_key = ptr::null_mut();
@@ -7750,7 +7750,6 @@ mod test {
                 version,
                 output_type,
                 maturity,
-                recovery_byte,
                 metadata,
                 unique_id,
                 parent_public_key,
@@ -7763,7 +7762,6 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert_eq!((*output_features).recovery_byte, recovery_byte);
             assert!((*output_features).metadata.is_empty());
             assert!((*output_features).unique_id.is_none());
             assert!((*output_features).parent_public_key.is_none());
@@ -7788,7 +7786,6 @@ mod test {
             let version: c_uchar = OutputFeaturesVersion::V1.as_u8();
             let output_type = OutputType::Coinbase.as_byte();
             let maturity: c_ulonglong = 20;
-            let recovery_byte: c_uchar = 1;
 
             let expected_metadata = vec![1; 1024];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
@@ -7803,7 +7800,6 @@ mod test {
                 version,
                 c_ushort::from(output_type),
                 maturity,
-                recovery_byte,
                 metadata,
                 unique_id,
                 parent_public_key,
@@ -7816,7 +7812,6 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert_eq!((*output_features).recovery_byte, recovery_byte);
             assert_eq!((*output_features).metadata, expected_metadata);
             assert_eq!((*output_features).unique_id, Some(expected_unique_id));
             assert_eq!((*output_features).parent_public_key, Some(public_key));
@@ -8609,22 +8604,13 @@ mod test {
                 error_ptr,
             );
 
-            // Create an unblinded output with a non-default recovery byte
-            let default_features = TariOutputFeatures::default();
-            let utxo_1;
-            loop {
-                let test_params = TestParams::new();
-                let amount = 100_000;
-                let utxo_temp =
-                    create_unblinded_output(script!(Nop), default_features.clone(), &test_params, MicroTari(amount));
-                if utxo_temp.features.recovery_byte != default_features.recovery_byte {
-                    utxo_1 = utxo_temp;
-                    break;
-                }
-            }
-            assert_ne!(utxo_1.features.recovery_byte, default_features.recovery_byte);
-
-            // Test the consistent features case, i.e. with valid 'recovery_byte'
+            // Test the consistent features case
+            let utxo_1 = create_unblinded_output(
+                script!(Nop),
+                OutputFeatures::default(),
+                &TestParams::new(),
+                MicroTari(1234u64),
+            );
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
@@ -8634,64 +8620,6 @@ mod test {
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant));
             let encrypted_value_ptr = Box::into_raw(Box::new(utxo_1.encrypted_value));
-            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
-
-            let tx_id = wallet_import_external_utxo_as_non_rewindable(
-                wallet_ptr,
-                amount,
-                spending_key_ptr,
-                source_public_key_ptr,
-                features_ptr,
-                metadata_signature_ptr,
-                sender_offset_public_key_ptr,
-                script_private_key_ptr,
-                covenant_ptr,
-                encrypted_value_ptr,
-                message_ptr,
-                error_ptr,
-            );
-            assert_eq!(error, 0);
-            assert!(tx_id > 0);
-
-            // Cleanup
-            string_destroy(message_ptr as *mut c_char);
-            let _covenant = Box::from_raw(covenant_ptr);
-            let _script_private_key = Box::from_raw(script_private_key_ptr);
-            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr);
-            let _metadata_signature = Box::from_raw(metadata_signature_ptr);
-            let _features = Box::from_raw(features_ptr);
-            let _source_public_key = Box::from_raw(source_public_key_ptr);
-            let _spending_key = Box::from_raw(spending_key_ptr);
-
-            // Create an unblinded output with a non-default recovery byte
-            let mut utxo_2;
-            loop {
-                let test_params = TestParams::new();
-                let utxo_temp = create_unblinded_output(
-                    script!(Nop),
-                    default_features.clone(),
-                    &test_params,
-                    MicroTari::from(200_000),
-                );
-                if utxo_temp.features.recovery_byte != default_features.recovery_byte {
-                    utxo_2 = utxo_temp;
-                    break;
-                }
-            }
-            assert_ne!(utxo_2.features.recovery_byte, default_features.recovery_byte);
-            // Reset the 'recovery_byte' to default; i.e. the 'metadata_signature' will now be inconsistent
-            utxo_2.features.set_recovery_byte(default_features.recovery_byte);
-
-            // Test the inconsistent features case, i.e. with invalid 'recovery_byte'
-            let amount = utxo_2.value.as_u64();
-            let spending_key_ptr = Box::into_raw(Box::new(utxo_2.spending_key));
-            let source_public_key_ptr = Box::into_raw(Box::new(TariPublicKey::default()));
-            let features_ptr = Box::into_raw(Box::new(utxo_2.features));
-            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_2.metadata_signature));
-            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_2.sender_offset_public_key));
-            let script_private_key_ptr = Box::into_raw(Box::new(utxo_2.script_private_key));
-            let covenant_ptr = Box::into_raw(Box::new(utxo_2.covenant));
-            let encrypted_value_ptr = Box::into_raw(Box::new(utxo_2.encrypted_value));
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
 
             let tx_id = wallet_import_external_utxo_as_non_rewindable(

@@ -55,7 +55,7 @@ mod test {
     fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
         let features = OutputFeatures {
             maturity: 42,
-            sidechain_features: Some(SideChainFeatures::new(FixedHash::hash_bytes("A"))),
+            sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::hash_bytes("A")))),
             ..Default::default()
         };
         let hashed = Challenge::new().chain(features.to_consensus_bytes()).finalize();

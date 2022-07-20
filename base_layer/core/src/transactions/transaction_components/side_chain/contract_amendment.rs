@@ -79,17 +79,14 @@ mod tests {
     use super::*;
     use crate::{
         consensus::check_consensus_encoding_correctness,
-        transactions::{
-            tari_amount::MicroTari,
-            transaction_components::{
-                CheckpointParameters,
-                CommitteeMembers,
-                ConstitutionChangeFlags,
-                ConstitutionChangeRules,
-                ContractAcceptanceRequirements,
-                RequirementsForConstitutionChange,
-                SideChainConsensus,
-            },
+        transactions::transaction_components::{
+            CheckpointParameters,
+            CommitteeMembers,
+            ConstitutionChangeFlags,
+            ConstitutionChangeRules,
+            ContractAcceptanceRequirements,
+            RequirementsForConstitutionChange,
+            SideChainConsensus,
         },
     };
 
@@ -105,6 +102,7 @@ mod tests {
             checkpoint_params: CheckpointParameters {
                 minimum_quorum_required: 123,
                 abandoned_interval: 321,
+                quarantine_interval: 321,
             },
             constitution_change_rules: ConstitutionChangeRules {
                 change_flags: ConstitutionChangeFlags::all(),
@@ -113,9 +111,11 @@ mod tests {
                     constitution_committee: Some(CommitteeMembers::new(
                         vec![PublicKey::default(); 32].try_into().unwrap(),
                     )),
+                    backup_keys: Some(CommitteeMembers::new(
+                        vec![PublicKey::default(); 32].try_into().unwrap(),
+                    )),
                 }),
             },
-            initial_reward: MicroTari::from(123u64),
         };
 
         let amendment = ContractAmendment {

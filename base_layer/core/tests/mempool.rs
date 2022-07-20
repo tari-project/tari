@@ -1068,7 +1068,6 @@ async fn consensus_validation_versions() {
         OutputFeaturesVersion::V1,
         OutputType::default(),
         0,
-        0,
         Default::default(),
         None,
         None,

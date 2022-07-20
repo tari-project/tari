@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -43,7 +43,6 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::tari_utilities::ByteArray;
 use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -80,7 +79,7 @@ pub enum OutputManagerRequest {
         tx_id: TxId,
         amount: MicroTari,
         utxo_selection: UtxoSelectionCriteria,
-        output_features: OutputFeatures,
+        output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -91,7 +90,7 @@ pub enum OutputManagerRequest {
         tx_id: TxId,
         amount: MicroTari,
         utxo_selection: UtxoSelectionCriteria,
-        output_features: OutputFeatures,
+        output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -111,12 +110,6 @@ pub enum OutputManagerRequest {
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
-    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    CalculateRecoveryByte {
-        spending_key: PrivateKey,
-        value: u64,
-        with_rewind_data: bool,
-    },
     FeeEstimate {
         amount: MicroTari,
         fee_per_gram: MicroTari,
@@ -175,14 +168,6 @@ impl fmt::Display for OutputManagerRequest {
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
-            CalculateRecoveryByte {
-                spending_key, value, ..
-            } => write!(
-                f,
-                "CalculateRecoveryByte ({},{})",
-                spending_key.as_bytes().to_vec().to_hex(),
-                value
-            ),
             FeeEstimate {
                 amount,
                 fee_per_gram,
@@ -532,7 +517,7 @@ impl OutputManagerHandle {
                 tx_id,
                 amount,
                 utxo_selection,
-                output_features,
+                output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,
                 message,
@@ -611,27 +596,6 @@ impl OutputManagerHandle {
     pub async fn get_invalid_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
             OutputManagerResponse::InvalidOutputs(s) => Ok(s),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    pub async fn calculate_recovery_byte(
-        &mut self,
-        spending_key: PrivateKey,
-        value: u64,
-        with_rewind_data: bool,
-    ) -> Result<u8, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::CalculateRecoveryByte {
-                spending_key,
-                value,
-                with_rewind_data,
-            })
-            .await??
-        {
-            OutputManagerResponse::RecoveryByte(rk) => Ok(rk),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -791,7 +755,7 @@ impl OutputManagerHandle {
                 tx_id,
                 amount,
                 utxo_selection,
-                output_features,
+                output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,
                 message,

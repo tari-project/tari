@@ -29,16 +29,33 @@ use tari_comms::multiaddr::Multiaddr;
 #[allow(clippy::struct_excessive_bools)]
 pub struct MergeMiningProxyConfig {
     override_from: Option<String>,
+    /// URL to monerod
     pub monerod_url: StringList,
+    /// Username for curl
     pub monerod_username: String,
+    /// Password for curl
     pub monerod_password: String,
+    /// If authentication is being used for curl
     pub monerod_use_auth: bool,
+    /// The Tari base node's GRPC address
     pub base_node_grpc_address: Multiaddr,
+    /// The Tari console wallet's GRPC address
     pub console_wallet_grpc_address: Multiaddr,
+    /// Address of the tari_merge_mining_proxy application
     pub listener_address: Multiaddr,
+    /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
+    /// the Tari blockchain, then this setting should be "true". With pool merged mining, there is no sense in
+    /// submitting the solution to the Monero blockchain as thepool does that, then this setting should be "false".
     pub submit_to_origin: bool,
+    /// The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables
+    /// mining, or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks
+    /// will not be accepted.
     pub wait_for_initial_sync_at_startup: bool,
+    /// When mining for tari, you might want to check the achieved difficulty of the mined tari block before
+    /// submitting. This setting this can be disabled to allow you to always submit tari blocks even if the
+    /// difficulty does not meet the required.
     pub check_tari_difficulty_before_submit: bool,
+    /// The maximum amount of VMs that RandomX will be use
     pub max_randomx_vms: usize,
 }
 
@@ -75,22 +92,22 @@ mod test {
 
     fn get_config(override_from: &str) -> config::Config {
         let s = r#"
-[common]
-  baz = "foo"
-[merge_mining_proxy]
-  monerod_username = "cmot"
-  console_wallet_grpc_address = "/dns4/wallet/tcp/9000"
-[config_a.merge_mining_proxy]
-  monerod_url = [ "http://network.a.org" ]
-  monerod_password = "password_igor"
-  base_node_grpc_address = "/dns4/base_node_a/tcp/8080"
-  console_wallet_grpc_address = "/dns4/wallet_a/tcp/9000"
-[config_b.merge_mining_proxy]
-  submit_to_origin = false
-  monerod_url = [ "http://network.b.org" ]
-  monerod_password = "password_dibbler"
-  base_node_grpc_address = "/dns4/base_node_b/tcp/8080"
-"#;
+            [common]
+              baz = "foo"
+            [merge_mining_proxy]
+              monerod_username = "cmot"
+              console_wallet_grpc_address = "/dns4/wallet/tcp/9000"
+            [config_a.merge_mining_proxy]
+              monerod_url = [ "http://network.a.org" ]
+              monerod_password = "password_igor"
+              base_node_grpc_address = "/dns4/base_node_a/tcp/8080"
+              console_wallet_grpc_address = "/dns4/wallet_a/tcp/9000"
+            [config_b.merge_mining_proxy]
+              submit_to_origin = false
+              monerod_url = [ "http://network.b.org" ]
+              monerod_password = "password_dibbler"
+              base_node_grpc_address = "/dns4/base_node_b/tcp/8080"
+            "#;
 
         config::Config::builder()
             .set_override("merge_mining_proxy.override_from", override_from)

@@ -217,12 +217,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-run --locked --all-features
+          args: --no-run --locked --all-features --release
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -v --all-features
+          args: -v --all-features --release
   # Allows other workflows to know the PR number
   artifacts:
     name: test
