@@ -778,7 +778,6 @@ void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
  * `version` - The encoded value of the version as a byte
  * `output_type` - The encoded value of the output type as a byte
  * `maturity` - The encoded value maturity as bytes
- * `recovery_byte` - The encoded value of the recovery byte as a byte
  * `metadata` - The metadata componenet as a ByteVector. It cannot be null
  * `unique_id` - The unique id componenet as a ByteVector. It can be null
  * `mparent_public_key` - The parent public key component as a ByteVector. It can be null
@@ -796,7 +795,6 @@ void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
 TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
                                                       unsigned short output_type,
                                                       unsigned long long maturity,
-                                                      unsigned char recovery_byte,
                                                       const struct ByteVector *metadata,
                                                       const struct ByteVector *unique_id,
                                                       const struct ByteVector *parent_public_key,

@@ -20,31 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//  Copyright 2019 The Tari Project
-//
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
-//
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
-//
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
-//
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
-//
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{panic, path::Path, sync::Arc, time::Duration};
 
-use rand::{rngs::OsRng, Rng};
+use rand::rngs::OsRng;
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common::configuration::StringList;
 use tari_common_types::{
@@ -70,6 +48,7 @@ use tari_core::{
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{
+    auto_update::AutoUpdateConfig,
     comms_connector::InboundDomainConnector,
     initialization::initialize_local_test_comms,
     transport::MemoryTransportConfig,
@@ -202,6 +181,7 @@ async fn create_wallet(
     Wallet::start(
         config,
         PeerSeedsConfig::default(),
+        AutoUpdateConfig::default(),
         Arc::new(node_identity.clone()),
         factories,
         wallet_db,
@@ -284,7 +264,7 @@ async fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None).await;
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -600,7 +580,7 @@ async fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None).await;
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -710,6 +690,7 @@ async fn test_import_utxo() {
     let mut alice_wallet = Wallet::start(
         config,
         PeerSeedsConfig::default(),
+        AutoUpdateConfig::default(),
         alice_identity.clone(),
         factories.clone(),
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
@@ -727,7 +708,7 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let temp_features = OutputFeatures::create_coinbase(50, rand::thread_rng().gen::<u8>());
+    let temp_features = OutputFeatures::create_coinbase(50);
 
     let p = TestParams::new();
     let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);

@@ -54,7 +54,6 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
-            None,
         ));
         let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
         uo.unblinded_output.features.maturity = i;
@@ -102,7 +101,6 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
-                None,
             ));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
             db.add_unspent_output(uo.clone()).unwrap();
@@ -113,7 +111,6 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
-                None,
             ));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
             pending_tx.outputs_to_be_received.push(uo);
@@ -249,7 +246,6 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         &mut OsRng,
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
-        None,
     ));
     let output_to_be_received = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
     db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), None)
@@ -343,7 +339,6 @@ pub async fn test_short_term_encumberance() {
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
-            None,
         )
         .await;
         let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
@@ -396,7 +391,7 @@ pub async fn test_no_duplicate_outputs() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment, None).await;
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
 
     // add it to the database

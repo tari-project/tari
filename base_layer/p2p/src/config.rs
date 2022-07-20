@@ -41,7 +41,7 @@ use crate::{transport::TransportConfig, DEFAULT_DNS_NAME_SERVER};
 #[serde(deny_unknown_fields)]
 pub struct PeerSeedsConfig {
     pub override_from: Option<String>,
-    /// Unparsed peer seeds
+    /// Custom specified peer seed nodes
     pub peer_seeds: StringList,
     /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
     /// peer list.

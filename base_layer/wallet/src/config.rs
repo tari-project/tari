@@ -33,7 +33,7 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_comms::multiaddr::Multiaddr;
-use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig};
+use tari_p2p::P2pConfig;
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -47,32 +47,62 @@ pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 #[serde(deny_unknown_fields)]
 pub struct WalletConfig {
     pub override_from: Option<String>,
+    /// The p2p config settings
     pub p2p: P2pConfig,
+    /// The transaction_service_config config settings
+    #[serde(rename = "transactions")]
     pub transaction_service_config: TransactionServiceConfig,
+    /// The output_manager_service_config config settings
+    #[serde(rename = "outputs")]
     pub output_manager_service_config: OutputManagerServiceConfig,
+    /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
     pub buffer_size: usize,
-    pub rate_limit: usize,
+    /// The rate limit for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
+    /// accept - any rate attempting to exceed this limit will be throttled
+    pub buffer_rate_limit: usize,
+    /// Selected network
     pub network: Network,
+    /// The base_node_service_config config settings
+    #[serde(rename = "base_node")]
     pub base_node_service_config: BaseNodeServiceConfig,
-    pub auto_update: AutoUpdateConfig,
+    /// The relative path to store persistent data
     pub data_dir: PathBuf,
+    /// The main wallet db file
     pub db_file: PathBuf,
+    /// The main wallet db sqlite database backend connection pool size for concurrent reads
     pub db_connection_pool_size: usize,
+    /// The main wallet password
     pub password: Option<String>, // TODO: Make clear on drop
+    /// The auto ping interval to use for contacts liveness data
     #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
+    /// How long a contact may be not seen before being determined to be offline
     pub contacts_online_ping_window: usize,
+    /// When running the console wallet in command mode, how long to wait for sent transactions.
     #[serde(with = "serializers::seconds")]
     pub command_send_wait_timeout: Duration,
+    /// When running the console wallet in command mode, at what "stage" to wait for sent transactions.
     pub command_send_wait_stage: TransactionStage,
+    /// Notification script file for a notifier service - allows a wallet to execute a script or program when certain
+    /// transaction events are received by the console wallet .
+    /// (see example at 'applications/tari_console_wallet/src/notifier/notify_example.sh')
     pub notify_file: Option<PathBuf>,
+    /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
+    /// A custom base node peer that will be used to obtain metadata from
     pub custom_base_node: Option<String>,
+    /// A list of base node peers that the wallet should use for service requests and tracking chain state
     pub base_node_service_peers: StringList,
+    /// The amount of times wallet recovery will be retried before being abandoned
     pub recovery_retry_limit: usize,
+    /// The default uT fee per gram to use for transaction fees
     pub fee_per_gram: u64,
+    /// Number of required transaction confirmations used for UI purposes
     pub num_required_confirmations: u64,
+    /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
+    /// with the optional "libtor" feature flag.
     pub use_libtor: bool,
+    /// A path to the file that stores the base node identity and secret key
     pub identity_file: Option<PathBuf>,
 }
 
@@ -87,13 +117,12 @@ impl Default for WalletConfig {
             p2p,
             transaction_service_config: Default::default(),
             output_manager_service_config: Default::default(),
-            buffer_size: 100,
-            rate_limit: 10,
+            buffer_size: 50_000,
+            buffer_rate_limit: 1_000,
             network: Default::default(),
             base_node_service_config: Default::default(),
-            auto_update: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
-            db_file: PathBuf::from_str("console_wallet").unwrap(),
+            db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),
             db_connection_pool_size: 5, // TODO: get actual default
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
@@ -101,7 +130,7 @@ impl Default for WalletConfig {
             command_send_wait_stage: TransactionStage::Broadcast,
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
-            grpc_address: None,
+            grpc_address: Some("/ip4/127.0.0.1/tcp/18143".parse().unwrap()),
             custom_base_node: None,
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
@@ -121,13 +150,13 @@ impl SubConfigPath for WalletConfig {
 
 impl WalletConfig {
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
-        if !self.db_file.is_absolute() {
-            self.db_file = base_path.as_ref().join(self.db_file.as_path());
-        }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());
         }
-        self.p2p.set_base_path(self.data_dir.as_path());
+        if !self.db_file.is_absolute() {
+            self.db_file = self.data_dir.join(self.db_file.as_path());
+        }
+        self.p2p.set_base_path(base_path);
     }
 }
 

@@ -10,27 +10,30 @@ function mapEnvs(options) {
   if (options.pruningHorizon) {
     // In the config toml file: `base_node.network.pruning_horizon` with `network = localnet`
     res["localnet.base_node.storage.pruning_horizon"] = options.pruningHorizon;
-    res["localnet.base_node.storage.pruning_interval"] = 1;
+    res["localnet.base_node.storage.pruning_interval"] = "1";
   }
   if ("numConfirmations" in options) {
     res["wallet.num_required_confirmations"] = options.numConfirmations;
+    res["wallet.transactions.num_confirmations_required"] =
+      options.numConfirmations;
+    res["wallet.outputs.num_confirmations_required"] = options.numConfirmations;
   }
   if ("num_confirmations" in options) {
     res["wallet.num_required_confirmations"] = options.num_confirmations;
+    res["wallet.transactions.num_confirmations_required"] =
+      options.num_confirmations;
+    res["wallet.outputs.num_confirmations_required"] =
+      options.num_confirmations;
   }
   if (options.routingMechanism) {
-    // In the config toml file: `wallet.transaction_routing_mechanism`
-    res["wallet.transaction_service_config.transaction_routing_mechanism"] =
+    res["wallet.transactions.transaction_routing_mechanism"] =
       options.routingMechanism;
   }
-  // if (options.broadcastMonitoringTimeout) {
-  //   res["wallet.transaction_broadcast_monitoring_timeout"] =
-  //     options.broadcastMonitoringTimeout;
-  // } else {
-  //   res["wallet.transaction_broadcast_monitoring_timeout"] = 3;
-  // }
-  if ("mineOnTipOnly" in options) {
-    res["miner.mine_on_tip_only"] = options.mineOnTipOnly.toString();
+  if (options.broadcastMonitoringTimeout) {
+    res["wallet.transactions.broadcast_monitoring_timeout"] =
+      options.broadcastMonitoringTimeout;
+  } else {
+    res["wallet.transactions.broadcast_monitoring_timeout"] = "3";
   }
   if (options.numMiningThreads) {
     res["miner.num_mining_threads"] = options.numMiningThreads;
@@ -69,18 +72,17 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], _committee = []) {
   const envs = {
     ["base_node.network"]: "localnet",
     ["wallet.network"]: "localnet",
-    ["miner.network"]: "localnet",
     ["localnet.base_node.data_dir"]: "localnet",
     ["localnet.base_node.db_type"]: "lmdb",
     ["localnet.base_node.storage.orphan_storage_capacity"]: "10",
     ["localnet.base_node.storage.pruning_horizon"]: "0",
     ["localnet.base_node.identity_file"]: "none.json",
     ["localnet.base_node.tor_identity_file"]: "torid.json",
-    ["localnet.base_node.orphan_db_clean_out_threshold"]: "0",
     ["localnet.base_node.max_randomx_vms"]: "1",
     ["localnet.base_node.metadata_auto_ping_interval"]: "15",
     ["localnet.base_node.p2p.allow_test_addresses"]: true,
     ["localnet.base_node.p2p.dht.flood_ban_max_msg_count"]: "100000",
+    ["localnet.base_node.p2p.dht.database_url"]: "localnet/dht.db",
     ["localnet.p2p.seeds.dns_seeds_use_dnssec"]: "false",
 
     ["localnet.wallet.identity_file"]: "walletid.json",
@@ -105,7 +107,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], _committee = []) {
     ["merge_mining_proxy.wait_for_initial_sync_at_startup"]: false,
     ["miner.num_mining_threads"]: "1",
     ["miner.mine_on_tip_only"]: true,
-    ["miner.validate_tip_timeout_sec"]: 1,
+    ["miner.validate_tip_timeout_sec"]: "1",
   };
   if (forceSyncPeers.length > 0) {
     envs["localnet.base_node.force_sync_peers"] = forceSyncPeers.join(",");

@@ -11,6 +11,7 @@ edition = "2018"
 
 [dependencies]
 tari_comms = { version = "^0.34", path = "../core", features = ["rpc"] }
+tari_common = { path = "../../common" }
 tari_comms_rpc_macros = { version = "^0.34", path = "../rpc_macros" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.0" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }

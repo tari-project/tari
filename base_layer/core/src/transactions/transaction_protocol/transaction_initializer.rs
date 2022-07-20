@@ -35,10 +35,9 @@ use tari_common_types::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    tari_utilities::{fixed_set::FixedSet, hex::to_hex},
+    tari_utilities::fixed_set::FixedSet,
 };
 use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::ByteArray;
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
@@ -216,17 +215,6 @@ impl SenderTransactionInitializer {
     ) -> Result<&mut Self, BuildError> {
         let commitment_factory = CommitmentFactory::default();
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
-        if recovery_byte != output.features.recovery_byte {
-            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
-            error!(
-                target: LOG_TARGET,
-                "Recovery byte set incorrectly (with output) - expected {}, got {} for commitment {}",
-                recovery_byte,
-                output.features.recovery_byte,
-                to_hex(commitment.as_bytes()),
-            );
-        }
         let e = TransactionOutput::build_metadata_signature_challenge(
             output.version,
             &output.script,
@@ -353,7 +341,7 @@ impl SenderTransactionInitializer {
             self.fee()
                 .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
 
-        let mut output_features = self.get_recipient_output_features();
+        let output_features = self.get_recipient_output_features();
         let change_metadata_size = self
             .change_script
             .as_ref()
@@ -392,7 +380,6 @@ impl SenderTransactionInitializer {
                             .as_ref()
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
-                        output_features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
 
                         let encrypted_value = self
                             .rewind_data
@@ -532,14 +519,10 @@ impl SenderTransactionInitializer {
             .sender_custom_outputs
             .iter()
             .map(|o| {
-                let commitment = factories.commitment.commit_value(&o.spending_key, o.value.as_u64());
-                let mut uo = o.clone();
-                uo.features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
-
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    uo.as_rewindable_transaction_output(factories, rewind_data, None)
+                    o.as_rewindable_transaction_output(factories, rewind_data, None)
                 } else {
-                    uo.as_transaction_output(factories)
+                    o.as_transaction_output(factories)
                 }
             })
             .collect::<Result<Vec<TransactionOutput>, _>>()

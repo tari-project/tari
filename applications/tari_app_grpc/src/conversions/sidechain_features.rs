@@ -124,15 +124,16 @@ impl TryFrom<grpc::CreateConstitutionDefinitionRequest> for SideChainFeatures {
                 checkpoint_params: CheckpointParameters {
                     minimum_quorum_required: 5,
                     abandoned_interval: 100,
+                    quarantine_interval: 100,
                 },
                 constitution_change_rules: ConstitutionChangeRules {
                     change_flags: ConstitutionChangeFlags::all(),
                     requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
                         minimum_constitution_committee_signatures: 5,
-                        constitution_committee: Some(validator_committee),
+                        constitution_committee: Some(validator_committee.clone()),
+                        backup_keys: Some(validator_committee),
                     }),
                 },
-                initial_reward: 100.into(),
             }),
             acceptance: None,
             update_proposal: None,
@@ -267,7 +268,6 @@ impl From<ContractConstitution> for grpc::ContractConstitution {
             consensus: value.consensus.into(),
             checkpoint_params: Some(value.checkpoint_params.into()),
             constitution_change_rules: Some(value.constitution_change_rules.into()),
-            initial_reward: value.initial_reward.into(),
         }
     }
 }
@@ -294,7 +294,6 @@ impl TryFrom<grpc::ContractConstitution> for ContractConstitution {
             .constitution_change_rules
             .map(TryInto::try_into)
             .ok_or("constitution_change_rules not provided")??;
-        let initial_reward = value.initial_reward.into();
 
         Ok(Self {
             validator_committee,
@@ -302,7 +301,6 @@ impl TryFrom<grpc::ContractConstitution> for ContractConstitution {
             consensus,
             checkpoint_params,
             constitution_change_rules,
-            initial_reward,
         })
     }
 }
@@ -387,6 +385,7 @@ impl From<CheckpointParameters> for grpc::CheckpointParameters {
         Self {
             minimum_quorum_required: value.minimum_quorum_required,
             abandoned_interval: value.abandoned_interval,
+            quarantine_interval: value.quarantine_interval,
         }
     }
 }
@@ -398,6 +397,7 @@ impl TryFrom<grpc::CheckpointParameters> for CheckpointParameters {
         Ok(Self {
             minimum_quorum_required: value.minimum_quorum_required,
             abandoned_interval: value.abandoned_interval,
+            quarantine_interval: value.quarantine_interval,
         })
     }
 }
@@ -435,6 +435,7 @@ impl From<RequirementsForConstitutionChange> for grpc::RequirementsForConstituti
         Self {
             minimum_constitution_committee_signatures: value.minimum_constitution_committee_signatures,
             constitution_committee: value.constitution_committee.map(Into::into),
+            backup_keys: value.backup_keys.map(Into::into),
         }
     }
 }
@@ -449,6 +450,7 @@ impl TryFrom<grpc::RequirementsForConstitutionChange> for RequirementsForConstit
                 .constitution_committee
                 .map(CommitteeMembers::try_from)
                 .transpose()?,
+            backup_keys: value.backup_keys.map(CommitteeMembers::try_from).transpose()?,
         })
     }
 }

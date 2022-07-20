@@ -284,7 +284,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .output_manager
             .create_output_with_features(0.into(), OutputFeatures {
                 output_type: OutputType::ContractConstitution,
-                sidechain_features: Some(constitution_definition.clone()),
+                sidechain_features: Some(Box::new(constitution_definition.clone())),
                 ..Default::default()
             })
             .await?;

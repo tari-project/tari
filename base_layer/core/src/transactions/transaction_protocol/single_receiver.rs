@@ -32,7 +32,7 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::{EncryptedValue, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+    transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -104,11 +104,7 @@ impl SingleReceiverTransactionProtocol {
                 .construct_proof(spending_key, sender_info.amount.into())?
         };
 
-        let sender_features = OutputFeatures::features_with_updated_recovery_byte(
-            &commitment,
-            rewind_data,
-            &sender_info.features.clone(),
-        );
+        let sender_features = sender_info.features.clone();
 
         let encrypted_value = rewind_data
             .as_ref()

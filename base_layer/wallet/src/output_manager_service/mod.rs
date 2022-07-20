@@ -101,12 +101,6 @@ where
     TKeyManagerInterface: KeyManagerBackend + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        trace!(
-            target: LOG_TARGET,
-            "Output manager initialization: Base node query timeout: {}s",
-            self.config.base_node_query_timeout.as_secs()
-        );
-
         let (sender, receiver) = reply_channel::unbounded();
         let (publisher, _) = broadcast::channel(self.config.event_channel_size);
 

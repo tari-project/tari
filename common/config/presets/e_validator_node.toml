@@ -1,0 +1,57 @@
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Validator Node Configuration Options (ValidatorNodeConfig)                                      #
+#                                                                                                                      #
+########################################################################################################################
+
+[validator_node]
+
+# A path to the file that stores your node identity and secret key (default = "validator_node_id.json")
+#identity_file = "validator_node_id.json"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport
+# (default = "validator_node_tor_id.json")
+#tor_identity_file = "validator_node_tor_id.json"
+
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured (default = )
+#public_address =
+
+# The asset worker will adhere to this phased timeout for the asset (default = 30 s)
+#phase_timeout = 30
+
+# The Tari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
+#base_node_grpc_address = "127.0.0.1/tcp/18142"
+
+# The Tari console wallet's GRPC address. (default = "/ip4/127.0.0.1/tcp/18143")
+#wallet_grpc_address = "127.0.0.1/tcp/18143"
+
+# If set to false, there will be no scanning at all. (default = true)
+#scan_for_assets = true
+
+# How often do we want to scan the base layer for changes. (default = 10)
+#new_asset_scanning_interval = 10
+
+# If set then only the specific assets will be checked. (= ["<pubkey>"]) (default = )
+# assets_allow_list =
+
+# The relative path to store persistent data (default = "data/validator_node")
+#data_dir = "data/validator_node"
+
+# The constitution will auto accept contracts if true (default = false)
+#constitution_auto_accept = false
+
+# Constitution confirmation time in block height (default = 20)
+#constitution_management_confirmation_time = 20
+
+# Constitution polling interval in block height (default = 120)
+constitution_management_polling_interval = 5
+
+# Constitution polling interval in time (seconds) (default = 60)
+#constitution_management_polling_interval_in_seconds = 60
+
+# GRPC address of the validator node  application (default = "/ip4/127.0.0.1/tcp/18144")
+#grpc_address = "/ip4/127.0.0.1/tcp/18144"

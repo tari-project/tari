@@ -74,6 +74,7 @@ use tokio::{
     task,
 };
 
+use super::tasks::send_one_sided_to_stealth_address_transaction;
 use crate::{
     notifier::Notifier,
     ui::{
@@ -356,6 +357,43 @@ impl AppState {
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_one_sided_transaction_task(
             public_key,
+            MicroTari::from(amount),
+            output_features,
+            message,
+            fee_per_gram,
+            tx_service_handle,
+            result_tx,
+        ));
+
+        Ok(())
+    }
+
+    pub async fn send_one_sided_to_stealth_address_transaction(
+        &mut self,
+        dest_pubkey: String,
+        amount: u64,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        fee_per_gram: u64,
+        message: String,
+        result_tx: watch::Sender<UiTransactionSendStatus>,
+    ) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let dest_pubkey = match CommsPublicKey::from_hex(dest_pubkey.as_str()) {
+            Ok(pk) => pk,
+            Err(_) => EmojiId::str_to_pubkey(dest_pubkey.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
+        };
+
+        let output_features = OutputFeatures {
+            unique_id,
+            parent_public_key,
+            ..Default::default()
+        };
+
+        let fee_per_gram = fee_per_gram * uT;
+        let tx_service_handle = inner.wallet.transaction_service.clone();
+        tokio::spawn(send_one_sided_to_stealth_address_transaction(
+            dest_pubkey,
             MicroTari::from(amount),
             output_features,
             message,

@@ -65,6 +65,24 @@ impl<T: ConsensusDecoding> ConsensusDecoding for Option<T> {
     }
 }
 
+//---------------------------------- Box<T> --------------------------------------------//
+
+impl<T: ConsensusEncoding> ConsensusEncoding for Box<T> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.as_ref().consensus_encode(writer)?;
+        Ok(())
+    }
+}
+
+impl<T: ConsensusEncodingSized> ConsensusEncodingSized for Box<T> {}
+
+impl<T: ConsensusDecoding> ConsensusDecoding for Box<T> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let t = T::consensus_decode(reader)?;
+        Ok(Box::new(t))
+    }
+}
+
 //---------------------------------- Vec<T> --------------------------------------------//
 impl<T: ConsensusEncoding> ConsensusEncoding for Vec<T> {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {

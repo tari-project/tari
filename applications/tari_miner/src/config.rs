@@ -44,20 +44,33 @@ use tari_common::SubConfigPath;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct MinerConfig {
+    /// GRPC address of base node
     pub base_node_addr: Multiaddr,
+    /// GRPC address of console wallet
     pub wallet_addr: Multiaddr,
+    /// Number of mining threads
     pub num_mining_threads: usize,
+    /// Start mining only when base node is bootstrapped and current block height is on the tip of network
     pub mine_on_tip_only: bool,
+    /// The proof of work algorithm to use
+    #[serde(skip)]
     pub proof_of_work_algo: ProofOfWork,
+    /// Will check tip with node every N seconds and restart mining if height already taken and option
+    /// `mine_on_tip_only` is set to true
     pub validate_tip_timeout_sec: u64,
+    /// Stratum Mode configuration - mining pool address
     pub mining_pool_address: String,
+    /// Stratum Mode configuration - mining wallet address/public key
     pub mining_wallet_address: String,
+    /// Stratum Mode configuration - mining worker name
     pub mining_worker_name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub enum ProofOfWork {
+    #[default]
     Sha3,
 }
 

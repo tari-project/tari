@@ -31,26 +31,43 @@ const LOG_TARGET: &str = "wallet::transaction_service::config";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionServiceConfig {
+    /// This is the timeout period that will be used for base node broadcast monitoring tasks
     #[serde(with = "serializers::seconds")]
     pub broadcast_monitoring_timeout: Duration,
+    /// This is the timeout period that will be used for chain monitoring tasks
     #[serde(with = "serializers::seconds")]
     pub chain_monitoring_timeout: Duration,
+    /// This is the timeout period that will be used for sending transactions directly
     #[serde(with = "serializers::seconds")]
     pub direct_send_timeout: Duration,
+    /// This is the timeout period that will be used for sending transactions via broadcast mode
     #[serde(with = "serializers::seconds")]
     pub broadcast_send_timeout: Duration,
+    /// This is the timeout period that will be used for low power moded polling tasks
     #[serde(with = "serializers::seconds")]
     pub low_power_polling_timeout: Duration,
+    /// This is the timeout period that will be used to resend transactions that did not make any progress
     #[serde(with = "serializers::seconds")]
     pub transaction_resend_period: Duration,
+    /// This is the timeout period that will be used to ignore repeated transactions
     #[serde(with = "serializers::seconds")]
     pub resend_response_cooldown: Duration,
+    /// This is the timeout period that will be used to expire pending transactions
     #[serde(with = "serializers::seconds")]
     pub pending_transaction_cancellation_timeout: Duration,
+    /// This is the number of block confirmations required for a transaction to be considered completely mined and
+    /// confirmed
     pub num_confirmations_required: u64,
+    /// The number of batches the unconfirmed transactions will be divided into before being queried from the base node
+    // TODO: Fix this logic; it should more directly determine the msg size not the number of batches
     pub max_tx_query_batch_size: usize,
+    /// This option specifies the transaction routing mechanism as being directly between wallets, making use of store
+    /// and forward or using any combination of these.
     pub transaction_routing_mechanism: TransactionRoutingMechanism,
+    /// This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy
+    /// console wallet doing thousands of bulk payments or used for stress testing needs a fairly big size.
     pub transaction_event_channel_size: usize,
+    /// This is the timeout period that will be used to re-submit transactions not found in the mempool
     #[serde(with = "serializers::seconds")]
     pub transaction_mempool_resubmission_window: Duration,
 }
@@ -65,7 +82,7 @@ impl Default for TransactionServiceConfig {
             low_power_polling_timeout: Duration::from_secs(300),
             transaction_resend_period: Duration::from_secs(600),
             resend_response_cooldown: Duration::from_secs(300),
-            pending_transaction_cancellation_timeout: Duration::from_secs(259200), // 3 Days
+            pending_transaction_cancellation_timeout: Duration::from_secs(259_200), // 3 Days
             num_confirmations_required: 3,
             max_tx_query_batch_size: 20,
             transaction_routing_mechanism: TransactionRoutingMechanism::default(),
