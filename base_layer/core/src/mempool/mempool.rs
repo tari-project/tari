@@ -84,6 +84,12 @@ impl Mempool {
             .await
     }
 
+    /// Update the Mempool by clearing transactions for a block that failed to validate.
+    pub async fn clear_transactions_for_failed_block(&self, failed_block: Arc<Block>) -> Result<(), MempoolError> {
+        self.with_write_access(move |storage| storage.clear_transactions_for_failed_block(&failed_block))
+            .await
+    }
+
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
     pub async fn process_reorg(

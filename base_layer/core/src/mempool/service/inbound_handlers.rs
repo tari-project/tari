@@ -27,7 +27,7 @@ use tari_comms::peer_manager::NodeId;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    base_node::comms_interface::BlockEvent,
+    base_node::comms_interface::{BlockEvent, BlockEvent::AddBlockErrored},
     chain_storage::BlockAddResult,
     mempool::{
         metrics,
@@ -159,7 +159,7 @@ impl MempoolInboundHandlers {
 
     /// Handle inbound block events from the local base node service.
     pub async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
-        use BlockEvent::{AddBlockFailed, BlockSyncComplete, BlockSyncRewind, ValidBlockAdded};
+        use BlockEvent::{AddBlockValidationFailed, BlockSyncComplete, BlockSyncRewind, ValidBlockAdded};
         match block_event {
             ValidBlockAdded(block, BlockAddResult::Ok(_)) => {
                 self.mempool.process_published_block(block.clone()).await?;
@@ -181,7 +181,18 @@ impl MempoolInboundHandlers {
             BlockSyncComplete(tip_block) => {
                 self.mempool.process_published_block(tip_block.to_arc_block()).await?;
             },
-            AddBlockFailed(_) => {},
+            AddBlockValidationFailed {
+                block: failed_block,
+                source_peer,
+            } => {
+                // Only clear mempool transaction for local block validation failures
+                if source_peer.is_none() {
+                    self.mempool
+                        .clear_transactions_for_failed_block(failed_block.clone())
+                        .await?;
+                }
+            },
+            AddBlockErrored { .. } => {},
         }
 
         self.update_pool_size_metrics().await;
