@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const OP_CHECK_HEIGHT_VERIFY = 0x66;
 const OP_CHECK_HEIGHT = 0x67;
 const OP_COMPARE_HEIGHT_VERIFY = 0x68;
