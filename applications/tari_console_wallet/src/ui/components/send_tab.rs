@@ -106,7 +106,9 @@ impl SendTab {
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a normal transaction, "),
                 Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a one-sided transaction."),
+                Span::raw(" to send a one-sided transaction, "),
+                Span::styled("X", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to send a one-sided transaction to a stealth address."),
             ]),
         ])
         .wrap(Wrap { trim: false })
@@ -270,17 +272,18 @@ impl SendTab {
         f.render_stateful_widget(table, area, &mut self.table_state)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
         if self.confirmation_dialog.is_some() {
             if 'n' == c {
                 self.confirmation_dialog = None;
                 return KeyHandled::Handled;
             } else if 'y' == c {
-                let one_sided_transaction =
-                    matches!(self.confirmation_dialog, Some(ConfirmationDialogType::OneSidedSend));
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::NormalSend) | Some(ConfirmationDialogType::OneSidedSend) => {
+                    Some(ConfirmationDialogType::Normal) |
+                    Some(ConfirmationDialogType::OneSided) |
+                    Some(ConfirmationDialogType::StealthAddress) => {
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroTari>() {
                                 v
@@ -304,42 +307,67 @@ impl SendTab {
                             let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
 
                             let mut reset_fields = false;
-                            if one_sided_transaction {
-                                match Handle::current().block_on(app_state.send_one_sided_transaction(
-                                    self.to_field.clone(),
-                                    amount.into(),
-                                    self.selected_unique_id.clone(),
-                                    None,
-                                    fee_per_gram,
-                                    self.message_field.clone(),
-                                    tx,
-                                )) {
-                                    Err(e) => {
-                                        self.error_message = Some(format!(
-                                            "Error sending one-sided transaction:\n{}\nPress Enter to continue.",
-                                            e
-                                        ))
-                                    },
-                                    Ok(_) => reset_fields = true,
-                                }
-                            } else {
-                                match Handle::current().block_on(app_state.send_transaction(
-                                    self.to_field.clone(),
-                                    amount.into(),
-                                    self.selected_unique_id.clone(),
-                                    None,
-                                    fee_per_gram,
-                                    self.message_field.clone(),
-                                    tx,
-                                )) {
-                                    Err(e) => {
-                                        self.error_message = Some(format!(
-                                            "Error sending normal transaction:\n{}\nPress Enter to continue.",
-                                            e
-                                        ))
-                                    },
-                                    Ok(_) => reset_fields = true,
-                                }
+                            match self.confirmation_dialog {
+                                Some(ConfirmationDialogType::OneSided) => {
+                                    match Handle::current().block_on(app_state.send_one_sided_transaction(
+                                        self.to_field.clone(),
+                                        amount.into(),
+                                        self.selected_unique_id.clone(),
+                                        None,
+                                        fee_per_gram,
+                                        self.message_field.clone(),
+                                        tx,
+                                    )) {
+                                        Err(e) => {
+                                            self.error_message = Some(format!(
+                                                "Error sending one-sided transaction:\n{}\nPress Enter to continue.",
+                                                e
+                                            ))
+                                        },
+                                        Ok(_) => reset_fields = true,
+                                    }
+                                },
+                                Some(ConfirmationDialogType::StealthAddress) => {
+                                    match Handle::current().block_on(
+                                        app_state.send_one_sided_to_stealth_address_transaction(
+                                            self.to_field.clone(),
+                                            amount.into(),
+                                            self.selected_unique_id.clone(),
+                                            None,
+                                            fee_per_gram,
+                                            self.message_field.clone(),
+                                            tx,
+                                        ),
+                                    ) {
+                                        Err(e) => {
+                                            self.error_message = Some(format!(
+                                                "Error sending one-sided transaction to stealth address:\n{}\nPress \
+                                                 Enter to continue.",
+                                                e
+                                            ))
+                                        },
+                                        Ok(_) => reset_fields = true,
+                                    }
+                                },
+                                _ => {
+                                    match Handle::current().block_on(app_state.send_transaction(
+                                        self.to_field.clone(),
+                                        amount.into(),
+                                        self.selected_unique_id.clone(),
+                                        None,
+                                        fee_per_gram,
+                                        self.message_field.clone(),
+                                        tx,
+                                    )) {
+                                        Err(e) => {
+                                            self.error_message = Some(format!(
+                                                "Error sending normal transaction:\n{}\nPress Enter to continue.",
+                                                e
+                                            ))
+                                        },
+                                        Ok(_) => reset_fields = true,
+                                    }
+                                },
                             }
                             if reset_fields {
                                 self.to_field = "".to_string();
@@ -432,6 +460,7 @@ impl SendTab {
 }
 
 impl<B: Backend> Component<B> for SendTab {
+    #[allow(clippy::too_many_lines)]
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
         let areas = Layout::default()
             .constraints(
@@ -511,7 +540,7 @@ impl<B: Backend> Component<B> for SendTab {
 
         match self.confirmation_dialog {
             None => (),
-            Some(ConfirmationDialogType::NormalSend) => {
+            Some(ConfirmationDialogType::Normal) => {
                 draw_dialog(
                     f,
                     area,
@@ -522,12 +551,24 @@ impl<B: Backend> Component<B> for SendTab {
                     9,
                 );
             },
-            Some(ConfirmationDialogType::OneSidedSend) => {
+            Some(ConfirmationDialogType::OneSided) => {
                 draw_dialog(
                     f,
                     area,
                     "Confirm Sending Transaction".to_string(),
                     "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
+            Some(ConfirmationDialogType::StealthAddress) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Sending Transaction".to_string(),
+                    "Are you sure you want to send this one-sided transaction to a stealth address?\n(Y)es / (N)o"
+                        .to_string(),
                     Color::Red,
                     120,
                     9,
@@ -584,7 +625,7 @@ impl<B: Backend> Component<B> for SendTab {
             },
             'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
-            's' | 'o' => {
+            's' | 'o' | 'x' => {
                 if self.to_field.is_empty() {
                     self.error_message = Some("Destination Public Key/Emoji ID\nPress Enter to continue.".to_string());
                     return;
@@ -599,11 +640,11 @@ impl<B: Backend> Component<B> for SendTab {
                     return;
                 }
 
-                if matches!(c, 'o') {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::OneSidedSend);
-                } else {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::NormalSend);
-                }
+                self.confirmation_dialog = Some(match c {
+                    'o' => ConfirmationDialogType::OneSided,
+                    'x' => ConfirmationDialogType::StealthAddress,
+                    _ => ConfirmationDialogType::Normal,
+                });
             },
             _ => {},
         }
@@ -690,6 +731,7 @@ pub enum SendInputMode {
 
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
-    NormalSend,
-    OneSidedSend,
+    Normal,
+    OneSided,
+    StealthAddress,
 }

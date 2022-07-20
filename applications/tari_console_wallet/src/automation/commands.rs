@@ -224,6 +224,25 @@ pub async fn send_one_sided(
         .map_err(CommandError::TransactionServiceError)
 }
 
+pub async fn send_one_sided_to_stealth_address(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: u64,
+    amount: MicroTari,
+    dest_pubkey: PublicKey,
+    message: String,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .send_one_sided_to_stealth_address_transaction(
+            dest_pubkey,
+            amount,
+            OutputFeatures::default(),
+            fee_per_gram * uT,
+            message,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
 pub async fn coin_split(
     amount_per_split: MicroTari,
     num_splits: usize,
@@ -603,6 +622,18 @@ pub async fn command_runner(
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            SendOneSidedToStealthAddress(args) => {
+                let tx_id = send_one_sided_to_stealth_address(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.destination.into(),
+                    args.message,
+                )
+                .await?;
+                debug!(target: LOG_TARGET, "send-one-sided-to-stealth-address tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
             MakeItRain(args) => {

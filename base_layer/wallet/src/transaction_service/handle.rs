@@ -86,6 +86,13 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
+    SendOneSidedToStealthAddressTransaction {
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: Box<OutputFeatures>,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
     SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
@@ -143,6 +150,17 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => f.write_str(&format!(
                 "SendOneSidedTransaction (to {}, {}, {})",
+                dest_pubkey.to_hex(),
+                amount,
+                message
+            )),
+            Self::SendOneSidedToStealthAddressTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendOneSidedToStealthAddressTransaction (to {}, {}, {})",
                 dest_pubkey.to_hex(),
                 amount,
                 message
@@ -427,6 +445,30 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                output_features: Box::new(output_features),
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_one_sided_to_stealth_address_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 dest_pubkey,
                 amount,
                 output_features: Box::new(output_features),
