@@ -27,7 +27,7 @@ use log::*;
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::task;
 
 use super::LOG_TARGET;
@@ -176,8 +176,9 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .factories
             .commitment
             .commit_value(&total_kernel_offset, total_reward.as_u64());
-
+        let db = self.db.inner().clone();
         task::spawn_blocking(move || {
+            let db = db.db_read_access()?;
             let timer = Instant::now();
             let mut kernel_sum = KernelSum {
                 sum: total_offset,
@@ -203,6 +204,21 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                     }
                     coinbase_index = Some(i);
                 }
+
+                if let Some((db_kernel, header_hash)) = db.fetch_kernel_by_excess_sig(&kernel.excess_sig)? {
+                    let msg = format!(
+                        "Block contains kernel excess: {} which matches already existing excess signature in chain \
+                         database block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess signature: \
+                         {}",
+                        kernel.excess.to_hex(),
+                        header_hash.to_hex(),
+                        db_kernel.excess.to_hex(),
+                        db_kernel.excess_sig.get_public_nonce().to_hex(),
+                        db_kernel.excess_sig.get_signature().to_hex(),
+                    );
+                    warn!(target: LOG_TARGET, "{}", msg);
+                    return Err(ValidationError::ConsensusError(msg));
+                };
 
                 max_kernel_timelock = cmp::max(max_kernel_timelock, kernel.lock_height);
                 kernel_sum.fees += kernel.fee;
