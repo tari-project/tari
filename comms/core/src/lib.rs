@@ -67,5 +67,12 @@ pub mod multiaddr {
 
 pub use async_trait::async_trait;
 pub use bytes::{Bytes, BytesMut};
+use tari_common::hashing_domain::HashingDomain;
 #[cfg(feature = "rpc")]
 pub use tower::make::MakeService;
+
+/// The comms core domain separated hashing domain
+/// Usage:
+///   let hash = COMMS_CORE_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   etc.
+pub const COMMS_CORE_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.comms.core");

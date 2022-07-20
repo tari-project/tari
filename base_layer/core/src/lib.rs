@@ -67,3 +67,10 @@ pub mod large_ints {
     }
 }
 pub use large_ints::{U256, U512};
+use tari_common::hashing_domain::HashingDomain;
+
+/// The base layer core domain separated hashing domain
+/// Usage:
+///   let hash = CORE_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   etc.
+pub const CORE_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.core");

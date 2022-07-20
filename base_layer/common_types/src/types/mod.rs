@@ -26,6 +26,7 @@ mod fixed_hash;
 pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     hash::blake2::Blake256,
+    hashing::{DomainSeparatedHasher, GenericHashDomain, MacDomain},
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -81,3 +82,9 @@ pub type RangeProofService = BulletproofsPlusService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
+
+/// Generic domain separated hasher
+pub type GenericDomainHasher<D> = DomainSeparatedHasher<D, GenericHashDomain>;
+
+/// MAC domain separated hasher
+pub type MacDomainHasher<D> = DomainSeparatedHasher<D, MacDomain>;

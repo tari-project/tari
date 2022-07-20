@@ -65,7 +65,11 @@ pub use configuration::{
 };
 pub mod dir_utils;
 pub use logging::initialize_logging;
+
+use crate::hashing_domain::HashingDomain;
+
 pub mod file_lock;
+pub mod hashing_domain;
 
 pub const DEFAULT_CONFIG: &str = "config/config.toml";
 pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";
@@ -76,3 +80,9 @@ pub const DEFAULT_MINER_LOG_CONFIG: &str = "config/log4rs_miner.yml";
 pub const DEFAULT_COLLECTIBLES_LOG_CONFIG: &str = "config/log4rs_collectibles.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";
+
+/// The MMR domain separated hashing domain
+/// Usage:
+///   let hash = COMMON_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   etc.
+pub const COMMON_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.common");

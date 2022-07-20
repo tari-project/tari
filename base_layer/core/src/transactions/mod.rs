@@ -15,6 +15,7 @@ pub mod transaction_components;
 
 mod format_currency;
 pub use format_currency::format_currency;
+use tari_common::hashing_domain::HashingDomain;
 
 pub mod transaction_protocol;
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
@@ -24,3 +25,10 @@ pub mod weight;
 
 #[macro_use]
 pub mod test_helpers;
+
+/// The base layer core transactions domain separated hashing domain
+/// Usage:
+///   let hash = CORE_TRANSACTIONS_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   etc.
+pub const CORE_TRANSACTIONS_HASH_DOMAIN: HashingDomain =
+    HashingDomain::new("tari_project.base_layer.core.transactions");

@@ -44,6 +44,7 @@ pub use error::CovenantError;
 // Used in macro
 #[allow(unused_imports)]
 pub(crate) use fields::OutputField;
+use tari_common::hashing_domain::HashingDomain;
 pub use token::CovenantToken;
 
 #[macro_use]
@@ -51,3 +52,9 @@ mod macros;
 
 #[cfg(test)]
 mod test;
+
+/// The base layer core covenants domain separated hashing domain
+/// Usage:
+///   let hash = CORE_COVENANTS_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   etc.
+pub const CORE_COVENANTS_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.core.covenants");

@@ -29,6 +29,13 @@ pub use script::TariScript;
 pub use script_commitment::{ScriptCommitment, ScriptCommitmentError, ScriptCommitmentFactory};
 pub use script_context::ScriptContext;
 pub use stack::{ExecutionStack, StackItem};
+use tari_common::hashing_domain::HashingDomain;
+
+/// The TariScript domain separated hashing domain
+/// Usage:
+///   let hash = TARI_SCRIPT_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   etc.
+pub const TARI_SCRIPT_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.infrastructure.tari_script");
 
 // As hex: c5a1ea6d3e0a6a0d650c99489bcd563e37a06221fd04b8f3a842a982b2813907
 pub const DEFAULT_SCRIPT_HASH: HashValue = [
