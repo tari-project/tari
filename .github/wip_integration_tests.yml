@@ -1,9 +1,13 @@
+---
+name: CI
+
 on:
   push:
   pull_request:
     types: [opened]
 
-name: CI
+env:
+  toolchain: nightly-2022-05-01
 
 jobs:
   integration:
@@ -23,7 +27,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-11-20
+          toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
           override: true
       - name: dependencies
