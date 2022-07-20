@@ -53,6 +53,7 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
     /// 1. Are all inputs and outputs not in the STXO set?
+    /// 1. Are all kernels excesses unique?
     /// 1. Are the block header MMR roots valid?
     fn validate_body_for_valid_orphan(
         &self,
@@ -80,9 +81,10 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
             self.rules.consensus_constants(block.height()),
             &block.block().body,
         )?;
+        helpers::check_unique_kernels(backend, &block.block().body)?;
         trace!(
             target: LOG_TARGET,
-            "Block validation: All inputs and outputs are valid for {}",
+            "Block validation: All inputs, outputs and kernels are valid for {}",
             block_id
         );
         let mmr_roots = chain_storage::calculate_mmr_roots(backend, block.block())?;
