@@ -1895,72 +1895,88 @@ where
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
-        let scanned_outputs = outputs
-            .into_iter()
-            .filter_map(|output| {
-                // TODO: use MultiKey
-                match output.script.as_slice() {
-                    // ----------------------------------------------------------------------------
-                    // simple one-sided address
-                    [Opcode::PushPubKey(spending_key_public)] => {
-                        let keys = match self.resources.db.get_all_known_one_sided_payment_scripts() {
-                            Ok(keys) => keys,
-                            Err(_) => return None,
-                        };
+        // TODO: use MultiKey
+        // NOTE: known keys is a list consisting of an actual and deprecated wallet keys
+        let known_keys = self.resources.db.get_all_known_one_sided_payment_scripts()?;
 
-                        match keys
-                            .into_iter()
-                            .find(|x| PublicKey::from_secret_key(&x.private_key) == **spending_key_public)
-                        {
-                            None => None,
-                            Some(x) => {
-                                match PrivateKey::from_bytes(
-                                    CommsPublicKey::shared_secret(&x.private_key, &output.sender_offset_public_key)
-                                        .as_bytes(),
-                                ) {
-                                    Ok(spend_key) => Some((output.clone(), x.private_key.clone(), spend_key)),
-                                    Err(_) => None,
-                                }
-                            },
-                        }
-                    },
+        let wallet_sk = self.node_identity.secret_key().clone();
+        let wallet_pk = self.node_identity.public_key();
 
-                    // ----------------------------------------------------------------------------
-                    // one-sided stealth address
-                    // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
-                    // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
-                    [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(provided_spending_public)] => {
-                        let secret_key = self.node_identity.secret_key().clone();
-                        let public_key = self.node_identity.public_key();
+        let mut scanned_outputs = vec![];
 
-                        // computing shared secret
-                        let c = RistrettoSecretKey::from_bytes(
-                            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
-                                .chain(PublicKey::shared_secret(&secret_key, nonce.as_ref()).as_bytes())
-                                .finalize()
-                                .as_ref(),
-                        )
-                        .unwrap();
+        for output in outputs {
+            match output.script.as_slice() {
+                // ----------------------------------------------------------------------------
+                // simple one-sided address
+                [Opcode::PushPubKey(scanned_pk)] => {
+                    match known_keys
+                        .iter()
+                        .find(|x| &PublicKey::from_secret_key(&x.private_key) == scanned_pk.as_ref())
+                    {
+                        // none of the keys match, skipping
+                        None => continue,
 
-                        // calculating spending (public) key
-                        let ks = PublicKey::from_secret_key(&c) + public_key;
+                        // match found
+                        Some(matched_key) => {
+                            match PrivateKey::from_bytes(
+                                CommsPublicKey::shared_secret(
+                                    &matched_key.private_key,
+                                    &output.sender_offset_public_key,
+                                )
+                                .as_bytes(),
+                            ) {
+                                Ok(spending_sk) => {
+                                    scanned_outputs.push((output.clone(), matched_key.private_key.clone(), spending_sk))
+                                },
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "failed to derive private key from DH shared secret (simple one-sided): {:?}",
+                                        e
+                                    );
+                                    continue;
+                                },
+                            }
+                        },
+                    }
+                },
 
-                        if &ks != provided_spending_public.as_ref() {
-                            return None;
-                        }
+                // ----------------------------------------------------------------------------
+                // one-sided stealth address
+                // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
+                // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
+                [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
+                    // computing shared secret
+                    let c = RistrettoSecretKey::from_bytes(
+                        DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
+                            .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
+                            .finalize()
+                            .as_ref(),
+                    )
+                    .unwrap();
 
-                        match PrivateKey::from_bytes(
-                            CommsPublicKey::shared_secret(&secret_key, &output.sender_offset_public_key).as_bytes(),
-                        ) {
-                            Err(_) => None,
-                            Ok(spend_key) => Some((output.clone(), secret_key.clone() + c, spend_key)),
-                        }
-                    },
+                    // matching spending (public) keys
+                    if &(PublicKey::from_secret_key(&c) + wallet_pk) != scanned_pk.as_ref() {
+                        continue;
+                    }
 
-                    _ => None,
-                }
-            })
-            .collect::<Vec<_>>();
+                    match PrivateKey::from_bytes(
+                        CommsPublicKey::shared_secret(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
+                    ) {
+                        Ok(spending_sk) => scanned_outputs.push((output.clone(), wallet_sk.clone() + c, spending_sk)),
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "failed to derive private key from DH shared secret (stealth one-sided): {:?}", e
+                            );
+                            continue;
+                        },
+                    }
+                },
+
+                _ => {},
+            }
+        }
 
         self.import_onesided_outputs(scanned_outputs)
     }
@@ -1971,8 +1987,8 @@ where
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, script_private_key, spending_key) in scanned_outputs {
-            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+        for (output, script_private_key, spending_sk) in scanned_outputs {
+            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_sk))?;
             let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
             let committed_value =
                 EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
