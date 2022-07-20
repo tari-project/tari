@@ -694,7 +694,7 @@ where
             &commitment,
             single_round_sender_data.amount,
         )?;
-        let minimum_value_promise = MicroTari::zero();
+        let minimum_value_promise = single_round_sender_data.minimum_value_promise;
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,

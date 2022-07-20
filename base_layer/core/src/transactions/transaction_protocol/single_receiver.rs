@@ -32,7 +32,6 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    tari_amount::MicroTari,
     transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
         build_challenge,
@@ -114,7 +113,7 @@ impl SingleReceiverTransactionProtocol {
             .map_err(|_| TPE::EncryptionError)?
             .unwrap_or_default();
 
-        let minimum_value_promise = MicroTari::zero();
+        let minimum_value_promise = sender_info.minimum_value_promise;
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
