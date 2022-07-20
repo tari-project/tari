@@ -531,7 +531,7 @@ pub fn batch_verify_range_proofs(
             statements.push(RistrettoAggregatedPublicStatement {
                 statements: vec![Statement {
                     commitment: output.commitment.clone(),
-                    minimum_value_promise: 0,
+                    minimum_value_promise: output.minimum_value_promise.into(),
                 }],
             });
             proofs.push(output.proof.to_vec().clone());

@@ -223,7 +223,7 @@ impl UnblindedOutput {
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
-        let range_proof = self.construct_range_proof(factories)?;
+        let range_proof = self.construct_range_proof(factories, None)?;
 
         let output = TransactionOutput::new(
             self.version,
@@ -241,15 +241,25 @@ impl UnblindedOutput {
         Ok(output)
     }
 
-    fn construct_range_proof(&self, factories: &CryptoFactories) -> Result<RangeProof, TransactionError> {
+    fn construct_range_proof(
+        &self,
+        factories: &CryptoFactories,
+        seed_nonce: Option<PrivateKey>,
+    ) -> Result<RangeProof, TransactionError> {
         let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
-            factories
-                .range_proof
-                .construct_proof(&self.spending_key, self.value.into())
+            match seed_nonce {
+                Some(nonce) => factories.range_proof.construct_proof_with_recovery_seed_nonce(
+                    &self.spending_key,
+                    self.value.into(),
+                    &nonce,
+                ),
+                None => factories
+                    .range_proof
+                    .construct_proof(&self.spending_key, self.value.into()),
+            }
         } else {
-            let extension_degree = ExtensionDegree::DefaultPedersen;
-            let secrets = vec![self.spending_key.clone(); extension_degree as usize];
-            let extended_mask = RistrettoExtendedMask::assign(extension_degree, secrets)?;
+            let extended_mask =
+                RistrettoExtendedMask::assign(ExtensionDegree::DefaultPedersen, vec![self.spending_key.clone()])?;
 
             let extended_witness = RistrettoExtendedWitness {
                 mask: extended_mask,
@@ -259,7 +269,7 @@ impl UnblindedOutput {
 
             factories
                 .range_proof
-                .construct_extended_proof(vec![extended_witness], None)
+                .construct_extended_proof(vec![extended_witness], seed_nonce)
         };
 
         let proof_bytes = proof_bytes_result.map_err(|err| {
@@ -293,16 +303,12 @@ impl UnblindedOutput {
         let proof = if let Some(proof) = range_proof {
             proof.clone()
         } else {
-            let proof_bytes = factories.range_proof.construct_proof_with_recovery_seed_nonce(
-                &self.spending_key,
-                self.value.into(),
-                &rewind_data.rewind_blinding_key,
-            )?;
-            RangeProof::from_bytes(&proof_bytes).map_err(|_| {
-                TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                    "Creating rewindable transaction output".to_string(),
-                ))
-            })?
+            self.construct_range_proof(factories, Some(rewind_data.rewind_blinding_key.clone()))
+                .map_err(|_| {
+                    TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                        "Creating rewindable transaction output".to_string(),
+                    ))
+                })?
         };
 
         let output = TransactionOutput::new(
