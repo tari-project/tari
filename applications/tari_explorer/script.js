@@ -74,8 +74,9 @@ function hex(data) {
 
 function script(data) {
   data = [...data];
-  i = 0;
-  s = [];
+  let i = 0;
+  let s = [];
+  let m, n, msg, public_keys;
   while (i < data.length) {
     switch (data[i]) {
       // Opcode constants: Block Height Checks
@@ -186,15 +187,15 @@ function script(data) {
         i += 33;
         break;
       case OP_CHECK_MULTI_SIG:
-        let m = data[i + 1];
-        let n = data[i + 2];
-        let public_keys = [];
+        m = data[i + 1];
+        n = data[i + 2];
+        public_keys = [];
         i += 3;
         for (let j = 0; j < n; ++j) {
           public_keys = hex(data.slice(i, i + 32));
           i += 32;
         }
-        let msg = data.slice(i, i + 32);
+        msg = data.slice(i, i + 32);
         i += 32;
         s.push(`CHECK_MULTI_SIG ${m} ${n} [${public_keys.join(",")}] ${msg}`);
         break;
