@@ -149,12 +149,6 @@ jobs:
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v1
 
-      - name: Compile launchpad GUI
-        run: |
-          cd applications/launchpad/gui-vue
-          npm install
-          npm run build
-
       - name: Compile collectibles GUI
         run: |
           cd applications/tari_collectibles/web-app
@@ -200,7 +194,6 @@ jobs:
           cp -v "$GITHUB_WORKSPACE/target/release/tari_miner${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_validator_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_collectibles${TBN_EXT}" .
-          cp -v "$GITHUB_WORKSPACE/target/release/tari_launchpad${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/${LIB_PRE}tari_mining_helper_ffi${LIB_EXT}" .
           cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
 
@@ -236,7 +229,6 @@ jobs:
             "tari_merge_mining_proxy"
             "tari_validator_node"
             "tari_collectibles"
-            "tari_launchpad"
           )
           for FILE in "${FILES[@]}"; do
             codesign --options runtime --force --verify --verbose --timestamp --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
