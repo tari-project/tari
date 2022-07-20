@@ -578,6 +578,7 @@ fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
 
 #[cfg(test)]
 mod test {
+    use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
         tari_amount::MicroTari,
         test_helpers::{TestParams, UtxoTestParams},
@@ -613,36 +614,84 @@ mod test {
     fn it_builds_correctly_from_unblinded_output() {
         let factories = CryptoFactories::default();
         let test_params = TestParams::new();
-        let utxo = test_params.create_unblinded_output(UtxoTestParams {
-            value: MicroTari(10),
-            minimum_value_promise: MicroTari(10),
-            ..Default::default()
-        });
 
-        let transaction_output = utxo.as_transaction_output(&factories).unwrap();
-        assert!(transaction_output.verify_range_proof(&factories.range_proof).is_ok());
-        assert!(transaction_output.verify_metadata_signature().is_ok());
-        assert!(transaction_output
-            .verify_mask(&factories.range_proof, &test_params.spend_key, utxo.value.into())
+        let value = MicroTari(10);
+        let minimum_value_promise = MicroTari(10);
+        let tx_output = create_valid_output(&test_params, &factories, value, minimum_value_promise);
+
+        assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
+        assert!(tx_output.verify_metadata_signature().is_ok());
+        assert!(tx_output
+            .verify_mask(&factories.range_proof, &test_params.spend_key, value.into())
             .is_ok());
     }
 
     #[test]
-    fn it_does_not_validate_incorrect_minimum_value() {
+    fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
         let test_params = TestParams::new();
 
-        // To test the range proof validation, we need first to craete a valid minimum value
-        // because the API will not let us create the transaction otherwise
+        let value = MicroTari(10);
+        let minimum_value_promise = MicroTari(11);
+        let tx_output = create_invalid_output(&test_params, &factories, value, minimum_value_promise);
+
+        assert!(tx_output.verify_range_proof(&factories.range_proof).is_err());
+    }
+
+    #[test]
+    fn it_does_batch_verify_correct_minimum_values() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let outputs = [
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari::zero()),
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari(5)),
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari(10)),
+        ];
+
+        assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_ok());
+    }
+
+    #[test]
+    fn it_does_not_batch_verify_incorrect_minimum_values() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let outputs = [
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari(10)),
+            &create_invalid_output(&test_params, &factories, MicroTari(10), MicroTari(11)),
+        ];
+
+        assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_err());
+    }
+
+    fn create_valid_output(
+        test_params: &TestParams,
+        factories: &CryptoFactories,
+        value: MicroTari,
+        minimum_value_promise: MicroTari,
+    ) -> TransactionOutput {
         let utxo = test_params.create_unblinded_output(UtxoTestParams {
-            value: MicroTari(10),
-            minimum_value_promise: MicroTari(10),
+            value,
+            minimum_value_promise,
             ..Default::default()
         });
-        let mut transaction_output = utxo.as_transaction_output(&factories).unwrap();
+        utxo.as_transaction_output(factories).unwrap()
+    }
 
-        // Now we put a minimum value is that is invalid (greater than the actual value)
-        transaction_output.minimum_value_promise = MicroTari(11);
-        assert!(transaction_output.verify_range_proof(&factories.range_proof).is_err());
+    fn create_invalid_output(
+        test_params: &TestParams,
+        factories: &CryptoFactories,
+        value: MicroTari,
+        minimum_value_promise: MicroTari,
+    ) -> TransactionOutput {
+        // we need first to create a valid minimum value, regardless of the minimum_value_promise
+        // because this test function shoud allow creating an invalid proof for later testing
+        let mut output = create_valid_output(test_params, factories, value, MicroTari::zero());
+
+        // Now we can updated the minimum value, even to an invalid value
+        output.minimum_value_promise = minimum_value_promise;
+
+        output
     }
 }
