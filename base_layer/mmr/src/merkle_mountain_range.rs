@@ -28,6 +28,7 @@ use std::{
 };
 
 use digest::Digest;
+use tari_common_types::types::DefaultDomainHasher;
 
 use crate::{
     backend::ArrayLike,
@@ -42,6 +43,7 @@ use crate::{
         peak_map_height,
     },
     error::MerkleMountainRangeError,
+    mmr_hash_domain,
     pruned_hashset::PrunedHashSet,
     Hash,
 };
@@ -138,11 +140,14 @@ where
         if self.is_empty()? {
             return Ok(MerkleMountainRange::<D, B>::null_hash());
         }
-        let hasher = D::new();
-        Ok(self.hash_to_root(hasher)?.finalize().to_vec())
+        let hasher = mmr_hash_domain().hasher::<D>();
+        Ok(self.hash_to_root(hasher)?.finalize().into_vec())
     }
 
-    pub(crate) fn hash_to_root(&self, hasher: D) -> Result<D, MerkleMountainRangeError> {
+    pub(crate) fn hash_to_root(
+        &self,
+        hasher: DefaultDomainHasher<D>,
+    ) -> Result<DefaultDomainHasher<D>, MerkleMountainRangeError> {
         let peaks = find_peaks(
             self.hashes
                 .len()
@@ -254,7 +259,7 @@ where
     }
 
     pub(crate) fn null_hash() -> Hash {
-        D::digest(b"").to_vec()
+        mmr_hash_domain().digest::<D>(b"").into_vec()
     }
 
     fn push_hash(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {

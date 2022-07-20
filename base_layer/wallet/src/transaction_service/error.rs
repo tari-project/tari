@@ -23,6 +23,7 @@
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
+use tari_common::hashing_domain::HashingDomainError;
 use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
@@ -166,6 +167,8 @@ pub enum TransactionServiceError {
     BaseNodeNotSynced,
     #[error("Value encryption error: `{0}`")]
     EncryptionError(#[from] EncryptionError),
+    #[error("Two slices have different lengths")]
+    HashingDomainError(#[from] HashingDomainError),
 }
 
 #[derive(Debug, Error)]

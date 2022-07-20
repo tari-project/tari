@@ -81,7 +81,7 @@ pub const DEFAULT_COLLECTIBLES_LOG_CONFIG: &str = "config/log4rs_collectibles.ym
 
 pub(crate) const LOG_TARGET: &str = "common::config";
 
-/// The MMR domain separated hashing domain
+/// The common domain separated hashing domain
 /// Usage:
 ///   let hash = common_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.

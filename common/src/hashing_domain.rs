@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use tari_common_types::types::{DefaultDomainHasher, MacDomainHasher};
 use tari_crypto::hashing::{DomainSeparatedHash, LengthExtensionAttackResistant, Mac};
@@ -30,10 +31,10 @@ pub struct HashingDomain {
 }
 
 /// Error type for the pipeline.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HashingDomainError {
     #[error("Two slices have different lengths")]
-    CopyFromSlice,
+    SlicesHaveDifferentLengths,
 }
 
 impl HashingDomain {
@@ -69,10 +70,10 @@ impl HashingDomain {
 }
 
 pub trait HashToBytes<const I: usize>: AsRef<[u8]> {
-    fn hash_to_bytes(&self) -> Result<[u8; I], HashingDomainError> {
+    fn as_fixed_bytes(&self) -> Result<[u8; I], HashingDomainError> {
         let hash_vec = self.as_ref();
         if hash_vec.is_empty() || hash_vec.len() < I {
-            return Err(HashingDomainError::CopyFromSlice);
+            return Err(HashingDomainError::SlicesHaveDifferentLengths);
         }
         let mut buffer: [u8; I] = [0; I];
         buffer.copy_from_slice(&hash_vec[..I]);
@@ -95,12 +96,12 @@ mod test {
         hasher.update(b"my 2nd secret");
         let hash = hasher.finalize();
 
-        let hash_to_bytes_7: [u8; 7] = hash.hash_to_bytes().unwrap();
-        assert_eq!(hash_to_bytes_7, hash.hash_to_bytes().unwrap());
-        let hash_to_bytes_23: [u8; 23] = hash.hash_to_bytes().unwrap();
-        assert_eq!(hash_to_bytes_23, hash.hash_to_bytes().unwrap());
-        let hash_to_bytes_32: [u8; 32] = hash.hash_to_bytes().unwrap();
-        assert_eq!(hash_to_bytes_32, hash.hash_to_bytes().unwrap());
+        let hash_to_bytes_7: [u8; 7] = hash.as_fixed_bytes().unwrap();
+        assert_eq!(hash_to_bytes_7, hash.as_fixed_bytes().unwrap());
+        let hash_to_bytes_23: [u8; 23] = hash.as_fixed_bytes().unwrap();
+        assert_eq!(hash_to_bytes_23, hash.as_fixed_bytes().unwrap());
+        let hash_to_bytes_32: [u8; 32] = hash.as_fixed_bytes().unwrap();
+        assert_eq!(hash_to_bytes_32, hash.as_fixed_bytes().unwrap());
 
         let mut hasher = common_hash_domain().hasher::<Blake256>();
         hasher.update(b"my 3rd secret");
@@ -134,12 +135,12 @@ mod test {
         hasher.update(b"my 2nd secret");
         let hash = hasher.finalize();
 
-        let hash_to_bytes_7: [u8; 7] = hash.hash_to_bytes().unwrap();
-        assert_eq!(hash_to_bytes_7, hash.hash_to_bytes().unwrap());
-        let hash_to_bytes_23: [u8; 23] = hash.hash_to_bytes().unwrap();
-        assert_eq!(hash_to_bytes_23, hash.hash_to_bytes().unwrap());
-        let hash_to_bytes_32: [u8; 32] = hash.hash_to_bytes().unwrap();
-        assert_eq!(hash_to_bytes_32, hash.hash_to_bytes().unwrap());
+        let hash_to_bytes_7: [u8; 7] = hash.as_fixed_bytes().unwrap();
+        assert_eq!(hash_to_bytes_7, hash.as_fixed_bytes().unwrap());
+        let hash_to_bytes_23: [u8; 23] = hash.as_fixed_bytes().unwrap();
+        assert_eq!(hash_to_bytes_23, hash.as_fixed_bytes().unwrap());
+        let hash_to_bytes_32: [u8; 32] = hash.as_fixed_bytes().unwrap();
+        assert_eq!(hash_to_bytes_32, hash.as_fixed_bytes().unwrap());
 
         let mut hasher = common_hash_domain().mac_hasher::<Blake256>();
         hasher.update(b"my 3rd secret");

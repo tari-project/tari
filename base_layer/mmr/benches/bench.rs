@@ -33,11 +33,12 @@ mod benches {
 
     use blake2::Blake2b;
     use criterion::{criterion_group, BatchSize, Criterion};
-    use digest::Digest;
-    use tari_mmr::MerkleMountainRange;
+    use tari_mmr::{mmr_hash_domain, MerkleMountainRange};
 
     fn get_hashes(n: usize) -> Vec<Vec<u8>> {
-        (0..n).map(|i| Blake2b::digest(&i.to_le_bytes()).to_vec()).collect()
+        (0..n)
+            .map(|i| mmr_hash_domain().digest::<Blake2b>(&i.to_le_bytes()).into_vec())
+            .collect()
     }
 
     fn build_mmr(c: &mut Criterion) {

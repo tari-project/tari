@@ -24,7 +24,7 @@
 #[allow(dead_code)]
 mod support;
 
-use support::{create_mmr, int_to_hash, Hasher};
+use support::{create_mmr, int_to_hash, DigestAlgorithm};
 use tari_mmr::{
     common::{is_leaf, node_index},
     MerkleProof,
@@ -53,7 +53,7 @@ fn merkle_proof_small_mmrs() {
                 let hash = int_to_hash(hash_value);
                 hash_value += 1;
                 let proof = MerkleProof::for_node(&mmr, pos).unwrap();
-                assert!(proof.verify::<Hasher>(&root, &hash, pos).is_ok());
+                assert!(proof.verify::<DigestAlgorithm>(&root, &hash, pos).is_ok());
             } else {
                 assert_eq!(MerkleProof::for_node(&mmr, pos), Err(MerkleProofError::NonLeafNode));
             }
@@ -70,7 +70,7 @@ fn med_mmr() {
     let pos = node_index(i);
     let hash = int_to_hash(i);
     let proof = MerkleProof::for_node(&mmr, pos).unwrap();
-    assert!(proof.verify::<Hasher>(&root, &hash, pos).is_ok());
+    assert!(proof.verify::<DigestAlgorithm>(&root, &hash, pos).is_ok());
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn a_big_proof() {
     let root = mmr.get_merkle_root().unwrap();
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_node(&mmr, mmr_index).unwrap();
-    assert!(proof.verify::<Hasher>(&root, &hash, mmr_index).is_ok())
+    assert!(proof.verify::<DigestAlgorithm>(&root, &hash, mmr_index).is_ok())
 }
 
 #[test]
@@ -91,11 +91,11 @@ fn for_leaf_node() {
     let leaf_pos = 28;
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_leaf_node(&mmr, leaf_pos).unwrap();
-    assert!(proof.verify_leaf::<Hasher>(&root, &hash, leaf_pos).is_ok())
+    assert!(proof.verify_leaf::<DigestAlgorithm>(&root, &hash, leaf_pos).is_ok())
 }
 
-const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["e88b43fded6323ef02ffeffbd8c40846ee09bf316271bd22369659c959dd733a","8bdd601372fd4d8242591e4b42815bc35826b0209ce5b78eb06609110b002b9d"],"peaks":["e96760d274653a39b429a87ebaae9d3aa4fdf58b9096cf0bebc7c4e5a4c2ed8d"]}"#;
-const BINCODE_PROOF: &str = "080000000000000002000000000000002000000000000000e88b43fded6323ef02ffeffbd8c40846ee09bf316271bd22369659c959dd733a20000000000000008bdd601372fd4d8242591e4b42815bc35826b0209ce5b78eb06609110b002b9d01000000000000002000000000000000e96760d274653a39b429a87ebaae9d3aa4fdf58b9096cf0bebc7c4e5a4c2ed8d";
+const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["2c20e9c611aa4b9498040de76e6922a46b7994bb7c02fa7dd56fc7cb4d689f97","ca28b1e65c03cb49bdd57703633d2fdf155b429e7d6da4f5805620b45e8c0d79"],"peaks":["443d43ca1936b06b9267e93821fc90eaa59bf386af599bcec5dfb62f62748362"]}"#;
+const BINCODE_PROOF: &str = "0800000000000000020000000000000020000000000000002c20e9c611aa4b9498040de76e6922a46b7994bb7c02fa7dd56fc7cb4d689f972000000000000000ca28b1e65c03cb49bdd57703633d2fdf155b429e7d6da4f5805620b45e8c0d7901000000000000002000000000000000443d43ca1936b06b9267e93821fc90eaa59bf386af599bcec5dfb62f62748362";
 
 #[test]
 fn serialisation() {
@@ -110,15 +110,19 @@ fn serialisation() {
 
 #[test]
 fn deserialization() {
-    let root = hex::from_hex("167a34de2d13b7911093344cd2697b4c6311c5308a9f45476d094e3b3ef6e669").unwrap();
+    // Note: To create a new root, uncomment these two lines
+    // let mmr = create_mmr(5);
+    // println!("\nNew root: {}\n", mmr.get_merkle_root().unwrap().to_hex());
+
+    let root = hex::from_hex("fc25ea9a702604f2f0c91f6893cdc055cb223d4890c4f07c3d5258e50d400f59").unwrap();
     // Verify JSON-derived proof
     let proof: MerkleProof = serde_json::from_str(JSON_PROOF).unwrap();
     println!("{}", proof);
-    assert!(proof.verify_leaf::<Hasher>(&root, &int_to_hash(3), 3).is_ok());
+    assert!(proof.verify_leaf::<DigestAlgorithm>(&root, &int_to_hash(3), 3).is_ok());
 
     // Verify bincode-derived proof
     let bin_proof = hex::from_hex(BINCODE_PROOF).unwrap();
     let proof: MerkleProof = bincode::deserialize(&bin_proof).unwrap();
     println!("{}", proof);
-    assert!(proof.verify_leaf::<Hasher>(&root, &int_to_hash(3), 3).is_ok());
+    assert!(proof.verify_leaf::<DigestAlgorithm>(&root, &int_to_hash(3), 3).is_ok());
 }

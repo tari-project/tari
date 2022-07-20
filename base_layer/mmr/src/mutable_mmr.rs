@@ -24,15 +24,9 @@ use std::convert::TryFrom;
 
 use croaring::Bitmap;
 use digest::Digest;
+use tari_common_types::types::DefaultDomainHasher;
 
-use crate::{
-    backend::ArrayLike,
-    common::node_index,
-    error::MerkleMountainRangeError,
-    mutable_mmr_leaf_nodes::MutableMmrLeafNodes,
-    Hash,
-    MerkleMountainRange,
-};
+use crate::{backend::ArrayLike, common::node_index, error::MerkleMountainRangeError, mutable_mmr_leaf_nodes::MutableMmrLeafNodes, Hash, MerkleMountainRange, mmr_hash_domain};
 
 /// Unlike a pure MMR, which is append-only, in `MutableMmr`, leaf nodes can be marked as deleted.
 ///
@@ -124,9 +118,9 @@ where
         // virtue of the fact that the underlying MMRs could be different, but all elements are marked as deleted in
         // both sets.
         let mmr_root = self.mmr.get_merkle_root()?;
-        let mut hasher = D::new();
+        let mut hasher = mmr_hash_domain().hasher::<D>();
         hasher.update(&mmr_root);
-        Ok(self.hash_deleted(hasher).finalize().to_vec())
+        Ok(self.hash_deleted(hasher).finalize().into_vec())
     }
 
     /// Returns only the MMR merkle root without the compressed serialisation of the bitmap
@@ -197,7 +191,7 @@ where
     }
 
     /// Hash the roaring bitmap of nodes that are marked for deletion
-    fn hash_deleted(&self, mut hasher: D) -> D {
+    fn hash_deleted(&self, mut hasher: DefaultDomainHasher::<D>) -> DefaultDomainHasher::<D> {
         let bitmap_ser = self.deleted.serialize();
         hasher.update(&bitmap_ser);
         hasher

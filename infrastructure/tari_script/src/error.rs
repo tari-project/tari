@@ -18,6 +18,7 @@
 use std::num::TryFromIntError;
 
 use serde::{Deserialize, Serialize};
+use tari_common::hashing_domain::HashingDomainError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
@@ -49,6 +50,8 @@ pub enum ScriptError {
     VerifyFailed,
     #[error("as_hash requires a Digest function that returns at least 32 bytes")]
     InvalidDigest,
+    #[error("Two slices have different lengths")]
+    HashingDomainError(#[from] HashingDomainError),
 }
 
 impl From<TryFromIntError> for ScriptError {

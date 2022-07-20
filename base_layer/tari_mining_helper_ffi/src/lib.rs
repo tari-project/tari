@@ -371,13 +371,8 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 15324301174278869343;
-        const DIFFICULTY: Difficulty = Difficulty::from_u64(6091);
-        // Use this to generate new NONCE and DIFFICULTY
-        // Use ONLY if you know encoding has changed
-        // let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
-        // eprintln!("nonce = {:?}", nonce);
-        // eprintln!("difficulty = {:?}", difficulty);
+        const NONCE: u64 = 5962697182691224940;
+        const DIFFICULTY: Difficulty = Difficulty::from_u64(2007);
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -390,6 +385,11 @@ mod tests {
             assert_eq!(error, 0);
             let result = share_difficulty(byte_vec, error_ptr);
             if result != DIFFICULTY.as_u64() {
+                // Use this to generate new NONCE and DIFFICULTY
+                // Use ONLY if you know encoding has changed
+                let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
+                eprintln!("NONCE: {:?}", nonce);
+                eprintln!("DIFFICULTY: {:?}", difficulty);
                 panic!(
                     "detect_change_in_consensus_encoding has failed. This indicates a change in consensus encoding \
                      which requires an update to the pool miner code."

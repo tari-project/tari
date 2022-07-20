@@ -21,6 +21,7 @@ use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, ops::Deref
 use digest::Digest;
 use sha2::Sha256;
 use sha3::Sha3_256;
+use tari_common::hashing_domain::HashToBytes;
 use tari_crypto::{
     hash::blake2::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
@@ -32,7 +33,7 @@ use tari_utilities::{
 
 use crate::{
     op_codes::Message,
-    slice_to_hash,
+    tari_script_hash_domain,
     ExecutionStack,
     HashValue,
     Opcode,
@@ -132,8 +133,8 @@ impl TariScript {
         if D::output_size() < 32 {
             return Err(ScriptError::InvalidDigest);
         }
-        let h = D::digest(&self.as_bytes());
-        Ok(slice_to_hash(&h.as_slice()[..32]))
+        let hash = tari_script_hash_domain().digest::<D>(&self.as_bytes());
+        Ok(hash.as_fixed_bytes()?)
     }
 
     /// Try to deserialise a byte slice into a valid Tari script
@@ -415,7 +416,8 @@ impl TariScript {
         // use a closure to grab &b while it still exists in the match expression
         let to_arr = |b: &[u8]| {
             let mut hash = [0u8; 32];
-            hash.copy_from_slice(D::digest(b).as_slice());
+            let h = tari_script_hash_domain().digest::<D>(b);
+            hash.copy_from_slice(h.as_ref());
             hash
         };
         let hash_value = match top {
@@ -591,7 +593,6 @@ impl Default for ExecutionState {
 
 #[cfg(test)]
 mod test {
-    use digest::Digest;
     use sha2::Sha256;
     use sha3::Sha3_256 as Sha3;
     use tari_crypto::{
@@ -605,6 +606,8 @@ mod test {
         error::ScriptError,
         inputs,
         op_codes::{slice_to_boxed_hash, slice_to_boxed_message, HashValue, Message},
+        slice_to_hash,
+        tari_script_hash_domain,
         ExecutionStack,
         ScriptContext,
         StackItem,
@@ -623,6 +626,7 @@ mod test {
         let inputs = ExecutionStack::default();
         assert!(script.execute(&inputs).is_ok());
         assert_eq!(&script.to_hex(), "7b");
+        // println!("{}", script.as_hash::<Blake256>().unwrap().to_hex());
         assert_eq!(script.as_hash::<Blake256>().unwrap(), DEFAULT_SCRIPT_HASH);
     }
 
@@ -855,27 +859,27 @@ mod test {
     #[test]
     fn op_hash() {
         let mut rng = rand::thread_rng();
-        let (_, p) = RistrettoPublicKey::random_keypair(&mut rng);
-        let c = PedersenCommitment::from_public_key(&p);
+        let (_, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
+        let commitment = PedersenCommitment::from_public_key(&pub_key);
         let script = script!(HashSha256);
 
-        let hash = Sha256::digest(p.as_bytes());
-        let inputs = inputs!(p.clone());
-        assert_eq!(script.execute(&inputs).unwrap(), Hash(hash.into()));
+        let hash = tari_script_hash_domain().digest::<Sha256>(pub_key.as_bytes());
+        let inputs = inputs!(pub_key.clone());
+        assert_eq!(script.execute(&inputs).unwrap(), Hash(slice_to_hash(hash.as_ref())));
 
-        let hash = Sha256::digest(c.as_bytes());
-        let inputs = inputs!(c.clone());
-        assert_eq!(script.execute(&inputs).unwrap(), Hash(hash.into()));
+        let hash = tari_script_hash_domain().digest::<Sha256>(commitment.as_bytes());
+        let inputs = inputs!(commitment.clone());
+        assert_eq!(script.execute(&inputs).unwrap(), Hash(slice_to_hash(hash.as_ref())));
 
         let script = script!(HashSha3);
 
-        let hash = Sha3::digest(p.as_bytes());
-        let inputs = inputs!(p);
-        assert_eq!(script.execute(&inputs).unwrap(), Hash(hash.into()));
+        let hash = tari_script_hash_domain().digest::<Sha3>(pub_key.as_bytes());
+        let inputs = inputs!(pub_key);
+        assert_eq!(script.execute(&inputs).unwrap(), Hash(slice_to_hash(hash.as_ref())));
 
-        let hash = Sha3::digest(c.as_bytes());
-        let inputs = inputs!(c);
-        assert_eq!(script.execute(&inputs).unwrap(), Hash(hash.into()));
+        let hash = tari_script_hash_domain().digest::<Sha3>(commitment.as_bytes());
+        let inputs = inputs!(commitment);
+        assert_eq!(script.execute(&inputs).unwrap(), Hash(slice_to_hash(hash.as_ref())));
     }
 
     #[test]
@@ -1374,13 +1378,14 @@ mod test {
         let k =
             RistrettoSecretKey::from_hex("7212ac93ee205cdbbb57c4f0f815fbf8db25b4d04d3532e2262e31907d82c700").unwrap();
         let p = RistrettoPublicKey::from_secret_key(&k); // 56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c
-        let hash = Blake256::digest(p.as_bytes());
-        let pkh = slice_to_boxed_hash(hash.as_slice()); // ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5
+
+        let hash = tari_script_hash_domain().digest::<Blake256>(p.as_bytes());
+        let pkh = slice_to_boxed_hash(hash.as_ref()); // ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5
 
         // Unlike in Bitcoin where P2PKH includes a CheckSig at the end of the script, that part of the process is built
         // into definition of how TariScript is evaluated by a base node or wallet
         let script = script!(Dup HashBlake256 PushHash(pkh) EqualVerify);
-        let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581";
+        let hex_script = "71b07af816be046b20b0fb8ab5c58643a85190abafa4f7f9fe0e45b477b59708e93f2981";
         // Test serialisation
         assert_eq!(script.to_hex(), hex_script);
         // Test de-serialisation
@@ -1396,25 +1401,21 @@ mod test {
     #[test]
     fn hex_only() {
         use crate::StackItem::Number;
-        let hex = "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c313d415e0584ef82b79e3bf9bdebeeef53d13aefdc0cfa64f616acea0229e6ee0f0456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c";
+        let hex = "04507adabb2d73f1dcd95ad6218b90dfe145f9b1a50667300ce354274e90ccc45b046cf4bd287b84d4c672d60ca0da\
+        ca8ba3b5d15788c481dbbd8e6ae5713964d128051c306ed48cca59f052719d9733e59000b2cc38f38e745857c05402ac1bbf2e32b6c5ce4\
+        46994eea310dc29746ecd6519084bc1b40f6ea022aa2604be1cbed608052655e2b7360a4fcceb4273d7cc1c6480bf1c461932b5f98b4f74\
+        e605eb53b30fef53ca3cb5b48a1af8d754041f73fb5619ed21d7e1bd84c6929876c82d08e20d";
         let inputs = ExecutionStack::from_hex(hex).unwrap();
         let script =
-            TariScript::from_hex("71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e581ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708")
-                .unwrap();
+            TariScript::from_hex("937293adc9ae15682ac8d1b2e54100537ccf19914d1f278c7bb4f668d6c57c3b3223320a7c").unwrap();
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
-
-        // Try again with invalid sig
-        let inputs = ExecutionStack::from_hex("0500b7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03\
-        b89e170c314c7b413e971dbb85879ba990e851607454da4bdf65839456d7cac19e5a338f060456c0fa32558d6edc0916baa26b48e745de8\
-        34571534ca253ea82435f08ebbc7c").unwrap();
-        let result = script.execute(&inputs).unwrap();
-        assert_eq!(result, Number(0));
     }
 
     #[test]
     fn disassemble() {
-        let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a418820f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
+        let hex_script = "71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac276657a4188\
+        20f34036b20ea615302b373c70ac8feab8d30681a3e0f0960e708";
         let script = TariScript::from_hex(hex_script).unwrap();
         let ops = vec![
             "Dup",

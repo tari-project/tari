@@ -23,59 +23,58 @@
 use std::string::ToString;
 
 use blake2::Blake2b;
-use digest::Digest;
-use tari_mmr::MerkleMountainRange;
+use tari_mmr::{mmr_hash_domain, MerkleMountainRange};
 use tari_utilities::hex::Hex;
 #[allow(clippy::vec_init_then_push)]
 pub fn hash_values() -> Vec<String> {
     let mut hashvalues = Vec::new();
     // list of hex values of blake2b hashes
-    hashvalues.push("1ced8f5be2db23a6513eba4d819c73806424748a7bc6fa0d792cc1c7d1775a9778e894aa91413f6eb79ad5ae2f871eafcc78797e4c82af6d1cbfb1a294a10d10".to_string()); // 1
-    hashvalues.push("c5faca15ac2f93578b39ef4b6bbb871bdedce4ddd584fd31f0bb66fade3947e6bb1353e562414ed50638a8829ff3daccac7ef4a50acee72a5384ba9aeb604fc9".to_string()); // 2
-    hashvalues.push("4d3d9d4c8da746e2dcf236f31b53850e0e35a07c1d6082be51b33e7c1e11c39cf5e309953bf56866b0ccede95cdf3ae5f9823f6cf3bcc6ada19cf21b09884717".to_string()); // (1-2)
-    hashvalues.push("6f760b9e9eac89f07ab0223b0f4acb04d1e355d893a1b86a83f4d4b405adee99913dacb7bc3d6e6a46f996e59b965e82b1ffa1994062bcd8bef867bcf743c07c".to_string()); // 3
-    hashvalues.push("e8e70dc170e14333627b32c20ac6051fb9b6bd369c036afbaca2d9cd7ac3de65aeda9d9651423af4343fd8e13f6481081b473e22a58f3f0e2a28143e4fb70bc2".to_string()); // 4
-    hashvalues.push("ebf20fe26f69ab804b760fbf55eac3eba8f6cffa3f85d7b0c29ffd4a66a28deecc6f9eaaae758c49334f8b10ccfc743cee732e5486166cd3313a1881f7e0519e".to_string()); // (3-4)
-    hashvalues.push("8989c1ea10efac5b9897e9c227b307fd029005ba4f8e1590ec23942c3e788d7d280bb3cdbbd76cc9814755ee508174cb1d79a45f575a33240ac4b892ada7f850".to_string()); // (1-2)(3-4)
-    hashvalues.push("73776e3e4cd3684316d26ec93cc6c438497ace5b08e359698667af6dbded88b6750ba0b2c11ba7d52b69180f1924884a158d0b83d87ca9c65d2dae9d73387e43".to_string()); // 5
-    hashvalues.push("8d322d4b02d9fcfb05bc70e486406e53c3cf9b97a252bf64752cafc5c2aaf95baef7f6e30d0a64826921ad01ec9d8c010805367078e5b5963ab4be3efd8f4a78".to_string()); // 6
-    hashvalues.push("4a10141b2ba124991ddd81b4df78655f582872ba67928bbfc48282609de20ca40f745f622989cf3b71c790de6136173f6282780b2b7770b561f239ecddd40b78".to_string()); // (5-6)
+    hashvalues.push("e6fcab78b5658e811fdf38d9c6e19d53e0d66f2d869ee183add0bf860f5b2334420481361872fdb51dbbe8f487730c31a6aeaa3b7d6bf3e1cca161b9b9f08b25".to_string()); // [ 1] 1
+    hashvalues.push("5d14a37548f17fdcbdf69be1126f877b2b3e894b03bab66056993e58efd4f66622daa5c4003cf747fb5b00cdd74400718f4e9e21788ee8a81cb501396810243a".to_string()); // [ 2] 2
+    hashvalues.push("bd9843bf3adc0107e902ec3434e42391466da1184583bc018beaf10abc9ac0589b12b08b28a7625564228bf94f08c6063b5b346b198ecad3f255b10862b3f924".to_string()); // [ 3] (1-2)
+    hashvalues.push("63d113af3ce563a3ba3b284193d41fd081f4d29e054f97fc703c76eeabbed4c81e2db8caff42829378d4e2b3c3a767ef92f02dd893c1226aee013e70564f1f72".to_string()); // [ 4] 3
+    hashvalues.push("3614279022e0fba91a6e491c06b3c73d8ea3131d4e2244ab86bc0633a4d119ced25006106d970c5aad9720c782b648dc60261e79b6394c8ab35c65e961410b8d".to_string()); // [ 5] 4
+    hashvalues.push("2e7ed9ea70fd7d27492cc515c8acbb1ff6fc334cbcb51dd947e9bce9fce8c0b9d52f9b603e49442ef3fdceaf582e382f18b7bdc167c2a08d901031c5367181c8".to_string()); // [ 6] (3-4)
+    hashvalues.push("c198b7ee1549bedb3e694caaa0a22741c0c7f7482e7f5c59a2725b0257f6109de87fca525b059f635297f69deff9b412913c72a6567b579afd51c0465c6a80c6".to_string()); // [ 7] (1-2)(3-4)
+    hashvalues.push("48461f727594ce1e97f3b8f032657722fa282069b74e8e4de85992862d4d64457dcbde4cc8d864acf4ddbab57e95fb795d2fb3d79cda6203b35bfdaf3655845f".to_string()); // [ 8] 5
+    hashvalues.push("706e81c091c552d8fefb950179767b640b7f22221813b8c3afad4b43ef6198519a25e19d673f75a8b0a5de3370f22b9e5880d504c58785748897218d6a4345de".to_string()); // [ 9] 6
+    hashvalues.push("9e0db25d14f43e8063a65d9eb41af218a7ef07297c56555152903a0424b87810c276e0c653151806723f260275e5379631c5c63d3aa57ae03d131a06956ecf2f".to_string()); // [10] (5-6)
                                                                                                                                                                      // index 10 ^
-    hashvalues.push("d5c47f63555ae063383c2a0df82bf309d90932bc8dd66a056d80e4d913e821faacf7e0e962c7bbac6c193e1e638b58b8baa1e71f57a945958b84c11536b7a82d".to_string()); // 7
-    hashvalues.push("818af2ae014b14c85a35639901ac6bfc47908bcbd94a7f5211627b1f52f316a994e1296503701dd6827a8e5969d33d1d0b68c452eb95e481035b168a6c0f09c4".to_string()); // 8
-    hashvalues.push("5b2abeb00cacb7465131a995bd4f5463032e69e1d3d9a55823536660d130a41bb23b529eec173ddd88a42e5db97cf6983cad0b36ef3de452ac66aba9f37b08ee".to_string()); // (7-8)
-    hashvalues.push("53d5d4b1b2f78468fea0292af1cb9e63a2e7460a66cc741756166e135817f20a6b96b60a76dee7f83615d881dfd58e3830003177d4aff13e392889e36f8c5718".to_string()); // (5-6)(7-8)
-    hashvalues.push("84247c7a397b4e7314a2a5edc993b12196fcbd2d8b3793d7cf8a63e9c5c8004103874260defe34a4ac739ed21d58bb9c325f96ba9d917d63295f71f45ce0054c".to_string()); // (1-2)(3-4)(5-6)(7-8)
-    hashvalues.push("2b57bf7664a4de943d93e4f5473a42da0d7a35065afd559303196fcc33414e73a91042f8d238fcaca45a93b17e577ad15191f95c6d7cf7c19e240a1e05100ad6".to_string()); // 9
-    hashvalues.push("f2e74cbc3eff574bbc45333c30edb947858543afda4cafdde2903324c9de0bd908b00575c556bd7b8aa2e32a32598a4d5f95cd4490b60a567a3d53680a3310f2".to_string()); // 10
-    hashvalues.push("7c7f5fb40b9d000435c001b05ab6e1409160d24292d8acb9bbd0936a07613fa82ccb01d65b92d5cd3f2103514fba108bdf1d960eeb4c75948cb716cde5c7fb4a".to_string()); // (9-10)
-    hashvalues.push("7aa7e388f8145d395ac616bb526eaa35b10069f49e2b36d7327157d1d4af360dfbbfea805aa7e405ed025ce5eadd56c27c40b92991727a5a16b51df5604ad006".to_string()); // 11
-    hashvalues.push("b7a5a0f0fb0c4a128b8a3e042fc860775d68d825bb3bf180479d0e12b1884e2652fe51ddb9c991b73824fc15609d82cb1cc19053db7dc7637288091f6027bbce".to_string()); // 12
+    hashvalues.push("df34879393993bc14523aac3291117e32c739f45d48cd21dd8aa681e86db86cdca48adfef067b7e154ea5e94a55144841e18c5e142e9bffbee9f9f504960010f".to_string()); // [11] 7
+    hashvalues.push("6be3ac045bcb39c87cc84fe01f424431862177b5963ae91dd09d7f3dd791683f5e6072a39a4c882819c388ed436e6b66bb2da0c24b1fde909e9b9921a1b98a6b".to_string()); // [12] 8
+    hashvalues.push("fee7377e1e4ce65d1b9f84580cce4405d4e9432cfa2bdce3c36a70ec0caed36d03e9d48a7f65993bda31e78c5899c198b6cd4011d21334a01af7de82bf49e87d".to_string()); // [13] (7-8)
+    hashvalues.push("213c0bb50213a3e35daeb1811abfae9a80b5296b6735bcb131cdbf715836e5b79dcee602deae24afb4c3cc357aee776f0e4a9e120ad10def97aee9faf17f7e1b".to_string()); // [14] (5-6)(7-8)
+    hashvalues.push("ad8ad5e3a22d2cc4bcfa24f9b602eba96a4351e1cfdb01b76402bdebd3ed8d06aea037f814997b6783267b33f238ba9a19c14f507f7797674ddfbc32b79872a6".to_string()); // [15] (1-2)(3-4)(5-6)(7-8)
+    hashvalues.push("a5b472195eace5154dd6823b795340562c7c60ef81e59cb2c350a85aa5d2daf2c78f2148a68b8b38030cd02e5f0e73c07dd05b139e8211c032e78c900201d195".to_string()); // [16] 9
+    hashvalues.push("3801f29f326cd55b3938f4df3daf3edeef365b1cd4d5836279912bcda3e7cada52ea7e8a9b0b212274ec2834fad58c5bcac189544a17bbba8601ef8ae0a1bf5b".to_string()); // [17] 10
+    hashvalues.push("0cfb7ffb59ae3e2ce5fd72845d7b0ab6174c34793e7c3172dc344772767af69b59a957023ec818191c4232f207c4b65437d0c68cb0ebde2b52e2444e6b6aa375".to_string()); // [18] (9-10)
+    hashvalues.push("0829da904ec76f4ac2ef7a56048fa0a109fdef804471980d2e4e02c9c2af34128a12561a23c383a03a3452db1a3a3bc664c61442e3bf8c15d228abec8add03e4".to_string()); // [19] 11
+    hashvalues.push("762332f5bec7ba1337381c36effd416318ee227b92392f4a3a4c7a3385128a605818c0fca43cf293920fa957d659e477bd8cc4f974be478a460d73ed02b9432d".to_string()); // [20] 12
                                                                                                                                                                      // index 20 ^
-    hashvalues.push("354db9c951738783a2d7c8c7301b1aedb4ed469df4b3bfa0368a69ab260ef0087952a7aca45ea67e7cd646aaacff6c9d75b60f194b39e6ad1f194df8b35a27c0".to_string()); // (11-12)
-    hashvalues.push("aea22e000365db9566cdab7d709c3c26e738bd41ac1f71cd2e4ad4d6f99e4286801e10d77cdea087b49ad135446130a0a32792250ba28bd211ffb68fe5d04fb0".to_string()); // (9-10)(11-12)
-    hashvalues.push("1da541ba91a8560c5dd0c1a4adc836dc4ac96bf5c407a89edb0a49d46de058a713c7b3d3fc8e0324f602c3a41978ef01dccb989eed22aa65bddc5621765713d3".to_string()); // 13
-    hashvalues.push("2b789cf44e92c3eacb652124e394b132337fc19378664e376a932723cebf2e0da057319d509a04fe403f2c563542932d1f44476b8f4cad6ccefbd2693c432d1c".to_string()); // 14
-    hashvalues.push("e4c46b221c1a82165c03816066af4c9546440705328dd1e419a04a17fbba70a717f67423fe1a553043c51e49cd369f02da979245007a5d09fd6ce0f2cb745491".to_string()); // (13-14)
-    hashvalues.push("4a9bb12a4834e77430779ea6759d0f4eb45abb9400a67b81985cd4b85e0a28b5d6b59f896ccc72cd6aad3390b51b02c7d6aeeb8f0dce205f425697e5180b35ae".to_string()); // 15
-    hashvalues.push("3346703bc50521b2bf93e8d581605de18ad415c3dcdc38373e37c1800fd332e67c9ef7267d546913b63f5e24324d0c5565c177030d6c30c254d647440191d95f".to_string()); // 16
-    hashvalues.push("39495d1ad29c6469ae18bc7316d98977754e0fdbb04a9e3e17c86c34f7fa751e09bbec588e8cfd5d4e55824b9705b1f52ab1a37b5b1fa5c8ea57b0951bdbccf3".to_string()); // (15-16)
-    hashvalues.push("77f4a6e8cb87bc79fea9893eeb2dde8a047b0d5786d324a2fb53f43414cfc8051d704f6088102fdf244de046fd5f8ea6cef854dc97488b173a0bb8d540c406ef".to_string()); // (13-14)(15-16)
-    hashvalues.push("af3f03f275e586e4449ff44146a27792b0f5a2143483a6dd6fe8405bd66a7ebe13f916d56bd3a152c2a25b6423f8b1bb4620f6d27fe55f1b82da61ff9b0825da".to_string()); // (9-10)(11-12)(13-14)(15-16)
+    hashvalues.push("b757fb02925f94a0710cd38888cbda1cdd96613eac6e7d51d1889ded053e1771ddb5e21a9ee8434698a70186a6eb7e1078239a1dbc6cde1c091060fa227f21a7".to_string()); // [21] (11-12)
+    hashvalues.push("4c436b4e7dfb1b5f13c846f184ef0e5c0962815aa1c6a0c58ba2693956a7d40eb67109a2fc429a57f69f4c3f6062f87597353c64fa06c473235cb1ccad59cd64".to_string()); // [22] (9-10)(11-12)
+    hashvalues.push("0f849d251f7e1e7981eba55b51701bbe3dd61dfed3e892b75621c79ae1bd790ef62656ba647e029dd592bf8a0feba96dbbfd39ccb119750447ec3cc03f274ae6".to_string()); // [23] 13
+    hashvalues.push("1849246d089c823aaa4e9116055982e9683ce3bdd47fccb72191ddbb3a852dc2180325147939edc0dde6d93568478405681fbefed45b1c0b375e7ea402f296c0".to_string()); // [24] 14
+    hashvalues.push("934133cd4816541a6a2ca9e20ff649df02684908262055eefebf553192a434617ef8048115235e3cb756e8730205874221531e448e7013389d7089b751769fd6".to_string()); // [25] (13-14)
+    hashvalues.push("deb64efa9a209e0df5f2223c8c90867717cf952f53c93ede9d0b6bc9f8f7bd64ca221a208f336747e0c7e6b58c75661321b942e6c496d50c2e030ae22621ef19".to_string()); // [26] 15
+    hashvalues.push("064146c98414c0cf33e1083cf9f528afc1ec526e6aac570ee7e23b2920cad74aa8bcff370152cb602618a9b3d98d04468a33cfa81088832e2738f05e94301580".to_string()); // [27] 16
+    hashvalues.push("0e74d18733e4c30fe84d1010e390bc0042f64068a98f6c230e965d42b6fa0ac86929a16a38b96b6ea9f361291cb71cf2fa2093a3389a4dc8973f1af57a12d341".to_string()); // [28] (15-16)
+    hashvalues.push("5c79c630d3638765219c2afa26c075015ad339fb87f5d8affffbc1a6ac9ced0dea38be38c7a6efb4c7fa6e8fff54ab8eb3e195a2931037573cd91894bd3ae103".to_string()); // [29] (13-14)(15-16)
+    hashvalues.push("65515f741a4b925f757c80f4896b1ce5045c84f0b1421469812f59ddc25dada67193b099cb9009f11e9c5ccd1346ed19a709c6777cf9c9cf83cd2e508eadca42".to_string()); // [30] (9-10)(11-12)(13-14)(15-16)
                                                                                                                                                                      // index 30 ^
-    hashvalues.push("9a9a504247f809735602e7fdbe191c6129c075f6e1e1530bcfd45ab5e0f1c5974cce5d3eafed04b64b5c881ce369a272f6eca5f403178a51f677aedd6fe66d84".to_string()); // (1-2)(3-4)(5-6)(7-8)(9-10)(11-12)(13-14)(15-16)
-    hashvalues.push("5c3f20d14860fb11dca47a3ea972842763165f4cd657608df25fc8afe0cd67666d906cc36b556dccf7d0f9deafbd934fa466391a4f97d03b9fd3cf48f43346ad".to_string()); // 17
-    hashvalues.push("2344823c898d803bb0421d8e0e99dafb3feabd3fff02f98a9dae1eabf748c99c6beeb899a65c6a1a83ce60dc8c58332571ccefd11515447d69c73cb4415903a4".to_string()); // 18
-    hashvalues.push("a6ff99c73df5c5e9e01b2d6ffd923deba66c1eaa5c60699665c941569b09c756af55aaec9ff8469c7ffe9abd3ca5a3d1ada50ed4ee2cd3ff949177975f4f5141".to_string()); // (17-18)
-    hashvalues.push("33a389ba39d39595f2e43650eeaac81187c3a11c56f2930b042325c67adad310dad7ff9ed8077cfb0fa5136a2cfa725e55d567e7dac3483d5fb0ee787a0765ec".to_string()); // 19
-    hashvalues.push("92ce61bf50a5c299bc88d6adad5db7b68c4b61abb7760947e8b9898c99312b18ba974d427e1699ede1be7c1c25b03440235a41a71ab2b4d1410399b72da87111".to_string()); // 20
-    hashvalues.push("74d84a50748a78c7b98dcc9e22a62d64c726cb0e30126a26d8168e7252f4a67149506a4acde7a307372ebd0a0bcd3ef5f5670434262783d41675448ab7d06e3f".to_string()); // (19-20)
-    hashvalues.push("a14d655ecdf12d3dacc2bb9c6779345db9e08fa8ddaa2163ada5d2ff3c21b9bd5b9d59f4f7fbe489543deafd0e2ca45b75d7f7fd047b83e74b85b1ea0a5ec5ff".to_string()); // (17-18)(19-20)
-    hashvalues.push("8c715c0b894785852fbc391d662e2131bf0f0c703852f25b1c07429f35dc67ec8df5998acd4cafd4f1ff7019ebfda0877f79d6b91c1b98084efbb7314258608c".to_string()); // 21
-    hashvalues.push("3733d5bf4f3d2608ba160adf4a8cddbf545f77b417e3ee3a9e5d3b0afb351579125db853e5bce15d5e82c723f29de1ef294341f0ca3e8b3d3431cec7ac316f34".to_string()); // 22
+    hashvalues.push("3378414485e9f0f485cad5cbfecb463cd45e42f7057300967a263580eada87497ddf4f27ea55fd837add981c7b1ac4c9a1e4d10649309560e20dad2330211da2".to_string()); // [31] (1-2)(3-4)(5-6)(7-8)(9-10)(11-12)(13-14)(15-16)
+    hashvalues.push("7945c1fab0170b701ee13cbebc6aeb32b5c17918bba0b82c4ac357fb1e77efd24755cb1e96ffe531b3cff873ad953ca308756100c1580341ea5e9c948fe59d92".to_string()); // [32] 17
+    hashvalues.push("712c370077faecd2cd2fc4052f6737391b2203779850121ecfcc5c0e3b3d6e8842dc01e3d860b0ef8943ba141d334cf31e33384dbeeec92fbf5d8236a36c7f98".to_string()); // [33] 18
+    hashvalues.push("b13fbe74c00eb57d4515a095c2df1cbcad6cca4cbcdc3bf2d3a5d5630be96a21f3925bc26f20d77263d15ca715fe811debb09a4404c1f08f0549c358220a5149".to_string()); // [34] (17-18)
+    hashvalues.push("246089a57c3ca2a2e1cfa0fc269d4ecf10fad8213b404920c1f79b9462222286fc960c96e5989fb5c3722d87b55b3bfab668471c33f28e34829b69db4802b183".to_string()); // [35] 19
+    hashvalues.push("13c4a7cdd5891997b5047a11a829ad67162cd7347407e1244ed40be9757222cd102045b1c87bc86064b40a5d04ee699cd2d099f37cbf3de6ad25ce4a35d3a4a5".to_string()); // [36] 20
+    hashvalues.push("76aa78ca9b70c5c4ca88a63648c16b21278fcbc1bdc50d2068c532e409686d905700caa756fda33a9515d9f84fd5820e31c093dff53b2fab066508077ad8132e".to_string()); // [37] (19-20)
+    hashvalues.push("3dee616761243270760eb962b8c966bff72835da9577d96a02e7ea3f030e8bbfed429b83fa2361e1e94a149aa569f1509aec0ec9ba9b87e44dd48fa97c404c7f".to_string()); // [38] (17-18)(19-20)
+    hashvalues.push("3c40d4a9cb1e1703187069ffd2bd5ba2eea14eba2da31b6217a34d8298d0f7c3742553076db41abdfb1f313cb6a1da312f5ecd6a68fcff9bd57d8f57a0992c5c".to_string()); // [39] 21
+    hashvalues.push("2df0344622868cd3c49792dd1410ead4802253849d3b4981a0bd5b00b0518b9a67c576463802b90ddf03b3112797965c235872e5f6e6f3c1d959704d7258c187".to_string()); // [40] 22
                                                                                                                                                                      // index 40 ^
-    hashvalues.push("77288840877c30ddc8769efac9786505e15729f3a4736996a3b4aed483e896f001acee59b8592ae3d37acbdc60467239dac09bf80a999675b0c2aca058a4003d".to_string()); // (21-22)
-    hashvalues.push("08949f758439c6293fe5924defaf3e32bb79b9a93c1331f019c51b386557a9412b27f5a60a80bfa1f524c0d0c2e1f63c5b93d108a9a3af8cdb7fc87c765fca3f".to_string()); // 23
+    hashvalues.push("fc3448f1245cb8d3900f67754349658ae670c9d71f1e9ba298bde04416e958ff57f9dd7a4e72225b51d887a1b653521a5f7c9ca2cbaeea5ae3e1cc50540ee3a9".to_string()); // [41] (21-22)
+    hashvalues.push("d7af3430704b678d7f16ed403dd3a13d0901014b3deb97012df6b23cda608877af41efcd29d1add2143e8130f4b67bd42358423c58516dd2df7c190cd985642d".to_string()); // [42] 23
 
     hashvalues
 }
@@ -83,7 +82,7 @@ pub fn hash_values() -> Vec<String> {
 fn create_mmr() -> MerkleMountainRange<Blake2b, Vec<Vec<u8>>> {
     let mut mmr = MerkleMountainRange::<Blake2b, _>::new(Vec::default());
     for i in 1..24 {
-        let hash = Blake2b::digest(i.to_string().as_bytes()).to_vec();
+        let hash = mmr_hash_domain().digest::<Blake2b>(i.to_string().as_bytes()).into_vec();
         assert!(mmr.push(hash).is_ok());
     }
     mmr
@@ -94,8 +93,13 @@ fn check_mmr_hashes() {
     let mmr = create_mmr();
     let hashes = hash_values();
     assert_eq!(mmr.len(), Ok(42));
+    let mut failed = false;
     for (i, item) in hashes.iter().enumerate().take(42) {
         let hash = mmr.get_node_hash(i).unwrap().unwrap();
-        assert_eq!(&hash.to_hex(), item);
+        if &hash.to_hex() != item {
+            failed = true;
+            println!("{}: expected {}\n{}: got      {}\n", i + 1, hash.to_hex(), i + 1, item);
+        }
     }
+    assert!(!failed);
 }

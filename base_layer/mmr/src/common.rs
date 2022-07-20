@@ -27,7 +27,7 @@ use std::convert::TryInto;
 
 use digest::Digest;
 
-use crate::{error::MerkleMountainRangeError, Hash};
+use crate::{error::MerkleMountainRangeError, mmr_hash_domain, Hash};
 
 const ALL_ONES: usize = std::usize::MAX;
 
@@ -172,7 +172,12 @@ pub fn is_left_sibling(pos: usize) -> bool {
 }
 
 pub fn hash_together<D: Digest>(left: &[u8], right: &[u8]) -> Hash {
-    D::new().chain(left).chain(right).finalize().to_vec()
+    mmr_hash_domain()
+        .hasher::<D>()
+        .chain(left)
+        .chain(right)
+        .finalize()
+        .into_vec()
 }
 
 /// The number of leaves in a MMR of the provided size.

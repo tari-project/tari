@@ -32,6 +32,7 @@ use crate::{
     backend::ArrayLike,
     common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index},
     error::MerkleMountainRangeError,
+    mmr_hash_domain,
     serde_support,
     Hash,
     HashSlice,
@@ -191,7 +192,7 @@ impl MerkleProof {
         if peaks.len() != self.peaks.len() + 1 {
             return Err(MerkleProofError::IncorrectPeakMap);
         }
-        let hasher = D::new();
+        let hasher = mmr_hash_domain().hasher::<D>();
         // We're going to hash the peaks together, but insert the provided hash in the correct position.
         let peak_hashes = self.peaks.iter();
         let (hasher, _) = peaks
@@ -204,7 +205,7 @@ impl MerkleProof {
                     (hasher.chain(hash), peak_hashes)
                 }
             });
-        Ok(hasher.finalize().to_vec())
+        Ok(hasher.finalize().into_vec())
     }
 
     /// Consumes the Merkle proof while verifying it.

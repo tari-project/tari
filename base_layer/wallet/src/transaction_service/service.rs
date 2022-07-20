@@ -33,6 +33,7 @@ use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
+use tari_common::hashing_domain::HashToBytes;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
@@ -71,7 +72,7 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, script, tari_script_hash_domain, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -989,7 +990,10 @@ where
         let tx_id = TxId::new_random();
         // this can be anything, so lets generate a random private key
         let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
-        let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+
+        let hash: [u8; 32] = tari_script_hash_domain()
+            .digest::<Sha256>(pre_image.as_bytes())
+            .as_fixed_bytes()?;
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
         let height = self.last_seen_tip_height.unwrap_or(0) + (24 * 30);
