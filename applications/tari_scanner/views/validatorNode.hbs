@@ -1,0 +1,7 @@
+<div class="container">
+  <h1>Validator node : {{validator_node.id}}</h1>
+  {{#table id="contracts" endpoint=(concat "/validator/contracts/" validator_node.id) rows=10}}
+    <th id="{{id}}-column-0" for_sort="data.id" render="`<a href='/contract/${data.id}''>${data.id}</a>`">Contract</th>
+    <th id="{{id}}-column-1" render="data.name">Name</th>
+  {{/table}}
+</div>

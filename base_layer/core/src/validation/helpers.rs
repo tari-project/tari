@@ -672,6 +672,26 @@ pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<
     Ok(())
 }
 
+/// This checks to ensure that every kernel included in the block is a unique kernel in the block chain.
+pub fn check_unique_kernels<B: BlockchainBackend>(db: &B, block_body: &AggregateBody) -> Result<(), ValidationError> {
+    for kernel in block_body.kernels() {
+        if let Some((db_kernel, header_hash)) = db.fetch_kernel_by_excess_sig(&kernel.excess_sig)? {
+            let msg = format!(
+                "Block contains kernel excess: {} which matches already existing excess signature in chain database \
+                 block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess signature: {}",
+                kernel.excess.to_hex(),
+                header_hash.to_hex(),
+                db_kernel.excess.to_hex(),
+                db_kernel.excess_sig.get_public_nonce().to_hex(),
+                db_kernel.excess_sig.get_signature().to_hex(),
+            );
+            warn!(target: LOG_TARGET, "{}", msg);
+            return Err(ValidationError::ConsensusError(msg));
+        };
+    }
+    Ok(())
+}
+
 pub fn validate_covenants(block: &Block) -> Result<(), ValidationError> {
     for input in block.body.inputs() {
         let output_set_size = input

@@ -32,6 +32,7 @@ const ConnectivityStatus = {
 const PaymentType = {
   STANDARD_MIMBLEWIMBLE: 0,
   ONE_SIDED: 1,
+  ONE_SIDED_TO_STEALTH_ADDRESS: 2,
 };
 
 const OutputType = {

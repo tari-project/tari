@@ -65,11 +65,13 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
+    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, script};
+use tari_script::{inputs, script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -597,6 +599,23 @@ where
                 message,
             } => self
                 .send_one_sided_transaction(
+                    dest_pubkey,
+                    amount,
+                    *output_features,
+                    fee_per_gram,
+                    message,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
+                dest_pubkey,
+                amount,
+                output_features,
+                fee_per_gram,
+                message,
+            } => self
+                .send_one_sided_to_stealth_address_transaction(
                     dest_pubkey,
                     amount,
                     *output_features,
@@ -1134,12 +1153,7 @@ where
         Ok(Box::new((tx_id, pre_image, output)))
     }
 
-    /// Sends a one side payment transaction to a recipient
-    /// # Arguments
-    /// 'dest_pubkey': The Comms pubkey of the recipient node
-    /// 'amount': The amount of Tari to send to the recipient
-    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
-    pub async fn send_one_sided_transaction(
+    async fn send_one_sided_or_stealth(
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
@@ -1149,14 +1163,8 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
+        script: TariScript,
     ) -> Result<TxId, TransactionServiceError> {
-        if self.node_identity.public_key() == &dest_pubkey {
-            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
-            return Err(TransactionServiceError::OneSidedTransactionError(
-                "One-sided spend-to-self transactions not supported".to_string(),
-            ));
-        }
-
         let tx_id = TxId::new_random();
 
         // Prepare sender part of the transaction
@@ -1170,7 +1178,7 @@ where
                 fee_per_gram,
                 None,
                 message.clone(),
-                script!(PushPubKey(Box::new(dest_pubkey.clone()))),
+                script,
                 Covenant::default(),
                 MicroTari::zero(),
             )
@@ -1273,6 +1281,80 @@ where
         .await?;
 
         Ok(tx_id)
+    }
+
+    /// Sends a one side payment transaction to a recipient
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn send_one_sided_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        if self.node_identity.public_key() == &dest_pubkey {
+            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
+            return Err(TransactionServiceError::OneSidedTransactionError(
+                "One-sided spend-to-self transactions not supported".to_string(),
+            ));
+        }
+        self.send_one_sided_or_stealth(
+            dest_pubkey.clone(),
+            amount,
+            output_features,
+            fee_per_gram,
+            message,
+            transaction_broadcast_join_handles,
+            script!(PushPubKey(Box::new(dest_pubkey))),
+        )
+        .await
+    }
+
+    /// Sends a one side payment transaction to a recipient
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn send_one_sided_to_stealth_address_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        if self.node_identity.public_key() == &dest_pubkey {
+            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
+            return Err(TransactionServiceError::OneSidedTransactionError(
+                "One-sided-to-stealth-address spend-to-self transactions not supported".to_string(),
+            ));
+        }
+        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
+            .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
+            .finalize();
+        let script_spending_key =
+            PublicKey::from_secret_key(&PrivateKey::from_bytes(c.into_vec().as_bytes()).unwrap()) + dest_pubkey.clone();
+        self.send_one_sided_or_stealth(
+            dest_pubkey,
+            amount,
+            output_features,
+            fee_per_gram,
+            message,
+            transaction_broadcast_join_handles,
+            script!(PushPubKey(Box::new(nonce_public_key)) Drop PushPubKey(Box::new(script_spending_key))),
+        )
+        .await
     }
 
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol

@@ -133,7 +133,9 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             .unwrap_or_else(|| ViewId(0));
         info!(
             target: LOG_TARGET,
-            "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.contract_id, self.current_view_id
+            "🚀 Consensus worker started for asset '{}'. Tip: {}",
+            self.asset_definition.contract_id,
+            self.current_view_id
         );
         let starting_view = self.current_view_id;
         while !stop.load(Ordering::Relaxed) {
@@ -312,10 +314,11 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
             self.worker.asset_definition.contract_id,
             self.worker.committee_manager.current_committee()?.clone(),
         );
+        let current_view = self.worker.get_current_view()?;
         let res = state
             .next_event(
                 self.worker.timeout,
-                &self.worker.get_current_view()?,
+                &current_view,
                 &mut self.worker.inbound_connections,
                 &mut self.worker.outbound_service,
                 unit_of_work.clone(),
@@ -326,9 +329,9 @@ impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a,
         unit_of_work.commit()?;
         if let Some(mut state_tx) = self.worker.state_db_unit_of_work.take() {
             state_tx.commit()?;
-            let signatures = state.collected_checkpoint_signatures();
             // TODO: Read checkpoint interval from constitution
-            if self.worker.current_view_id.as_u64() % 50 == 0 {
+            if current_view.is_leader() && current_view.view_id().as_u64() % 50 == 0 {
+                let signatures = state.collected_checkpoint_signatures();
                 let checkpoint_number = self.chain_db.get_current_checkpoint_number()?;
                 self.worker
                     .checkpoint_manager
