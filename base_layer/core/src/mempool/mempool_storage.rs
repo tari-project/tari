@@ -154,6 +154,20 @@ impl MempoolStorage {
         Ok(())
     }
 
+    pub fn clear_transactions_for_failed_block(&mut self, failed_block: &Block) -> Result<(), MempoolError> {
+        warn!(
+            target: LOG_TARGET,
+            "Removing transaction from failed block #{} ({})",
+            failed_block.header.height,
+            failed_block.hash().to_hex()
+        );
+        self.unconfirmed_pool
+            .remove_published_and_discard_deprecated_transactions(failed_block);
+        self.unconfirmed_pool.compact();
+        debug!(target: LOG_TARGET, "{}", self.stats());
+        Ok(())
+    }
+
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
     pub fn process_reorg(
