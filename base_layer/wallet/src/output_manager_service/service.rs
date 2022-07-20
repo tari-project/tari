@@ -282,6 +282,7 @@ where
                 message,
                 script,
                 covenant,
+                minimum_value_promise,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -293,6 +294,7 @@ where
                     *output_features,
                     script,
                     covenant,
+                    minimum_value_promise,
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
@@ -692,6 +694,7 @@ where
             &commitment,
             single_round_sender_data.amount,
         )?;
+        let minimum_value_promise = single_round_sender_data.minimum_value_promise;
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
@@ -713,10 +716,12 @@ where
                     &single_round_sender_data.public_commitment_nonce,
                     &single_round_sender_data.covenant,
                     &encrypted_value,
+                    minimum_value_promise,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
                 encrypted_value,
+                minimum_value_promise,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -802,6 +807,7 @@ where
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
+        recipient_minimum_value_promise: MicroTari,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -841,6 +847,7 @@ where
                 recipient_output_features,
                 PrivateKey::random(&mut OsRng),
                 recipient_covenant,
+                recipient_minimum_value_promise,
             )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
@@ -1202,6 +1209,7 @@ where
             .commit_value(&spending_key, amount.into());
         let encrypted_value =
             EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
+        let minimum_amount_promise = MicroTari::zero();
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             amount,
@@ -1211,6 +1219,7 @@ where
             &sender_offset_private_key,
             &covenant,
             &encrypted_value,
+            minimum_amount_promise,
         )?;
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
@@ -1225,6 +1234,7 @@ where
                 0,
                 covenant,
                 encrypted_value,
+                minimum_amount_promise,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -1548,6 +1558,7 @@ where
                 .commit_value(&spending_key, output_amount.into());
             let encrypted_value =
                 EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, output_amount)?;
+            let minimum_value_promise = MicroTari::zero();
             let metadata_signature = TransactionOutput::create_final_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 output_amount,
@@ -1557,6 +1568,7 @@ where
                 &sender_offset_private_key,
                 &covenant,
                 &encrypted_value,
+                minimum_value_promise,
             )?;
             let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
                 UnblindedOutput::new_current_version(
@@ -1571,6 +1583,7 @@ where
                     0,
                     covenant.clone(),
                     encrypted_value,
+                    minimum_value_promise,
                 ),
                 &self.resources.factories,
                 &self.resources.rewind_data.clone(),
@@ -1702,6 +1715,7 @@ where
                     0,
                     output.covenant,
                     output.encrypted_value,
+                    output.minimum_value_promise,
                 );
 
                 let offset = PrivateKey::random(&mut OsRng);
@@ -1935,6 +1949,7 @@ where
                             known_one_sided_payment_scripts[i].script_lock_height,
                             output.covenant,
                             output.encrypted_value,
+                            output.minimum_value_promise,
                         );
 
                         let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(

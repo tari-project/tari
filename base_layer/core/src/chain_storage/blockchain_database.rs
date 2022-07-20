@@ -1522,6 +1522,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_value,
+                        output.minimum_value_promise,
                     );
                     Ok(compact_input)
                 },

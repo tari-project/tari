@@ -60,6 +60,7 @@ pub struct UnblindedOutputBuilder {
     metadata_signed_by_sender: bool,
     encrypted_value: EncryptedValue,
     rewind_data: Option<RewindData>,
+    minimum_value_promise: MicroTari,
 }
 
 impl UnblindedOutputBuilder {
@@ -78,6 +79,7 @@ impl UnblindedOutputBuilder {
             metadata_signed_by_sender: false,
             encrypted_value: EncryptedValue::default(),
             rewind_data: None,
+            minimum_value_promise: MicroTari::zero(),
         }
     }
 
@@ -100,6 +102,7 @@ impl UnblindedOutputBuilder {
             &public_nonce_commitment,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )?;
         self.metadata_signature = Some(metadata_partial);
         self.metadata_signed_by_receiver = true;
@@ -118,6 +121,7 @@ impl UnblindedOutputBuilder {
             sender_offset_private_key,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )?;
         self.metadata_signature = Some(metadata_sig);
         self.metadata_signed_by_sender = true;
@@ -152,6 +156,7 @@ impl UnblindedOutputBuilder {
             0,
             self.covenant,
             self.encrypted_value,
+            self.minimum_value_promise,
         );
         Ok(ub)
     }

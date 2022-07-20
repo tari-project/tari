@@ -201,6 +201,7 @@ fn create_utxo(
         panic!("Range proof does not verify");
     };
     let encrypted_value = EncryptedValue::default();
+    let minimum_value_promise = MicroTari::zero();
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         value,
@@ -210,6 +211,7 @@ fn create_utxo(
         &offset_keys.k,
         &covenant,
         &encrypted_value,
+        minimum_value_promise,
     )
     .unwrap();
 
@@ -222,6 +224,7 @@ fn create_utxo(
         metadata_sig,
         covenant,
         encrypted_value,
+        minimum_value_promise,
     );
     utxo.verify_range_proof(&CryptoFactories::default().range_proof)
         .unwrap();

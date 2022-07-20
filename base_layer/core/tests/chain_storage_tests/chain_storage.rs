@@ -1867,6 +1867,7 @@ mod malleability {
                     output.sender_offset_public_key.clone(),
                     output.covenant.clone(),
                     output.encrypted_value.clone(),
+                    output.minimum_value_promise,
                 );
             });
         }
