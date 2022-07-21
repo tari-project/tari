@@ -1891,6 +1891,7 @@ where
         Ok(())
     }
 
+    // Scanning outputs addressed to this wallet
     fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
@@ -1947,7 +1948,7 @@ where
                 // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // computing shared secret
-                    let c = RistrettoSecretKey::from_bytes(
+                    let shared_secret = PrivateKey::from_bytes(
                         DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
                             .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
                             .finalize()
@@ -1956,14 +1957,16 @@ where
                     .unwrap();
 
                     // matching spending (public) keys
-                    if &(PublicKey::from_secret_key(&c) + wallet_pk) != scanned_pk.as_ref() {
+                    if &(PublicKey::from_secret_key(&shared_secret) + wallet_pk) != scanned_pk.as_ref() {
                         continue;
                     }
 
                     match PrivateKey::from_bytes(
                         CommsPublicKey::shared_secret(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
                     ) {
-                        Ok(spending_sk) => scanned_outputs.push((output.clone(), wallet_sk.clone() + c, spending_sk)),
+                        Ok(spending_sk) => {
+                            scanned_outputs.push((output.clone(), wallet_sk.clone() + shared_secret, spending_sk))
+                        },
                         Err(e) => {
                             error!(
                                 target: LOG_TARGET,
@@ -1981,6 +1984,7 @@ where
         self.import_onesided_outputs(scanned_outputs)
     }
 
+    // Imports scanned outputs into the wallet
     fn import_onesided_outputs(
         &self,
         scanned_outputs: Vec<(TransactionOutput, PrivateKey, RistrettoSecretKey)>,
