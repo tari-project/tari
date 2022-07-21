@@ -15,7 +15,7 @@ on:
         default: "development"
 
 env:
-  toolchain: nightly-2021-11-20
+  toolchain: nightly-2022-05-01
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
 
@@ -27,7 +27,6 @@ jobs:
       matrix:
         image_name:
           [
-            frontail,
             monerod,
             tor,
             xmrig,

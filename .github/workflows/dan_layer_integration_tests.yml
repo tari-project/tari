@@ -1,4 +1,6 @@
+---
 name: DAN
+
 on:
   push:
   pull_request:
@@ -6,6 +8,7 @@ on:
       - opened
       - reopened
       - synchronize
+
 env:
   toolchain: nightly-2022-05-01
 
