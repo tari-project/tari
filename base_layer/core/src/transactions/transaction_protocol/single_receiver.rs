@@ -113,6 +113,8 @@ impl SingleReceiverTransactionProtocol {
             .map_err(|_| TPE::EncryptionError)?
             .unwrap_or_default();
 
+        let minimum_value_promise = sender_info.minimum_value_promise;
+
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             sender_info.amount,
@@ -123,6 +125,7 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.public_commitment_nonce,
             &sender_info.covenant,
             &encrypted_value,
+            minimum_value_promise,
         )?;
 
         let output = TransactionOutput::new_current_version(
@@ -138,6 +141,7 @@ impl SingleReceiverTransactionProtocol {
             partial_metadata_signature,
             sender_info.covenant.clone(),
             encrypted_value,
+            minimum_value_promise,
         );
         Ok(output)
     }
@@ -215,6 +219,7 @@ mod test {
             sender_offset_public_key,
             public_commitment_nonce,
             covenant: Default::default(),
+            minimum_value_promise: MicroTari::zero(),
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), &factories, None).unwrap();
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");

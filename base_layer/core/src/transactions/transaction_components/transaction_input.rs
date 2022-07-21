@@ -43,6 +43,7 @@ use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter, MaxSizeBytes},
     covenants::Covenant,
     transactions::{
+        tari_amount::MicroTari,
         transaction_components,
         transaction_components::{
             transaction_output::TransactionOutput,
@@ -117,6 +118,7 @@ impl TransactionInput {
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> TransactionInput {
         TransactionInput::new(
             version,
@@ -128,6 +130,7 @@ impl TransactionInput {
                 covenant,
                 version: TransactionOutputVersion::get_current_version(),
                 encrypted_value,
+                minimum_value_promise,
             },
             input_data,
             script_signature,
@@ -144,6 +147,7 @@ impl TransactionInput {
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) {
         self.spent_output = SpentOutput::OutputData {
             version,
@@ -153,6 +157,7 @@ impl TransactionInput {
             sender_offset_public_key,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         };
     }
 
@@ -226,6 +231,16 @@ impl TransactionInput {
             SpentOutput::OutputData {
                 ref encrypted_value, ..
             } => Ok(encrypted_value),
+        }
+    }
+
+    pub fn minimum_value_promise(&self) -> Result<&MicroTari, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref minimum_value_promise,
+                ..
+            } => Ok(minimum_value_promise),
         }
     }
 
@@ -329,9 +344,18 @@ impl TransactionInput {
                 features,
                 covenant,
                 encrypted_value,
+                minimum_value_promise,
                 ..
-            } => transaction_components::hash_output(*version, features, commitment, script, covenant, encrypted_value)
-                .to_vec(),
+            } => transaction_components::hash_output(
+                *version,
+                features,
+                commitment,
+                script,
+                covenant,
+                encrypted_value,
+                *minimum_value_promise,
+            )
+            .to_vec(),
         }
     }
 
@@ -351,6 +375,7 @@ impl TransactionInput {
                 ref sender_offset_public_key,
                 ref covenant,
                 ref encrypted_value,
+                ref minimum_value_promise,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
                 let writer = ConsensusHashWriter::default()
@@ -362,7 +387,8 @@ impl TransactionInput {
                     .chain(&self.script_signature)
                     .chain(&self.input_data)
                     .chain(covenant)
-                    .chain(encrypted_value);
+                    .chain(encrypted_value)
+                    .chain(minimum_value_promise);
 
                 Ok(writer.finalize().to_vec())
             },
@@ -483,6 +509,7 @@ pub enum SpentOutput {
         /// The transaction covenant
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     },
 }
 
@@ -508,6 +535,7 @@ impl ConsensusEncoding for SpentOutput {
                 sender_offset_public_key,
                 covenant,
                 encrypted_value,
+                minimum_value_promise,
             } => {
                 version.consensus_encode(writer)?;
                 features.consensus_encode(writer)?;
@@ -516,6 +544,7 @@ impl ConsensusEncoding for SpentOutput {
                 sender_offset_public_key.consensus_encode(writer)?;
                 covenant.consensus_encode(writer)?;
                 encrypted_value.consensus_encode(writer)?;
+                minimum_value_promise.consensus_encode(writer)?;
             },
         };
         Ok(())
@@ -540,6 +569,7 @@ impl ConsensusDecoding for SpentOutput {
                 let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
                 let covenant = Covenant::consensus_decode(reader)?;
                 let encrypted_value = EncryptedValue::consensus_decode(reader)?;
+                let minimum_value_promise = MicroTari::consensus_decode(reader)?;
                 Ok(SpentOutput::OutputData {
                     version,
                     features,
@@ -548,6 +578,7 @@ impl ConsensusDecoding for SpentOutput {
                     sender_offset_public_key,
                     covenant,
                     encrypted_value,
+                    minimum_value_promise,
                 })
             },
             _ => Err(io::Error::new(ErrorKind::InvalidInput, "Invalid SpentOutput type")),

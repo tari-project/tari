@@ -5922,6 +5922,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     script_private_key: *mut TariPrivateKey,
     covenant: *mut TariCovenant,
     encrypted_value: *mut TariEncryptedValue,
+    minimum_value_promise: c_ulonglong,
     message: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
@@ -6026,6 +6027,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
             0,
             covenant,
             encrypted_value,
+            MicroTari::from(minimum_value_promise),
         )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
@@ -8858,6 +8860,7 @@ mod test {
             let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant));
             let encrypted_value_ptr = Box::into_raw(Box::new(utxo_1.encrypted_value));
+            let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
 
             let tx_id = wallet_import_external_utxo_as_non_rewindable(
@@ -8871,6 +8874,7 @@ mod test {
                 script_private_key_ptr,
                 covenant_ptr,
                 encrypted_value_ptr,
+                minimum_value_promise,
                 message_ptr,
                 error_ptr,
             );

@@ -730,6 +730,7 @@ async fn test_import_utxo() {
             0,
             Covenant::default(),
             output.encrypted_value,
+            utxo.minimum_value_promise,
         )
         .await
         .unwrap();

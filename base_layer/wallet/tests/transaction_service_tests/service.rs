@@ -1459,6 +1459,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -1574,6 +1575,7 @@ async fn finalize_tx_with_missing_output() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -2156,6 +2158,7 @@ async fn test_transaction_cancellation() {
             Default::default(),
             PrivateKey::random(&mut OsRng),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
@@ -2237,6 +2240,7 @@ async fn test_transaction_cancellation() {
             Default::default(),
             PrivateKey::random(&mut OsRng),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
@@ -2896,6 +2900,7 @@ async fn test_restarting_transaction_protocols() {
             Default::default(),
             PrivateKey::random(&mut OsRng),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .with_change_script(
             script!(Nop),
@@ -4196,6 +4201,7 @@ async fn test_resend_on_startup() {
             Default::default(),
             PrivateKey::random(&mut OsRng),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
@@ -4672,6 +4678,7 @@ async fn test_transaction_timeout_cancellation() {
             Default::default(),
             PrivateKey::random(&mut OsRng),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 

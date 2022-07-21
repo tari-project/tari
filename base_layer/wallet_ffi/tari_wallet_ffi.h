@@ -2960,6 +2960,7 @@ unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWall
                                                                  TariPrivateKey *script_private_key,
                                                                  TariCovenant *covenant,
                                                                  TariEncryptedValue *encrypted_value,
+                                                                 unsigned long long minimum_value_promise,
                                                                  const char *message,
                                                                  int *error_out);
 

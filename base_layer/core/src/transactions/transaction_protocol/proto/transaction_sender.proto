@@ -32,6 +32,8 @@ message SingleRoundSenderData {
     tari.types.OutputFeatures features = 10;
     // Covenant
     bytes covenant  = 11;
+    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    uint64 minimum_value_promise = 12;
     // Unique id for NFTs
     // bytes unique_id = 12;
 }

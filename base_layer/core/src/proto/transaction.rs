@@ -163,6 +163,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 sender_offset_public_key,
                 Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?,
                 EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?,
+                input.minimum_value_promise.into(),
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -227,6 +228,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .encrypted_value()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
                     .to_vec(),
+                minimum_value_promise: input
+                    .minimum_value_promise()
+                    .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?
+                    .as_u64(),
             })
         }
     }
@@ -264,6 +269,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 
+        let minimum_value_promise = MicroTari::zero();
+
         Ok(Self::new(
             TransactionOutputVersion::try_from(
                 u8::try_from(output.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -276,6 +283,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         ))
     }
 }
@@ -292,6 +300,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             covenant: output.covenant.to_bytes(),
             version: output.version as u32,
             encrypted_value: output.encrypted_value.to_vec(),
+            minimum_value_promise: output.minimum_value_promise.into(),
         }
     }
 }

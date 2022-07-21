@@ -1003,6 +1003,9 @@ where
         // Empty covenant
         let covenant = Covenant::default();
 
+        // Default range proof
+        let minimum_value_promise = MicroTari::zero();
+
         // Prepare sender part of the transaction
         let mut stp = self
             .output_manager_service
@@ -1016,6 +1019,7 @@ where
                 message.clone(),
                 script.clone(),
                 covenant.clone(),
+                minimum_value_promise,
             )
             .await?;
 
@@ -1067,6 +1071,7 @@ where
             .commitment
             .commit_value(&spend_key, amount.into());
         let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
+        let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spend_key,
@@ -1079,6 +1084,7 @@ where
             height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
 
         // Start finalizing
@@ -1174,6 +1180,7 @@ where
                 message.clone(),
                 script,
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .await?;
 

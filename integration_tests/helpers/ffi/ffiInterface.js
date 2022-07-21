@@ -405,6 +405,7 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
+          this.ulonglong,
           this.string,
           this.intPtr,
         ],

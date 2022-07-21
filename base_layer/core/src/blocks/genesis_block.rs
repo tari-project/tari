@@ -117,6 +117,8 @@ fn get_igor_genesis_block_raw() -> Block {
             Default::default(),
             Covenant::default(),
             EncryptedValue::default(),
+            // Genesis blocks don't need to prove a minimum value
+            MicroTari::zero(),
         )],
         vec![TransactionKernel::new_current_version(
             KernelFeatures::COINBASE_KERNEL,
@@ -262,6 +264,8 @@ fn get_dibbler_genesis_block_raw() -> Block {
             // Covenant
             Covenant::default(),
             EncryptedValue::default(),
+            // Genesis blocks don't need to prove a minimum value
+            MicroTari::zero(),
         );
     let kernel = TransactionKernel::new(
         TransactionKernelVersion::V0,

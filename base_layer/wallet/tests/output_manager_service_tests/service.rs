@@ -342,6 +342,7 @@ async fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, Transa
             OutputFeatures::default(),
             PrivateKey::random(&mut OsRng),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .with_change_script(
             script!(Nop),
@@ -439,6 +440,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap_err();
@@ -471,6 +473,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             String::new(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -552,6 +555,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap_err();
@@ -613,6 +617,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -640,6 +645,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -711,6 +717,7 @@ async fn test_utxo_selection_with_tx_priority() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -789,6 +796,7 @@ async fn utxo_selection_for_contract_checkpoint() {
             String::new(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -831,6 +839,7 @@ async fn send_not_enough_funds() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
     {
@@ -890,6 +899,7 @@ async fn send_no_change() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -955,6 +965,7 @@ async fn send_not_enough_for_change() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
     {
@@ -995,6 +1006,7 @@ async fn cancel_transaction() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -1087,6 +1099,7 @@ async fn test_get_balance() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -1143,6 +1156,7 @@ async fn sending_transaction_persisted_while_offline() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -1174,6 +1188,7 @@ async fn sending_transaction_persisted_while_offline() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -1469,6 +1484,7 @@ async fn test_txo_validation() {
             "".to_string(),
             script!(Nop),
             Covenant::default(),
+            MicroTari::zero(),
         )
         .await
         .unwrap();
@@ -2134,6 +2150,7 @@ async fn scan_for_recovery_test() {
             0,
             Covenant::new(),
             encrypted_value,
+            MicroTari::zero(),
         );
         rewindable_unblinded_outputs.push(uo);
     }

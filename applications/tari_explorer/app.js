@@ -17,9 +17,10 @@ var assetsRouter = require("./routes/assets");
 var validatorRouter = require("./routes/validator");
 
 var hbs = require("hbs");
-hbs.registerHelper("hex", function (buffer) {
-  return buffer ? Buffer.from(buffer).toString("hex") : "";
-});
+const [hex, script] = require("./script");
+hbs.registerHelper("hex", hex);
+hbs.registerHelper("script", script);
+
 hbs.registerHelper("json", function (obj) {
   return Buffer.from(JSON.stringify(obj)).toString("base64");
 });
