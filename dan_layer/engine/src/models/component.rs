@@ -20,81 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
-
-mod encoding;
-pub mod ops;
-
 use std::collections::HashMap;
 
-pub use borsh::{self, BorshDeserialize as Decode, BorshSerialize as Encode};
-pub use encoding::{decode, decode_len, encode_into, encode_with_len};
+use tari_dan_common_types::Hash;
+use tari_template_abi::CreateComponentArg;
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct TemplateDef {
-    pub template_name: String,
-    pub functions: Vec<FunctionDef>,
-}
+pub type ComponentId = (Hash, u32);
 
-impl TemplateDef {
-    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
-        self.functions.iter().find(|f| f.name.as_str() == name)
-    }
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct FunctionDef {
-    pub name: String,
-    pub arguments: Vec<Type>,
-    pub output: Type,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum Type {
-    Unit,
-    Bool,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    String,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CallInfo {
-    pub func_name: String,
-    pub args: Vec<Vec<u8>>,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct EmitLogArg {
-    pub message: String,
-    pub level: LogLevel,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum LogLevel {
-    Error,
-    Warn,
-    Info,
-    Debug,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CreateComponentArg {
-    // asset/component metadata
+pub struct Component {
     pub name: String,
     pub quantity: u64,
     pub metadata: HashMap<Vec<u8>, Vec<u8>>,
-    // encoded asset/component state
     pub state: Vec<u8>,
+}
+
+impl From<CreateComponentArg> for Component {
+    fn from(arg: CreateComponentArg) -> Self {
+        Self {
+            name: arg.name,
+            quantity: arg.quantity,
+            metadata: arg.metadata,
+            state: arg.state,
+        }
+    }
 }

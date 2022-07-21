@@ -25,7 +25,7 @@ use tari_template_macros::template;
 template! {
     struct HelloWorld {}
 
-    impl HelloWorld { 
+    impl HelloWorld {
         pub fn greet() -> String {
             "Hello World!".to_string()
         }

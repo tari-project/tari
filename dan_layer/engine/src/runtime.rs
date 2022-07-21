@@ -20,36 +20,57 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    sync::{Arc, RwLock},
+};
 
-mod error;
+use tari_common_types::types::FixedHash;
+use tari_template_abi::LogLevel;
 
-mod processor;
-pub use processor::InstructionProcessor;
+use crate::models::{Bucket, Component, ComponentId};
 
-mod signature;
-
-use crate::{instruction::signature::InstructionSignature, package::PackageId};
-
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
+#[derive(Clone)]
+pub struct Runtime {
+    tracker: Arc<RwLock<ChangeTracker>>,
+    interface: Arc<dyn RuntimeInterface>,
 }
 
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+impl Runtime {
+    pub fn new(engine: Arc<dyn RuntimeInterface>) -> Self {
+        Self {
+            tracker: Arc::new(RwLock::new(ChangeTracker::default())),
+            interface: engine,
+        }
+    }
+
+    pub fn interface(&self) -> &dyn RuntimeInterface {
+        &*self.interface
+    }
+}
+
+impl Debug for Runtime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Runtime")
+            .field("tracker", &self.tracker)
+            .field("engine", &"dyn RuntimeEngine")
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ChangeTracker {
+    pub buckets: HashMap<FixedHash, Bucket>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeError {
+    #[error("todo")]
+    Todo,
+}
+
+pub trait RuntimeInterface: Send + Sync {
+    fn emit_log(&self, level: LogLevel, message: &str);
+    fn create_component(&self, component: Component) -> Result<ComponentId, RuntimeError>;
 }

@@ -12,9 +12,9 @@ pub mod wasm;
 
 pub mod compile;
 pub mod crypto;
-pub mod env;
 pub mod instruction;
 pub mod package;
+pub mod runtime;
 pub mod traits;
 
 /// The DAN layer engine domain separated hashing domain

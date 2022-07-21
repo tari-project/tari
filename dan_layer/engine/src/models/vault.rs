@@ -19,37 +19,16 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use borsh::{BorshDeserialize, BorshSerialize};
+use tari_common_types::types::FixedHash;
 
-mod builder;
-pub use builder::InstructionBuilder;
+pub type VaultId = FixedHash;
 
-mod error;
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct Vault {}
 
-mod processor;
-pub use processor::InstructionProcessor;
-
-mod signature;
-
-use crate::{instruction::signature::InstructionSignature, package::PackageId};
-
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+impl Vault {
+    pub fn empty() -> Self {
+        Self {}
+    }
 }

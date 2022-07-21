@@ -20,24 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     instruction::{error::InstructionError, Instruction, InstructionSet},
     package::{Package, PackageId},
+    runtime::{Runtime, RuntimeInterface},
     traits::Invokable,
-    wasm::{ExecutionResult, Process, VmInstance},
+    wasm::{ExecutionResult, Process},
 };
 
 #[derive(Debug, Clone, Default)]
-pub struct InstructionProcessor {
+pub struct InstructionProcessor<TRuntimeInterface> {
     packages: HashMap<PackageId, Package>,
+    runtime_interface: TRuntimeInterface,
 }
 
-impl InstructionProcessor {
-    pub fn new() -> Self {
+impl<TRuntimeInterface> InstructionProcessor<TRuntimeInterface>
+where TRuntimeInterface: RuntimeInterface + Clone + 'static
+{
+    pub fn new(runtime_interface: TRuntimeInterface) -> Self {
         Self {
             packages: HashMap::new(),
+            runtime_interface,
         }
     }
 
@@ -47,7 +52,10 @@ impl InstructionProcessor {
     }
 
     pub fn execute(&self, instruction_set: InstructionSet) -> Result<Vec<ExecutionResult>, InstructionError> {
-        let mut results = vec![];
+        let mut results = Vec::with_capacity(instruction_set.instructions.len());
+
+        // TODO: implement engine
+        let state = Runtime::new(Arc::new(self.runtime_interface.clone()));
         for instruction in instruction_set.instructions {
             match instruction {
                 Instruction::CallFunction {
@@ -65,9 +73,29 @@ impl InstructionProcessor {
                         .ok_or(InstructionError::TemplateNameNotFound { name: template })?;
 
                     // TODO: implement intelligent instance caching
-                    let vm = VmInstance::instantiate(module.wasm_module())?;
-                    let process = Process::new(module.clone(), vm);
+                    let process = Process::start(module.clone(), state.clone())?;
                     let result = process.invoke_by_name(&function, args)?;
+                    results.push(result);
+                },
+                Instruction::CallMethod {
+                    package_id,
+                    component_id,
+                    method,
+                    args,
+                } => {
+                    let package = self
+                        .packages
+                        .get(&package_id)
+                        .ok_or(InstructionError::PackageNotFound { package_id })?;
+                    // TODO: load component, not module - component_id is currently hard-coded as the template name in
+                    // tests
+                    let module = package
+                        .get_module_by_name(&component_id)
+                        .ok_or(InstructionError::TemplateNameNotFound { name: component_id })?;
+
+                    // TODO: implement intelligent instance caching
+                    let process = Process::start(module.clone(), state.clone())?;
+                    let result = process.invoke_by_name(&method, args)?;
                     results.push(result);
                 },
             }

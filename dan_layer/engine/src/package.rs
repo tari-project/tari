@@ -79,9 +79,12 @@ fn load_wasm_module(store: &Store, code: &[u8]) -> Result<LoadedWasmModule, Pack
         0
     }
 
+    fn debug(_args_ptr: i32, _args_len: i32) {}
+
     let imports = imports! {
         "env" => {
             "tari_engine" => Function::new_native(store, stub),
+            "debug" => Function::new_native(store, debug),
         }
     };
     let instance = Instance::new(&module, &imports)?;

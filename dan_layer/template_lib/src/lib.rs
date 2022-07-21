@@ -20,9 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, mem, intrinsics::copy};
+//! # Tari WASM module library
+//!
+//! This library provides primitives and functionality that allows Tari WASM modules to interact with the Tari engine.
+//! It is intended to be used by WASM modules that are written in Rust and compiled into WASM.
+//!
+//! The tari engine itself should never depend on this crate.
+//!
+//! TODO: no_std support
 
-use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, CallInfo, decode};
+pub mod models;
+
+// TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
+// available
+use std::{collections::HashMap, mem, ptr::copy, slice};
+
+use tari_template_abi::{encode_with_len, Decode, Encode, FunctionDef, TemplateDef};
 
 pub fn generate_abi(template_name: String, functions: Vec<FunctionDef>) -> *mut u8 {
     let template = TemplateDef {
@@ -49,16 +62,17 @@ impl TemplateImpl {
 }
 
 pub fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: TemplateImpl) -> *mut u8 {
+    use tari_template_abi::{decode, CallInfo};
     if call_info.is_null() {
         panic!("call_info is null");
     }
 
-    let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
-    let call_info: CallInfo = decode(&call_data).unwrap();
+    let call_data = unsafe { slice::from_raw_parts(call_info, call_info_len) };
+    let call_info: CallInfo = decode(call_data).unwrap();
 
     // get the function
     let function = match template_impl.0.get(&call_info.func_name) {
-        Some(f) => f.clone(),
+        Some(f) => f,
         None => panic!("invalid function name"),
     };
 
@@ -69,10 +83,40 @@ pub fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: Te
     wrap_ptr(result)
 }
 
+pub fn call_engine<T: Encode, U: Decode + std::fmt::Debug>(op: i32, input: &T) -> Option<U> {
+    use tari_template_abi::{decode, decode_len, encode_into};
+
+    let mut encoded = Vec::with_capacity(512);
+    encode_into(input, &mut encoded).unwrap();
+    let len = encoded.len();
+    let input_ptr = wrap_ptr(encoded) as *const _;
+    let ptr = unsafe { tari_engine(op, input_ptr, len) };
+    if ptr.is_null() {
+        return None;
+    }
+
+    let slice = unsafe { slice::from_raw_parts(ptr as *const _, 4) };
+    let len = decode_len(&slice).unwrap();
+    let slice = unsafe { slice::from_raw_parts(ptr.offset(4), len) };
+    let ret = decode(&slice).unwrap();
+    Some(ret)
+}
+
 pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
     let ptr = v.as_mut_ptr();
     mem::forget(v);
     ptr
+}
+
+extern "C" {
+    fn tari_engine(op: i32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+    fn debug(input_ptr: *const u8, input_len: usize);
+}
+
+pub fn call_debug<T: AsRef<[u8]>>(data: T) {
+    let ptr = data.as_ref().as_ptr();
+    let len = data.as_ref().len();
+    unsafe { debug(ptr, len) }
 }
 
 #[no_mangle]
