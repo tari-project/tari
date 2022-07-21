@@ -14,6 +14,7 @@ members = [
     "comms/dht",
     "comms/rpc_macros",
     "dan_layer/core",
+    "dan_layer/smart_contract_abi",
     "dan_layer/storage_sqlite",
     "common_sqlite",
     "infrastructure/libtor",
