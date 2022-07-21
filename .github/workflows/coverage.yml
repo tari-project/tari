@@ -1,4 +1,6 @@
+---
 name: Source Coverage
+
 on:
   workflow_dispatch:
   push:
