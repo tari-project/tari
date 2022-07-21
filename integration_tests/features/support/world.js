@@ -474,17 +474,21 @@ class CustomWorld {
     destWalletPubkey,
     tariAmount,
     feePerGram,
-    oneSided = false,
+    paymentType = PaymentType.STANDARD_MIMBLEWIMBLE,
     message = "",
     printMessage = true
   ) {
+    const isOneSided =
+      paymentType === PaymentType.ONE_SIDED ||
+      paymentType === PaymentType.ONE_SIDED_TO_STEALTH_ADDRESS;
+
     const sourceWalletClient = await sourceWallet.connectClient();
     console.log(
       sourceWallet.name +
         " sending " +
         tariAmount +
         "uT one-sided(" +
-        oneSided +
+        isOneSided +
         ") to " +
         destWalletName +
         " `" +
@@ -502,29 +506,52 @@ class CustomWorld {
       await waitFor(
         async () => {
           try {
-            if (!oneSided) {
-              lastResult = await sourceWalletClient.transfer({
-                recipients: [
-                  {
-                    address: destWalletPubkey,
-                    amount: tariAmount,
-                    fee_per_gram: feePerGram,
-                    message: message,
-                  },
-                ],
-              });
-            } else {
-              lastResult = await sourceWalletClient.transfer({
-                recipients: [
-                  {
-                    address: destWalletPubkey,
-                    amount: tariAmount,
-                    fee_per_gram: feePerGram,
-                    message: message,
-                    payment_type: PaymentType.ONE_SIDED,
-                  },
-                ],
-              });
+            switch (paymentType) {
+              case PaymentType.STANDARD_MIMBLEWIMBLE:
+                lastResult = await sourceWalletClient.transfer({
+                  recipients: [
+                    {
+                      address: destWalletPubkey,
+                      amount: tariAmount,
+                      fee_per_gram: feePerGram,
+                      message: message,
+                      paymentType: PaymentType.STANDARD_MIMBLEWIMBLE,
+                    },
+                  ],
+                });
+                break;
+
+              case PaymentType.ONE_SIDED:
+                lastResult = await sourceWalletClient.transfer({
+                  recipients: [
+                    {
+                      address: destWalletPubkey,
+                      amount: tariAmount,
+                      fee_per_gram: feePerGram,
+                      message: message,
+                      payment_type: PaymentType.ONE_SIDED,
+                    },
+                  ],
+                });
+                break;
+
+              case PaymentType.ONE_SIDED_TO_STEALTH_ADDRESS:
+                lastResult = await sourceWalletClient.transfer({
+                  recipients: [
+                    {
+                      address: destWalletPubkey,
+                      amount: tariAmount,
+                      fee_per_gram: feePerGram,
+                      message: message,
+                      payment_type: PaymentType.ONE_SIDED_TO_STEALTH_ADDRESS,
+                    },
+                  ],
+                });
+                break;
+
+              default:
+                console.log("unrecognized payment type");
+                break;
             }
           } catch (error) {
             console.log(error);
@@ -558,7 +585,13 @@ class CustomWorld {
     return lastResult;
   }
 
-  async transfer(tariAmount, source, dest, feePerGram) {
+  async transfer(
+    tariAmount,
+    source,
+    dest,
+    feePerGram,
+    paymentType = PaymentType.STANDARD_MIMBLEWIMBLE
+  ) {
     const sourceWallet = this.getWallet(source);
     const sourceClient = await sourceWallet.connectClient();
     const sourceInfo = await sourceClient.identify();
@@ -570,7 +603,8 @@ class CustomWorld {
       dest,
       destPublicKey,
       tariAmount,
-      feePerGram
+      feePerGram,
+      paymentType
     );
     expect(this.lastResult.results[0]["is_success"]).to.equal(true);
     this.addTransaction(
