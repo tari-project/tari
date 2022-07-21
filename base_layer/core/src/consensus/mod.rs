@@ -48,8 +48,10 @@ use tari_common::hashing_domain::HashingDomain;
 
 pub mod emission;
 
-/// The base layer core sonsensus domain separated hashing domain
+/// The base layer core consensus domain separated hashing domain
 /// Usage:
-///   let hash = CORE_CONSENSUS_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = core_consensus_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const CORE_CONSENSUS_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.core.consensus");
+pub fn core_consensus_hash_domain() -> HashingDomain {
+    HashingDomain::new("base_layer.core.consensus")
+}

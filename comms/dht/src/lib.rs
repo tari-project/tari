@@ -122,6 +122,8 @@ pub mod store_forward;
 
 /// The comms DHT domain separated hashing domain
 /// Usage:
-///   let hash = COMMS_DHT_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = comms_dht_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const COMMS_DHT_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.comms.dht");
+pub fn comms_dht_hash_domain() -> HashingDomain {
+    HashingDomain::new("comms.dht")
+}

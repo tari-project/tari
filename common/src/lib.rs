@@ -83,6 +83,8 @@ pub(crate) const LOG_TARGET: &str = "common::config";
 
 /// The MMR domain separated hashing domain
 /// Usage:
-///   let hash = COMMON_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = common_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const COMMON_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.common");
+pub fn common_hash_domain() -> HashingDomain {
+    HashingDomain::new("common")
+}

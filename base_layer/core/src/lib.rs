@@ -71,6 +71,8 @@ use tari_common::hashing_domain::HashingDomain;
 
 /// The base layer core domain separated hashing domain
 /// Usage:
-///   let hash = CORE_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = core_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const CORE_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.core");
+pub fn core_hash_domain() -> HashingDomain {
+    HashingDomain::new("base_layer.core")
+}

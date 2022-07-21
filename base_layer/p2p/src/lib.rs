@@ -61,6 +61,8 @@ pub const MINOR_NETWORK_VERSION: u8 = 0;
 
 /// The base layer p2p domain separated hashing domain
 /// Usage:
-///   let hash = P2P_MANAGER_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = p2p_hash_domain(.digest::<Blake256>(b"my secret");
 ///   etc.
-pub const P2P_MANAGER_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.p2p");
+pub fn p2p_hash_domain() -> HashingDomain {
+    HashingDomain::new("base_layer.p2p")
+}

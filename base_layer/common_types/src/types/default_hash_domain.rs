@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,43 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Covenants
-//!
-//! Allows rules to be specified that restrict _future_ spending of subsequent transactions.
-//!
-//! <https://rfc.tari.com/RFC-0250_Covenants.html>
+use tari_crypto::hashing::DomainSeparation;
 
-mod arguments;
-mod byte_codes;
-mod context;
-mod covenant;
-mod decoder;
-mod encoder;
-mod error;
-mod fields;
-mod filters;
-mod output_set;
-mod serde;
-mod token;
+/// The default domain separation marker for use in the tari project.
+pub struct DefaultHashDomain;
 
-pub use covenant::Covenant;
-pub use error::CovenantError;
-// Used in macro
-#[allow(unused_imports)]
-pub(crate) use fields::OutputField;
-use tari_common::hashing_domain::HashingDomain;
-pub use token::CovenantToken;
+impl DomainSeparation for DefaultHashDomain {
+    fn version() -> u8 {
+        1
+    }
 
-#[macro_use]
-mod macros;
-
-#[cfg(test)]
-mod test;
-
-/// The base layer core covenants domain separated hashing domain
-/// Usage:
-///   let hash = core_covenants_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_covenants_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.covenants")
+    fn domain() -> &'static str {
+        "com.tari.tari_project.hash_domain"
+    }
 }

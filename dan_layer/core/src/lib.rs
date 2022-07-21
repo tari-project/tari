@@ -35,6 +35,8 @@ pub mod workers;
 
 /// The DAN layer core domain separated hashing domain
 /// Usage:
-///   let hash = DAN_LAYER_CORE_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = dan_layer_core_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const DAN_LAYER_CORE_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.dan_layer.core");
+pub fn dan_layer_core_hash_domain() -> HashingDomain {
+    HashingDomain::new("dan_layer.core")
+}

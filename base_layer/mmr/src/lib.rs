@@ -160,9 +160,11 @@ use tari_common::hashing_domain::HashingDomain;
 
 /// The base layer MMR domain separated hashing domain
 /// Usage:
-///   let hash = MMR_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = mmr_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const MMR_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.mmr");
+pub fn mmr_hash_domain() -> HashingDomain {
+    HashingDomain::new("base_layer.mmr")
+}
 
 macro_rules! if_native_bitmap {
     ($($item:item)*) => {

@@ -16,6 +16,8 @@ pub mod wasm;
 
 /// The base layer key manager domain separated hashing domain
 /// Usage:
-///   let hash = KEY_MANAGER_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = key_manager_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const KEY_MANAGER_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.key_manager");
+pub fn key_manager_hash_domain() -> HashingDomain {
+    HashingDomain::new("base_layer.key_manager")
+}

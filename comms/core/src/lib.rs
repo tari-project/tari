@@ -73,6 +73,8 @@ pub use tower::make::MakeService;
 
 /// The comms core domain separated hashing domain
 /// Usage:
-///   let hash = COMMS_CORE_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = comms_core_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const COMMS_CORE_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.comms.core");
+pub fn comms_core_hash_domain() -> HashingDomain {
+    HashingDomain::new("comms.core")
+}

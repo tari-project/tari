@@ -70,6 +70,8 @@ use tari_common::hashing_domain::HashingDomain;
 
 /// The base layer core proof-of-work domain separated hashing domain
 /// Usage:
-///   let hash = CORE_POW_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = core_proof_of_work_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const CORE_POW_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.base_layer.core.proof_of_work");
+pub fn core_proof_of_work_hash_domain() -> HashingDomain {
+    HashingDomain::new("base_layer.core.proof_of_work")
+}

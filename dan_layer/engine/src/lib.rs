@@ -12,6 +12,8 @@ pub mod wasm;
 
 /// The DAN layer engine domain separated hashing domain
 /// Usage:
-///   let hash = DAN_LAYER_ENGINE_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = dan_layer_engine_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const DAN_LAYER_ENGINE_HASH_DOMAIN: HashingDomain = HashingDomain::new("tari_project.dan_layer.engine");
+pub fn dan_layer_engine_hash_domain() -> HashingDomain {
+    HashingDomain::new("dan_layer.engine")
+}

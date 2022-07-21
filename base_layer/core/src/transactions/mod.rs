@@ -28,7 +28,8 @@ pub mod test_helpers;
 
 /// The base layer core transactions domain separated hashing domain
 /// Usage:
-///   let hash = CORE_TRANSACTIONS_HASH_DOMAIN.digest::<Blake256>(b"my secret");
+///   let hash = core_transactions_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub const CORE_TRANSACTIONS_HASH_DOMAIN: HashingDomain =
-    HashingDomain::new("tari_project.base_layer.core.transactions");
+pub fn core_transactions_hash_domain() -> HashingDomain {
+    HashingDomain::new("base_layer.core.transactions")
+}
