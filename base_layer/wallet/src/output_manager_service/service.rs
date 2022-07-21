@@ -2033,6 +2033,7 @@ where
                         0,
                         output.covenant,
                         output.encrypted_value,
+                        output.minimum_value_promise,
                     );
 
                     let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
