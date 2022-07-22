@@ -509,8 +509,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     &encrypted_body,
                 );
                 // Sign the encrypted message
-                let origin_mac =
-                    OriginMac::new_signed(self.node_identity.secret_key().clone(), &hash_data).to_proto();
+                let origin_mac = OriginMac::new_signed(self.node_identity.secret_key().clone(), &hash_data).to_proto();
                 // Encrypt and set the origin field
                 let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac.to_encoded_bytes());
                 Ok((
