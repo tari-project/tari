@@ -32,6 +32,8 @@ use digest::{Digest, FixedOutput};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::types::{Challenge, CommsPublicKey};
 use tari_crypto::{
+    hash::blake2::Blake256,
+    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey},
     tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
@@ -53,7 +55,10 @@ where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
     // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
     //       currently possible because (Compressed)RistrettoPoint does not implement it.
     let k = PK::shared_secret(secret_key, public_key);
-    CipherKey(*Key::from_slice(k.as_bytes()))
+    let hash = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.ecdh_secret")
+        .chain(k.as_bytes())
+        .finalize();
+    CipherKey(*Key::from_slice(hash.into_vec().as_bytes()))
 }
 
 /// Decrypts cipher text using ChaCha20 stream cipher given the cipher key and cipher text with integral nonce.
