@@ -99,6 +99,7 @@ pub use storage::DbConnectionUrl;
 
 mod dedup;
 pub use dedup::DedupLayer;
+use tari_common::hashing_domain::HashingDomain;
 
 mod filter;
 mod logging_middleware;
@@ -118,3 +119,11 @@ pub mod event;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
+
+/// The comms DHT domain separated hashing domain
+/// Usage:
+///   let hash = comms_dht_hash_domain().digest::<Blake256>(b"my secret");
+///   etc.
+pub fn comms_dht_hash_domain() -> HashingDomain {
+    HashingDomain::new("comms.dht")
+}

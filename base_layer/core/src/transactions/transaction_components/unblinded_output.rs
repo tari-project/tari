@@ -95,6 +95,7 @@ pub struct UnblindedOutput {
 impl UnblindedOutput {
     /// Creates a new un-blinded output
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroTari,
