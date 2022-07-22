@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,43 +20,41 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Covenants
-//!
-//! Allows rules to be specified that restrict _future_ spending of subsequent transactions.
-//!
-//! <https://rfc.tari.com/RFC-0250_Covenants.html>
+use tari_common_types::types::PrivateKey;
 
-mod arguments;
-mod byte_codes;
-mod context;
-mod covenant;
-mod decoder;
-mod encoder;
-mod error;
-mod fields;
-mod filters;
-mod output_set;
-mod serde;
-mod token;
+use super::{Instruction, InstructionSet};
+use crate::instruction::signature::InstructionSignature;
 
-pub use covenant::Covenant;
-pub use error::CovenantError;
-// Used in macro
-#[allow(unused_imports)]
-pub(crate) use fields::OutputField;
-use tari_common::hashing_domain::HashingDomain;
-pub use token::CovenantToken;
+#[derive(Debug, Clone, Default)]
+pub struct InstructionBuilder {
+    instructions: Vec<Instruction>,
+    signature: Option<InstructionSignature>,
+}
 
-#[macro_use]
-mod macros;
+impl InstructionBuilder {
+    pub fn new() -> Self {
+        Self {
+            instructions: Vec::new(),
+            signature: None,
+        }
+    }
 
-#[cfg(test)]
-mod test;
+    pub fn add_instruction(&mut self, instruction: Instruction) -> &mut Self {
+        self.instructions.push(instruction);
+        // Reset the signature as it is no longer valid
+        self.signature = None;
+        self
+    }
 
-/// The base layer core covenants domain separated hashing domain
-/// Usage:
-///   let hash = core_covenants_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_covenants_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.covenants")
+    pub fn sign(&mut self, secret_key: &PrivateKey) -> &mut Self {
+        self.signature = Some(InstructionSignature::sign(secret_key, &self.instructions));
+        self
+    }
+
+    pub fn build(&mut self) -> InstructionSet {
+        InstructionSet {
+            instructions: self.instructions.drain(..).collect(),
+            signature: self.signature.take().expect("not signed"),
+        }
+    }
 }

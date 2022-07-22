@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,43 +20,50 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Covenants
-//!
-//! Allows rules to be specified that restrict _future_ spending of subsequent transactions.
-//!
-//! <https://rfc.tari.com/RFC-0250_Covenants.html>
+use std::{fs, io, io::ErrorKind, path::Path, process::Command};
 
-mod arguments;
-mod byte_codes;
-mod context;
-mod covenant;
-mod decoder;
-mod encoder;
-mod error;
-mod fields;
-mod filters;
-mod output_set;
-mod serde;
-mod token;
+use cargo_toml::{Manifest, Product};
 
-pub use covenant::Covenant;
-pub use error::CovenantError;
-// Used in macro
-#[allow(unused_imports)]
-pub(crate) use fields::OutputField;
-use tari_common::hashing_domain::HashingDomain;
-pub use token::CovenantToken;
+pub fn compile_template<P: AsRef<Path>>(package_dir: P) -> io::Result<Vec<u8>> {
+    let status = Command::new("cargo")
+        .current_dir(package_dir.as_ref())
+        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::new(
+            ErrorKind::Other,
+            format!("Failed to compile package: {:?}", package_dir.as_ref()),
+        ));
+    }
 
-#[macro_use]
-mod macros;
+    // resolve wasm name
+    let manifest = Manifest::from_path(&package_dir.as_ref().join("Cargo.toml")).unwrap();
+    let wasm_name = if let Some(Product { name: Some(name), .. }) = manifest.lib {
+        // lib name
+        name
+    } else if let Some(pkg) = manifest.package {
+        // package name
+        pkg.name.replace('-', "_")
+    } else {
+        // file name
+        package_dir
+            .as_ref()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace('-', "_")
+    };
 
-#[cfg(test)]
-mod test;
+    // path of the wasm executable
+    let mut path = package_dir.as_ref().to_path_buf();
+    path.push("target");
+    path.push("wasm32-unknown-unknown");
+    path.push("release");
+    path.push(wasm_name);
+    path.set_extension("wasm");
 
-/// The base layer core covenants domain separated hashing domain
-/// Usage:
-///   let hash = core_covenants_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_covenants_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.covenants")
+    // return
+    fs::read(path)
 }

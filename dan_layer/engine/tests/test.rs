@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,43 +20,37 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Covenants
-//!
-//! Allows rules to be specified that restrict _future_ spending of subsequent transactions.
-//!
-//! <https://rfc.tari.com/RFC-0250_Covenants.html>
+use tari_dan_engine::{
+    compile::compile_template,
+    crypto::create_key_pair,
+    instruction::{Instruction, InstructionBuilder, InstructionProcessor},
+    package::PackageBuilder,
+};
 
-mod arguments;
-mod byte_codes;
-mod context;
-mod covenant;
-mod decoder;
-mod encoder;
-mod error;
-mod fields;
-mod filters;
-mod output_set;
-mod serde;
-mod token;
+#[test]
+fn test_metro() {
+    let mut processor = InstructionProcessor::new();
+    let (sk, _pk) = create_key_pair();
 
-pub use covenant::Covenant;
-pub use error::CovenantError;
-// Used in macro
-#[allow(unused_imports)]
-pub(crate) use fields::OutputField;
-use tari_common::hashing_domain::HashingDomain;
-pub use token::CovenantToken;
+    let wasm = compile_template("tests/test_template").unwrap();
+    let package = PackageBuilder::new().add_wasm_template(wasm).build().unwrap();
+    let package_id = package.id();
+    processor.load(package);
 
-#[macro_use]
-mod macros;
+    let instruction = InstructionBuilder::new()
+        .add_instruction(Instruction::CallFunction {
+            package_id,
+            template: "TestTemplate".to_string(),
+            function: "initialize".to_string(),
+            args: vec![],
+        })
+        .sign(&sk)
+        .build();
 
-#[cfg(test)]
-mod test;
+    let result = processor.execute(instruction).unwrap();
+    let result = result[0].decode::<String>().unwrap();
+    assert_eq!(result, "'initialize' was called");
 
-/// The base layer core covenants domain separated hashing domain
-/// Usage:
-///   let hash = core_covenants_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_covenants_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.covenants")
+    // let instruction = InstructionBuilder::new().method("hello_world").sign(sk).build();
+    // let result = processor.execute(instruction).unwrap();
 }

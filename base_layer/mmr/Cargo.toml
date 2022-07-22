@@ -14,6 +14,7 @@ benches = ["criterion"]
 
 [dependencies]
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
+tari_common = {path = "../../common"}
 thiserror = "1.0.26"
 digest = "0.9.0"
 log = "0.4"

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,43 +20,49 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Covenants
-//!
-//! Allows rules to be specified that restrict _future_ spending of subsequent transactions.
-//!
-//! <https://rfc.tari.com/RFC-0250_Covenants.html>
+mod encoding;
 
-mod arguments;
-mod byte_codes;
-mod context;
-mod covenant;
-mod decoder;
-mod encoder;
-mod error;
-mod fields;
-mod filters;
-mod output_set;
-mod serde;
-mod token;
+use borsh::{BorshDeserialize, BorshSerialize};
+pub use encoding::{decode, encode_into, encode_with_len};
 
-pub use covenant::Covenant;
-pub use error::CovenantError;
-// Used in macro
-#[allow(unused_imports)]
-pub(crate) use fields::OutputField;
-use tari_common::hashing_domain::HashingDomain;
-pub use token::CovenantToken;
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct TemplateDef {
+    pub template_name: String,
+    pub functions: Vec<FunctionDef>,
+}
 
-#[macro_use]
-mod macros;
+impl TemplateDef {
+    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
+        self.functions.iter().find(|f| f.name.as_str() == name)
+    }
+}
 
-#[cfg(test)]
-mod test;
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct FunctionDef {
+    pub name: String,
+    pub arguments: Vec<Type>,
+    pub output: Type,
+}
 
-/// The base layer core covenants domain separated hashing domain
-/// Usage:
-///   let hash = core_covenants_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_covenants_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.covenants")
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+pub enum Type {
+    Unit,
+    Bool,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    String,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct CallInfo {
+    pub func_name: String,
+    pub args: Vec<Vec<u8>>,
 }
