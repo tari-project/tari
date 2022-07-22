@@ -8,7 +8,7 @@ on:
       - main
 
 env:
-  toolchain: nightly-022-05-01
+  toolchain: nightly-2022-05-01
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   PROTOC: protoc
@@ -20,10 +20,6 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: npm audit launchpad gui
-        run: |
-          cd applications/launchpad/gui-vue
-          npm audit
       - name: npm audit collectibles
         run: |
           cd applications/tari_collectibles/web-app

@@ -61,6 +61,7 @@ pub enum SortDirection {
 pub struct OutputBackendQuery {
     pub tip_height: i64,
     pub status: Vec<OutputStatus>,
+    pub commitments: Vec<Commitment>,
     pub pagination: Option<(i64, i64)>,
     pub value_min: Option<(i64, bool)>,
     pub value_max: Option<(i64, bool)>,
@@ -72,6 +73,7 @@ impl Default for OutputBackendQuery {
         Self {
             tip_height: i64::MAX,
             status: vec![OutputStatus::Spent],
+            commitments: vec![],
             pagination: None,
             value_min: None,
             value_max: None,
@@ -403,9 +405,17 @@ where T: OutputManagerBackend + 'static
         mined_in_block: HashOutput,
         mmr_position: u64,
         confirmed: bool,
+        mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_received_output_mined_height(hash, mined_height, mined_in_block, mmr_position, confirmed)?;
+        db.set_received_output_mined_height(
+            hash,
+            mined_height,
+            mined_in_block,
+            mmr_position,
+            confirmed,
+            mined_timestamp,
+        )?;
         Ok(())
     }
 
