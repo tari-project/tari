@@ -832,7 +832,7 @@ mod test {
     }
 
     #[runtime::test]
-    #[allow(clippy::similar_names)]
+    #[allow(clippy::similar_names, clippy::too_many_lines)]
     async fn receive_stored_messages() {
         let spy = service_spy();
         let (saf_requester, saf_mock_state) = create_store_and_forward_mock();
