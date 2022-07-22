@@ -28,10 +28,10 @@ use chacha20::{
     Key,
     Nonce,
 };
-use digest::{Digest, FixedOutput};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::types::{Challenge, CommsPublicKey};
 use tari_crypto::{
+    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey},
     tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
@@ -42,6 +42,8 @@ use crate::{
     outbound::DhtOutboundError,
     version::DhtProtocolVersion,
 };
+
+const DOMAIN_SEPARATION_CHALLENGE_LABEL: &str = "com.tari.comms.dht.crypt.message_parts";
 
 #[derive(Debug, Clone, Zeroize)]
 #[zeroize(drop)]
@@ -89,8 +91,8 @@ pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Vec<u8> {
 }
 
 /// Generates a 32-byte hashed challenge that commits to the message header and body
-pub fn create_message_challenge(header: &DhtMessageHeader, body: &[u8]) -> [u8; 32] {
-    create_message_challenge_parts(
+pub fn create_message_domain_separated_hash(header: &DhtMessageHeader, body: &[u8]) -> [u8; 32] {
+    create_message_domain_separated_hash_parts(
         header.version,
         &header.destination,
         header.message_type,
@@ -102,7 +104,7 @@ pub fn create_message_challenge(header: &DhtMessageHeader, body: &[u8]) -> [u8; 
 }
 
 /// Generates a 32-byte hashed challenge that commits to all message parts
-pub fn create_message_challenge_parts(
+pub fn create_message_domain_separated_hash_parts(
     protocol_version: DhtProtocolVersion,
     destination: &NodeDestination,
     message_type: DhtMessageType,
@@ -111,14 +113,10 @@ pub fn create_message_challenge_parts(
     ephemeral_public_key: Option<&CommsPublicKey>,
     body: &[u8],
 ) -> [u8; 32] {
-    let mut mac_challenge = Challenge::new();
-    mac_challenge.update(&protocol_version.as_bytes());
-    mac_challenge.update(destination.to_inner_bytes());
-    mac_challenge.update(&(message_type as i32).to_le_bytes());
-    mac_challenge.update(&flags.bits().to_le_bytes());
+    // get byte representation of `expires` input
     let expires = expires.map(|t| t.as_u64().to_le_bytes()).unwrap_or_default();
-    mac_challenge.update(&expires);
 
+    // get byte representation of `ephemeral_public_key`
     let e_pk = ephemeral_public_key
         .map(|e_pk| {
             let mut buf = [0u8; 32];
@@ -127,10 +125,25 @@ pub fn create_message_challenge_parts(
             buf
         })
         .unwrap_or_default();
-    mac_challenge.update(&e_pk);
 
-    mac_challenge.update(&body);
-    mac_challenge.finalize_fixed().into()
+    // we digest the given data into a domain independent hash function to produce a signature
+    // use of the hashing API for domain separation and deal with variable length input
+    let domain_separated_hash =
+        DomainSeparatedHasher::<Challenge, GenericHashDomain>::new(DOMAIN_SEPARATION_CHALLENGE_LABEL)
+            .chain(&protocol_version.as_bytes())
+            .chain(destination.to_inner_bytes())
+            .chain(&(message_type as i32).to_le_bytes())
+            .chain(&flags.bits().to_le_bytes())
+            .chain(&expires)
+            .chain(&e_pk)
+            .chain(&body)
+            .finalize()
+            .into_vec();
+
+    let mut output = [0u8; 32];
+    // the use of Challenge bind to Blake256, should always produce a 32-byte length output data
+    output.copy_from_slice(domain_separated_hash.as_slice());
+    output
 }
 
 #[cfg(test)]

@@ -85,7 +85,7 @@ pub fn make_dht_header(
     let mut origin_mac = Vec::new();
 
     if include_origin {
-        let challenge = crypt::create_message_challenge_parts(
+        let bind_data_challenge = crypt::create_message_domain_separated_hash_parts(
             DhtProtocolVersion::latest(),
             &destination,
             DhtMessageType::None,
@@ -94,7 +94,7 @@ pub fn make_dht_header(
             Some(e_public_key),
             message,
         );
-        origin_mac = make_valid_origin_mac(node_identity, &challenge);
+        origin_mac = make_valid_origin_mac(node_identity, &bind_data_challenge);
         if flags.is_encrypted() {
             let shared_secret = crypt::generate_ecdh_secret(e_secret_key, node_identity.public_key());
             origin_mac = crypt::encrypt(&shared_secret, &origin_mac);

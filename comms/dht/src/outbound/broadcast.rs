@@ -499,7 +499,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Encrypt the message with the body
                 let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body);
 
-                let mac_challenge = crypt::create_message_challenge_parts(
+                let hash_data = crypt::create_message_domain_separated_hash_parts(
                     self.protocol_version,
                     destination,
                     message_type,
@@ -510,7 +510,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 );
                 // Sign the encrypted message
                 let origin_mac =
-                    OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_challenge).to_proto();
+                    OriginMac::new_signed(self.node_identity.secret_key().clone(), &hash_data).to_proto();
                 // Encrypt and set the origin field
                 let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac.to_encoded_bytes());
                 Ok((
@@ -523,7 +523,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
-                    let mac_challenge = crypt::create_message_challenge_parts(
+                    let hash_data = crypt::create_message_domain_separated_hash_parts(
                         self.protocol_version,
                         destination,
                         message_type,
@@ -533,7 +533,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         &body,
                     );
                     let origin_mac =
-                        OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_challenge).to_proto();
+                        OriginMac::new_signed(self.node_identity.secret_key().clone(), &hash_data).to_proto();
                     Ok((None, Some(origin_mac.to_encoded_bytes().into()), body))
                 } else {
                     Ok((None, None, body))
