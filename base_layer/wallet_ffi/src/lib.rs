@@ -9626,7 +9626,7 @@ mod test {
             );
 
             (0..10).for_each(|i| {
-                let (_, uout) = create_test_input((1000 * i).into(), 0, &PedersenCommitmentFactory::default());
+                let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
@@ -9737,7 +9737,7 @@ mod test {
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &PedersenCommitmentFactory::default()).1,
+                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
                         None,
                     ))
                     .unwrap();
@@ -9928,7 +9928,7 @@ mod test {
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &PedersenCommitmentFactory::default()).1,
+                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
                         None,
                     ))
                     .unwrap();

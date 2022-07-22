@@ -14,9 +14,9 @@ use tari_wallet::transaction_service::storage::models::{
 pub use self::wallet_grpc_server::*;
 
 pub enum TransactionWrapper {
-    Completed(CompletedTransaction),
-    Outbound(OutboundTransaction),
-    Inbound(InboundTransaction),
+    Completed(Box<CompletedTransaction>),
+    Outbound(Box<OutboundTransaction>),
+    Inbound(Box<InboundTransaction>),
 }
 
 pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -> TransactionEvent {
@@ -55,11 +55,7 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             /// The coinbase are technically Inbound.
             /// To determine whether a transaction is coinbase
             /// we will check whether the message contains `Coinbase`.
-            is_coinbase: if inbound.message.to_lowercase().contains("coinbase") {
-                true
-            } else {
-                false
-            },
+            is_coinbase: inbound.message.to_lowercase().contains("coinbase"),
         },
     }
 }

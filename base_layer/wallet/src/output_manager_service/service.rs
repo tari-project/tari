@@ -49,8 +49,8 @@ use tari_core::{
             KernelFeatures,
             OutputFeatures,
             Transaction,
-            TransactionInput,
             TransactionError,
+            TransactionInput,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
@@ -1410,7 +1410,7 @@ where
         let (_, accumulated_amount, utxos) = self
             .resources
             .db
-            .fetch_unspent_outputs_for_spending(selection_criteria.clone(), target_amount, tip_height)?
+            .fetch_unspent_outputs_for_spending(&selection_criteria, target_amount, tip_height)?
             .into_iter()
             .fold_while(
                 (1usize, MicroTari::zero(), Vec::<DbUnblindedOutput>::new()),
@@ -1567,7 +1567,7 @@ where
                 1,
                 uo.len(),
                 num_outputs + 1,
-                output_metadata_byte_size + default_metadata_size,
+                total_output_metadata_byte_size + default_metadata_size,
             );
 
             // If the initial selection was not able to select enough UTXOs, fill in the difference with standard UTXOs
@@ -1680,7 +1680,7 @@ where
         fee_per_gram: MicroTari,
     ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
-            UtxoSelectionCriteria::specific(commitments),
+            &UtxoSelectionCriteria::specific(commitments),
             MicroTari::zero(),
             None,
         )?;
@@ -1713,7 +1713,7 @@ where
         }
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
-            UtxoSelectionCriteria::specific(commitments),
+            &UtxoSelectionCriteria::specific(commitments),
             MicroTari::zero(),
             None,
         )?;
@@ -1758,7 +1758,7 @@ where
         }
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
-            UtxoSelectionCriteria::specific(commitments),
+            &UtxoSelectionCriteria::specific(commitments),
             MicroTari::zero(),
             None,
         )?;
@@ -1881,15 +1881,23 @@ where
 
             let noop_script = script!(Nop);
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            let output_features = OutputFeatures {
-                recovery_byte: self.calculate_recovery_byte(spending_key.clone(), accumulated_amount.as_u64(), true)?,
-                ..Default::default()
-            };
+            let output_features = OutputFeatures::default();
 
             // generating sender's keypair
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+            let commitment = self
+                .resources
+                .factories
+                .commitment
+                .commit_value(&spending_key, amount_per_split.into());
+            let encrypted_value = EncryptedValue::encrypt_value(
+                &self.resources.rewind_data.encryption_key,
+                &commitment,
+                amount_per_split,
+            )?;
 
+            let minimum_amount_promise = MicroTari::zero();
             let commitment_signature = TransactionOutput::create_final_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
                 amount_per_split,
@@ -1898,6 +1906,8 @@ where
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
+                &encrypted_value,
+                minimum_amount_promise,
             )?;
 
             let output = DbUnblindedOutput::rewindable_from_unblinded_output(
@@ -1912,6 +1922,8 @@ where
                     commitment_signature,
                     0,
                     covenant.clone(),
+                    encrypted_value,
+                    minimum_amount_promise,
                 ),
                 &self.resources.factories,
                 &self.resources.rewind_data.clone(),
@@ -2097,9 +2109,12 @@ where
                 .resources
                 .factories
                 .commitment
-                .commit_value(&spending_key, output_amount.into());
-            let encrypted_value =
-                EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, output_amount)?;
+                .commit_value(&spending_key, amount_per_split.into());
+            let encrypted_value = EncryptedValue::encrypt_value(
+                &self.resources.rewind_data.encryption_key,
+                &commitment,
+                amount_per_split,
+            )?;
             let minimum_value_promise = MicroTari::zero();
             let commitment_signature = TransactionOutput::create_final_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
@@ -2232,7 +2247,7 @@ where
         let default_metadata_size = self.default_metadata_size();
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
-            UtxoSelectionCriteria::specific(commitments),
+            &UtxoSelectionCriteria::specific(commitments),
             MicroTari::zero(),
             None,
         )?;
@@ -2293,15 +2308,19 @@ where
 
         // initializing primary output
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let output_features = OutputFeatures {
-            recovery_byte: self.calculate_recovery_byte(spending_key.clone(), accumulated_amount.as_u64(), true)?,
-            ..Default::default()
-        };
+        let output_features = OutputFeatures::default();
 
         // generating sender's keypair
         let sender_offset_private_key = PrivateKey::random(&mut OsRng);
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spending_key, aftertax_amount.into());
+        let encrypted_value =
+            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, aftertax_amount)?;
+        let minimum_value_promise = MicroTari::zero();
         let commitment_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             aftertax_amount,
@@ -2310,6 +2329,8 @@ where
             &output_features,
             &sender_offset_private_key,
             &covenant,
+            &encrypted_value,
+            minimum_value_promise,
         )?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
@@ -2324,6 +2345,8 @@ where
                 commitment_signature,
                 0,
                 covenant.clone(),
+                encrypted_value,
+                minimum_value_promise,
             ),
             &self.resources.factories,
             &self.resources.rewind_data.clone(),

@@ -28,8 +28,6 @@ use std::{
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::OutputType;
 
-use crate::output_manager_service::storage::models::DbUnblindedOutput;
-
 #[derive(Debug, Clone, Default)]
 pub struct UtxoSelectionCriteria {
     pub filter: UtxoSelectionFilter,
@@ -51,13 +49,6 @@ impl UtxoSelectionCriteria {
             filter: UtxoSelectionFilter::Standard,
             ordering: UtxoSelectionOrdering::LargestFirst,
             ..Default::default()
-        }
-    }
-
-    pub fn smallest_first() -> Self {
-        Self {
-            filter: UtxoSelectionFilter::Standard,
-            ordering: UtxoSelectionOrdering::SmallestFirst,
         }
     }
 
@@ -85,6 +76,7 @@ impl UtxoSelectionCriteria {
         Self {
             filter: UtxoSelectionFilter::SpecificOutputs { commitments },
             ordering: UtxoSelectionOrdering::Default,
+            ..Default::default()
         }
     }
 }

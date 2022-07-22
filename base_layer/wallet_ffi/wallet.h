@@ -8,11 +8,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/**
- * The number of unique fields available. This always matches the number of variants in `OutputField`.
- */
-#define OutputFields_NUM_FIELDS 10
-
 enum TariTypeTag {
   Text = 0,
   Utxo = 1,
@@ -292,7 +287,7 @@ typedef struct Balance TariBalance;
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
-typedef struct FeePerGramStat TariFeePerGramStat;
+typedef FeePerGramStat TariFeePerGramStat;
 
 struct TariUtxo {
   const char *commitment;

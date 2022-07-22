@@ -49,6 +49,8 @@ pub const CANCELLED: &str = "cancelled";
 pub const NEW_BLOCK_MINED: &str = "new_block_mined";
 
 #[derive(Clone)]
+// FIXME
+#[allow(clippy::large_enum_variant)]
 pub enum WalletEventMessage {
     Completed {
         event: String,

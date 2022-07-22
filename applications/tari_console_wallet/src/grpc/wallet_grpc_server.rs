@@ -96,9 +96,8 @@ use tari_app_grpc::{
     },
 };
 use tari_common_types::{
-    array::copy_into_fixed_array,
     transaction::TxId,
-    types::{BlockHash, PublicKey, Signature, FixedHash},
+    types::{BlockHash, FixedHash, PublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
@@ -616,11 +615,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                     use tari_wallet::transaction_service::handle::TransactionEvent::*;
                                     match (*msg).clone() {
                                         NewBlockMined(tx_id) => {
-                                            match transaction_service.get_any_transaction(tx_id).await{
+                                            match transaction_service.get_any_transaction(tx_id).await {
                                                 Ok(found_transaction) => {
                                                     if let Some(WalletTransaction::PendingOutbound(tx)) = found_transaction {
                                                         let transaction_event = convert_to_transaction_event(NEW_BLOCK_MINED.to_string(),
-                                                            TransactionWrapper::Outbound(tx.clone()));
+                                                            TransactionWrapper::Outbound(Box::new(tx)));
                                                         send_transaction_event(transaction_event, &mut sender).await;
                                                     }
 
@@ -636,9 +635,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                                 Ok(Some(wallet_tx)) => {
                                                     use WalletTransaction::*;
                                                     let transaction_event = match wallet_tx {
-                                                        Completed(tx)  => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Completed(tx)),
-                                                        PendingInbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Inbound(tx)),
-                                                        PendingOutbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Outbound(tx)),
+                                                        Completed(tx)  => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Completed(Box::new(tx))),
+                                                        PendingInbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Inbound(Box::new(tx))),
+                                                        PendingOutbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Outbound(Box::new(tx))),
                                                     };
                                                     send_transaction_event(transaction_event, &mut sender).await;
                                                 },
@@ -1222,7 +1221,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let contents = fs::read_to_string(file_path)?;
         let words = contents
-            .split(" ")
+            .split(' ')
             .collect::<Vec<&str>>()
             .iter()
             .map(|&x| x.into())
@@ -1260,7 +1259,7 @@ async fn handle_completed_tx(
     match transaction_service.get_completed_transaction(tx_id).await {
         Ok(completed) => {
             let transaction_event =
-                convert_to_transaction_event(event.to_string(), TransactionWrapper::Completed(completed));
+                convert_to_transaction_event(event.to_string(), TransactionWrapper::Completed(Box::new(completed)));
             send_transaction_event(transaction_event, sender).await;
         },
         Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
@@ -1274,10 +1273,10 @@ async fn handle_pending_outbound(
     sender: &mut Sender<Result<TransactionEventResponse, Status>>,
 ) {
     match transaction_service.get_pending_outbound_transactions().await {
-        Ok(txs) => {
-            if let Some(tx) = txs.get(&tx_id) {
+        Ok(mut txs) => {
+            if let Some(tx) = txs.remove(&tx_id) {
                 let transaction_event =
-                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(tx.clone()));
+                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx)));
                 send_transaction_event(transaction_event, sender).await;
             } else {
                 error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);

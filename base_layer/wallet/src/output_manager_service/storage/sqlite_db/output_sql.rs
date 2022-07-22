@@ -227,8 +227,7 @@ impl OutputSql {
                     0 => query,
                     1 => query.filter(outputs::commitment.eq(commitments[0].to_vec())),
                     _ => query.filter(
-                        outputs::commitment
-                            .eq_any::<Vec<Vec<u8>>>(commitments.into_iter().map(|c| c.to_vec()).collect()),
+                        outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
                     ),
                 };
             },
