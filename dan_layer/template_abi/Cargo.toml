@@ -1,5 +1,5 @@
 [package]
-name = "tari_smart_contract_abi"
+name = "tari_template_abi"
 version = "0.1.0"
 edition = "2021"
 

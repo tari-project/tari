@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_smart_contract_abi = { path = "../../../smart_contract_abi" }
+tari_template_abi = { path = "../../../template_abi" }
 
 [profile.release]
 opt-level = 's'     # Optimize for size.

@@ -23,7 +23,7 @@
 use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_smart_contract_abi::{encode_into, CallInfo};
+use tari_template_abi::{encode_into, CallInfo};
 use wasmer::{Module, Val};
 
 use crate::{
@@ -48,7 +48,7 @@ pub struct ExecutionResult {
 
 impl ExecutionResult {
     pub fn decode<T: BorshDeserialize>(&self) -> io::Result<T> {
-        tari_smart_contract_abi::decode(&self.raw)
+        tari_template_abi::decode(&self.raw)
     }
 }
 

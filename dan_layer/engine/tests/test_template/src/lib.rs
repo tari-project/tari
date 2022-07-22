@@ -27,7 +27,7 @@ use std::{mem, ptr::copy, vec::Vec};
 // TODO: Macro generated code
 #[no_mangle]
 extern "C" fn TestTemplate_abi() -> *mut u8 {
-    use tari_smart_contract_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
+    use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
 
     let template = TemplateDef {
         template_name: "TestTemplate".to_string(),
@@ -44,7 +44,7 @@ extern "C" fn TestTemplate_abi() -> *mut u8 {
 
 #[no_mangle]
 extern "C" fn TestTemplate_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-    use tari_smart_contract_abi::{decode, encode_with_len, CallInfo};
+    use tari_template_abi::{decode, encode_with_len, CallInfo};
     if call_info.is_null() {
         panic!("call_info is null");
     }

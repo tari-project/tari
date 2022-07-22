@@ -24,7 +24,7 @@ use std::{cell::Cell, collections::HashMap, convert::TryInto};
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::types::FixedHash;
-use tari_smart_contract_abi::TemplateDef;
+use tari_template_abi::TemplateDef;
 use wasmer::{imports, Extern, Function, Instance, Memory, Module, Store, Val};
 
 use crate::{crypto, wasm::LoadedWasmModule};
@@ -111,7 +111,7 @@ fn initialize_and_load_template_abi(instance: &Instance) -> Result<TemplateDef, 
     // Load ABI from memory
     let memory = instance.exports.get_memory("memory")?;
     let data = copy_abi_data_from_memory_checked(memory, ptr)?;
-    let decoded = tari_smart_contract_abi::decode(&data).map_err(|_| PackageError::AbiDecodeError)?;
+    let decoded = tari_template_abi::decode(&data).map_err(|_| PackageError::AbiDecodeError)?;
     Ok(decoded)
 }
 
