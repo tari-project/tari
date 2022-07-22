@@ -28,7 +28,11 @@ use chacha20::{
     Key,
     Nonce,
 };
-use chacha20poly1305::{self, ChaCha20Poly1305};
+use chacha20poly1305::{
+    self,
+    aead::{Aead, NewAead},
+    ChaCha20Poly1305,
+};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::types::{Challenge, CommsPublicKey};
 use tari_crypto::{
@@ -118,15 +122,11 @@ pub fn decrypt_with_chacha20_poly1305(
     let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
 
     let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
-    let mut cipher_signature = cipher_signature.to_vec();
 
-    let mut cipher = ChaCha20Poly1305::new(&cipher_key.0);
-    cipher
-        .decrypt_in_plac(nonce_ga, cipher_signature)
-        .map_err(DhtOutboundError::CipherError(String::from(
-            "Authenticated decryption failed",
-        )))?;
-    Ok(cipher_signature)
+    let cipher = ChaCha20Poly1305::new(&cipher_key.0);
+    let decrypted_signature = cipher.decrypt(nonce_ga, cipher_signature).map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated decryption failed")))?;
+
+    Ok(decrypted_signature)
 }
 
 /// Encrypt the plain text using the ChaCha20 stream cipher
@@ -153,19 +153,16 @@ pub fn encrypt_with_chacha20_poly1305(
     cipher_key: &AuthenticatedCipherKey,
     signature: &[u8],
 ) -> Result<Vec<u8>, DhtOutboundError> {
-    let mut nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
+    let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
 
     let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
-    let mut cipher = ChaCha20Poly1305::new(&cipher_key.0);
+    let cipher = ChaCha20Poly1305::new(&cipher_key.0);
 
-    let mut buf = vec![0u8; signature.len()];
-    buf.copy_from_slice(signature);
-    cipher
-        .encrypt_in_place(nonce_ga, &mut buf)
-        .map_err(DhtOutboundError::CipherError(String::from(
-            "Authenticated encryption failed",
-        )))?;
-    Ok(buf)
+    let encrypted = cipher
+        .encrypt(nonce_ga, signature)
+        .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated encryption failed")))?;
+    
+    Ok(encrypted)
 }
 
 /// Generates a 32-byte hashed challenge that commits to the message header and body
@@ -191,7 +188,6 @@ pub fn create_message_challenge_parts(
     ephemeral_public_key: Option<&CommsPublicKey>,
     body: &[u8],
 ) -> [u8; 32] {
-    // TODO: add domain separation here
     // get byte representation of `expires` input
     let expires = expires.map(|t| t.as_u64().to_le_bytes()).unwrap_or_default();
 

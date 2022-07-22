@@ -36,7 +36,6 @@ use tower::{layer::Layer, Service, ServiceExt};
 
 use crate::{
     crypt,
-    crypt::CipherKey,
     envelope::DhtMessageHeader,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
     origin_mac::{OriginMac, OriginMacError, ProtoOriginMac},

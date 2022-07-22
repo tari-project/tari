@@ -706,7 +706,7 @@ mod test {
             false,
             MessageTag::new(),
             false,
-        );
+        ).unwrap();
 
         let since = Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap();
         let mut message = DecryptedDhtMessage::succeeded(
@@ -767,7 +767,7 @@ mod test {
             .add_message(make_stored_message(
                 msg1.clone(),
                 &node_identity,
-                dht_header.unwrap().clone(),
+                dht_header.clone(),
                 msg1_time.naive_utc(),
             ))
             .await;
@@ -780,7 +780,7 @@ mod test {
             .add_message(make_stored_message(
                 msg2.clone(),
                 &node_identity,
-                dht_header.unwrap(),
+                dht_header,
                 msg2_time.naive_utc(),
             ))
             .await;
