@@ -248,8 +248,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Ok(origin_mac) => {
                 // If this fails, discard the message because we decrypted and deserialized the message with our shared
                 // ECDH secret but the message could not be authenticated
-                let msg_challenge = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
-                Self::authenticate_origin_mac(&origin_mac, &msg_challenge)?;
+                let binding_message_representation = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
+                Self::authenticate_origin_mac(&origin_mac, &binding_message_representation)?;
                 origin_mac.into_signer_public_key()
             },
             Err(err) => {
@@ -385,9 +385,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(|_| DecryptionError::OriginMacClearTextDecodeFailed)?
                 .try_into()?;
 
-            let hash_data = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
+            let binding_message_representation = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
 
-            Self::authenticate_origin_mac(&origin_mac, &hash_data)?;
+            Self::authenticate_origin_mac(&origin_mac, &binding_message_representation)?;
             Some(origin_mac.into_signer_public_key())
         };
 

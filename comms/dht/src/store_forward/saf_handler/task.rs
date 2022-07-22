@@ -601,9 +601,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let origin_mac = ProtoOriginMac::decode(cleartext_origin_mac_body)?;
         let origin_mac = OriginMac::try_from(origin_mac)?;
 
-        let hash_data = crypt::create_message_domain_separated_hash(header, body);
+        let binding_message_representation = crypt::create_message_domain_separated_hash(header, body);
 
-        if origin_mac.verify(&hash_data) {
+        if origin_mac.verify(&binding_message_representation) {
             Ok(origin_mac.into_signer_public_key())
         } else {
             Err(StoreAndForwardError::InvalidOriginMac(

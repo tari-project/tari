@@ -499,7 +499,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Encrypt the message with the body
                 let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body);
 
-                let hash_data = crypt::create_message_domain_separated_hash_parts(
+                let binding_message_representation = crypt::create_message_domain_separated_hash_parts(
                     self.protocol_version,
                     destination,
                     message_type,
@@ -509,9 +509,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     &encrypted_body,
                 );
                 // Sign the encrypted message
-                let origin_mac = OriginMac::new_signed(self.node_identity.secret_key().clone(), &hash_data).to_proto();
+                let signature = OriginMac::new_signed(self.node_identity.secret_key().clone(), &binding_message_representation).to_proto();
                 // Encrypt and set the origin field
-                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac.to_encoded_bytes());
+                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &signature.to_encoded_bytes());
                 Ok((
                     Some(Arc::new(e_public_key)),
                     Some(encrypted_origin_mac.into()),
@@ -522,7 +522,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
-                    let hash_data = crypt::create_message_domain_separated_hash_parts(
+                    let binding_message_representation = crypt::create_message_domain_separated_hash_parts(
                         self.protocol_version,
                         destination,
                         message_type,
@@ -531,9 +531,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         None,
                         &body,
                     );
-                    let origin_mac =
-                        OriginMac::new_signed(self.node_identity.secret_key().clone(), &hash_data).to_proto();
-                    Ok((None, Some(origin_mac.to_encoded_bytes().into()), body))
+                    let signature =
+                        OriginMac::new_signed(self.node_identity.secret_key().clone(), &binding_message_representation).to_proto();
+                    Ok((None, Some(signature.to_encoded_bytes().into()), body))
                 } else {
                     Ok((None, None, body))
                 }
