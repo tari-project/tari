@@ -10,6 +10,13 @@ pub mod models;
 pub mod state;
 pub mod wasm;
 
+pub mod compile;
+pub mod crypto;
+pub mod env;
+pub mod instruction;
+pub mod package;
+pub mod traits;
+
 /// The DAN layer engine domain separated hashing domain
 /// Usage:
 ///   let hash = dan_layer_engine_hash_domain().digest::<Blake256>(b"my secret");
