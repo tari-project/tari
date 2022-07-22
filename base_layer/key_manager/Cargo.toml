@@ -12,6 +12,7 @@ crate-type = ["lib", "cdylib"]
 
 [dependencies]
 tari_common_types = { version = "^0.34", path = "../../base_layer/common_types" }
+tari_common = {path = "../../common"}
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.0" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
 

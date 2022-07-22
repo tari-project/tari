@@ -9,6 +9,7 @@ license = "BSD-3-Clause"
 [dependencies]
 prost = "0.9"
 prost-types = "0.9"
+tari_common = { path = "../../common", features = ["build"] }
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build"] }
