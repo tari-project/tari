@@ -122,14 +122,16 @@ impl NewOutputSql {
 
 impl Encryptable<Aes256Gcm> for NewOutputSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        self.spending_key = encrypt_bytes_integral_nonce(cipher, self.spending_key.clone())?;
-        self.script_private_key = encrypt_bytes_integral_nonce(cipher, self.script_private_key.clone())?;
+        self.spending_key = encrypt_bytes_integral_nonce(cipher, "outputsql_spending_key", self.spending_key.clone())?;
+        self.script_private_key =
+            encrypt_bytes_integral_nonce(cipher, "outputsql_private_key", self.script_private_key.clone())?;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        self.spending_key = decrypt_bytes_integral_nonce(cipher, self.spending_key.clone())?;
-        self.script_private_key = decrypt_bytes_integral_nonce(cipher, self.script_private_key.clone())?;
+        self.spending_key = decrypt_bytes_integral_nonce(cipher, "outputsql_spending_key", self.spending_key.clone())?;
+        self.script_private_key =
+            decrypt_bytes_integral_nonce(cipher, "outputsql_private_key", self.script_private_key.clone())?;
         Ok(())
     }
 }

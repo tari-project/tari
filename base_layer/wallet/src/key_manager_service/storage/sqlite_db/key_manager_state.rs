@@ -152,13 +152,15 @@ pub struct KeyManagerStateUpdateSql {
 
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_index = encrypt_bytes_integral_nonce(cipher, self.primary_key_index.clone())?;
+        let encrypted_index =
+            encrypt_bytes_integral_nonce(cipher, "key_manager_primary_key_index", self.primary_key_index.clone())?;
         self.primary_key_index = encrypted_index;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let decrypted_index = decrypt_bytes_integral_nonce(cipher, self.primary_key_index.clone())?;
+        let decrypted_index =
+            decrypt_bytes_integral_nonce(cipher, "key_manager_primary_key_index", self.primary_key_index.clone())?;
         self.primary_key_index = decrypted_index;
 
         Ok(())
@@ -167,7 +169,8 @@ impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
 
 impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_index = encrypt_bytes_integral_nonce(cipher, self.primary_key_index.clone())?;
+        let encrypted_index =
+            encrypt_bytes_integral_nonce(cipher, "key_manager_primary_key_index", self.primary_key_index.clone())?;
         self.primary_key_index = encrypted_index;
         Ok(())
     }

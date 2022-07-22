@@ -1444,7 +1444,11 @@ impl InboundTransactionSql {
 
 impl Encryptable<Aes256Gcm> for InboundTransactionSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.receiver_protocol.as_bytes().to_vec())?;
+        let encrypted_protocol = encrypt_bytes_integral_nonce(
+            cipher,
+            "inbound_transaction",
+            self.receiver_protocol.as_bytes().to_vec(),
+        )?;
         self.receiver_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
@@ -1452,6 +1456,7 @@ impl Encryptable<Aes256Gcm> for InboundTransactionSql {
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
+            "inbound_transaction",
             from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
@@ -1614,7 +1619,8 @@ impl OutboundTransactionSql {
 
 impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.sender_protocol.as_bytes().to_vec())?;
+        let encrypted_protocol =
+            encrypt_bytes_integral_nonce(cipher, "outbound_transaction", self.sender_protocol.as_bytes().to_vec())?;
         self.sender_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
@@ -1622,6 +1628,7 @@ impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
+            "outbound_transaction",
             from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
@@ -1942,7 +1949,11 @@ impl CompletedTransactionSql {
 
 impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.transaction_protocol.as_bytes().to_vec())?;
+        let encrypted_protocol = encrypt_bytes_integral_nonce(
+            cipher,
+            "completed_transaction",
+            self.transaction_protocol.as_bytes().to_vec(),
+        )?;
         self.transaction_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
@@ -1950,6 +1961,7 @@ impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
+            "completed_transaction",
             from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
