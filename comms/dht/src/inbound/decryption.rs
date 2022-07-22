@@ -318,7 +318,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn attempt_decrypt_origin_mac(
-        shared_secret: &CipherKey,
+        shared_secret: &[u8],
         dht_header: &DhtMessageHeader,
     ) -> Result<OriginMac, DecryptionError> {
         let encrypted_origin_mac = Some(&dht_header.origin_mac)
@@ -326,7 +326,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // This should not have been sent/propagated
             .ok_or( DecryptionError::OriginMacNotProvided)?;
 
-        let decrypted_bytes = crypt::decrypt(shared_secret, encrypted_origin_mac)
+        // obtain key signature for authenticated decrypt signature
+        let key_signature = crypt::generate_key_signature_for_authenticated_encryption(shared_secret);
+        let decrypted_bytes = crypt::decrypt_with_chacha20_poly1305(&key_signature, encrypted_origin_mac)
             .map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
         let origin_mac = ProtoOriginMac::decode(decrypted_bytes.as_slice())
             .map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
@@ -344,11 +346,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn attempt_decrypt_message_body(
-        shared_secret: &CipherKey,
+        shared_secret: &[u8],
         message_body: &[u8],
     ) -> Result<EnvelopeBody, DecryptionError> {
+        let key_message = crypt::generate_key_message(shared_secret);
         let decrypted =
-            crypt::decrypt(shared_secret, message_body).map_err(|_| DecryptionError::MessageBodyDecryptionFailed)?;
+            crypt::decrypt(&key_message, message_body).map_err(|_| DecryptionError::MessageBodyDecryptionFailed)?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
         EnvelopeBody::decode(decrypted.as_slice())
@@ -472,7 +475,8 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             true,
-        );
+        )
+        .unwrap();
 
         block_on(service.call(inbound_msg)).unwrap();
         let decrypted = result.lock().unwrap().take().unwrap();
@@ -502,7 +506,8 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             true,
-        );
+        )
+        .unwrap();
 
         block_on(service.call(inbound_msg.clone())).unwrap();
         let decrypted = result.lock().unwrap().take().unwrap();
@@ -529,7 +534,7 @@ mod test {
 
         let nonsense = b"Cannot Decrypt this".to_vec();
         let inbound_msg =
-            make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true, true);
+            make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true, true).unwrap();
 
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();
@@ -560,7 +565,8 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             false,
-        );
+        )
+        .unwrap();
 
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();

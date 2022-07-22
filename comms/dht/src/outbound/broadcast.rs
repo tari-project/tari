@@ -496,10 +496,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Generate ephemeral public/private key pair and ECDH shared secret
                 let (e_secret_key, e_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
                 let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_secret_key, &**public_key);
-                // Encrypt the message with the body
-                let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body);
 
-                let mac_challenge = crypt::create_message_challenge_parts(
+                // Generate key message for encryption of message
+                let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
+                // Encrypt the message with the body with key message above
+                let encrypted_body = crypt::encrypt(&key_message, &body);
+
+                // Produce domain separated signature signature
+                let mac_signature = crypt::create_message_challenge_parts(
                     self.protocol_version,
                     destination,
                     message_type,
@@ -508,14 +512,22 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     Some(&e_public_key),
                     &encrypted_body,
                 );
+
+                // Generate key signature for encryption of signature
+                let key_signature =
+                    crypt::generate_key_signature_for_authenticated_encryption(&shared_ephemeral_secret);
+
                 // Sign the encrypted message
                 let origin_mac =
-                    OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_challenge).to_proto();
-                // Encrypt and set the origin field
-                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac.to_encoded_bytes());
+                    OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_signature).to_proto();
+
+                // Perform authenticated encryption with ChaCha20-Poly1305 and set the origin field
+                let authenticated_encrypt_signature =
+                    crypt::encrypt_with_chacha20_poly1305(&key_signature, &origin_mac.to_encoded_bytes())?;
+
                 Ok((
                     Some(Arc::new(e_public_key)),
-                    Some(encrypted_origin_mac.into()),
+                    Some(authenticated_encrypt_signature.into()),
                     encrypted_body.into(),
                 ))
             },

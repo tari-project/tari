@@ -488,7 +488,8 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             false,
-        );
+        )
+        .unwrap();
         let msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(Vec::new()), None, inbound_msg);
         service.call(msg).await.unwrap();
         assert!(spy.is_called());
@@ -513,7 +514,8 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             false,
-        );
+        )
+        .unwrap();
         let msg = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(b"secret".to_vec()),
             Some(msg_node_identity.public_key().clone()),
@@ -542,7 +544,8 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             false,
-        );
+        )
+        .unwrap();
         inbound_msg.dht_header.destination =
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
         let msg = DecryptedDhtMessage::failed(inbound_msg.clone());
@@ -584,7 +587,8 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             false,
-        );
+        )
+        .unwrap();
         inbound_msg.dht_header.destination =
             NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
         let msg_banned = DecryptedDhtMessage::failed(inbound_msg.clone());

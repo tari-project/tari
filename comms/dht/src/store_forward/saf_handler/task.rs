@@ -567,7 +567,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 header.origin_mac.len()
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
-            let decrypted = crypt::decrypt(&shared_secret, &header.origin_mac)?;
+            let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
+            let decrypted = crypt::decrypt_with_chacha20_poly1305(&key_signature, &header.origin_mac)?;
             let authenticated_pk = Self::authenticate_message(&decrypted, header, body)?;
 
             trace!(
@@ -575,7 +576,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Attempting to decrypt message body ({} byte(s))",
                 body.len()
             );
-            let decrypted_bytes = crypt::decrypt(&shared_secret, body)?;
+
+            let key_message = crypt::generate_key_message(&shared_secret);
+            let decrypted_bytes = crypt::decrypt(&key_message, body)?;
             let envelope_body =
                 EnvelopeBody::decode(decrypted_bytes.as_slice()).map_err(|_| StoreAndForwardError::DecryptionFailed)?;
             if envelope_body.is_empty() {
@@ -715,7 +718,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafRequestMessages;
 
@@ -763,7 +767,7 @@ mod test {
             .add_message(make_stored_message(
                 msg1.clone(),
                 &node_identity,
-                dht_header.clone(),
+                dht_header.unwrap().clone(),
                 msg1_time.naive_utc(),
             ))
             .await;
@@ -776,7 +780,7 @@ mod test {
             .add_message(make_stored_message(
                 msg2.clone(),
                 &node_identity,
-                dht_header,
+                dht_header.unwrap(),
                 msg2_time.naive_utc(),
             ))
             .await;
@@ -840,7 +844,7 @@ mod test {
         let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
 
         let inbound_msg_a =
-            make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED, true, false);
+            make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
@@ -849,7 +853,7 @@ mod test {
 
         let msg_b = &wrap_in_envelope_body!(b"B".to_vec()).to_encoded_bytes();
         let inbound_msg_b =
-            make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED, true, false);
+            make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_b.source_peer))
@@ -874,6 +878,7 @@ mod test {
             false,
             false,
         )
+        .unwrap()
         .dht_header;
         let msg_clear_time = Utc::now()
             .checked_sub_signed(chrono::Duration::from_std(Duration::from_secs(120)).unwrap())
@@ -892,7 +897,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
@@ -960,7 +966,8 @@ mod test {
         let node_identity = make_node_identity();
 
         let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
-        let inbound_msg_a = make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false);
+        let inbound_msg_a =
+            make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
             .await
@@ -985,7 +992,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
@@ -1032,7 +1040,8 @@ mod test {
         let node_identity = make_node_identity();
 
         let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
-        let inbound_msg_a = make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false);
+        let inbound_msg_a =
+            make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
             .await
@@ -1057,7 +1066,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
