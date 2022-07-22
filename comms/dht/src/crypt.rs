@@ -124,7 +124,9 @@ pub fn decrypt_with_chacha20_poly1305(
     let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
 
     let cipher = ChaCha20Poly1305::new(&cipher_key.0);
-    let decrypted_signature = cipher.decrypt(nonce_ga, cipher_signature).map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated decryption failed")))?;
+    let decrypted_signature = cipher
+        .decrypt(nonce_ga, cipher_signature)
+        .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated decryption failed")))?;
 
     Ok(decrypted_signature)
 }
@@ -158,10 +160,11 @@ pub fn encrypt_with_chacha20_poly1305(
     let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
     let cipher = ChaCha20Poly1305::new(&cipher_key.0);
 
+    // length of encrypted equals signature.len() + 16 (the latter being the tag size for ChaCha20-poly1305)
     let encrypted = cipher
         .encrypt(nonce_ga, signature)
         .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated encryption failed")))?;
-    
+
     Ok(encrypted)
 }
 
@@ -247,5 +250,97 @@ mod test {
         let plain_text = decrypt(&key, &cipher_text).unwrap();
         let secret_msg = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();
         assert_eq!(plain_text, secret_msg);
+    }
+
+    #[test]
+    fn sanity_check() {
+        let domain_separated_hash =
+            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new(DOMAIN_SEPARATION_KEY_SIGNATURE_LABEL)
+                .chain(&[10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
+                .finalize()
+                .into_vec();
+
+        // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
+        let key = AuthenticatedCipherKey(*chacha20poly1305::Key::from_slice(domain_separated_hash.as_bytes()));
+
+        let signature = b"Top secret message, handle with care".as_slice();
+        let n = signature.len();
+        let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
+
+        let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
+        let cipher = ChaCha20Poly1305::new(&key.0);
+
+        let encrypted = cipher
+            .encrypt(nonce_ga, signature)
+            .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated encryption failed")))
+            .unwrap();
+
+        assert_eq!(encrypted.len(), n + 16);
+    }
+
+    #[test]
+    fn decryption_fails_in_case_tag_is_manipulated() {
+        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let key_data = generate_ecdh_secret(&sk, &pk);
+        let key = generate_key_signature_for_authenticated_encryption(&key_data);
+
+        let signature = b"Top secret message, handle with care".as_slice();
+
+        let mut encrypted = encrypt_with_chacha20_poly1305(&key, signature).unwrap();
+
+        // sanity check to validate that encrypted.len() = signature.len() + 16
+        assert_eq!(encrypted.len(), signature.len() + 16);
+
+        // manipulate tag and check that decryption fails
+        let n = encrypted.len();
+        encrypted[n - 1] += 1;
+
+        // decryption should fail
+        assert!(decrypt_with_chacha20_poly1305(&key, encrypted.as_slice())
+            .unwrap_err()
+            .to_string()
+            .contains("Authenticated decryption failed"));
+    }
+
+    #[test]
+    fn decryption_fails_in_case_body_message_is_manipulated() {
+        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let key_data = generate_ecdh_secret(&sk, &pk);
+        let key = generate_key_signature_for_authenticated_encryption(&key_data);
+
+        let signature = b"Top secret message, handle with care".as_slice();
+
+        let mut encrypted = encrypt_with_chacha20_poly1305(&key, signature).unwrap();
+
+        // manipulate encrypted message body and check that decryption fails
+        encrypted[0] += 1;
+
+        // decryption should fail
+        assert!(decrypt_with_chacha20_poly1305(&key, encrypted.as_slice())
+            .unwrap_err()
+            .to_string()
+            .contains("Authenticated decryption failed"));
+    }
+
+    #[test]
+    fn decryption_fails_if_message_sned_to_incorrect_node() {
+        let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (other_sk, other_pk) = CommsPublicKey::random_keypair(&mut OsRng);
+
+        let key_data = generate_ecdh_secret(&sk, &pk);
+        let other_key_data = generate_ecdh_secret(&other_sk, &other_pk);
+
+        let key = generate_key_signature_for_authenticated_encryption(&key_data);
+        let other_key = generate_key_signature_for_authenticated_encryption(&other_key_data);
+
+        let signature = b"Top secret message, handle with care".as_slice();
+
+        let encrypted = encrypt_with_chacha20_poly1305(&key, signature).unwrap();
+
+        // decryption should fail
+        assert!(decrypt_with_chacha20_poly1305(&other_key, encrypted.as_slice())
+            .unwrap_err()
+            .to_string()
+            .contains("Authenticated decryption failed"));
     }
 }

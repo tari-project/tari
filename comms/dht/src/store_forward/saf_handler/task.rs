@@ -706,7 +706,8 @@ mod test {
             false,
             MessageTag::new(),
             false,
-        ).unwrap();
+        )
+        .unwrap();
 
         let since = Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap();
         let mut message = DecryptedDhtMessage::succeeded(
