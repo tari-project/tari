@@ -50,86 +50,6 @@ struct Contact;
 
 struct ContactsLivenessData;
 
-/**
- * A wrapper for hash digest algorithms that produces [`DomainSeparatedHash`] instances.
- *
- * The [module documentation](crate::hashing) has details on why this is helpful.
- *
- * The API tries to be as helpful and unobtrusive as possible. Firstly, domain tags have several levels of granularity.
- * 1. The version number is fixed for a given schema of the domain tag.
- * 2. The domain represents a broad class of use cases for the hashing, e.g. MACs, or key derivation.
- * 3. The label is used to differentiate different applications of a use case. e.g. there might be two places key
- * derivation is used in your application: for wallet derived keys, and communication derived keys. These might have
- * the label "wallet-key" and "comms-key" respectively.
- *
- * [`DomainSeparatedHasher`] is useful for more generic use-cases that aren't covered by the two primary use cases
- * covered in this API (MAcs and key derivation).
- *
- * ## Examples
- *
- * Using a hash as an object ID, based on the fields of the object.
- *
- * ```
- * use sha2::Sha256;
- * use tari_crypto::hashing::{DomainSeparatedHash, DomainSeparatedHasher, GenericHashDomain};
- * use tari_utilities::hex::{to_hex, Hex};
- * struct Card {
- *     name: &'static str,
- *     strength: u8,
- * }
- *
- * fn card_id(card: &Card) -> DomainSeparatedHash {
- *     DomainSeparatedHasher::<Sha256, GenericHashDomain>::new("card_id")
- *         .chain(card.name.as_bytes())
- *         .chain(&[card.strength])
- *         .finalize()
- * }
- *
- * let card = Card {
- *     name: "Rincewind",
- *     strength: 8,
- * };
- *
- * let id = card_id(&card);
- * assert_eq!(id.domain_separation_tag(), "com.tari.generic.v1.card_id");
- * assert_eq!(
- *     to_hex(id.as_ref()),
- *     "44fb39bfdd20c93ddf542e4b2d1f4b06448aa1fa2b9c4d138d8e7bbb19aa7c65"
- * );
- * ```
- *
- * Calculating a signature challenge
- *
- * ```
- * use tari_crypto::{
- *     hash::blake2::Blake256,
- *     hashing::{DomainSeparatedHash, DomainSeparatedHasher, GenericHashDomain},
- * };
- * use tari_utilities::hex::{to_hex, Hex};
- * struct Card {
- *     name: &'static str,
- *     strength: u8,
- * }
- *
- * fn calculate_challenge(msg: &str) -> DomainSeparatedHash {
- *     DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("schnorr_challenge")
- *         .chain(msg.as_bytes())
- *         .finalize()
- * }
- *
- * let challenge = calculate_challenge("All is well.");
- * assert_eq!(
- *     challenge.domain_separation_tag(),
- *     "com.tari.generic.v1.schnorr_challenge"
- * );
- * assert_eq!(
- *     to_hex(challenge.as_ref()),
- *     "6cd8efe7d7f1673ed8cfc0ac67d6979eb50afdbf276adf5221caabfbfd01da8c"
- * );
- * ```
- */
-struct DomainSeparatedHasher_Blake256__GenericHashDomain;
-
 struct EmojiSet;
 
 struct FeePerGramStatsResponse;
@@ -227,8 +147,6 @@ typedef PublicKey TariPublicKey;
 typedef struct RistrettoSecretKey PrivateKey;
 
 typedef PrivateKey TariPrivateKey;
-
-typedef struct DomainSeparatedHasher_Blake256__GenericHashDomain TariHasher;
 
 /**
  * # A Commitment signature implementation on Ristretto
@@ -612,26 +530,6 @@ TariPublicKey *public_key_from_hex(const char *key,
                                    int *error_out);
 
 /**
- * Adds two public keys
- *
- * ## Arguments
- * `a` - The pointer to a `TariPublicKey`
- * `b` - The pointer to a `TariPublicKey`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut  TariPublicKey` - Returns a pointer to a `TariPublicKey`, which is a resulting sum of two private keys.
- * Note that it returns ptr::null_mut() if either given key is null
- *
- * # Safety
- * The `public_key_destroy()` must be called when finished with a `TariPublicKey` to prevent a memory leak
- */
-TariPublicKey *public_key_add(TariPublicKey *a,
-                              TariPublicKey *b,
-                              int *error_out);
-
-/**
  * Creates a char array from a TariPublicKey in emoji format
  *
  * ## Arguments
@@ -749,117 +647,6 @@ TariPrivateKey *private_key_generate(void);
  */
 TariPrivateKey *private_key_from_hex(const char *key,
                                      int *error_out);
-
-/**
- * Adds two private keys
- *
- * ## Arguments
- * `a` - The pointer to a TariPrivateKey
- * `b` - The pointer to a TariPrivateKey
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut  TariPublicKey` - Returns a pointer to a `TariPublicKey`, which is a resulting sum of two public keys.
- * Note that it returns ptr::null_mut() if either given key is null
- *
- * # Safety
- * The `public_key_destroy()` must be called when finished with a `TariPublicKey` to prevent a memory leak
- */
-TariPrivateKey *private_key_add(TariPrivateKey *a,
-                                TariPrivateKey *b,
-                                int *error_out);
-
-/**
- * Creates a Diffie-Hellman shared secret.
- *
- * ## Arguments
- * `k` - a pointer to `TariPrivateKey`.
- * `pk` - a pointer to `TariPublicKey`.
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariPublicKey` - returns a finalized hash as a vector of bytes.
- *
- * # Safety
- * The `public_key_destroy()` method must be called on the returned `TariPublicKey` prevent a memory leak
- */
-PublicKey *create_shared_secret(PrivateKey *k,
-                                PublicKey *pk,
-                                int *error_out);
-
-/**
- * -------------------------------------------------------------------------------------------- ///
- *
- * ----------------------------------- Hashing API -------------------------------------------- ///
- * Creates a domain-separated hasher instance.
- *
- * ## Arguments
- * `label` - *const c_char
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariHasher` - Returns a pointer to a TariHasher which is a DomainSeparatedHasher.
- *
- * # Safety
- * The `tari_hasher_destroy()` method must be called when finished with a `TariHasher` to prevent
- * a memory leak
- */
-TariHasher *tari_hasher_create(const char *label,
-                               int *error_out);
-
-/**
- * Updates hasher instance with a given ByteVector.
- *
- * ## Arguments
- * `bytes` - *mut ByteVector
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * The `tari_hasher_destroy()` method must be called when finished with a `TariHasher` to prevent
- * a memory leak
- */
-void tari_hasher_update(TariHasher *hasher,
-                        struct ByteVector *v,
-                        int *error_out);
-
-/**
- * Finalizes hasher instance.
- *
- * ## Arguments
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `ByteVector` - returns a finalized hash as a vector of bytes.
- *
- * # Safety
- * NOTE: `tari_hasher_finalize` consumes the hasher upon successful finalization, thus calling `tari_hasher_destroy()`
- * will cause a double-free error. The `byte_vector_destroy()` method must be called when finished with a `ByteVector`
- * to prevent a memory leak
- */
-struct ByteVector *tari_hasher_finalize(TariHasher *hasher,
-                                        int *error_out);
-
-/**
- * Frees memory for a TariHasher
- *
- * ## Arguments
- * `hasher` - The pointer to a `TariHasher`
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void tari_hasher_destroy(TariHasher *hasher);
 
 /**
  * -------------------------------------------------------------------------------------------- ///

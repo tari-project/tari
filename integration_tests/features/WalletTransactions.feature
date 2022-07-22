@@ -4,6 +4,7 @@
 @wallet-transact @wallet
 Feature: Wallet Transactions
 
+  @critical
   Scenario: Wallet sending and receiving one-sided transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -32,7 +33,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 30
     Then I wait for wallet WALLET_C to have at least 1500000 uT
 
-
+  @critical
   Scenario: Wallet sending and receiving one-sided stealth transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
