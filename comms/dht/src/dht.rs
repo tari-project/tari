@@ -606,8 +606,8 @@ mod test {
             true,
         );
 
-        let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
-        assert!(!origin_mac.is_empty());
+        let message_signature = dht_envelope.header.as_ref().unwrap().message_signature.clone();
+        assert!(!message_signature.is_empty());
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         service.call(inbound_message).await.unwrap();
@@ -616,7 +616,7 @@ mod test {
         let (params, _) = oms_mock_state.pop_call().await.unwrap();
 
         // Check that OMS got a request to forward with the original Dht Header
-        assert_eq!(params.dht_header.unwrap().origin_mac, origin_mac);
+        assert_eq!(params.dht_header.unwrap().message_signature, message_signature);
 
         // Check the next service was not called
         assert_eq!(spy.call_count(), 0);

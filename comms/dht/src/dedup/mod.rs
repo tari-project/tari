@@ -44,11 +44,11 @@ use crate::{
 const LOG_TARGET: &str = "comms::dht::dedup";
 
 pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
-    create_message_hash(&msg.dht_header.origin_mac, &msg.body)
+    create_message_hash(&msg.dht_header.message_signature, &msg.body)
 }
 
-pub fn create_message_hash(origin_mac: &[u8], body: &[u8]) -> [u8; 32] {
-    Challenge::new().chain(origin_mac).chain(&body).finalize().into()
+pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
+    Challenge::new().chain(message_signature).chain(&body).finalize().into()
 }
 
 /// # DHT Deduplication middleware

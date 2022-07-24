@@ -140,9 +140,9 @@ impl DhtMessageType {
 pub struct DhtMessageHeader {
     pub version: DhtProtocolVersion,
     pub destination: NodeDestination,
-    /// Encoded OriginMac. Depending on message flags, this may be encrypted. This can refer to the same peer that sent
+    /// Encoded MessageSignature. Depending on message flags, this may be encrypted. This can refer to the same peer that sent
     /// the message or another peer if the message is being propagated.
-    pub origin_mac: Vec<u8>,
+    pub message_signature: Vec<u8>,
     pub ephemeral_public_key: Option<CommsPublicKey>,
     pub message_type: DhtMessageType,
     pub flags: DhtMessageFlags,
@@ -153,7 +153,7 @@ pub struct DhtMessageHeader {
 impl DhtMessageHeader {
     pub fn is_valid(&self) -> bool {
         if self.flags.is_encrypted() {
-            !self.origin_mac.is_empty() && self.ephemeral_public_key.is_some()
+            !self.message_signature.is_empty() && self.ephemeral_public_key.is_some()
         } else {
             true
         }
@@ -165,7 +165,7 @@ impl PartialEq for DhtMessageHeader {
     fn eq(&self, other: &Self) -> bool {
         self.version == other.version &&
             self.destination == other.destination &&
-            self.origin_mac == other.origin_mac &&
+            self.message_signature == other.message_signature &&
             self.ephemeral_public_key == other.ephemeral_public_key &&
             self.message_type == other.message_type &&
             self.flags == other.flags &&
@@ -207,7 +207,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
         Ok(Self {
             version,
             destination,
-            origin_mac: header.origin_mac,
+            message_signature: header.message_signature,
             ephemeral_public_key,
             message_type: DhtMessageType::from_i32(header.message_type).ok_or(DhtMessageError::InvalidMessageType)?,
             flags: DhtMessageFlags::from_bits(header.flags).ok_or(DhtMessageError::InvalidMessageFlags)?,
@@ -238,7 +238,7 @@ impl From<DhtMessageHeader> for DhtHeader {
                 .as_ref()
                 .map(ByteArray::to_vec)
                 .unwrap_or_else(Vec::new),
-            origin_mac: header.origin_mac,
+            message_signature: header.message_signature,
             destination: Some(header.destination.into()),
             message_type: header.message_type as i32,
             flags: header.flags.bits(),

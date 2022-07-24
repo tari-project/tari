@@ -168,7 +168,7 @@ pub struct DhtOutboundMessage {
     pub custom_header: Option<DhtMessageHeader>,
     pub body: Bytes,
     pub ephemeral_public_key: Option<Arc<CommsPublicKey>>,
-    pub origin_mac: Option<Bytes>,
+    pub message_signature: Option<Bytes>,
     pub destination: NodeDestination,
     pub dht_message_type: DhtMessageType,
     pub reply: MessagingReplyTx,

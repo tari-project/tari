@@ -62,7 +62,7 @@ impl NewStoredMessage {
             Ok(envelope_body) => envelope_body.to_encoded_bytes(),
             Err(encrypted_body) => encrypted_body,
         };
-        let body_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.origin_mac, &body));
+        let body_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.message_signature, &body));
 
         Some(Self {
             version: dht_header.version.as_major().try_into().ok()?,
