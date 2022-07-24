@@ -509,11 +509,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     &encrypted_body,
                 );
                 // Sign the encrypted message
-                let signature =
-                    MessageSignature::new_signed(self.node_identity.secret_key().clone(), &binding_message_representation)
-                        .to_proto();
+                let signature = MessageSignature::new_signed(
+                    self.node_identity.secret_key().clone(),
+                    &binding_message_representation,
+                )
+                .to_proto();
                 // Encrypt and set the origin field
-                let encrypted_message_signature = crypt::encrypt(&shared_ephemeral_secret, &signature.to_encoded_bytes());
+                let encrypted_message_signature =
+                    crypt::encrypt(&shared_ephemeral_secret, &signature.to_encoded_bytes());
                 Ok((
                     Some(Arc::new(e_public_key)),
                     Some(encrypted_message_signature.into()),
@@ -533,9 +536,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         None,
                         &body,
                     );
-                    let signature =
-                        MessageSignature::new_signed(self.node_identity.secret_key().clone(), &binding_message_representation)
-                            .to_proto();
+                    let signature = MessageSignature::new_signed(
+                        self.node_identity.secret_key().clone(),
+                        &binding_message_representation,
+                    )
+                    .to_proto();
                     Ok((None, Some(signature.to_encoded_bytes().into()), body))
                 } else {
                     Ok((None, None, body))

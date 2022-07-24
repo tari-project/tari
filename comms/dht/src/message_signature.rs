@@ -65,7 +65,8 @@ impl MessageSignature {
 
     /// Returns true if the provided message valid for this origin MAC, otherwise false.
     pub fn verify(&self, message: &[u8]) -> bool {
-        let challenge = construct_message_signature_hash(&self.signer_public_key, self.signature.get_public_nonce(), message);
+        let challenge =
+            construct_message_signature_hash(&self.signer_public_key, self.signature.get_public_nonce(), message);
         self.signature.verify_challenge(&self.signer_public_key, &challenge)
     }
 
@@ -91,11 +92,11 @@ impl TryFrom<ProtoMessageSignature> for MessageSignature {
         let signer_public_key = CommsPublicKey::from_bytes(&message_signature.signer_public_key)
             .map_err(|_| MessageSignatureError::InvalidSignerPublicKey)?;
 
-        let public_nonce =
-            CommsPublicKey::from_bytes(&message_signature.public_nonce).map_err(|_| MessageSignatureError::InvalidPublicNonce)?;
+        let public_nonce = CommsPublicKey::from_bytes(&message_signature.public_nonce)
+            .map_err(|_| MessageSignatureError::InvalidPublicNonce)?;
 
-        let signature =
-            CommsSecretKey::from_bytes(&message_signature.signature).map_err(|_| MessageSignatureError::InvalidSignature)?;
+        let signature = CommsSecretKey::from_bytes(&message_signature.signature)
+            .map_err(|_| MessageSignatureError::InvalidSignature)?;
 
         Ok(Self {
             signer_public_key,

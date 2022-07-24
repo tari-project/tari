@@ -336,7 +336,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Ok(message_signature)
     }
 
-    fn authenticate_message_signature(message_signature: &MessageSignature, message: &[u8]) -> Result<(), DecryptionError> {
+    fn authenticate_message_signature(
+        message_signature: &MessageSignature,
+        message: &[u8],
+    ) -> Result<(), DecryptionError> {
         if message_signature.verify(message) {
             Ok(())
         } else {
@@ -382,9 +385,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let authenticated_pk = if message.dht_header.message_signature.is_empty() {
             None
         } else {
-            let message_signature: MessageSignature = ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
-                .map_err(|_| DecryptionError::MessageSignatureClearTextDecodeFailed)?
-                .try_into()?;
+            let message_signature: MessageSignature =
+                ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
+                    .map_err(|_| DecryptionError::MessageSignatureClearTextDecodeFailed)?
+                    .try_into()?;
 
             let binding_message_representation =
                 crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);

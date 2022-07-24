@@ -660,7 +660,10 @@ mod test {
         dht_header: DhtMessageHeader,
         stored_at: NaiveDateTime,
     ) -> StoredMessage {
-        let msg_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.message_signature, message.as_bytes()));
+        let msg_hash = hex::to_hex(&dedup::create_message_hash(
+            &dht_header.message_signature,
+            message.as_bytes(),
+        ));
         let body = message.into_bytes();
         StoredMessage {
             id: 1,
