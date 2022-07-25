@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use borsh::BorshDeserialize;
+use tari_common_types::types::FixedHash;
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_dan_engine::{
     compile::compile_template,
     crypto::create_key_pair,
@@ -30,78 +33,69 @@ use tari_template_abi::encode_with_len;
 
 #[test]
 fn test_hello_world() {
-    let mut processor = InstructionProcessor::new();
-    let (sk, _pk) = create_key_pair();
-
-    let wasm = compile_template("tests/hello_world").unwrap();
-    let package = PackageBuilder::new().add_wasm_template(wasm).build().unwrap();
-    let package_id = package.id();
-    processor.load(package);
-
-    let instruction = InstructionBuilder::new()
-        .add_instruction(Instruction::CallFunction {
-            package_id,
-            template: "HelloWorld".to_string(),
-            function: "greet".to_string(),
-            args: vec![],
-        })
-        .sign(&sk)
-        .build();
-
-    let result = processor.execute(instruction).unwrap();
-    let result = result[0].decode::<String>().unwrap();
+    let template_test = TemplateTest::new("HelloWorld".to_string(), "tests/hello_world".to_string());
+    let result: String = template_test.run_instruction("greet".to_string(), vec![]);
     assert_eq!(result, "Hello World!");
 }
 
 #[test]
 fn test_state() {
-    let mut processor = InstructionProcessor::new();
-    let (sk, _pk) = create_key_pair();
-
-    let wasm = compile_template("tests/state").unwrap();
-    let package = PackageBuilder::new().add_wasm_template(wasm).build().unwrap();
-    let package_id = package.id();
-    processor.load(package);
+    let template_test = TemplateTest::new("State".to_string(), "tests/state".to_string());
 
     // constructor
-    let instruction = InstructionBuilder::new()
-        .add_instruction(Instruction::CallFunction {
-            package_id,
-            template: "State".to_string(),
-            function: "new".to_string(),
-            args: vec![],
-        })
-        .sign(&sk)
-        .build();
-
-    let result = processor.execute(instruction).unwrap();
-    let component_id = result[0].decode::<u32>().unwrap();
+    let component_id: u32 = template_test.run_instruction("new".to_string(), vec![]);
 
     // call the "set" method to update the instance value
     let new_value = 20_u32;
-    let instruction = InstructionBuilder::new()
-        .add_instruction(Instruction::CallFunction {
-            package_id,
-            template: "State".to_string(),
-            function: "set".to_string(),
-            args: vec![encode_with_len(&component_id), encode_with_len(&new_value)],
-        })
-        .sign(&sk)
-        .build();
-    processor.execute(instruction).unwrap();
+    // TODO: implement "Unit" type empty responses
+    let _ : u32 = template_test.run_instruction("set".to_string(), vec![
+        encode_with_len(&component_id),
+        encode_with_len(&new_value),
+    ]);
 
     // call the "get" method to get the current value
-    let instruction = InstructionBuilder::new()
-        .add_instruction(Instruction::CallFunction {
-            package_id,
-            template: "State".to_string(),
-            function: "get".to_string(),
-            args: vec![encode_with_len(&component_id)],
-        })
-        .sign(&sk)
-        .build();
-    let result = processor.execute(instruction).unwrap();
-    let value = result[0].decode::<u32>().unwrap();
-    // TODO: for now the returned value is hardcoded in the contract code, as we still don't have state implemented
+    let value: u32 = template_test.run_instruction("get".to_string(), vec![encode_with_len(&component_id)]);
     assert_eq!(value, 1);
+}
+
+struct TemplateTest {
+    template_name: String,
+    package_id: FixedHash,
+    processor: InstructionProcessor,
+    secret_key: RistrettoSecretKey,
+}
+
+impl TemplateTest {
+    pub fn new(template_name: String, template_path: String) -> Self {
+        let mut processor = InstructionProcessor::new();
+        let (secret_key, _pk) = create_key_pair();
+
+        let wasm = compile_template(template_path).unwrap();
+        let package = PackageBuilder::new().add_wasm_template(wasm).build().unwrap();
+        let package_id = package.id();
+        processor.load(package);
+
+        Self {
+            template_name,
+            package_id,
+            processor,
+            secret_key,
+        }
+    }
+
+    pub fn run_instruction<T>(&self, func_name: String, args: Vec<Vec<u8>>) -> T
+    where T: BorshDeserialize {
+        let instruction = InstructionBuilder::new()
+            .add_instruction(Instruction::CallFunction {
+                package_id: self.package_id,
+                template: self.template_name.clone(),
+                function: func_name,
+                args,
+            })
+            .sign(&self.secret_key)
+            .build();
+        let result = self.processor.execute(instruction).unwrap();
+
+        result[0].decode::<T>().unwrap()
+    }
 }
