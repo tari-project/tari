@@ -2,7 +2,7 @@
   {
     "name": "linux-x86_64",
     "runs-on": "ubuntu-18.04",
-    "rust": "nightly-2021-11-20",
+    "rust": "nightly-2022-05-01",
     "target": "x86_64-unknown-linux-gnu",
     "cross": false,
     "target_cpu": "x86-64",
