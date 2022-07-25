@@ -138,12 +138,14 @@ impl BaseNodeWalletRpcMockState {
                 confirmations: 0,
                 is_synced: true,
                 height_of_longest_chain: 0,
+                mined_timestamp: None,
             })),
             transaction_query_batch_response: Arc::new(Mutex::new(TxQueryBatchResponsesProto {
                 responses: vec![],
                 tip_hash: Some(vec![]),
                 is_synced: true,
                 height_of_longest_chain: 0,
+                tip_mined_timestamp: Some(0),
             })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
@@ -151,6 +153,7 @@ impl BaseNodeWalletRpcMockState {
                     best_block: Some(Vec::new()),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,
+                    timestamp: Some(0),
                 }),
                 is_synced: true,
             })),
@@ -809,6 +812,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
                                 outputs: b.utxos.clone().into_iter().map(|o| o.into()).collect(),
                                 height: b.height,
                                 header_hash: b.header_hash.clone(),
+                                mined_timestamp: 0,
                             };
                             tx.send(Ok(item)).await.unwrap();
                         }
@@ -823,6 +827,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
                             outputs: b.utxos.clone().into_iter().map(|o| o.into()).collect(),
                             height: b.height,
                             header_hash: b.header_hash.clone(),
+                            mined_timestamp: 0,
                         };
                         tx.send(Ok(item)).await.unwrap();
                     }
@@ -934,6 +939,7 @@ mod test {
             best_block: Some(Vec::new()),
             accumulated_difficulty: Vec::new(),
             pruned_height: 0,
+            timestamp: Some(0),
         };
         service_state.set_tip_info_response(TipInfoResponse {
             metadata: Some(chain_metadata),

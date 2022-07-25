@@ -31,4 +31,5 @@ pub struct UtxoMinedInfo {
     pub mmr_position: u32,
     pub mined_height: u64,
     pub header_hash: BlockHash,
+    pub mined_timestamp: u64,
 }

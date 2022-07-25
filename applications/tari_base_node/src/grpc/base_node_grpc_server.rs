@@ -494,6 +494,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     mmr_position: output.mmr_position,
                     mined_height: output.mined_height,
                     header_hash: output.header_hash,
+                    mined_timestamp: output.mined_timestamp,
                 })
             })
             .collect::<Result<_, Status>>()?;
@@ -1966,6 +1967,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                         header_hash: utxo.header_hash,
                                         mined_height: utxo.mined_height,
                                         mmr_position: utxo.mmr_position,
+                                        mined_timestamp: utxo.mined_timestamp,
                                         output: utxo.output.into_unpruned_output().map(Into::into),
                                     }))
                                     .await
