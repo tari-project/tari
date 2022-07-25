@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, mem::size_of};
+use std::mem::size_of;
 
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
@@ -34,74 +34,51 @@ use chacha20poly1305::{
     ChaCha20Poly1305,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_comms::types::{Challenge, CommsPublicKey};
+use tari_common::hashing_domain::HashToBytes;
+use tari_comms::types::{CommsChallenge, CommsPublicKey};
 use tari_crypto::{
-    hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey},
     tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
 use zeroize::Zeroize;
 
 use crate::{
+    comms_dht_hash_domain_challenge,
+    comms_dht_hash_domain_key_message,
+    comms_dht_hash_domain_key_signature,
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     outbound::DhtOutboundError,
     version::DhtProtocolVersion,
 };
-
-const DOMAIN_SEPARATION_CHALLENGE_LABEL: &str = "com.tari.comms.dht.crypt.challenge";
-const DOMAIN_SEPARATION_KEY_MESSAGE_LABEL: &str = "com.tari.comms.dht.crypt.key_message";
-const DOMAIN_SEPARATION_KEY_SIGNATURE_LABEL: &str = "com.tari.comms.dht.crypt.key_signature";
 
 #[derive(Debug, Clone, Zeroize)]
 #[zeroize(drop)]
 pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
-pub struct ECDHExchange<PK: PublicKey, const KEY_LEN: usize> {
-    exchange_data: [u8; KEY_LEN],
-    pubkey: PhantomData<PK>,
-}
 
-impl<PK: PublicKey, const KEY_LEN: usize> ECDHExchange<PK, { KEY_LEN }> {
-    const KEY_LEN: usize = Self::pubkey.key_length();
-
-    pub fn data(self) -> [u8; KEY_LEN] {
-        self.exchange_data
-    }
-
-    pub fn new(data: [u8; KEY_LEN]) -> Self {
-        Self {
-            exchange_data: data,
-            pubkey: PhantomData,
-        }
-    }
-}
+// pub struct ECDHSharedSecret<D: Digest> {
+//     shared_secret_data: [u8; {D::OutputSize.to_usize()}],
+//     phantom: PhantomData<D>,
+// }
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
-pub fn generate_ecdh_secret<PK, const KEY_LEN: usize>(
-    secret_key: &PK::K,
-    public_key: &PK,
-) -> ECDHExchange<PK, { KEY_LEN }>
-where
-    PK: PublicKey + DiffieHellmanSharedSecret<PK = PK>,
-{
+pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; 32]
+where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
     // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
     //       currently possible because (Compressed)RistrettoPoint does not implement it.
     let k = PK::shared_secret(secret_key, public_key);
-    let mut output = [0u8; ECDHExchange::KEY_LEN];
+    let mut output = [0u8; 32];
 
     output.copy_from_slice(k.as_bytes());
-    ECDHExchange::new(output)
+    output
 }
 
 pub fn generate_key_message(data: &[u8]) -> CipherKey {
     // domain separated hash of data (e.g. ecdh shared secret) using hashing API
-    let domain_separated_hash =
-        DomainSeparatedHasher::<Challenge, GenericHashDomain>::new(DOMAIN_SEPARATION_KEY_MESSAGE_LABEL)
-            .chain(data)
-            .finalize()
-            .into_vec();
+    let domain_separated_hash = comms_dht_hash_domain_key_message()
+        .digest::<CommsChallenge>(data)
+        .into_vec();
 
     // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
     CipherKey(*Key::from_slice(domain_separated_hash.as_bytes()))
@@ -109,11 +86,9 @@ pub fn generate_key_message(data: &[u8]) -> CipherKey {
 
 pub fn generate_key_signature_for_authenticated_encryption(data: &[u8]) -> AuthenticatedCipherKey {
     // domain separated of data (e.g. ecdh shared secret) using hashing API
-    let domain_separated_hash =
-        DomainSeparatedHasher::<Blake256, GenericHashDomain>::new(DOMAIN_SEPARATION_KEY_SIGNATURE_LABEL)
-            .chain(data)
-            .finalize()
-            .into_vec();
+    let domain_separated_hash = comms_dht_hash_domain_key_signature()
+        .digest::<CommsChallenge>(data)
+        .into_vec();
 
     // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
     AuthenticatedCipherKey(*chacha20poly1305::Key::from_slice(domain_separated_hash.as_bytes()))
@@ -227,22 +202,21 @@ pub fn create_message_challenge_parts(
 
     // we digest the given data into a domain independent hash function to produce a signature
     // use of the hashing API for domain separation and deal with variable length input
-    let domain_separated_hash =
-        DomainSeparatedHasher::<Challenge, GenericHashDomain>::new(DOMAIN_SEPARATION_CHALLENGE_LABEL)
-            .chain(&protocol_version.as_bytes())
-            .chain(destination.to_inner_bytes())
-            .chain(&(message_type as i32).to_le_bytes())
-            .chain(&flags.bits().to_le_bytes())
-            .chain(&expires)
-            .chain(&e_pk)
-            .chain(&body)
-            .finalize()
-            .into_vec();
+    let domain_separated_hash = comms_dht_hash_domain_challenge()
+        .hasher::<CommsChallenge>()
+        .chain(&protocol_version.as_bytes())
+        .chain(destination.to_inner_bytes())
+        .chain(&(message_type as i32).to_le_bytes())
+        .chain(&flags.bits().to_le_bytes())
+        .chain(&expires)
+        .chain(&e_pk)
+        .chain(&body)
+        .finalize();
 
-    let mut output = [0u8; 32];
-    // the use of Challenge bind to Blake256, should always produce a 32-byte length output data
-    output.copy_from_slice(domain_separated_hash.as_slice());
-    output
+    domain_separated_hash
+        .hash_to_bytes()
+        .expect("the output size of Blake256 should be 32-bytes")
+        // .map_err(|e| DhtOutboundError::CipherError(e.to_string()))
 }
 
 #[cfg(test)]
@@ -275,11 +249,9 @@ mod test {
 
     #[test]
     fn sanity_check() {
-        let domain_separated_hash =
-            DomainSeparatedHasher::<Blake256, GenericHashDomain>::new(DOMAIN_SEPARATION_KEY_SIGNATURE_LABEL)
-                .chain(&[10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
-                .finalize()
-                .into_vec();
+        let domain_separated_hash = comms_dht_hash_domain_key_signature()
+            .digest::<CommsChallenge>(&[10, 12, 13, 82, 93, 101, 87, 28, 27, 17, 11, 35, 43])
+            .into_vec();
 
         // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
         let key = AuthenticatedCipherKey(*chacha20poly1305::Key::from_slice(domain_separated_hash.as_bytes()));

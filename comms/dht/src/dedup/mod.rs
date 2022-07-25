@@ -32,7 +32,7 @@ pub use dedup_cache::DedupCacheDatabase;
 use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::{pipeline::PipelineError, types::Challenge};
+use tari_comms::{pipeline::PipelineError, types::CommsChallenge};
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -48,7 +48,7 @@ pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
 }
 
 pub fn create_message_hash(origin_mac: &[u8], body: &[u8]) -> [u8; 32] {
-    Challenge::new().chain(origin_mac).chain(&body).finalize().into()
+    CommsChallenge::new().chain(origin_mac).chain(&body).finalize().into()
 }
 
 /// # DHT Deduplication middleware

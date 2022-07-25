@@ -242,7 +242,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // No ephemeral key with ENCRYPTED flag set
             .ok_or( DecryptionError::EphemeralKeyNotProvided)?;
 
-        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk).data();
+        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
 
         // Decrypt and verify the origin
         let authenticated_origin = match Self::attempt_decrypt_origin_mac(&shared_secret, dht_header) {

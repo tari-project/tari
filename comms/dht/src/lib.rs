@@ -124,6 +124,18 @@ pub mod store_forward;
 /// Usage:
 ///   let hash = comms_dht_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub fn comms_dht_hash_domain() -> HashingDomain {
-    HashingDomain::new("comms.dht")
+pub fn comms_dht_hash_domain_challenge() -> HashingDomain {
+    HashingDomain::new("comms.dht.challenge")
+}
+
+pub fn comms_dht_hash_domain_key_message() -> HashingDomain {
+    HashingDomain::new("comms.dht.key_message")
+}
+
+pub fn comms_dht_hash_domain_key_signature() -> HashingDomain {
+    HashingDomain::new("comms.dht.key_signature")
+}
+
+pub fn comms_dht_hash_domain_message_signature() -> HashingDomain {
+    HashingDomain::new("comms.dht.message_signature")
 }

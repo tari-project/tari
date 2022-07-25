@@ -23,14 +23,14 @@
 use std::convert::TryFrom;
 
 use rand::rngs::OsRng;
-use tari_comms::types::{Challenge, CommsPublicKey, CommsSecretKey, Signature};
+use tari_common::hashing_domain::HashToBytes;
+use tari_comms::types::{CommsChallenge, CommsPublicKey, CommsSecretKey, Signature};
 use tari_crypto::{
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::PublicKey,
 };
 use tari_utilities::ByteArray;
 
-const DOMAIN_SEPARATION_ORIGIN_MAC_LABEL: &str = "com.tari.comms.dht.origin_mac";
+use crate::comms_dht_hash_domain_message_signature;
 
 #[derive(Debug, Clone)]
 pub struct OriginMac {
@@ -43,20 +43,17 @@ fn construct_origin_mac_hash(
     public_nonce: &CommsPublicKey,
     message: &[u8],
 ) -> [u8; 32] {
-    let mut output = [0u8; 32];
-
     // produce domain separated hash of input data, in such a way that e = H_mac(P||R||m)
-    let domain_separated_hash =
-        DomainSeparatedHasher::<Challenge, GenericHashDomain>::new(DOMAIN_SEPARATION_ORIGIN_MAC_LABEL)
-            .chain(signer_public_key.as_bytes())
-            .chain(public_nonce.as_bytes())
-            .chain(message)
-            .finalize()
-            .into_vec();
+    let domain_separated_hash = comms_dht_hash_domain_message_signature()
+        .hasher::<CommsChallenge>()
+        .chain(signer_public_key.as_bytes())
+        .chain(public_nonce.as_bytes())
+        .chain(message)
+        .finalize();
 
-    // output of Challenge binding to Blake256 should always produce a 32-byte length output
-    output.copy_from_slice(domain_separated_hash.as_slice());
-    output
+    domain_separated_hash
+        .hash_to_bytes()
+        .expect("Fixed output of '0 < size <= 32' bytes with 32 byte hasher cannot fail.")
 }
 
 impl OriginMac {
