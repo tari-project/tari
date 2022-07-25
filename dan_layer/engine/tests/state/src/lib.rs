@@ -63,11 +63,11 @@ extern "C" fn State_abi() -> *mut u8 {
         }, FunctionDef {
             name: "set".to_string(),
             arguments: vec![Type::U32, Type::U32], // the component_id and the new value
-            output: Type::U32, // does not return anything
+            output: Type::Unit, // does not return anything
         }, FunctionDef {
             name: "get".to_string(),
             arguments: vec![Type::U32], // the component_id
-            output: Type::Unit,  // the stored value
+            output: Type::U32,  // the stored value
         }],
     };
 
@@ -105,7 +105,7 @@ extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
             unsafe { tari_engine(123, std::ptr::null(), 0) };
 
             // the function does not return any value
-            // wrap_ptr(vec![])
+            // TODO: implement "Unit" type empty responses. Right now this fails: wrap_ptr(vec![])
             wrap_ptr(encode_with_len(&0))
         },
         "get" => {

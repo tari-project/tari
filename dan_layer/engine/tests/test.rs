@@ -48,7 +48,7 @@ fn test_state() {
     // call the "set" method to update the instance value
     let new_value = 20_u32;
     // TODO: implement "Unit" type empty responses
-    let _ : u32 = template_test.run_instruction("set".to_string(), vec![
+    let _: u32 = template_test.run_instruction("set".to_string(), vec![
         encode_with_len(&component_id),
         encode_with_len(&new_value),
     ]);
