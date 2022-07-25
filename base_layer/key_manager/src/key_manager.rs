@@ -26,6 +26,7 @@ use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
+    hash::blake2::Blake256,
     hashing::LengthExtensionAttackResistant,
     keys::SecretKey,
     tari_utilities::byte_array::ByteArrayError,

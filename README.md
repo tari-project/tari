@@ -966,17 +966,8 @@ your wallet identity under `Username:` to see your shares, or try `taritest` if 
 
 ## RFC documents
 
-The RFCs are long-form technical documents proposing changes and features to the Tari network and ecosystem. They are hosted at https://rfc.tari.com, but you can easily build and serve a local version yourself.
-
-Firstly, install `mdbook`. Assuming you have Rust and cargo installed, run
-
-    cargo install mdbook
-
-Then, from the `RFC` directory, run
-
-    mdbook serve
-
-and the RFC documentation will be available at http://localhost:3000.
+The RFCs are long-form technical documents proposing changes and features to the Tari network and ecosystem. 
+They are hosted at https://rfc.tari.com, and the RFC repo is at https://github.com/tari-project/rfcs
 
 ### Source code documentation
 
@@ -990,8 +981,8 @@ to generate the documentation. The generated html sits in `target/doc/`. Alterna
 
 ## Code organisation
 
-See [RFC-0110/CodeStructure](RFC/src/RFCD-0010_CodeStructure.md) for details on the code structure and layout.
+_Out of date as of July 2022._ TODO - Good first issue?
 
 ## Conversation channels
 
-See https://www.tari.com/#dev-community.
+We're generally on [Discord](https://discord.gg/q3Sfzb8S2V)

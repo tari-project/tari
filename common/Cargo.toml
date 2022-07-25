@@ -14,6 +14,8 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.0" }
+tari_common_types = { path = "../base_layer/common_types" }
 anyhow = "1.0.53"
 config = { version = "0.13.0", default_features = false, features = ["toml"] }
 derivative = "2.2.0"

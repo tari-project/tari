@@ -1,13 +1,14 @@
+---
+name: Development CI
+
 on:
   push:
     branches:
       - development
       - main
 
-name: Development CI
-
 env:
-  toolchain: nightly-2021-11-20
+  toolchain: nightly-2022-05-01
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   PROTOC: protoc
@@ -19,10 +20,6 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: npm audit launchpad gui
-        run: |
-          cd applications/launchpad/gui-vue
-          npm audit
       - name: npm audit collectibles
         run: |
           cd applications/tari_collectibles/web-app
@@ -41,4 +38,3 @@ jobs:
         run: |
           cd applications/tari_web_extension_example
           npm audit
-

@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::{io::Stdout, path::PathBuf};
 
 use log::*;
@@ -26,7 +27,7 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_wallet::{WalletConfig, WalletSqlite};
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::broadcast};
 use tonic::transport::Server;
 use tui::backend::CrosstermBackend;
 
@@ -40,7 +41,6 @@ use crate::{
     ui::App,
     utils::db::get_custom_base_node_peer_from_db,
 };
-
 pub const LOG_TARGET: &str = "wallet::app::main";
 
 #[derive(Debug, Clone)]
@@ -244,12 +244,18 @@ pub fn tui_mode(
     base_node_config: &PeerConfig,
     mut wallet: WalletSqlite,
 ) -> Result<(), ExitError> {
+    let (events_broadcaster, _events_listener) = broadcast::channel(100);
     if let Some(ref grpc_address) = config.grpc_address {
         let grpc = WalletGrpcServer::new(wallet.clone());
         handle.spawn(run_grpc(grpc, grpc_address.clone()));
     }
 
-    let notifier = Notifier::new(config.notify_file.clone(), handle.clone(), wallet.clone());
+    let notifier = Notifier::new(
+        config.notify_file.clone(),
+        handle.clone(),
+        wallet.clone(),
+        events_broadcaster,
+    );
 
     let base_node_selected;
     if let Some(peer) = base_node_config.base_node_custom.clone() {

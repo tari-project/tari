@@ -26,6 +26,7 @@ use std::{
 };
 
 use aes_gcm::Aes256Gcm;
+use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
@@ -481,6 +482,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         mined_in_block: Vec<u8>,
         mmr_position: u64,
         confirmed: bool,
+        mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -501,6 +503,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::mined_in_block.eq(mined_in_block),
                 outputs::mined_mmr_position.eq(mmr_position as i64),
                 outputs::status.eq(status),
+                outputs::mined_timestamp.eq(NaiveDateTime::from_timestamp(mined_timestamp as i64, 0)),
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
@@ -528,6 +531,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
                 outputs::mined_mmr_position.eq::<Option<i64>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
+                outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
             ))
             .execute(&conn)
             .num_rows_affected_or_not_found(1)?;
@@ -554,6 +558,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
                 outputs::mined_mmr_position.eq::<Option<i64>>(None),
+                outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
             ))
             .execute(&conn)?;
 

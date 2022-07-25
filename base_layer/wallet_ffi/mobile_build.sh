@@ -75,7 +75,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   if [ "${CARGO_CLEAN}" -eq "1" ]; then
       cargo clean >> "${IOS_LOG_PATH}/cargo.txt" 2>&1
   fi
-  cp tari_wallet_ffi.h "${DEPENDENCIES}/MobileWallet/TariLib/"
+  cp wallet.h "${DEPENDENCIES}/MobileWallet/TariLib/"
   export PKG_CONFIG_PATH=${PKG_PATH}
   # shellcheck disable=SC2028
   echo "\t${CYAN}Building Wallet FFI${NC}"
@@ -424,7 +424,7 @@ EOF
       else
         cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
       fi
-      cp tari_wallet_ffi.h "${DEPENDENCIES}/"
+      cp wallet.h "${DEPENDENCIES}/"
       rm -rf .cargo
       cd ../..
       cd target || exit

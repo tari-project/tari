@@ -325,8 +325,16 @@ impl LMDBDatabase {
                     header_height,
                     output,
                     mmr_position,
+                    timestamp,
                 } => {
-                    self.insert_output(&write_txn, header_hash, *header_height, &*output, *mmr_position)?;
+                    self.insert_output(
+                        &write_txn,
+                        header_hash,
+                        *header_height,
+                        &*output,
+                        *mmr_position,
+                        *timestamp,
+                    )?;
                 },
                 InsertPrunedOutput {
                     header_hash,
@@ -334,6 +342,7 @@ impl LMDBDatabase {
                     output_hash,
                     witness_hash,
                     mmr_position,
+                    timestamp,
                 } => {
                     self.insert_pruned_output(
                         &write_txn,
@@ -342,6 +351,7 @@ impl LMDBDatabase {
                         output_hash,
                         witness_hash,
                         *mmr_position,
+                        *timestamp,
                     )?;
                 },
                 DeleteHeader(height) => {
@@ -394,6 +404,7 @@ impl LMDBDatabase {
                     hash,
                     accumulated_difficulty,
                     expected_prev_best_block,
+                    timestamp,
                 } => {
                     // for security we check that the best block does exist, and we check the previous value
                     // we dont want to check this if the prev block has never been set, this means a empty hash of 32
@@ -430,6 +441,11 @@ impl LMDBDatabase {
                         &write_txn,
                         MetadataKey::AccumulatedWork,
                         &MetadataValue::AccumulatedWork(*accumulated_difficulty),
+                    )?;
+                    self.set_metadata(
+                        &write_txn,
+                        MetadataKey::BestBlockTimestamp,
+                        &MetadataValue::BestBlockTimestamp(*timestamp),
                     )?;
                 },
                 SetPruningHorizonConfig(pruning_horizon) => {
@@ -537,6 +553,7 @@ impl LMDBDatabase {
         header_height: u64,
         output: &TransactionOutput,
         mmr_position: u32,
+        timestamp: u64,
     ) -> Result<(), ChainStorageError> {
         let output_hash = output.hash();
         let witness_hash = output.witness_hash();
@@ -595,6 +612,7 @@ impl LMDBDatabase {
                 hash: output_hash,
                 witness_hash,
                 mined_height: header_height,
+                mined_timestamp: timestamp,
             },
             "utxos_db",
         )?;
@@ -610,6 +628,7 @@ impl LMDBDatabase {
         output_hash: &HashOutput,
         witness_hash: &HashOutput,
         mmr_position: u32,
+        timestamp: u64,
     ) -> Result<(), ChainStorageError> {
         if !lmdb_exists(txn, &self.block_hashes_db, header_hash.as_slice())? {
             return Err(ChainStorageError::InvalidOperation(format!(
@@ -636,6 +655,7 @@ impl LMDBDatabase {
                 hash: output_hash.clone(),
                 witness_hash: witness_hash.clone(),
                 mined_height: header_height,
+                mined_timestamp: timestamp,
             },
             "utxos_db",
         )
@@ -1328,7 +1348,14 @@ impl LMDBDatabase {
                     mmr_count
                 ))
             })?;
-            self.insert_output(txn, &block_hash, header.height, &output, mmr_count)?;
+            self.insert_output(
+                txn,
+                &block_hash,
+                header.height,
+                &output,
+                mmr_count,
+                header.timestamp().as_u64(),
+            )?;
         }
 
         for commitment in spent_zero_conf_commitments {
@@ -1567,12 +1594,14 @@ impl LMDBDatabase {
                     mmr_position,
                     mined_height,
                     header_hash,
+                    mined_timestamp,
                     ..
                 }) => Ok(Some(UtxoMinedInfo {
                     output: PrunedOutput::NotPruned { output: o },
                     mmr_position,
                     mined_height,
                     header_hash,
+                    mined_timestamp,
                 })),
                 Some(TransactionOutputRowData {
                     output: None,
@@ -1581,6 +1610,7 @@ impl LMDBDatabase {
                     hash,
                     witness_hash,
                     header_hash,
+                    mined_timestamp,
                     ..
                 }) => Ok(Some(UtxoMinedInfo {
                     output: PrunedOutput::Pruned {
@@ -1590,6 +1620,7 @@ impl LMDBDatabase {
                     mmr_position,
                     mined_height,
                     header_hash,
+                    mined_timestamp,
                 })),
                 _ => Ok(None),
             }
@@ -2471,6 +2502,7 @@ fn fetch_metadata(txn: &ConstTransaction<'_>, db: &Database) -> Result<ChainMeta
         fetch_pruning_horizon(txn, db)?,
         fetch_pruned_height(txn, db)?,
         fetch_accumulated_work(txn, db)?,
+        fetch_best_block_timestamp(txn, db)?,
     ))
 }
 
@@ -2524,6 +2556,20 @@ fn fetch_best_block(txn: &ConstTransaction<'_>, db: &Database) -> Result<BlockHa
         _ => Err(ChainStorageError::ValueNotFound {
             entity: "ChainMetadata",
             field: "BestBlock",
+            value: "".to_string(),
+        }),
+    }
+}
+
+// Fetches the timestamp of the best block from the provided metadata db.
+fn fetch_best_block_timestamp(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, ChainStorageError> {
+    let k = MetadataKey::BestBlockTimestamp;
+    let val: Option<MetadataValue> = lmdb_get(txn, db, &k.as_u32())?;
+    match val {
+        Some(MetadataValue::BestBlockTimestamp(timestamp)) => Ok(timestamp),
+        _ => Err(ChainStorageError::ValueNotFound {
+            entity: "ChainMetadata",
+            field: "BestBlockTimestamp",
             value: "".to_string(),
         }),
     }
@@ -2584,6 +2630,7 @@ enum MetadataKey {
     PrunedHeight,
     HorizonData,
     DeletedBitmap,
+    BestBlockTimestamp,
 }
 
 impl MetadataKey {
@@ -2603,6 +2650,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::BestBlock => f.write_str("Chain tip block hash"),
             MetadataKey::HorizonData => f.write_str("Database info"),
             MetadataKey::DeletedBitmap => f.write_str("Deleted bitmap"),
+            MetadataKey::BestBlockTimestamp => f.write_str("Chain tip block timestamp"),
         }
     }
 }
@@ -2617,6 +2665,7 @@ enum MetadataValue {
     PrunedHeight(u64),
     HorizonData(HorizonData),
     DeletedBitmap(DeletedBitmap),
+    BestBlockTimestamp(u64),
 }
 
 impl fmt::Display for MetadataValue {
@@ -2631,6 +2680,7 @@ impl fmt::Display for MetadataValue {
             MetadataValue::DeletedBitmap(deleted) => {
                 write!(f, "Deleted Bitmap ({} indexes)", deleted.bitmap().cardinality())
             },
+            MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {}", timestamp),
         }
     }
 }

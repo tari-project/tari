@@ -119,6 +119,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
                 mmr_position: mined_info.mmr_position,
                 mined_height: mined_info.mined_height,
                 header_hash: mined_info.header_hash,
+                mined_timestamp: mined_info.mined_timestamp,
             });
         }
         Ok(outputs)
@@ -136,8 +137,8 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         };
         let mut result = conn.get_constitutions(request).await?.into_inner();
         let mut outputs = vec![];
-        while let Some(mined_info) = result.message().await? {
-            let output = mined_info
+        while let Some(resp) = result.message().await? {
+            let output = resp
                 .output
                 .map(TryInto::try_into)
                 .transpose()
@@ -146,9 +147,10 @@ impl BaseNodeClient for GrpcBaseNodeClient {
 
             outputs.push(UtxoMinedInfo {
                 output: PrunedOutput::NotPruned { output },
-                mmr_position: mined_info.mmr_position,
-                mined_height: mined_info.mined_height,
-                header_hash: mined_info.header_hash,
+                mmr_position: resp.mmr_position,
+                mined_height: resp.mined_height,
+                header_hash: resp.header_hash,
+                mined_timestamp: resp.mined_timestamp,
             });
         }
         Ok(outputs)

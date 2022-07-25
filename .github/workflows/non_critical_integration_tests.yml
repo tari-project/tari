@@ -1,11 +1,14 @@
+---
 # Runs daily (2am)
+---
 name: Non critical integration tests
+
 on:
   schedule:
     - cron: "0 2 * * *"
 
 env:
-  toolchain: nightly-2021-11-20
+  toolchain: nightly-2022-05-01
 
 jobs:
   non-critical:
