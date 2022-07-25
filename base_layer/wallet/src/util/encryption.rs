@@ -36,13 +36,14 @@ pub const AES_KEY_BYTES: usize = 32;
 pub const AES_MAC_BYTES: usize = 32;
 
 pub trait Encryptable<C> {
+    fn source_key(&self, field_name: &'static str) -> Vec<u8>;
     fn encrypt(&mut self, cipher: &C) -> Result<(), String>;
     fn decrypt(&mut self, cipher: &C) -> Result<(), String>;
 }
 
 pub fn decrypt_bytes_integral_nonce(
     cipher: &Aes256Gcm,
-    source_key: &'static str,
+    source_key: Vec<u8>,
     ciphertext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
     if ciphertext.len() < AES_NONCE_BYTES + AES_MAC_BYTES {
@@ -76,7 +77,7 @@ pub fn decrypt_bytes_integral_nonce(
 
 pub fn encrypt_bytes_integral_nonce(
     cipher: &Aes256Gcm,
-    source_key: &'static str,
+    source_key: Vec<u8>,
     plaintext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
     let mut nonce = [0u8; AES_NONCE_BYTES];
@@ -122,8 +123,8 @@ mod test {
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
 
-        let ciphertext = encrypt_bytes_integral_nonce(&cipher, "source_key", plaintext.clone()).unwrap();
-        let decrypted_text = decrypt_bytes_integral_nonce(&cipher, "source_key", ciphertext).unwrap();
+        let ciphertext = encrypt_bytes_integral_nonce(&cipher, b"source_key".to_vec(), plaintext.clone()).unwrap();
+        let decrypted_text = decrypt_bytes_integral_nonce(&cipher, b"source_key".to_vec(), ciphertext).unwrap();
         assert_eq!(decrypted_text, plaintext);
     }
 }

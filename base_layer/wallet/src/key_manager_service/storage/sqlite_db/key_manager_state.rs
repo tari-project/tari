@@ -151,27 +151,55 @@ pub struct KeyManagerStateUpdateSql {
 }
 
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
+    fn source_key(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            b"KeyManagerStateSql",
+            self.id.to_le_bytes().as_slice(),
+            field_name.as_bytes(),
+        ]
+        .join(&0)
+        .to_vec()
+    }
+
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_index =
-            encrypt_bytes_integral_nonce(cipher, "key_manager_primary_key_index", self.primary_key_index.clone())?;
-        self.primary_key_index = encrypted_index;
+        self.primary_key_index = encrypt_bytes_integral_nonce(
+            cipher,
+            self.source_key("primary_key_index"),
+            self.primary_key_index.clone(),
+        )?;
+
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let decrypted_index =
-            decrypt_bytes_integral_nonce(cipher, "key_manager_primary_key_index", self.primary_key_index.clone())?;
-        self.primary_key_index = decrypted_index;
+        self.primary_key_index = decrypt_bytes_integral_nonce(
+            cipher,
+            self.source_key("primary_key_index"),
+            self.primary_key_index.clone(),
+        )?;
 
         Ok(())
     }
 }
 
 impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
+    fn source_key(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            b"NewKeyManagerStateSql",
+            self.branch_seed.as_bytes(),
+            field_name.as_bytes(),
+        ]
+        .join(&0)
+        .to_vec()
+    }
+
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_index =
-            encrypt_bytes_integral_nonce(cipher, "key_manager_primary_key_index", self.primary_key_index.clone())?;
-        self.primary_key_index = encrypted_index;
+        self.primary_key_index = encrypt_bytes_integral_nonce(
+            cipher,
+            self.source_key("primary_key_index"),
+            self.primary_key_index.clone(),
+        )?;
+
         Ok(())
     }
 

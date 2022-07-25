@@ -42,6 +42,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
     message_format::MessageFormat,
+    ByteArray,
 };
 use tokio::time::Instant;
 
@@ -97,7 +98,7 @@ impl WalletSqliteDatabase {
             Some(cipher) => {
                 let seed_bytes = seed.encipher(None)?;
                 let ciphertext_integral_nonce =
-                    encrypt_bytes_integral_nonce(cipher, "wallet_setting_secret_key", seed_bytes)
+                    encrypt_bytes_integral_nonce(cipher, b"wallet_setting_master_seed".to_vec(), seed_bytes)
                         .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
                 WalletSettingSql::new(DbKey::MasterSeed.to_string(), ciphertext_integral_nonce.to_hex()).set(conn)?;
             },
@@ -112,9 +113,12 @@ impl WalletSqliteDatabase {
             let seed = match cipher.as_ref() {
                 None => CipherSeed::from_enciphered_bytes(&from_hex(seed_str.as_str())?, None)?,
                 Some(cipher) => {
-                    let decrypted_key_bytes =
-                        decrypt_bytes_integral_nonce(cipher, "wallet_setting_secret_key", from_hex(seed_str.as_str())?)
-                            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
+                    let decrypted_key_bytes = decrypt_bytes_integral_nonce(
+                        cipher,
+                        b"wallet_setting_master_seed".to_vec(),
+                        from_hex(seed_str.as_str())?,
+                    )
+                    .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
                     CipherSeed::from_enciphered_bytes(&decrypted_key_bytes, None)?
                 },
             };
@@ -175,8 +179,10 @@ impl WalletSqliteDatabase {
             },
             Some(cipher) => {
                 let bytes = bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
-                let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(cipher, "tor_id", bytes)
-                    .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+                let ciphertext_integral_nonce =
+                    encrypt_bytes_integral_nonce(cipher, b"wallet_setting_tor_id".to_vec(), bytes)
+                        .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+
                 WalletSettingSql::new(DbKey::TorId.to_string(), ciphertext_integral_nonce.to_hex()).set(conn)?;
             },
         }
@@ -192,8 +198,10 @@ impl WalletSqliteDatabase {
                     TorIdentity::from_json(&key_str).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
                 },
                 Some(cipher) => {
-                    let decrypted_key_bytes = decrypt_bytes_integral_nonce(cipher, "tor_id", from_hex(&key_str)?)
-                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
+                    let decrypted_key_bytes =
+                        decrypt_bytes_integral_nonce(cipher, b"wallet_setting_tor_id".to_vec(), from_hex(&key_str)?)
+                            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
+
                     bincode::deserialize(&decrypted_key_bytes)
                         .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
                 },
@@ -435,7 +443,7 @@ impl WalletBackend for WalletSqliteDatabase {
         // Sanity check that the decrypted bytes are a valid CipherSeed
         let _master_seed = CipherSeed::from_enciphered_bytes(&master_seed_bytes, None)?;
         let ciphertext_integral_nonce =
-            encrypt_bytes_integral_nonce(&cipher, "wallet_setting_secret_key", master_seed_bytes)
+            encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_master_seed".to_vec(), master_seed_bytes)
                 .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
         WalletSettingSql::new(DbKey::MasterSeed.to_string(), ciphertext_integral_nonce.to_hex()).set(&conn)?;
 
@@ -452,8 +460,9 @@ impl WalletBackend for WalletSqliteDatabase {
         if let Some(v) = tor_id {
             let tor = TorIdentity::from_json(&v).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             let bytes = bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
-            let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, "wallet_setting_tor_id", bytes)
-                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+            let ciphertext_integral_nonce =
+                encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), bytes)
+                    .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
             WalletSettingSql::new(DbKey::TorId.to_string(), ciphertext_integral_nonce.to_hex()).set(&conn)?;
         }
 
@@ -488,7 +497,7 @@ impl WalletBackend for WalletSqliteDatabase {
 
         let master_seed_bytes = decrypt_bytes_integral_nonce(
             &cipher,
-            "wallet_setting_secret_key",
+            b"wallet_setting_master_seed".to_vec(),
             from_hex(master_seed_str.as_str())?,
         )
         .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
@@ -512,7 +521,7 @@ impl WalletBackend for WalletSqliteDatabase {
         let key_str = WalletSettingSql::get(DbKey::TorId.to_string(), &conn)?;
         if let Some(v) = key_str {
             let decrypted_key_bytes =
-                decrypt_bytes_integral_nonce(&cipher, "wallet_setting_tor_id", from_hex(v.as_str())?)
+                decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), from_hex(v.as_str())?)
                     .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
 
             let tor_id: TorIdentity = bincode::deserialize(&decrypted_key_bytes)
@@ -646,12 +655,11 @@ fn check_db_encryption_status(
                     }
 
                     let decrypted_key =
-                        decrypt_bytes_integral_nonce(&cipher_inner, "wallet_setting_secret_key", sk_bytes).map_err(
-                            |e| {
-                                error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
-                                WalletStorageError::InvalidPassphrase
-                            },
-                        )?;
+                        decrypt_bytes_integral_nonce(&cipher_inner, b"wallet_setting_master_seed".to_vec(), sk_bytes)
+                            .map_err(|e| {
+                            error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
+                            WalletStorageError::InvalidPassphrase
+                        })?;
 
                     let _cipher_seed = CipherSeed::from_enciphered_bytes(&decrypted_key, None).map_err(|_| {
                         error!(
@@ -767,10 +775,17 @@ impl ClientKeyValueSql {
 }
 
 impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
+    fn source_key(&self, field_name: &'static str) -> Vec<u8> {
+        [b"ClientKeyValueSql", self.key.as_bytes(), field_name.as_bytes()]
+            .join(&0)
+            .to_vec()
+    }
+
     #[allow(unused_assignments)]
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_value = encrypt_bytes_integral_nonce(cipher, "client_key_value", self.value.as_bytes().to_vec())?;
-        self.value = encrypted_value.to_hex();
+        self.value =
+            encrypt_bytes_integral_nonce(cipher, self.source_key("value"), self.value.as_bytes().to_vec())?.to_hex();
+
         Ok(())
     }
 
@@ -778,12 +793,14 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
-            "client_key_value",
+            self.source_key("value"),
             from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
         )?;
+
         self.value = from_utf8(decrypted_value.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
         Ok(())
     }
 }
