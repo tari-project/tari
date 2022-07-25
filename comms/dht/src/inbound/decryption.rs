@@ -52,6 +52,8 @@ enum DecryptionError {
     OriginMacNotProvided,
     #[error("Failed to decrypt origin MAC")]
     OriginMacDecryptedFailed,
+    #[error("Failed to deserialize origin MAC")]
+    OriginMacDeserializedFailed,
     #[error("Failed to decode clear-text origin MAC")]
     OriginMacClearTextDecodeFailed,
     #[error("Origin MAC error: {0}")]
@@ -240,7 +242,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             // No ephemeral key with ENCRYPTED flag set
             .ok_or( DecryptionError::EphemeralKeyNotProvided)?;
 
-        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
+        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk).data();
 
         // Decrypt and verify the origin
         let authenticated_origin = match Self::attempt_decrypt_origin_mac(&shared_secret, dht_header) {
@@ -330,7 +332,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let decrypted_bytes = crypt::decrypt_with_chacha20_poly1305(&key_signature, encrypted_origin_mac)
             .map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
         let origin_mac = ProtoOriginMac::decode(decrypted_bytes.as_slice())
-            .map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
+            .map_err(|_| DecryptionError::OriginMacDeserializedFailed)?;
 
         let origin_mac = origin_mac.try_into()?;
         Ok(origin_mac)

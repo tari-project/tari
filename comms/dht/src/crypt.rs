@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::mem::size_of;
+use std::{marker::PhantomData, mem::size_of};
 
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
@@ -50,7 +50,7 @@ use crate::{
 };
 
 const DOMAIN_SEPARATION_CHALLENGE_LABEL: &str = "com.tari.comms.dht.crypt.challenge";
-const DOMAIN_SEPARATION_KEY_MESSAGE_LABEL: &str = "com.tari.comms.dht.crypt.challenge";
+const DOMAIN_SEPARATION_KEY_MESSAGE_LABEL: &str = "com.tari.comms.dht.crypt.key_message";
 const DOMAIN_SEPARATION_KEY_SIGNATURE_LABEL: &str = "com.tari.comms.dht.crypt.key_signature";
 
 #[derive(Debug, Clone, Zeroize)]
@@ -58,20 +58,41 @@ const DOMAIN_SEPARATION_KEY_SIGNATURE_LABEL: &str = "com.tari.comms.dht.crypt.ke
 pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
-// TODO:
-//  1. rename mac_challenge function
-//  2. check if output of generate_ecdh_secret has correct output size
+pub struct ECDHExchange<PK: PublicKey, const KEY_LEN: usize> {
+    exchange_data: [u8; KEY_LEN],
+    pubkey: PhantomData<PK>,
+}
+
+impl<PK: PublicKey, const KEY_LEN: usize> ECDHExchange<PK, { KEY_LEN }> {
+    const KEY_LEN: usize = Self::pubkey.key_length();
+
+    pub fn data(self) -> [u8; KEY_LEN] {
+        self.exchange_data
+    }
+
+    pub fn new(data: [u8; KEY_LEN]) -> Self {
+        Self {
+            exchange_data: data,
+            pubkey: PhantomData,
+        }
+    }
+}
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
-pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; 32]
-where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
+pub fn generate_ecdh_secret<PK, const KEY_LEN: usize>(
+    secret_key: &PK::K,
+    public_key: &PK,
+) -> ECDHExchange<PK, { KEY_LEN }>
+where
+    PK: PublicKey + DiffieHellmanSharedSecret<PK = PK>,
+{
     // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
     //       currently possible because (Compressed)RistrettoPoint does not implement it.
     let k = PK::shared_secret(secret_key, public_key);
-    let mut output = [0u8; 32];
+    let mut output = [0u8; ECDHExchange::KEY_LEN];
 
     output.copy_from_slice(k.as_bytes());
-    output
+    ECDHExchange::new(output)
 }
 
 pub fn generate_key_message(data: &[u8]) -> CipherKey {
@@ -149,7 +170,7 @@ pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Vec<u8> {
 /// Produces authenticated encryption of the signature using the ChaCha20-Poly1305 stream cipher,
 /// refer to https://docs.rs/chacha20poly1305/latest/chacha20poly1305/# for more details.
 /// Attention: as pointed in https://github.com/tari-project/tari/issues/4138, it is possible
-/// to use a fixed length Nonce, with homogeneous zero data, as this does not incur any security
+/// to use a fixed Nonce, with homogeneous zero data, as this does not incur any security
 /// vulnerabilities. However, such function is not intented to be used outside of dht scope
 pub fn encrypt_with_chacha20_poly1305(
     cipher_key: &AuthenticatedCipherKey,
