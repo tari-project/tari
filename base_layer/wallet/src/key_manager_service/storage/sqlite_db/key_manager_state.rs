@@ -150,15 +150,12 @@ pub struct KeyManagerStateUpdateSql {
     primary_key_index: Option<Vec<u8>>,
 }
 
+// WARNING: using the same source key prefix for NewKeyManagerStateSql and KeyManagerStateSql
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     fn source_key(&self, field_name: &'static str) -> Vec<u8> {
-        [
-            b"KeyManagerStateSql",
-            self.id.to_le_bytes().as_slice(),
-            field_name.as_bytes(),
-        ]
-        .join(&0)
-        .to_vec()
+        [b"KEY_MANAGER", self.branch_seed.as_bytes(), field_name.as_bytes()]
+            .join(&0)
+            .to_vec()
     }
 
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
@@ -184,13 +181,9 @@ impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
 
 impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
     fn source_key(&self, field_name: &'static str) -> Vec<u8> {
-        [
-            b"NewKeyManagerStateSql",
-            self.branch_seed.as_bytes(),
-            field_name.as_bytes(),
-        ]
-        .join(&0)
-        .to_vec()
+        [b"KEY_MANAGER", self.branch_seed.as_bytes(), field_name.as_bytes()]
+            .join(&0)
+            .to_vec()
     }
 
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
