@@ -747,7 +747,8 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 
 impl Encryptable<Aes256Gcm> for OutputSql {
     fn source_key(&self, field_name: &'static str) -> Vec<u8> {
-        [b"OutputSql", self.id.to_le_bytes().as_slice(), field_name.as_bytes()]
+        // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
+        [b"OUTPUT", self.script.as_slice(), field_name.as_bytes()]
             .join(&0)
             .to_vec()
     }
@@ -756,8 +757,11 @@ impl Encryptable<Aes256Gcm> for OutputSql {
         self.spending_key =
             encrypt_bytes_integral_nonce(cipher, self.source_key("spending_key"), self.spending_key.clone())?;
 
-        self.script_private_key =
-            encrypt_bytes_integral_nonce(cipher, self.source_key("private_key"), self.script_private_key.clone())?;
+        self.script_private_key = encrypt_bytes_integral_nonce(
+            cipher,
+            self.source_key("script_private_key"),
+            self.script_private_key.clone(),
+        )?;
 
         Ok(())
     }
@@ -766,8 +770,11 @@ impl Encryptable<Aes256Gcm> for OutputSql {
         self.spending_key =
             decrypt_bytes_integral_nonce(cipher, self.source_key("spending_key"), self.spending_key.clone())?;
 
-        self.script_private_key =
-            decrypt_bytes_integral_nonce(cipher, self.source_key("private_key"), self.script_private_key.clone())?;
+        self.script_private_key = decrypt_bytes_integral_nonce(
+            cipher,
+            self.source_key("script_private_key"),
+            self.script_private_key.clone(),
+        )?;
 
         Ok(())
     }

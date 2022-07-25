@@ -122,27 +122,44 @@ impl NewOutputSql {
 
 impl Encryptable<Aes256Gcm> for NewOutputSql {
     fn source_key(&self, field_name: &'static str) -> Vec<u8> {
-        [b"NewOutputSql", self.script.as_slice(), field_name.as_bytes()]
+        // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
+        [b"OUTPUT", self.script.as_slice(), field_name.as_bytes()]
             .join(&0)
             .to_vec()
     }
 
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        eprintln!(
+            "enc self.source_key(spending_key) = {:?}",
+            self.source_key("spending_key")
+        );
+
         self.spending_key =
             encrypt_bytes_integral_nonce(cipher, self.source_key("spending_key"), self.spending_key.clone())?;
 
-        self.script_private_key =
-            encrypt_bytes_integral_nonce(cipher, self.source_key("private_key"), self.script_private_key.clone())?;
+        self.script_private_key = encrypt_bytes_integral_nonce(
+            cipher,
+            self.source_key("script_private_key"),
+            self.script_private_key.clone(),
+        )?;
 
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        eprintln!(
+            "dec self.source_key(spending_key) = {:?}",
+            self.source_key("spending_key")
+        );
+
         self.spending_key =
             decrypt_bytes_integral_nonce(cipher, self.source_key("spending_key"), self.spending_key.clone())?;
 
-        self.script_private_key =
-            decrypt_bytes_integral_nonce(cipher, self.source_key("private_key"), self.script_private_key.clone())?;
+        self.script_private_key = decrypt_bytes_integral_nonce(
+            cipher,
+            self.source_key("script_private_key"),
+            self.script_private_key.clone(),
+        )?;
 
         Ok(())
     }
