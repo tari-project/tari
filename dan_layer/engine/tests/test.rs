@@ -29,11 +29,11 @@ use tari_dan_engine::{
 use tari_template_abi::encode_with_len;
 
 #[test]
-fn test_metro() {
+fn test_hello_world() {
     let mut processor = InstructionProcessor::new();
     let (sk, _pk) = create_key_pair();
 
-    let wasm = compile_template("tests/test_template").unwrap();
+    let wasm = compile_template("tests/hello_world").unwrap();
     let package = PackageBuilder::new().add_wasm_template(wasm).build().unwrap();
     let package_id = package.id();
     processor.load(package);
@@ -41,8 +41,8 @@ fn test_metro() {
     let instruction = InstructionBuilder::new()
         .add_instruction(Instruction::CallFunction {
             package_id,
-            template: "TestTemplate".to_string(),
-            function: "initialize".to_string(),
+            template: "HelloWorld".to_string(),
+            function: "greet".to_string(),
             args: vec![],
         })
         .sign(&sk)
@@ -50,10 +50,7 @@ fn test_metro() {
 
     let result = processor.execute(instruction).unwrap();
     let result = result[0].decode::<String>().unwrap();
-    assert_eq!(result, "'initialize' was called");
-
-    // let instruction = InstructionBuilder::new().method("hello_world").sign(sk).build();
-    // let result = processor.execute(instruction).unwrap();
+    assert_eq!(result, "Hello World!");
 }
 
 #[test]
@@ -70,7 +67,7 @@ fn test_state() {
     let instruction = InstructionBuilder::new()
         .add_instruction(Instruction::CallFunction {
             package_id,
-            template: "TestTemplate".to_string(),
+            template: "State".to_string(),
             function: "new".to_string(),
             args: vec![],
         })
@@ -85,7 +82,7 @@ fn test_state() {
     let instruction = InstructionBuilder::new()
         .add_instruction(Instruction::CallFunction {
             package_id,
-            template: "TestTemplate".to_string(),
+            template: "State".to_string(),
             function: "set".to_string(),
             args: vec![encode_with_len(&component_id), encode_with_len(&new_value)],
         })
@@ -97,7 +94,7 @@ fn test_state() {
     let instruction = InstructionBuilder::new()
         .add_instruction(Instruction::CallFunction {
             package_id,
-            template: "TestTemplate".to_string(),
+            template: "State".to_string(),
             function: "get".to_string(),
             args: vec![encode_with_len(&component_id)],
         })

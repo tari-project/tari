@@ -28,12 +28,12 @@ use std::{mem, ptr::copy, vec::Vec};
 #[allow(dead_code)]
 mod rust {
     // #[tari::template]
-    pub struct TestState {
+    pub struct State {
         value: u32,
     }
     
     // #[tari::impl]
-    impl TestState {
+    impl State {
         // #[tari::constructor]
         pub fn new() -> Self {
             Self { value: 0 }
@@ -51,11 +51,11 @@ mod rust {
 
 // TODO: Macro generated code
 #[no_mangle]
-extern "C" fn TestTemplate_abi() -> *mut u8 {
+extern "C" fn State_abi() -> *mut u8 {
     use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
 
     let template = TemplateDef {
-        template_name: "TestTemplate".to_string(),
+        template_name: "State".to_string(),
         functions: vec![FunctionDef {
             name: "new".to_string(),
             arguments: vec![],
@@ -76,7 +76,7 @@ extern "C" fn TestTemplate_abi() -> *mut u8 {
 }
 
 #[no_mangle]
-extern "C" fn TestTemplate_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
     use tari_template_abi::{decode, encode_with_len, CallInfo};
     if call_info.is_null() {
         panic!("call_info is null");

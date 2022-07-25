@@ -26,15 +26,15 @@ use std::{mem, ptr::copy, vec::Vec};
 
 // TODO: Macro generated code
 #[no_mangle]
-extern "C" fn TestTemplate_abi() -> *mut u8 {
+extern "C" fn HelloWorld_abi() -> *mut u8 {
     use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
 
     let template = TemplateDef {
-        template_name: "TestTemplate".to_string(),
+        template_name: "HelloWorld".to_string(),
         functions: vec![FunctionDef {
-            name: "initialize".to_string(),
+            name: "greet".to_string(),
             arguments: vec![],
-            output: Type::Unit,
+            output: Type::String,
         }],
     };
 
@@ -43,7 +43,7 @@ extern "C" fn TestTemplate_abi() -> *mut u8 {
 }
 
 #[no_mangle]
-extern "C" fn TestTemplate_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+extern "C" fn HelloWorld_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
     use tari_template_abi::{decode, encode_with_len, CallInfo};
     if call_info.is_null() {
         panic!("call_info is null");
@@ -52,12 +52,14 @@ extern "C" fn TestTemplate_main(call_info: *mut u8, call_info_len: usize) -> *mu
     let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
     let call_info: CallInfo = decode(&call_data).unwrap();
 
-    // Call engine for fun
-    unsafe { tari_engine(123, std::ptr::null(), 0) };
-
-    let msg = format!("'{}' was called", call_info.func_name);
-    let v = encode_with_len(&msg);
-    wrap_ptr(v)
+    match call_info.func_name.as_str() {
+        "greet" => {
+            let v = encode_with_len(&"Hello World!");
+            wrap_ptr(v)
+        },
+       
+        &_ => panic!("invalid function name"),
+    }
 }
 
 // TODO: ------ Everything below here should be in a common wasm lib ------
