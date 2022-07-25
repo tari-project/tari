@@ -26,6 +26,7 @@ use tari_dan_engine::{
     instruction::{Instruction, InstructionBuilder, InstructionProcessor},
     package::PackageBuilder,
 };
+use tari_template_abi::encode_with_len;
 
 #[test]
 fn test_metro() {
@@ -53,4 +54,57 @@ fn test_metro() {
 
     // let instruction = InstructionBuilder::new().method("hello_world").sign(sk).build();
     // let result = processor.execute(instruction).unwrap();
+}
+
+#[test]
+fn test_state() {
+    let mut processor = InstructionProcessor::new();
+    let (sk, _pk) = create_key_pair();
+
+    let wasm = compile_template("tests/state").unwrap();
+    let package = PackageBuilder::new().add_wasm_template(wasm).build().unwrap();
+    let package_id = package.id();
+    processor.load(package);
+
+    // constructor
+    let instruction = InstructionBuilder::new()
+        .add_instruction(Instruction::CallFunction {
+            package_id,
+            template: "TestTemplate".to_string(),
+            function: "new".to_string(),
+            args: vec![],
+        })
+        .sign(&sk)
+        .build();
+
+    let result = processor.execute(instruction).unwrap();
+    let component_id = result[0].decode::<u32>().unwrap();
+
+    // call the "set" method to update the instance value
+    let new_value = 20_u32;
+    let instruction = InstructionBuilder::new()
+        .add_instruction(Instruction::CallFunction {
+            package_id,
+            template: "TestTemplate".to_string(),
+            function: "set".to_string(),
+            args: vec![encode_with_len(&component_id), encode_with_len(&new_value)],
+        })
+        .sign(&sk)
+        .build();
+    processor.execute(instruction).unwrap();
+
+    // call the "get" method to get the current value
+    let instruction = InstructionBuilder::new()
+        .add_instruction(Instruction::CallFunction {
+            package_id,
+            template: "TestTemplate".to_string(),
+            function: "get".to_string(),
+            args: vec![encode_with_len(&component_id)],
+        })
+        .sign(&sk)
+        .build();
+    let result = processor.execute(instruction).unwrap();
+    let value = result[0].decode::<u32>().unwrap();
+    // TODO: for now the returned value is hardcoded in the contract code, as we still don't have state implemented
+    assert_eq!(value, 1);
 }
