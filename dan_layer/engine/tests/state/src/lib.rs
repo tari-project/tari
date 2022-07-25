@@ -22,7 +22,9 @@
 
 // TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
 // available
-use std::{mem, ptr::copy, vec::Vec};
+use std::{mem, ptr::copy, vec::Vec, collections::HashMap};
+
+use tari_template_abi::{FunctionDef, Type, TemplateDef, encode_with_len, CallInfo, decode};
 
 // that's what the example should look like from the user's perspective
 #[allow(dead_code)]
@@ -52,32 +54,97 @@ mod rust {
 // TODO: Macro generated code
 #[no_mangle]
 extern "C" fn State_abi() -> *mut u8 {
-    use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
+    let template_name = "State".to_string();
 
+    let functions = vec![FunctionDef {
+        name: "new".to_string(),
+        arguments: vec![],
+        output: Type::U32, // the component_id
+    }, FunctionDef {
+        name: "set".to_string(),
+        arguments: vec![Type::U32, Type::U32], // the component_id and the new value
+        output: Type::Unit, // does not return anything
+    }, FunctionDef {
+        name: "get".to_string(),
+        arguments: vec![Type::U32], // the component_id
+        output: Type::U32,  // the stored value
+    }];
+
+    generate_abi(template_name, functions)
+}
+
+#[no_mangle]
+extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+    let mut template_impl = TemplateImpl::new();
+
+    // constructor
+    template_impl.add_function("new".to_string(), Box::new(|_| {
+        // Call the engine to create a new component
+        // TODO: use a real op code (not "123") when they are implemented       
+        let _component_id = unsafe { tari_engine(123, std::ptr::null(), 0) };
+
+        // TODO: decode the returning value into a real component id
+        let component_id = 1_u32;
+        encode_with_len(&component_id)
+    }));
+
+    template_impl.add_function("set".to_string(), Box::new(|args| {
+        // read the function paramenters
+        let _component_id: u32 = decode(&args[0]).unwrap();
+        let _new_value: u32 = decode(&args[1]).unwrap();
+
+        // update the component value
+        // TODO: use a real op code (not "123") when they are implemented
+        unsafe { tari_engine(123, std::ptr::null(), 0) };
+
+        // the function does not return any value
+        // TODO: implement "Unit" type empty responses. Right now this fails: wrap_ptr(vec![])
+        encode_with_len(&0)
+    }));
+
+    template_impl.add_function("get".to_string(), Box::new(|args| {
+        // read the function paramenters
+        let _component_id: u32 = decode(&args[0]).unwrap();
+
+        // get the component state
+        // TODO: use a real op code (not "123") when they are implemented
+        let _state = unsafe { tari_engine(123, std::ptr::null(), 0) };
+
+        // return the value
+        let value = 1_u32;  // TODO: read from the component state
+        encode_with_len(&value)
+    }));
+
+    generate_main(call_info, call_info_len, template_impl)
+}
+
+// TODO: ------ Everything below here should be in a common wasm lib ------
+
+fn generate_abi(template_name: String, functions: Vec<FunctionDef>) -> *mut u8 {
     let template = TemplateDef {
-        template_name: "State".to_string(),
-        functions: vec![FunctionDef {
-            name: "new".to_string(),
-            arguments: vec![],
-            output: Type::U32, // the component_id
-        }, FunctionDef {
-            name: "set".to_string(),
-            arguments: vec![Type::U32, Type::U32], // the component_id and the new value
-            output: Type::Unit, // does not return anything
-        }, FunctionDef {
-            name: "get".to_string(),
-            arguments: vec![Type::U32], // the component_id
-            output: Type::U32,  // the stored value
-        }],
+        template_name,
+        functions,
     };
 
     let buf = encode_with_len(&template);
     wrap_ptr(buf)
 }
 
-#[no_mangle]
-extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-    use tari_template_abi::{decode, encode_with_len, CallInfo};
+type FunctionImpl = Box<dyn Fn(Vec<Vec<u8>>) -> Vec<u8>>;
+
+struct TemplateImpl(HashMap<String, FunctionImpl>);
+
+impl TemplateImpl {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn add_function(&mut self, name: String, implementation: FunctionImpl) {
+        self.0.insert(name.clone(), implementation);
+    }
+}
+
+fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: TemplateImpl) -> *mut u8 {
     if call_info.is_null() {
         panic!("call_info is null");
     }
@@ -85,46 +152,19 @@ extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
     let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
     let call_info: CallInfo = decode(&call_data).unwrap();
 
-    match call_info.func_name.as_str() {
-        "new" => {
-            // Call the engine to create a new component
-            // TODO: use a real op code (not "123") when they are implemented       
-            let _component_id = unsafe { tari_engine(123, std::ptr::null(), 0) };
+    // get the function
+    let function = match template_impl.0.get(&call_info.func_name) {
+        Some(f) => f.clone(),
+        None => panic!("invalid function name"),
+    };
 
-            // TODO: decode the returning value into a real component id
-            let component_id = 1_u32;
-            wrap_ptr(encode_with_len(&component_id))
-        },
-        "set" => {
-            // read the function paramenters
-            let _component_id: u32 = decode(&call_info.args[0]).unwrap();
-            let _new_value: u32 = decode(&call_info.args[1]).unwrap();
+    // call the function
+    let result = function(call_info.args);
 
-            // update the component value
-            // TODO: use a real op code (not "123") when they are implemented
-            unsafe { tari_engine(123, std::ptr::null(), 0) };
-
-            // the function does not return any value
-            // TODO: implement "Unit" type empty responses. Right now this fails: wrap_ptr(vec![])
-            wrap_ptr(encode_with_len(&0))
-        },
-        "get" => {
-            // read the function paramenters
-            let _component_id: u32 = decode(&call_info.args[0]).unwrap();
-
-            // get the component state
-            // TODO: use a real op code (not "123") when they are implemented
-            let _state = unsafe { tari_engine(123, std::ptr::null(), 0) };
-
-            // return the value
-            let value = 1_u32;  // TODO: read from the component state
-            wrap_ptr(encode_with_len(&value))
-        },
-        &_ => panic!("invalid function name"),
-    }
+    // return the encoded results of the function call
+    wrap_ptr(result)
 }
 
-// TODO: ------ Everything below here should be in a common wasm lib ------
 fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
     let ptr = v.as_mut_ptr();
     mem::forget(v);
