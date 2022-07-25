@@ -51,9 +51,6 @@ use crate::{
 };
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
-const DOMAIN_SEPARATION_LABEL: &str = "com.tari.key_manager.cipher_seed";
-const ARGON2_DOMAIN_SEPARATION_LABEL: &str = "com.tari.key_manager.cipher_seed.argon2_enc";
-const CHACHA20_DOMAIN_SEPARATION_LABEL: &str = "com.tari.key_manager.cipher_seed.chacha20_enc";
 pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED";
 const ARGON2_SALT_BYTES: usize = 16;
 pub const CIPHER_SEED_BIRTHDAY_BYTES: usize = 2;
