@@ -7,7 +7,10 @@ if [ $# -eq 0 ]; then
     echo
     exit
 fi
+
 rm -f "./$1.tar.gz" >/dev/null
+
+target_release=${target_release:-target/release}
 
 tarball_parent=${tarball_parent:-/tmp}
 tarball_source=${tarball_source:-tari_testnet}
@@ -51,33 +54,33 @@ cp -f -P "${app_dir}/tari_base_node/osx/start_tari_base_node" "${tarball_folder}
 cp -f -P "${app_dir}/tari_base_node/osx/start_tor" "${tarball_folder}/start_tor"
 cp -f "${app_dir}/tari_base_node/osx/runtime/start_tari_base_node.sh" "${tarball_folder}/runtime/start_tari_base_node.sh"
 cp -f "${app_dir}/tari_base_node/osx/runtime/start_tor.sh" "${tarball_folder}/runtime/start_tor.sh"
-cp -f "${project_dir}/target/release/tari_base_node" "${tarball_folder}/runtime/tari_base_node"
+cp -f "${project_dir}/${target_release}/tari_base_node" "${tarball_folder}/runtime/tari_base_node"
 
 # Console Wallet
 cp -f -P "${app_dir}/tari_console_wallet/osx/start_tari_console_wallet" "${tarball_folder}/start_tari_console_wallet"
 cp -f "${app_dir}/tari_console_wallet/osx/runtime/start_tari_console_wallet.sh" "${tarball_folder}/runtime/start_tari_console_wallet.sh"
-cp -f "${project_dir}/target/release/tari_console_wallet" "${tarball_folder}/runtime/tari_console_wallet"
+cp -f "${project_dir}/${target_release}/tari_console_wallet" "${tarball_folder}/runtime/tari_console_wallet"
 
 # Miner
 cp -f -P "${app_dir}/tari_miner/osx/start_tari_miner" "${tarball_folder}/start_tari_miner"
 cp -f "${app_dir}/tari_miner/osx/runtime/start_tari_miner.sh" "${tarball_folder}/runtime/start_tari_miner.sh"
-cp -f "${project_dir}/target/release/tari_miner" "${tarball_folder}/runtime/tari_miner"
+cp -f "${project_dir}/${target_release}/tari_miner" "${tarball_folder}/runtime/tari_miner"
 
 # Merge Mining Proxy
 cp -f -P "${app_dir}/tari_merge_mining_proxy/osx/start_tari_merge_mining_proxy" "${tarball_folder}/start_tari_merge_mining_proxy"
 cp -f -P "${app_dir}/tari_merge_mining_proxy/osx/start_xmrig" "${tarball_folder}/start_xmrig"
 cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_tari_merge_mining_proxy.sh" "${tarball_folder}/runtime/start_tari_merge_mining_proxy.sh"
 cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
-cp -f "${project_dir}/target/release/tari_merge_mining_proxy" "${tarball_folder}/runtime/tari_merge_mining_proxy"
+cp -f "${project_dir}/${target_release}/tari_merge_mining_proxy" "${tarball_folder}/runtime/tari_merge_mining_proxy"
 
 # Collectibles
-cp -f "${project_dir}/target/release/tari_collectibles" "${tarball_folder}/runtime/tari_collectibles"
+cp -f "${project_dir}/${target_release}/tari_collectibles" "${tarball_folder}/runtime/tari_collectibles"
 
 # Validator node
-cp -f "${project_dir}/target/release/tari_validator_node" "${tarball_folder}/runtime/tari_validator_node"
+cp -f "${project_dir}/${target_release}/tari_validator_node" "${tarball_folder}/runtime/tari_validator_node"
 
 # Launchpad
-cp -f "${project_dir}/target/release/tari_launchpad" "${tarball_folder}/runtime/tari_launchpad"
+cp -f "${project_dir}/${target_release}/tari_launchpad" "${tarball_folder}/runtime/tari_launchpad"
 
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"
