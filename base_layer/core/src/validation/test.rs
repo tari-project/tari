@@ -223,7 +223,7 @@ fn chain_balance_validation() {
     let mut mmr_leaf_index = 4;
 
     txn.insert_kernel(kernel.clone(), header1.hash().clone(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index);
+    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -273,7 +273,7 @@ fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
     mmr_leaf_index += 1;
-    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index);
+    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index, 0);
     mmr_position += 1;
     txn.insert_kernel(kernel, header2.hash().clone(), mmr_position);
 

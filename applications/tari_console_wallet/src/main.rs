@@ -65,7 +65,6 @@ mod ui;
 mod utils;
 mod wallet_modes;
 
-/// Application entry point
 fn main() {
     // Uncomment to enable tokio tracing via tokio-console
     // console_subscriber::init();

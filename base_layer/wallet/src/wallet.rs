@@ -27,7 +27,7 @@ use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::{ComSignature, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -459,6 +459,7 @@ where
                 ImportStatus::Imported,
                 None,
                 None,
+                None,
             )
             .await?;
 
@@ -499,6 +500,7 @@ where
                 message,
                 Some(unblinded_output.features.maturity),
                 ImportStatus::Imported,
+                None,
                 None,
                 None,
             )
@@ -544,18 +546,43 @@ where
         signature.verify_challenge(&public_key, challenge.clone().as_slice())
     }
 
+    /// Appraise the expected outputs and a fee
+    pub async fn preview_coin_split_with_commitments_no_amount(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        self.output_manager_service
+            .preview_coin_split_with_commitments_no_amount(commitments, split_count, fee_per_gram)
+            .await
+            .map_err(WalletError::OutputManagerError)
+    }
+
+    /// Appraise the expected outputs and a fee
+    pub async fn preview_coin_join_with_commitments(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        self.output_manager_service
+            .preview_coin_join_with_commitments(commitments, fee_per_gram)
+            .await
+            .map_err(WalletError::OutputManagerError)
+    }
+
     /// Do a coin split
     pub async fn coin_split(
         &mut self,
+        commitments: Vec<Commitment>,
         amount_per_split: MicroTari,
         split_count: usize,
         fee_per_gram: MicroTari,
         message: String,
-        lock_height: Option<u64>,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
-            .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+            .create_coin_split(commitments, amount_per_split, split_count, fee_per_gram)
             .await;
 
         match coin_split_tx {
@@ -564,6 +591,89 @@ where
                     .transaction_service
                     .submit_transaction(tx_id, split_tx, amount, message)
                     .await;
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
+    /// Do a coin split
+    pub async fn coin_split_even(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, WalletError> {
+        let coin_split_tx = self
+            .output_manager_service
+            .create_coin_split_even(commitments, split_count, fee_per_gram)
+            .await;
+
+        match coin_split_tx {
+            Ok((tx_id, split_tx, amount)) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .await;
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
+    /// Do a coin split
+    pub async fn coin_split_even_with_commitments(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, WalletError> {
+        let coin_split_tx = self
+            .output_manager_service
+            .create_coin_split_even(commitments, split_count, fee_per_gram)
+            .await;
+
+        match coin_split_tx {
+            Ok((tx_id, split_tx, amount)) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .await;
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
+    pub async fn coin_join(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+        msg: Option<String>,
+    ) -> Result<TxId, WalletError> {
+        let coin_join_tx = self
+            .output_manager_service
+            .create_coin_join(commitments, fee_per_gram)
+            .await;
+
+        match coin_join_tx {
+            Ok((tx_id, tx, output_value)) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, tx, output_value, msg.unwrap_or_default())
+                    .await;
+
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),

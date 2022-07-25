@@ -24,7 +24,7 @@ use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
 };
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -280,6 +280,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -327,7 +328,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
 
     runtime
-        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, [0u8; 16].to_vec(), 5, true, false))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, [0u8; 16].to_vec(), 0, 5, true, false))
         .unwrap();
 
     assert_eq!(
@@ -618,6 +619,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(5),
+        Some(NaiveDateTime::from_timestamp(0, 0)),
     );
 
     sqlite_db
@@ -646,6 +648,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(6),
+        Some(NaiveDateTime::from_timestamp(0, 0)),
     );
 
     sqlite_db
@@ -674,6 +677,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(0),
         Some(7),
+        Some(NaiveDateTime::from_timestamp(0, 0)),
     );
 
     sqlite_db
