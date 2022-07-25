@@ -32,7 +32,7 @@ use tari_crypto::{
     tari_utilities::byte_array::ByteArrayError,
 };
 
-use crate::{cipher_seed::CipherSeed, base_layer_key_manager};
+use crate::{base_layer_key_manager, cipher_seed::CipherSeed};
 
 #[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
