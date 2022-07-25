@@ -23,23 +23,23 @@
 #[allow(dead_code)]
 mod support;
 
-use support::{combine_hashes, create_mmr, int_to_hash, DigestAlgorithm};
+use support::{combine_hashes, create_mmr, int_to_hash, Blake256};
 use tari_mmr::{mmr_hash_domain, MerkleMountainRange};
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]
 fn zero_length_mmr() {
-    let mmr = MerkleMountainRange::<DigestAlgorithm, _>::new(Vec::default());
+    let mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
     assert_eq!(mmr.len(), Ok(0));
     assert_eq!(mmr.is_empty(), Ok(true));
-    let empty_hash = mmr_hash_domain().digest::<DigestAlgorithm>(b"").into_vec();
+    let empty_hash = mmr_hash_domain().digest::<Blake256>(b"").into_vec();
     assert_eq!(mmr.get_merkle_root(), Ok(empty_hash));
 }
 
 /// Successively build up an MMR and check that the roots, heights and indices are all correct.
 #[test]
 fn build_mmr() {
-    let mut mmr = MerkleMountainRange::<DigestAlgorithm, _>::new(Vec::default());
+    let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
     // Add a single item
     let h0 = int_to_hash(0);
 
@@ -97,8 +97,8 @@ fn build_mmr() {
 
 #[test]
 fn equality_check() {
-    let mut ma = MerkleMountainRange::<DigestAlgorithm, _>::new(Vec::default());
-    let mut mb = MerkleMountainRange::<DigestAlgorithm, _>::new(Vec::default());
+    let mut ma = MerkleMountainRange::<Blake256, _>::new(Vec::default());
+    let mut mb = MerkleMountainRange::<Blake256, _>::new(Vec::default());
     assert!(ma == mb);
     assert!(ma.push(int_to_hash(1)).is_ok());
     assert!(ma != mb);
@@ -117,7 +117,7 @@ fn validate() {
 
 #[test]
 fn restore_from_leaf_hashes() {
-    let mut mmr = MerkleMountainRange::<DigestAlgorithm, _>::new(Vec::default());
+    let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
     let leaf_hashes = mmr.get_leaf_hashes(0, 1).unwrap();
     assert_eq!(leaf_hashes.len(), 0);
 
@@ -156,7 +156,7 @@ fn restore_from_leaf_hashes() {
 
 #[test]
 fn find_leaf_index() {
-    let mut mmr = MerkleMountainRange::<DigestAlgorithm, _>::new(Vec::default());
+    let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
     let h0 = int_to_hash(0);
     let h1 = int_to_hash(1);
     let h2 = int_to_hash(2);

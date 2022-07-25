@@ -50,7 +50,7 @@ pub enum ScriptError {
     VerifyFailed,
     #[error("as_hash requires a Digest function that returns at least 32 bytes")]
     InvalidDigest,
-    #[error("Two slices have different lengths")]
+    #[error("There was an error in generating a hash: {0}")]
     HashingDomainError(#[from] HashingDomainError),
 }
 

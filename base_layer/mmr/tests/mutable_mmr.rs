@@ -24,23 +24,23 @@
 mod support;
 
 use croaring::Bitmap;
-use support::{create_mmr, int_to_hash, DigestAlgorithm};
+use support::{create_mmr, int_to_hash, Blake256};
 use tari_mmr::{mmr_hash_domain, Hash, HashSlice, MutableMmr};
 use tari_utilities::hex::Hex;
 
 fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();
-    let hasher = mmr_hash_domain().hasher::<DigestAlgorithm>();
+    let hasher = mmr_hash_domain().hasher::<Blake256>();
     hasher.chain(hash).chain(&bitmap.serialize()).finalize().into_vec()
 }
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]
 fn zero_length_mmr() {
-    let mmr = MutableMmr::<DigestAlgorithm, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mmr = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
     assert_eq!(mmr.len(), 0);
     assert_eq!(mmr.is_empty(), Ok(true));
-    let empty_hash = mmr_hash_domain().digest::<DigestAlgorithm>(b"").into_vec();
+    let empty_hash = mmr_hash_domain().digest::<Blake256>(b"").into_vec();
     assert_eq!(
         mmr.get_merkle_root(),
         Ok(hash_with_bitmap(&empty_hash, &mut Bitmap::create()))
@@ -50,7 +50,7 @@ fn zero_length_mmr() {
 #[test]
 // Note the hardcoded hashes are only valid when using DefaultDomainHasher<Hasher>
 fn delete() {
-    let mut mmr = MutableMmr::<DigestAlgorithm, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mmr = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
     assert_eq!(mmr.is_empty(), Ok(true));
     for i in 0..5 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
@@ -109,7 +109,7 @@ fn build_mmr() {
     assert_eq!(mmr_check.len(), Ok(8));
     let mut bitmap = Bitmap::create();
     // Create a small mutable MMR
-    let mut mmr = MutableMmr::<DigestAlgorithm, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mmr = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..5 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }
@@ -127,8 +127,8 @@ fn build_mmr() {
 
 #[test]
 fn equality_check() {
-    let mut ma = MutableMmr::<DigestAlgorithm, _>::new(Vec::default(), Bitmap::create()).unwrap();
-    let mut mb = MutableMmr::<DigestAlgorithm, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut ma = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mb = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
     assert!(ma == mb);
     assert!(ma.push(int_to_hash(1)).is_ok());
     assert!(ma != mb);
@@ -149,7 +149,7 @@ fn equality_check() {
 
 #[test]
 fn restore_from_leaf_nodes() {
-    let mut mmr = MutableMmr::<DigestAlgorithm, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mmr = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..12 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }

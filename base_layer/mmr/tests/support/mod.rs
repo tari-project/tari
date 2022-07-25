@@ -25,10 +25,8 @@ use croaring::Bitmap;
 use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::{mmr_hash_domain, Hash, HashSlice, MerkleMountainRange, MutableMmr};
 
-pub type DigestAlgorithm = Blake256;
-
-pub fn create_mmr(size: usize) -> MerkleMountainRange<DigestAlgorithm, Vec<Hash>> {
-    let mut mmr = MerkleMountainRange::<DigestAlgorithm, _>::new(Vec::default());
+pub fn create_mmr(size: usize) -> MerkleMountainRange<Blake256, Vec<Hash>> {
+    let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
     for i in 0..size {
         let hash = int_to_hash(i);
         assert!(mmr.push(hash).is_ok());
@@ -36,8 +34,8 @@ pub fn create_mmr(size: usize) -> MerkleMountainRange<DigestAlgorithm, Vec<Hash>
     mmr
 }
 
-pub fn create_mutable_mmr(size: usize) -> MutableMmr<DigestAlgorithm, Vec<Hash>> {
-    let mut mmr = MutableMmr::<DigestAlgorithm, _>::new(Vec::default(), Bitmap::create()).unwrap();
+pub fn create_mutable_mmr(size: usize) -> MutableMmr<Blake256, Vec<Hash>> {
+    let mut mmr = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..size {
         let hash = int_to_hash(i);
         assert!(mmr.push(hash).is_ok());
@@ -46,11 +44,11 @@ pub fn create_mutable_mmr(size: usize) -> MutableMmr<DigestAlgorithm, Vec<Hash>>
 }
 
 pub fn int_to_hash(n: usize) -> Vec<u8> {
-    mmr_hash_domain().digest::<DigestAlgorithm>(&n.to_le_bytes()).into_vec()
+    mmr_hash_domain().digest::<Blake256>(&n.to_le_bytes()).into_vec()
 }
 
 pub fn combine_hashes(hashe_slices: &[&HashSlice]) -> Hash {
-    let hasher = mmr_hash_domain().hasher::<DigestAlgorithm>();
+    let hasher = mmr_hash_domain().hasher::<Blake256>();
     hashe_slices
         .iter()
         .fold(hasher, |hasher, h| hasher.chain(*h))

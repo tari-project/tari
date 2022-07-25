@@ -167,7 +167,7 @@ pub enum TransactionServiceError {
     BaseNodeNotSynced,
     #[error("Value encryption error: `{0}`")]
     EncryptionError(#[from] EncryptionError),
-    #[error("Two slices have different lengths")]
+    #[error("There was an error in generating a hash: {0}")]
     HashingDomainError(#[from] HashingDomainError),
 }
 

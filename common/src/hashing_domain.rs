@@ -33,8 +33,8 @@ pub struct HashingDomain {
 /// Error type for the pipeline.
 #[derive(Debug, Clone, Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HashingDomainError {
-    #[error("Two slices have different lengths")]
-    SlicesHaveDifferentLengths,
+    #[error("Cannot create a slice of length {0} from a digest of length {1}.")]
+    DigestTooShort(usize, usize),
 }
 
 impl HashingDomain {
@@ -73,7 +73,11 @@ pub trait HashToBytes<const I: usize>: AsRef<[u8]> {
     fn as_fixed_bytes(&self) -> Result<[u8; I], HashingDomainError> {
         let hash_vec = self.as_ref();
         if hash_vec.is_empty() || hash_vec.len() < I {
-            return Err(HashingDomainError::SlicesHaveDifferentLengths);
+            let hash_vec_length = match hash_vec.is_empty() {
+                true => 0,
+                false => hash_vec.len(),
+            };
+            return Err(HashingDomainError::DigestTooShort(I, hash_vec_length));
         }
         let mut buffer: [u8; I] = [0; I];
         buffer.copy_from_slice(&hash_vec[..I]);

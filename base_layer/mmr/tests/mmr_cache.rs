@@ -24,14 +24,14 @@
 mod support;
 
 use croaring::Bitmap;
-use support::{combine_hashes, int_to_hash, DigestAlgorithm};
+use support::{combine_hashes, int_to_hash, Blake256};
 use tari_mmr::{ArrayLike, ArrayLikeExt, MemBackendVec, MerkleCheckPoint, MmrCache, MmrCacheConfig};
 
 #[test]
 fn create_cache_update_and_rewind() {
     let config = MmrCacheConfig { rewind_hist_len: 2 };
     let mut checkpoint_db = MemBackendVec::<MerkleCheckPoint>::new();
-    let mut mmr_cache = MmrCache::<DigestAlgorithm, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
+    let mut mmr_cache = MmrCache::<Blake256, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
 
     let h1 = int_to_hash(1);
     let h2 = int_to_hash(2);
@@ -94,7 +94,7 @@ fn create_cache_update_and_rewind() {
 fn multiple_rewinds() {
     let config = MmrCacheConfig { rewind_hist_len: 2 };
     let mut checkpoint_db = MemBackendVec::<MerkleCheckPoint>::new();
-    let mut mmr_cache = MmrCache::<DigestAlgorithm, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
+    let mut mmr_cache = MmrCache::<Blake256, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
 
     // Add h1, h2, h3 and h4 checkpoints
     let h1 = int_to_hash(1);
@@ -162,7 +162,7 @@ fn multiple_rewinds() {
 fn checkpoint_merging() {
     let config = MmrCacheConfig { rewind_hist_len: 2 };
     let mut checkpoint_db = MemBackendVec::<MerkleCheckPoint>::new();
-    let mut mmr_cache = MmrCache::<DigestAlgorithm, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
+    let mut mmr_cache = MmrCache::<Blake256, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
 
     let h1 = int_to_hash(1);
     let h2 = int_to_hash(2);
@@ -217,7 +217,7 @@ fn checkpoint_merging() {
     assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root.clone()));
 
     // Recreate the MmrCache from the altered checkpoints
-    let mut mmr_cache = MmrCache::<DigestAlgorithm, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
+    let mut mmr_cache = MmrCache::<Blake256, _, _>::new(Vec::new(), checkpoint_db.clone(), config).unwrap();
     assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root.clone()));
 
     // Replace all existing checkpoints with a single accumulated checkpoint
