@@ -12,6 +12,8 @@ pub mod mnemonic_wordlists;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+use tari_common::hashing_domain::*;
+
 /// The key manager domain separated hashing domain
 /// Usage:
 ///   let hash = comms_dht_hash_domain().digest::<Blake256>(b"my secret");
