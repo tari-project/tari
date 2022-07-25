@@ -234,7 +234,7 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (output, mined_height, mined_in_block, mmr_position) in &mined {
+            for (output, mined_height, mined_in_block, mmr_position, mined_timestamp) in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID: {})",
@@ -244,8 +244,15 @@ where
                     tip_height,
                     self.operation_id
                 );
-                self.update_output_as_mined(output, mined_in_block, *mined_height, *mmr_position, tip_height)
-                    .await?;
+                self.update_output_as_mined(
+                    output,
+                    mined_in_block,
+                    *mined_height,
+                    *mmr_position,
+                    tip_height,
+                    *mined_timestamp,
+                )
+                .await?;
             }
         }
 
@@ -383,7 +390,7 @@ where
         base_node_client: &mut BaseNodeWalletRpcClient,
     ) -> Result<
         (
-            Vec<(DbUnblindedOutput, u64, BlockHash, u64)>,
+            Vec<(DbUnblindedOutput, u64, BlockHash, u64, u64)>,
             Vec<DbUnblindedOutput>,
             u64,
         ),
@@ -412,6 +419,7 @@ where
                     returned_output.mined_height,
                     returned_output.mined_in_block.clone(),
                     returned_output.mmr_position,
+                    returned_output.mined_timestamp,
                 ))
             } else {
                 unmined.push(output.clone());
@@ -429,6 +437,7 @@ where
         mined_height: u64,
         mmr_position: u64,
         tip_height: u64,
+        mined_timestamp: u64,
     ) -> Result<(), OutputManagerProtocolError> {
         let confirmed = (tip_height - mined_height) >= self.config.num_confirmations_required;
 
@@ -439,6 +448,7 @@ where
                 mined_in_block.clone(),
                 mmr_position,
                 confirmed,
+                mined_timestamp,
             )
             .for_protocol(self.operation_id)?;
 

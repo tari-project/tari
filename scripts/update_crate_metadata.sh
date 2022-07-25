@@ -47,7 +47,6 @@ function update_versions {
    comms/core
    comms/dht
    comms/rpc_macros
-   applications/launchpad/backend
    applications/tari_base_node
    applications/tari_app_grpc
    applications/tari_app_utilities

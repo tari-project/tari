@@ -278,6 +278,7 @@ fn check_timelocks() {
         offset_pub_key,
         Covenant::default(),
         EncryptedValue::default(),
+        MicroTari::zero(),
     );
 
     let mut kernel = test_helpers::create_test_kernel(0.into(), 0);

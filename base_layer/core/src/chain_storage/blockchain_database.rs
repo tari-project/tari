@@ -1450,11 +1450,18 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
     }
 
     let height = block.height();
+    let timestamp = block.header().timestamp().as_u64();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
     let expected_prev_best_block = block.block().header.prev_hash.clone();
     txn.insert_chain_header(block.to_chain_header())
         .insert_block_body(block)
-        .set_best_block(height, block_hash, accumulated_difficulty, expected_prev_best_block);
+        .set_best_block(
+            height,
+            block_hash,
+            accumulated_difficulty,
+            expected_prev_best_block,
+            timestamp,
+        );
 
     Ok(())
 }
@@ -1522,6 +1529,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_value,
+                        output.minimum_value_promise,
                     );
                     Ok(compact_input)
                 },
@@ -1764,6 +1772,7 @@ fn rewind_to_height<T: BlockchainBackend>(
         chain_header.accumulated_data().hash.clone(),
         chain_header.accumulated_data().total_accumulated_difficulty,
         expected_block_hash,
+        chain_header.timestamp(),
     );
     db.write(txn)?;
 

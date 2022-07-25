@@ -142,6 +142,7 @@ fn chain_balance_validation() {
         &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
@@ -188,6 +189,7 @@ fn chain_balance_validation() {
         &OutputFeatures::create_coinbase(1),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     // let _coinbase_hash = coinbase.hash();
     let (pk, sig) = create_random_signature_from_s_key(coinbase_key, 0.into(), 0);
@@ -221,7 +223,7 @@ fn chain_balance_validation() {
     let mut mmr_leaf_index = 4;
 
     txn.insert_kernel(kernel.clone(), header1.hash().clone(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index);
+    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -240,6 +242,7 @@ fn chain_balance_validation() {
         &OutputFeatures::create_coinbase(1),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
@@ -270,7 +273,7 @@ fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
     mmr_leaf_index += 1;
-    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index);
+    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index, 0);
     mmr_position += 1;
     txn.insert_kernel(kernel, header2.hash().clone(), mmr_position);
 

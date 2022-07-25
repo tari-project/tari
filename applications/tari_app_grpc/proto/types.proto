@@ -179,6 +179,8 @@ message TransactionInput {
     uint32 version = 11;
     // The encrypted value
     bytes encrypted_value = 12;
+    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    uint64 minimum_value_promise = 13;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -206,6 +208,8 @@ message TransactionOutput {
     uint32 version = 9;
     // The encrypted value
     bytes encrypted_value = 10;
+    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    uint64 minimum_value_promise = 11;
 }
 
 // Options for UTXOs
@@ -469,6 +473,8 @@ message UnblindedOutput {
     bytes covenant = 11;
     // Encrypted Value
     bytes encrypted_value = 12;
+    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    uint64 minimum_value_promise = 13;
 }
 
 // ----------------------------- Network Types ----------------------------- //

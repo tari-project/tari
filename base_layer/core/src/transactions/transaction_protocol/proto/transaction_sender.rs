@@ -121,6 +121,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             sender_offset_public_key,
             public_commitment_nonce,
             covenant,
+            minimum_value_promise: data.minimum_value_promise.into(),
         })
     }
 }
@@ -141,6 +142,7 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             sender_offset_public_key: sender_data.sender_offset_public_key.to_vec(),
             public_commitment_nonce: sender_data.public_commitment_nonce.to_vec(),
             covenant: sender_data.covenant.to_consensus_bytes(),
+            minimum_value_promise: sender_data.minimum_value_promise.into(),
         }
     }
 }

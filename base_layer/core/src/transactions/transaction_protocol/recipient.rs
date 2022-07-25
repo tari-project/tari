@@ -250,6 +250,7 @@ mod test {
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
             covenant: Covenant::default(),
+            minimum_value_promise: MicroTari::zero(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
@@ -298,6 +299,7 @@ mod test {
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
             covenant: Covenant::default(),
+            minimum_value_promise: MicroTari::zero(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let receiver = ReceiverTransactionProtocol::new_with_rewindable_output(

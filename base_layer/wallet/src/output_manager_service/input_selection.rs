@@ -28,8 +28,6 @@ use std::{
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_core::transactions::transaction_components::OutputType;
 
-use crate::output_manager_service::storage::models::DbUnblindedOutput;
-
 #[derive(Debug, Clone, Default)]
 pub struct UtxoSelectionCriteria {
     pub filter: UtxoSelectionFilter,
@@ -70,6 +68,14 @@ impl UtxoSelectionCriteria {
                 contract_id,
                 output_type,
             },
+            ..Default::default()
+        }
+    }
+
+    pub fn specific(commitments: Vec<Commitment>) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::SpecificOutputs { commitments },
+            ordering: UtxoSelectionOrdering::Default,
             ..Default::default()
         }
     }
@@ -128,7 +134,7 @@ pub enum UtxoSelectionFilter {
         output_type: OutputType,
     },
     /// Selects specific outputs. All outputs must be exist and be spendable.
-    SpecificOutputs { outputs: Vec<DbUnblindedOutput> },
+    SpecificOutputs { commitments: Vec<Commitment> },
 }
 impl UtxoSelectionFilter {
     pub fn is_standard(&self) -> bool {
@@ -155,7 +161,7 @@ impl Display for UtxoSelectionFilter {
             UtxoSelectionFilter::TokenOutput { .. } => {
                 write!(f, "TokenOutput{{..}}")
             },
-            UtxoSelectionFilter::SpecificOutputs { outputs } => {
+            UtxoSelectionFilter::SpecificOutputs { commitments: outputs } => {
                 write!(f, "Specific({} output(s))", outputs.len())
             },
             UtxoSelectionFilter::ContractOutput { contract_id, .. } => {

@@ -50,7 +50,6 @@ use tari_crypto::{
     errors::RangeProofError,
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::RangeProofService as RangeProofServiceTrait,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
@@ -92,6 +91,9 @@ pub struct TransactionOutput {
     pub covenant: Covenant,
     /// Encrypted value.
     pub encrypted_value: EncryptedValue,
+    /// The minimum value of the commitment that is proven by the range proof
+    #[serde(default)]
+    pub minimum_value_promise: MicroTari,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -108,6 +110,7 @@ impl TransactionOutput {
         metadata_signature: ComSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> TransactionOutput {
         TransactionOutput {
             version,
@@ -119,6 +122,7 @@ impl TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         }
     }
 
@@ -131,6 +135,7 @@ impl TransactionOutput {
         metadata_signature: ComSignature,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> TransactionOutput {
         TransactionOutput::new(
             TransactionOutputVersion::get_current_version(),
@@ -142,6 +147,7 @@ impl TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -157,12 +163,18 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
-        if prover.verify(&self.proof.0, &self.commitment) {
-            Ok(())
-        } else {
-            Err(TransactionError::ValidationError(
-                "Recipient output range proof failed to verify".to_string(),
-            ))
+        let statement = RistrettoAggregatedPublicStatement {
+            statements: vec![Statement {
+                commitment: self.commitment.clone(),
+                minimum_value_promise: self.minimum_value_promise.as_u64(),
+            }],
+        };
+        match prover.verify_batch(vec![&self.proof.0], vec![&statement]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(TransactionError::ValidationError(format!(
+                "Recipient output range proof failed to verify ({})",
+                e
+            ))),
         }
     }
 
@@ -177,6 +189,7 @@ impl TransactionOutput {
             &self.commitment,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         );
         if !self.metadata_signature.verify_challenge(
             &(&self.commitment + &self.sender_offset_public_key),
@@ -236,6 +249,7 @@ impl TransactionOutput {
             &self.commitment,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )
     }
 
@@ -249,17 +263,20 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Challenge {
+        let common = ConsensusHashWriter::default()
+            .chain(public_commitment_nonce)
+            .chain(script)
+            .chain(features)
+            .chain(sender_offset_public_key)
+            .chain(commitment)
+            .chain(covenant)
+            .chain(encrypted_value);
+
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
-                .chain(public_commitment_nonce)
-                .chain(script)
-                .chain(features)
-                .chain(sender_offset_public_key)
-                .chain(commitment)
-                .chain(covenant)
-                .chain(encrypted_value)
-                .into_digest(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.into_digest(),
+            TransactionOutputVersion::V2 => common.chain(&minimum_value_promise).into_digest(),
         }
     }
 
@@ -276,6 +293,7 @@ impl TransactionOutput {
         sender_offset_private_key: Option<&PrivateKey>,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<ComSignature, TransactionError> {
         let nonce_a = PrivateKey::random(&mut OsRng);
         let nonce_b = PrivateKey::random(&mut OsRng);
@@ -295,6 +313,7 @@ impl TransactionOutput {
             &commitment,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         let secret_x = match sender_offset_private_key {
             None => spending_key.clone(),
@@ -321,6 +340,7 @@ impl TransactionOutput {
         partial_commitment_nonce: &PublicKey,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
             version,
@@ -333,6 +353,7 @@ impl TransactionOutput {
             None,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -346,6 +367,7 @@ impl TransactionOutput {
         sender_offset_private_key: &PrivateKey,
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
@@ -359,6 +381,7 @@ impl TransactionOutput {
             Some(sender_offset_private_key),
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -387,6 +410,7 @@ impl Hashable for TransactionOutput {
             &self.script,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )
         .to_vec()
     }
@@ -403,6 +427,7 @@ impl Default for TransactionOutput {
             ComSignature::default(),
             Covenant::default(),
             EncryptedValue::default(),
+            MicroTari::zero(),
         )
     }
 }
@@ -452,6 +477,7 @@ impl ConsensusEncoding for TransactionOutput {
         self.sender_offset_public_key.consensus_encode(writer)?;
         self.metadata_signature.consensus_encode(writer)?;
         self.covenant.consensus_encode(writer)?;
+        self.minimum_value_promise.consensus_encode(writer)?;
         Ok(())
     }
 }
@@ -467,6 +493,7 @@ impl ConsensusDecoding for TransactionOutput {
         let metadata_signature = ComSignature::consensus_decode(reader)?;
         let covenant = Covenant::consensus_decode(reader)?;
         let encrypted_value = EncryptedValue::consensus_decode(reader)?;
+        let minimum_value_promise = MicroTari::consensus_decode(reader)?;
         let output = TransactionOutput::new(
             version,
             features,
@@ -477,6 +504,7 @@ impl ConsensusDecoding for TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         Ok(output)
     }
@@ -503,7 +531,7 @@ pub fn batch_verify_range_proofs(
             statements.push(RistrettoAggregatedPublicStatement {
                 statements: vec![Statement {
                     commitment: output.commitment.clone(),
-                    minimum_value_promise: 0,
+                    minimum_value_promise: output.minimum_value_promise.into(),
                 }],
             });
             proofs.push(output.proof.to_vec().clone());
@@ -550,7 +578,13 @@ fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::transaction_components::transaction_output::power_of_two_chunk_sizes;
+    use super::{batch_verify_range_proofs, TransactionOutput};
+    use crate::transactions::{
+        tari_amount::MicroTari,
+        test_helpers::{TestParams, UtxoTestParams},
+        transaction_components::transaction_output::power_of_two_chunk_sizes,
+        CryptoFactories,
+    };
 
     #[test]
     fn it_creates_power_of_two_chunks() {
@@ -574,5 +608,90 @@ mod test {
         assert_eq!(p2vec, vec![
             1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 64, 2, 1
         ]);
+    }
+
+    #[test]
+    fn it_builds_correctly_from_unblinded_output() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let value = MicroTari(10);
+        let minimum_value_promise = MicroTari(10);
+        let tx_output = create_valid_output(&test_params, &factories, value, minimum_value_promise);
+
+        assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
+        assert!(tx_output.verify_metadata_signature().is_ok());
+        assert!(tx_output
+            .verify_mask(&factories.range_proof, &test_params.spend_key, value.into())
+            .is_ok());
+    }
+
+    #[test]
+    fn it_does_not_verify_incorrect_minimum_value() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let value = MicroTari(10);
+        let minimum_value_promise = MicroTari(11);
+        let tx_output = create_invalid_output(&test_params, &factories, value, minimum_value_promise);
+
+        assert!(tx_output.verify_range_proof(&factories.range_proof).is_err());
+    }
+
+    #[test]
+    fn it_does_batch_verify_correct_minimum_values() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let outputs = [
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari::zero()),
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari(5)),
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari(10)),
+        ];
+
+        assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_ok());
+    }
+
+    #[test]
+    fn it_does_not_batch_verify_incorrect_minimum_values() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let outputs = [
+            &create_valid_output(&test_params, &factories, MicroTari(10), MicroTari(10)),
+            &create_invalid_output(&test_params, &factories, MicroTari(10), MicroTari(11)),
+        ];
+
+        assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_err());
+    }
+
+    fn create_valid_output(
+        test_params: &TestParams,
+        factories: &CryptoFactories,
+        value: MicroTari,
+        minimum_value_promise: MicroTari,
+    ) -> TransactionOutput {
+        let utxo = test_params.create_unblinded_output(UtxoTestParams {
+            value,
+            minimum_value_promise,
+            ..Default::default()
+        });
+        utxo.as_transaction_output(factories).unwrap()
+    }
+
+    fn create_invalid_output(
+        test_params: &TestParams,
+        factories: &CryptoFactories,
+        value: MicroTari,
+        minimum_value_promise: MicroTari,
+    ) -> TransactionOutput {
+        // we need first to create a valid minimum value, regardless of the minimum_value_promise
+        // because this test function shoud allow creating an invalid proof for later testing
+        let mut output = create_valid_output(test_params, factories, value, MicroTari::zero());
+
+        // Now we can updated the minimum value, even to an invalid value
+        output.minimum_value_promise = minimum_value_promise;
+
+        output
     }
 }

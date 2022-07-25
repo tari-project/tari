@@ -138,6 +138,7 @@ fn print_new_genesis_block(network: Network) {
         &OutputFeatures::create_coinbase(1),
         &script![Nop],
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);

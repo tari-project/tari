@@ -192,6 +192,7 @@ async fn inbound_fetch_utxos() {
         &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let hash_2 = utxo_2.hash();
 
@@ -234,6 +235,7 @@ async fn inbound_fetch_txos() {
         &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pruned_utxo, _, _) = create_utxo(
         MicroTari(10_000),
@@ -241,6 +243,7 @@ async fn inbound_fetch_txos() {
         &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (stxo, _, _) = create_utxo(
         MicroTari(10_000),
@@ -248,6 +251,7 @@ async fn inbound_fetch_txos() {
         &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let utxo_hash = utxo.hash();
     let stxo_hash = stxo.hash();
@@ -255,14 +259,15 @@ async fn inbound_fetch_txos() {
     let block = store.fetch_block(0).unwrap().block().clone();
     let header_hash = block.header.hash();
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), header_hash.clone(), block.header.height, 6000);
-    txn.insert_utxo(stxo.clone(), header_hash.clone(), block.header.height, 6001);
+    txn.insert_utxo(utxo.clone(), header_hash.clone(), block.header.height, 6000, 0);
+    txn.insert_utxo(stxo.clone(), header_hash.clone(), block.header.height, 6001, 0);
     txn.insert_pruned_utxo(
         pruned_utxo_hash.clone(),
         pruned_utxo.witness_hash(),
         header_hash.clone(),
         5,
         6002,
+        0,
     );
     assert!(store.commit(txn).is_ok());
 
@@ -315,6 +320,7 @@ async fn inbound_fetch_blocks() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
@@ -352,7 +358,14 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     );
     let script = script!(Nop);
     let amount = MicroTari(10_000);
-    let (utxo, key, offset) = create_utxo(amount, &factories, &Default::default(), &script, &Covenant::default());
+    let (utxo, key, offset) = create_utxo(
+        amount,
+        &factories,
+        &Default::default(),
+        &script,
+        &Covenant::default(),
+        MicroTari::zero(),
+    );
     let metadata_signature = TransactionOutput::create_final_metadata_signature(
         TransactionOutputVersion::get_current_version(),
         amount,
@@ -362,6 +375,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &offset,
         &Covenant::default(),
         &utxo.encrypted_value,
+        utxo.minimum_value_promise,
     )
     .unwrap();
     let unblinded_output = UnblindedOutput::new_current_version(
@@ -376,9 +390,10 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         0,
         Covenant::default(),
         utxo.encrypted_value.clone(),
+        utxo.minimum_value_promise,
     );
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002);
+    txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002, 0);
     assert!(store.commit(txn).is_ok());
 
     let txn = txn_schema!(
