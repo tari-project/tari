@@ -56,15 +56,13 @@ use crate::{
 pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
-const MESSAGE_BASE_LENGTH: usize = 124;
-
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
-pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; 32]
+pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; <PK as PublicKey>::KEY_LEN]
 where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
     // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
     //       currently possible because (Compressed)RistrettoPoint does not implement it.
     let k = PK::shared_secret(secret_key, public_key);
-    let mut output = [0u8; 32];
+    let mut output = [0u8; <PK as PublicKey>::KEY_LEN];
 
     output.copy_from_slice(k.as_bytes());
     output
