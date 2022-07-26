@@ -38,7 +38,7 @@ use crate::{
     crypt,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
-    origin_mac::OriginMac,
+    message_signature::MessageSignature,
     outbound::{message::DhtOutboundMessage, DhtOutboundError},
     proto::envelope::{DhtEnvelope, DhtMessageType},
     version::DhtProtocolVersion,
@@ -82,10 +82,10 @@ pub fn make_dht_header(
     } else {
         NodeDestination::Unknown
     };
-    let mut origin_mac = Vec::new();
+    let mut message_signature = Vec::new();
 
     if include_origin {
-        let challenge = crypt::create_message_challenge_parts(
+        let binding_message_representation = crypt::create_message_domain_separated_hash_parts(
             DhtProtocolVersion::latest(),
             &destination,
             DhtMessageType::None,
@@ -94,11 +94,11 @@ pub fn make_dht_header(
             Some(e_public_key),
             message,
         );
-        origin_mac = make_valid_origin_mac(node_identity, &challenge);
+        let signature = make_valid_message_signature(node_identity, &binding_message_representation);
         if flags.is_encrypted() {
             let shared_secret = crypt::generate_ecdh_secret(e_secret_key, node_identity.public_key());
             let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
-            origin_mac = crypt::encrypt_with_chacha20_poly1305(&key_signature, &origin_mac)?;
+            message_signature = crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature)?;
         }
     }
     Ok(DhtMessageHeader {
@@ -109,7 +109,7 @@ pub fn make_dht_header(
         } else {
             None
         },
-        origin_mac,
+        message_signature,
         message_type: DhtMessageType::None,
         flags,
         message_tag: trace,
@@ -117,8 +117,8 @@ pub fn make_dht_header(
     })
 }
 
-pub fn make_valid_origin_mac(node_identity: &NodeIdentity, message: &[u8]) -> Vec<u8> {
-    OriginMac::new_signed(node_identity.secret_key().clone(), message)
+pub fn make_valid_message_signature(node_identity: &NodeIdentity, message: &[u8]) -> Vec<u8> {
+    MessageSignature::new_signed(node_identity.secret_key().clone(), message)
         .to_proto()
         .to_encoded_bytes()
 }
@@ -211,7 +211,7 @@ pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
         body: body.to_vec().into(),
         ephemeral_public_key: None,
         reply: None.into(),
-        origin_mac: None,
+        message_signature: None,
         is_broadcast: false,
         expires: None,
     }

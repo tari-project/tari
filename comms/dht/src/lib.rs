@@ -103,7 +103,7 @@ use tari_common::hashing_domain::HashingDomain;
 
 mod filter;
 mod logging_middleware;
-mod origin_mac;
+mod message_signature;
 mod peer_validator;
 mod proto;
 mod rpc;

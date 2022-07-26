@@ -63,7 +63,7 @@ pub fn make_dht_header(trace: MessageTag) -> DhtMessageHeader {
     DhtMessageHeader {
         version: DhtProtocolVersion::latest(),
         destination: NodeDestination::Unknown,
-        origin_mac: Vec::new(),
+        message_signature: Vec::new(),
         ephemeral_public_key: None,
         message_type: DhtMessageType::None,
         flags: DhtMessageFlags::NONE,

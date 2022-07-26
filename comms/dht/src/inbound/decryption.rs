@@ -38,7 +38,7 @@ use crate::{
     crypt,
     envelope::DhtMessageHeader,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
-    origin_mac::{OriginMac, OriginMacError, ProtoOriginMac},
+    message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
     DhtConfig,
 };
 
@@ -47,17 +47,17 @@ const LOG_TARGET: &str = "comms::middleware::decryption";
 #[derive(Error, Debug)]
 enum DecryptionError {
     #[error("Failed to validate origin MAC signature")]
-    OriginMacInvalidSignature,
+    MessageSignatureInvalidSignature,
     #[error("Origin MAC not provided for encrypted message")]
-    OriginMacNotProvided,
-    #[error("Failed to decrypt origin MAC")]
-    OriginMacDecryptedFailed,
-    #[error("Failed to deserialize origin MAC")]
-    OriginMacDeserializedFailed,
+    MessageSignatureNotProvided,
+    #[error("Failed to decrypt message signature")]
+    MessageSignatureDecryptedFailed,
+    #[error("Failed to deserialize message signature")]
+    MessageSignatureDeserializedFailed,
     #[error("Failed to decode clear-text origin MAC")]
-    OriginMacClearTextDecodeFailed,
+    MessageSignatureClearTextDecodeFailed,
     #[error("Origin MAC error: {0}")]
-    OriginMacError(#[from] OriginMacError),
+    MessageSignatureError(#[from] MessageSignatureError),
     #[error("Ephemeral public key not provided for encrypted message")]
     EphemeralKeyNotProvided,
     #[error("Message rejected because this node could not decrypt a message that was addressed to it")]
@@ -170,11 +170,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 next_service.oneshot(msg).await
             },
 
-            Err(err @ OriginMacNotProvided) |
+            Err(err @ MessageSignatureNotProvided) |
             Err(err @ EphemeralKeyNotProvided) |
             Err(err @ EncryptedMessageNoDestination) |
-            Err(err @ OriginMacInvalidSignature) |
-            Err(err @ OriginMacError(_)) => {
+            Err(err @ MessageSignatureInvalidSignature) |
+            Err(err @ MessageSignatureError(_)) => {
                 // This message should not have been propagated, or has been manipulated in some way. Ban the source of
                 // this message.
                 connectivity
@@ -245,13 +245,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
 
         // Decrypt and verify the origin
-        let authenticated_origin = match Self::attempt_decrypt_origin_mac(&shared_secret, dht_header) {
-            Ok(origin_mac) => {
+        let authenticated_origin = match Self::attempt_decrypt_message_signature(&shared_secret, dht_header) {
+            Ok(message_signature) => {
                 // If this fails, discard the message because we decrypted and deserialized the message with our shared
                 // ECDH secret but the message could not be authenticated
-                let msg_challenge = crypt::create_message_challenge(&message.dht_header, &message.body);
-                Self::authenticate_origin_mac(&origin_mac, &msg_challenge)?;
-                origin_mac.into_signer_public_key()
+                let binding_message_representation =
+                    crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
+                Self::authenticate_message_signature(&message_signature, &binding_message_representation)?;
+                message_signature.into_signer_public_key()
             },
             Err(err) => {
                 trace!(
@@ -270,7 +271,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         message.tag,
                         message.dht_header.message_tag
                     );
-                    return Err(DecryptionError::OriginMacDecryptedFailed);
+                    return Err(DecryptionError::MessageSignatureDecryptedFailed);
                 }
                 return Ok(DecryptedDhtMessage::failed(message));
             },
@@ -318,31 +319,34 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
     }
 
-    fn attempt_decrypt_origin_mac(
+    fn attempt_decrypt_message_signature(
         shared_secret: &[u8],
         dht_header: &DhtMessageHeader,
-    ) -> Result<OriginMac, DecryptionError> {
-        let encrypted_origin_mac = Some(&dht_header.origin_mac)
+    ) -> Result<MessageSignature, DecryptionError> {
+        let encrypted_message_signature = Some(&dht_header.message_signature)
             .filter(|b| !b.is_empty())
             // This should not have been sent/propagated
-            .ok_or( DecryptionError::OriginMacNotProvided)?;
+            .ok_or( DecryptionError::MessageSignatureNotProvided)?;
 
         // obtain key signature for authenticated decrypt signature
         let key_signature = crypt::generate_key_signature_for_authenticated_encryption(shared_secret);
-        let decrypted_bytes = crypt::decrypt_with_chacha20_poly1305(&key_signature, encrypted_origin_mac)
-            .map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
-        let origin_mac = ProtoOriginMac::decode(decrypted_bytes.as_slice())
-            .map_err(|_| DecryptionError::OriginMacDeserializedFailed)?;
+        let decrypted_bytes = crypt::decrypt_with_chacha20_poly1305(&key_signature, encrypted_message_signature)
+            .map_err(|_| DecryptionError::MessageSignatureDecryptedFailed)?;
+        let message_signature = ProtoMessageSignature::decode(decrypted_bytes.as_slice())
+            .map_err(|_| DecryptionError::MessageSignatureDeserializedFailed)?;
 
-        let origin_mac = origin_mac.try_into()?;
-        Ok(origin_mac)
+        let message_signature = message_signature.try_into()?;
+        Ok(message_signature)
     }
 
-    fn authenticate_origin_mac(origin_mac: &OriginMac, message: &[u8]) -> Result<(), DecryptionError> {
-        if origin_mac.verify(message) {
+    fn authenticate_message_signature(
+        message_signature: &MessageSignature,
+        message: &[u8],
+    ) -> Result<(), DecryptionError> {
+        if message_signature.verify(message) {
             Ok(())
         } else {
-            Err(DecryptionError::OriginMacInvalidSignature)
+            Err(DecryptionError::MessageSignatureInvalidSignature)
         }
     }
 
@@ -382,17 +386,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     async fn success_not_encrypted(message: DhtInboundMessage) -> Result<DecryptedDhtMessage, DecryptionError> {
-        let authenticated_pk = if message.dht_header.origin_mac.is_empty() {
+        let authenticated_pk = if message.dht_header.message_signature.is_empty() {
             None
         } else {
-            let origin_mac: OriginMac = ProtoOriginMac::decode(message.dht_header.origin_mac.as_slice())
-                .map_err(|_| DecryptionError::OriginMacClearTextDecodeFailed)?
-                .try_into()?;
+            let message_signature: MessageSignature =
+                ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
+                    .map_err(|_| DecryptionError::MessageSignatureClearTextDecodeFailed)?
+                    .try_into()?;
 
-            let mac_challenge = crypt::create_message_challenge(&message.dht_header, &message.body);
+            let binding_message_representation =
+                crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
 
-            Self::authenticate_origin_mac(&origin_mac, &mac_challenge)?;
-            Some(origin_mac.into_signer_public_key())
+            Self::authenticate_message_signature(&message_signature, &binding_message_representation)?;
+            Some(message_signature.into_signer_public_key())
         };
 
         match EnvelopeBody::decode(message.body.as_slice()) {

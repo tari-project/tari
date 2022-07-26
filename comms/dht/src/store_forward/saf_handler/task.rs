@@ -45,7 +45,7 @@ use crate::{
     dedup,
     envelope::{timestamp_to_datetime, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
-    origin_mac::{OriginMac, OriginMacError, ProtoOriginMac},
+    message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
         envelope::DhtMessageType,
@@ -452,7 +452,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message
                 .dht_header
                 .as_ref()
-                .map(|h| h.origin_mac.as_slice())
+                .map(|h| h.message_signature.as_slice())
                 .unwrap_or(&[]),
             &message.body,
         );
@@ -564,11 +564,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             trace!(
                 target: LOG_TARGET,
                 "Attempting to decrypt origin mac ({} byte(s))",
-                header.origin_mac.len()
+                header.message_signature.len()
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
             let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
-            let decrypted = crypt::decrypt_with_chacha20_poly1305(&key_signature, &header.origin_mac)?;
+            let decrypted = crypt::decrypt_with_chacha20_poly1305(&key_signature, &header.message_signature)?;
             let authenticated_pk = Self::authenticate_message(&decrypted, header, body)?;
 
             trace!(
@@ -586,10 +586,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
             Ok((Some(authenticated_pk), envelope_body))
         } else {
-            let authenticated_pk = if header.origin_mac.is_empty() {
+            let authenticated_pk = if header.message_signature.is_empty() {
                 None
             } else {
-                Some(Self::authenticate_message(&header.origin_mac, header, body)?)
+                Some(Self::authenticate_message(&header.message_signature, header, body)?)
             };
             let envelope_body = EnvelopeBody::decode(body).map_err(|_| StoreAndForwardError::MalformedMessage)?;
             Ok((authenticated_pk, envelope_body))
@@ -597,20 +597,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn authenticate_message(
-        cleartext_origin_mac_body: &[u8],
+        cleartext_message_signature_body: &[u8],
         header: &DhtMessageHeader,
         body: &[u8],
     ) -> Result<CommsPublicKey, StoreAndForwardError> {
-        let origin_mac = ProtoOriginMac::decode(cleartext_origin_mac_body)?;
-        let origin_mac = OriginMac::try_from(origin_mac)?;
+        let message_signature = ProtoMessageSignature::decode(cleartext_message_signature_body)?;
+        let message_signature = MessageSignature::try_from(message_signature)?;
 
-        let challenge = crypt::create_message_challenge(header, body);
+        let binding_message_representation = crypt::create_message_domain_separated_hash(header, body);
 
-        if origin_mac.verify(&challenge) {
-            Ok(origin_mac.into_signer_public_key())
+        if message_signature.verify(&binding_message_representation) {
+            Ok(message_signature.into_signer_public_key())
         } else {
-            Err(StoreAndForwardError::InvalidOriginMac(
-                OriginMacError::VerificationFailed,
+            Err(StoreAndForwardError::InvalidMessageSignature(
+                MessageSignatureError::VerificationFailed,
             ))
         }
     }
@@ -663,7 +663,10 @@ mod test {
         dht_header: DhtMessageHeader,
         stored_at: NaiveDateTime,
     ) -> StoredMessage {
-        let msg_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.origin_mac, message.as_bytes()));
+        let msg_hash = hex::to_hex(&dedup::create_message_hash(
+            &dht_header.message_signature,
+            message.as_bytes(),
+        ));
         let body = message.into_bytes();
         StoredMessage {
             id: 1,

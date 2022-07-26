@@ -165,8 +165,8 @@ pub fn encrypt_with_chacha20_poly1305(
 }
 
 /// Generates a 32-byte hashed challenge that commits to the message header and body
-pub fn create_message_challenge(header: &DhtMessageHeader, body: &[u8]) -> [u8; 32] {
-    create_message_challenge_parts(
+pub fn create_message_domain_separated_hash(header: &DhtMessageHeader, body: &[u8]) -> [u8; 32] {
+    create_message_domain_separated_hash_parts(
         header.version,
         &header.destination,
         header.message_type,
@@ -178,7 +178,7 @@ pub fn create_message_challenge(header: &DhtMessageHeader, body: &[u8]) -> [u8; 
 }
 
 /// Generates a 32-byte hashed challenge that commits to all message parts
-pub fn create_message_challenge_parts(
+pub fn create_message_domain_separated_hash_parts(
     protocol_version: DhtProtocolVersion,
     destination: &NodeDestination,
     message_type: DhtMessageType,

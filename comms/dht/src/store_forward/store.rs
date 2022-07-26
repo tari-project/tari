@@ -271,7 +271,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             // The message decryption was successful, or the message was not encrypted
             Some(_) => {
                 // If the message doesnt have an origin we wont store it
-                if !message.has_origin_mac() {
+                if !message.has_message_signature() {
                     log_not_eligible("it is a cleartext message and does not have an origin MAC");
                     return Ok(None);
                 }
@@ -299,7 +299,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             },
             // This node could not decrypt the message
             None => {
-                if !message.has_origin_mac() {
+                if !message.has_message_signature() {
                     // TODO: #banheuristic - the source peer should not have propagated this message
                     debug!(
                         target: LOG_TARGET,
