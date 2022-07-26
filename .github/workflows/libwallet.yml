@@ -1,5 +1,6 @@
 ---
 # Build a new set of libraries when a new tag containing 'libwallet' is pushed
+---
 name: Build libwallet
 
 on:

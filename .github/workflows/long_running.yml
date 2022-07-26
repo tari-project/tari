@@ -1,5 +1,6 @@
 ---
 # Runs weekly (saturday noon)
+---
 name: Long running integration tests
 
 on:
