@@ -56,11 +56,7 @@ use crate::{
 pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
-
-// pub struct ECDHSharedSecret<D: Digest> {
-//     shared_secret_data: [u8; {D::OutputSize.to_usize()}],
-//     phantom: PhantomData<D>,
-// }
+const MESSAGE_BASE_LENGTH: usize = 124;
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
 pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; 32]
