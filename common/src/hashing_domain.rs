@@ -21,20 +21,30 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
-use tari_common_types::types::{DefaultDomainHasher, MacDomainHasher};
-use tari_crypto::hashing::{DomainSeparatedHash, LengthExtensionAttackResistant, Mac};
+use sha2::{digest::Update, Digest};
+use tari_crypto::{
+    hash_domain,
+    hashing::{DomainSeparatedHash, DomainSeparatedHasher, LengthExtensionAttackResistant, Mac},
+};
 use thiserror::Error;
-
-pub struct HashingDomain {
-    domain_label: &'static str,
-}
 
 /// Error type for the pipeline.
 #[derive(Debug, Clone, Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HashingDomainError {
     #[error("Cannot create a slice of length {0} from a digest of length {1}.")]
     DigestTooShort(usize, usize),
+}
+
+hash_domain!(DefaultHashDomain, "com.tari.tari_project.hash_domain", 1);
+/// Generic domain separated hasher
+pub type DefaultDomainHasher<D> = DomainSeparatedHasher<D, DefaultHashDomain>;
+
+hash_domain!(MacHashDomain, "com.tari.tari_project.mac_domain", 1);
+/// MAC domain separated hasher
+pub type MacDomainHasher<D> = DomainSeparatedHasher<D, MacHashDomain>;
+
+pub struct HashingDomain {
+    domain_label: &'static str,
 }
 
 impl HashingDomain {
@@ -49,7 +59,7 @@ impl HashingDomain {
     }
 
     /// Convenience function to compute hash of the data. It will handle hasher creation, data feeding and finalization.
-    pub fn digest<D: Digest>(&self, data: &[u8]) -> DomainSeparatedHash {
+    pub fn digest<D: Digest>(&self, data: &[u8]) -> DomainSeparatedHash<D> {
         self.hasher::<D>().chain(data).finalize()
     }
 
@@ -59,13 +69,13 @@ impl HashingDomain {
     }
 
     /// Convenience function to compute hash of the data. It will handle hasher creation, data feeding and finalization.
-    pub fn mac_digest<D: Digest + LengthExtensionAttackResistant>(&self, data: &[u8]) -> DomainSeparatedHash {
+    pub fn mac_digest<D: Digest + LengthExtensionAttackResistant>(&self, data: &[u8]) -> DomainSeparatedHash<D> {
         self.mac_hasher::<D>().chain(data).finalize()
     }
 
     /// Generate a finalized domain separated Hash-based Message Authentication Code (HMAC) for the key and message
-    pub fn generate_hmac<D: Digest + LengthExtensionAttackResistant>(&self, key: &[u8], msg: &[u8]) -> Mac {
-        Mac::generate::<D, _, _>(key, msg, self.domain_label)
+    pub fn generate_hmac<D: Digest + Update + LengthExtensionAttackResistant>(&self, key: &[u8], msg: &[u8]) -> Mac<D> {
+        Mac::generate::<_, _>(key, msg, self.domain_label)
     }
 }
 
@@ -73,10 +83,7 @@ pub trait HashToBytes<const I: usize>: AsRef<[u8]> {
     fn as_fixed_bytes(&self) -> Result<[u8; I], HashingDomainError> {
         let hash_vec = self.as_ref();
         if hash_vec.is_empty() || hash_vec.len() < I {
-            let hash_vec_length = match hash_vec.is_empty() {
-                true => 0,
-                false => hash_vec.len(),
-            };
+            let hash_vec_length = if hash_vec.is_empty() { 0 } else { hash_vec.len() };
             return Err(HashingDomainError::DigestTooShort(I, hash_vec_length));
         }
         let mut buffer: [u8; I] = [0; I];
@@ -85,7 +92,7 @@ pub trait HashToBytes<const I: usize>: AsRef<[u8]> {
     }
 }
 
-impl<const I: usize> HashToBytes<I> for DomainSeparatedHash {}
+impl<const I: usize, D: Digest> HashToBytes<I> for DomainSeparatedHash<D> {}
 
 #[cfg(test)]
 mod test {
@@ -112,8 +119,6 @@ mod test {
         let hash_1 = hasher.finalize();
         let hash_2 = common_hash_domain().digest::<Blake256>(b"my 3rd secret");
         assert_eq!(hash_1.as_ref(), hash_2.as_ref());
-        assert_eq!(hash_1.domain_separation_tag(), hash_2.domain_separation_tag());
-        assert_eq!(hash_1.domain_separation_tag(), hash.domain_separation_tag());
     }
 
     #[test]
@@ -151,13 +156,10 @@ mod test {
         let hash_1 = hasher.finalize();
         let hash_2 = common_hash_domain().mac_digest::<Blake256>(b"my 3rd secret");
         assert_eq!(hash_1.as_ref(), hash_2.as_ref());
-        assert_eq!(hash_1.domain_separation_tag(), hash_2.domain_separation_tag());
-        assert_eq!(hash_1.domain_separation_tag(), hash.domain_separation_tag());
 
         let hmac = common_hash_domain().generate_hmac::<Blake256>(b"my secret key", b"my message");
-        assert_ne!(hmac.domain_separation_tag(), hash_1.domain_separation_tag());
         assert_eq!(
-            hmac.into_vec().to_hex(),
+            hmac.as_ref().to_vec().to_hex(),
             "412767200f4b3bcfbf02bdd556d6fad33be176b06bdcbb00963bd3cb51b5dc79"
         );
     }
@@ -168,14 +170,5 @@ mod test {
         let hash_generic = common_hash_domain().digest::<Blake256>(secret);
         let hash_mac = common_hash_domain().mac_digest::<Blake256>(secret);
         assert_ne!(hash_generic.as_ref(), hash_mac.as_ref());
-        assert_ne!(hash_generic.domain_separation_tag(), hash_mac.domain_separation_tag());
-        assert_eq!(
-            hash_generic.domain_separation_tag(),
-            "com.tari.tari_project.hash_domain.v1.common"
-        );
-        assert_eq!(
-            hash_mac.domain_separation_tag(),
-            "com.tari.tari_project.mac_domain.v1.common"
-        );
     }
 }

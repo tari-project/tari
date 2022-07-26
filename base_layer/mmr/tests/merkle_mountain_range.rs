@@ -23,7 +23,8 @@
 #[allow(dead_code)]
 mod support;
 
-use support::{combine_hashes, create_mmr, int_to_hash, Blake256};
+use support::{combine_hashes, create_mmr, int_to_hash};
+use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::{mmr_hash_domain, MerkleMountainRange};
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
@@ -32,7 +33,7 @@ fn zero_length_mmr() {
     let mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
     assert_eq!(mmr.len(), Ok(0));
     assert_eq!(mmr.is_empty(), Ok(true));
-    let empty_hash = mmr_hash_domain().digest::<Blake256>(b"").into_vec();
+    let empty_hash = mmr_hash_domain().digest::<Blake256>(b"").as_ref().to_vec();
     assert_eq!(mmr.get_merkle_root(), Ok(empty_hash));
 }
 

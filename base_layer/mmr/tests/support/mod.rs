@@ -44,7 +44,7 @@ pub fn create_mutable_mmr(size: usize) -> MutableMmr<Blake256, Vec<Hash>> {
 }
 
 pub fn int_to_hash(n: usize) -> Vec<u8> {
-    mmr_hash_domain().digest::<Blake256>(&n.to_le_bytes()).into_vec()
+    mmr_hash_domain().digest::<Blake256>(&n.to_le_bytes()).as_ref().to_vec()
 }
 
 pub fn combine_hashes(hashe_slices: &[&HashSlice]) -> Hash {
@@ -53,5 +53,6 @@ pub fn combine_hashes(hashe_slices: &[&HashSlice]) -> Hash {
         .iter()
         .fold(hasher, |hasher, h| hasher.chain(*h))
         .finalize()
-        .into_vec()
+        .as_ref()
+        .to_vec()
 }

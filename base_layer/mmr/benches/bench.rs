@@ -37,7 +37,7 @@ mod benches {
 
     fn get_hashes(n: usize) -> Vec<Vec<u8>> {
         (0..n)
-            .map(|i| mmr_hash_domain().digest::<Blake2b>(&i.to_le_bytes()).into_vec())
+            .map(|i| mmr_hash_domain().digest::<Blake2b>(&i.to_le_bytes()).as_ref().to_vec())
             .collect()
     }
 

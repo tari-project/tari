@@ -41,6 +41,7 @@ fn construct_origin_mac_hash(
 ) -> [u8; 32] {
     // e = H_mac(P||R||m)
     Challenge::with_params(&[], &[], b"TARIDHTORIGINMAC")
+        .expect("Blake256(VarBlake2b) salt and persona of size <= 16 bytes will not panic")
         .chain(signer_public_key.as_bytes())
         .chain(public_nonce.as_bytes())
         .chain(message)

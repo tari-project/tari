@@ -24,7 +24,8 @@
 mod support;
 
 use croaring::Bitmap;
-use support::{combine_hashes, int_to_hash, Blake256};
+use support::{combine_hashes, int_to_hash};
+use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::{ArrayLike, ArrayLikeExt, MemBackendVec, MerkleCheckPoint, MmrCache, MmrCacheConfig};
 
 #[test]

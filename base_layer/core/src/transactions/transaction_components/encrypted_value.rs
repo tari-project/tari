@@ -25,13 +25,13 @@
 
 use std::io::{self, Read, Write};
 
-use blake2::Digest;
 use chacha20poly1305::{
     aead::{Aead, Error, NewAead, Payload},
     ChaCha20Poly1305,
     Key,
     Nonce,
 };
+use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::hash::blake2::Blake256;
@@ -120,7 +120,8 @@ impl EncryptedValue {
 // Generate a ChaCha20-Poly1305 key from an ECDH shared secret and commitment using Blake2b
 fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Key {
     const AEAD_KEY_LENGTH: usize = 32; // The length in bytes of a ChaCha20-Poly1305 AEAD key
-    let mut hasher = Blake256::with_params(&[], b"SCAN_AEAD".as_ref(), b"TARI_KDF".as_ref());
+    let mut hasher = Blake256::with_params(&[], b"SCAN_AEAD".as_ref(), b"TARI_KDF".as_ref())
+        .expect("Blake256(VarBlake2b) salt and persona of size <= 16 bytes will not panic");
     hasher.update(shared_secret.as_bytes());
     hasher.update(commitment.as_bytes());
     let output = hasher.finalize();

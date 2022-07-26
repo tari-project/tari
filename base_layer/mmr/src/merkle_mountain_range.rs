@@ -28,7 +28,7 @@ use std::{
 };
 
 use digest::Digest;
-use tari_common_types::types::DefaultDomainHasher;
+use tari_common::hashing_domain::DefaultDomainHasher;
 
 use crate::{
     backend::ArrayLike,
@@ -141,7 +141,7 @@ where
             return Ok(MerkleMountainRange::<D, B>::null_hash());
         }
         let hasher = mmr_hash_domain().hasher::<D>();
-        Ok(self.hash_to_root(hasher)?.finalize().into_vec())
+        Ok(self.hash_to_root(hasher)?.finalize().as_ref().to_vec())
     }
 
     pub(crate) fn hash_to_root(
@@ -259,7 +259,7 @@ where
     }
 
     pub(crate) fn null_hash() -> Hash {
-        mmr_hash_domain().digest::<D>(b"").into_vec()
+        mmr_hash_domain().digest::<D>(b"").as_ref().to_vec()
     }
 
     fn push_hash(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {

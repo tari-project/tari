@@ -82,7 +82,10 @@ pub fn hash_values() -> Vec<String> {
 fn create_mmr() -> MerkleMountainRange<Blake2b, Vec<Vec<u8>>> {
     let mut mmr = MerkleMountainRange::<Blake2b, _>::new(Vec::default());
     for i in 1..24 {
-        let hash = mmr_hash_domain().digest::<Blake2b>(i.to_string().as_bytes()).into_vec();
+        let hash = mmr_hash_domain()
+            .digest::<Blake2b>(i.to_string().as_bytes())
+            .as_ref()
+            .to_vec();
         assert!(mmr.push(hash).is_ok());
     }
     mmr

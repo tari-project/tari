@@ -24,7 +24,8 @@
 #[allow(dead_code)]
 mod support;
 
-use support::{create_mmr, int_to_hash, Blake256};
+use support::{create_mmr, int_to_hash};
+use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::{
     common::{is_leaf, node_index},
     MerkleProof,

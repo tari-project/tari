@@ -24,14 +24,20 @@
 mod support;
 
 use croaring::Bitmap;
-use support::{create_mmr, int_to_hash, Blake256};
+use support::{create_mmr, int_to_hash};
+use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::{mmr_hash_domain, Hash, HashSlice, MutableMmr};
 use tari_utilities::hex::Hex;
 
 fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();
     let hasher = mmr_hash_domain().hasher::<Blake256>();
-    hasher.chain(hash).chain(&bitmap.serialize()).finalize().into_vec()
+    hasher
+        .chain(hash)
+        .chain(&bitmap.serialize())
+        .finalize()
+        .as_ref()
+        .to_vec()
 }
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
@@ -40,7 +46,7 @@ fn zero_length_mmr() {
     let mmr = MutableMmr::<Blake256, _>::new(Vec::default(), Bitmap::create()).unwrap();
     assert_eq!(mmr.len(), 0);
     assert_eq!(mmr.is_empty(), Ok(true));
-    let empty_hash = mmr_hash_domain().digest::<Blake256>(b"").into_vec();
+    let empty_hash = mmr_hash_domain().digest::<Blake256>(b"").as_ref().to_vec();
     assert_eq!(
         mmr.get_merkle_root(),
         Ok(hash_with_bitmap(&empty_hash, &mut Bitmap::create()))

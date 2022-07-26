@@ -177,7 +177,8 @@ pub fn hash_together<D: Digest>(left: &[u8], right: &[u8]) -> Hash {
         .chain(left)
         .chain(right)
         .finalize()
-        .into_vec()
+        .as_ref()
+        .to_vec()
 }
 
 /// The number of leaves in a MMR of the provided size.

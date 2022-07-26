@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 
 use croaring::Bitmap;
 use digest::Digest;
-use tari_common_types::types::DefaultDomainHasher;
+use tari_common::hashing_domain::DefaultDomainHasher;
 
 use crate::{backend::ArrayLike, common::node_index, error::MerkleMountainRangeError, mutable_mmr_leaf_nodes::MutableMmrLeafNodes, Hash, MerkleMountainRange, mmr_hash_domain};
 
@@ -120,7 +120,7 @@ where
         let mmr_root = self.mmr.get_merkle_root()?;
         let mut hasher = mmr_hash_domain().hasher::<D>();
         hasher.update(&mmr_root);
-        Ok(self.hash_deleted(hasher).finalize().into_vec())
+        Ok(self.hash_deleted(hasher).finalize().as_ref().to_vec())
     }
 
     /// Returns only the MMR merkle root without the compressed serialisation of the bitmap

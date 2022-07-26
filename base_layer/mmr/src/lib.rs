@@ -146,7 +146,6 @@ pub mod common;
 pub mod error;
 /// A function for snapshotting and pruning a Merkle Mountain Range
 pub mod pruned_hashset;
-
 // Commonly used exports
 /// A vector-based backend for [MerkleMountainRange]
 pub use backend::{ArrayLike, ArrayLikeExt};
