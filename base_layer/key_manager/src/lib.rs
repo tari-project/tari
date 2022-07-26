@@ -18,7 +18,7 @@ use tari_common::hashing_domain::*;
 /// Usage:
 ///   let hash = comms_dht_hash_domain().digest::<Blake256>(b"my secret");
 ///   etc.
-pub fn comms_dht_hash_domain() -> HashingDomain {
+pub fn base_layer_key_manager() -> HashingDomain {
     HashingDomain::new("base_layer.key_manager")
 }
 
