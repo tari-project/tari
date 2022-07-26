@@ -43,7 +43,9 @@
 #define MergeMiningName "XMRig"
 #define MergeMiningExeName "start_xmrig.bat"
 #define ReadmeName "README.txt"
-#define TariSuitePath "d/a/tari/tari/dist"
+#ifndef TariSuitePath
+#define public TariSuitePath "..\target\release"
+#endif
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -99,10 +101,11 @@ Source: "..\applications\tari_miner\windows\start_tari_miner.lnk"; DestDir: "{ap
 Source: "..\applications\tari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\a\tari\tari\dist\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "D:\a\tari\tari\dist\tari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "D:\a\tari\tari\dist\tari_miner.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "D:\a\tari\tari\dist\tari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\tari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\tari_miner.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\tari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\tari_validator_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\source_base_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
