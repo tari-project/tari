@@ -65,6 +65,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "tari_template_abi",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -125,9 +132,17 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.139"
+version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0171ebb889e45aa68b44aee0859b3eede84c6f5f5c228e6f140c0b2a0a46cad6"
+checksum = "fc855a42c7967b7c369eb5860f7164ef1f6f81c20c7cc1141f2a604e18723b03"
+
+[[package]]
+name = "state"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "tari_template_abi",
+]
 
 [[package]]
 name = "syn"
@@ -145,13 +160,6 @@ name = "tari_template_abi"
 version = "0.1.0"
 dependencies = [
  "borsh",
-]
-
-[[package]]
-name = "test_template"
-version = "0.1.0"
-dependencies = [
- "tari_template_abi",
 ]
 
 [[package]]
