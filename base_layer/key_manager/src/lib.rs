@@ -22,10 +22,6 @@ pub fn base_layer_key_manager() -> HashingDomain {
     HashingDomain::new("base_layer.key_manager")
 }
 
-pub fn base_layer_key_manager() -> HashingDomain {
-    HashingDomain::new("base_layer.key_manager")
-}
-
 pub fn base_layer_key_manager_mac_generation() -> HashingDomain {
     HashingDomain::new("base_layer.key_manager.cipher_seed.mac_generation")
 }
