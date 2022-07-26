@@ -75,8 +75,8 @@ pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
     ptr
 }
 
-
-pub unsafe fn tari_alloc(len: u32) -> *mut u8 {
+#[no_mangle]
+pub unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
     let cap = (len + 4) as usize;
     let mut buf = Vec::<u8>::with_capacity(cap);
     let ptr = buf.as_mut_ptr();
@@ -85,7 +85,8 @@ pub unsafe fn tari_alloc(len: u32) -> *mut u8 {
     ptr
 }
 
-pub unsafe fn tari_free(ptr: *mut u8) {
+#[no_mangle]
+pub unsafe extern "C" fn tari_free(ptr: *mut u8) {
     let mut len = [0u8; 4];
     copy(ptr, len.as_mut_ptr(), 4);
 

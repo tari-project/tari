@@ -52,13 +52,3 @@ extern "C" fn HelloWorld_main(call_info: *mut u8, call_info_len: usize) -> *mut 
 extern "C" {
     pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
 }
-
-#[no_mangle]
-unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
-    common::tari_alloc(len)
-}
-
-#[no_mangle]
-unsafe extern "C" fn tari_free(ptr: *mut u8) {
-    common::tari_free(ptr)
-}
