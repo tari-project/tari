@@ -20,31 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
-// available
-use std::{mem, ptr::copy, vec::Vec};
+use std::{collections::HashMap, mem, intrinsics::copy};
 
-// TODO: Macro generated code
-#[no_mangle]
-extern "C" fn TestTemplate_abi() -> *mut u8 {
-    use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
+use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, CallInfo, decode};
 
+pub fn generate_abi(template_name: String, functions: Vec<FunctionDef>) -> *mut u8 {
     let template = TemplateDef {
-        template_name: "TestTemplate".to_string(),
-        functions: vec![FunctionDef {
-            name: "initialize".to_string(),
-            arguments: vec![],
-            output: Type::Unit,
-        }],
+        template_name,
+        functions,
     };
 
     let buf = encode_with_len(&template);
     wrap_ptr(buf)
 }
 
-#[no_mangle]
-extern "C" fn TestTemplate_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-    use tari_template_abi::{decode, encode_with_len, CallInfo};
+type FunctionImpl = Box<dyn Fn(Vec<Vec<u8>>) -> Vec<u8>>;
+
+pub struct TemplateImpl(HashMap<String, FunctionImpl>);
+
+impl TemplateImpl {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn add_function(&mut self, name: String, implementation: FunctionImpl) {
+        self.0.insert(name.clone(), implementation);
+    }
+}
+
+pub fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: TemplateImpl) -> *mut u8 {
     if call_info.is_null() {
         panic!("call_info is null");
     }
@@ -52,27 +56,27 @@ extern "C" fn TestTemplate_main(call_info: *mut u8, call_info_len: usize) -> *mu
     let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
     let call_info: CallInfo = decode(&call_data).unwrap();
 
-    // Call engine for fun
-    unsafe { tari_engine(123, std::ptr::null(), 0) };
+    // get the function
+    let function = match template_impl.0.get(&call_info.func_name) {
+        Some(f) => f.clone(),
+        None => panic!("invalid function name"),
+    };
 
-    let msg = format!("'{}' was called", call_info.func_name);
-    let v = encode_with_len(&msg);
-    wrap_ptr(v)
+    // call the function
+    let result = function(call_info.args);
+
+    // return the encoded results of the function call
+    wrap_ptr(result)
 }
 
-// TODO: ------ Everything below here should be in a common wasm lib ------
-fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
+pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
     let ptr = v.as_mut_ptr();
     mem::forget(v);
     ptr
 }
 
-extern "C" {
-    pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
-}
-
 #[no_mangle]
-unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
+pub unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
     let cap = (len + 4) as usize;
     let mut buf = Vec::<u8>::with_capacity(cap);
     let ptr = buf.as_mut_ptr();
@@ -82,7 +86,7 @@ unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
 }
 
 #[no_mangle]
-unsafe extern "C" fn tari_free(ptr: *mut u8) {
+pub unsafe extern "C" fn tari_free(ptr: *mut u8) {
     let mut len = [0u8; 4];
     copy(ptr, len.as_mut_ptr(), 4);
 
