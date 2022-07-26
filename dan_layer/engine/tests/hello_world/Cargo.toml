@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 tari_template_abi = { path = "../../../template_abi" }
+common = { path = "../common" }
 
 [profile.release]
 opt-level = 's'     # Optimize for size.

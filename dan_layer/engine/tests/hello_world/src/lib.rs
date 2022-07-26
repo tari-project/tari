@@ -22,51 +22,31 @@
 
 // TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
 // available
-use std::{mem, ptr::copy, vec::Vec};
+
+use common::{generate_abi, generate_main, TemplateImpl};
+use tari_template_abi::{encode_with_len, FunctionDef, Type};
 
 // TODO: Macro generated code
 #[no_mangle]
 extern "C" fn HelloWorld_abi() -> *mut u8 {
-    use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
+    let template_name = "HelloWorld".to_string();
 
-    let template = TemplateDef {
-        template_name: "HelloWorld".to_string(),
-        functions: vec![FunctionDef {
-            name: "greet".to_string(),
-            arguments: vec![],
-            output: Type::String,
-        }],
-    };
+    let functions = vec![FunctionDef {
+        name: "greet".to_string(),
+        arguments: vec![],
+        output: Type::String,
+    }];
 
-    let buf = encode_with_len(&template);
-    wrap_ptr(buf)
+    generate_abi(template_name, functions)
 }
 
 #[no_mangle]
 extern "C" fn HelloWorld_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-    use tari_template_abi::{decode, encode_with_len, CallInfo};
-    if call_info.is_null() {
-        panic!("call_info is null");
-    }
+    let mut template_impl = TemplateImpl::new();
 
-    let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
-    let call_info: CallInfo = decode(&call_data).unwrap();
+    template_impl.add_function("greet".to_string(), Box::new(|_| encode_with_len(&"Hello World!")));
 
-    match call_info.func_name.as_str() {
-        "greet" => {
-            let v = encode_with_len(&"Hello World!");
-            wrap_ptr(v)
-        },
-       
-        &_ => panic!("invalid function name"),
-    }
-}
-
-// TODO: ------ Everything below here should be in a common wasm lib ------
-fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
-    let ptr = v.as_mut_ptr();
-    mem::forget(v);
-    ptr
+    generate_main(call_info, call_info_len, template_impl)
 }
 
 extern "C" {
@@ -75,19 +55,10 @@ extern "C" {
 
 #[no_mangle]
 unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
-    let cap = (len + 4) as usize;
-    let mut buf = Vec::<u8>::with_capacity(cap);
-    let ptr = buf.as_mut_ptr();
-    mem::forget(buf);
-    copy(len.to_le_bytes().as_ptr(), ptr, 4);
-    ptr
+    common::tari_alloc(len)
 }
 
 #[no_mangle]
 unsafe extern "C" fn tari_free(ptr: *mut u8) {
-    let mut len = [0u8; 4];
-    copy(ptr, len.as_mut_ptr(), 4);
-
-    let cap = (u32::from_le_bytes(len) + 4) as usize;
-    let _ = Vec::<u8>::from_raw_parts(ptr, cap, cap);
+    common::tari_free(ptr)
 }

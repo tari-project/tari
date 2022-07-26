@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, mem, intrinsics::copy};
 
 use tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, CallInfo, decode};
 
@@ -51,4 +51,22 @@ pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
     let ptr = v.as_mut_ptr();
     mem::forget(v);
     ptr
+}
+
+
+pub unsafe fn tari_alloc(len: u32) -> *mut u8 {
+    let cap = (len + 4) as usize;
+    let mut buf = Vec::<u8>::with_capacity(cap);
+    let ptr = buf.as_mut_ptr();
+    mem::forget(buf);
+    copy(len.to_le_bytes().as_ptr(), ptr, 4);
+    ptr
+}
+
+pub unsafe fn tari_free(ptr: *mut u8) {
+    let mut len = [0u8; 4];
+    copy(ptr, len.as_mut_ptr(), 4);
+
+    let cap = (u32::from_le_bytes(len) + 4) as usize;
+    let _ = Vec::<u8>::from_raw_parts(ptr, cap, cap);
 }

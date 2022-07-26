@@ -22,12 +22,9 @@
 
 // TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
 // available
-use std::{mem, ptr::copy, vec::Vec};
 
+use common::{generate_abi, TemplateImpl, generate_main};
 use tari_template_abi::{FunctionDef, Type, encode_with_len, decode};
-use wasm::{generate_abi, TemplateImpl, generate_main};
-
-mod wasm;
 
 // that's what the example should look like from the user's perspective
 #[allow(dead_code)]
@@ -121,27 +118,16 @@ extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
     generate_main(call_info, call_info_len, template_impl)
 }
 
-// TODO: ------ Everything below here should be in a common wasm lib ------
-
 extern "C" {
     pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
 }
 
 #[no_mangle]
 unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
-    let cap = (len + 4) as usize;
-    let mut buf = Vec::<u8>::with_capacity(cap);
-    let ptr = buf.as_mut_ptr();
-    mem::forget(buf);
-    copy(len.to_le_bytes().as_ptr(), ptr, 4);
-    ptr
+    common::tari_alloc(len)
 }
 
 #[no_mangle]
 unsafe extern "C" fn tari_free(ptr: *mut u8) {
-    let mut len = [0u8; 4];
-    copy(ptr, len.as_mut_ptr(), 4);
-
-    let cap = (u32::from_le_bytes(len) + 4) as usize;
-    let _ = Vec::<u8>::from_raw_parts(ptr, cap, cap);
+    common::tari_free(ptr)
 }
