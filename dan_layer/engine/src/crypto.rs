@@ -44,6 +44,6 @@ impl DomainSeparation for TariEngineDomainSeparation {
     }
 }
 
-pub fn domain_separated_hasher(label: &str) -> DomainSeparatedHasher<Blake256, TariEngineDomainSeparation> {
+pub fn domain_separated_hasher(label: &'static str) -> DomainSeparatedHasher<Blake256, TariEngineDomainSeparation> {
     DomainSeparatedHasher::new(label)
 }
