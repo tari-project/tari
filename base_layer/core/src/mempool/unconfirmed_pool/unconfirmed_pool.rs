@@ -29,7 +29,7 @@ use std::{
 use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashDigest, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 use crate::{
@@ -649,29 +649,10 @@ impl UnconfirmedPool {
     }
 }
 
-fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
-    output.features.unique_id.as_ref().map(|unique_id| {
-        // "root" token public key
-        let root_pk = PublicKey::default();
-        let parent_pk_bytes = output
-            .features
-            .parent_public_key
-            .as_ref()
-            .map(|pk| pk.as_bytes())
-            .unwrap_or_else(|| root_pk.as_bytes());
-        HashDigest::new()
-            .chain(parent_pk_bytes)
-            .chain(unique_id)
-            .finalize()
-            .into()
-    })
-}
-
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_common_types::types::HashDigest;
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;

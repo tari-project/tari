@@ -66,9 +66,6 @@ pub type BlindingFactor = RistrettoSecretKey;
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHasher = Blake256;
 
-/// Specify the Hash function for general hashing
-pub type HashDigest = Blake256;
-
 /// Specify the digest type for signature challenges
 pub type Challenge = Blake256;
 

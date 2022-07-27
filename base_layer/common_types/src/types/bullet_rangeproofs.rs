@@ -32,16 +32,8 @@ use serde::{
 };
 use tari_utilities::{hex::*, ByteArray, ByteArrayError, Hashable};
 
-use crate::types::HashDigest;
-
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BulletRangeProof(pub Vec<u8>);
-/// Implement the hashing function for RangeProof for use in the MMR
-impl Hashable for BulletRangeProof {
-    fn hash(&self) -> Vec<u8> {
-        HashDigest::new().chain(&self.0).finalize().to_vec()
-    }
-}
 
 impl ByteArray for BulletRangeProof {
     fn to_vec(&self) -> Vec<u8> {

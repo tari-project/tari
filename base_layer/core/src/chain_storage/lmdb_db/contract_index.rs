@@ -539,15 +539,16 @@ impl Display for ContractIndexKey {
 #[cfg(test)]
 mod tests {
     use digest::Digest;
-    use tari_common_types::types::HashDigest;
 
     use super::*;
     mod contract_index_key {
+        use tari_crypto::hash::blake2::Blake256;
+
         use super::*;
 
         #[test]
         fn it_represents_a_well_formed_contract_index_key() {
-            let hash = HashDigest::new().chain(b"foobar").finalize().into();
+            let hash = Blake256::new().chain(b"foobar").finalize().into();
             let key = ContractIndexKey::new(hash, OutputType::ContractCheckpoint);
             assert_eq!(key.as_lmdb_bytes()[0], KeyType::PerContract as u8);
             assert_eq!(key.as_lmdb_bytes()[1..33], *hash.as_slice());

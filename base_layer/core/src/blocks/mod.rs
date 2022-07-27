@@ -22,6 +22,7 @@
 
 #[cfg(feature = "base_node")]
 mod accumulated_data;
+
 #[cfg(feature = "base_node")]
 pub use accumulated_data::{
     BlockAccumulatedData,
@@ -32,6 +33,7 @@ pub use accumulated_data::{
     DeletedBitmap,
     UpdateBlockAccumulatedData,
 };
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
 
 mod error;
 pub use error::BlockError;
@@ -62,6 +64,8 @@ mod new_blockheader_template;
 #[cfg(feature = "base_node")]
 pub use new_blockheader_template::NewBlockHeaderTemplate;
 use tari_common::hashing_domain::HashingDomain;
+use tari_crypto::hash_domain;
+use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange};
 
 /// The base layer core blocks domain separated hashing domain
 /// Usage:
@@ -70,3 +74,21 @@ use tari_common::hashing_domain::HashingDomain;
 pub fn core_blocks_hash_domain() -> HashingDomain {
     HashingDomain::new("base_layer.core.blocks")
 }
+
+hash_domain!(TariKernelMmrHasher, "com.tari.blocks.mmr.kernels");
+pub type KernelMmr = MerkleMountainRange<DomainSeparatedHasher<Blake256, TariKernelMmrHasher>, PrunedHashSet>;
+
+hash_domain!(TariOutputMmrHasher, "com.tari.blocks.mmr.outputs");
+pub type OutputMmr = MutableMmr<DomainSeparatedHasher<Blake256, TariOutputMmrHasher>, PrunedHashSet>;
+
+hash_domain!(TariWitnessMmrHasher, "com.tari.blocks.mmr.witnesses");
+pub type WitnessMmr = MerkleMountainRange<DomainSeparatedHasher<Blake256, TariWitnessMmrHasher>, PrunedHashSet>;
+
+hash_domain!(TariInputMmrHasher, "com.tari.blocks.mmr.input");
+pub type InputMmr = MerkleMountainRange<DomainSeparatedHasher<Blake256, TariInputMmrHasher>, PrunedHashSet>;
+
+hash_domain!(TariMergeMiningHashDomain, "com.tari.blocks.merge_mining");
+pub type TariMergeMiningHasher = DomainSeparatedHasher<Blake256, TariMergeMiningHashDomain>;
+
+hash_domain!(TariBlockHashDomain, "com.tari.blocks.header");
+pub type TariBlockHeaderHasher = DomainSeparatedHasher<Blake256, TariBlockHashDomain>;

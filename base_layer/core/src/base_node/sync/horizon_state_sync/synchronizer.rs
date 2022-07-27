@@ -31,7 +31,7 @@ use std::{
 use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
-use tari_common_types::types::{Commitment, HashDigest, RangeProofService};
+use tari_common_types::types::{Commitment, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_crypto::{
     commitment::HomomorphicCommitment,
@@ -49,7 +49,7 @@ use crate::{
         BlockchainSyncConfig,
         SyncPeer,
     },
-    blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
+    blocks::{BlockHeader, ChainHeader, KernelMmr, UpdateBlockAccumulatedData},
     chain_storage::{
         async_db::AsyncBlockchainDb,
         BlockchainBackend,
@@ -325,7 +325,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     .fetch_block_accumulated_data(current_header.header().prev_hash.clone())
                     .await?;
                 let kernel_pruned_set = block_data.dissolve().0;
-                let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernel_pruned_set);
+                let mut kernel_mmr = KernelMmr::new(kernel_pruned_set);
 
                 for hash in kernel_hashes.drain(..) {
                     kernel_mmr.push(hash)?;
@@ -486,8 +486,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .await?;
         let (_, output_pruned_set, witness_pruned_set, _) = block_data.dissolve();
 
-        let mut output_mmr = MerkleMountainRange::<HashDigest, _>::new(output_pruned_set);
-        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(witness_pruned_set);
+        let mut output_mmr = OutputMmr::new(output_pruned_set);
+        let mut witness_mmr = WitnessMmr::new(witness_pruned_set);
         let mut constants = self.rules.consensus_constants(current_header.height()).clone();
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);

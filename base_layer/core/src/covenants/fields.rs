@@ -29,7 +29,6 @@ use std::{
 
 use digest::Digest;
 use integer_encoding::VarIntWriter;
-use tari_common_types::types::HashDigest;
 
 use crate::{
     consensus::ToConsensusBytes,

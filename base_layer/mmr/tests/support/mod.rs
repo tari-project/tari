@@ -23,10 +23,10 @@
 
 use croaring::Bitmap;
 use digest::Digest;
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, hasher};
 use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr};
 
-pub type Hasher = Blake256;
+hasher!(Blake256, Hasher, "mmr_tests");
 
 pub fn create_mmr(size: usize) -> MerkleMountainRange<Hasher, Vec<Hash>> {
     let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
@@ -51,10 +51,11 @@ pub fn int_to_hash(n: usize) -> Vec<u8> {
 }
 
 pub fn combine_hashes(hashe_slices: &[&HashSlice]) -> Hash {
-    let hasher = Hasher::new();
+    let hasher = Hasher::new("");
     hashe_slices
         .iter()
         .fold(hasher, |hasher, h| hasher.chain(*h))
         .finalize()
+        .as_ref()
         .to_vec()
 }

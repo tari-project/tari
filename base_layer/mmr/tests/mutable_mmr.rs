@@ -31,8 +31,13 @@ use tari_utilities::hex::Hex;
 
 fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();
-    let hasher = Hasher::new();
-    hasher.chain(hash).chain(&bitmap.serialize()).finalize().to_vec()
+    let hasher = Hasher::new("");
+    hasher
+        .chain(hash)
+        .chain(&bitmap.serialize())
+        .finalize()
+        .as_ref()
+        .to_vec()
 }
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".

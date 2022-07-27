@@ -314,7 +314,6 @@ fn get_dibbler_genesis_block_raw() -> Block {
 #[cfg(test)]
 mod test {
     use croaring::Bitmap;
-    use tari_common_types::types::HashDigest;
     use tari_mmr::{MerkleMountainRange, MutableMmr};
 
     use super::*;

@@ -36,7 +36,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashDigest, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
@@ -52,8 +52,12 @@ use crate::{
         CompleteDeletedBitmap,
         DeletedBitmap,
         HistoricalBlock,
+        InputMmr,
+        KernelMmr,
         NewBlockTemplate,
+        OutputMmr,
         UpdateBlockAccumulatedData,
+        WitnessMmr,
     },
     chain_storage::{
         consts::{
@@ -1253,10 +1257,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
             value: header.prev_hash.to_hex(),
         })?;
 
-    let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernels);
-    let mut output_mmr = MutableMmr::<HashDigest, _>::new(outputs, deleted)?;
-    let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
-    let mut input_mmr = MerkleMountainRange::<HashDigest, _>::new(PrunedHashSet::default());
+    let mut kernel_mmr = KernelMmr::new(kernels);
+    let mut output_mmr = OutputMmr::new(outputs, deleted)?;
+    let mut witness_mmr = WitnessMmr::new(range_proofs);
+    let mut input_mmr = InputMmr::new(PrunedHashSet::default());
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash())?;

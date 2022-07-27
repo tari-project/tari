@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use tari_common_types::types::{Commitment, FixedHash, HashDigest};
+use tari_common_types::types::{Commitment, FixedHash};
 use tari_utilities::ByteArray;
 
 #[derive(Debug, Clone, Copy)]
@@ -29,13 +29,14 @@ pub struct ContractAcceptanceChallenge(FixedHash);
 
 impl ContractAcceptanceChallenge {
     pub fn new(constiution_commitment: &Commitment, contract_id: &FixedHash) -> Self {
+        todo!()
         // TODO: Use new tari_crypto domain-separated hashing
-        let hash = HashDigest::new()
-            .chain(constiution_commitment.as_bytes())
-            .chain(contract_id.as_slice())
-            .finalize()
-            .into();
-        Self(hash)
+        // let hash = HashDigest::new()
+        //     .chain(constiution_commitment.as_bytes())
+        //     .chain(contract_id.as_slice())
+        //     .finalize()
+        //     .into();
+        // Self(hash)
     }
 }
 

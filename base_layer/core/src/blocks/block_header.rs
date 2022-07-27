@@ -57,7 +57,7 @@ use serde::{
 };
 use tari_common_types::{
     array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
-    types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
+    types::{BlindingFactor, BlockHash, BLOCK_HASH_LENGTH},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
@@ -65,6 +65,7 @@ use thiserror::Error;
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
+    blocks::{TariBlockHeaderHasher, TariMergeMiningHasher},
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
@@ -218,8 +219,7 @@ impl BlockHeader {
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn merged_mining_hash(&self) -> Vec<u8> {
         if self.version <= 2 {
-            // TODO: Remove deprecated header hashing #testnetreset
-            HashDigest::new()
+            TariMergeMiningHasher::new()
                 .chain(self.version.to_le_bytes())
                 .chain(self.height.to_le_bytes())
                 .chain(self.prev_hash.as_bytes())
@@ -295,7 +295,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
         if self.version <= 2 {
-            HashDigest::new()
+            TariBlockHeaderHasher::new()
                 .chain(self.merged_mining_hash())
                 .chain(self.pow.to_bytes())
                 .chain(self.nonce.to_le_bytes())
