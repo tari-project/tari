@@ -120,6 +120,64 @@ All notable changes to this project will be documented in this file. See [standa
 
 * **core:** replace OutputFlags with OutputType ([#4174](https://github.com/tari-project/tari/issues/4174)) ([d779f43](https://github.com/tari-project/tari/commit/d779f4311a0415b3ecd98e806bfbf27fc2486412))
 
+### [0.32.12](https://github.com/tari-project/tari/compare/v0.32.11...v0.32.12) (2022-07-11)
+
+
+### Bug Fixes
+
+* cbindgen fix ([#4298](https://github.com/tari-project/tari/issues/4298)) ([2744d46](https://github.com/tari-project/tari/commit/2744d4601f6e3db461515d894314d25364faa59b))
+
+### [0.32.11](https://github.com/tari-project/tari/compare/v0.32.10...v0.32.11) (2022-07-11)
+
+
+### Bug Fixes
+
+* fixed bug in wallet_coin_join ([#4290](https://github.com/tari-project/tari/issues/4290)) ([2f14c3c](https://github.com/tari-project/tari/commit/2f14c3c1e867eff785b5417a72bacedf17df5022))
+
+### [0.32.10](https://github.com/tari-project/tari/compare/v0.32.9...v0.32.10) (2022-07-07)
+
+
+### Features
+
+* add mined_timestamp to wallet.db ([#4267](https://github.com/tari-project/tari/issues/4267)) ([c6c9832](https://github.com/tari-project/tari/commit/c6c9832f7ea72b648f4faeebf246677094033a19))
+* **wallet_ffi:** added mined_timestamp to TariUtxo ([#4284](https://github.com/tari-project/tari/issues/4284)) ([6e1b3da](https://github.com/tari-project/tari/commit/6e1b3da20e1b0e54cf64ea9ee7cb8f930065f7c3))
+
+
+### Bug Fixes
+
+* improve GHA docker image builds ([#4257](https://github.com/tari-project/tari/issues/4257)) ([2c01421](https://github.com/tari-project/tari/commit/2c0142121feed0d45ca57a5e19a2fed2aada62bc))
+* removed code duplication in TariUtxo conversion ([#4283](https://github.com/tari-project/tari/issues/4283)) ([455d161](https://github.com/tari-project/tari/commit/455d161e42609a072878b9a99de5890753b828cb))
+
+### [0.32.9](https://github.com/tari-project/tari/compare/v0.32.8...v0.32.9) (2022-07-06)
+
+
+### Features
+
+* **ffi:** added 3 functions ([#4266](https://github.com/tari-project/tari/issues/4266)) ([2be17df](https://github.com/tari-project/tari/commit/2be17dfa337d9175d56e0879b64f0dd4875bbe66))
+
+### [0.32.8](https://github.com/tari-project/tari/compare/v0.32.7...v0.32.8) (2022-07-04)
+
+
+### Features
+
+* **wallet_ffi:** wallet_coin_split changes ([#4254](https://github.com/tari-project/tari/issues/4254)) ([d367f0b](https://github.com/tari-project/tari/commit/d367f0b56fc86df3662f1d01b5037f63163892a3))
+
+### [0.32.7](https://github.com/tari-project/tari/compare/v0.32.6...v0.32.7) (2022-06-30)
+
+
+### Features
+
+* **wallet_ffi:** wallet_get_utxos, wallet_coin_join, wallet_coin_split ([#4244](https://github.com/tari-project/tari/issues/4244)) ([88931aa](https://github.com/tari-project/tari/commit/88931aa5eea3f574fda44b37bc4b973dd5a6e125))
+
+### [0.32.6](https://github.com/tari-project/tari/compare/v0.32.5...v0.32.6) (2022-06-29)
+
+
+### Features
+
+* **ci:** build both x86/arm64 docker images from GHA  ([#4204](https://github.com/tari-project/tari/issues/4204)) ([28a8f8b](https://github.com/tari-project/tari/commit/28a8f8b541f96d2bee4bd7f46cc1625dfeb0d323))
+* **wallet_ffi:** add coin join and split ([#4218](https://github.com/tari-project/tari/issues/4218)) ([af6c834](https://github.com/tari-project/tari/commit/af6c834c9e38984135152e664823a02857d09656))
+* **wallet:** allow UTXO selection by specific outputs and by token ([#4227](https://github.com/tari-project/tari/issues/4227)) ([f2a7e18](https://github.com/tari-project/tari/commit/f2a7e1846341a69ddea6eb3541467e82e1bf2e47))
+
 ### [0.32.5](https://github.com/tari-project/tari/compare/v0.32.4...v0.32.5) (2022-06-20)
 
 

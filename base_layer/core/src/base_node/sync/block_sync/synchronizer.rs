@@ -246,6 +246,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             let current_height = header.height();
             let header_hash = header.hash().clone();
+            let timestamp = header.timestamp();
 
             if header.header().prev_hash != prev_hash {
                 return Err(BlockSyncError::PeerSentBlockThatDidNotFormAChain {
@@ -317,6 +318,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     header_hash,
                     block.accumulated_data().total_accumulated_difficulty,
                     block.header().prev_hash.clone(),
+                    timestamp,
                 )
                 .commit()
                 .await?;

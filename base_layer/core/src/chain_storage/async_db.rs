@@ -312,9 +312,15 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         hash: HashOutput,
         accumulated_difficulty: u128,
         expected_prev_best_block: HashOutput,
+        timestamp: u64,
     ) -> &mut Self {
-        self.transaction
-            .set_best_block(height, hash, accumulated_difficulty, expected_prev_best_block);
+        self.transaction.set_best_block(
+            height,
+            hash,
+            accumulated_difficulty,
+            expected_prev_best_block,
+            timestamp,
+        );
         self
     }
 
@@ -344,9 +350,10 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         header_hash: HashOutput,
         header_height: u64,
         mmr_position: u32,
+        timestamp: u64,
     ) -> &mut Self {
         self.transaction
-            .insert_utxo(output, header_hash, header_height, mmr_position);
+            .insert_utxo(output, header_hash, header_height, mmr_position, timestamp);
         self
     }
 
@@ -357,9 +364,16 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         header_hash: HashOutput,
         header_height: u64,
         mmr_position: u32,
+        timestamp: u64,
     ) -> &mut Self {
-        self.transaction
-            .insert_pruned_utxo(output_hash, witness_hash, header_hash, header_height, mmr_position);
+        self.transaction.insert_pruned_utxo(
+            output_hash,
+            witness_hash,
+            header_hash,
+            header_height,
+            mmr_position,
+            timestamp,
+        );
         self
     }
 

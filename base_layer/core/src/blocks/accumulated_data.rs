@@ -406,6 +406,10 @@ impl ChainHeader {
         self.header.height
     }
 
+    pub fn timestamp(&self) -> u64 {
+        self.header.timestamp.as_u64()
+    }
+
     pub fn hash(&self) -> &HashOutput {
         &self.accumulated_data.hash
     }

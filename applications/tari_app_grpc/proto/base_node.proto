@@ -457,6 +457,7 @@ message GetConstitutionsResponse {
     uint32 mmr_position = 2;
     uint64 mined_height = 3;
     bytes header_hash = 4;
+    uint64 mined_timestamp = 5;
 }
 
 message GetCurrentContractOutputsRequest {
@@ -473,4 +474,5 @@ message UtxoMinedInfo {
     uint32 mmr_position = 2;
     uint64 mined_height = 3;
     bytes header_hash = 4;
+    uint64 mined_timestamp = 5;
 }
