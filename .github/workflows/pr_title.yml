@@ -1,4 +1,6 @@
 ---
+# Checks that PR titles conform to Conventional Commits
+# See https://www.conventionalcommits.org/en/v1.0.0/ for more information
 name: PR
 
 on:
