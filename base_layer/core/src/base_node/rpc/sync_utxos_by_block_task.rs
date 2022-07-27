@@ -154,6 +154,7 @@ where B: BlockchainBackend + 'static
                 outputs: utxos,
                 height: current_header.height,
                 header_hash: current_header_hash,
+                mined_timestamp: current_header.timestamp.as_u64(),
             };
             // Ensure task stops if the peer prematurely stops their RPC session
             if tx.send(Ok(utxo_block_response)).await.is_err() {

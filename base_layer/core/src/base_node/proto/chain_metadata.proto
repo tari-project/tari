@@ -19,4 +19,6 @@ message ChainMetadata {
     // If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be provided.
     // Archival nodes wil always have an `pruned_height` of zero.
     uint64 pruned_height = 6;
+    // Timestamp of the last block in the chain, or `None` if there is no chain
+    google.protobuf.UInt64Value timestamp = 7;
 }

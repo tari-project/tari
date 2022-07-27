@@ -313,6 +313,7 @@ mod test {
             best_block: Some(vec![]),
             pruned_height: 0,
             accumulated_difficulty: diff.to_be_bytes().to_vec(),
+            timestamp: Some(0),
         }
     }
 

@@ -1,5 +1,6 @@
 ---
 # Runs daily (2am)
+---
 name: Non critical integration tests
 
 on:

@@ -127,6 +127,7 @@ pub struct TxQueryResponse {
     pub confirmations: u64,
     pub is_synced: bool,
     pub height_of_longest_chain: u64,
+    pub mined_timestamp: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -136,6 +137,7 @@ pub struct TxQueryBatchResponse {
     pub block_hash: Option<BlockHash>,
     pub confirmations: u64,
     pub block_height: u64,
+    pub mined_timestamp: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +196,7 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
             confirmations: proto_response.confirmations,
             is_synced: proto_response.is_synced,
             height_of_longest_chain: proto_response.height_of_longest_chain,
+            mined_timestamp: proto_response.mined_timestamp,
         })
     }
 }
@@ -206,6 +209,7 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
             confirmations: response.confirmations,
             is_synced: response.is_synced,
             height_of_longest_chain: response.height_of_longest_chain,
+            mined_timestamp: response.mined_timestamp,
         }
     }
 }
@@ -227,6 +231,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
             block_hash: proto_response.block_hash,
             block_height: proto_response.block_height,
             confirmations: proto_response.confirmations,
+            mined_timestamp: proto_response.mined_timestamp,
         })
     }
 }

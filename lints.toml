@@ -24,7 +24,6 @@ deny = [
     'clippy::create_dir',
     'clippy::dbg_macro',
     'clippy::else_if_without_else',
-    'clippy::enum_glob_use',
     'clippy::inline_always',
     'clippy::let_underscore_drop',
     'clippy::let_unit_value',

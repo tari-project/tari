@@ -83,6 +83,10 @@ service Wallet {
 
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 
+    rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
+    rpc SeedWords(Empty) returns (SeedWordsResponse);
+    rpc DeleteSeedWordsFile(Empty) returns (FileDeletedResponse);
+
     rpc SubmitContractAcceptance(SubmitContractAcceptanceRequest) returns (SubmitContractAcceptanceResponse);
     rpc SubmitContractUpdateProposalAcceptance(SubmitContractUpdateProposalAcceptanceRequest) returns (SubmitContractUpdateProposalAcceptanceResponse);
 }
@@ -394,4 +398,32 @@ message CheckConnectivityResponse{
         Offline = 2;
     }
     OnlineStatus status = 1;
+}
+
+message TransactionEventRequest{
+
+}
+
+message TransactionEvent {
+    string event = 1;
+    string tx_id = 2;
+    bytes source_pk = 3;
+    bytes dest_pk = 4;
+    string status = 5;
+    string direction = 6;
+    uint64 amount = 7;
+    string message = 8;
+    bool is_coinbase = 9;
+}
+
+message TransactionEventResponse {
+    TransactionEvent transaction  = 1;
+}
+
+message SeedWordsResponse {
+    repeated string words = 1;
+}
+
+message FileDeletedResponse {
+
 }

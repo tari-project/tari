@@ -309,6 +309,7 @@ async fn test_utxo_scanner_recovery() {
         best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
+        timestamp: Some(0),
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
@@ -398,6 +399,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
         best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
+        timestamp: Some(0),
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata.clone()),
@@ -448,6 +450,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
             import_status: _,
             tx_id: _,
             current_height: _,
+            mined_timestamp: _,
         } = req
         {
             assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
@@ -514,6 +517,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
             import_status: _,
             tx_id: _,
             current_height: _,
+            mined_timestamp: _,
         } = req
         {
             assert_eq!(message, "recovery".to_string());
@@ -551,6 +555,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
+        timestamp: Some(0),
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata.clone()),
@@ -613,6 +618,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         best_block: Some(block_headers.get(&9).unwrap().clone().hash()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
+        timestamp: Some(0),
     };
     test_interface2
         .rpc_service_state
@@ -715,6 +721,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
         best_block: Some(block_headers.get(&(800 + NUM_BLOCKS - 1)).unwrap().clone().hash()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
+        timestamp: Some(0),
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
@@ -810,6 +817,7 @@ async fn test_utxo_scanner_one_sided_payments() {
         best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
+        timestamp: Some(0),
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
@@ -872,6 +880,7 @@ async fn test_utxo_scanner_one_sided_payments() {
             import_status: _,
             tx_id: _,
             current_height: _,
+            mined_timestamp: _,
         } = req
         {
             assert_eq!(message, "one-sided non-default".to_string());
@@ -911,6 +920,7 @@ async fn test_utxo_scanner_one_sided_payments() {
         best_block: Some(block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
+        timestamp: Some(0),
     };
 
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
@@ -957,6 +967,7 @@ async fn test_utxo_scanner_one_sided_payments() {
             import_status: _,
             tx_id: _,
             current_height: h,
+            mined_timestamp: _,
         } = req
         {
             println!("{:?}", h);
