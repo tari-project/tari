@@ -9276,8 +9276,8 @@ mod test {
 
             let mnemonic = vec![
                 "theme", "spatial", "winner", "appear", "board", "float", "tennis", "grant", "story", "film", "accuse",
-                "october", "corn", "seven", "brain", "typical", "fiction", "eight", "inspire", "rapid", "whisper", "title",
-                "piano", "crew",
+                "october", "corn", "seven", "brain", "typical", "fiction", "eight", "inspire", "rapid", "whisper",
+                "title", "piano", "crew",
             ];
 
             let seed_words = seed_words_create();

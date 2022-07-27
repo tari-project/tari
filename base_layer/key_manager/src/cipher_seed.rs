@@ -326,9 +326,7 @@ impl CipherSeed {
 
         // we produce a domain separated hash of the given salt, for Argon2 encryption use. As suggested in
         // https://en.wikipedia.org/wiki/Argon2, we shall use a 16-byte length hash salt
-        let argon2_salt = base_layer_key_manager_argon2_encoding()
-            .chain(salt)
-            .finalize();
+        let argon2_salt = base_layer_key_manager_argon2_encoding().chain(salt).finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
 
         // produce a base64 salt string
@@ -598,7 +596,7 @@ mod test {
         let mnemonic_seq = seed
             .to_mnemonic(MnemonicLanguage::English, None)
             .expect("Couldn't convert CipherSeed to Mnemonic");
-        
+
         for val in mnemonic_seq {
             println!("{}", val);
         }

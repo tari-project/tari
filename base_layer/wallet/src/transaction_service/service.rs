@@ -67,11 +67,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
     hash_domain,
-<<<<<<< HEAD
-    hashing::{DomainSeparatedHasher},
-=======
     hashing::DomainSeparatedHasher,
->>>>>>> development
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
