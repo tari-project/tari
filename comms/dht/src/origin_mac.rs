@@ -41,6 +41,7 @@ fn construct_origin_mac_hash(
 ) -> [u8; 32] {
     // e = H_mac(P||R||m)
     Challenge::with_params(&[], &[], b"TARIDHTORIGINMAC")
+        .expect("params for Challenge should not produce failure")
         .chain(signer_public_key.as_bytes())
         .chain(public_nonce.as_bytes())
         .chain(message)
