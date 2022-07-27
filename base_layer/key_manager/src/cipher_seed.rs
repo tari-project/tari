@@ -589,16 +589,4 @@ mod test {
             "Should not be able to derive seed with wrong passphrase"
         );
     }
-
-    #[test]
-    fn aux_test() {
-        let seed = CipherSeed::new();
-        let mnemonic_seq = seed
-            .to_mnemonic(MnemonicLanguage::English, None)
-            .expect("Couldn't convert CipherSeed to Mnemonic");
-
-        for val in mnemonic_seq {
-            println!("{}", val);
-        }
-    }
 }
