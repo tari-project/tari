@@ -116,12 +116,14 @@ impl DbTransaction {
         header_hash: HashOutput,
         header_height: u64,
         mmr_leaf_index: u32,
+        timestamp: u64,
     ) -> &mut Self {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
             header_height,
             output: Box::new(utxo),
             mmr_position: mmr_leaf_index,
+            timestamp,
         });
         self
     }
@@ -133,6 +135,7 @@ impl DbTransaction {
         header_hash: HashOutput,
         header_height: u64,
         mmr_leaf_index: u32,
+        timestamp: u64,
     ) -> &mut Self {
         self.operations.push(WriteOperation::InsertPrunedOutput {
             header_hash,
@@ -140,6 +143,7 @@ impl DbTransaction {
             output_hash,
             witness_hash,
             mmr_position: mmr_leaf_index,
+            timestamp,
         });
         self
     }
@@ -232,12 +236,14 @@ impl DbTransaction {
         hash: HashOutput,
         accumulated_difficulty: u128,
         expected_prev_best_block: HashOutput,
+        timestamp: u64,
     ) -> &mut Self {
         self.operations.push(WriteOperation::SetBestBlock {
             height,
             hash,
             accumulated_difficulty,
             expected_prev_best_block,
+            timestamp,
         });
         self
     }
@@ -303,6 +309,7 @@ pub enum WriteOperation {
         header_height: u64,
         output: Box<TransactionOutput>,
         mmr_position: u32,
+        timestamp: u64,
     },
     InsertPrunedOutput {
         header_hash: HashOutput,
@@ -310,6 +317,7 @@ pub enum WriteOperation {
         output_hash: HashOutput,
         witness_hash: HashOutput,
         mmr_position: u32,
+        timestamp: u64,
     },
     InsertBadBlock {
         hash: HashOutput,
@@ -340,6 +348,7 @@ pub enum WriteOperation {
         hash: HashOutput,
         accumulated_difficulty: u128,
         expected_prev_best_block: HashOutput,
+        timestamp: u64,
     },
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
@@ -390,13 +399,15 @@ impl fmt::Display for WriteOperation {
                 header_height,
                 output,
                 mmr_position,
+                timestamp,
             } => write!(
                 f,
-                "Insert output {} in block:{},#{} position: {}",
+                "Insert output {} in block:{},#{} position: {}, timestamp: {}",
                 output.hash().to_hex(),
                 header_hash.to_hex(),
                 header_height,
-                mmr_position
+                mmr_position,
+                timestamp
             ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
             InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
@@ -411,6 +422,7 @@ impl fmt::Display for WriteOperation {
                 output_hash: _,
                 witness_hash: _,
                 mmr_position: _,
+                timestamp: _,
             } => write!(f, "Insert pruned output"),
             UpdateBlockAccumulatedData { header_hash, .. } => {
                 write!(f, "Update Block data for block {}", header_hash.to_hex())
@@ -428,12 +440,14 @@ impl fmt::Display for WriteOperation {
                 hash,
                 accumulated_difficulty,
                 expected_prev_best_block: _,
+                timestamp,
             } => write!(
                 f,
-                "Update best block to height:{} ({}) with difficulty: {}",
+                "Update best block to height:{} ({}) with difficulty: {} and timestamp : {}",
                 height,
                 hash.to_hex(),
-                accumulated_difficulty
+                accumulated_difficulty,
+                timestamp
             ),
             SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {}", pruning_horizon),
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),

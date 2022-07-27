@@ -129,6 +129,10 @@ pub enum OutputManagerError {
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("Value can't be encrypted/decrypted")]
     ValueEncryptionError(#[from] EncryptionError),
+    #[error("No commitments were provided")]
+    NoCommitmentsProvided,
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 #[derive(Debug, Error)]

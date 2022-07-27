@@ -59,12 +59,12 @@ pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 const MESSAGE_BASE_LENGTH: usize = 124;
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
-pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; 32]
+pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; PK::KEY_LEN]
 where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
     // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
     //       currently possible because (Compressed)RistrettoPoint does not implement it.
     let k = PK::shared_secret(secret_key, public_key);
-    let mut output = [0u8; 32];
+    let mut output = [0u8; PK::KEY_LEN];
 
     output.copy_from_slice(k.as_bytes());
     output
@@ -102,7 +102,7 @@ pub fn generate_key_signature_for_authenticated_encryption(data: &[u8]) -> Authe
     let domain_separated_hash = comms_dht_hash_domain_key_signature()
         .digest::<CommsChallenge>(data)
         .into_vec();
-
+    
     // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
     AuthenticatedCipherKey(*chacha20poly1305::Key::from_slice(domain_separated_hash.as_bytes()))
 }
@@ -225,7 +225,8 @@ pub fn create_message_domain_separated_hash_parts(
         .chain(&e_pk)
         .chain(&body)
         .finalize();
-
+    
+    // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
     domain_separated_hash
         .hash_to_bytes()
         .expect("the output size of Blake256 should be 32-bytes")

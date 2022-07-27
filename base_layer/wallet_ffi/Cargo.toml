@@ -31,6 +31,7 @@ thiserror = "1.0.26"
 tokio = "1.11"
 env_logger = "0.7.0"
 num-traits = "0.2.15"
+itertools = "0.10.3"
 
 # <workaround>
 # Temporary workaround until crates utilizing openssl have been updated from security-framework 2.4.0

@@ -22,6 +22,7 @@
 
 use std::cmp::Ordering;
 
+use chrono::NaiveDateTime;
 use derivative::Derivative;
 use tari_common_types::types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey};
 use tari_core::transactions::{
@@ -43,6 +44,7 @@ pub struct DbUnblindedOutput {
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
     pub mined_mmr_position: Option<u64>,
+    pub mined_timestamp: Option<NaiveDateTime>,
     pub marked_deleted_at_height: Option<u64>,
     pub marked_deleted_in_block: Option<BlockHash>,
     pub spending_priority: SpendingPriority,
@@ -63,6 +65,7 @@ impl DbUnblindedOutput {
             mined_height: None,
             mined_in_block: None,
             mined_mmr_position: None,
+            mined_timestamp: None,
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
             spending_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
@@ -85,6 +88,7 @@ impl DbUnblindedOutput {
             mined_height: None,
             mined_in_block: None,
             mined_mmr_position: None,
+            mined_timestamp: None,
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
             spending_priority: spending_priority.unwrap_or(SpendingPriority::Normal),

@@ -23,6 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use aes_gcm::Aes256Gcm;
+use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
@@ -101,6 +102,7 @@ pub struct OutputSql {
     pub features_json: String,
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
+    pub mined_timestamp: Option<NaiveDateTime>,
     pub encrypted_value: Vec<u8>,
     pub contract_id: Option<Vec<u8>>,
     pub minimum_value_promise: i64,
@@ -144,6 +146,17 @@ impl OutputSql {
             1 => query.filter(outputs::status.eq(q.status[0] as i32)),
             _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
         };
+
+        // filtering by Commitment
+        if !q.commitments.is_empty() {
+            query = match q.commitments.len() {
+                0 => query,
+                1 => query.filter(outputs::commitment.eq(q.commitments[0].to_vec())),
+                _ => query.filter(
+                    outputs::commitment.eq_any::<Vec<Vec<u8>>>(q.commitments.into_iter().map(|c| c.to_vec()).collect()),
+                ),
+            };
+        }
 
         // if set, filtering by minimum value
         if let Some((min, is_inclusive)) = q.value_min {
@@ -209,6 +222,15 @@ impl OutputSql {
                     .filter(outputs::features_unique_id.eq(unique_id))
                     .filter(outputs::features_parent_public_key.eq(parent_public_key.as_ref().map(|pk| pk.to_vec())));
             },
+            UtxoSelectionFilter::SpecificOutputs { commitments } => {
+                query = match commitments.len() {
+                    0 => query,
+                    1 => query.filter(outputs::commitment.eq(commitments[0].to_vec())),
+                    _ => query.filter(
+                        outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
+                    ),
+                };
+            },
             UtxoSelectionFilter::ContractOutput {
                 contract_id,
                 output_type,
@@ -216,9 +238,6 @@ impl OutputSql {
                 query = query
                     .filter(outputs::contract_id.eq(contract_id.as_slice()))
                     .filter(outputs::output_type.eq(i32::from(output_type.as_byte())));
-            },
-            UtxoSelectionFilter::SpecificOutputs { outputs } => {
-                query = query.filter(outputs::hash.eq_any(outputs.iter().map(|o| &o.hash)))
             },
         }
 
@@ -718,6 +737,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             mined_height: o.mined_height.map(|mh| mh as u64),
             mined_in_block: o.mined_in_block,
             mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
+            mined_timestamp: o.mined_timestamp,
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block: o.marked_deleted_in_block,
             spending_priority,
