@@ -179,32 +179,40 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
+    // To create a new seed word sequence, uncomment below
+    // let seed = CipherSeed::new();
+    // use tari_key_manager::mnemonic::MnemonicLanguage;
+    // let mnemonic_seq = seed
+    //     .to_mnemonic(MnemonicLanguage::English, None)
+    //     .expect("Couldn't convert CipherSeed to Mnemonic");
+    // println!("{:?}", mnemonic_seq);
+
     let cipher_seed = CipherSeed::from_mnemonic(
         &[
-            "theme".to_string(),
-            "spatial".to_string(),
-            "winner".to_string(),
-            "appear".to_string(),
-            "board".to_string(),
-            "float".to_string(),
-            "tennis".to_string(),
-            "grant".to_string(),
-            "story".to_string(),
-            "film".to_string(),
-            "accuse".to_string(),
-            "october".to_string(),
-            "corn".to_string(),
-            "seven".to_string(),
-            "brain".to_string(),
-            "typical".to_string(),
-            "fiction".to_string(),
-            "eight".to_string(),
-            "inspire".to_string(),
-            "rapid".to_string(),
-            "whisper".to_string(),
-            "title".to_string(),
-            "piano".to_string(),
-            "crew".to_string(),
+            "cactus".to_string(),
+            "act".to_string(),
+            "tower".to_string(),
+            "clump".to_string(),
+            "indicate".to_string(),
+            "kind".to_string(),
+            "trick".to_string(),
+            "because".to_string(),
+            "dose".to_string(),
+            "pen".to_string(),
+            "apple".to_string(),
+            "close".to_string(),
+            "still".to_string(),
+            "interest".to_string(),
+            "chest".to_string(),
+            "come".to_string(),
+            "spare".to_string(),
+            "weasel".to_string(),
+            "purse".to_string(),
+            "upon".to_string(),
+            "suffer".to_string(),
+            "crisp".to_string(),
+            "purity".to_string(),
+            "emotion".to_string(),
         ],
         None,
     )

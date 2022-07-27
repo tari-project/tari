@@ -156,15 +156,6 @@ pub use mem_backend_vec::MemBackendVec;
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR
 pub use merkle_proof::{MerkleProof, MerkleProofError};
-use tari_common::hashing_domain::HashingDomain;
-
-/// The base layer MMR domain separated hashing domain
-/// Usage:
-///   let hash = mmr_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn mmr_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.mmr")
-}
 
 macro_rules! if_native_bitmap {
     ($($item:item)*) => {
