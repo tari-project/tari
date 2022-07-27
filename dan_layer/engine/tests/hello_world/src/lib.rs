@@ -20,30 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::rngs::OsRng;
-use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{
-    hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, DomainSeparation},
-    keys::PublicKey as PublicKeyT,
-};
+// TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
+// available
 
-pub fn create_key_pair() -> (PrivateKey, PublicKey) {
-    PublicKey::random_keypair(&mut OsRng)
+use common::{generate_abi, generate_main, TemplateImpl};
+use tari_template_abi::{encode_with_len, FunctionDef, Type};
+
+// TODO: Macro generated code
+#[no_mangle]
+extern "C" fn HelloWorld_abi() -> *mut u8 {
+    let template_name = "HelloWorld".to_string();
+
+    let functions = vec![FunctionDef {
+        name: "greet".to_string(),
+        arguments: vec![],
+        output: Type::String,
+    }];
+
+    generate_abi(template_name, functions)
 }
 
-pub struct TariEngineDomainSeparation;
+#[no_mangle]
+extern "C" fn HelloWorld_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+    let mut template_impl = TemplateImpl::new();
 
-impl DomainSeparation for TariEngineDomainSeparation {
-    fn version() -> u8 {
-        0
-    }
+    template_impl.add_function("greet".to_string(), Box::new(|_| encode_with_len(&"Hello World!")));
 
-    fn domain() -> &'static str {
-        "tari.dan.engine"
-    }
+    generate_main(call_info, call_info_len, template_impl)
 }
 
-pub fn domain_separated_hasher(label: &'static str) -> DomainSeparatedHasher<Blake256, TariEngineDomainSeparation> {
-    DomainSeparatedHasher::new(label)
+extern "C" {
+    pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
 }
