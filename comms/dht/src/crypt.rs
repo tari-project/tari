@@ -81,7 +81,7 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> &[u8] {
     
     let mut output = prepend_message.to_vec();
 
-    (*message).into_iter().map(|b| output.push(b));
+    message.into_iter().map(|b| output.push(b));
     [0u8; 128].into_iter().take(zeroes_to_prepend).map(|b| output.push(b));
 
     output.as_slice()
