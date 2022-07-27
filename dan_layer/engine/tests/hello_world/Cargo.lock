@@ -170,6 +170,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+ "tari_template_abi",
 ]
 
 [[package]]

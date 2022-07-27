@@ -21,11 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use proc_macro2::TokenStream;
-use quote::{quote, format_ident};
-use syn::{
-    parse2,
-    Result,
-};
+use quote::{format_ident, quote};
+use syn::{parse2, parse_quote, Expr, Result};
+use tari_template_abi::FunctionDef;
 
 use crate::ast::TemplateAst;
 
@@ -50,7 +48,7 @@ pub fn generate_template_output(input: TokenStream) -> Result<TokenStream> {
     Ok(output)
 }
 
-fn generate_mod_output(ast: &TemplateAst) ->TokenStream {
+fn generate_mod_output(ast: &TemplateAst) -> TokenStream {
     let template_name = format_ident!("{}", ast.struct_section.ident);
     let functions = &ast.impl_section.items;
 
@@ -69,9 +67,12 @@ fn generate_mod_output(ast: &TemplateAst) ->TokenStream {
     }
 }
 
-fn generate_abi_output(ast: &TemplateAst) -> Result<TokenStream>  {
+fn generate_abi_output(ast: &TemplateAst) -> Result<TokenStream> {
     let template_name_str = format!("{}", ast.struct_section.ident);
-    let function_name = format_ident!("{}_abi",  ast.struct_section.ident);
+    let function_name = format_ident!("{}_abi", ast.struct_section.ident);
+
+    let function_defs = ast.get_function_definitions();
+    let function_defs_output: Vec<Expr> = function_defs.iter().map(generate_function_def_output).collect();
 
     let output = quote! {
         #[no_mangle]
@@ -81,11 +82,7 @@ fn generate_abi_output(ast: &TemplateAst) -> Result<TokenStream>  {
 
             let template = TemplateDef {
                 template_name: #template_name_str.to_string(),
-                functions: vec![FunctionDef {
-                    name: "greet".to_string(),
-                    arguments: vec![],
-                    output: Type::String,
-                }],
+                functions: vec![ #(#function_defs_output),* ],
             };
 
             let buf = encode_with_len(&template);
@@ -96,7 +93,20 @@ fn generate_abi_output(ast: &TemplateAst) -> Result<TokenStream>  {
     Ok(output)
 }
 
-fn generate_main_output(ast: &TemplateAst) -> Result<TokenStream>  {
+fn generate_function_def_output(fd: &FunctionDef) -> Expr {
+    let name = fd.name.clone();
+    let output = TemplateAst::get_abi_type_expr(&fd.output);
+
+    parse_quote!(
+        FunctionDef {
+            name: #name.to_string(),
+            arguments: vec![],
+            output: #output,
+        }
+    )
+}
+
+fn generate_main_output(ast: &TemplateAst) -> Result<TokenStream> {
     let function_name = format_ident!("{}_main", ast.struct_section.ident);
 
     let output = quote! {
@@ -124,11 +134,11 @@ fn generate_main_output(ast: &TemplateAst) -> Result<TokenStream>  {
     Ok(output)
 }
 
-fn generate_engine_output() -> TokenStream  {
+fn generate_engine_output() -> TokenStream {
     quote! {
         extern "C" {
             pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
-        } 
+        }
     }
 }
 
@@ -137,8 +147,9 @@ mod tests {
     use std::str::FromStr;
 
     use proc_macro2::TokenStream;
+    use syn::parse2;
 
-    use crate::template::generate_template_output;
+    use crate::{ast::TemplateAst, template::generate_template_output};
 
     #[test]
     fn test_hello_world() {
@@ -149,5 +160,18 @@ mod tests {
 
         let output = generate_template_output(input).unwrap();
         println!("{}", output);
+    }
+
+    #[test]
+    fn playground() {
+        let input = TokenStream::from_str(
+            "struct HelloWorld {} impl HelloWorld { pub fn greet() -> String { \"Hello World!\".to_string() } }",
+        )
+        .unwrap();
+
+        let ast = parse2::<TemplateAst>(input).unwrap();
+        let function_defs = ast.get_function_definitions();
+
+        println!("{:?}", function_defs);
     }
 }
