@@ -66,7 +66,8 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
+    hash_domain,
+    hashing::DomainSeparatedHasher,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -1345,11 +1346,17 @@ where
             ));
         }
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
-        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
+
+        hash_domain!(
+            WalletServiceHashDomain,
+            "com.tari.base_layer.wallet.transaction_service.stealth_address"
+        );
+
+        let c = DomainSeparatedHasher::<Blake256, WalletServiceHashDomain>::new("com.tari.stealth_address")
             .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
             .finalize();
         let script_spending_key =
-            PublicKey::from_secret_key(&PrivateKey::from_bytes(c.into_vec().as_bytes()).unwrap()) + dest_pubkey.clone();
+            PublicKey::from_secret_key(&PrivateKey::from_bytes(c.as_ref()).unwrap()) + dest_pubkey.clone();
         self.send_one_sided_or_stealth(
             dest_pubkey,
             amount,

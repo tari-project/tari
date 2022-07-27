@@ -120,7 +120,7 @@ impl EncryptedValue {
 // Generate a ChaCha20-Poly1305 key from an ECDH shared secret and commitment using Blake2b
 fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Key {
     const AEAD_KEY_LENGTH: usize = 32; // The length in bytes of a ChaCha20-Poly1305 AEAD key
-    let mut hasher = Blake256::with_params(&[], b"SCAN_AEAD".as_ref(), b"TARI_KDF".as_ref());
+    let mut hasher = Blake256::with_params(&[], b"SCAN_AEAD".as_ref(), b"TARI_KDF".as_ref()).expect("Given Blake256 params should not produce failure");
     hasher.update(shared_secret.as_bytes());
     hasher.update(commitment.as_bytes());
     let output = hasher.finalize();
