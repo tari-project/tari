@@ -193,7 +193,7 @@ mod test {
         let next_key = response.key_manager.next_key().unwrap();
         assert_eq!(
             next_key.k.to_hex(),
-            "07d6c715bca8d83c0eb6d29d01a4b3e123aefabfb2c7ac875b22c22e22df660a".to_string()
+            "2e715a9135c6f35459241f1f8285196c087828ec337d8e6368306aad0a701400".to_string()
         )
     }
 
