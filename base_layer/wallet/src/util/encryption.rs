@@ -36,14 +36,24 @@ pub const AES_KEY_BYTES: usize = 32;
 pub const AES_MAC_BYTES: usize = 32;
 
 pub trait Encryptable<C> {
-    fn source_key(&self, field_name: &'static str) -> Vec<u8>;
+    const KEY_MANAGER: &'static [u8] = b"KEY_MANAGER";
+    const OUTPUT: &'static [u8] = b"OUTPUT";
+    const WALLET_SETTING_MASTER_SEED: &'static [u8] = b"MASTER_SEED";
+    const WALLET_SETTING_TOR_ID: &'static [u8] = b"TOR_ID";
+    const INBOUND_TRANSACTION: &'static [u8] = b"INBOUND_TRANSACTION";
+    const OUTBOUND_TRANSACTION: &'static [u8] = b"OUTBOUND_TRANSACTION";
+    const COMPLETED_TRANSACTION: &'static [u8] = b"COMPLETED_TRANSACTION";
+    const KNOWN_ONESIDED_PAYMENT_SCRIPT: &'static [u8] = b"KNOWN_ONESIDED_PAYMENT_SCRIPT";
+    const CLIENT_KEY_VALUE: &'static [u8] = b"CLIENT_KEY_VALUE";
+
+    fn domain(&self, field_name: &'static str) -> Vec<u8>;
     fn encrypt(&mut self, cipher: &C) -> Result<(), String>;
     fn decrypt(&mut self, cipher: &C) -> Result<(), String>;
 }
 
 pub fn decrypt_bytes_integral_nonce(
     cipher: &Aes256Gcm,
-    source_key: Vec<u8>,
+    domain: Vec<u8>,
     ciphertext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
     if ciphertext.len() < AES_NONCE_BYTES + AES_MAC_BYTES {
@@ -51,53 +61,42 @@ pub fn decrypt_bytes_integral_nonce(
     }
 
     let (nonce, ciphertext) = ciphertext.split_at(AES_NONCE_BYTES);
-    let (ciphertext, stored_mac) = ciphertext.split_at(ciphertext.len() - AES_MAC_BYTES);
+    let (ciphertext, appended_mac) = ciphertext.split_at(ciphertext.len().saturating_sub(AES_MAC_BYTES));
     let nonce = GenericArray::from_slice(nonce);
-    let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|e| e.to_string())?;
 
-    let mut mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
+    let expected_mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
         .chain(nonce.as_slice())
-        .chain(plaintext.as_bytes())
-        .chain(source_key.as_bytes())
-        .finalize()
-        .into_vec();
-
-    mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
         .chain(ciphertext)
-        .chain(mac)
+        .chain(domain)
         .finalize()
         .into_vec();
 
-    if stored_mac != mac {
+    if appended_mac != expected_mac {
         return Err(AeadError.to_string());
     }
+
+    let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|e| e.to_string())?;
 
     Ok(plaintext)
 }
 
 pub fn encrypt_bytes_integral_nonce(
     cipher: &Aes256Gcm,
-    source_key: Vec<u8>,
+    domain: Vec<u8>,
     plaintext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
     let mut nonce = [0u8; AES_NONCE_BYTES];
     OsRng.fill_bytes(&mut nonce);
     let nonce_ga = GenericArray::from_slice(&nonce);
 
-    let mut mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
-        .chain(nonce.as_slice())
-        .chain(plaintext.as_bytes())
-        .chain(source_key.as_bytes())
-        .finalize()
-        .into_vec();
-
     let mut ciphertext = cipher
         .encrypt(nonce_ga, plaintext.as_bytes())
         .map_err(|e| e.to_string())?;
 
-    mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
+    let mut mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
+        .chain(nonce.as_slice())
         .chain(ciphertext.clone())
-        .chain(mac.as_slice())
+        .chain(domain.as_slice())
         .finalize()
         .into_vec();
 
@@ -123,8 +122,25 @@ mod test {
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
 
-        let ciphertext = encrypt_bytes_integral_nonce(&cipher, b"source_key".to_vec(), plaintext.clone()).unwrap();
-        let decrypted_text = decrypt_bytes_integral_nonce(&cipher, b"source_key".to_vec(), ciphertext).unwrap();
+        let ciphertext = encrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), plaintext.clone()).unwrap();
+        let decrypted_text =
+            decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext.clone()).unwrap();
+
+        // decrypted text must be equal to the original plaintext
         assert_eq!(decrypted_text, plaintext);
+
+        // must fail with a wrong domain
+        assert!(decrypt_bytes_integral_nonce(&cipher, b"wrong_domain".to_vec(), ciphertext.clone()).is_err());
+
+        // must fail without nonce
+        assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext[0..12].to_vec()).is_err());
+
+        // must fail without mac
+        assert!(decrypt_bytes_integral_nonce(
+            &cipher,
+            b"correct_domain".to_vec(),
+            ciphertext[0..ciphertext.len().saturating_sub(32)].to_vec()
+        )
+        .is_err());
     }
 }

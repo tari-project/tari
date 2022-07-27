@@ -775,16 +775,16 @@ impl ClientKeyValueSql {
 }
 
 impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
-    fn source_key(&self, field_name: &'static str) -> Vec<u8> {
-        [b"ClientKeyValueSql", self.key.as_bytes(), field_name.as_bytes()]
-            .join(&0)
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [Self::CLIENT_KEY_VALUE, self.key.as_bytes(), field_name.as_bytes()]
+            .concat()
             .to_vec()
     }
 
     #[allow(unused_assignments)]
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         self.value =
-            encrypt_bytes_integral_nonce(cipher, self.source_key("value"), self.value.as_bytes().to_vec())?.to_hex();
+            encrypt_bytes_integral_nonce(cipher, self.domain("value"), self.value.as_bytes().to_vec())?.to_hex();
 
         Ok(())
     }
@@ -793,7 +793,7 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
-            self.source_key("value"),
+            self.domain("value"),
             from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
         )?;
 
