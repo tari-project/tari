@@ -26,7 +26,6 @@ use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
-    hash::blake2::Blake256,
     hashing::LengthExtensionAttackResistant,
     keys::SecretKey,
     tari_utilities::byte_array::ByteArrayError,
@@ -91,14 +90,14 @@ where
         // piece of data for concatenation, reducing the risk of collisions due to redundance of variable length
         // input
         let derive_key = base_layer_key_manager()
-            .hasher::<Blake256>()
             .chain(self.seed.entropy())
             .chain(self.branch_seed.as_str().as_bytes())
             .chain(key_index.to_le_bytes())
-            .finalize()
-            .into_vec();
+            .finalize();
 
-        match K::from_bytes(derive_key.as_slice()) {
+        let derive_key = derive_key.as_ref();
+
+        match K::from_bytes(derive_key) {
             Ok(k) => Ok(DerivedKey { k, key_index }),
             Err(e) => Err(e),
         }
