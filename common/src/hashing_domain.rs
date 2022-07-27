@@ -48,7 +48,7 @@ impl HashingDomain {
     }
 
     /// Convenience function to compute hash of the data. It will handle hasher creation, data feeding and finalization.
-    pub fn digest<D: Digest>(&self, data: &[u8]) -> DomainSeparatedHash {
+    pub fn digest<D: Digest>(&self, data: &[u8]) -> DomainSeparatedHash<D> {
         self.hasher::<D>().chain(data).finalize()
     }
 
@@ -58,13 +58,13 @@ impl HashingDomain {
     }
 
     /// Convenience function to compute hash of the data. It will handle hasher creation, data feeding and finalization.
-    pub fn mac_digest<D: Digest + LengthExtensionAttackResistant>(&self, data: &[u8]) -> DomainSeparatedHash {
+    pub fn mac_digest<D: Digest + LengthExtensionAttackResistant>(&self, data: &[u8]) -> DomainSeparatedHash<D> {
         self.mac_hasher::<D>().chain(data).finalize()
     }
 
     /// Generate a finalized domain separated Hash-based Message Authentication Code (HMAC) for the key and message
-    pub fn generate_hmac<D: Digest + LengthExtensionAttackResistant>(&self, key: &[u8], msg: &[u8]) -> Mac {
-        Mac::generate::<D, _, _>(key, msg, self.domain_label)
+    pub fn generate_hmac<D: Digest + LengthExtensionAttackResistant>(&self, key: &[u8], msg: &[u8]) -> Mac<D> {
+        Mac::generate::<_, _>(key, msg, self.domain_label)
     }
 }
 
@@ -80,7 +80,7 @@ pub trait HashToBytes<const I: usize>: AsRef<[u8]> {
     }
 }
 
-impl<const I: usize> HashToBytes<I> for DomainSeparatedHash {}
+impl<const I: usize, D: Digest> HashToBytes<I> for DomainSeparatedHash<D> {}
 
 #[cfg(test)]
 mod test {
