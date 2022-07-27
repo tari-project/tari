@@ -57,8 +57,9 @@ use serde::{
 };
 use tari_common_types::{
     array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
-    types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
+    types::{BlindingFactor, BlockHash, BLOCK_HASH_LENGTH},
 };
+use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
@@ -219,7 +220,7 @@ impl BlockHeader {
     pub fn merged_mining_hash(&self) -> Vec<u8> {
         if self.version <= 2 {
             // TODO: Remove deprecated header hashing #testnetreset
-            HashDigest::new()
+            Blake256::new()
                 .chain(self.version.to_le_bytes())
                 .chain(self.height.to_le_bytes())
                 .chain(self.prev_hash.as_bytes())
@@ -295,7 +296,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
         if self.version <= 2 {
-            HashDigest::new()
+            Blake256::new()
                 .chain(self.merged_mining_hash())
                 .chain(self.pow.to_bytes())
                 .chain(self.nonce.to_le_bytes())

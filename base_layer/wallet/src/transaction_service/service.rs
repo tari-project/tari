@@ -65,6 +65,7 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -114,7 +115,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::{HashDigest, WalletHasher},
+    types::WalletHasher,
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
@@ -2623,7 +2624,7 @@ pub struct PendingCoinbaseSpendingKey {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+    Blake256::new().chain(key.as_bytes()).finalize().to_vec()
 }
 
 /// Contains the generated TxId and TransactionStatus transaction send result

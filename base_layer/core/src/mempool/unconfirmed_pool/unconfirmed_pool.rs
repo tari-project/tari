@@ -29,7 +29,8 @@ use std::{
 use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashDigest, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{HashOutput, PrivateKey, PublicKey, Signature};
+use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 use crate::{
@@ -659,7 +660,7 @@ fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
             .as_ref()
             .map(|pk| pk.as_bytes())
             .unwrap_or_else(|| root_pk.as_bytes());
-        HashDigest::new()
+        Blake256::new()
             .chain(parent_pk_bytes)
             .chain(unique_id)
             .finalize()
@@ -671,7 +672,6 @@ fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
 mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_common_types::types::HashDigest;
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;
@@ -788,7 +788,7 @@ mod test {
             .unwrap();
 
         let factories = CryptoFactories::default();
-        let mut stx_protocol = stx_builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
+        let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         stx_protocol
             .finalize(KernelFeatures::empty(), &factories, None, u64::MAX)
             .unwrap();
@@ -1029,7 +1029,7 @@ mod test {
         unconfirmed_pool
             .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
             .unwrap();
-        let expected_hash: [u8; 32] = HashDigest::new()
+        let expected_hash: [u8; 32] = Blake256::new()
             .chain(parent_pk.as_bytes())
             .chain(&unique_id)
             .finalize()
