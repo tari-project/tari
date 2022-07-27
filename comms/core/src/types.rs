@@ -24,6 +24,7 @@
 
 use tari_crypto::{
     hash::blake2::Blake256,
+    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::PublicKey,
     ristretto::RistrettoPublicKey,
     signatures::SchnorrSignature,
@@ -41,7 +42,7 @@ pub type CommsPublicKey = RistrettoPublicKey;
 pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 
 /// Specify the digest type for the signature challenges
-pub type Challenge = Blake256;
+pub type Challenge = DomainSeparatedHasher<Blake256, GenericHashDomain>;
 /// Comms signature type
 pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
 

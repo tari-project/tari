@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
 use rand::{self, rngs::OsRng};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_comms::types::Challenge;
@@ -608,10 +607,14 @@ mod validate_internal_consistency {
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
         features.parent_public_key = Some(PublicKey::default());
-        let hash = Challenge::new()
-            .chain(Some(PublicKey::default()).to_consensus_bytes())
-            .chain(Some(unique_id.clone()).to_consensus_bytes())
-            .finalize();
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(
+            Challenge::new("test_tag")
+                .chain(Some(PublicKey::default()).to_consensus_bytes())
+                .chain(Some(unique_id.clone()).to_consensus_bytes())
+                .finalize()
+                .as_ref(),
+        );
 
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features_parent_public_key, @field::features_unique_id), @hash(hash.into())));
 

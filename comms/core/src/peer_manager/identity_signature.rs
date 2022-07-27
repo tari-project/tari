@@ -23,7 +23,6 @@
 use std::convert::{TryFrom, TryInto};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -74,7 +73,7 @@ impl IdentitySignature {
             addresses,
             updated_at,
         );
-        let signature = Signature::sign(secret_key.clone(), secret_nonce, &challenge.finalize())
+        let signature = Signature::sign(secret_key.clone(), secret_nonce, challenge.finalize().as_ref())
             .expect("unreachable panic: challenge hash digest is the correct length");
         Self {
             version: Self::LATEST_VERSION,
@@ -126,7 +125,8 @@ impl IdentitySignature {
             addresses,
             self.updated_at,
         );
-        self.signature.verify_challenge(public_key, &challenge.finalize())
+        self.signature
+            .verify_challenge(public_key, challenge.finalize().as_ref())
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -138,12 +138,13 @@ impl IdentitySignature {
         updated_at: DateTime<Utc>,
     ) -> Challenge {
         // e = H(P||R||m)
-        let challenge = Challenge::new()
+        let challenge = Challenge::new("com.tari.comms.challenge")
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(version.to_le_bytes())
             .chain(u64::try_from(updated_at.timestamp()).unwrap().to_le_bytes())
             .chain(features.bits().to_le_bytes());
+
         addresses
             .into_iter()
             .fold(challenge, |challenge, addr| challenge.chain(&addr))

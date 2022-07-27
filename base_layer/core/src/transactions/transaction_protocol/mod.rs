@@ -86,7 +86,6 @@
 // #![allow(clippy::op_ref)]
 
 use derivative::Derivative;
-use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::types::Challenge;
@@ -154,10 +153,16 @@ pub struct RewindData {
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
 pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> [u8; 32] {
-    Challenge::new()
-        .chain(sum_public_nonces.as_bytes())
-        .chain(&u64::from(metadata.fee).to_le_bytes())
-        .chain(&metadata.lock_height.to_le_bytes())
-        .finalize()
-        .into()
+    let mut result = [0u8; 32];
+
+    result.copy_from_slice(
+        Challenge::new("com.tari.core.transaction_protocol")
+            .chain(sum_public_nonces.as_bytes())
+            .chain(&u64::from(metadata.fee).to_le_bytes())
+            .chain(&metadata.lock_height.to_le_bytes())
+            .finalize()
+            .as_ref(),
+    );
+
+    result
 }

@@ -22,7 +22,6 @@
 
 use std::convert::TryFrom;
 
-use digest::{Digest, FixedOutput};
 use rand::rngs::OsRng;
 use tari_comms::types::{Challenge, CommsPublicKey, CommsSecretKey, Signature};
 use tari_crypto::keys::PublicKey;
@@ -40,13 +39,26 @@ fn construct_origin_mac_hash(
     message: &[u8],
 ) -> [u8; 32] {
     // e = H_mac(P||R||m)
-    Challenge::with_params(&[], &[], b"TARIDHTORIGINMAC")
-        .expect("params for Challenge should not produce failure")
-        .chain(signer_public_key.as_bytes())
-        .chain(public_nonce.as_bytes())
-        .chain(message)
-        .finalize_fixed()
-        .into()
+    // Challenge::with_params(&[], &[], b"TARIDHTORIGINMAC")
+    // .chain(signer_public_key.as_bytes())
+    // .chain(public_nonce.as_bytes())
+    // .chain(message)
+    // .finalize_fixed()
+    // .into()
+
+    // e = H_mac(P||R||m)
+    let mut result = [0u8; 32];
+
+    result.copy_from_slice(
+        Challenge::new("com.tari.comms.challenge.origin_mac")
+            .chain(signer_public_key.as_bytes())
+            .chain(public_nonce.as_bytes())
+            .chain(message)
+            .finalize()
+            .as_ref(),
+    );
+
+    result
 }
 
 impl OriginMac {
