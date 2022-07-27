@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use sha2::{Digest, digest::Update};
+use sha2::{digest::Update, Digest};
 use tari_common_types::types::{DefaultDomainHasher, MacDomainHasher};
 use tari_crypto::hashing::{DomainSeparatedHash, LengthExtensionAttackResistant, Mac};
 use thiserror::Error;
