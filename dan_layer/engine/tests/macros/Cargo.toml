@@ -6,11 +6,8 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# [lib]
-# proc-macro = true
-
 [lib]
-crate-type = ["cdylib", "lib"]
+proc-macro = true
 
 [dependencies]
 syn = { version = "1.0.98", features = ["full"] }
