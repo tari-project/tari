@@ -1349,10 +1349,10 @@ where
 
         hash_domain!(
             WalletServiceHashDomain,
-            "com.tari.base_layer.wallet.transaction_service.stealth_address"
+            "com.tari.base_layer.wallet.transaction_service"
         );
 
-        let c = DomainSeparatedHasher::<Blake256, WalletServiceHashDomain>::new("com.tari.stealth_address")
+        let c = DomainSeparatedHasher::<Blake256, WalletServiceHashDomain>::new("stealth_address")
             .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
             .finalize();
         let script_spending_key =
