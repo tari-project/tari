@@ -109,7 +109,7 @@ At every release period,
 * Otherwise, all in-development features on `dibbler` remain behind feature gates. 
 * the HEAD of `nextnet` becomes `mainnet`. A new version is tagged and this becomes the next mainnet release.
 
-The versioning roughly follows semver semantics:
+The versioning roughly follows [semver semantics](https://semver.org/):
 * Increase MAJOR version number on each hard fork.
 * Increase MINOR version number on each release cycle. 
 * Minor versions are reset to zero at each hard fork.
@@ -145,27 +145,27 @@ A very rough outline of the flow goes as follows:
   as a PR to this repo.
 - The community reviews and comments on the RFC. At this stage, a number for the RFC will be assigned.
 - After several drafts and revisions, the PR gets merged, and the RFC enters
-  ![draft status](./RFC/src/theme/images/status-draft.svg).
+  ![draft status](./meta/img/status-draft.svg).
 - At this point, the RFC can still undergo changes via PRs. The RFC remains in
-  ![draft status](./RFC/src/theme/images/status-draft.svg), and the changes are logged in a _Change Log_  
+  ![draft status](./meta/img/status-draft.svg), and the changes are logged in a _Change Log_  
   maintained at the bottom of the RFC.
 - If someone wants to implement the RFC, usually the RFC author -- but it needn't be -- he/she will create a tracking 
   issue for the RFC. The tracking issue collects all the conversations around the implementation of the RFC in one 
-  place. The status RFC will then change to ![WIP status](./RFC/src/theme/images/status-wip.svg). A feature flag 
+  place. The status RFC will then change to ![WIP status](./meta/img/status-wip.svg). A feature flag 
   name will be assigned to the feature at this stage.
 - Development for this feature happens behind the feature flag, and PRs are submitted against the `development` branch.
 - Once the implementation is complete and active on mainnet, the RFC status can then be changed to
-  ![active status](./RFC/src/theme/images/status-active.svg).
+  ![active status](./meta/img/status-active.svg).
 - The RFC should be updated to match the implementation. The changes must be summarised in the Change Log. Once the 
   feature is stabilised and is live on mainnet, the status can be updated to
-  ![stable status](./RFC/src/theme/images/status-stable.svg).
+  ![stable status](./meta/img/status-stable.svg).
 
 If an RFC ever becomes redundant, DO NOT delete it. Mark the RFC as 
-![deprecated](./RFC/src/theme/images/status-deprecated.svg) and move it to the _Deprecated_ chapter of the RFC handbook.
+![deprecated](./meta/img/status-deprecated.svg) and move it to the _Deprecated_ chapter of the RFC handbook.
 
 
 The source code must ultimately be the source of truth for the Tari implementation.
-If the code and RFC have deviated substantially, mark it ![out of date](./RFC/src/theme/images/status-outofdate.svg).
+If the code and RFC have deviated substantially, mark it ![out of date](./meta/img/status-outofdate.svg).
 Then file an issue asking someone to kindly update the RFC and bring it back in line with the code.
 
 Taking on this thankless task is an excellent way for new contributors to learn the code base and quickly add value 
