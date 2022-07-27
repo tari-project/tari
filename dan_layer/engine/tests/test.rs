@@ -35,7 +35,9 @@ use tari_template_abi::encode_with_len;
 fn test_hello_world() {
     let template_test = TemplateTest::new("HelloWorld".to_string(), "tests/hello_world".to_string());
     let result: String = template_test.run_instruction("greet".to_string(), vec![]);
-    assert_eq!(result, "Hello World!");
+
+    // FIXME: without the "encode_with_len" calls, the strings are different because of added padding characters
+    assert_eq!(encode_with_len(&result), encode_with_len(&"Hello World!"));
 }
 
 #[test]

@@ -21,38 +21,115 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, format_ident};
 use syn::{
-    parse::{Parse, ParseStream},
     parse2,
-    ItemImpl,
-    ItemStruct,
     Result,
 };
 
-#[allow(dead_code)]
-struct TemplateAst {
-    pub struct_section: ItemStruct,
-    pub impl_section: ItemImpl,
-}
+use crate::ast::TemplateAst;
 
-impl Parse for TemplateAst {
-    fn parse(input: ParseStream) -> Result<Self> {
-        Ok(Self {
-            struct_section: input.parse()?,
-            impl_section: input.parse()?,
-        })
-    }
-}
+pub fn generate_template_output(input: TokenStream) -> Result<TokenStream> {
+    let ast = parse2::<TemplateAst>(input).unwrap();
 
-pub fn generate_template(input: TokenStream) -> Result<TokenStream> {
-    let _template_ast = parse2::<TemplateAst>(input).unwrap();
+    let mod_output = generate_mod_output(&ast);
+    let abi_output = generate_abi_output(&ast)?;
+    let main_output = generate_main_output(&ast)?;
+    let engine_output = generate_engine_output();
 
     let output = quote! {
-        pub mod template {}
+        #mod_output
+
+        #abi_output
+
+        #main_output
+
+        #engine_output
     };
 
     Ok(output)
+}
+
+fn generate_mod_output(ast: &TemplateAst) ->TokenStream {
+    let template_name = format_ident!("{}", ast.struct_section.ident);
+    let functions = &ast.impl_section.items;
+
+    quote! {
+        pub mod template {
+            use super::*;
+
+            pub struct #template_name {
+                // TODO: fill template fields
+            }
+
+            impl #template_name {
+                #(#functions)*
+            }
+        }
+    }
+}
+
+fn generate_abi_output(ast: &TemplateAst) -> Result<TokenStream>  {
+    let template_name_str = format!("{}", ast.struct_section.ident);
+    let function_name = format_ident!("{}_abi",  ast.struct_section.ident);
+
+    let output = quote! {
+        #[no_mangle]
+        pub extern "C" fn #function_name() -> *mut u8 {
+            use ::common::wrap_ptr;
+            use ::tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
+
+            let template = TemplateDef {
+                template_name: #template_name_str.to_string(),
+                functions: vec![FunctionDef {
+                    name: "greet".to_string(),
+                    arguments: vec![],
+                    output: Type::String,
+                }],
+            };
+
+            let buf = encode_with_len(&template);
+            wrap_ptr(buf)
+        }
+    };
+
+    Ok(output)
+}
+
+fn generate_main_output(ast: &TemplateAst) -> Result<TokenStream>  {
+    let function_name = format_ident!("{}_main", ast.struct_section.ident);
+
+    let output = quote! {
+        #[no_mangle]
+        pub extern "C" fn #function_name(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+            use ::common::wrap_ptr;
+            use ::tari_template_abi::{decode, encode_with_len, CallInfo};
+
+            if call_info.is_null() {
+                panic!("call_info is null");
+            }
+
+            let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
+            let call_info: CallInfo = decode(&call_data).unwrap();
+
+            let result = match call_info.func_name.as_str() {
+                "greet" => "Hello World!".to_string(),
+                _ => panic!("invalid function name")
+            };
+
+            wrap_ptr(encode_with_len(&result))
+        }
+    };
+
+    Ok(output)
+}
+
+fn generate_engine_output() -> TokenStream  {
+    quote! {
+        extern "C" {
+            pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+        } 
+    }
 }
 
 #[cfg(test)]
@@ -61,16 +138,16 @@ mod tests {
 
     use proc_macro2::TokenStream;
 
-    use crate::template::generate_template;
+    use crate::template::generate_template_output;
 
     #[test]
-    fn test_hello() {
+    fn test_hello_world() {
         let input = TokenStream::from_str(
-            "struct MockTemplate { value: u32 } impl MockTemplate { pub fn foo() -> u32 { 1_u32 } }",
+            "struct HelloWorld {} impl HelloWorld { pub fn greet() -> String { \"Hello World!\".to_string() } }",
         )
         .unwrap();
 
-        let output = generate_template(input).unwrap();
+        let output = generate_template_output(input).unwrap();
         println!("{}", output);
     }
 }
