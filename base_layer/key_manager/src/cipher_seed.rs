@@ -42,7 +42,6 @@ use chacha20::{
 };
 use crc32fast::Hasher as CrcHasher;
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::hash::blake2::Blake256;
 use serde::{Deserialize, Serialize};
 use tari_utilities::ByteArray;
 
@@ -256,7 +255,6 @@ impl CipherSeed {
         // https://libsodium.gitbook.io/doc/advanced/stream_ciphers/chacha20, as of the IEF variant, the produced encryption
         // nonce should be 96-bit long
         let encryption_nonce = &base_layer_key_manager_chacha20_encoding()
-            .hasher::<Blake256>()
             .chain(salt)
             .finalize()
             .into_vec()[..size_of::<Nonce>()];
@@ -314,7 +312,6 @@ impl CipherSeed {
         let passphrase_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?[..32].to_vec();
 
         let mac = base_layer_key_manager_mac_generation()
-            .mac_hasher::<Blake256>()
             .chain(birthday)
             .chain(entropy)
             .chain(cipher_seed_version)
@@ -332,7 +329,6 @@ impl CipherSeed {
         // we produce a domain separated hash of the given salt, for Argon2 encryption use. As suggested in
         // https://en.wikipedia.org/wiki/Argon2, we shall use a 16-byte length hash salt
         let argon2_salt = &base_layer_key_manager_argon2_encoding()
-            .hasher::<Blake256>()
             .chain(salt)
             .finalize()
             .into_vec()[..ARGON2_SALT_BYTES];
