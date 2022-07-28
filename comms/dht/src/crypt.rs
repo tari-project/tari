@@ -34,9 +34,9 @@ use chacha20poly1305::{
     ChaCha20Poly1305,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_comms::types::CommsPublicKey;
+use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_crypto::{
-    keys::{DiffieHellmanSharedSecret, PublicKey},
+    keys::DiffieHellmanSharedSecret,
     tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
 use zeroize::Zeroize;
@@ -56,11 +56,10 @@ pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
-pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> [u8; 32]
-where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
+pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPublicKey) -> [u8; 32] {
     // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
     //       currently possible because (Compressed)RistrettoPoint does not implement it.
-    let k = PK::shared_secret(secret_key, public_key);
+    let k = CommsPublicKey::shared_secret(secret_key, public_key);
     let mut output = [0u8; 32];
 
     output.copy_from_slice(k.as_bytes());
@@ -208,6 +207,7 @@ pub fn create_message_domain_separated_hash_parts(
 
 #[cfg(test)]
 mod test {
+    use tari_crypto::keys::PublicKey;
     use tari_utilities::hex::from_hex;
 
     use super::*;
