@@ -11,8 +11,8 @@ commands:
           name: node -v
           command: node -v
       - run:
-          name: npm ci
-          command: cd integration_tests && npm ci
+          name: npm i
+          command: cd integration_tests && npm i
       - run:
           name: Check formatting
           command: cd integration_tests && npm run check-fmt
@@ -56,8 +56,8 @@ commands:
           name: node -v
           command: node -v
       - run:
-          name: npm ci
-          command: cd integration_tests && npm ci
+          name: npm i
+          command: cd integration_tests && npm i
       - run:
           name: Check eslint
           command: cd integration_tests && npm run lint
