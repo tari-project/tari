@@ -5,10 +5,12 @@ use syn::{
     FnArg,
     Ident,
     ImplItem,
+    ImplItemMethod,
     ItemImpl,
     ItemStruct,
     Result,
     ReturnType,
+    Stmt,
 };
 
 #[allow(dead_code)]
@@ -47,6 +49,7 @@ impl TemplateAst {
                 name: m.sig.ident.to_string(),
                 input_types: Self::get_input_type_tokens(&m.sig.inputs),
                 output_type: Self::get_output_type_token(&m.sig.output),
+                statements: Self::get_statements(m),
             },
             _ => todo!(),
         }
@@ -80,10 +83,15 @@ impl TemplateAst {
             _ => todo!(),
         }
     }
+
+    fn get_statements(method: &ImplItemMethod) -> Vec<Stmt> {
+        method.block.stmts.clone()
+    }
 }
 
 pub struct FunctionAst {
     pub name: String,
     pub input_types: Vec<String>,
     pub output_type: String,
+    pub statements: Vec<Stmt>,
 }
