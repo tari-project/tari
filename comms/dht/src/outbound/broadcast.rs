@@ -51,7 +51,7 @@ use crate::{
     dedup,
     discovery::DhtDiscoveryRequester,
     envelope::{datetime_to_epochtime, datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
-    origin_mac::OriginMac,
+    message_signature::MessageSignature,
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
         message_params::FinalSendMessageParams,
@@ -415,7 +415,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         let dht_flags = encryption.flags() | extra_flags;
         let expires_epochtime = expires.map(datetime_to_epochtime);
 
-        let (ephemeral_public_key, origin_mac, body) = self.process_encryption(
+        let (ephemeral_public_key, message_signature, body) = self.process_encryption(
             &encryption,
             force_origin,
             &destination,
@@ -426,7 +426,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         )?;
 
         if is_broadcast {
-            let hash = dedup::create_message_hash(origin_mac.as_deref().unwrap_or(&[]), &body);
+            let hash = dedup::create_message_hash(message_signature.as_deref().unwrap_or(&[]), &body);
             self.add_to_dedup_cache(hash).await?;
         }
 
@@ -447,7 +447,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     body: body.clone(),
                     reply: reply_tx.into(),
                     ephemeral_public_key: ephemeral_public_key.clone(),
-                    origin_mac: origin_mac.clone(),
+                    message_signature: message_signature.clone(),
                     is_broadcast,
                     expires: expires.map(datetime_to_timestamp),
                 },
@@ -496,10 +496,14 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Generate ephemeral public/private key pair and ECDH shared secret
                 let (e_secret_key, e_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
                 let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_secret_key, &**public_key);
-                // Encrypt the message with the body
-                let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body);
 
-                let mac_challenge = crypt::create_message_challenge_parts(
+                // Generate key message for encryption of message
+                let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
+                // Encrypt the message with the body with key message above
+                let encrypted_body = crypt::encrypt(&key_message, &body);
+
+                // Produce domain separated signature signature
+                let mac_signature = crypt::create_message_domain_separated_hash_parts(
                     self.protocol_version,
                     destination,
                     message_type,
@@ -508,14 +512,22 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     Some(&e_public_key),
                     &encrypted_body,
                 );
+
+                // Generate key signature for encryption of signature
+                let key_signature =
+                    crypt::generate_key_signature_for_authenticated_encryption(&shared_ephemeral_secret);
+
                 // Sign the encrypted message
-                let origin_mac =
-                    OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_challenge).to_proto();
-                // Encrypt and set the origin field
-                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac.to_encoded_bytes());
+                let signature =
+                    MessageSignature::new_signed(self.node_identity.secret_key().clone(), &mac_signature).to_proto();
+
+                // Perform authenticated encryption with ChaCha20-Poly1305 and set the origin field
+                let encrypted_message_signature =
+                    crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature.to_encoded_bytes())?;
+
                 Ok((
                     Some(Arc::new(e_public_key)),
-                    Some(encrypted_origin_mac.into()),
+                    Some(encrypted_message_signature.into()),
                     encrypted_body.into(),
                 ))
             },
@@ -523,7 +535,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
-                    let mac_challenge = crypt::create_message_challenge_parts(
+                    let binding_message_representation = crypt::create_message_domain_separated_hash_parts(
                         self.protocol_version,
                         destination,
                         message_type,
@@ -532,9 +544,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         None,
                         &body,
                     );
-                    let origin_mac =
-                        OriginMac::new_signed(self.node_identity.secret_key().clone(), &mac_challenge).to_proto();
-                    Ok((None, Some(origin_mac.to_encoded_bytes().into()), body))
+                    let signature = MessageSignature::new_signed(
+                        self.node_identity.secret_key().clone(),
+                        &binding_message_representation,
+                    )
+                    .to_proto();
+                    Ok((None, Some(signature.to_encoded_bytes().into()), body))
                 } else {
                     Ok((None, None, body))
                 }

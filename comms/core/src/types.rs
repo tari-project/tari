@@ -41,7 +41,7 @@ pub type CommsPublicKey = RistrettoPublicKey;
 pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 
 /// Specify the digest type for the signature challenges
-pub type Challenge = Blake256;
+pub type CommsChallenge = Blake256;
 /// Comms signature type
 pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
 

@@ -20,43 +20,103 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::peer_manager::NodeId;
-use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-use tari_utilities::hex::Hex;
+use std::{
+    env,
+    error::Error,
+    fmt::Write as FmtWrite,
+    fs,
+    io::{stdout, Write},
+    time::Instant,
+};
+
+use anyhow::anyhow;
+use multiaddr::Multiaddr;
+use rand::rngs::OsRng;
+use tari_comms::{peer_manager::NodeId, NodeIdentity};
+use tari_crypto::{
+    keys::PublicKey,
+    ristretto::RistrettoPublicKey,
+    tari_utilities::{message_format::MessageFormat, ByteArray},
+};
+use tokio::{sync::mpsc, task, task::JoinHandle};
 
 #[tokio::main]
-async fn main() {
-    let mut rng = rand::thread_rng();
+async fn main() -> Result<(), Box<dyn Error>> {
+    let target_hex_prefixes = env::args().skip(1).map(|s| s.to_lowercase()).collect::<Vec<String>>();
 
-    let mut target_hex_prefixes = vec!["3333", "5555", "7777", "9999", "bbbb", "dddd", "eeee"];
-    for i in 0u64..1_000_000_000u64 {
-        let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+    for prefix in target_hex_prefixes {
+        let now = Instant::now();
+        let (tx, mut rx) = mpsc::channel(1);
+        println!("Finding {}...", prefix);
+        spawn_identity_miners(16, tx, prefix);
+        let found = rx.recv().await.unwrap();
+        rx.close();
+        // Drain any answers that have been found by multiple workers (common for small prefixes)
+        while rx.try_recv().is_ok() {}
+        println!("Found '{}' in {:.2?}", found.node_id(), now.elapsed());
+        println!("==================================================");
+        println!("{}", found);
+        write_identity(found);
+    }
+    println!("Done");
+
+    Ok(())
+}
+
+fn write_identity(identity: NodeIdentity) {
+    let tmp = env::temp_dir().join("vanity_ids");
+    fs::create_dir_all(&tmp).unwrap();
+    let path = tmp.join(format!("{}.json", identity.node_id()));
+    println!("Wrote '{}'", path.to_str().unwrap());
+    fs::write(path, identity.to_json().unwrap()).unwrap();
+}
+
+fn spawn_identity_miners(
+    num_miners: usize,
+    tx: mpsc::Sender<NodeIdentity>,
+    prefix: String,
+) -> Vec<JoinHandle<Result<(), anyhow::Error>>> {
+    (0..num_miners)
+        .map(|id| {
+            let tx = tx.clone();
+            let prefix = prefix.clone();
+            task::spawn_blocking(move || start_miner(id, prefix, tx))
+        })
+        .collect()
+}
+
+fn start_miner(id: usize, prefix: String, tx: mpsc::Sender<NodeIdentity>) -> Result<(), anyhow::Error> {
+    let mut node_id_hex = String::with_capacity(26);
+    for i in 0u64.. {
+        let (k, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_public_key(&pk);
-        let node_id_hex = node_id.to_hex();
-        if i % 10_000 == 0 {
-            println!("{}", i);
+        node_id_hex.clear();
+        for byte in node_id.as_bytes() {
+            write!(&mut node_id_hex, "{:02x}", byte).expect("Unable to write");
         }
-
-        let mut found = "not found";
-        for p in &target_hex_prefixes {
-            if &&node_id_hex.as_str()[0..p.len()] == p {
-                println!("Found in {} iterations", i);
-                println!("Secret Key: {}", k.to_hex());
-                println!("Public Key: {}", pk);
-                println!("Node Id: {}", node_id_hex);
-                println!("==================================================");
-                found = p;
-                break;
+        if i % 50_000 == 0 {
+            if i == 0 {
+                println!("Worker #{} - started", id);
+            } else {
+                println!("Worker #{} - {} iterations", id, i);
             }
+            stdout().flush()?;
         }
 
-        if found != "not found" {
-            let pos = target_hex_prefixes.iter().position(|p| *p == found).unwrap();
-            target_hex_prefixes.remove(pos);
+        if tx.is_closed() {
+            break;
         }
 
-        if target_hex_prefixes.is_empty() {
+        if node_id_hex[0..prefix.len()] == *prefix {
+            if tx
+                .try_send(NodeIdentity::new(k, Multiaddr::empty(), Default::default()))
+                .is_err()
+            {
+                eprintln!("Failed to send");
+                return Err(anyhow!("Failed to send"));
+            }
             break;
         }
     }
+    Ok(())
 }

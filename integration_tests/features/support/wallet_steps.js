@@ -35,6 +35,7 @@ const {
   BLOCK_REWARD,
   CONFIRMATION_PERIOD,
 } = require("../../helpers/constants");
+const { PaymentType } = require("../../helpers/types");
 const expect = require("chai").expect;
 
 Given("I have {int} wallet(s)", { timeout: -1 }, async function (numWallets) {
@@ -1072,14 +1073,55 @@ When(
 
     const destPublicKey = this.getWalletPubkey(dest);
 
-    const oneSided = true;
     const lastResult = await this.send_tari(
       sourceWallet,
       dest,
       destPublicKey,
       amount,
       feePerGram,
-      oneSided
+      PaymentType.ONE_SIDED
+    );
+    expect(lastResult.results[0].is_success).to.equal(true);
+
+    this.addTransaction(
+      sourceInfo.public_key,
+      lastResult.results[0].transaction_id
+    );
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          lastResult.results[0].transaction_id
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      lastResult.results[0].transaction_id
+    );
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
+  /I send a one-sided stealth transaction of (.*) uT from (.*) to (.*) at fee (.*)/,
+  { timeout: 65 * 1000 },
+  async function (amount, source, dest, feePerGram) {
+    const sourceWallet = this.getWallet(source);
+    const sourceClient = await sourceWallet.connectClient();
+    const sourceInfo = await sourceClient.identify();
+
+    const destPublicKey = this.getWalletPubkey(dest);
+
+    const lastResult = await this.send_tari(
+      sourceWallet,
+      dest,
+      destPublicKey,
+      amount,
+      feePerGram,
+      PaymentType.ONE_SIDED_TO_STEALTH_ADDRESS
     );
     expect(lastResult.results[0].is_success).to.equal(true);
 

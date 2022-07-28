@@ -35,7 +35,7 @@ use crate::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures, PeerManagerError},
     proto,
-    types::{Challenge, CommsPublicKey, CommsSecretKey, Signature},
+    types::{CommsChallenge, CommsPublicKey, CommsSecretKey, Signature},
 };
 
 /// Signature that secures the peer identity
@@ -136,9 +136,9 @@ impl IdentitySignature {
         features: PeerFeatures,
         addresses: I,
         updated_at: DateTime<Utc>,
-    ) -> Challenge {
+    ) -> CommsChallenge {
         // e = H(P||R||m)
-        let challenge = Challenge::new()
+        let challenge = CommsChallenge::new()
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(version.to_le_bytes())
