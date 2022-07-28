@@ -23,11 +23,8 @@
 use std::convert::TryFrom;
 
 use rand::rngs::OsRng;
-use tari_common::hashing_domain::HashToBytes;
-use tari_comms::types::{CommsChallenge, CommsPublicKey, CommsSecretKey, Signature};
-use tari_crypto::{
-    keys::PublicKey,
-};
+use tari_comms::types::{CommsPublicKey, CommsSecretKey, Signature};
+use tari_crypto::keys::PublicKey;
 use tari_utilities::ByteArray;
 
 use crate::comms_dht_hash_domain_message_signature;
@@ -43,23 +40,17 @@ fn construct_message_signature_hash(
     public_nonce: &CommsPublicKey,
     message: &[u8],
 ) -> [u8; 32] {
-<<<<<<< HEAD:comms/dht/src/message_signature.rs
     // produce domain separated hash of input data, in such a way that e = H_mac(P||R||m)
     let domain_separated_hash = comms_dht_hash_domain_message_signature()
-        .hasher::<CommsChallenge>()
-=======
-    // e = H_mac(P||R||m)
-    Challenge::with_params(&[], &[], b"TARIDHTORIGINMAC")
-        .expect("params for Challenge should not produce failure")
->>>>>>> development:comms/dht/src/origin_mac.rs
         .chain(signer_public_key.as_bytes())
         .chain(public_nonce.as_bytes())
         .chain(message)
         .finalize();
 
-    domain_separated_hash
-        .hash_to_bytes()
-        .expect("Fixed output of '0 < size <= 32' bytes with 32 byte hasher cannot fail.")
+    let mut output = [0u8; 32];
+    output.copy_from_slice(domain_separated_hash.as_ref());
+
+    output
 }
 
 impl MessageSignature {

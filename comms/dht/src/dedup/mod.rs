@@ -48,7 +48,11 @@ pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
 }
 
 pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
-    CommsChallenge::new().chain(message_signature).chain(&body).finalize().into()
+    CommsChallenge::new()
+        .chain(message_signature)
+        .chain(&body)
+        .finalize()
+        .into()
 }
 
 /// # DHT Deduplication middleware
