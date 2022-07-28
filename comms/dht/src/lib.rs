@@ -99,7 +99,6 @@ pub use storage::DbConnectionUrl;
 
 mod dedup;
 pub use dedup::DedupLayer;
-use tari_common::hashing_domain::HashingDomain;
 
 mod filter;
 mod logging_middleware;
@@ -120,22 +119,27 @@ pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
 
-/// The comms DHT domain separated hashing domain
-/// Usage:
-///   let hash = comms_dht_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn comms_dht_hash_domain_challenge() -> HashingDomain {
-    HashingDomain::new("comms.dht.challenge")
+use tari_comms::types::CommsChallenge;
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+
+hash_domain!(DHTCommsHashDomain, "comms.dht");
+
+pub fn comms_dht_message_hash() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("message_hash")
 }
 
-pub fn comms_dht_hash_domain_key_message() -> HashingDomain {
-    HashingDomain::new("comms.dht.key_message")
+pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("challenge")
 }
 
-pub fn comms_dht_hash_domain_key_signature() -> HashingDomain {
-    HashingDomain::new("comms.dht.key_signature")
+pub fn comms_dht_hash_domain_key_message() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("key_message")
 }
 
-pub fn comms_dht_hash_domain_message_signature() -> HashingDomain {
-    HashingDomain::new("comms.dht.message_signature")
+pub fn comms_dht_hash_domain_key_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("key_signature")
+}
+
+pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("message_signature")
 }

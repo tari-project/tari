@@ -732,6 +732,7 @@ TariPrivateKey *private_key_from_hex(const char *key,
 
 /**
  * -------------------------------------------------------------------------------------------- ///
+ *
  * ------------------------------- Commitment Signature ---------------------------------------///
  * Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors
  *
