@@ -23,7 +23,7 @@
 use digest::Digest;
 use rand::{self, rngs::OsRng};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
-use tari_comms::types::Challenge;
+use tari_comms::types::CommsChallenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
@@ -608,7 +608,7 @@ mod validate_internal_consistency {
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
         features.parent_public_key = Some(PublicKey::default());
-        let hash = Challenge::new()
+        let hash = CommsChallenge::new()
             .chain(Some(PublicKey::default()).to_consensus_bytes())
             .chain(Some(unique_id.clone()).to_consensus_bytes())
             .finalize();

@@ -782,7 +782,7 @@ version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6358dedf60f4d9b8db43ad187391afe959746101346fe51bb978126bec61dfb"
 dependencies = [
- "clap 3.2.14",
+ "clap 3.2.15",
  "heck 0.4.0",
  "indexmap",
  "log",
@@ -997,9 +997,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.2.14"
+version = "3.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54635806b078b7925d6e36810b1755f2a4b5b4d57560432c1ecf60bcbe10602b"
+checksum = "44bbe24bbd31a185bc2c4f7c2abe80bea13a20d57ee4e55be70ac512bdc76417"
 dependencies = [
  "atty",
  "bitflags 1.3.2",
@@ -1014,9 +1014,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "3.2.7"
+version = "3.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "759bf187376e1afa7b85b959e6a664a3e7a95203415dba952ad19139e798f902"
+checksum = "9ba52acd3b0a5c33aeada5cdaa3267cdc7c594a98731d4268cdc1532f4264cb4"
 dependencies = [
  "heck 0.4.0",
  "proc-macro-error",
@@ -2271,7 +2271,7 @@ checksum = "e94a7bbaa59354bc20dd75b67f23e2797b4490e9d6928203fb105c79e448c86c"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
- "redox_syscall 0.2.15",
+ "redox_syscall 0.2.16",
  "windows-sys 0.36.1",
 ]
 
@@ -4673,7 +4673,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "instant",
  "libc",
- "redox_syscall 0.2.15",
+ "redox_syscall 0.2.16",
  "smallvec",
  "winapi 0.3.9",
 ]
@@ -4686,7 +4686,7 @@ checksum = "09a279cbf25cb0757810394fbc1e359949b59e348145c643a939a525692e6929"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
- "redox_syscall 0.2.15",
+ "redox_syscall 0.2.16",
  "smallvec",
  "windows-sys 0.36.1",
 ]
@@ -5218,9 +5218,9 @@ checksum = "dbf0c48bc1d91375ae5c3cd81e3722dff1abcf81a30960240640d223f59fe0e5"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.41"
+version = "1.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdcc2916cde080c1876ff40292a396541241fe0072ef928cd76582e9ea5d60d2"
+checksum = "c278e965f1d8cf32d6e0e96de3d3e79712178ae67986d9cf9151f51e95aac89b"
 dependencies = [
  "unicode-ident",
 ]
@@ -5545,9 +5545,9 @@ checksum = "41cc0f7e4d5d4544e8861606a285bb08d3e70712ccc7d2b84d7c0ccfaf4b05ce"
 
 [[package]]
 name = "redox_syscall"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "534cfe58d6a18cc17120fbf4635d53d14691c1fe4d951064df9bd326178d7d5a"
+checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
 dependencies = [
  "bitflags 1.3.2",
 ]
@@ -5559,7 +5559,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b033d837a7cf162d7993aded9304e30a83213c648b6e389db233191f891e5c2b"
 dependencies = [
  "getrandom 0.2.7",
- "redox_syscall 0.2.15",
+ "redox_syscall 0.2.16",
  "thiserror",
 ]
 
@@ -6717,7 +6717,7 @@ dependencies = [
 name = "tari_app_utilities"
 version = "0.34.0"
 dependencies = [
- "clap 3.2.14",
+ "clap 3.2.15",
  "config",
  "dirs-next 1.0.2",
  "futures 0.3.21",
@@ -6744,7 +6744,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "chrono",
- "clap 3.2.14",
+ "clap 3.2.15",
  "config",
  "crossterm 0.23.2",
  "derive_more",
@@ -6833,7 +6833,7 @@ name = "tari_collectibles"
 version = "0.1.0"
 dependencies = [
  "blake2 0.9.2",
- "clap 3.2.14",
+ "clap 3.2.15",
  "derivative",
  "diesel",
  "diesel_migrations",
@@ -6971,6 +6971,7 @@ dependencies = [
  "bitflags 1.3.2",
  "bytes 0.5.6",
  "chacha20 0.7.1",
+ "chacha20poly1305 0.9.1",
  "chrono",
  "clap 2.34.0",
  "diesel",
@@ -7030,7 +7031,7 @@ version = "0.34.0"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
- "clap 3.2.14",
+ "clap 3.2.15",
  "config",
  "crossterm 0.17.7",
  "digest 0.9.0",
@@ -7177,7 +7178,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "blake2 0.9.2",
- "clap 3.2.14",
+ "clap 3.2.15",
  "digest 0.9.0",
  "futures 0.3.21",
  "lmdb-zero",
@@ -7308,7 +7309,7 @@ dependencies = [
  "bincode",
  "bytes 1.2.0",
  "chrono",
- "clap 3.2.14",
+ "clap 3.2.15",
  "config",
  "crossterm 0.17.7",
  "derivative",
@@ -7359,7 +7360,7 @@ dependencies = [
  "base64 0.13.0",
  "bufstream",
  "chrono",
- "clap 3.2.14",
+ "clap 3.2.15",
  "config",
  "crossbeam",
  "crossterm 0.17.7",
@@ -7576,7 +7577,7 @@ dependencies = [
  "async-trait",
  "blake2 0.9.2",
  "bytecodec",
- "clap 3.2.14",
+ "clap 3.2.15",
  "config",
  "digest 0.9.0",
  "futures 0.3.21",
@@ -7886,7 +7887,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "fastrand",
  "libc",
- "redox_syscall 0.2.15",
+ "redox_syscall 0.2.16",
  "remove_dir_all",
  "winapi 0.3.9",
 ]
@@ -7974,7 +7975,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fdfe0627923f7411a43ec9ec9c39c3a9b4151be313e0922042581fb6c9b717f"
 dependencies = [
  "libc",
- "redox_syscall 0.2.15",
+ "redox_syscall 0.2.16",
  "winapi 0.3.9",
 ]
 
@@ -8921,9 +8922,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f76068e87fe9b837a6bc2ccded66784173eadb828c4168643e9fddf6f9ed2e61"
+checksum = "8905fd25fdadeb0e7e8bf43a9f46f9f972d6291ad0c7a32573b88dd13a6cfa6b"
 dependencies = [
  "leb128",
 ]
@@ -9167,9 +9168,9 @@ checksum = "718ed7c55c2add6548cca3ddd6383d738cd73b892df400e96b9aa876f0141d7a"
 
 [[package]]
 name = "wast"
-version = "44.0.0"
+version = "45.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f474d1b1cb7d92e5360b293f28e8bc9b2d115197a5bbf76bdbfba9161cf9cdc"
+checksum = "186c474c4f9bb92756b566d592a16591b4526b1a4841171caa3f31d7fe330d96"
 dependencies = [
  "leb128",
  "memchr",
@@ -9179,9 +9180,9 @@ dependencies = [
 
 [[package]]
 name = "wat"
-version = "1.0.46"
+version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82d002ce2eca0730c6df2c21719e9c4d8d0cafe74fb0cb8ff137c0774b8e4ed1"
+checksum = "c2d4bc4724b4f02a482c8cab053dac5ef26410f264c06ce914958f9a42813556"
 dependencies = [
  "wast",
 ]

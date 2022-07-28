@@ -172,8 +172,8 @@ impl DecryptedDhtMessage {
         self.dht_header.flags.contains(DhtMessageFlags::ENCRYPTED)
     }
 
-    pub fn has_origin_mac(&self) -> bool {
-        !self.dht_header.origin_mac.is_empty()
+    pub fn has_message_signature(&self) -> bool {
+        !self.dht_header.message_signature.is_empty()
     }
 
     pub fn body_len(&self) -> usize {

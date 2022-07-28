@@ -496,7 +496,8 @@ mod test {
             false,
             MessageTag::new(),
             false,
-        );
+        )
+        .unwrap();
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         let msg = {
@@ -547,7 +548,8 @@ mod test {
             true,
             MessageTag::new(),
             true,
-        );
+        )
+        .unwrap();
 
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
@@ -596,7 +598,8 @@ mod test {
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
-        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes());
+        let key_message = crypt::generate_key_message(&ecdh_key);
+        let encrypted_bytes = crypt::encrypt(&key_message, &msg.to_encoded_bytes());
         let dht_envelope = make_dht_envelope(
             &node_identity2,
             encrypted_bytes,
@@ -604,10 +607,11 @@ mod test {
             true,
             MessageTag::new(),
             true,
-        );
+        )
+        .unwrap();
 
-        let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
-        assert!(!origin_mac.is_empty());
+        let message_signature = dht_envelope.header.as_ref().unwrap().message_signature.clone();
+        assert!(!message_signature.is_empty());
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         service.call(inbound_message).await.unwrap();
@@ -616,7 +620,7 @@ mod test {
         let (params, _) = oms_mock_state.pop_call().await.unwrap();
 
         // Check that OMS got a request to forward with the original Dht Header
-        assert_eq!(params.dht_header.unwrap().origin_mac, origin_mac);
+        assert_eq!(params.dht_header.unwrap().message_signature, message_signature);
 
         // Check the next service was not called
         assert_eq!(spy.call_count(), 0);
@@ -662,7 +666,8 @@ mod test {
             false,
             MessageTag::new(),
             false,
-        );
+        )
+        .unwrap();
         dht_envelope.header.as_mut().unwrap().message_type = DhtMessageType::SafStoredMessages as i32;
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 

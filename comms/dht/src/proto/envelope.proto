@@ -38,7 +38,7 @@ message DhtHeader {
     // or another peer if the message should be forwarded. This is optional but MUST be specified
     // if the ENCRYPTED flag is set.
     // If an ephemeral_public_key is specified, this MUST be encrypted using a derived ECDH shared key
-    bytes origin_mac = 6;
+    bytes message_signature = 6;
     // Ephemeral public key component of the ECDH shared key. MUST be specified if the ENCRYPTED flag is set.
     bytes ephemeral_public_key = 7;
     // The type of message

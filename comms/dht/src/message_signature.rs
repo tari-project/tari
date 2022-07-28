@@ -22,39 +22,43 @@
 
 use std::convert::TryFrom;
 
-use digest::{Digest, FixedOutput};
 use rand::rngs::OsRng;
-use tari_comms::types::{Challenge, CommsPublicKey, CommsSecretKey, Signature};
+use tari_comms::types::{CommsPublicKey, CommsSecretKey, Signature};
 use tari_crypto::keys::PublicKey;
 use tari_utilities::ByteArray;
 
+use crate::comms_dht_hash_domain_message_signature;
+
 #[derive(Debug, Clone)]
-pub struct OriginMac {
+pub struct MessageSignature {
     signer_public_key: CommsPublicKey,
     signature: Signature,
 }
 
-fn construct_origin_mac_hash(
+fn construct_message_signature_hash(
     signer_public_key: &CommsPublicKey,
     public_nonce: &CommsPublicKey,
     message: &[u8],
 ) -> [u8; 32] {
-    // e = H_mac(P||R||m)
-    Challenge::with_params(&[], &[], b"TARIDHTORIGINMAC")
-        .expect("params for Challenge should not produce failure")
+    // produce domain separated hash of input data, in such a way that e = H_mac(P||R||m)
+    let domain_separated_hash = comms_dht_hash_domain_message_signature()
         .chain(signer_public_key.as_bytes())
         .chain(public_nonce.as_bytes())
         .chain(message)
-        .finalize_fixed()
-        .into()
+        .finalize();
+
+    let mut output = [0u8; 32];
+    output.copy_from_slice(domain_separated_hash.as_ref());
+
+    output
 }
 
-impl OriginMac {
-    /// Create a new signed [OriginMac](self::OriginMac) for the given message.
+impl MessageSignature {
+    /// Create a new signed [MessageSignature](self::MessageSignature) for the given message.
     pub fn new_signed(signer_secret_key: CommsSecretKey, message: &[u8]) -> Self {
         let (nonce_s, nonce_pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let signer_public_key = CommsPublicKey::from_secret_key(&signer_secret_key);
-        let challenge = construct_origin_mac_hash(&signer_public_key, &nonce_pk, message);
+        let challenge = construct_message_signature_hash(&signer_public_key, &nonce_pk, message);
         let signature = Signature::sign(signer_secret_key, nonce_s, &challenge)
             .expect("challenge is [u8;32] but SchnorrSignature::sign failed");
 
@@ -66,7 +70,8 @@ impl OriginMac {
 
     /// Returns true if the provided message valid for this origin MAC, otherwise false.
     pub fn verify(&self, message: &[u8]) -> bool {
-        let challenge = construct_origin_mac_hash(&self.signer_public_key, self.signature.get_public_nonce(), message);
+        let challenge =
+            construct_message_signature_hash(&self.signer_public_key, self.signature.get_public_nonce(), message);
         self.signature.verify_challenge(&self.signer_public_key, &challenge)
     }
 
@@ -76,8 +81,8 @@ impl OriginMac {
     }
 
     /// Converts to a protobuf struct
-    pub fn to_proto(&self) -> ProtoOriginMac {
-        ProtoOriginMac {
+    pub fn to_proto(&self) -> ProtoMessageSignature {
+        ProtoMessageSignature {
             signer_public_key: self.signer_public_key.to_vec(),
             public_nonce: self.signature.get_public_nonce().to_vec(),
             signature: self.signature.get_signature().to_vec(),
@@ -85,18 +90,18 @@ impl OriginMac {
     }
 }
 
-impl TryFrom<ProtoOriginMac> for OriginMac {
-    type Error = OriginMacError;
+impl TryFrom<ProtoMessageSignature> for MessageSignature {
+    type Error = MessageSignatureError;
 
-    fn try_from(origin_mac: ProtoOriginMac) -> Result<Self, Self::Error> {
-        let signer_public_key = CommsPublicKey::from_bytes(&origin_mac.signer_public_key)
-            .map_err(|_| OriginMacError::InvalidSignerPublicKey)?;
+    fn try_from(message_signature: ProtoMessageSignature) -> Result<Self, Self::Error> {
+        let signer_public_key = CommsPublicKey::from_bytes(&message_signature.signer_public_key)
+            .map_err(|_| MessageSignatureError::InvalidSignerPublicKey)?;
 
-        let public_nonce =
-            CommsPublicKey::from_bytes(&origin_mac.public_nonce).map_err(|_| OriginMacError::InvalidPublicNonce)?;
+        let public_nonce = CommsPublicKey::from_bytes(&message_signature.public_nonce)
+            .map_err(|_| MessageSignatureError::InvalidPublicNonce)?;
 
-        let signature =
-            CommsSecretKey::from_bytes(&origin_mac.signature).map_err(|_| OriginMacError::InvalidSignature)?;
+        let signature = CommsSecretKey::from_bytes(&message_signature.signature)
+            .map_err(|_| MessageSignatureError::InvalidSignature)?;
 
         Ok(Self {
             signer_public_key,
@@ -105,9 +110,9 @@ impl TryFrom<ProtoOriginMac> for OriginMac {
     }
 }
 
-/// The Message Authentication Code (MAC) message format of the decrypted `DhtHeader::origin_mac` field
+/// The Message Authentication Code (MAC) message format of the decrypted `DhtHeader::message_signature` field
 #[derive(Clone, prost::Message)]
-pub struct ProtoOriginMac {
+pub struct ProtoMessageSignature {
     #[prost(bytes, tag = "1")]
     pub signer_public_key: Vec<u8>,
     #[prost(bytes, tag = "2")]
@@ -117,7 +122,7 @@ pub struct ProtoOriginMac {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum OriginMacError {
+pub enum MessageSignatureError {
     #[error("Failed to decrypt origin MAC")]
     DecryptedFailed,
     #[error("Failed to validate origin MAC signature")]
@@ -137,9 +142,9 @@ mod test {
     use super::*;
     const MSG: &[u8] = b"100% genuine";
 
-    fn setup() -> (OriginMac, CommsSecretKey) {
+    fn setup() -> (MessageSignature, CommsSecretKey) {
         let signer_k = CommsSecretKey::random(&mut OsRng);
-        (OriginMac::new_signed(signer_k.clone(), MSG), signer_k)
+        (MessageSignature::new_signed(signer_k.clone(), MSG), signer_k)
     }
 
     #[test]
@@ -153,7 +158,7 @@ mod test {
     fn it_is_secure_against_related_key_attack() {
         let (mut mac, signer_k) = setup();
         let signer_pk = CommsPublicKey::from_secret_key(&signer_k);
-        let msg = construct_origin_mac_hash(&signer_pk, mac.signature.get_public_nonce(), MSG);
+        let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_public_nonce(), MSG);
         let msg_scalar = CommsSecretKey::from_bytes(&msg).unwrap();
 
         // Some `a` key
@@ -174,7 +179,7 @@ mod test {
         let (nonce_k, _) = CommsPublicKey::random_keypair(&mut OsRng);
         // Get the original hashed challenge
         let signer_pk = CommsPublicKey::from_secret_key(&signer_k);
-        let msg = construct_origin_mac_hash(&signer_pk, mac.signature.get_public_nonce(), MSG);
+        let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_public_nonce(), MSG);
 
         // Change <R, s> to <R', s>. Note: We need signer_k because the Signature interface does not provide a way to
         // change just the public nonce, an attacker does not need the secret key.
