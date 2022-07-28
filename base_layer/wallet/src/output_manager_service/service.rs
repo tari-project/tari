@@ -25,10 +25,7 @@ use std::{convert::TryInto, fmt, sync::Arc};
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
-use itertools::{
-    FoldWhile::{Continue, Done},
-    Itertools,
-};
+use itertools::Itertools;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
@@ -1376,137 +1373,6 @@ where
         self.resources.db.reinstate_cancelled_inbound_output(tx_id)?;
 
         Ok(())
-    }
-
-    // NOTE: WIP
-    #[allow(dead_code)]
-    async fn select_utxos2(
-        &mut self,
-        target_amount: MicroTari,
-        fee_per_gram: MicroTari,
-        num_outputs: usize,
-        total_output_metadata_byte_size: usize,
-        selection_criteria: UtxoSelectionCriteria,
-    ) -> Result<UtxoSelection, OutputManagerError> {
-        debug!(
-            target: LOG_TARGET,
-            "select_utxos target_amount: {}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
-             selection_criteria: {:?}",
-            target_amount,
-            fee_per_gram,
-            num_outputs,
-            total_output_metadata_byte_size,
-            selection_criteria
-        );
-
-        let tip_height = self
-            .base_node_service
-            .get_chain_metadata()
-            .await?
-            .as_ref()
-            .map(|m| m.height_of_longest_chain());
-        let balance = self.get_balance(tip_height)?;
-
-        // collecting UTXOs sufficient to cover the target amount
-        let (_, accumulated_amount, utxos) = self
-            .resources
-            .db
-            .fetch_unspent_outputs_for_spending(&selection_criteria, target_amount, tip_height)?
-            .into_iter()
-            .fold_while(
-                (1usize, MicroTari::zero(), Vec::<DbUnblindedOutput>::new()),
-                |mut acc, out| {
-                    let fee = self.get_fee_calc().calculate(
-                        fee_per_gram,
-                        1,
-                        acc.0,
-                        num_outputs,
-                        total_output_metadata_byte_size,
-                    );
-
-                    let next = acc.1 + out.unblinded_output.value;
-                    let target_amount_with_fee = target_amount + fee;
-
-                    // if next < target_amount_with_fee || acc.1 < target_amount_with_fee && next >=
-                    // target_amount_with_fee
-                    if next < target_amount_with_fee || acc.1 < target_amount_with_fee {
-                        acc.0 += 1;
-                        acc.1 = next;
-                        acc.2.push(out);
-                        Continue(acc)
-                    } else {
-                        Done(acc)
-                    }
-                },
-            )
-            .into_inner();
-
-        // let accumulated_amount = utxos
-        // .iter()
-        // .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
-
-        if accumulated_amount <= target_amount {
-            return Err(OutputManagerError::NotEnoughFunds);
-        }
-
-        let fee_without_change = self.get_fee_calc().calculate(
-            fee_per_gram,
-            1,
-            utxos.len(),
-            num_outputs,
-            total_output_metadata_byte_size,
-        );
-
-        // checking whether the total output value is enough
-        if accumulated_amount < (target_amount + fee_without_change) {
-            return Err(OutputManagerError::NotEnoughFunds);
-        }
-
-        let fee_with_change = match accumulated_amount
-            .saturating_sub(target_amount + fee_without_change)
-            .as_u64()
-        {
-            0 => fee_without_change,
-            _ => self.get_fee_calc().calculate(
-                fee_per_gram,
-                1,
-                utxos.len(),
-                num_outputs + 1,
-                total_output_metadata_byte_size + self.default_metadata_size(),
-            ),
-        };
-
-        // this is how much it would require in the end
-        let target_amount_with_fee = target_amount + fee_with_change;
-
-        // checking, again, whether a total output value is enough
-        if accumulated_amount < target_amount_with_fee {
-            return Err(OutputManagerError::NotEnoughFunds);
-        }
-
-        // balance check
-        if balance.available_balance < target_amount_with_fee {
-            return if accumulated_amount + balance.pending_incoming_balance >= target_amount_with_fee {
-                Err(OutputManagerError::FundsPending)
-            } else {
-                Err(OutputManagerError::NotEnoughFunds)
-            };
-        }
-
-        trace!(
-            target: LOG_TARGET,
-            "select_utxos selection criteria: {}\noutputs found: {}",
-            selection_criteria,
-            utxos.len()
-        );
-
-        Ok(UtxoSelection {
-            utxos,
-            requires_change_output: accumulated_amount.saturating_sub(target_amount_with_fee) > MicroTari::zero(),
-            total_value: accumulated_amount,
-            fee_without_change,
-            fee_with_change,
-        })
     }
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
