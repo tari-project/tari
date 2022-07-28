@@ -23,6 +23,7 @@ pub mod transaction_service;
 pub mod types;
 pub mod util;
 pub mod wallet;
+
 pub use operation_id::OperationId;
 
 #[macro_use]

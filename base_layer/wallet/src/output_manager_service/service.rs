@@ -66,8 +66,6 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
@@ -101,7 +99,7 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::HashDigest,
+    types::{HashDigest, WalletHasher},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -2707,7 +2705,7 @@ where
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // computing shared secret
                     let shared_secret = PrivateKey::from_bytes(
-                        DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("com.tari.stealth_address")
+                        WalletHasher::new("stealth_address")
                             .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
                             .finalize()
                             .as_ref(),

@@ -112,8 +112,6 @@ use tari_core::transactions::{
     CryptoFactories,
 };
 use tari_crypto::{
-    hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -215,8 +213,6 @@ pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::stor
 pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 
 pub struct TariPendingOutboundTransactions(Vec<TariPendingOutboundTransaction>);
-
-pub type TariHasher = DomainSeparatedHasher<Blake256, GenericHashDomain>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header

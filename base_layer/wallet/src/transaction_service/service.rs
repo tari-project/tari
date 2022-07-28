@@ -65,9 +65,6 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    hash::blake2::Blake256,
-    hash_domain,
-    hashing::DomainSeparatedHasher,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -117,7 +114,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::HashDigest,
+    types::{HashDigest, WalletHasher},
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
@@ -1345,18 +1342,16 @@ where
                 "One-sided-to-stealth-address spend-to-self transactions not supported".to_string(),
             ));
         }
+
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
 
-        hash_domain!(
-            WalletServiceHashDomain,
-            "com.tari.base_layer.wallet.transaction_service"
-        );
-
-        let c = DomainSeparatedHasher::<Blake256, WalletServiceHashDomain>::new("stealth_address")
+        let c = WalletHasher::new("stealth_address")
             .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
             .finalize();
+
         let script_spending_key =
             PublicKey::from_secret_key(&PrivateKey::from_bytes(c.as_ref()).unwrap()) + dest_pubkey.clone();
+
         self.send_one_sided_or_stealth(
             dest_pubkey,
             amount,
@@ -2520,12 +2515,9 @@ pub struct TransactionSendResult {
 
 #[cfg(test)]
 mod tests {
-    use tari_crypto::{
-        hash::blake2::Blake256,
-        hashing::{DomainSeparatedHasher, GenericHashDomain},
-        ristretto::RistrettoSecretKey,
-    };
+    use tari_crypto::ristretto::RistrettoSecretKey;
     use tari_script::Opcode;
+    use WalletHasher;
 
     use super::*;
 
@@ -2540,7 +2532,7 @@ mod tests {
 
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
-        let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_test")
+        let c = WalletHasher::new("stealth_address")
             .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
             .finalize();
 
@@ -2557,7 +2549,7 @@ mod tests {
         if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
         {
             // calculating Ks with the provided R nonce from the script
-            let c = DomainSeparatedHasher::<Blake256, GenericHashDomain>::new("stealth_test")
+            let c = WalletHasher::new("stealth_address")
                 .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
                 .finalize();
 

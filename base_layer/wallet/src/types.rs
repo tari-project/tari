@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::PublicKey;
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, hasher};
 
 use crate::error::WalletError;
 
@@ -34,3 +34,5 @@ pub type HashDigest = Blake256;
 pub(crate) trait PersistentKeyManager {
     fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
 }
+
+hasher!(Blake256, WalletHasher, "com.tari.base_layer.wallet", 1);
