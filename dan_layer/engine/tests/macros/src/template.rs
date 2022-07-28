@@ -95,12 +95,17 @@ fn generate_abi_output(ast: &TemplateAst) -> Result<TokenStream> {
 
 fn generate_function_def_output(fd: &FunctionDef) -> Expr {
     let name = fd.name.clone();
+    let arguments: Vec<Expr> = fd
+        .arguments
+        .iter()
+        .map(TemplateAst::get_abi_type_expr)
+        .collect();
     let output = TemplateAst::get_abi_type_expr(&fd.output);
 
     parse_quote!(
         FunctionDef {
             name: #name.to_string(),
-            arguments: vec![],
+            arguments: vec![ #(#arguments),* ],
             output: #output,
         }
     )
