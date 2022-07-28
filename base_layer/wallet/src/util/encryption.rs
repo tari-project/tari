@@ -25,11 +25,9 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::{
-    hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, MacDomain},
-};
 use tari_utilities::ByteArray;
+
+use crate::types::WalletEncryptionHasher;
 
 pub const AES_NONCE_BYTES: usize = 12;
 pub const AES_KEY_BYTES: usize = 32;
@@ -64,14 +62,13 @@ pub fn decrypt_bytes_integral_nonce(
     let (ciphertext, appended_mac) = ciphertext.split_at(ciphertext.len().saturating_sub(AES_MAC_BYTES));
     let nonce = GenericArray::from_slice(nonce);
 
-    let expected_mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
+    let expected_mac = WalletEncryptionHasher::new("storage_encryption_mac")
         .chain(nonce.as_slice())
         .chain(ciphertext)
         .chain(domain)
-        .finalize()
-        .into_vec();
+        .finalize();
 
-    if appended_mac != expected_mac {
+    if appended_mac != expected_mac.as_ref() {
         return Err(AeadError.to_string());
     }
 
@@ -93,12 +90,13 @@ pub fn encrypt_bytes_integral_nonce(
         .encrypt(nonce_ga, plaintext.as_bytes())
         .map_err(|e| e.to_string())?;
 
-    let mut mac = DomainSeparatedHasher::<Blake256, MacDomain>::new("com.tari.storage_encryption_mac")
+    let mut mac = WalletEncryptionHasher::new("storage_encryption_mac")
         .chain(nonce.as_slice())
         .chain(ciphertext.clone())
         .chain(domain.as_slice())
         .finalize()
-        .into_vec();
+        .as_ref()
+        .to_vec();
 
     let mut ciphertext_integral_nonce = nonce.to_vec();
     ciphertext_integral_nonce.append(&mut ciphertext);

@@ -35,4 +35,11 @@ pub(crate) trait PersistentKeyManager {
     fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
 }
 
+hasher!(
+    Blake256,
+    WalletEncryptionHasher,
+    "com.tari.base_layer.wallet.encryption",
+    1
+);
+
 hasher!(Blake256, WalletHasher, "com.tari.base_layer.wallet", 1);
