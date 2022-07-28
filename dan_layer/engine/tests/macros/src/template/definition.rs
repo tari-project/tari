@@ -21,34 +21,25 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use proc_macro2::TokenStream;
-use quote::quote;
-use syn::{parse2, Result};
+use quote::{format_ident, quote};
 
-use super::{
-    abi::generate_abi,
-    definition::generate_definition,
-    dependencies::generate_dependencies,
-    dispatcher::generate_dispatcher,
-};
 use crate::ast::TemplateAst;
 
-pub fn generate_template(input: TokenStream) -> Result<TokenStream> {
-    let ast = parse2::<TemplateAst>(input).unwrap();
+pub fn generate_definition(ast: &TemplateAst) -> TokenStream {
+    let template_name = format_ident!("{}", ast.struct_section.ident);
+    let functions = &ast.impl_section.items;
 
-    let definition = generate_definition(&ast);
-    let abi = generate_abi(&ast)?;
-    let dispatcher = generate_dispatcher(&ast)?;
-    let dependencies = generate_dependencies();
+    quote! {
+        pub mod template {
+            use super::*;
 
-    let output = quote! {
-        #definition
+            pub struct #template_name {
+                // TODO: fill template fields
+            }
 
-        #abi
-
-        #dispatcher
-
-        #dependencies
-    };
-
-    Ok(output)
+            impl #template_name {
+                #(#functions)*
+            }
+        }
+    }
 }

@@ -20,14 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod ast;
-mod template;
+mod abi;
+mod definition;
+mod dependencies;
+mod dispatcher;
 
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::{parse2, Result};
 
-#[proc_macro]
-pub fn template(input: TokenStream) -> TokenStream {
-    template::generate_template(proc_macro2::TokenStream::from(input))
-        .unwrap_or_else(|err| err.to_compile_error())
-        .into()
+use self::{
+    abi::generate_abi,
+    definition::generate_definition,
+    dependencies::generate_dependencies,
+    dispatcher::generate_dispatcher,
+};
+use crate::ast::TemplateAst;
+
+pub fn generate_template(input: TokenStream) -> Result<TokenStream> {
+    let ast = parse2::<TemplateAst>(input).unwrap();
+
+    let definition = generate_definition(&ast);
+    let abi = generate_abi(&ast)?;
+    let dispatcher = generate_dispatcher(&ast)?;
+    let dependencies = generate_dependencies();
+
+    let output = quote! {
+        #definition
+
+        #abi
+
+        #dispatcher
+
+        #dependencies
+    };
+
+    Ok(output)
 }
