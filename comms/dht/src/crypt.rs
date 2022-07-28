@@ -34,12 +34,7 @@ use chacha20poly1305::{
     ChaCha20Poly1305,
 };
 use rand::{rngs::OsRng, RngCore};
-<<<<<<< HEAD
-use tari_common::hashing_domain::HashToBytes;
-use tari_comms::types::{CommsChallenge, CommsPublicKey};
-=======
 use tari_comms::types::{CommsPublicKey, CommsSecretKey};
->>>>>>> development
 use tari_crypto::{
     keys::DiffieHellmanSharedSecret,
     tari_utilities::{epoch_time::EpochTime, ByteArray},
@@ -73,21 +68,24 @@ pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPubli
     output
 }
 
-fn pad_message_to_base_length_multiple(message: &[u8]) -> &[u8] {
+fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     let n = message.len();
     let prepend_message = (n as u64).to_le_bytes();
 
     let k = prepend_message.len();
 
     let div_n_base_len = (n + k) / MESSAGE_BASE_LENGTH;
-    let zeroes_to_prepend = (n + k) % MESSAGE_BASE_LENGTH;
-    
+    let output_size = div_n_base_len * MESSAGE_BASE_LENGTH;
+
+    // join prepend_message | message | zero_padding
     let mut output = prepend_message.to_vec();
+    output.append(&mut message.to_vec());
+    output.append(&mut [0u8; 128].to_vec());
 
-    message.into_iter().map(|b| output.push(b));
-    [0u8; 128].into_iter().take(zeroes_to_prepend).map(|b| output.push(b));
+    // we have to truncate the vector to output_size
+    output.truncate(output_size);
 
-    output.as_slice()
+    output
 }
 
 pub fn generate_key_message(data: &[u8]) -> CipherKey {
@@ -95,7 +93,7 @@ pub fn generate_key_message(data: &[u8]) -> CipherKey {
     let domain_separated_hash = comms_dht_hash_domain_key_message().chain(data).finalize();
 
     // Domain separation uses Challenge = Blake256, thus its output has 32-byte length
-    CipherKey(*Key::from_slice(domain_separated_hash.as_bytes()))
+    CipherKey(*Key::from_slice(domain_separated_hash.as_ref()))
 }
 
 pub fn generate_key_signature_for_authenticated_encryption(data: &[u8]) -> AuthenticatedCipherKey {

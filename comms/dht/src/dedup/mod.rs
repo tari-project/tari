@@ -29,15 +29,15 @@ mod dedup_cache;
 use std::task::Poll;
 
 pub use dedup_cache::DedupCacheDatabase;
-use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::{pipeline::PipelineError, types::CommsChallenge};
+use tari_comms::pipeline::PipelineError;
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 use crate::{
     actor::DhtRequester,
+    comms_dht_message_hash,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
 };
 
@@ -53,7 +53,7 @@ pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
         .chain(&body)
         .finalize();
 
-    let output = [0u8; 32];
+    let mut output = [0u8; 32];
     output.copy_from_slice(domain_separated_hash.as_ref());
     output
 }
