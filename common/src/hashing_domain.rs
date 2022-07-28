@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use sha2::Digest;
+use sha2::{digest::Update, Digest};
 use tari_common_types::types::{DefaultDomainHasher, MacDomainHasher};
 use tari_crypto::hashing::{DomainSeparatedHash, LengthExtensionAttackResistant, Mac};
 use thiserror::Error;
@@ -63,7 +63,7 @@ impl HashingDomain {
     }
 
     /// Generate a finalized domain separated Hash-based Message Authentication Code (HMAC) for the key and message
-    pub fn generate_hmac<D: Digest + LengthExtensionAttackResistant>(&self, key: &[u8], msg: &[u8]) -> Mac<D> {
+    pub fn generate_hmac<D: Digest + LengthExtensionAttackResistant + Update>(&self, key: &[u8], msg: &[u8]) -> Mac<D> {
         Mac::generate::<_, _>(key, msg, self.domain_label)
     }
 }
@@ -107,8 +107,6 @@ mod test {
         let hash_1 = hasher.finalize();
         let hash_2 = common_hash_domain().digest::<Blake256>(b"my 3rd secret");
         assert_eq!(hash_1.as_ref(), hash_2.as_ref());
-        assert_eq!(hash_1.domain_separation_tag(), hash_2.domain_separation_tag());
-        assert_eq!(hash_1.domain_separation_tag(), hash.domain_separation_tag());
     }
 
     #[test]
@@ -146,13 +144,10 @@ mod test {
         let hash_1 = hasher.finalize();
         let hash_2 = common_hash_domain().mac_digest::<Blake256>(b"my 3rd secret");
         assert_eq!(hash_1.as_ref(), hash_2.as_ref());
-        assert_eq!(hash_1.domain_separation_tag(), hash_2.domain_separation_tag());
-        assert_eq!(hash_1.domain_separation_tag(), hash.domain_separation_tag());
 
         let hmac = common_hash_domain().generate_hmac::<Blake256>(b"my secret key", b"my message");
-        assert_ne!(hmac.domain_separation_tag(), hash_1.domain_separation_tag());
         assert_eq!(
-            hmac.into_vec().to_hex(),
+            hmac.as_ref().to_vec().to_hex(),
             "412767200f4b3bcfbf02bdd556d6fad33be176b06bdcbb00963bd3cb51b5dc79"
         );
     }
@@ -163,14 +158,5 @@ mod test {
         let hash_generic = common_hash_domain().digest::<Blake256>(secret);
         let hash_mac = common_hash_domain().mac_digest::<Blake256>(secret);
         assert_ne!(hash_generic.as_ref(), hash_mac.as_ref());
-        assert_ne!(hash_generic.domain_separation_tag(), hash_mac.domain_separation_tag());
-        assert_eq!(
-            hash_generic.domain_separation_tag(),
-            "com.tari.tari_project.hash_domain.v1.common"
-        );
-        assert_eq!(
-            hash_mac.domain_separation_tag(),
-            "com.tari.tari_project.mac_domain.v1.common"
-        );
     }
 }
