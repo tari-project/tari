@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     instruction::{error::InstructionError, Instruction, InstructionSet},
-    package::{Package, PackageId},
+    packager::{Package, PackageId},
     runtime::{Runtime, RuntimeInterface},
     traits::Invokable,
     wasm::{ExecutionResult, Process},

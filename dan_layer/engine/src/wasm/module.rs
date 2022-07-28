@@ -25,7 +25,7 @@ use wasmer::{Extern, Function, Instance, Module, Store, Val, WasmerEnv};
 
 use crate::{
     packager::PackageModuleLoader,
-    wasm::{env::WasmEnv, WasmExecutionError},
+    wasm::{environment::WasmEnv, WasmExecutionError},
 };
 
 #[derive(Debug, Clone)]

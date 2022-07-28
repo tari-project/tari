@@ -27,11 +27,11 @@ use mock_runtime_interface::MockRuntimeInterface;
 use tari_common_types::types::FixedHash;
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_dan_engine::{
-    compile::compile_template,
     crypto::create_key_pair,
     instruction::{Instruction, InstructionBuilder, InstructionProcessor},
     models::ComponentId,
-    package::PackageBuilder,
+    packager::Package,
+    wasm::compile::build_wasm_module_from_source,
 };
 use tari_template_abi::encode_with_len;
 
@@ -79,8 +79,8 @@ impl TemplateTest {
         let mut processor = InstructionProcessor::new(MockRuntimeInterface::new());
         let (secret_key, _pk) = create_key_pair();
 
-        let wasm = compile_template(template_path).unwrap();
-        let package = PackageBuilder::new().add_wasm_template(wasm).build().unwrap();
+        let wasm = build_wasm_module_from_source(template_path).unwrap();
+        let package = Package::builder().add_wasm_module(wasm).build().unwrap();
         let package_id = package.id();
         processor.load(package);
 

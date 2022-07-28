@@ -37,11 +37,6 @@ use wasmer::{
     Resolver,
     Store,
     WasmerEnv,
-use wasmer::{LazyInit, Memory, NativeFunc, WasmerEnv};
-
-use crate::{
-    runtime::{Runtime, RuntimeInterface},
-    wasm::WasmExecutionError,
 };
 
 use crate::wasm::WasmExecutionError;
@@ -96,7 +91,7 @@ impl<T: Clone + Sync + Send + 'static> WasmEnv<T> {
         Ok(())
     }
 
-    pub(super) fn read_from_memory_with_len(&self, ptr: u32) -> Result<Vec<u8>, WasmExecutionError> {
+    pub(super) fn read_memory_with_embedded_len(&self, ptr: u32) -> Result<Vec<u8>, WasmExecutionError> {
         let memory = self.get_memory()?;
         let view = memory.uint8view().subarray(ptr, memory.data_size() as u32 - 1);
         let view_bytes = &*view;
@@ -108,7 +103,7 @@ impl<T: Clone + Sync + Send + 'static> WasmEnv<T> {
         }
 
         let mut buf = [0u8; 4];
-        copy_from_cell_slice(view_bytes, &mut buf, 4);
+        copy_from_cell_slice(view_bytes, &mut buf);
         let len = u32::from_le_bytes(buf);
         let data = self.read_from_memory(ptr + 4, len)?;
 
@@ -127,7 +122,7 @@ impl<T: Clone + Sync + Send + 'static> WasmEnv<T> {
         }
         let view = memory.uint8view().subarray(ptr, ptr + len);
         let mut data = vec![0u8; len as usize];
-        copy_from_cell_slice(&*view, &mut data, len as usize);
+        copy_from_cell_slice(&*view, &mut data);
         Ok(data)
     }
 
@@ -138,7 +133,7 @@ impl<T: Clone + Sync + Send + 'static> WasmEnv<T> {
     fn get_mem_alloc_func(&self) -> Result<&NativeFunc<i32, i32>, WasmExecutionError> {
         self.mem_alloc
             .get_ref()
-            .ok_or_else(|| WasmExecutionError::MissingFunction {
+            .ok_or_else(|| WasmExecutionError::MissingAbiFunction {
                 function: "tari_alloc".into(),
             })
     }
@@ -146,13 +141,38 @@ impl<T: Clone + Sync + Send + 'static> WasmEnv<T> {
     fn get_mem_free_func(&self) -> Result<&NativeFunc<i32>, WasmExecutionError> {
         self.mem_free
             .get_ref()
-            .ok_or_else(|| WasmExecutionError::MissingFunction {
+            .ok_or_else(|| WasmExecutionError::MissingAbiFunction {
                 function: "tari_free".into(),
             })
     }
 
     fn get_memory(&self) -> Result<&Memory, WasmExecutionError> {
         self.memory.get_ref().ok_or(WasmExecutionError::MemoryNotInitialized)
+    }
+
+    pub fn mem_size(&self) -> Pages {
+        self.memory.get_ref().map(|mem| mem.size()).unwrap_or(Pages(0))
+    }
+
+    pub fn create_resolver(&self, store: &Store, tari_engine: Function) -> impl Resolver {
+        imports! {
+            "env" => {
+                "tari_engine" => tari_engine,
+                "debug" => Function::new_native_with_env(store, self.clone(), Self::debug_handler),
+            }
+        }
+    }
+
+    fn debug_handler(env: &Self, arg_ptr: i32, arg_len: i32) {
+        const WASM_DEBUG_LOG_TARGET: &str = "tari::dan::wasm";
+        match env.read_from_memory(arg_ptr as u32, arg_len as u32) {
+            Ok(arg) => {
+                eprintln!("DEBUG: {}", String::from_utf8_lossy(&arg));
+            },
+            Err(err) => {
+                log::error!(target: WASM_DEBUG_LOG_TARGET, "Failed to read from memory: {}", err);
+            },
+        }
     }
 }
 
@@ -179,11 +199,16 @@ impl<T: Debug> Debug for WasmEnv<T> {
     }
 }
 
-fn copy_from_cell_slice(src: &[Cell<u8>], dest: &mut [u8], len: usize) {
-    // TODO: Is there a more efficient way to do this?
-    for i in 0..len {
-        dest[i] = src[i].get();
-    }
+/// Efficiently copy read-only memory into a mutable buffer.
+/// Panics if the length of `dest` is more than the length of `src`.
+fn copy_from_cell_slice(src: &[Cell<u8>], dest: &mut [u8]) {
+    assert!(dest.len() <= src.len());
+    let len = dest.len();
+    // SAFETY: size_of::<Cell<u8>() is equal to size_of::<u8>(), we assert this below just in case.
+    let (head, body, tail) = unsafe { src[..len].align_to() };
+    assert_eq!(head.len(), 0);
+    assert_eq!(tail.len(), 0);
+    dest.copy_from_slice(body);
 }
 
 #[derive(Debug)]

@@ -20,51 +20,73 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Write};
+use std::collections::HashMap;
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use digest::Digest;
+use rand::{rngs::OsRng, RngCore};
 use tari_common_types::types::FixedHash;
 
-// This is to avoid adding borsh as a dependency in common types (and therefore every application).
-// TODO: Either this becomes the standard Hash type for the dan layer, or add borsh support to FixedHash.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Hash(FixedHash);
+use crate::{
+    crypto,
+    packager::{error::PackageError, PackageModuleLoader},
+    wasm::{LoadedWasmModule, WasmModule},
+};
 
-impl Hash {
-    pub fn into_inner(self) -> FixedHash {
-        self.0
+pub type PackageId = FixedHash;
+
+#[derive(Debug, Clone)]
+pub struct Package {
+    id: PackageId,
+    wasm_modules: HashMap<String, LoadedWasmModule>,
+}
+
+impl Package {
+    pub fn builder() -> PackageBuilder {
+        PackageBuilder::new()
+    }
+
+    pub fn get_module_by_name(&self, name: &str) -> Option<&LoadedWasmModule> {
+        self.wasm_modules.get(name)
+    }
+
+    pub fn id(&self) -> PackageId {
+        self.id
     }
 }
 
-impl From<FixedHash> for Hash {
-    fn from(hash: FixedHash) -> Self {
-        Self(hash)
+#[derive(Debug, Clone, Default)]
+pub struct PackageBuilder {
+    wasm_modules: Vec<WasmModule>,
+}
+
+impl PackageBuilder {
+    pub fn new() -> Self {
+        Self {
+            wasm_modules: Vec::new(),
+        }
+    }
+
+    pub fn add_wasm_module(&mut self, wasm_module: WasmModule) -> &mut Self {
+        self.wasm_modules.push(wasm_module);
+        self
+    }
+
+    pub fn build(&self) -> Result<Package, PackageError> {
+        let mut wasm_modules = HashMap::with_capacity(self.wasm_modules.len());
+        let id = new_package_id();
+        for wasm in &self.wasm_modules {
+            let loaded = wasm.load_module()?;
+            wasm_modules.insert(loaded.template_name().to_string(), loaded);
+        }
+
+        Ok(Package { id, wasm_modules })
     }
 }
 
-impl BorshSerialize for Hash {
-    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        (*self.0).serialize(writer)
-    }
-}
-
-impl BorshDeserialize for Hash {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let hash = <[u8; 32] as BorshDeserialize>::deserialize(buf)?;
-        Ok(Hash(hash.into()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn serialize_deserialize() {
-        let hash = Hash::default();
-        let mut buf = Vec::new();
-        hash.serialize(&mut buf).unwrap();
-        let hash2 = Hash::deserialize(&mut &buf[..]).unwrap();
-        assert_eq!(hash, hash2);
-    }
+fn new_package_id() -> PackageId {
+    let v = OsRng.next_u32();
+    crypto::hasher("package")
+          // TODO: Proper package id
+        .chain(&v.to_le_bytes())
+        .finalize().into()
 }

@@ -24,13 +24,13 @@ use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_template_abi::{decode, encode_into, encode_with_len, ops, CallInfo, CreateComponentArg, EmitLogArg, Type};
-use wasmer::{imports, Function, Instance, Module, Store, Val, WasmerEnv};
+use wasmer::{Function, Instance, Module, Store, Val, WasmerEnv};
 
 use crate::{
     runtime::Runtime,
     traits::Invokable,
     wasm::{
-        env::{AllocPtr, WasmEnv},
+        environment::{AllocPtr, WasmEnv},
         error::WasmExecutionError,
         LoadedWasmModule,
     },
@@ -49,13 +49,9 @@ impl Process {
     pub fn start(module: LoadedWasmModule, state: Runtime) -> Result<Self, WasmExecutionError> {
         let store = Store::default();
         let mut env = WasmEnv::new(state);
-        let imports = imports! {
-            "env" => {
-                "tari_engine" => Function::new_native_with_env(&store, env.clone(), Self::tari_engine_entrypoint),
-                "debug" => Function::new_native_with_env(&store, env.clone(), Self::debug),
-            }
-        };
-        let instance = Instance::new(module.wasm_module(), &imports)?;
+        let tari_engine = Function::new_native_with_env(&store, env.clone(), Self::tari_engine_entrypoint);
+        let resolver = env.create_resolver(&store, tari_engine);
+        let instance = Instance::new(module.wasm_module(), &resolver)?;
         env.init_with_instance(&instance)?;
         Ok(Self { module, env, instance })
     }
@@ -71,17 +67,6 @@ impl Process {
 
     pub fn wasm_module(&self) -> &Module {
         self.module.wasm_module()
-    }
-
-    fn debug(env: &WasmEnv, arg_ptr: i32, arg_len: i32) {
-        let arg = match env.read_from_memory(arg_ptr as u32, arg_len as u32) {
-            Ok(arg) => arg,
-            Err(err) => {
-                log::error!(target: LOG_TARGET, "Failed to read from memory: {}", err);
-                return;
-            },
-        };
-        eprintln!("DEBUG: {}", String::from_utf8_lossy(&arg));
     }
 
     fn tari_engine_entrypoint(env: &WasmEnv<Runtime>, op: i32, arg_ptr: i32, arg_len: i32) -> i32 {
@@ -155,7 +140,7 @@ impl Invokable for Process {
             .ok_or(WasmExecutionError::ExpectedPointerReturn { function: main_name })?;
 
         // Read response from memory
-        let raw = self.env.read_from_memory_with_len(ptr as u32)?;
+        let raw = self.env.read_memory_with_embedded_len(ptr as u32)?;
 
         // TODO: decode raw as per function def
         Ok(ExecutionResult {

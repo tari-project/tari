@@ -16,6 +16,16 @@ pub enum WasmError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum WasmExecutionError {
+    #[error(transparent)]
+    InstantiationError(#[from] InstantiationError),
+    #[error(transparent)]
+    ExportError(#[from] ExportError),
+    #[error(transparent)]
+    WasmRuntimeError(#[from] wasmer::RuntimeError),
+    #[error(transparent)]
+    HostEnvInitError(#[from] HostEnvInitError),
+    #[error(transparent)]
+    CompileError(#[from] wasmer::CompileError),
     #[error("Function {name} not found")]
     FunctionNotFound { name: String },
     #[error("Expected function {function} to return a pointer")]
@@ -26,14 +36,6 @@ pub enum WasmExecutionError {
     MemoryUnderflow { required: usize, remaining: usize },
     #[error("memory pointer out of range: memory size of {size} but pointer is {pointer}")]
     MemoryPointerOutOfRange { size: u64, pointer: u64, len: u64 },
-    #[error(transparent)]
-    InstantiationError(#[from] InstantiationError),
-    #[error(transparent)]
-    ExportError(#[from] ExportError),
-    #[error(transparent)]
-    WasmRuntimeError(#[from] wasmer::RuntimeError),
-    #[error(transparent)]
-    HostEnvInitError(#[from] HostEnvInitError),
     #[error("Memory allocation failed")]
     MemoryAllocationFailed,
     #[error("Memory not initialized")]
@@ -41,9 +43,19 @@ pub enum WasmExecutionError {
     #[error("Invalid operation {op}")]
     InvalidOperation { op: i32 },
     #[error("Missing function {function}")]
-    MissingFunction { function: String },
+    MissingAbiFunction { function: String },
     #[error("Runtime error: {0}")]
     RuntimeError(#[from] RuntimeError),
     #[error("Failed to decode argument for engine call: {0}")]
     EngineArgDecodeFailed(io::Error),
+    #[error("maximum module memory size exceeded")]
+    MaxMemorySizeExceeded,
+    #[error("Failed to decode ABI")]
+    AbiDecodeError,
+    #[error("package ABI function returned an invalid type")]
+    InvalidReturnTypeFromAbiFunc,
+    #[error("package did not contain an ABI definition")]
+    NoAbiDefinition,
+    #[error("Unexpected ABI function {name}")]
+    UnexpectedAbiFunction { name: String },
 }

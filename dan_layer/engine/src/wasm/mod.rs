@@ -7,13 +7,15 @@ mod wasm_module_factory;
 pub use wasm_module_definition::WasmModuleDefinition;
 pub use wasm_module_factory::WasmModuleFactory;
 
+pub mod compile;
+
 mod error;
 pub use error::{WasmError, WasmExecutionError};
 
+mod environment;
+
 mod module;
-pub use module::LoadedWasmModule;
+pub use module::{LoadedWasmModule, WasmModule};
 
 mod process;
 pub use process::{ExecutionResult, Process};
-
-mod env;
