@@ -64,8 +64,9 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::RistrettoSecretKey,
 };
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -95,7 +96,7 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::HashDigest,
+    types::{HashDigest, WalletHasher},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -2512,98 +2513,180 @@ where
         Ok(())
     }
 
-    /// Attempt to scan and then rewind all of the given transaction outputs into unblinded outputs based on known
-    /// pubkeys
+    // Scanning outputs addressed to this wallet
     fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
-        let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
-            self.resources.db.get_all_known_one_sided_payment_scripts()?;
+        // TODO: use MultiKey
+        // NOTE: known keys is a list consisting of an actual and deprecated wallet keys
+        let known_keys = self.resources.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<RecoveredOutput> = Vec::new();
+        let wallet_sk = self.node_identity.secret_key().clone();
+        let wallet_pk = self.node_identity.public_key();
+
+        let mut scanned_outputs = vec![];
+
         for output in outputs {
-            let position = known_one_sided_payment_scripts
-                .iter()
-                .position(|known_one_sided_script| known_one_sided_script.script == output.script);
-            if let Some(i) = position {
-                let spending_key = PrivateKey::from_bytes(
-                    CommsPublicKey::shared_secret(
-                        &known_one_sided_payment_scripts[i].private_key,
-                        &output.sender_offset_public_key,
+            match output.script.as_slice() {
+                // ----------------------------------------------------------------------------
+                // simple one-sided address
+                [Opcode::PushPubKey(scanned_pk)] => {
+                    match known_keys
+                        .iter()
+                        .find(|x| &PublicKey::from_secret_key(&x.private_key) == scanned_pk.as_ref())
+                    {
+                        // none of the keys match, skipping
+                        None => continue,
+
+                        // match found
+                        Some(matched_key) => {
+                            match PrivateKey::from_bytes(
+                                CommsPublicKey::shared_secret(
+                                    &matched_key.private_key,
+                                    &output.sender_offset_public_key,
+                                )
+                                .as_bytes(),
+                            ) {
+                                Ok(spending_sk) => {
+                                    scanned_outputs.push((output.clone(), matched_key.private_key.clone(), spending_sk))
+                                },
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "failed to derive private key from DH shared secret (simple one-sided): {:?}",
+                                        e
+                                    );
+                                    continue;
+                                },
+                            }
+                        },
+                    }
+                },
+
+                // ----------------------------------------------------------------------------
+                // one-sided stealth address
+                // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
+                // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
+                [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
+                    // computing shared secret
+                    let shared_secret = PrivateKey::from_bytes(
+                        WalletHasher::new("stealth_address")
+                            .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
+                            .finalize()
+                            .as_ref(),
                     )
-                    .as_bytes(),
-                )?;
-                let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-                let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-                let committed_value =
-                    EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
-                if let Ok(committed_value) = committed_value {
-                    let blinding_factor =
-                        output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
-                    if output.verify_mask(
-                        &self.resources.factories.range_proof,
-                        &blinding_factor,
-                        committed_value.into(),
-                    )? {
-                        let rewound_output = UnblindedOutput::new(
-                            output.version,
-                            committed_value,
-                            blinding_factor.clone(),
-                            output.features,
-                            known_one_sided_payment_scripts[i].script.clone(),
-                            known_one_sided_payment_scripts[i].input.clone(),
-                            known_one_sided_payment_scripts[i].private_key.clone(),
-                            output.sender_offset_public_key,
-                            output.metadata_signature,
-                            known_one_sided_payment_scripts[i].script_lock_height,
-                            output.covenant,
-                            output.encrypted_value,
-                            output.minimum_value_promise,
-                        );
+                    .unwrap();
 
-                        let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
-                            rewound_output.clone(),
-                            &self.resources.factories,
-                            &RewindData {
-                                rewind_blinding_key,
-                                encryption_key,
-                            },
-                            None,
-                            Some(&output.proof),
-                        )?;
+                    // matching spending (public) keys
+                    if &(PublicKey::from_secret_key(&shared_secret) + wallet_pk) != scanned_pk.as_ref() {
+                        continue;
+                    }
 
-                        let output_hex = output.commitment.to_hex();
-                        let tx_id = TxId::new_random();
+                    match PrivateKey::from_bytes(
+                        CommsPublicKey::shared_secret(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
+                    ) {
+                        Ok(spending_sk) => {
+                            scanned_outputs.push((output.clone(), wallet_sk.clone() + shared_secret, spending_sk))
+                        },
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "failed to derive private key from DH shared secret (stealth one-sided): {:?}", e
+                            );
+                            continue;
+                        },
+                    }
+                },
 
-                        match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
-                            Ok(_) => {
-                                rewound_outputs.push(RecoveredOutput {
-                                    output: rewound_output,
-                                    tx_id,
-                                });
-                            },
-                            Err(OutputManagerStorageError::DuplicateOutput) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Attempt to add scanned output {} that already exists. Ignoring the output.",
-                                    output_hex
-                                );
-                            },
-                            Err(err) => {
-                                return Err(err.into());
-                            },
-                        }
-                        trace!(
-                            target: LOG_TARGET,
-                            "One-sided payment Output {} with value {} recovered",
-                            output_hex,
-                            committed_value,
-                        );
+                _ => {},
+            }
+        }
+
+        self.import_onesided_outputs(scanned_outputs)
+    }
+
+    // Imports scanned outputs into the wallet
+    fn import_onesided_outputs(
+        &self,
+        scanned_outputs: Vec<(TransactionOutput, PrivateKey, RistrettoSecretKey)>,
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
+        let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
+
+        for (output, script_private_key, spending_sk) in scanned_outputs {
+            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_sk))?;
+            let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+            let committed_value =
+                EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
+
+            if let Ok(committed_value) = committed_value {
+                let blinding_factor =
+                    output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
+
+                if output.verify_mask(
+                    &self.resources.factories.range_proof,
+                    &blinding_factor,
+                    committed_value.into(),
+                )? {
+                    let rewound_output = UnblindedOutput::new(
+                        output.version,
+                        committed_value,
+                        blinding_factor.clone(),
+                        output.features,
+                        output.script,
+                        tari_script::ExecutionStack::new(vec![]),
+                        script_private_key,
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
+                        0,
+                        output.covenant,
+                        output.encrypted_value,
+                        output.minimum_value_promise,
+                    );
+
+                    let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                        rewound_output.clone(),
+                        &self.resources.factories,
+                        &RewindData {
+                            rewind_blinding_key,
+                            encryption_key,
+                        },
+                        None,
+                        Some(&output.proof),
+                    )?;
+
+                    let output_hex = output.commitment.to_hex();
+                    let tx_id = TxId::new_random();
+
+                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
+                        Ok(_) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "One-sided payment Output {} with value {} recovered",
+                                output_hex,
+                                committed_value,
+                            );
+
+                            rewound_outputs.push(RecoveredOutput {
+                                output: rewound_output,
+                                tx_id,
+                            })
+                        },
+                        Err(OutputManagerStorageError::DuplicateOutput) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Attempt to add scanned output {} that already exists. Ignoring the output.",
+                                output_hex
+                            );
+                        },
+                        Err(err) => {
+                            return Err(err.into());
+                        },
                     }
                 }
             }
         }
+
         Ok(rewound_outputs)
     }
 
