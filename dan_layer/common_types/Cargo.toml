@@ -7,9 +7,12 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tari_common = { path = "../../common", features = ["build"] }
+tari_common_types = { path = "../../base_layer/common_types" }
+
+borsh = "0.9.3"
 prost = "0.9"
 prost-types = "0.9"
-tari_common = { path = "../../common", features = ["build"] }
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build"] }

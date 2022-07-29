@@ -20,81 +20,73 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
-
-mod encoding;
-pub mod ops;
-
 use std::collections::HashMap;
 
-pub use borsh::{self, BorshDeserialize as Decode, BorshSerialize as Encode};
-pub use encoding::{decode, decode_len, encode_into, encode_with_len};
+use digest::Digest;
+use rand::{rngs::OsRng, RngCore};
+use tari_common_types::types::FixedHash;
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct TemplateDef {
-    pub template_name: String,
-    pub functions: Vec<FunctionDef>,
+use crate::{
+    crypto,
+    packager::{error::PackageError, PackageModuleLoader},
+    wasm::{LoadedWasmModule, WasmModule},
+};
+
+pub type PackageId = FixedHash;
+
+#[derive(Debug, Clone)]
+pub struct Package {
+    id: PackageId,
+    wasm_modules: HashMap<String, LoadedWasmModule>,
 }
 
-impl TemplateDef {
-    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
-        self.functions.iter().find(|f| f.name.as_str() == name)
+impl Package {
+    pub fn builder() -> PackageBuilder {
+        PackageBuilder::new()
+    }
+
+    pub fn get_module_by_name(&self, name: &str) -> Option<&LoadedWasmModule> {
+        self.wasm_modules.get(name)
+    }
+
+    pub fn id(&self) -> PackageId {
+        self.id
     }
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct FunctionDef {
-    pub name: String,
-    pub arguments: Vec<Type>,
-    pub output: Type,
+#[derive(Debug, Clone, Default)]
+pub struct PackageBuilder {
+    wasm_modules: Vec<WasmModule>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum Type {
-    Unit,
-    Bool,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    String,
+impl PackageBuilder {
+    pub fn new() -> Self {
+        Self {
+            wasm_modules: Vec::new(),
+        }
+    }
+
+    pub fn add_wasm_module(&mut self, wasm_module: WasmModule) -> &mut Self {
+        self.wasm_modules.push(wasm_module);
+        self
+    }
+
+    pub fn build(&self) -> Result<Package, PackageError> {
+        let mut wasm_modules = HashMap::with_capacity(self.wasm_modules.len());
+        let id = new_package_id();
+        for wasm in &self.wasm_modules {
+            let loaded = wasm.load_module()?;
+            wasm_modules.insert(loaded.template_name().to_string(), loaded);
+        }
+
+        Ok(Package { id, wasm_modules })
+    }
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CallInfo {
-    pub func_name: String,
-    pub args: Vec<Vec<u8>>,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct EmitLogArg {
-    pub message: String,
-    pub level: LogLevel,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum LogLevel {
-    Error,
-    Warn,
-    Info,
-    Debug,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CreateComponentArg {
-    // asset/component metadata
-    pub name: String,
-    pub quantity: u64,
-    pub metadata: HashMap<Vec<u8>, Vec<u8>>,
-    // encoded asset/component state
-    pub state: Vec<u8>,
+fn new_package_id() -> PackageId {
+    let v = OsRng.next_u32();
+    crypto::hasher("package")
+          // TODO: Proper package id
+        .chain(&v.to_le_bytes())
+        .finalize().into()
 }

@@ -20,36 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+mod abi;
+mod definition;
+mod dependencies;
+mod dispatcher;
 
-mod error;
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::{parse2, Result};
 
-mod processor;
-pub use processor::InstructionProcessor;
+use self::{
+    abi::generate_abi,
+    definition::generate_definition,
+    dependencies::generate_dependencies,
+    dispatcher::generate_dispatcher,
+};
+use crate::ast::TemplateAst;
 
-mod signature;
+pub fn generate_template(input: TokenStream) -> Result<TokenStream> {
+    let ast = parse2::<TemplateAst>(input).unwrap();
 
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
+    let definition = generate_definition(&ast);
+    let abi = generate_abi(&ast)?;
+    let dispatcher = generate_dispatcher(&ast)?;
+    let dependencies = generate_dependencies();
 
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
-}
+    let output = quote! {
+        #definition
 
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+        #abi
+
+        #dispatcher
+
+        #dependencies
+    };
+
+    Ok(output)
 }
