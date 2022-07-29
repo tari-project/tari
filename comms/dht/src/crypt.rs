@@ -71,7 +71,7 @@ pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPubli
 
 fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     let n = message.len();
-    // little endian representation of message length, to be appended to padded message, 
+    // little endian representation of message length, to be appended to padded message,
     // assuming our code runs on 64-bits system
     let prepend_to_message = (n as u64).to_le_bytes();
 
@@ -270,26 +270,13 @@ mod test {
     }
 
     #[test]
-    fn encrypt_aux() {
-        use tari_utilities::hex::Hex;
-
-        let pk = CommsPublicKey::default();
-        let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
-        let plain_text = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();
-        let encrypted = encrypt(&key, &plain_text).to_hex();
-        
-        for val in encrypted.chars() {
-            print!("{}", val);
-        }
-    }
-
-    #[test]
     fn decrypt_fn() {
         let pk = CommsPublicKey::default();
         let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
-        let cipher_text =
-            from_hex("30ba9b5647d6de456723545476b2e620b5ecb626c33d91dbb5a636808e024ba12c16fb3e3c38dd760e00dd3")
-                .unwrap();
+        let cipher_text = from_hex(
+            "6e4f0f7ca00a5debe71a14a24199d03cb3586ad5661af84777605ee6de954fe6e41985e750abb0463898d4be5a55964ddf1844db148f7410cbaa1019054c104a9844da44f7b072052b4b9de317f7cfae63b3b2413cb34c25c475efa6000e820fcf2c9efaf9e1b236f41722c6a969d605ad3a29e59cf2b6fa8a573b5ef2ca12460f4f6fdcfcd10b23",
+        )
+        .unwrap();
         let plain_text = decrypt(&key, &cipher_text).unwrap();
         let secret_msg = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();
         assert_eq!(plain_text, secret_msg);
@@ -466,13 +453,13 @@ mod test {
     #[test]
     fn get_original_message_from_padded_text_successful() {
         // test for short message
-        let message =  vec![0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
+        let message = vec![0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
         let pad_message = pad_message_to_base_length_multiple(message.as_slice());
 
         let output_message = get_original_message_from_padded_text(pad_message.as_slice());
         assert_eq!(message, output_message);
 
-        // test for large message 
+        // test for large message
         let message = vec![100u8; 1024];
         let pad_message = pad_message_to_base_length_multiple(message.as_slice());
 
