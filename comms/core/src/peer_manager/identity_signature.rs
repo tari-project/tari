@@ -138,7 +138,7 @@ impl IdentitySignature {
         updated_at: DateTime<Utc>,
     ) -> Challenge {
         // e = H(P||R||m)
-        let challenge = Challenge::new("com.tari.comms.challenge")
+        let challenge = Challenge::new("challenge")
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(version.to_le_bytes())

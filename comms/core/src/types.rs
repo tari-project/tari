@@ -22,9 +22,9 @@
 
 //! Common Tari comms types
 
+use tari_common_types::types::MacDomainHasher;
 use tari_crypto::{
     hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, GenericHashDomain},
     keys::PublicKey,
     ristretto::RistrettoPublicKey,
     signatures::SchnorrSignature,
@@ -42,7 +42,8 @@ pub type CommsPublicKey = RistrettoPublicKey;
 pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 
 /// Specify the digest type for the signature challenges
-pub type Challenge = DomainSeparatedHasher<Blake256, GenericHashDomain>;
+pub type Challenge = MacDomainHasher<Blake256>;
+
 /// Comms signature type
 pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
 

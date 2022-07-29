@@ -551,6 +551,7 @@ mod output_features {
 }
 
 mod validate_internal_consistency {
+    use tari_common::hashing_domain::HashToBytes;
 
     use super::*;
     use crate::consensus::ToConsensusBytes;
@@ -607,14 +608,12 @@ mod validate_internal_consistency {
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
         features.parent_public_key = Some(PublicKey::default());
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(
-            Challenge::new("test_tag")
-                .chain(Some(PublicKey::default()).to_consensus_bytes())
-                .chain(Some(unique_id.clone()).to_consensus_bytes())
-                .finalize()
-                .as_ref(),
-        );
+        let hash = Challenge::new("test_tag")
+            .chain(Some(PublicKey::default()).to_consensus_bytes())
+            .chain(Some(unique_id.clone()).to_consensus_bytes())
+            .finalize()
+            .hash_to_bytes()
+            .expect("failed to build challenge");
 
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features_parent_public_key, @field::features_unique_id), @hash(hash.into())));
 

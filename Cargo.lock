@@ -6946,6 +6946,7 @@ dependencies = [
  "serde_json",
  "snow",
  "tari_common",
+ "tari_common_types",
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_metrics",

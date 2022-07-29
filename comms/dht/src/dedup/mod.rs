@@ -31,6 +31,7 @@ use std::task::Poll;
 pub use dedup_cache::DedupCacheDatabase;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
+use tari_common::hashing_domain::HashToBytes;
 use tari_comms::{pipeline::PipelineError, types::Challenge};
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
@@ -47,17 +48,12 @@ pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
 }
 
 pub fn create_message_hash(origin_mac: &[u8], body: &[u8]) -> [u8; 32] {
-    let mut result = [0u8; 32];
-
-    result.copy_from_slice(
-        Challenge::new("com.tari.comms.message_hash")
-            .chain(origin_mac)
-            .chain(&body)
-            .finalize()
-            .as_ref(),
-    );
-
-    result
+    Challenge::new("message_hash")
+        .chain(origin_mac)
+        .chain(&body)
+        .finalize()
+        .hash_to_bytes()
+        .expect("failed to crate message hash")
 }
 
 /// # DHT Deduplication middleware

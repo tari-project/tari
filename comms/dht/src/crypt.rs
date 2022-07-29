@@ -29,6 +29,7 @@ use chacha20::{
     Nonce,
 };
 use rand::{rngs::OsRng, RngCore};
+use tari_common::hashing_domain::HashToBytes;
 use tari_comms::types::{Challenge, CommsPublicKey};
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey},
@@ -110,7 +111,7 @@ pub fn create_message_challenge_parts(
     ephemeral_public_key: Option<&CommsPublicKey>,
     body: &[u8],
 ) -> [u8; 32] {
-    let mut mac_challenge = Challenge::new("com.tari.comms.challenge");
+    let mut mac_challenge = Challenge::new("mac_challenge");
     mac_challenge.update(&protocol_version.as_bytes());
     mac_challenge.update(destination.to_inner_bytes());
     mac_challenge.update(&(message_type as i32).to_le_bytes());
@@ -126,13 +127,13 @@ pub fn create_message_challenge_parts(
             buf
         })
         .unwrap_or_default();
+
     mac_challenge.update(&e_pk);
-
     mac_challenge.update(&body);
-
-    let mut result = [0u8; 32];
-    result.copy_from_slice(mac_challenge.finalize().as_ref());
-    result
+    mac_challenge
+        .finalize()
+        .hash_to_bytes()
+        .expect("failed to create message challenge from parts")
 }
 
 #[cfg(test)]

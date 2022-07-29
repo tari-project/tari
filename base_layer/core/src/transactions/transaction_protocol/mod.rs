@@ -87,6 +87,7 @@
 
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
+use tari_common::hashing_domain::HashToBytes;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::types::Challenge;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError, tari_utilities::byte_array::ByteArray};
@@ -153,16 +154,11 @@ pub struct RewindData {
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
 pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> [u8; 32] {
-    let mut result = [0u8; 32];
-
-    result.copy_from_slice(
-        Challenge::new("com.tari.core.transaction_protocol")
-            .chain(sum_public_nonces.as_bytes())
-            .chain(&u64::from(metadata.fee).to_le_bytes())
-            .chain(&metadata.lock_height.to_le_bytes())
-            .finalize()
-            .as_ref(),
-    );
-
-    result
+    Challenge::new("transaction_protocol_challenge")
+        .chain(sum_public_nonces.as_bytes())
+        .chain(&u64::from(metadata.fee).to_le_bytes())
+        .chain(&metadata.lock_height.to_le_bytes())
+        .finalize()
+        .hash_to_bytes()
+        .expect("failed to build challenge")
 }

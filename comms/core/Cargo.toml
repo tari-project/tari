@@ -16,6 +16,8 @@ tari_metrics = { path = "../../infrastructure/metrics" }
 tari_storage = { version = "^0.34", path = "../../infrastructure/storage" }
 tari_shutdown = { version = "^0.34", path = "../../infrastructure/shutdown" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
+tari_common_types = { path = "../../base_layer/common_types" }
+
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
