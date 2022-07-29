@@ -117,7 +117,7 @@ impl CliLoop {
     async fn watch_loop(&mut self) {
         if let Some(command) = self.watch_task.take() {
             let mut interrupt = signal::ctrl_c().fuse().boxed();
-            let mut software_update_notif = self.context.software_updater.new_update_notifier().clone();
+            let mut software_update_notif = self.context.software_updater.update_notifier().clone();
             let config = self.context.config.clone();
             let line = command.line();
             let interval = command
