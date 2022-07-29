@@ -80,6 +80,11 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
+    BurnTari {
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
     SendOneSidedTransaction {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
@@ -145,6 +150,7 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 message
             )),
+            Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
             Self::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
@@ -456,6 +462,27 @@ impl TransactionServiceHandle {
                 dest_pubkey,
                 amount,
                 output_features: Box::new(output_features),
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Burns the given amount of Tari from the wallet
+    pub async fn burn_tari(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::BurnTari {
+                amount,
                 fee_per_gram,
                 message,
             })

@@ -75,7 +75,7 @@ appenders:
 
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
-  level: warn
+  level: trace
   appenders:
     - stdout
 
@@ -91,17 +91,17 @@ loggers:
 
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
-    level: debug
+    level: trace
     appenders:
       - base_layer
   tari:
-    level: debug
+    level: trace
     appenders:
       - base_layer
 
   # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:
-    level: debug
+    level: trace
     appenders:
       - base_layer
   # Route log events sent to the "comms" logger to the "network" appender

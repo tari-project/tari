@@ -151,6 +151,8 @@ message TransactionKernel {
     bytes hash = 8;
     // Version
     uint32 version = 9;
+    // Optional burned commitment
+    bytes burned_commitment = 10;
 }
 
 // A transaction input.

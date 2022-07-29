@@ -29,6 +29,8 @@ message TransactionKernel {
     Signature excess_sig = 7;
     // Version
     uint32 version = 8;
+    // Optional burned commitment
+    Commitment burned_commitment = 9;
 }
 
 // A transaction input.

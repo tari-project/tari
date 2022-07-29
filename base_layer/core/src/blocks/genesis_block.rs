@@ -128,7 +128,8 @@ fn get_igor_genesis_block_raw() -> Block {
                 "9474ba70976e2fa06f970bb83f7d0a4d4b45e6e29f834847b659d32102f90b51",
             )
                 .unwrap(),
-            sig,
+            sig,None
+
         )],
     );
     body.sort();
@@ -216,7 +217,7 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     // println!("output mr: {}", block.header.output_mr.to_hex());
 
     // Hardcode the Merkle roots once they've been computed above
-    block.header.kernel_mr = from_hex("8bec1140bfac718ab3acd8a5e19c1bb28e0e4a57663c2fc7e8c7155cc355aac3").unwrap();
+    block.header.kernel_mr = from_hex("51acb4b74cc2e43a11be4f283b653a6fc95666dcf90f66f0c32742c5fb77e640").unwrap();
     block.header.witness_mr = from_hex("1df4a4200338686763c784187f7077148986e088586cf4839147a3f56adc4af6").unwrap();
     block.header.output_mr = from_hex("f9616ca84e798022f638546e6ce372d1344eee56e5cf47ba7e2bf58b5e28bf45").unwrap();
 
@@ -274,6 +275,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
         0,
         Commitment::from_hex("0cff7e89fa0468aa68f777cf600ae6f9e46fdc6e4e33540077e7303e8929295c").unwrap(),
         excess_sig,
+        None,
     );
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
@@ -314,7 +316,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
 #[cfg(test)]
 mod test {
     use croaring::Bitmap;
-    use tari_common_types::types::HashDigest;
+    use tari_common_types::types::{Commitment, HashDigest};
     use tari_mmr::{MerkleMountainRange, MutableMmr};
 
     use super::*;
@@ -385,7 +387,7 @@ mod test {
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(ConsensusManager::builder(Network::Dibbler).build(), Default::default())
-            .validate(&*lock, 0, &utxo_sum, &kernel_sum)
+            .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
     }
 }

@@ -234,6 +234,11 @@ impl TransactionOutput {
         matches!(self.features.output_type, OutputType::Coinbase)
     }
 
+    /// Returns true if the output is burned, otherwise false
+    pub fn is_burned(&self) -> bool {
+        matches!(self.features.output_type, OutputType::Burned)
+    }
+
     /// Convenience function that returns the challenge for the metadata commitment signature
     pub fn get_metadata_signature_challenge(&self, partial_commitment_nonce: Option<&PublicKey>) -> Challenge {
         let nonce_commitment = match partial_commitment_nonce {
