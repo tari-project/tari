@@ -55,6 +55,7 @@ use crate::{
 pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
+const LITTLE_ENDIAN_U64_SIZE_REPRESENTATION: usize = 8;
 const MESSAGE_BASE_LENGTH: usize = 124;
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
@@ -70,15 +71,17 @@ pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPubli
 
 fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     let n = message.len();
-    let prepend_message = (n as u64).to_le_bytes();
+    // little endian representation of message length, to be appended to padded message, 
+    // assuming our code runs on 64-bits system
+    let prepend_to_message = (n as u64).to_le_bytes();
 
-    let k = prepend_message.len();
+    let k = prepend_to_message.len();
 
     let div_n_base_len = (n + k) / MESSAGE_BASE_LENGTH;
-    let output_size = div_n_base_len * MESSAGE_BASE_LENGTH;
+    let output_size = (div_n_base_len + 1) * MESSAGE_BASE_LENGTH;
 
-    // join prepend_message | message | zero_padding
-    let mut output = prepend_message.to_vec();
+    // join prepend_message_len | message | zero_padding
+    let mut output = prepend_to_message.to_vec();
     output.append(&mut message.to_vec());
     output.append(&mut [0u8; 128].to_vec());
 
@@ -86,6 +89,21 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     output.truncate(output_size);
 
     output
+}
+
+fn get_original_message_from_padded_text(message: &[u8]) -> Vec<u8> {
+    let mut le_bytes = [0u8; 8];
+    le_bytes.copy_from_slice(&message[..LITTLE_ENDIAN_U64_SIZE_REPRESENTATION]);
+
+    // obtain length of original message, assuming our code runs on 64-bits system
+    let original_message_len = u64::from_le_bytes(le_bytes) as usize;
+
+    // obtain original message
+    let start = LITTLE_ENDIAN_U64_SIZE_REPRESENTATION;
+    let end = LITTLE_ENDIAN_U64_SIZE_REPRESENTATION + original_message_len;
+    let original_message = &message[start..end];
+
+    original_message.to_vec()
 }
 
 pub fn generate_key_message(data: &[u8]) -> CipherKey {
@@ -118,6 +136,9 @@ pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, Dh
 
     let mut cipher = ChaCha20::new(&cipher_key.0, nonce);
     cipher.apply_keystream(cipher_text.as_mut_slice());
+
+    // get original message, from decrypted padded cipher text
+    let cipher_text = get_original_message_from_padded_text(cipher_text.as_slice());
     Ok(cipher_text)
 }
 
@@ -139,6 +160,9 @@ pub fn decrypt_with_chacha20_poly1305(
 
 /// Encrypt the plain text using the ChaCha20 stream cipher
 pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Vec<u8> {
+    // pad plain_text to avoid message length leaks
+    let plain_text = pad_message_to_base_length_multiple(plain_text);
+
     let mut nonce = [0u8; size_of::<Nonce>()];
     OsRng.fill_bytes(&mut nonce);
 
@@ -147,7 +171,8 @@ pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Vec<u8> {
 
     let mut buf = vec![0u8; plain_text.len() + nonce.len()];
     buf[..nonce.len()].copy_from_slice(&nonce[..]);
-    buf[nonce.len()..].copy_from_slice(plain_text);
+
+    buf[nonce.len()..].copy_from_slice(plain_text.as_slice());
     cipher.apply_keystream(&mut buf[nonce.len()..]);
     buf
 }
@@ -245,11 +270,25 @@ mod test {
     }
 
     #[test]
+    fn encrypt_aux() {
+        use tari_utilities::hex::Hex;
+
+        let pk = CommsPublicKey::default();
+        let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
+        let plain_text = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();
+        let encrypted = encrypt(&key, &plain_text).to_hex();
+        
+        for val in encrypted.chars() {
+            print!("{}", val);
+        }
+    }
+
+    #[test]
     fn decrypt_fn() {
         let pk = CommsPublicKey::default();
         let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
         let cipher_text =
-            from_hex("24bf9e698e14938e93c09e432274af7c143f8fb831f344f244ef02ca78a07ddc28b46fec536a0ca5c04737a604")
+            from_hex("30ba9b5647d6de456723545476b2e620b5ecb626c33d91dbb5a636808e024ba12c16fb3e3c38dd760e00dd3")
                 .unwrap();
         let plain_text = decrypt(&key, &cipher_text).unwrap();
         let secret_msg = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();
@@ -327,7 +366,7 @@ mod test {
     }
 
     #[test]
-    fn decryption_fails_if_message_sned_to_incorrect_node() {
+    fn decryption_fails_if_message_send_to_incorrect_node() {
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let (other_sk, other_pk) = CommsPublicKey::random_keypair(&mut OsRng);
 
@@ -346,5 +385,112 @@ mod test {
             .unwrap_err()
             .to_string()
             .contains("Authenticated decryption failed"));
+    }
+
+    #[test]
+    fn pad_message_correctness() {
+        // test for small message
+        let message = &[0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
+        let prepend_message = message.len().to_le_bytes();
+        let pad_message = pad_message_to_base_length_multiple(message);
+        let pad = [0u8; 103];
+
+        // padded message is of correct length
+        assert_eq!(pad_message.len(), MESSAGE_BASE_LENGTH);
+        // prepend message is well specified
+        assert_eq!(prepend_message, pad_message[..prepend_message.len()]);
+        // message body is well specified
+        assert_eq!(
+            *message,
+            pad_message[prepend_message.len()..prepend_message.len() + message.len()]
+        );
+        // pad is well specified
+        assert_eq!(pad, pad_message[prepend_message.len() + message.len()..]);
+
+        // test for large message
+        let message = &[100u8; 900];
+        let prepend_message = message.len().to_le_bytes();
+        let pad_message = pad_message_to_base_length_multiple(message);
+        let pad = [0u8; 84];
+
+        // padded message is of correct length
+        assert_eq!(pad_message.len(), 8 * MESSAGE_BASE_LENGTH);
+        // prepend message is well specified
+        assert_eq!(prepend_message, pad_message[..prepend_message.len()]);
+        // message body is well specified
+        assert_eq!(
+            *message,
+            pad_message[prepend_message.len()..prepend_message.len() + message.len()]
+        );
+        // pad is well specified
+        assert_eq!(pad, pad_message[prepend_message.len() + message.len()..]);
+
+        // test for base message of base length
+        let message = &[100u8; 984];
+        let prepend_message = message.len().to_le_bytes();
+        let pad_message = pad_message_to_base_length_multiple(message);
+        let pad = [0u8; 124];
+
+        // padded message is of correct length
+        assert_eq!(pad_message.len(), 9 * MESSAGE_BASE_LENGTH);
+        // prepend message is well specified
+        assert_eq!(prepend_message, pad_message[..prepend_message.len()]);
+        // message body is well specified
+        assert_eq!(
+            *message,
+            pad_message[prepend_message.len()..prepend_message.len() + message.len()]
+        );
+        // pad is well specified
+        assert_eq!(pad, pad_message[prepend_message.len() + message.len()..]);
+
+        // test for empty message
+        let message: [u8; 0] = [];
+        let prepend_message = message.len().to_le_bytes();
+        let pad_message = pad_message_to_base_length_multiple(&message);
+        let pad = [0u8; 116];
+
+        // padded message is of correct length
+        assert_eq!(pad_message.len(), MESSAGE_BASE_LENGTH);
+        // prepend message is well specified
+        assert_eq!(prepend_message, pad_message[..prepend_message.len()]);
+        // message body is well specified
+        assert_eq!(
+            message,
+            pad_message[prepend_message.len()..prepend_message.len() + message.len()]
+        );
+
+        // pad is well specified
+        assert_eq!(pad, pad_message[prepend_message.len() + message.len()..]);
+    }
+
+    #[test]
+    fn get_original_message_from_padded_text_successful() {
+        // test for short message
+        let message =  vec![0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
+        let pad_message = pad_message_to_base_length_multiple(message.as_slice());
+
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        assert_eq!(message, output_message);
+
+        // test for large message 
+        let message = vec![100u8; 1024];
+        let pad_message = pad_message_to_base_length_multiple(message.as_slice());
+
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        assert_eq!(message, output_message);
+
+        // test for base message of base length
+        let message = vec![100u8; 984];
+        let pad_message = pad_message_to_base_length_multiple(message.as_slice());
+
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        assert_eq!(message, output_message);
+
+        // test for empty message
+        let message: Vec<u8> = vec![];
+        let pad_message = pad_message_to_base_length_multiple(message.as_slice());
+
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        assert_eq!(message, output_message);
     }
 }
