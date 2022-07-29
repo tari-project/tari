@@ -56,7 +56,7 @@ pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
 const LITTLE_ENDIAN_U64_SIZE_REPRESENTATION: usize = 8;
-const MESSAGE_BASE_LENGTH: usize = 124;
+const MESSAGE_BASE_LENGTH: usize = 128;
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
 pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPublicKey) -> [u8; 32] {
@@ -91,19 +91,25 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     output
 }
 
-fn get_original_message_from_padded_text(message: &[u8]) -> Vec<u8> {
+fn get_original_message_from_padded_text(message: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
     let mut le_bytes = [0u8; 8];
     le_bytes.copy_from_slice(&message[..LITTLE_ENDIAN_U64_SIZE_REPRESENTATION]);
 
     // obtain length of original message, assuming our code runs on 64-bits system
     let original_message_len = u64::from_le_bytes(le_bytes) as usize;
 
+    if original_message_len > message.len() {
+        return Err(DhtOutboundError::CipherError(
+            "Original length message is invalid".to_string(),
+        ));
+    }
+
     // obtain original message
     let start = LITTLE_ENDIAN_U64_SIZE_REPRESENTATION;
     let end = LITTLE_ENDIAN_U64_SIZE_REPRESENTATION + original_message_len;
     let original_message = &message[start..end];
 
-    original_message.to_vec()
+    Ok(original_message.to_vec())
 }
 
 pub fn generate_key_message(data: &[u8]) -> CipherKey {
@@ -138,7 +144,7 @@ pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, Dh
     cipher.apply_keystream(cipher_text.as_mut_slice());
 
     // get original message, from decrypted padded cipher text
-    let cipher_text = get_original_message_from_padded_text(cipher_text.as_slice());
+    let cipher_text = get_original_message_from_padded_text(cipher_text.as_slice())?;
     Ok(cipher_text)
 }
 
@@ -380,7 +386,7 @@ mod test {
         let message = &[0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
         let prepend_message = message.len().to_le_bytes();
         let pad_message = pad_message_to_base_length_multiple(message);
-        let pad = [0u8; 103];
+        let pad = [0u8; 107];
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), MESSAGE_BASE_LENGTH);
@@ -398,7 +404,7 @@ mod test {
         let message = &[100u8; 900];
         let prepend_message = message.len().to_le_bytes();
         let pad_message = pad_message_to_base_length_multiple(message);
-        let pad = [0u8; 84];
+        let pad = [0u8; 116];
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), 8 * MESSAGE_BASE_LENGTH);
@@ -412,11 +418,11 @@ mod test {
         // pad is well specified
         assert_eq!(pad, pad_message[prepend_message.len() + message.len()..]);
 
-        // test for base message of base length
-        let message = &[100u8; 984];
+        // test for base message of multiple base length
+        let message = &[100u8; 1016];
         let prepend_message = message.len().to_le_bytes();
         let pad_message = pad_message_to_base_length_multiple(message);
-        let pad = [0u8; 124];
+        let pad = [0u8; 128];
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), 9 * MESSAGE_BASE_LENGTH);
@@ -434,7 +440,7 @@ mod test {
         let message: [u8; 0] = [];
         let prepend_message = message.len().to_le_bytes();
         let pad_message = pad_message_to_base_length_multiple(&message);
-        let pad = [0u8; 116];
+        let pad = [0u8; 120];
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), MESSAGE_BASE_LENGTH);
@@ -456,28 +462,80 @@ mod test {
         let message = vec![0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
         let pad_message = pad_message_to_base_length_multiple(message.as_slice());
 
-        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice()).unwrap();
         assert_eq!(message, output_message);
 
         // test for large message
         let message = vec![100u8; 1024];
         let pad_message = pad_message_to_base_length_multiple(message.as_slice());
 
-        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice()).unwrap();
         assert_eq!(message, output_message);
 
         // test for base message of base length
         let message = vec![100u8; 984];
         let pad_message = pad_message_to_base_length_multiple(message.as_slice());
 
-        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice()).unwrap();
         assert_eq!(message, output_message);
 
         // test for empty message
         let message: Vec<u8> = vec![];
         let pad_message = pad_message_to_base_length_multiple(message.as_slice());
 
-        let output_message = get_original_message_from_padded_text(pad_message.as_slice());
+        let output_message = get_original_message_from_padded_text(pad_message.as_slice()).unwrap();
         assert_eq!(message, output_message);
+    }
+
+    #[test]
+    fn decryption_fails_if_pad_message_prepend_is_modified() {
+        let pk = CommsPublicKey::default();
+        let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
+        // long text makes last test case deterministic
+        let message = "This is my secret message, keep it secret !".as_bytes().to_vec();
+        let mut encrypted = encrypt(&key, &message);
+
+        // failure in case message length prepending has been modified such that resulting
+        // length is too big to fit within pad message length
+        encrypted[size_of::<Nonce>() + 1] += 1;
+        assert!(decrypt(&key, &encrypted)
+            .unwrap_err()
+            .to_string()
+            .contains("Original length message is invalid"));
+
+        encrypted[size_of::<Nonce>() + 1] -= 1;
+
+        // failure in case message length fits whithin pad message length, but its original length has been modified
+        encrypted[size_of::<Nonce>()] -= 1;
+
+        // encrypted[size_of::<Nonce>()..size_of::<Nonce>() + le_bytes.len()].copy_from_slice(&le_bytes);
+        assert!(decrypt(&key, &encrypted).unwrap() != message);
+    }
+
+    #[test]
+    fn check_decryption_succeeds_if_pad_message_padding_is_modified() {
+        // this should not be problematic as any changes in the content of the encrypted padding, should not affect
+        // in any way the value of the decrypted content, by applying a cipher stream
+        let pk = CommsPublicKey::default();
+        let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
+        let message = "My secret message, keep it secret !".as_bytes().to_vec();
+        let mut encrypted = encrypt(&key, &message);
+
+        let n = encrypted.len();
+        encrypted[n - 1] += 1;
+
+        assert!(decrypt(&key, &encrypted).unwrap() == message);
+    }
+
+    #[test]
+    fn decryption_fails_if_message_body_is_modified() {
+        let pk = CommsPublicKey::default();
+        let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
+        let message = "My secret message, keep it secret !".as_bytes().to_vec();
+        let mut encrypted = encrypt(&key, &message);
+
+        encrypted[size_of::<Nonce>() + LITTLE_ENDIAN_U64_SIZE_REPRESENTATION + 1] += 1;
+
+        assert!(decrypt(&key, &encrypted).unwrap() != message);
     }
 }
