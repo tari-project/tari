@@ -8,7 +8,7 @@ edition = "2021"
 
 [dependencies]
 tari_template_abi = { path = "../../../template_abi" }
-tari_template_macros = { path = "../macros" }
+tari_template_macros = { path = "../../../template_macros" }
 common = { path = "../common" }
 
 [profile.release]
