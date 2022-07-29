@@ -400,4 +400,4 @@ Feature: Wallet Transactions
    When I create a burn transaction of 1000000 uT from WALLET_A at fee 100
    When mining node MINER mines 10 blocks
    Then all nodes are at height 25
-   Then wallet WALLET_B WALLET_A all transactions as Mined_Confirmed
+   Then wallet WALLET_A detects all transactions as Mined_Confirmed
