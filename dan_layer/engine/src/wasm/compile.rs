@@ -20,36 +20,53 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+use std::{fs, io, io::ErrorKind, path::Path, process::Command};
 
-mod error;
+use cargo_toml::{Manifest, Product};
 
-mod processor;
-pub use processor::InstructionProcessor;
+use super::module::WasmModule;
 
-mod signature;
+pub fn build_wasm_module_from_source<P: AsRef<Path>>(package_dir: P) -> io::Result<WasmModule> {
+    let status = Command::new("cargo")
+        .current_dir(package_dir.as_ref())
+        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::new(
+            ErrorKind::Other,
+            format!("Failed to compile package: {:?}", package_dir.as_ref()),
+        ));
+    }
 
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
+    // resolve wasm name
+    let manifest = Manifest::from_path(&package_dir.as_ref().join("Cargo.toml")).unwrap();
+    let wasm_name = if let Some(Product { name: Some(name), .. }) = manifest.lib {
+        // lib name
+        name
+    } else if let Some(pkg) = manifest.package {
+        // package name
+        pkg.name.replace('-', "_")
+    } else {
+        // file name
+        package_dir
+            .as_ref()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace('-', "_")
+    };
 
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
-}
+    // path of the wasm executable
+    let mut path = package_dir.as_ref().to_path_buf();
+    path.push("target");
+    path.push("wasm32-unknown-unknown");
+    path.push("release");
+    path.push(wasm_name);
+    path.set_extension("wasm");
 
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+    // return
+    let code = fs::read(path)?;
+    Ok(WasmModule::from_code(code))
 }

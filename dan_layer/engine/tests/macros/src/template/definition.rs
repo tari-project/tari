@@ -20,36 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 
-mod error;
+use crate::ast::TemplateAst;
 
-mod processor;
-pub use processor::InstructionProcessor;
+pub fn generate_definition(ast: &TemplateAst) -> TokenStream {
+    let template_name = format_ident!("{}", ast.struct_section.ident);
+    let functions = &ast.impl_section.items;
 
-mod signature;
+    quote! {
+        pub mod template {
+            use super::*;
 
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
+            pub struct #template_name {
+                // TODO: fill template fields
+            }
 
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+            impl #template_name {
+                #(#functions)*
+            }
+        }
+    }
 }
