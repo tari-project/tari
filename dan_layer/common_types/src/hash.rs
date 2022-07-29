@@ -20,36 +20,51 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+use std::{io, io::Write};
 
-mod error;
+use borsh::{BorshDeserialize, BorshSerialize};
+use tari_common_types::types::FixedHash;
 
-mod processor;
-pub use processor::InstructionProcessor;
+// This is to avoid adding borsh as a dependency in common types (and therefore every application).
+// TODO: Either this becomes the standard Hash type for the dan layer, or add borsh support to FixedHash.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Hash(FixedHash);
 
-mod signature;
-
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
-
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
+impl Hash {
+    pub fn into_inner(self) -> FixedHash {
+        self.0
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+impl From<FixedHash> for Hash {
+    fn from(hash: FixedHash) -> Self {
+        Self(hash)
+    }
+}
+
+impl BorshSerialize for Hash {
+    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        (*self.0).serialize(writer)
+    }
+}
+
+impl BorshDeserialize for Hash {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let hash = <[u8; 32] as BorshDeserialize>::deserialize(buf)?;
+        Ok(Hash(hash.into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialize_deserialize() {
+        let hash = Hash::default();
+        let mut buf = Vec::new();
+        hash.serialize(&mut buf).unwrap();
+        let hash2 = Hash::deserialize(&mut &buf[..]).unwrap();
+        assert_eq!(hash, hash2);
+    }
 }

@@ -20,36 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+use std::sync::{atomic::AtomicU32, Arc};
 
-mod error;
+use tari_dan_common_types::Hash;
+use tari_dan_engine::{
+    models::{Component, ComponentId},
+    runtime::{RuntimeError, RuntimeInterface},
+};
+use tari_template_abi::LogLevel;
 
-mod processor;
-pub use processor::InstructionProcessor;
-
-mod signature;
-
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
-
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
+#[derive(Debug, Clone, Default)]
+pub struct MockRuntimeInterface {
+    ids: Arc<AtomicU32>,
 }
 
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+impl MockRuntimeInterface {
+    pub fn new() -> Self {
+        Self {
+            ids: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
+    pub fn next_id(&self) -> u32 {
+        self.ids.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl RuntimeInterface for MockRuntimeInterface {
+    fn emit_log(&self, level: LogLevel, message: &str) {
+        let level = match level {
+            LogLevel::Error => log::Level::Error,
+            LogLevel::Warn => log::Level::Warn,
+            LogLevel::Info => log::Level::Info,
+            LogLevel::Debug => log::Level::Debug,
+        };
+        eprintln!("[{:?}] {}", level, message);
+        log::log!(target: "tari::dan::engine::runtime", level, "{}", message);
+    }
+
+    fn create_component(&self, _new_component: Component) -> Result<ComponentId, RuntimeError> {
+        Ok((Hash::default(), self.next_id()))
+    }
 }

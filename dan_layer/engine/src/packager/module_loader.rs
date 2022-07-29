@@ -20,36 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+use crate::packager::PackageError;
 
-mod error;
+pub trait PackageModuleLoader {
+    type Loaded;
+    type Error: Into<PackageError>;
 
-mod processor;
-pub use processor::InstructionProcessor;
-
-mod signature;
-
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
-
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+    fn load_module(&self) -> Result<Self::Loaded, Self::Error>;
 }
