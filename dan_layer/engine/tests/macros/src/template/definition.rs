@@ -20,14 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_template_macros::template;
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 
-template! {
-    struct HelloWorld {}
+use crate::ast::TemplateAst;
 
-    impl HelloWorld { 
-        pub fn greet() -> String {
-            "Hello World!".to_string()
+pub fn generate_definition(ast: &TemplateAst) -> TokenStream {
+    let template_name = format_ident!("{}", ast.struct_section.ident);
+    let functions = &ast.impl_section.items;
+
+    quote! {
+        pub mod template {
+            use super::*;
+
+            pub struct #template_name {
+                // TODO: fill template fields
+            }
+
+            impl #template_name {
+                #(#functions)*
+            }
         }
     }
 }

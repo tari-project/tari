@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_template_macros::template;
+mod ast;
+mod template;
 
-template! {
-    struct HelloWorld {}
+use proc_macro::TokenStream;
 
-    impl HelloWorld { 
-        pub fn greet() -> String {
-            "Hello World!".to_string()
-        }
-    }
+#[proc_macro]
+pub fn template(input: TokenStream) -> TokenStream {
+    template::generate_template(proc_macro2::TokenStream::from(input))
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
 }

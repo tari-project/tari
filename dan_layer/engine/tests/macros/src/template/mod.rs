@@ -20,14 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_template_macros::template;
+mod abi;
+mod definition;
+mod dependencies;
+mod dispatcher;
 
-template! {
-    struct HelloWorld {}
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::{parse2, Result};
 
-    impl HelloWorld { 
-        pub fn greet() -> String {
-            "Hello World!".to_string()
-        }
-    }
+use self::{
+    abi::generate_abi,
+    definition::generate_definition,
+    dependencies::generate_dependencies,
+    dispatcher::generate_dispatcher,
+};
+use crate::ast::TemplateAst;
+
+pub fn generate_template(input: TokenStream) -> Result<TokenStream> {
+    let ast = parse2::<TemplateAst>(input).unwrap();
+
+    let definition = generate_definition(&ast);
+    let abi = generate_abi(&ast)?;
+    let dispatcher = generate_dispatcher(&ast)?;
+    let dependencies = generate_dependencies();
+
+    let output = quote! {
+        #definition
+
+        #abi
+
+        #dispatcher
+
+        #dependencies
+    };
+
+    Ok(output)
 }
