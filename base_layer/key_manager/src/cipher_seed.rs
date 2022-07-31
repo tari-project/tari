@@ -104,7 +104,11 @@ impl CipherSeed {
     pub fn new() -> Self {
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
         let birthday_genesis_date = UNIX_EPOCH.add(Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH));
-        let days = SystemTime::now().duration_since(birthday_genesis_date).unwrap().as_secs() / SECONDS_PER_DAY;
+        let days = SystemTime::now()
+            .duration_since(birthday_genesis_date)
+            .unwrap()
+            .as_secs() /
+            SECONDS_PER_DAY;
         let birthday = u16::try_from(days).unwrap_or(0u16);
         CipherSeed::new_with_birthday(birthday)
     }
