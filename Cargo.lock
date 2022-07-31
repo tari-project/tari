@@ -7276,16 +7276,10 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sha2 0.9.9",
-<<<<<<< HEAD
- "strum 0.22.0",
- "strum_macros 0.22.0",
- "tari_common",
-=======
  "strum",
  "strum_macros",
->>>>>>> development
+ "tari_common",
  "tari_common_types",
- "tari_core",
  "tari_crypto",
  "tari_utilities",
  "thiserror",
