@@ -102,7 +102,7 @@ pub use dedup::DedupLayer;
 
 mod filter;
 mod logging_middleware;
-mod origin_mac;
+mod message_signature;
 mod peer_validator;
 mod proto;
 mod rpc;
@@ -118,3 +118,24 @@ pub mod event;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
+
+use tari_comms::types::CommsChallenge;
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+
+hash_domain!(DHTCommsHashDomain, "comms.dht");
+
+pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("challenge")
+}
+
+pub fn comms_dht_hash_domain_key_message() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("key_message")
+}
+
+pub fn comms_dht_hash_domain_key_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("key_signature")
+}
+
+pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("message_signature")
+}

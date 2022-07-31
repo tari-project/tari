@@ -80,33 +80,58 @@ impl ApplicationConfig {
 #[allow(clippy::struct_excessive_bools)]
 pub struct BaseNodeConfig {
     override_from: Option<String>,
+    /// Selected network
     pub network: Network,
+    /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
+    /// A path to the file that stores the base node identity and secret key
     pub identity_file: PathBuf,
+    /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
+    /// with the optional "libtor" feature flag.
     pub use_libtor: bool,
+    /// A path to the file that stores the tor hidden service private key, if using the tor transport.
     pub tor_identity_file: PathBuf,
+    /// The type of database backend to use
     pub db_type: DatabaseType,
+    /// The lmdb config settings
     pub lmdb: LMDBConfig,
+    /// The relative path to store persistent data
     pub data_dir: PathBuf,
+    /// The relative path to store the lmbd data
     pub lmdb_path: PathBuf,
+    /// The maximum amount of VMs that RandomX will be use
+    // TODO: This is a potential conflict with 'BaseNodeStateMachineConfig::max_randomx_vms'
     pub max_randomx_vms: usize,
+    /// Bypass range proof verification to speed up validation
+    // TODO: This is a potential conflict with 'BaseNodeStateMachineConfig::bypass_range_proof_verification'
     pub bypass_range_proof_verification: bool,
-    pub orphan_db_clean_out_threshold: usize,
-    pub cleanup_orphans_at_startup: bool,
+    /// The p2p config settings
     pub p2p: P2pConfig,
+    /// If set this node will only sync to the nodes in this set
     pub force_sync_peers: StringList,
     /// The maximum amount of time to wait for remote base node responses for messaging-based requests.
     #[serde(with = "serializers::seconds")]
     pub messaging_request_timeout: Duration,
+    /// The storage config settings
     pub storage: BlockchainDatabaseConfig,
+    /// The mempool config settings
     pub mempool: MempoolConfig,
+    /// The time interval between status line updates in the CLI
+    #[serde(with = "serializers::seconds")]
     pub status_line_interval: Duration,
+    /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
     pub buffer_size: usize,
+    /// The rate limit for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
+    /// accept - any rate attempting to exceed this limit will be throttled
     pub buffer_rate_limit: usize,
+    /// Liveness meta data auto ping interval between peers
     #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
+    /// The state_machine config settings
     pub state_machine: BaseNodeStateMachineConfig,
+    /// Resize the CLI terminal on startup to a pre-defined size, or keep user settings
     pub resize_terminal_on_startup: bool,
+    /// Obscure GRPC error responses
     pub report_grpc_error: bool,
 }
 
@@ -122,7 +147,7 @@ impl Default for BaseNodeConfig {
             grpc_address: Some("/ip4/127.0.0.1/tcp/18142".parse().unwrap()),
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
-            tor_identity_file: PathBuf::from("config/tor_id.json"),
+            tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
             p2p,
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
@@ -130,15 +155,13 @@ impl Default for BaseNodeConfig {
             lmdb_path: PathBuf::from("db"),
             max_randomx_vms: 5,
             bypass_range_proof_verification: false,
-            orphan_db_clean_out_threshold: 0,
-            cleanup_orphans_at_startup: false,
             force_sync_peers: StringList::default(),
             messaging_request_timeout: Duration::from_secs(60),
             storage: Default::default(),
             mempool: Default::default(),
             status_line_interval: Duration::from_secs(5),
-            buffer_size: 100,
-            buffer_rate_limit: 10,
+            buffer_size: 1_500,
+            buffer_rate_limit: 1_000,
             metadata_auto_ping_interval: Duration::from_secs(30),
             state_machine: Default::default(),
             resize_terminal_on_startup: true,

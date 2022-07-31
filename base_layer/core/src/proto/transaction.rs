@@ -163,6 +163,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 sender_offset_public_key,
                 Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?,
                 EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?,
+                input.minimum_value_promise.into(),
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -227,6 +228,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .encrypted_value()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
                     .to_vec(),
+                minimum_value_promise: input
+                    .minimum_value_promise()
+                    .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?
+                    .as_u64(),
             })
         }
     }
@@ -264,6 +269,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 
+        let minimum_value_promise = MicroTari::zero();
+
         Ok(Self::new(
             TransactionOutputVersion::try_from(
                 u8::try_from(output.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -276,6 +283,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         ))
     }
 }
@@ -292,6 +300,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             covenant: output.covenant.to_bytes(),
             version: output.version as u32,
             encrypted_value: output.encrypted_value.to_vec(),
+            minimum_value_promise: output.minimum_value_promise.into(),
         }
     }
 }
@@ -328,7 +337,6 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             )?,
             OutputType::from_byte(flags).ok_or_else(|| "Invalid or unrecognised output type".to_string())?,
             features.maturity,
-            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             sidechain_features,
@@ -357,8 +365,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
-            recovery_byte: u32::from(features.recovery_byte),
-            sidechain_features: features.sidechain_features.map(Into::into),
+            sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
         }
     }
 }
@@ -420,7 +427,6 @@ impl From<ContractConstitution> for proto::types::ContractConstitution {
             consensus: value.consensus.into(),
             checkpoint_params: Some(value.checkpoint_params.into()),
             constitution_change_rules: Some(value.constitution_change_rules.into()),
-            initial_reward: value.initial_reward.into(),
         }
     }
 }
@@ -447,7 +453,6 @@ impl TryFrom<proto::types::ContractConstitution> for ContractConstitution {
             .constitution_change_rules
             .map(TryInto::try_into)
             .ok_or("constitution_change_rules not provided")??;
-        let initial_reward = value.initial_reward.into();
 
         Ok(Self {
             validator_committee,
@@ -455,7 +460,6 @@ impl TryFrom<proto::types::ContractConstitution> for ContractConstitution {
             consensus,
             checkpoint_params,
             constitution_change_rules,
-            initial_reward,
         })
     }
 }
@@ -677,6 +681,7 @@ impl From<CheckpointParameters> for proto::types::CheckpointParameters {
         Self {
             minimum_quorum_required: value.minimum_quorum_required,
             abandoned_interval: value.abandoned_interval,
+            quarantine_interval: value.quarantine_interval,
         }
     }
 }
@@ -688,6 +693,7 @@ impl TryFrom<proto::types::CheckpointParameters> for CheckpointParameters {
         Ok(Self {
             minimum_quorum_required: value.minimum_quorum_required,
             abandoned_interval: value.abandoned_interval,
+            quarantine_interval: value.quarantine_interval,
         })
     }
 }
@@ -725,6 +731,7 @@ impl From<RequirementsForConstitutionChange> for proto::types::RequirementsForCo
         Self {
             minimum_constitution_committee_signatures: value.minimum_constitution_committee_signatures,
             constitution_committee: value.constitution_committee.map(Into::into),
+            backup_keys: value.backup_keys.map(Into::into),
         }
     }
 }
@@ -739,6 +746,7 @@ impl TryFrom<proto::types::RequirementsForConstitutionChange> for RequirementsFo
                 .constitution_committee
                 .map(CommitteeMembers::try_from)
                 .transpose()?,
+            backup_keys: value.backup_keys.map(CommitteeMembers::try_from).transpose()?,
         })
     }
 }

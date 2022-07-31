@@ -118,6 +118,7 @@ where
                         0,
                         output.covenant,
                         output.encrypted_value,
+                        output.minimum_value_promise,
                     );
                     rewound_outputs.push((uo, output.proof));
                 }

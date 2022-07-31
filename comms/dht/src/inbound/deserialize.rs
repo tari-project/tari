@@ -166,7 +166,8 @@ mod test {
             false,
             MessageTag::new(),
             false,
-        );
+        )
+        .unwrap();
 
         deserialize
             .ready()

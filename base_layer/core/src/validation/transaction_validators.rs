@@ -229,25 +229,22 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
     }
 
     fn validate_excess_sig_not_in_db(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let excess_sig = tx
-            .first_kernel_excess_sig()
-            .ok_or_else(|| ValidationError::ConsensusError("Transaction has no kernel excess signature".into()))?;
-
-        match self.db.fetch_kernel_by_excess_sig(excess_sig.to_owned())? {
-            Some((kernel, header_hash)) => {
+        for kernel in tx.body.kernels() {
+            if let Some((db_kernel, header_hash)) = self.db.fetch_kernel_by_excess_sig(kernel.excess_sig.to_owned())? {
                 let msg = format!(
-                    "Transaction kernel excess signature already exists in chain database block hash: {}. Existing \
-                     kernel excess: {}, excess sig nonce: {}, excess signature: {}",
-                    header_hash.to_hex(),
+                    "Block contains kernel excess: {} which matches already existing excess signature in chain \
+                     database block hash: {}. Existing kernel excess: {}, excess sig nonce: {}, excess signature: {}",
                     kernel.excess.to_hex(),
-                    kernel.excess_sig.get_public_nonce().to_hex(),
-                    kernel.excess_sig.get_signature().to_hex(),
+                    header_hash.to_hex(),
+                    db_kernel.excess.to_hex(),
+                    db_kernel.excess_sig.get_public_nonce().to_hex(),
+                    db_kernel.excess_sig.get_signature().to_hex(),
                 );
                 warn!(target: LOG_TARGET, "{}", msg);
-                Err(ValidationError::ConsensusError(msg))
-            },
-            None => Ok(()),
+                return Err(ValidationError::ConsensusError(msg));
+            };
         }
+        Ok(())
     }
 }
 

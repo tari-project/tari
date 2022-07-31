@@ -93,6 +93,7 @@ pub(super) struct RawTransactionInfo {
     #[derivative(Debug = "ignore")]
     pub recipient_sender_offset_private_keys: Vec<PrivateKey>,
     pub recipient_covenants: Vec<Covenant>,
+    pub recipient_minimum_value_promise: Vec<MicroTari>,
     // The sender's portion of the public commitment nonce
     #[derivative(Debug = "ignore")]
     pub private_commitment_nonces: Vec<PrivateKey>,
@@ -148,6 +149,8 @@ pub struct SingleRoundSenderData {
     pub public_commitment_nonce: PublicKey,
     /// Covenant
     pub covenant: Covenant,
+    /// The minimum value of the commitment that is proven by the range proof
+    pub minimum_value_promise: MicroTari,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,6 +357,20 @@ impl SenderTransactionProtocol {
         }
     }
 
+    pub fn get_minimum_value_promise(&self, recipient_index: usize) -> Result<MicroTari, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(*info
+                .recipient_minimum_value_promise
+                .get(recipient_index)
+                .ok_or(TPE::MinimumValuePromiseNotFound)?),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// Build the sender's message for the single-round protocol (one recipient) and move to next State
     pub fn build_single_round_message(&mut self) -> Result<SingleRoundSenderData, TPE> {
         match &self.state {
@@ -398,6 +415,10 @@ impl SenderTransactionProtocol {
                 let recipient_covenant = info.recipient_covenants.first().cloned().ok_or_else(|| {
                     TPE::IncompleteStateError("The recipient covenant should be available".to_string())
                 })?;
+                let recipient_minimum_value_promise =
+                    info.recipient_minimum_value_promise.first().copied().ok_or_else(|| {
+                        TPE::IncompleteStateError("The recipient minimum value promise should be available".to_string())
+                    })?;
 
                 Ok(SingleRoundSenderData {
                     tx_id: info.tx_id,
@@ -411,6 +432,7 @@ impl SenderTransactionProtocol {
                     sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key),
                     public_commitment_nonce: PublicKey::from_secret_key(private_commitment_nonce),
                     covenant: recipient_covenant,
+                    minimum_value_promise: recipient_minimum_value_promise,
                 })
             },
             _ => Err(TPE::InvalidStateError),
@@ -900,6 +922,8 @@ mod test {
         let encryption_key = PrivateKey::random(&mut OsRng);
         let encrypted_value = EncryptedValue::encrypt_value(&encryption_key, &commitment, value.into()).unwrap();
 
+        let minimum_value_promise = MicroTari::zero();
+
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             value.into(),
@@ -910,6 +934,7 @@ mod test {
             &sender_public_commitment_nonce,
             &covenant,
             &encrypted_value,
+            minimum_value_promise,
         )
         .unwrap();
 
@@ -922,6 +947,7 @@ mod test {
             partial_metadata_signature.clone(),
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         assert!(output.verify_metadata_signature().is_err());
         assert!(partial_metadata_signature.verify_challenge(
@@ -999,7 +1025,7 @@ mod test {
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
-            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), OutputFeatures::default(), PrivateKey::random(&mut OsRng), Covenant::default())
+            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), OutputFeatures::default(), PrivateKey::random(&mut OsRng), Covenant::default(), MicroTari::zero())
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
@@ -1067,6 +1093,7 @@ mod test {
                 OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, MicroTari(5000));
@@ -1146,6 +1173,7 @@ mod test {
                 OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, (2u64.pow(32) + 1).into());
@@ -1192,6 +1220,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
@@ -1226,6 +1255,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
@@ -1264,6 +1294,7 @@ mod test {
                 OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();

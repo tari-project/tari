@@ -224,6 +224,25 @@ pub async fn send_one_sided(
         .map_err(CommandError::TransactionServiceError)
 }
 
+pub async fn send_one_sided_to_stealth_address(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: u64,
+    amount: MicroTari,
+    dest_pubkey: PublicKey,
+    message: String,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .send_one_sided_to_stealth_address_transaction(
+            dest_pubkey,
+            amount,
+            OutputFeatures::default(),
+            fee_per_gram * uT,
+            message,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
 pub async fn coin_split(
     amount_per_split: MicroTari,
     num_splits: usize,
@@ -233,7 +252,7 @@ pub async fn coin_split(
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
     let (tx_id, tx, amount) = output_service
-        .create_coin_split(amount_per_split, num_splits as usize, fee_per_gram, None)
+        .create_coin_split(vec![], amount_per_split, num_splits as usize, fee_per_gram)
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, amount, message)
@@ -605,6 +624,18 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
+            SendOneSidedToStealthAddress(args) => {
+                let tx_id = send_one_sided_to_stealth_address(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.destination.into(),
+                    args.message,
+                )
+                .await?;
+                debug!(target: LOG_TARGET, "send-one-sided-to-stealth-address tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
             MakeItRain(args) => {
                 make_it_rain(
                     transaction_service.clone(),
@@ -957,7 +988,6 @@ async fn init_contract_constitution_spec(
         contract_id,
         validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
         consensus: SideChainConsensus::MerkleRoot,
-        initial_reward: 0,
         acceptance_parameters: ContractAcceptanceRequirements {
             acceptance_period_expiry,
             minimum_quorum_required,
@@ -965,6 +995,7 @@ async fn init_contract_constitution_spec(
         checkpoint_parameters: CheckpointParameters {
             minimum_quorum_required: 0,
             abandoned_interval: 0,
+            quarantine_interval: 0,
         },
         constitution_change_rules: ConstitutionChangeRulesFileFormat {
             change_flags: 0,
@@ -1026,7 +1057,6 @@ async fn init_contract_update_proposal_spec(
         contract_id,
         validator_committee: committee.iter().map(|c| PublicKey::from_hex(c).unwrap()).collect(),
         consensus: SideChainConsensus::MerkleRoot,
-        initial_reward: 0,
         acceptance_parameters: ContractAcceptanceRequirements {
             acceptance_period_expiry,
             minimum_quorum_required,
@@ -1034,6 +1064,7 @@ async fn init_contract_update_proposal_spec(
         checkpoint_parameters: CheckpointParameters {
             minimum_quorum_required: 0,
             abandoned_interval: 0,
+            quarantine_interval: 0,
         },
         constitution_change_rules: ConstitutionChangeRulesFileFormat {
             change_flags: 0,

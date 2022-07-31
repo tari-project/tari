@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -43,7 +43,6 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::tari_utilities::ByteArray;
 use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -80,18 +79,19 @@ pub enum OutputManagerRequest {
         tx_id: TxId,
         amount: MicroTari,
         utxo_selection: UtxoSelectionCriteria,
-        output_features: OutputFeatures,
+        output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
         script: TariScript,
         covenant: Covenant,
+        minimum_value_promise: MicroTari,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
         amount: MicroTari,
         utxo_selection: UtxoSelectionCriteria,
-        output_features: OutputFeatures,
+        output_features: Box<OutputFeatures>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -108,15 +108,16 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     ValidateUtxos,
     RevalidateTxos,
-    CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
+    CreateCoinSplit((Vec<Commitment>, MicroTari, usize, MicroTari)),
+    CreateCoinSplitEven((Vec<Commitment>, usize, MicroTari)),
+    PreviewCoinJoin((Vec<Commitment>, MicroTari)),
+    PreviewCoinSplitEven((Vec<Commitment>, usize, MicroTari)),
+    CreateCoinJoin {
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    },
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
-    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    CalculateRecoveryByte {
-        spending_key: PrivateKey,
-        value: u64,
-        with_rewind_data: bool,
-    },
     FeeEstimate {
         amount: MicroTari,
         fee_per_gram: MicroTari,
@@ -171,18 +172,29 @@ impl fmt::Display for OutputManagerRequest {
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
-            CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
+            PreviewCoinJoin((commitments, fee_per_gram)) => write!(
+                f,
+                "PreviewCoinJoin(commitments={:#?}, fee_per_gram={})",
+                commitments, fee_per_gram
+            ),
+            PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => write!(
+                f,
+                "PreviewCoinSplitEven(commitments={:#?}, number_of_splits={}, fee_per_gram={})",
+                commitments, number_of_splits, fee_per_gram
+            ),
+            CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({:?})", v.0),
+            CreateCoinSplitEven(v) => write!(f, "CreateCoinSplitEven ({:?})", v.0),
+            CreateCoinJoin {
+                commitments,
+                fee_per_gram,
+            } => write!(
+                f,
+                "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
+                commitments, fee_per_gram,
+            ),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
-            CalculateRecoveryByte {
-                spending_key, value, ..
-            } => write!(
-                f,
-                "CalculateRecoveryByte ({},{})",
-                spending_key.as_bytes().to_vec().to_hex(),
-                value
-            ),
             FeeEstimate {
                 amount,
                 fee_per_gram,
@@ -256,6 +268,7 @@ pub enum OutputManagerResponse {
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
+    CoinPreview((Vec<MicroTari>, MicroTari)),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -525,6 +538,7 @@ impl OutputManagerHandle {
         message: String,
         script: TariScript,
         covenant: Covenant,
+        minimum_value_promise: MicroTari,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -532,12 +546,13 @@ impl OutputManagerHandle {
                 tx_id,
                 amount,
                 utxo_selection,
-                output_features,
+                output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,
                 message,
                 script,
                 covenant,
+                minimum_value_promise,
             })
             .await??
         {
@@ -615,30 +630,44 @@ impl OutputManagerHandle {
         }
     }
 
-    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    pub async fn calculate_recovery_byte(
-        &mut self,
-        spending_key: PrivateKey,
-        value: u64,
-        with_rewind_data: bool,
-    ) -> Result<u8, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::CalculateRecoveryByte {
-                spending_key,
-                value,
-                with_rewind_data,
-            })
-            .await??
-        {
-            OutputManagerResponse::RecoveryByte(rk) => Ok(rk),
+    pub async fn validate_txos(&mut self) -> Result<u64, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::ValidateUtxos).await?? {
+            OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
 
-    pub async fn validate_txos(&mut self) -> Result<u64, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::ValidateUtxos).await?? {
-            OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
+    pub async fn preview_coin_join_with_commitments(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)))
+            .await??
+        {
+            OutputManagerResponse::CoinPreview((expected_outputs, fee)) => Ok((expected_outputs, fee)),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn preview_coin_split_with_commitments_no_amount(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::PreviewCoinSplitEven((
+                commitments,
+                split_count,
+                fee_per_gram,
+            )))
+            .await??
+        {
+            OutputManagerResponse::CoinPreview((expected_outputs, fee)) => Ok((expected_outputs, fee)),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -647,22 +676,60 @@ impl OutputManagerHandle {
     /// Returns (tx_id, tx, utxos_total_value).
     pub async fn create_coin_split(
         &mut self,
+        commitments: Vec<Commitment>,
         amount_per_split: MicroTari,
         split_count: usize,
         fee_per_gram: MicroTari,
-        lock_height: Option<u64>,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinSplit((
+                commitments,
                 amount_per_split,
                 split_count,
                 fee_per_gram,
-                lock_height,
             )))
             .await??
         {
             OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_coin_split_even(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCoinSplitEven((
+                commitments,
+                split_count,
+                fee_per_gram,
+            )))
+            .await??
+        {
+            OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_coin_join(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateCoinJoin {
+                commitments,
+                fee_per_gram,
+            })
+            .await??
+        {
+            OutputManagerResponse::Transaction(result) => Ok(result),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -791,7 +858,7 @@ impl OutputManagerHandle {
                 tx_id,
                 amount,
                 utxo_selection,
-                output_features,
+                output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,
                 message,

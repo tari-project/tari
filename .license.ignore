@@ -1,7 +1,6 @@
 ./CODEOWNERS
 ./LICENSE
 ./Makefile
-./applications/launchpad/docker_rig/torrc
 ./applications/tari_base_node/assets/tari_banner.rs
 ./applications/tari_base_node/assets/tari_logo.rs
 ./applications/tari_base_node/linux/setup_tor_service
@@ -13,6 +12,7 @@
 ./applications/tari_base_node/osx-pkg/scripts/preinstall
 ./applications/tari_console_wallet/linux/start_tari_console_wallet
 ./applications/tari_explorer/bin/www
+./applications/tari_scanner/bin/www
 ./base_layer/core/src/proof_of_work/lwma_diff.rs
 ./base_layer/key_manager/Makefile
 ./base_layer/p2p/src/dns/roots/tls.rs

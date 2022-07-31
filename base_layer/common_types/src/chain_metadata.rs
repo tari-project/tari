@@ -44,6 +44,8 @@ pub struct ChainMetadata {
     pruned_height: u64,
     /// The total accumulated proof of work of the longest chain
     accumulated_difficulty: u128,
+    /// Timestamp of the tip block in the longest valid chain
+    timestamp: u64,
 }
 
 impl ChainMetadata {
@@ -53,6 +55,7 @@ impl ChainMetadata {
         pruning_horizon: u64,
         pruned_height: u64,
         accumulated_difficulty: u128,
+        timestamp: u64,
     ) -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: height,
@@ -60,6 +63,7 @@ impl ChainMetadata {
             pruning_horizon,
             pruned_height,
             accumulated_difficulty,
+            timestamp,
         }
     }
 
@@ -70,6 +74,7 @@ impl ChainMetadata {
             pruning_horizon: 0,
             pruned_height: 0,
             accumulated_difficulty: 0,
+            timestamp: 0,
         }
     }
 
@@ -129,6 +134,10 @@ impl ChainMetadata {
 
     pub fn best_block(&self) -> &BlockHash {
         &self.best_block
+    }
+
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
     }
 }
 

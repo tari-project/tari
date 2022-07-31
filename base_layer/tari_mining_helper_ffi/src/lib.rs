@@ -374,6 +374,7 @@ mod tests {
         const NONCE: u64 = 15324301174278869343;
         const DIFFICULTY: Difficulty = Difficulty::from_u64(6091);
         // Use this to generate new NONCE and DIFFICULTY
+        // Use ONLY if you know encoding has changed
         // let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
         // eprintln!("nonce = {:?}", nonce);
         // eprintln!("difficulty = {:?}", difficulty);
@@ -464,6 +465,10 @@ mod tests {
             let hash = header.hash().to_hex();
             let hash_hex = CString::new(hash.clone()).unwrap();
             let hash_hex_ptr: *const c_char = CString::into_raw(hash_hex) as *const c_char;
+            // We need to make sure we did not accidentally mine a good difficulty this must fail both template and
+            // share difficulty
+            share_difficulty = difficulty.as_u64() + 1000;
+            template_difficulty = difficulty.as_u64() + 2000;
             // let calculate for invalid share and target diff
             let result = share_validate(byte_vec, hash_hex_ptr, share_difficulty, template_difficulty, error_ptr);
             assert_eq!(result, 4);

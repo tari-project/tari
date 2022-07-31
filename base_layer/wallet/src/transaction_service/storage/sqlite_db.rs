@@ -1017,6 +1017,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
         mined_height: u64,
         mined_in_block: BlockHash,
+        mined_timestamp: u64,
         num_confirmations: u64,
         is_confirmed: bool,
         is_faux: bool,
@@ -1029,6 +1030,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 v.update_mined_height(
                     mined_height,
                     mined_in_block,
+                    mined_timestamp,
                     num_confirmations,
                     is_confirmed,
                     &conn,
@@ -1702,6 +1704,7 @@ struct CompletedTransactionSql {
     confirmations: Option<i64>,
     mined_height: Option<i64>,
     mined_in_block: Option<Vec<u8>>,
+    mined_timestamp: Option<NaiveDateTime>,
     transaction_signature_nonce: Vec<u8>,
     transaction_signature_key: Vec<u8>,
 }
@@ -1901,6 +1904,7 @@ impl CompletedTransactionSql {
         &self,
         mined_height: u64,
         mined_in_block: BlockHash,
+        mined_timestamp: u64,
         num_confirmations: u64,
         is_confirmed: bool,
         conn: &SqliteConnection,
@@ -1924,6 +1928,7 @@ impl CompletedTransactionSql {
                 status: Some(status),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block)),
+                mined_timestamp: Some(NaiveDateTime::from_timestamp(mined_timestamp as i64, 0)),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
                 ..Default::default()
@@ -1976,6 +1981,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             confirmations: c.confirmations.map(|ic| ic as i64),
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block,
+            mined_timestamp: c.mined_timestamp,
             transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
         })
@@ -2027,6 +2033,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block: c.mined_in_block,
+            mined_timestamp: c.mined_timestamp,
         })
     }
 }
@@ -2044,6 +2051,7 @@ pub struct UpdateCompletedTransactionSql {
     confirmations: Option<Option<i64>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
+    mined_timestamp: Option<NaiveDateTime>,
     transaction_signature_nonce: Option<Vec<u8>>,
     transaction_signature_key: Option<Vec<u8>>,
 }
@@ -2220,6 +2228,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
@@ -2355,6 +2364,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3u64.into(),
@@ -2375,6 +2385,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -2505,6 +2516,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         let coinbase_tx2 = CompletedTransaction {
@@ -2526,6 +2538,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         let coinbase_tx3 = CompletedTransaction {
@@ -2547,6 +2560,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         CompletedTransactionSql::try_from(coinbase_tx1)
@@ -2658,6 +2672,7 @@ mod test {
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
+            mined_timestamp: None,
         };
 
         let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
@@ -2748,6 +2763,7 @@ mod test {
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
+                mined_timestamp: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
             completed_tx_sql.commit(&conn).unwrap();
@@ -2873,6 +2889,7 @@ mod test {
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
+                mined_timestamp: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
             completed_tx_sql.commit(&conn).unwrap();

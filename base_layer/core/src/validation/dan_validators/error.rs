@@ -43,8 +43,8 @@ pub enum DanLayerValidationError {
     UnexpectedOutputType { got: OutputType, expected: OutputType },
     #[error("Contract acceptance features not found")]
     ContractAcceptanceNotFound,
-    #[error("Duplicate {output_type} contract UTXO: {details}")]
-    DuplicateUtxo {
+    #[error("Duplicated {output_type} contract UTXO: {details}")]
+    DuplicatedUtxo {
         contract_id: FixedHash,
         output_type: OutputType,
         details: String,

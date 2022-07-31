@@ -25,7 +25,10 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::{
     covenants::Covenant,
-    transactions::transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
+    },
 };
 use tari_script::TariScript;
 use tari_utilities::{ByteArray, Hashable};
@@ -56,6 +59,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
         let covenant = Covenant::from_bytes(&output.covenant).map_err(|err| err.to_string())?;
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
+        let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
         Ok(Self::new(
             TransactionOutputVersion::try_from(
                 u8::try_from(output.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -68,6 +72,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             metadata_signature,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         ))
     }
 }
@@ -90,6 +95,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
             covenant: output.covenant.to_bytes(),
             version: output.version as u32,
             encrypted_value: output.encrypted_value.to_vec(),
+            minimum_value_promise: output.minimum_value_promise.into(),
         }
     }
 }

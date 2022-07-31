@@ -21,9 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use rand::{self, rngs::OsRng, Rng};
+use rand::{self, rngs::OsRng};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
-use tari_comms::types::Challenge;
+use tari_comms::types::CommsChallenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
@@ -70,12 +70,7 @@ fn unblinded_input() {
         .as_transaction_input(&factory)
         .expect("Should be able to create transaction input");
 
-    let recovery_byte = OutputFeatures::create_unique_recovery_byte(input.commitment().unwrap(), None);
-    assert_eq!(*input.features().unwrap(), OutputFeatures {
-        recovery_byte,
-        ..Default::default()
-    });
-
+    assert_eq!(*input.features().unwrap(), OutputFeatures::default());
     assert!(input.opened_by(&i, &factory).unwrap());
 }
 
@@ -89,13 +84,7 @@ fn unblinded_input_with_rewind_data() {
         .as_transaction_input(&factory)
         .expect("Should be able to create transaction input");
 
-    let recovery_byte =
-        OutputFeatures::create_unique_recovery_byte(input.commitment().unwrap(), Some(&test_params.rewind_data));
-    assert_eq!(*input.features().unwrap(), OutputFeatures {
-        recovery_byte,
-        ..Default::default()
-    });
-
+    assert_eq!(*input.features().unwrap(), OutputFeatures::default());
     assert!(input.opened_by(&i, &factory).unwrap());
 }
 
@@ -221,7 +210,7 @@ fn sender_signature_verification() {
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
-    tx_output.features = OutputFeatures::create_coinbase(0, rand::thread_rng().gen::<u8>());
+    tx_output.features = OutputFeatures::create_coinbase(0);
     assert!(tx_output.verify_metadata_signature().is_err());
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
@@ -289,6 +278,7 @@ fn check_timelocks() {
         offset_pub_key,
         Covenant::default(),
         EncryptedValue::default(),
+        MicroTari::zero(),
     );
 
     let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
@@ -497,53 +487,43 @@ mod output_features {
         features.version = OutputFeaturesVersion::V1;
         let mut buf = Vec::new();
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 12);
-        assert_eq!(features.consensus_encode_exact_size(), 12);
+        assert_eq!(buf.len(), 11);
+        assert_eq!(features.consensus_encode_exact_size(), 11);
     }
 
     #[test]
     fn consensus_encode_decode() {
-        let mut features_u8_max = OutputFeatures::create_coinbase(u64::MAX, u8::MAX);
-        features_u8_max.version = OutputFeaturesVersion::V0;
-        let mut features_u8_min = OutputFeatures::create_coinbase(u64::MAX, u8::MIN);
-        features_u8_min.version = OutputFeaturesVersion::V0;
-        let known_size_u8_max = features_u8_max.consensus_encode_exact_size();
-        let known_size_u8_min = features_u8_min.consensus_encode_exact_size();
-        assert_eq!(known_size_u8_max, known_size_u8_min);
+        let mut features_u64_max = OutputFeatures::create_coinbase(u64::MAX);
+
+        features_u64_max.version = OutputFeaturesVersion::V0;
+        let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size_u8_max);
         assert_eq!(known_size_u8_max, 19);
-        features_u8_max.consensus_encode(&mut buf).unwrap();
+        features_u64_max.consensus_encode(&mut buf).unwrap();
         assert_eq!(buf.len(), 19);
-        assert_eq!(features_u8_max.consensus_encode_exact_size(), 19);
+        assert_eq!(features_u64_max.consensus_encode_exact_size(), 19);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        // Recovery byte is not encoded for OutputFeaturesVersion::V0; the default is returned when decoded
-        assert_ne!(features_u8_max, decoded_features);
-        features_u8_max.set_recovery_byte(0);
-        assert_eq!(features_u8_max, decoded_features);
+        assert_eq!(features_u64_max, decoded_features);
 
-        features_u8_max.version = OutputFeaturesVersion::V1;
-        features_u8_min.version = OutputFeaturesVersion::V1;
-        let known_size_u8_max = features_u8_max.consensus_encode_exact_size();
-        let known_size_u8_min = features_u8_min.consensus_encode_exact_size();
-        assert_eq!(known_size_u8_max, known_size_u8_min);
-        assert_eq!(known_size_u8_max, 21);
+        features_u64_max.version = OutputFeaturesVersion::V1;
+        let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
+        assert_eq!(known_size_u8_max, 20);
         let mut buf = Vec::with_capacity(known_size_u8_max);
-        features_u8_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 21);
-        assert_eq!(features_u8_max.consensus_encode_exact_size(), 21);
+        features_u64_max.consensus_encode(&mut buf).unwrap();
+        assert_eq!(buf.len(), 20);
+        assert_eq!(features_u64_max.consensus_encode_exact_size(), 20);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        assert_eq!(features_u8_max, decoded_features);
+        assert_eq!(features_u64_max, decoded_features);
 
-        let mut features = OutputFeatures::create_coinbase(u64::MAX, rand::thread_rng().gen::<u8>());
-        features.version = OutputFeaturesVersion::V1;
-        let known_size = features.consensus_encode_exact_size();
-        let mut buf = Vec::with_capacity(known_size);
-        assert_eq!(known_size, 21);
-        features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 21);
-        assert_eq!(features.consensus_encode_exact_size(), 21);
+        features_u64_max.version = OutputFeaturesVersion::V2;
+        let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
+        assert_eq!(known_size_u8_max, 20);
+        let mut buf = Vec::with_capacity(known_size_u8_max);
+        features_u64_max.consensus_encode(&mut buf).unwrap();
+        assert_eq!(buf.len(), 20);
+        assert_eq!(features_u64_max.consensus_encode_exact_size(), 20);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        assert_eq!(features, decoded_features);
+        assert_eq!(features_u64_max, decoded_features);
     }
 
     #[test]
@@ -628,7 +608,7 @@ mod validate_internal_consistency {
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
         features.parent_public_key = Some(PublicKey::default());
-        let hash = Challenge::new()
+        let hash = CommsChallenge::new()
             .chain(Some(PublicKey::default()).to_consensus_bytes())
             .chain(Some(unique_id.clone()).to_consensus_bytes())
             .finalize();

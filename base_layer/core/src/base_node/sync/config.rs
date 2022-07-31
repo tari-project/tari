@@ -23,6 +23,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
 use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,12 +32,16 @@ pub struct BlockchainSyncConfig {
     /// The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer
     /// will be selected. If there are no further peers the sync will be restarted with an increased by
     /// `max_latency_increase`.
+    #[serde(with = "serializers::seconds")]
     pub initial_max_sync_latency: Duration,
     /// If all sync peers exceed latency, increase allowed latency by this value
+    #[serde(with = "serializers::seconds")]
     pub max_latency_increase: Duration,
     /// Longer ban period for potentially malicious infractions (protocol violations etc.)
+    #[serde(with = "serializers::seconds")]
     pub ban_period: Duration,
     /// Short ban period for infractions that are likely not malicious (slow to respond, spotty connections etc)
+    #[serde(with = "serializers::seconds")]
     pub short_ban_period: Duration,
     /// An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty, sync peers
     /// are chosen based on their advertised chain metadata.

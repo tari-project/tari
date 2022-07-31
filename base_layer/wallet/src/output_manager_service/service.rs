@@ -25,12 +25,13 @@ use std::{convert::TryInto, fmt, sync::Arc};
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
+use itertools::Itertools;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -46,6 +47,7 @@ use tari_core::{
             OutputFeatures,
             Transaction,
             TransactionError,
+            TransactionInput,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
@@ -62,8 +64,9 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::RistrettoSecretKey,
 };
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -93,7 +96,7 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::HashDigest,
+    types::{HashDigest, WalletHasher},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -138,15 +141,11 @@ where
         let rewind_blinding_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
             .await?;
-        let recovery_byte_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
-            .await?;
         let encryption_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::ValueEncryption.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
             rewind_blinding_key,
-            recovery_byte_key,
             encryption_key,
         };
 
@@ -286,6 +285,7 @@ where
                 message,
                 script,
                 covenant,
+                minimum_value_promise,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -294,9 +294,10 @@ where
                     fee_per_gram,
                     lock_height,
                     message,
-                    output_features,
+                    *output_features,
                     script,
                     covenant,
+                    minimum_value_promise,
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
@@ -313,7 +314,7 @@ where
                     tx_id,
                     amount,
                     utxo_selection,
-                    output_features,
+                    *output_features,
                     fee_per_gram,
                     lock_height,
                     message,
@@ -357,8 +358,50 @@ where
                 let outputs = self.fetch_invalid_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
             },
-            OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
-                .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+            OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)) => {
+                Ok(OutputManagerResponse::CoinPreview(
+                    self.preview_coin_join_with_commitments(commitments, fee_per_gram)
+                        .await?,
+                ))
+            },
+            OutputManagerRequest::PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => {
+                Ok(OutputManagerResponse::CoinPreview(
+                    self.preview_coin_split_with_commitments_no_amount(commitments, number_of_splits, fee_per_gram)
+                        .await?,
+                ))
+            },
+            OutputManagerRequest::CreateCoinSplit((commitments, amount_per_split, split_count, fee_per_gram)) => {
+                if commitments.is_empty() {
+                    self.create_coin_split_auto(Some(amount_per_split), split_count, fee_per_gram)
+                        .await
+                        .map(OutputManagerResponse::Transaction)
+                } else {
+                    self.create_coin_split_with_commitments(
+                        commitments,
+                        Some(amount_per_split),
+                        split_count,
+                        fee_per_gram,
+                    )
+                    .await
+                    .map(OutputManagerResponse::Transaction)
+                }
+            },
+            OutputManagerRequest::CreateCoinSplitEven((commitments, split_count, fee_per_gram)) => {
+                if commitments.is_empty() {
+                    self.create_coin_split_auto(None, split_count, fee_per_gram)
+                        .await
+                        .map(OutputManagerResponse::Transaction)
+                } else {
+                    self.create_coin_split_with_commitments(commitments, None, split_count, fee_per_gram)
+                        .await
+                        .map(OutputManagerResponse::Transaction)
+                }
+            },
+            OutputManagerRequest::CreateCoinJoin {
+                commitments,
+                fee_per_gram,
+            } => self
+                .create_coin_join(commitments, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::Transaction),
             OutputManagerRequest::ApplyEncryption(cipher) => self
@@ -374,15 +417,6 @@ where
                 .map(|_| OutputManagerResponse::EncryptionRemoved)
                 .map_err(OutputManagerError::OutputManagerStorageError),
 
-            OutputManagerRequest::CalculateRecoveryByte {
-                spending_key,
-                value,
-                with_rewind_data,
-            } => Ok(OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(
-                spending_key,
-                value,
-                with_rewind_data,
-            )?)),
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.rewind_data.clone(),
@@ -542,22 +576,6 @@ where
         self.validate_outputs()
     }
 
-    pub fn calculate_recovery_byte(
-        &mut self,
-        spending_key: PrivateKey,
-        value: u64,
-        with_rewind_data: bool,
-    ) -> Result<u8, OutputManagerError> {
-        let commitment = self.resources.factories.commitment.commit_value(&spending_key, value);
-        let rewind_data = if with_rewind_data {
-            Some(&self.resources.rewind_data)
-        } else {
-            None
-        };
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, rewind_data);
-        Ok(recovery_byte)
-    }
-
     /// Add an unblinded non-rewindable output to the outputs table and mark it as `Unspent`.
     pub fn add_output(
         &mut self,
@@ -715,21 +733,18 @@ where
             .factories
             .commitment
             .commit_value(&spending_key, single_round_sender_data.amount.as_u64());
-        let updated_features = OutputFeatures::features_with_updated_recovery_byte(
-            &commitment,
-            Some(&self.resources.rewind_data),
-            &single_round_sender_data.features.clone(),
-        );
+        let features = single_round_sender_data.features.clone();
         let encrypted_value = EncryptedValue::encrypt_value(
             &self.resources.rewind_data.encryption_key,
             &commitment,
             single_round_sender_data.amount,
         )?;
+        let minimum_value_promise = single_round_sender_data.minimum_value_promise;
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
                 spending_key.clone(),
-                updated_features.clone(),
+                features.clone(),
                 single_round_sender_data.script.clone(),
                 // TODO: The input data should be variable; this will only work for a Nop script #LOGGED
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -741,15 +756,17 @@ where
                     single_round_sender_data.amount,
                     &spending_key,
                     &single_round_sender_data.script,
-                    &updated_features,
+                    &features,
                     &single_round_sender_data.sender_offset_public_key,
                     &single_round_sender_data.public_commitment_nonce,
                     &single_round_sender_data.covenant,
                     &encrypted_value,
+                    minimum_value_promise,
                 )?,
                 0,
                 single_round_sender_data.covenant.clone(),
                 encrypted_value,
+                minimum_value_promise,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -835,6 +852,7 @@ where
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
+        recipient_minimum_value_promise: MicroTari,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -874,6 +892,7 @@ where
                 recipient_output_features,
                 PrivateKey::random(&mut OsRng),
                 recipient_covenant,
+                recipient_minimum_value_promise,
             )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
@@ -1090,7 +1109,6 @@ where
             let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
             let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
 
-            unblinded_output.update_recovery_byte(&self.resources.factories)?;
             unblinded_output.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
             unblinded_output.sign_as_sender(&sender_offset_private_key)?;
 
@@ -1183,7 +1201,7 @@ where
         tx_id: TxId,
         amount: MicroTari,
         utxo_selection: UtxoSelectionCriteria,
-        mut output_features: OutputFeatures,
+        output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -1229,8 +1247,6 @@ where
         }
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
-        output_features.set_recovery_byte(recovery_byte);
         let commitment = self
             .resources
             .factories
@@ -1238,6 +1254,7 @@ where
             .commit_value(&spending_key, amount.into());
         let encrypted_value =
             EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, amount)?;
+        let minimum_amount_promise = MicroTari::zero();
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             amount,
@@ -1247,6 +1264,7 @@ where
             &sender_offset_private_key,
             &covenant,
             &encrypted_value,
+            minimum_amount_promise,
         )?;
         let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
@@ -1261,6 +1279,7 @@ where
                 0,
                 covenant,
                 encrypted_value,
+                minimum_amount_promise,
             ),
             &self.resources.factories,
             &self.resources.rewind_data,
@@ -1364,7 +1383,7 @@ where
         amount: MicroTari,
         fee_per_gram: MicroTari,
         num_outputs: usize,
-        output_metadata_byte_size: usize,
+        total_output_metadata_byte_size: usize,
         selection_criteria: UtxoSelectionCriteria,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
@@ -1374,7 +1393,7 @@ where
             amount,
             fee_per_gram,
             num_outputs,
-            output_metadata_byte_size,
+            total_output_metadata_byte_size,
             selection_criteria
         );
         let mut utxos = Vec::new();
@@ -1415,7 +1434,7 @@ where
                 1,
                 uo.len(),
                 num_outputs + 1,
-                output_metadata_byte_size + default_metadata_size,
+                total_output_metadata_byte_size + default_metadata_size,
             );
 
             // If the initial selection was not able to select enough UTXOs, fill in the difference with standard UTXOs
@@ -1444,8 +1463,13 @@ where
             error!(target: LOG_TARGET, "-- utxos_total_value = {:?}", utxos_total_value);
             utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
-            fee_without_change =
-                fee_calc.calculate(fee_per_gram, 1, utxos.len(), num_outputs, output_metadata_byte_size);
+            fee_without_change = fee_calc.calculate(
+                fee_per_gram,
+                1,
+                utxos.len(),
+                num_outputs,
+                total_output_metadata_byte_size,
+            );
             if utxos_total_value == amount + fee_without_change {
                 break;
             }
@@ -1454,7 +1478,7 @@ where
                 1,
                 utxos.len(),
                 num_outputs + 1,
-                output_metadata_byte_size + default_metadata_size,
+                total_output_metadata_byte_size + default_metadata_size,
             );
 
             error!(target: LOG_TARGET, "-- amt+fee = {:?} {}", amount, fee_with_change);
@@ -1508,157 +1532,541 @@ where
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines)]
-    async fn create_coin_split(
-        &mut self,
-        amount_per_split: MicroTari,
-        split_count: usize,
-        fee_per_gram: MicroTari,
-        lock_height: Option<u64>,
-    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
-        trace!(
-            target: LOG_TARGET,
-            "Select UTXOs and estimate coin split transaction fee."
-        );
-        let output_count = split_count;
-        let script = script!(Nop);
-        let covenant = Covenant::default();
-        let output_features_estimate = OutputFeatures::default();
-        let metadata_byte_size = self
-            .resources
+    fn default_metadata_size(&self) -> usize {
+        self.resources
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features_estimate.consensus_encode_exact_size() +
-                    script.consensus_encode_exact_size() +
-                    covenant.consensus_encode_exact_size(),
-            );
-
-        let total_split_amount = amount_per_split * split_count as u64;
-        let input_selection = self
-            .select_utxos(
-                total_split_amount,
-                fee_per_gram,
-                output_count,
-                output_count * metadata_byte_size,
-                UtxoSelectionCriteria::largest_first(),
+                script!(Nop).consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
             )
-            .await?;
+    }
 
-        trace!(target: LOG_TARGET, "Construct coin split transaction.");
-        let offset = PrivateKey::random(&mut OsRng);
-        let nonce = PrivateKey::random(&mut OsRng);
+    pub async fn preview_coin_join_with_commitments(
+        &self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            &UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
 
-        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
-        builder
-            .with_lock_height(lock_height.unwrap_or(0))
-            .with_fee_per_gram(fee_per_gram)
-            .with_offset(offset.clone())
-            .with_private_nonce(nonce.clone())
-            .with_rewindable_outputs(self.resources.rewind_data.clone());
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
 
-        trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
-        for uo in input_selection.iter() {
-            builder.with_input(
-                uo.unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment)?,
-                uo.unblinded_output.clone(),
-            );
+        let fee = self
+            .get_fee_calc()
+            .calculate(fee_per_gram, 1, src_outputs.len(), 1, self.default_metadata_size());
+
+        Ok((vec![accumulated_amount.saturating_sub(fee)], fee))
+    }
+
+    pub async fn preview_coin_split_with_commitments_no_amount(
+        &mut self,
+        commitments: Vec<Commitment>,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        if commitments.is_empty() {
+            return Err(OutputManagerError::NoCommitmentsProvided);
         }
 
-        let utxos_total_value = input_selection.total_value();
-        trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
-        let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
-        for _ in 0..output_count {
-            let output_amount = amount_per_split;
+        if number_of_splits == 0 {
+            return Err(OutputManagerError::InvalidArgument(
+                "number_of_splits must be greater than 0".to_string(),
+            ));
+        }
 
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64(), true)?;
-            let output_features = OutputFeatures {
-                recovery_byte,
-                ..Default::default()
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            &UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
+
+        let fee = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            src_outputs.len(),
+            number_of_splits,
+            self.default_metadata_size() * number_of_splits,
+        );
+
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        let aftertax_amount = accumulated_amount.saturating_sub(fee);
+        let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroTari(aftertax_amount.as_u64() % amount_per_split.as_u64());
+        let mut expected_outputs = vec![];
+
+        for i in 1..=number_of_splits {
+            expected_outputs.push(if i == number_of_splits {
+                amount_per_split + unspent_remainder
+            } else {
+                amount_per_split
+            });
+        }
+
+        Ok((expected_outputs, fee))
+    }
+
+    async fn create_coin_split_with_commitments(
+        &mut self,
+        commitments: Vec<Commitment>,
+        amount_per_split: Option<MicroTari>,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        if commitments.is_empty() {
+            return Err(OutputManagerError::NoCommitmentsProvided);
+        }
+
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            &UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
+
+        match amount_per_split {
+            None => {
+                self.create_coin_split_even(src_outputs, number_of_splits, fee_per_gram)
+                    .await
+            },
+            Some(amount_per_split) => {
+                self.create_coin_split(src_outputs, amount_per_split, number_of_splits, fee_per_gram)
+                    .await
+            },
+        }
+    }
+
+    async fn create_coin_split_auto(
+        &mut self,
+        amount_per_split: Option<MicroTari>,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        match amount_per_split {
+            None => Err(OutputManagerError::InvalidArgument(
+                "coin split without `amount_per_split` is not supported yet".to_string(),
+            )),
+            Some(amount_per_split) => {
+                let selection = self
+                    .select_utxos(
+                        amount_per_split * MicroTari(number_of_splits as u64),
+                        fee_per_gram,
+                        number_of_splits,
+                        self.default_metadata_size() * number_of_splits,
+                        UtxoSelectionCriteria::largest_first(),
+                    )
+                    .await?;
+
+                self.create_coin_split(selection.utxos, amount_per_split, number_of_splits, fee_per_gram)
+                    .await
+            },
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn create_coin_split_even(
+        &mut self,
+        src_outputs: Vec<DbUnblindedOutput>,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        if number_of_splits == 0 {
+            return Err(OutputManagerError::InvalidArgument(
+                "number_of_splits must be greater than 0".to_string(),
+            ));
+        }
+
+        let covenant = Covenant::default();
+        let default_metadata_size = self.default_metadata_size();
+        let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
+
+        // accumulated value amount from given source outputs
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        let fee = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            src_outputs.len(),
+            number_of_splits,
+            default_metadata_size * number_of_splits,
+        );
+
+        let aftertax_amount = accumulated_amount.saturating_sub(fee);
+        let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroTari(aftertax_amount.as_u64() % amount_per_split.as_u64());
+
+        // preliminary balance check
+        if self.get_balance(None)?.available_balance < (aftertax_amount + fee) {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        trace!(target: LOG_TARGET, "initializing new split (even) transaction");
+
+        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(PrivateKey::random(&mut OsRng))
+            .with_private_nonce(PrivateKey::random(&mut OsRng))
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
+
+        // collecting inputs from source outputs
+        let inputs: Vec<TransactionInput> = src_outputs
+            .iter()
+            .map(|src_out| {
+                src_out
+                    .unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)
+            })
+            .try_collect()?;
+
+        // adding inputs to the transaction
+        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+            trace!(
+                target: LOG_TARGET,
+                "adding transaction input: output_hash=: {:?}",
+                src_output.hash
+            );
+            tx_builder.with_input(input, src_output.unblinded_output.clone());
+        });
+
+        for i in 1..=number_of_splits {
+            // NOTE: adding the unspent `change` to the last output
+            let amount_per_split = if i == number_of_splits {
+                amount_per_split + unspent_remainder
+            } else {
+                amount_per_split
             };
 
+            let noop_script = script!(Nop);
+            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let output_features = OutputFeatures::default();
+
+            // generating sender's keypair
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
             let commitment = self
                 .resources
                 .factories
                 .commitment
-                .commit_value(&spending_key, output_amount.into());
-            let encrypted_value =
-                EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, output_amount)?;
-            let metadata_signature = TransactionOutput::create_final_metadata_signature(
+                .commit_value(&spending_key, amount_per_split.into());
+            let encrypted_value = EncryptedValue::encrypt_value(
+                &self.resources.rewind_data.encryption_key,
+                &commitment,
+                amount_per_split,
+            )?;
+
+            let minimum_amount_promise = MicroTari::zero();
+            let commitment_signature = TransactionOutput::create_final_metadata_signature(
                 TransactionOutputVersion::get_current_version(),
-                output_amount,
+                amount_per_split,
                 &spending_key,
-                &script,
+                &noop_script,
                 &output_features,
                 &sender_offset_private_key,
                 &covenant,
                 &encrypted_value,
+                minimum_amount_promise,
             )?;
-            let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
+
+            let output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 UnblindedOutput::new_current_version(
-                    output_amount,
+                    amount_per_split,
                     spending_key,
                     output_features,
-                    script.clone(),
+                    noop_script,
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     script_private_key,
                     sender_offset_public_key,
-                    metadata_signature,
+                    commitment_signature,
                     0,
                     covenant.clone(),
                     encrypted_value,
+                    minimum_amount_promise,
                 ),
                 &self.resources.factories,
                 &self.resources.rewind_data.clone(),
                 None,
                 None,
             )?;
-            builder
-                .with_output(utxo.unblinded_output.clone(), sender_offset_private_key)
+
+            tx_builder
+                .with_output(output.unblinded_output.clone(), sender_offset_private_key)
                 .map_err(|e| OutputManagerError::BuildError(e.message))?;
-            outputs.push(utxo);
+
+            dest_outputs.push(output);
         }
 
-        if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
-            builder.with_change_script(
-                script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-            );
-        }
-
-        let factories = CryptoFactories::default();
-        let mut stp = builder
+        let mut stp = tx_builder
             .build::<HashDigest>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
             )
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
         let tx_id = stp.get_tx_id()?;
+
         trace!(
             target: LOG_TARGET,
-            "Encumber coin split transaction ({}) outputs.",
+            "Encumber coin split (even) transaction (tx_id={}) outputs",
             tx_id
         );
 
-        if input_selection.requires_change_output() {
-            let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+        // encumbering transaction
+        self.resources
+            .db
+            .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
+        self.confirm_encumberance(tx_id)?;
+
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin split transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
+
+        Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn create_coin_split(
+        &mut self,
+        src_outputs: Vec<DbUnblindedOutput>,
+        amount_per_split: MicroTari,
+        number_of_splits: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        if number_of_splits == 0 {
+            return Err(OutputManagerError::InvalidArgument(
+                "number_of_splits must be greater than 0".to_string(),
+            ));
+        }
+
+        if amount_per_split == MicroTari::zero() {
+            return Err(OutputManagerError::InvalidArgument(
+                "amount_per_split must be greater than 0".to_string(),
+            ));
+        }
+
+        let covenant = Covenant::default();
+        let default_metadata_size = self.default_metadata_size();
+        let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
+        let total_split_amount = MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64);
+
+        // accumulated value amount from given source outputs
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        if total_split_amount >= accumulated_amount {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        let fee_without_change = self.get_fee_calc().calculate(
+            fee_per_gram,
+            1,
+            src_outputs.len(),
+            number_of_splits,
+            default_metadata_size * number_of_splits,
+        );
+
+        // checking whether a total output value is enough
+        if accumulated_amount < (total_split_amount + fee_without_change) {
+            error!(
+                target: LOG_TARGET,
+                "failed to split coins, not enough funds with `fee_without_change` included"
+            );
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        let final_fee = match accumulated_amount
+            .saturating_sub(total_split_amount + fee_without_change)
+            .as_u64()
+        {
+            0 => fee_without_change,
+            _ => self.get_fee_calc().calculate(
+                fee_per_gram,
+                1,
+                src_outputs.len(),
+                number_of_splits + 1,
+                default_metadata_size * (number_of_splits + 1),
+            ),
+        };
+
+        // checking, again, whether a total output value is enough
+        if accumulated_amount < (total_split_amount + final_fee) {
+            error!(
+                target: LOG_TARGET,
+                "failed to split coins, not enough funds with `final_fee` included"
+            );
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // preliminary balance check
+        if self.get_balance(None)?.available_balance < (total_split_amount + final_fee) {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // NOTE: called `leftover` to remove possible brainlag by confusing `change` as a verb
+        let leftover_change = accumulated_amount.saturating_sub(total_split_amount + final_fee);
+
+        // ----------------------------------------------------------------------------
+        // initializing new transaction
+
+        trace!(target: LOG_TARGET, "initializing new split transaction");
+
+        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(PrivateKey::random(&mut OsRng))
+            .with_private_nonce(PrivateKey::random(&mut OsRng))
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
+
+        // collecting inputs from source outputs
+        let inputs: Vec<TransactionInput> = src_outputs
+            .iter()
+            .map(|src_out| {
+                src_out
+                    .unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)
+            })
+            .try_collect()?;
+
+        // adding inputs to the transaction
+        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+            trace!(
+                target: LOG_TARGET,
+                "adding transaction input: output_hash=: {:?}",
+                src_output.hash
+            );
+            tx_builder.with_input(input, src_output.unblinded_output.clone());
+        });
+
+        // ----------------------------------------------------------------------------
+        // initializing primary outputs
+
+        for _ in 0..number_of_splits {
+            let noop_script = script!(Nop);
+            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            let output_features = OutputFeatures::default();
+
+            // generating sender's keypair
+            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+            let commitment = self
+                .resources
+                .factories
+                .commitment
+                .commit_value(&spending_key, amount_per_split.into());
+            let encrypted_value = EncryptedValue::encrypt_value(
+                &self.resources.rewind_data.encryption_key,
+                &commitment,
+                amount_per_split,
+            )?;
+            let minimum_value_promise = MicroTari::zero();
+            let commitment_signature = TransactionOutput::create_final_metadata_signature(
+                TransactionOutputVersion::get_current_version(),
+                amount_per_split,
+                &spending_key,
+                &noop_script,
+                &output_features,
+                &sender_offset_private_key,
+                &covenant,
+                &encrypted_value,
+                minimum_value_promise,
+            )?;
+
+            let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                UnblindedOutput::new_current_version(
+                    amount_per_split,
+                    spending_key,
+                    output_features,
+                    noop_script,
+                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    script_private_key,
+                    sender_offset_public_key,
+                    commitment_signature,
+                    0,
+                    covenant.clone(),
+                    encrypted_value,
+                    minimum_value_promise,
+                ),
+                &self.resources.factories,
+                &self.resources.rewind_data.clone(),
+                None,
+                None,
+            )?;
+
+            tx_builder
+                .with_output(output.unblinded_output.clone(), sender_offset_private_key)
+                .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+            dest_outputs.push(output);
+        }
+
+        let has_leftover_change = leftover_change > MicroTari::zero();
+
+        // extending transaction if there is some `change` left over
+        if has_leftover_change {
+            let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+            tx_builder.with_change_secret(spending_key);
+            tx_builder.with_rewindable_outputs(self.resources.rewind_data.clone());
+            tx_builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+            );
+        }
+
+        let mut stp = tx_builder
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
+        // store them until the transaction times out OR is confirmed
+        let tx_id = stp.get_tx_id()?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Encumber coin split transaction (tx_id={}) outputs",
+            tx_id
+        );
+
+        // again, to obtain output for leftover change
+        if has_leftover_change {
+            // obtaining output for the `change`
+            let unblinded_output_for_change = stp.get_change_unblinded_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
-                    "There should be a change output metadata signature available".to_string(),
+                    "There should be a `change` output metadata signature available".to_string(),
                 )
             })?;
-            outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
-                unblinded_output,
+
+            // appending `change` output to the result
+            dest_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
+                unblinded_output_for_change,
                 &self.resources.factories,
                 &self.resources.rewind_data.clone(),
                 None,
@@ -1666,19 +2074,196 @@ where
             )?);
         }
 
+        // encumbering transaction
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
+            .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
         self.confirm_encumberance(tx_id)?;
-        trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
+
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin split transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
         stp.finalize(
             KernelFeatures::empty(),
-            &factories,
+            &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
         )?;
-        let tx = stp.take_transaction()?;
-        Ok((tx_id, tx, utxos_total_value))
+
+        let value = if has_leftover_change {
+            total_split_amount
+        } else {
+            total_split_amount + final_fee
+        };
+
+        Ok((tx_id, stp.take_transaction()?, value))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub async fn create_coin_join(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        let covenant = Covenant::default();
+        let noop_script = script!(Nop);
+        let default_metadata_size = self.default_metadata_size();
+
+        let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
+            &UtxoSelectionCriteria::specific(commitments),
+            MicroTari::zero(),
+            None,
+        )?;
+
+        let accumulated_amount = src_outputs
+            .iter()
+            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+
+        let fee = self
+            .get_fee_calc()
+            .calculate(fee_per_gram, 1, src_outputs.len(), 1, default_metadata_size);
+
+        let aftertax_amount = accumulated_amount.saturating_sub(fee);
+
+        // checking, again, whether a total output value is enough
+        if aftertax_amount == MicroTari::zero() {
+            error!(target: LOG_TARGET, "failed to join coins, not enough funds");
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // preliminary balance check
+        if self.get_balance(None)?.available_balance < aftertax_amount {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
+        // ----------------------------------------------------------------------------
+        // initializing new transaction
+
+        trace!(target: LOG_TARGET, "initializing new join transaction");
+
+        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(PrivateKey::random(&mut OsRng))
+            .with_private_nonce(PrivateKey::random(&mut OsRng))
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
+
+        // collecting inputs from source outputs
+        let inputs: Vec<TransactionInput> = src_outputs
+            .iter()
+            .map(|src_out| {
+                src_out
+                    .unblinded_output
+                    .as_transaction_input(&self.resources.factories.commitment)
+            })
+            .try_collect()?;
+
+        // adding inputs to the transaction
+        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+            trace!(
+                target: LOG_TARGET,
+                "adding transaction input: output_hash=: {:?}",
+                src_output.hash
+            );
+            tx_builder.with_input(input, src_output.unblinded_output.clone());
+        });
+
+        // initializing primary output
+        let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
+        let output_features = OutputFeatures::default();
+
+        // generating sender's keypair
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spending_key, aftertax_amount.into());
+        let encrypted_value =
+            EncryptedValue::encrypt_value(&self.resources.rewind_data.encryption_key, &commitment, aftertax_amount)?;
+        let minimum_value_promise = MicroTari::zero();
+        let commitment_signature = TransactionOutput::create_final_metadata_signature(
+            TransactionOutputVersion::get_current_version(),
+            aftertax_amount,
+            &spending_key,
+            &noop_script,
+            &output_features,
+            &sender_offset_private_key,
+            &covenant,
+            &encrypted_value,
+            minimum_value_promise,
+        )?;
+
+        let output = DbUnblindedOutput::rewindable_from_unblinded_output(
+            UnblindedOutput::new_current_version(
+                aftertax_amount,
+                spending_key,
+                output_features,
+                noop_script,
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+                sender_offset_public_key,
+                commitment_signature,
+                0,
+                covenant.clone(),
+                encrypted_value,
+                minimum_value_promise,
+            ),
+            &self.resources.factories,
+            &self.resources.rewind_data.clone(),
+            None,
+            None,
+        )?;
+
+        tx_builder
+            .with_output(output.unblinded_output.clone(), sender_offset_private_key)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        let mut stp = tx_builder
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
+        // store them until the transaction times out OR is confirmed
+        let tx_id = stp.get_tx_id()?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Encumber coin join transaction (tx_id={}) outputs",
+            tx_id
+        );
+
+        // encumbering transaction
+        self.resources
+            .db
+            .encumber_outputs(tx_id, src_outputs.clone(), vec![output])?;
+        self.confirm_encumberance(tx_id)?;
+
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin join transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
+
+        Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
     }
 
     async fn fetch_outputs_from_node(
@@ -1722,8 +2307,7 @@ where
             .as_bytes(),
         )?;
         let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
         if let Ok(amount) = EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value)
         {
             let blinding_factor = output.recover_mask(&self.resources.factories.range_proof, &blinding_key)?;
@@ -1743,6 +2327,7 @@ where
                     0,
                     output.covenant,
                     output.encrypted_value,
+                    output.minimum_value_promise,
                 );
 
                 let offset = PrivateKey::random(&mut OsRng);
@@ -1822,7 +2407,7 @@ where
             }
         } else {
             Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
-                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decryptes!".to_string()),
+                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decrypted!".to_string()),
             )))
         }
     }
@@ -1866,7 +2451,6 @@ where
         );
 
         let factories = CryptoFactories::default();
-        println!("he`");
         let mut stp = builder
             .build::<HashDigest>(
                 &self.resources.factories,
@@ -1929,99 +2513,180 @@ where
         Ok(())
     }
 
-    /// Attempt to scan and then rewind all of the given transaction outputs into unblinded outputs based on known
-    /// pubkeys
+    // Scanning outputs addressed to this wallet
     fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
-        let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
-            self.resources.db.get_all_known_one_sided_payment_scripts()?;
+        // TODO: use MultiKey
+        // NOTE: known keys is a list consisting of an actual and deprecated wallet keys
+        let known_keys = self.resources.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<RecoveredOutput> = Vec::new();
+        let wallet_sk = self.node_identity.secret_key().clone();
+        let wallet_pk = self.node_identity.public_key();
+
+        let mut scanned_outputs = vec![];
+
         for output in outputs {
-            let position = known_one_sided_payment_scripts
-                .iter()
-                .position(|known_one_sided_script| known_one_sided_script.script == output.script);
-            if let Some(i) = position {
-                let spending_key = PrivateKey::from_bytes(
-                    CommsPublicKey::shared_secret(
-                        &known_one_sided_payment_scripts[i].private_key,
-                        &output.sender_offset_public_key,
+            match output.script.as_slice() {
+                // ----------------------------------------------------------------------------
+                // simple one-sided address
+                [Opcode::PushPubKey(scanned_pk)] => {
+                    match known_keys
+                        .iter()
+                        .find(|x| &PublicKey::from_secret_key(&x.private_key) == scanned_pk.as_ref())
+                    {
+                        // none of the keys match, skipping
+                        None => continue,
+
+                        // match found
+                        Some(matched_key) => {
+                            match PrivateKey::from_bytes(
+                                CommsPublicKey::shared_secret(
+                                    &matched_key.private_key,
+                                    &output.sender_offset_public_key,
+                                )
+                                .as_bytes(),
+                            ) {
+                                Ok(spending_sk) => {
+                                    scanned_outputs.push((output.clone(), matched_key.private_key.clone(), spending_sk))
+                                },
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "failed to derive private key from DH shared secret (simple one-sided): {:?}",
+                                        e
+                                    );
+                                    continue;
+                                },
+                            }
+                        },
+                    }
+                },
+
+                // ----------------------------------------------------------------------------
+                // one-sided stealth address
+                // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
+                // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
+                [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
+                    // computing shared secret
+                    let shared_secret = PrivateKey::from_bytes(
+                        WalletHasher::new("stealth_address")
+                            .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
+                            .finalize()
+                            .as_ref(),
                     )
-                    .as_bytes(),
-                )?;
-                let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-                let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-                let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
-                let committed_value =
-                    EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
-                if let Ok(committed_value) = committed_value {
-                    let blinding_factor =
-                        output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
-                    if output.verify_mask(
-                        &self.resources.factories.range_proof,
-                        &blinding_factor,
-                        committed_value.into(),
-                    )? {
-                        let rewound_output = UnblindedOutput::new(
-                            output.version,
-                            committed_value,
-                            blinding_factor.clone(),
-                            output.features,
-                            known_one_sided_payment_scripts[i].script.clone(),
-                            known_one_sided_payment_scripts[i].input.clone(),
-                            known_one_sided_payment_scripts[i].private_key.clone(),
-                            output.sender_offset_public_key,
-                            output.metadata_signature,
-                            known_one_sided_payment_scripts[i].script_lock_height,
-                            output.covenant,
-                            output.encrypted_value,
-                        );
+                    .unwrap();
 
-                        let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
-                            rewound_output.clone(),
-                            &self.resources.factories,
-                            &RewindData {
-                                rewind_blinding_key,
-                                recovery_byte_key,
-                                encryption_key,
-                            },
-                            None,
-                            Some(&output.proof),
-                        )?;
+                    // matching spending (public) keys
+                    if &(PublicKey::from_secret_key(&shared_secret) + wallet_pk) != scanned_pk.as_ref() {
+                        continue;
+                    }
 
-                        let output_hex = output.commitment.to_hex();
-                        let tx_id = TxId::new_random();
+                    match PrivateKey::from_bytes(
+                        CommsPublicKey::shared_secret(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
+                    ) {
+                        Ok(spending_sk) => {
+                            scanned_outputs.push((output.clone(), wallet_sk.clone() + shared_secret, spending_sk))
+                        },
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "failed to derive private key from DH shared secret (stealth one-sided): {:?}", e
+                            );
+                            continue;
+                        },
+                    }
+                },
 
-                        match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
-                            Ok(_) => {
-                                rewound_outputs.push(RecoveredOutput {
-                                    output: rewound_output,
-                                    tx_id,
-                                });
-                            },
-                            Err(OutputManagerStorageError::DuplicateOutput) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Attempt to add scanned output {} that already exists. Ignoring the output.",
-                                    output_hex
-                                );
-                            },
-                            Err(err) => {
-                                return Err(err.into());
-                            },
-                        }
-                        trace!(
-                            target: LOG_TARGET,
-                            "One-sided payment Output {} with value {} recovered",
-                            output_hex,
-                            committed_value,
-                        );
+                _ => {},
+            }
+        }
+
+        self.import_onesided_outputs(scanned_outputs)
+    }
+
+    // Imports scanned outputs into the wallet
+    fn import_onesided_outputs(
+        &self,
+        scanned_outputs: Vec<(TransactionOutput, PrivateKey, RistrettoSecretKey)>,
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
+        let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
+
+        for (output, script_private_key, spending_sk) in scanned_outputs {
+            let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_sk))?;
+            let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+            let committed_value =
+                EncryptedValue::decrypt_value(&encryption_key, &output.commitment, &output.encrypted_value);
+
+            if let Ok(committed_value) = committed_value {
+                let blinding_factor =
+                    output.recover_mask(&self.resources.factories.range_proof, &rewind_blinding_key)?;
+
+                if output.verify_mask(
+                    &self.resources.factories.range_proof,
+                    &blinding_factor,
+                    committed_value.into(),
+                )? {
+                    let rewound_output = UnblindedOutput::new(
+                        output.version,
+                        committed_value,
+                        blinding_factor.clone(),
+                        output.features,
+                        output.script,
+                        tari_script::ExecutionStack::new(vec![]),
+                        script_private_key,
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
+                        0,
+                        output.covenant,
+                        output.encrypted_value,
+                        output.minimum_value_promise,
+                    );
+
+                    let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                        rewound_output.clone(),
+                        &self.resources.factories,
+                        &RewindData {
+                            rewind_blinding_key,
+                            encryption_key,
+                        },
+                        None,
+                        Some(&output.proof),
+                    )?;
+
+                    let output_hex = output.commitment.to_hex();
+                    let tx_id = TxId::new_random();
+
+                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
+                        Ok(_) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "One-sided payment Output {} with value {} recovered",
+                                output_hex,
+                                committed_value,
+                            );
+
+                            rewound_outputs.push(RecoveredOutput {
+                                output: rewound_output,
+                                tx_id,
+                            })
+                        },
+                        Err(OutputManagerStorageError::DuplicateOutput) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Attempt to add scanned output {} that already exists. Ignoring the output.",
+                                output_hex
+                            );
+                        },
+                        Err(err) => {
+                            return Err(err.into());
+                        },
                     }
                 }
             }
         }
+
         Ok(rewound_outputs)
     }
 
@@ -2079,6 +2744,7 @@ struct UtxoSelection {
     fee_with_change: MicroTari,
 }
 
+#[allow(dead_code)]
 impl UtxoSelection {
     pub fn as_final_fee(&self) -> MicroTari {
         if self.requires_change_output {

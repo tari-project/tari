@@ -61,16 +61,16 @@ pub fn load_configuration<P: AsRef<Path>>(
 pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::Error> {
     // Use the same config file so that all the settings are easier to find, and easier to
     // support users over chat channels
-    let common = include_str!("../../config/presets/common.toml");
+    let common = include_str!("../../config/presets/a_common.toml");
     let source = [
         common,
-        include_str!("../../config/presets/peer_seeds.toml"),
-        include_str!("../../config/presets/base_node.toml"),
-        include_str!("../../config/presets/console_wallet.toml"),
-        include_str!("../../config/presets/miner.toml"),
-        include_str!("../../config/presets/merge_mining_proxy.toml"),
-        include_str!("../../config/presets/validator_node.toml"),
-        include_str!("../../config/presets/collectibles.toml"),
+        include_str!("../../config/presets/b_peer_seeds.toml"),
+        include_str!("../../config/presets/c_base_node.toml"),
+        include_str!("../../config/presets/d_console_wallet.toml"),
+        include_str!("../../config/presets/g_miner.toml"),
+        include_str!("../../config/presets/f_merge_mining_proxy.toml"),
+        include_str!("../../config/presets/e_validator_node.toml"),
+        include_str!("../../config/presets/h_collectibles.toml"),
     ]
     .join("\n");
 

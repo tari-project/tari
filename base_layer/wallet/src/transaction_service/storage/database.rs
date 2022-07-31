@@ -29,7 +29,7 @@ use std::{
 };
 
 use aes_gcm::Aes256Gcm;
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use log::*;
 use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
@@ -140,6 +140,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         tx_id: TxId,
         mined_height: u64,
         mined_in_block: BlockHash,
+        mined_timestamp: u64,
         num_confirmations: u64,
         is_confirmed: bool,
         is_faux: bool,
@@ -765,6 +766,7 @@ where T: TransactionBackend + 'static
         maturity: Option<u64>,
         import_status: ImportStatus,
         current_height: Option<u64>,
+        mined_timestamp: Option<NaiveDateTime>,
     ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
@@ -785,6 +787,7 @@ where T: TransactionBackend + 'static
             TransactionDirection::Inbound,
             maturity,
             current_height,
+            mined_timestamp,
         );
 
         let db_clone = self.db.clone();
@@ -869,6 +872,7 @@ where T: TransactionBackend + 'static
         tx_id: TxId,
         mined_height: u64,
         mined_in_block: BlockHash,
+        mined_timestamp: u64,
         num_confirmations: u64,
         is_confirmed: bool,
         is_faux: bool,
@@ -879,6 +883,7 @@ where T: TransactionBackend + 'static
                 tx_id,
                 mined_height,
                 mined_in_block,
+                mined_timestamp,
                 num_confirmations,
                 is_confirmed,
                 is_faux,

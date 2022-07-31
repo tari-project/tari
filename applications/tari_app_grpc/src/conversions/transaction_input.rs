@@ -63,6 +63,8 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
             let covenant = Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?;
             let encrypted_value = EncryptedValue::from_bytes(&input.encrypted_value).map_err(|err| err.to_string())?;
+            let minimum_value_promise = input.minimum_value_promise.into();
+
             Ok(TransactionInput::new_with_output_data(
                 TransactionInputVersion::try_from(
                     u8::try_from(input.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -75,6 +77,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 sender_offset_public_key,
                 covenant,
                 encrypted_value,
+                minimum_value_promise,
             ))
         }
     }
@@ -131,6 +134,10 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .encrypted_value()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
                     .to_vec(),
+                minimum_value_promise: input
+                    .minimum_value_promise()
+                    .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?
+                    .as_u64(),
             })
         }
     }

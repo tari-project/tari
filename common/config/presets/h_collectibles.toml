@@ -1,0 +1,17 @@
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Collectibles Configuration Options (CollectiblesConfig)                                                             #
+#                                                                                                                      #
+########################################################################################################################
+
+[collectibles]
+
+# GRPC address of validator node (default = "/ip4/127.0.0.1/tcp/18144")
+#validator_node_grpc_address = "/ip4/127.0.0.1/tcp/18144"
+
+# GRPC address of base node (default = "/ip4/127.0.0.1/tcp/18142")
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# GRPC address of wallet (default = "/ip4/127.0.0.1/tcp/18143")
+#wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"

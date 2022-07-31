@@ -89,7 +89,7 @@ use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_comms::types::Challenge;
+use tari_comms::types::CommsChallenge;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError, tari_utilities::byte_array::ByteArray};
 use thiserror::Error;
 
@@ -129,6 +129,8 @@ pub enum TransactionProtocolError {
     ConversionError(String),
     #[error("The script offset private key could not be found")]
     ScriptOffsetPrivateKeyNotFound,
+    #[error("The minimum value promise could not be found")]
+    MinimumValuePromiseNotFound,
     #[error("Value encryption failed")]
     EncryptionError,
 }
@@ -147,13 +149,12 @@ pub struct TransactionMetadata {
 pub struct RewindData {
     #[derivative(Debug = "ignore")]
     pub rewind_blinding_key: PrivateKey,
-    pub recovery_byte_key: PrivateKey,
     pub encryption_key: PrivateKey,
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
 pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> [u8; 32] {
-    Challenge::new()
+    CommsChallenge::new()
         .chain(sum_public_nonces.as_bytes())
         .chain(&u64::from(metadata.fee).to_le_bytes())
         .chain(&metadata.lock_height.to_le_bytes())

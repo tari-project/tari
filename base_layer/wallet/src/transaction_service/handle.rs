@@ -28,6 +28,7 @@ use std::{
 };
 
 use aes_gcm::Aes256Gcm;
+use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
     types::PublicKey,
@@ -86,6 +87,13 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
+    SendOneSidedToStealthAddressTransaction {
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: Box<OutputFeatures>,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
     SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
@@ -96,6 +104,7 @@ pub enum TransactionServiceRequest {
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
+        mined_timestamp: Option<NaiveDateTime>,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
@@ -147,6 +156,17 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 message
             )),
+            Self::SendOneSidedToStealthAddressTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendOneSidedToStealthAddressTransaction (to {}, {}, {})",
+                dest_pubkey.to_hex(),
+                amount,
+                message
+            )),
             Self::SendShaAtomicSwapTransaction(k, v, _, msg) => {
                 f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
             },
@@ -159,8 +179,9 @@ impl fmt::Display for TransactionServiceRequest {
                 import_status,
                 tx_id,
                 current_height,
+                mined_timestamp,
             } => f.write_str(&format!(
-                "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?})",
+                "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?} and {:?})",
                 source_public_key,
                 amount,
                 message,
@@ -168,6 +189,7 @@ impl fmt::Display for TransactionServiceRequest {
                 import_status,
                 tx_id,
                 current_height,
+                mined_timestamp
             )),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => f.write_str(&format!("SubmitTransaction ({})", tx_id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
@@ -239,6 +261,7 @@ impl Display for TransactionSendStatus {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum TransactionEvent {
     MempoolBroadcastTimedOut(TxId),
+    NewBlockMined(TxId),
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
@@ -349,6 +372,9 @@ impl fmt::Display for TransactionEvent {
             TransactionEvent::TransactionValidationFailed(operation_id) => {
                 write!(f, "Transaction validation failed: {}", operation_id)
             },
+            TransactionEvent::NewBlockMined(tx_id) => {
+                write!(f, "New block mined {}", tx_id)
+            },
         }
     }
 }
@@ -427,6 +453,30 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                output_features: Box::new(output_features),
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_one_sided_to_stealth_address_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
                 dest_pubkey,
                 amount,
                 output_features: Box::new(output_features),
@@ -566,6 +616,7 @@ impl TransactionServiceHandle {
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
+        mined_timestamp: Option<NaiveDateTime>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -577,6 +628,7 @@ impl TransactionServiceHandle {
                 import_status,
                 tx_id,
                 current_height,
+                mined_timestamp,
             })
             .await??
         {

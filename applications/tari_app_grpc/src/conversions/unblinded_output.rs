@@ -53,6 +53,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
             script_lock_height: output.script_lock_height,
             covenant: output.covenant.to_bytes(),
             encrypted_value: output.encrypted_value.to_vec(),
+            minimum_value_promise: output.minimum_value_promise.into(),
         }
     }
 }
@@ -90,6 +91,8 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
         let encrypted_value = EncryptedValue::from_bytes(&output.encrypted_value).map_err(|err| err.to_string())?;
 
+        let minimum_value_promise = MicroTari::from(output.minimum_value_promise);
+
         Ok(Self::new(
             TransactionOutputVersion::try_from(0u8)?,
             MicroTari::from(output.value),
@@ -103,6 +106,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             output.script_lock_height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         ))
     }
 }

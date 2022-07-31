@@ -79,7 +79,7 @@ impl MockBaseNodeService {
     pub fn set_base_node_state(&mut self, height: Option<u64>) {
         let (chain_metadata, is_synced) = match height {
             Some(height) => {
-                let metadata = ChainMetadata::new(height, Vec::new(), 0, 0, 0);
+                let metadata = ChainMetadata::new(height, Vec::new(), 0, 0, 0, 0);
                 (Some(metadata), Some(true))
             },
             None => (None, None),
@@ -94,7 +94,7 @@ impl MockBaseNodeService {
     }
 
     pub fn set_default_base_node_state(&mut self) {
-        let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0);
+        let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0, 0);
         self.state = BaseNodeState {
             chain_metadata: Some(metadata),
             is_synced: Some(true),

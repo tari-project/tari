@@ -60,6 +60,7 @@ pub struct UnblindedOutputBuilder {
     metadata_signed_by_sender: bool,
     encrypted_value: EncryptedValue,
     rewind_data: Option<RewindData>,
+    minimum_value_promise: MicroTari,
 }
 
 impl UnblindedOutputBuilder {
@@ -78,14 +79,8 @@ impl UnblindedOutputBuilder {
             metadata_signed_by_sender: false,
             encrypted_value: EncryptedValue::default(),
             rewind_data: None,
+            minimum_value_promise: MicroTari::zero(),
         }
-    }
-
-    pub fn update_recovery_byte(&mut self, factories: &CryptoFactories) -> Result<(), TransactionError> {
-        let commitment = self.generate_commitment(factories);
-        self.features
-            .update_recovery_byte(&commitment, self.rewind_data.as_ref());
-        Ok(())
     }
 
     pub fn sign_as_receiver(
@@ -107,6 +102,7 @@ impl UnblindedOutputBuilder {
             &public_nonce_commitment,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )?;
         self.metadata_signature = Some(metadata_partial);
         self.metadata_signed_by_receiver = true;
@@ -125,6 +121,7 @@ impl UnblindedOutputBuilder {
             sender_offset_private_key,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )?;
         self.metadata_signature = Some(metadata_sig);
         self.metadata_signed_by_sender = true;
@@ -159,6 +156,7 @@ impl UnblindedOutputBuilder {
             0,
             self.covenant,
             self.encrypted_value,
+            self.minimum_value_promise,
         );
         Ok(ub)
     }
@@ -233,11 +231,5 @@ mod test {
         let uob = uob.with_script_private_key(RistrettoSecretKey::default());
         let uob = uob.with_features(OutputFeatures::default());
         assert!(uob.try_build().is_ok());
-    }
-
-    #[test]
-    fn test_update_recovery_byte_if_required() {
-        let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
-        assert!(uob.update_recovery_byte(&CryptoFactories::default(),).is_ok());
     }
 }

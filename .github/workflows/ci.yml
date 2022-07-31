@@ -1,3 +1,6 @@
+---
+name: CI
+
 on:
   workflow_dispatch:
   push:
@@ -6,14 +9,10 @@ on:
       - main
       - ci-*
   pull_request:
-    branches-ignore:
-      - 'launchpad_such_wow' # TODO: Remove this filter once the branch is merged into development
     types:
       - opened
       - reopened
       - synchronize
-
-name: CI
 
 env:
   toolchain: nightly-2022-05-01
@@ -21,7 +20,7 @@ env:
   CARGO_TERM_COLOR: always
   PROTOC: protoc
   TERM: unkown
-  
+
 jobs:
   clippy:
     name: clippy
@@ -149,15 +148,7 @@ jobs:
     runs-on: [ ubuntu-20.04 ]
     steps:
       - name: checkout
-        uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
-      - name: build launchpad gui-vue
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
+        uses: actions/checkout@v2
       - name: build collectibles web-app
         run: |
           cd applications/tari_collectibles/web-app
@@ -217,12 +208,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-run --locked --all-features
+          args: --no-run --locked --all-features --release
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -v --all-features
+          args: -v --all-features --release
   # Allows other workflows to know the PR number
   artifacts:
     name: test

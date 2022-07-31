@@ -65,11 +65,13 @@ fn validate_uniqueness<B: BlockchainBackend>(
     let features = fetch_contract_features(db, contract_id, OutputType::ContractConstitution)?;
     let is_duplicated = !features.is_empty();
     if is_duplicated {
-        return Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
-            contract_id,
-            output_type: OutputType::ContractConstitution,
-            details: String::new(),
-        }));
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::DuplicatedUtxo {
+                contract_id,
+                output_type: OutputType::ContractConstitution,
+                details: String::new(),
+            },
+        ));
     }
 
     Ok(())
@@ -85,7 +87,6 @@ mod test {
         validation::dan_validators::{
             test_helpers::{
                 assert_dan_validator_err,
-                assert_dan_validator_fail,
                 assert_dan_validator_success,
                 create_contract_constitution,
                 create_contract_constitution_schema,
@@ -101,14 +102,14 @@ mod test {
     #[test]
     fn it_allows_valid_constitutions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // construct a valid constitution transaction
         let constitution = create_contract_constitution();
-        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
+        let schema = create_contract_constitution_schema(contract_id, utxos.next().unwrap(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -117,43 +118,47 @@ mod test {
     #[test]
     fn definition_must_exist() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (blockchain, change) = init_test_blockchain();
+        let (blockchain, mut utxos) = init_test_blockchain();
 
         // construct a transaction for a constitution, without a prior definition
         let contract_id = FixedHash::default();
         let constitution = create_contract_constitution();
-        let schema = create_contract_constitution_schema(contract_id, change[2].clone(), constitution);
+        let schema = create_contract_constitution_schema(contract_id, utxos.next().unwrap(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the constitution transaction and check that we get the error
-        assert_dan_validator_fail(&blockchain, &tx, "Contract definition not found");
+        let err = assert_dan_validator_err(&blockchain, &tx);
+        assert!(matches!(
+            err,
+            DanLayerValidationError::ContractDefnintionNotFound { .. }
+        ))
     }
 
     #[test]
     fn it_rejects_duplicated_constitutions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let expected_contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let expected_contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // publish the contract constitution into a block
         let constitution = create_contract_constitution();
         publish_constitution(
             &mut blockchain,
-            change[1].clone(),
+            utxos.next().unwrap(),
             expected_contract_id,
             constitution.clone(),
         );
 
         // construct a transaction for the duplicated contract constitution
-        let schema = create_contract_constitution_schema(expected_contract_id, change[2].clone(), constitution);
+        let schema = create_contract_constitution_schema(expected_contract_id, utxos.next().unwrap(), constitution);
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated constitution transaction and check that we get the error
         let err = assert_dan_validator_err(&blockchain, &tx);
         unpack_enum!(
-            DanLayerValidationError::DuplicateUtxo {
+            DanLayerValidationError::DuplicatedUtxo {
                 output_type,
                 contract_id,
                 ..

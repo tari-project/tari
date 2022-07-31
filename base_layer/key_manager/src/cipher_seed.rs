@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::mem::size_of;
+use std::{
+    convert::TryFrom,
+    mem::size_of,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use arrayvec::ArrayVec;
@@ -34,6 +38,7 @@ use chacha20::{
 use crc32fast::Hasher as CrcHasher;
 use digest::Update;
 use rand::{rngs::OsRng, RngCore};
+use serde::{Deserialize, Serialize};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -83,7 +88,6 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 /// The Birthday is included to enable more efficient recoveries. Knowing the birthday of the seed phrase means we
 /// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
 /// blockchain.
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CipherSeed {
@@ -96,8 +100,10 @@ pub struct CipherSeed {
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
-        let birthday_data = Birthday::default();
-        CipherSeed::new_with_birthday(birthday_data)
+        const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+        let days = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / SECONDS_PER_DAY;
+        let birthday = u16::try_from(days).unwrap_or(0u16);
+        CipherSeed::new_with_birthday(birthday)
     }
 
     #[cfg(target_arch = "wasm32")]

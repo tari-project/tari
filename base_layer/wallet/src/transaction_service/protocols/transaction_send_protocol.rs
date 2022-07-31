@@ -225,6 +225,7 @@ where
                 self.message.clone(),
                 script!(Nop),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .await
         {
@@ -582,6 +583,7 @@ where
             outbound_tx.message.clone(),
             Utc::now().naive_utc(),
             TransactionDirection::Outbound,
+            None,
             None,
             None,
         );

@@ -50,11 +50,13 @@ fn validate_uniqueness<B: BlockchainBackend>(
     let features = fetch_contract_features(db, contract_id, OutputType::ContractDefinition)?;
     let is_duplicated = !features.is_empty();
     if is_duplicated {
-        return Err(ValidationError::DanLayerError(DanLayerValidationError::DuplicateUtxo {
-            contract_id,
-            output_type: OutputType::ContractDefinition,
-            details: String::new(),
-        }));
+        return Err(ValidationError::DanLayerError(
+            DanLayerValidationError::DuplicatedUtxo {
+                contract_id,
+                output_type: OutputType::ContractDefinition,
+                details: String::new(),
+            },
+        ));
     }
 
     Ok(())
@@ -82,10 +84,10 @@ mod test {
     #[test]
     fn it_allows_valid_definitions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (blockchain, change) = init_test_blockchain();
+        let (blockchain, mut utxos) = init_test_blockchain();
 
         // construct a valid definition transaction
-        let (_, schema) = create_contract_definition_schema(change[1].clone());
+        let (_, schema) = create_contract_definition_schema(utxos.next().unwrap());
         let (tx, _) = schema_to_transaction(&schema);
 
         assert_dan_validator_success(&blockchain, &tx);
@@ -94,19 +96,19 @@ mod test {
     #[test]
     fn it_rejects_duplicated_definitions() {
         // initialise a blockchain with enough funds to spend at contract transactions
-        let (mut blockchain, change) = init_test_blockchain();
+        let (mut blockchain, mut utxos) = init_test_blockchain();
 
         // publish the contract definition into a block
-        let expected_contract_id = publish_definition(&mut blockchain, change[0].clone());
+        let expected_contract_id = publish_definition(&mut blockchain, utxos.next().unwrap());
 
         // construct a transaction for the duplicated contract definition
-        let (_, schema) = create_contract_definition_schema(change[0].clone());
+        let (_, schema) = create_contract_definition_schema(utxos.next().unwrap());
         let (tx, _) = schema_to_transaction(&schema);
 
         // try to validate the duplicated definition transaction and check that we get the error
         let err = assert_dan_validator_err(&blockchain, &tx);
         unpack_enum!(
-            DanLayerValidationError::DuplicateUtxo {
+            DanLayerValidationError::DuplicatedUtxo {
                 output_type,
                 contract_id,
                 ..

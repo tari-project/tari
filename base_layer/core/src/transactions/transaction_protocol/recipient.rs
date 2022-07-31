@@ -236,13 +236,8 @@ mod test {
         };
         let script = TariScript::default();
         let amount = MicroTari(500);
-        let commitment = factories.commitment.commit_value(&p.spend_key, amount.as_u64());
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
 
-        let features = OutputFeatures {
-            recovery_byte,
-            ..Default::default()
-        };
+        let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
             tx_id: 15u64.into(),
             amount,
@@ -255,13 +250,13 @@ mod test {
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
             covenant: Covenant::default(),
+            minimum_value_promise: MicroTari::zero(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
         let receiver = ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
-        assert_eq!(data.output.features.recovery_byte, recovery_byte);
         assert_eq!(data.tx_id.as_u64(), 15);
         assert_eq!(data.public_spend_key, pubkey);
         assert!(factories
@@ -280,10 +275,8 @@ mod test {
         let p = TestParams::new();
         // Rewind params
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let recovery_byte_key = PrivateKey::random(&mut OsRng);
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key,
             encryption_key: PrivateKey::random(&mut OsRng),
         };
         let amount = MicroTari(500);
@@ -293,13 +286,7 @@ mod test {
         };
         let script = TariScript::default();
 
-        let commitment = factories.commitment.commit_value(&p.spend_key, amount.as_u64());
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(&rewind_data));
-
-        let features = OutputFeatures {
-            recovery_byte,
-            ..Default::default()
-        };
+        let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
             tx_id: 15u64.into(),
             amount,
@@ -312,6 +299,7 @@ mod test {
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
             covenant: Covenant::default(),
+            minimum_value_promise: MicroTari::zero(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let receiver = ReceiverTransactionProtocol::new_with_rewindable_output(
@@ -323,7 +311,6 @@ mod test {
         );
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
-        assert_eq!(data.output.features.recovery_byte, recovery_byte);
 
         let output = &data.output;
         let committed_value =

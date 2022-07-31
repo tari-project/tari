@@ -69,7 +69,7 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, script};
+use tari_script::{inputs, script, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -114,7 +114,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::HashDigest,
+    types::{HashDigest, WalletHasher},
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
@@ -606,6 +606,23 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::SendOneSidedToStealthAddressTransaction {
+                dest_pubkey,
+                amount,
+                output_features,
+                fee_per_gram,
+                message,
+            } => self
+                .send_one_sided_to_stealth_address_transaction(
+                    dest_pubkey,
+                    amount,
+                    *output_features,
+                    fee_per_gram,
+                    message,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::SendShaAtomicSwapTransaction(dest_pubkey, amount, fee_per_gram, message) => {
                 Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
                     self.send_sha_atomic_swap_transaction(
@@ -667,6 +684,7 @@ where
                 import_status,
                 tx_id,
                 current_height,
+                mined_timestamp,
             } => self
                 .add_utxo_import_transaction_with_status(
                     amount,
@@ -676,6 +694,7 @@ where
                     import_status,
                     tx_id,
                     current_height,
+                    mined_timestamp,
                 )
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
@@ -907,6 +926,7 @@ where
                     TransactionDirection::Inbound,
                     None,
                     None,
+                    None,
                 ),
             )
             .await?;
@@ -984,6 +1004,9 @@ where
         // Empty covenant
         let covenant = Covenant::default();
 
+        // Default range proof
+        let minimum_value_promise = MicroTari::zero();
+
         // Prepare sender part of the transaction
         let mut stp = self
             .output_manager_service
@@ -997,6 +1020,7 @@ where
                 message.clone(),
                 script.clone(),
                 covenant.clone(),
+                minimum_value_promise,
             )
             .await?;
 
@@ -1025,12 +1049,10 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
 
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key: recovery_byte_key.clone(),
             encryption_key: encryption_key.clone(),
         };
 
@@ -1050,6 +1072,7 @@ where
             .commitment
             .commit_value(&spend_key, amount.into());
         let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
+        let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spend_key,
@@ -1062,6 +1085,7 @@ where
             height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
 
         // Start finalizing
@@ -1123,6 +1147,7 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
+                None,
             ),
         )
         .await?;
@@ -1130,12 +1155,7 @@ where
         Ok(Box::new((tx_id, pre_image, output)))
     }
 
-    /// Sends a one side payment transaction to a recipient
-    /// # Arguments
-    /// 'dest_pubkey': The Comms pubkey of the recipient node
-    /// 'amount': The amount of Tari to send to the recipient
-    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
-    pub async fn send_one_sided_transaction(
+    async fn send_one_sided_or_stealth(
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
@@ -1145,14 +1165,8 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
+        script: TariScript,
     ) -> Result<TxId, TransactionServiceError> {
-        if self.node_identity.public_key() == &dest_pubkey {
-            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
-            return Err(TransactionServiceError::OneSidedTransactionError(
-                "One-sided spend-to-self transactions not supported".to_string(),
-            ));
-        }
-
         let tx_id = TxId::new_random();
 
         // Prepare sender part of the transaction
@@ -1166,8 +1180,9 @@ where
                 fee_per_gram,
                 None,
                 message.clone(),
-                script!(PushPubKey(Box::new(dest_pubkey.clone()))),
+                script,
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .await?;
 
@@ -1196,11 +1211,9 @@ where
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
-        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&recovery_byte_key))?;
+        let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key: recovery_byte_key.clone(),
             encryption_key: encryption_key.clone(),
         };
 
@@ -1265,11 +1278,90 @@ where
                 TransactionDirection::Outbound,
                 None,
                 None,
+                None,
             ),
         )
         .await?;
 
         Ok(tx_id)
+    }
+
+    /// Sends a one side payment transaction to a recipient
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn send_one_sided_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        if self.node_identity.public_key() == &dest_pubkey {
+            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
+            return Err(TransactionServiceError::OneSidedTransactionError(
+                "One-sided spend-to-self transactions not supported".to_string(),
+            ));
+        }
+        self.send_one_sided_or_stealth(
+            dest_pubkey.clone(),
+            amount,
+            output_features,
+            fee_per_gram,
+            message,
+            transaction_broadcast_join_handles,
+            script!(PushPubKey(Box::new(dest_pubkey))),
+        )
+        .await
+    }
+
+    /// Sends a one side payment transaction to a recipient
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn send_one_sided_to_stealth_address_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        if self.node_identity.public_key() == &dest_pubkey {
+            warn!(target: LOG_TARGET, "One-sided spend-to-self transactions not supported");
+            return Err(TransactionServiceError::OneSidedTransactionError(
+                "One-sided-to-stealth-address spend-to-self transactions not supported".to_string(),
+            ));
+        }
+
+        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+
+        let c = WalletHasher::new("stealth_address")
+            .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
+            .finalize();
+
+        let script_spending_key =
+            PublicKey::from_secret_key(&PrivateKey::from_bytes(c.as_ref()).unwrap()) + dest_pubkey.clone();
+
+        self.send_one_sided_or_stealth(
+            dest_pubkey,
+            amount,
+            output_features,
+            fee_per_gram,
+            message,
+            transaction_broadcast_join_handles,
+            script!(PushPubKey(Box::new(nonce_public_key)) Drop PushPubKey(Box::new(script_spending_key))),
+        )
+        .await
     }
 
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
@@ -2178,6 +2270,7 @@ where
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
+        mined_timestamp: Option<NaiveDateTime>,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db
@@ -2190,6 +2283,7 @@ where
                 maturity,
                 import_status.clone(),
                 current_height,
+                mined_timestamp,
             )
             .await?;
         let transaction_event = match import_status {
@@ -2269,6 +2363,7 @@ where
                 TransactionDirection::Inbound,
                 None,
                 None,
+                None,
             ),
         )
         .await?;
@@ -2329,6 +2424,7 @@ where
                             Utc::now().naive_utc(),
                             TransactionDirection::Inbound,
                             Some(block_height),
+                            None,
                             None,
                         ),
                     )
@@ -2415,4 +2511,59 @@ fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
 pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: TransactionStatus,
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_crypto::ristretto::RistrettoSecretKey;
+    use tari_script::Opcode;
+    use WalletHasher;
+
+    use super::*;
+
+    #[test]
+    fn test_stealth_addresses() {
+        // recipient's keys
+        let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
+        let (b, big_b) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender generates a random nonce key-pair: R=r⋅G
+        let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
+        // where H(⋅) is a cryptographic hash function
+        let c = WalletHasher::new("stealth_address")
+            .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
+            .finalize();
+
+        // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
+        let sender_spending_key =
+            PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
+
+        let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(sender_spending_key.clone())));
+
+        // ----------------------------------------------------------------------------
+        // imitating the receiving end, scanning and extraction
+
+        // Extracting the nonce R and a spending key from the script
+        if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
+        {
+            // calculating Ks with the provided R nonce from the script
+            let c = WalletHasher::new("stealth_address")
+                .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
+                .finalize();
+
+            // computing a spending key `Ks=(c+b)G` for comparison
+            let receiver_spending_key =
+                PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b));
+
+            // computing a scanning key `Ks=cG+B` for comparison
+            let scanning_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;
+
+            assert_eq!(provided_spending_key.as_ref(), &sender_spending_key);
+            assert_eq!(receiver_spending_key, sender_spending_key);
+            assert_eq!(scanning_key, sender_spending_key);
+            assert_eq!(scanning_key, receiver_spending_key);
+        }
+    }
 }

@@ -1,0 +1,15 @@
+<div class="container">
+  <h1>Contract : {{contract.id}}</h1>
+  <h1>Name : {{contract.name}}</h1>
+  {{#table id="validator_nodes" endpoint=(concat "/contract/validator_nodes/" contract.id) rows=10}}
+    <th
+      id="{{id}}-column-0"
+      for_sort="data.id"
+      render="`<a href='/validator_node/${data.id}''>${data.id}</a>`"
+    >Committee</th>
+    <th
+    id="{{id}}-column-1"
+    render="data.last_checkpoint['{{../contract.id}}'] || 'never'"
+    >Last checkpoint</th>
+  {{/table}}
+</div>

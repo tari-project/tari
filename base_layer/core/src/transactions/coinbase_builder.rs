@@ -195,8 +195,7 @@ impl CoinbaseBuilder {
             .factories
             .commitment
             .commit_value(&spending_key, total_reward.as_u64());
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), recovery_byte);
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
@@ -216,6 +215,8 @@ impl CoinbaseBuilder {
             .map_err(|_| CoinbaseBuildError::ValueEncryptionFailed)?
             .unwrap_or_default();
 
+        let minimum_value_promise = MicroTari::zero();
+
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
             TransactionOutputVersion::get_current_version(),
             total_reward,
@@ -225,6 +226,7 @@ impl CoinbaseBuilder {
             &sender_offset_private_key,
             &covenant,
             &encrypted_value,
+            minimum_value_promise,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
@@ -240,6 +242,7 @@ impl CoinbaseBuilder {
             0,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
@@ -374,7 +377,6 @@ mod test {
 
         let rewind_data = RewindData {
             rewind_blinding_key: rewind_blinding_key.clone(),
-            recovery_byte_key: PrivateKey::random(&mut OsRng),
             encryption_key: PrivateKey::random(&mut OsRng),
         };
 

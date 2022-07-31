@@ -35,10 +35,9 @@ use tari_common_types::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    tari_utilities::{fixed_set::FixedSet, hex::to_hex},
+    tari_utilities::fixed_set::FixedSet,
 };
 use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::ByteArray;
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
@@ -102,6 +101,7 @@ pub struct SenderTransactionInitializer {
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     recipient_covenants: FixedSet<Covenant>,
+    recipient_minimum_value_promise: FixedSet<MicroTari>,
     private_commitment_nonces: FixedSet<PrivateKey>,
     tx_id: Option<TxId>,
     fee: Fee,
@@ -146,6 +146,7 @@ impl SenderTransactionInitializer {
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_sender_offset_private_keys: FixedSet::new(num_recipients),
             recipient_covenants: FixedSet::new(num_recipients),
+            recipient_minimum_value_promise: FixedSet::new(num_recipients),
             private_commitment_nonces: FixedSet::new(num_recipients),
             tx_id: None,
         }
@@ -174,6 +175,7 @@ impl SenderTransactionInitializer {
         recipient_output_features: OutputFeatures,
         private_commitment_nonce: PrivateKey,
         covenant: Covenant,
+        minimum_value_promise: MicroTari,
     ) -> &mut Self {
         self.recipient_output_features
             .set_item(receiver_index, recipient_output_features);
@@ -183,6 +185,8 @@ impl SenderTransactionInitializer {
         self.private_commitment_nonces
             .set_item(receiver_index, private_commitment_nonce);
         self.recipient_covenants.set_item(receiver_index, covenant);
+        self.recipient_minimum_value_promise
+            .set_item(receiver_index, minimum_value_promise);
         self
     }
 
@@ -216,17 +220,6 @@ impl SenderTransactionInitializer {
     ) -> Result<&mut Self, BuildError> {
         let commitment_factory = CommitmentFactory::default();
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
-        if recovery_byte != output.features.recovery_byte {
-            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
-            error!(
-                target: LOG_TARGET,
-                "Recovery byte set incorrectly (with output) - expected {}, got {} for commitment {}",
-                recovery_byte,
-                output.features.recovery_byte,
-                to_hex(commitment.as_bytes()),
-            );
-        }
         let e = TransactionOutput::build_metadata_signature_challenge(
             output.version,
             &output.script,
@@ -236,6 +229,7 @@ impl SenderTransactionInitializer {
             &commitment,
             &output.covenant,
             &output.encrypted_value,
+            output.minimum_value_promise,
         );
         if !output.metadata_signature.verify_challenge(
             &(&commitment + &output.sender_offset_public_key),
@@ -353,7 +347,7 @@ impl SenderTransactionInitializer {
             self.fee()
                 .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
 
-        let mut output_features = self.get_recipient_output_features();
+        let output_features = self.get_recipient_output_features();
         let change_metadata_size = self
             .change_script
             .as_ref()
@@ -392,7 +386,6 @@ impl SenderTransactionInitializer {
                             .as_ref()
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
-                        output_features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
 
                         let encrypted_value = self
                             .rewind_data
@@ -401,6 +394,8 @@ impl SenderTransactionInitializer {
                             .transpose()
                             .map_err(|e| e.to_string())?
                             .unwrap_or_default();
+
+                        let minimum_value_promise = MicroTari::zero();
 
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
                             TransactionOutputVersion::get_current_version(),
@@ -411,8 +406,10 @@ impl SenderTransactionInitializer {
                             &change_sender_offset_private_key,
                             &self.change_covenant,
                             &encrypted_value,
+                            minimum_value_promise,
                         )
                         .map_err(|e| e.to_string())?;
+
                         let change_unblinded_output = UnblindedOutput::new_current_version(
                             v,
                             change_key.clone(),
@@ -431,6 +428,7 @@ impl SenderTransactionInitializer {
                             0,
                             self.change_covenant.clone(),
                             encrypted_value,
+                            minimum_value_promise,
                         );
                         Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))
                     },
@@ -532,14 +530,10 @@ impl SenderTransactionInitializer {
             .sender_custom_outputs
             .iter()
             .map(|o| {
-                let commitment = factories.commitment.commit_value(&o.spending_key, o.value.as_u64());
-                let mut uo = o.clone();
-                uo.features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
-
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    uo.as_rewindable_transaction_output(factories, rewind_data, None)
+                    o.as_rewindable_transaction_output(factories, rewind_data, None)
                 } else {
-                    uo.as_transaction_output(factories)
+                    o.as_transaction_output(factories)
                 }
             })
             .collect::<Result<Vec<TransactionOutput>, _>>()
@@ -656,6 +650,7 @@ impl SenderTransactionInitializer {
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_sender_offset_private_keys: self.recipient_sender_offset_private_keys.into_vec(),
             recipient_covenants: self.recipient_covenants.into_vec(),
+            recipient_minimum_value_promise: self.recipient_minimum_value_promise.into_vec(),
             private_commitment_nonces: self.private_commitment_nonces.into_vec(),
             change,
             unblinded_change_output: change_output,
@@ -759,6 +754,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let expected_fee = builder
@@ -940,6 +936,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             );
         // .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
@@ -973,6 +970,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
@@ -1011,6 +1009,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_recipient_data(
                 1,
@@ -1019,6 +1018,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
@@ -1074,6 +1074,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
@@ -1126,6 +1127,7 @@ mod test {
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
+                MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories, None, u64::MAX);

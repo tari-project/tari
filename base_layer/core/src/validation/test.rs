@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::commitment::HomomorphicCommitment;
@@ -143,6 +142,7 @@ fn chain_balance_validation() {
         &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
@@ -186,9 +186,10 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     // let _coinbase_hash = coinbase.hash();
     let (pk, sig) = create_random_signature_from_s_key(coinbase_key, 0.into(), 0);
@@ -222,7 +223,7 @@ fn chain_balance_validation() {
     let mut mmr_leaf_index = 4;
 
     txn.insert_kernel(kernel.clone(), header1.hash().clone(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index);
+    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -238,9 +239,10 @@ fn chain_balance_validation() {
     let (coinbase, key, _) = create_utxo(
         v,
         &factories,
-        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1),
         &script!(Nop),
         &Covenant::default(),
+        MicroTari::zero(),
     );
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
@@ -271,7 +273,7 @@ fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
     mmr_leaf_index += 1;
-    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index);
+    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index, 0);
     mmr_position += 1;
     txn.insert_kernel(kernel, header2.hash().clone(), mmr_position);
 
@@ -291,7 +293,7 @@ mod transaction_validator {
         let db = create_store_with_consensus(consensus_manager);
         let factories = CryptoFactories::default();
         let validator = TxInternalConsistencyValidator::new(factories, true, db);
-        let features = OutputFeatures::create_coinbase(0, 0);
+        let features = OutputFeatures::create_coinbase(0);
         let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
         let err = validator.validate(&tx).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);

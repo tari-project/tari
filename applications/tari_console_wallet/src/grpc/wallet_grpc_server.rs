@@ -20,9 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    fs,
+};
 
-use futures::{channel::mpsc, future, SinkExt};
+use clap::Parser;
+use futures::{
+    channel::mpsc::{self, Sender},
+    future,
+    SinkExt,
+};
 use log::*;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
@@ -43,6 +51,7 @@ use tari_app_grpc::{
         CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
         CreateInitialAssetCheckpointResponse,
+        FileDeletedResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -66,6 +75,7 @@ use tari_app_grpc::{
         RegisterAssetResponse,
         RevalidateRequest,
         RevalidateResponse,
+        SeedWordsResponse,
         SendShaAtomicSwapRequest,
         SendShaAtomicSwapResponse,
         SetBaseNodeRequest,
@@ -75,6 +85,9 @@ use tari_app_grpc::{
         SubmitContractUpdateProposalAcceptanceRequest,
         SubmitContractUpdateProposalAcceptanceResponse,
         TransactionDirection,
+        TransactionEvent,
+        TransactionEventRequest,
+        TransactionEventResponse,
         TransactionInfo,
         TransactionStatus,
         TransferRequest,
@@ -82,7 +95,10 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::{BlockHash, FixedHash, PublicKey, Signature};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlockHash, FixedHash, PublicKey, Signature},
+};
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -92,13 +108,37 @@ use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
-    transaction_service::{handle::TransactionServiceHandle, storage::models},
+    transaction_service::{
+        handle::TransactionServiceHandle,
+        storage::models::{self, WalletTransaction},
+    },
     WalletSqlite,
 };
-use tokio::task;
+use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
 
+use crate::{
+    cli::Cli,
+    grpc::{convert_to_transaction_event, TransactionWrapper},
+    notifier::{CANCELLED, CONFIRMATION, MINED, NEW_BLOCK_MINED, QUEUED, RECEIVED, SENT},
+};
+
 const LOG_TARGET: &str = "wallet::ui::grpc";
+
+async fn send_transaction_event(
+    transaction_event: TransactionEvent,
+    sender: &mut Sender<Result<TransactionEventResponse, Status>>,
+) {
+    let response = TransactionEventResponse {
+        transaction: Some(transaction_event),
+    };
+    if let Err(err) = sender.send(Ok(response)).await {
+        warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {}", err);
+        if let Err(send_err) = sender.send(Err(Status::unknown("Error sending data"))).await {
+            warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+        }
+    }
+}
 
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
@@ -125,6 +165,7 @@ impl WalletGrpcServer {
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
+    type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
@@ -449,14 +490,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
-        let mut standard_transfers = Vec::new();
-        let mut one_sided_transfers = Vec::new();
+        let mut transfers = Vec::new();
         for (address, pk, amount, fee_per_gram, message, payment_type) in recipients {
             let mut transaction_service = self.get_transaction_service();
-            if payment_type == PaymentType::StandardMimblewimble as i32 {
-                standard_transfers.push(async move {
-                    (
-                        address,
+            transfers.push(async move {
+                (
+                    address,
+                    if payment_type == PaymentType::StandardMimblewimble as i32 {
                         transaction_service
                             .send_transaction(
                                 pk,
@@ -465,13 +505,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 fee_per_gram.into(),
                                 message,
                             )
-                            .await,
-                    )
-                });
-            } else if payment_type == PaymentType::OneSided as i32 {
-                one_sided_transfers.push(async move {
-                    (
-                        address,
+                            .await
+                    } else if payment_type == PaymentType::OneSided as i32 {
                         transaction_service
                             .send_one_sided_transaction(
                                 pk,
@@ -480,19 +515,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 fee_per_gram.into(),
                                 message,
                             )
-                            .await,
-                    )
-                });
-            } else {
-            }
+                            .await
+                    } else {
+                        transaction_service
+                            .send_one_sided_to_stealth_address_transaction(
+                                pk,
+                                amount.into(),
+                                OutputFeatures::default(),
+                                fee_per_gram.into(),
+                                message,
+                            )
+                            .await
+                    },
+                )
+            });
         }
 
-        let standard_results = future::join_all(standard_transfers).await;
-        let one_sided_results = future::join_all(one_sided_transfers).await;
+        let transfers_results = future::join_all(transfers).await;
 
-        let results = standard_results
+        let results = transfers_results
             .into_iter()
-            .chain(one_sided_results.into_iter())
             .map(|(address, result)| match result {
                 Ok(tx_id) => TransferResult {
                     address,
@@ -550,6 +592,85 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect();
 
         Ok(Response::new(GetTransactionInfoResponse { transactions }))
+    }
+
+    async fn stream_transaction_events(
+        &self,
+        _request: tonic::Request<TransactionEventRequest>,
+    ) -> Result<Response<Self::StreamTransactionEventsStream>, Status> {
+        let (mut sender, receiver) = mpsc::channel(100);
+
+        // let event_listener = self.events_channel.clone();
+
+        // let mut shutdown_signal = self.wallet;
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let mut transaction_service_events = self.wallet.transaction_service.get_event_stream();
+
+        task::spawn(async move {
+            loop {
+                tokio::select! {
+                        result = transaction_service_events.recv() => {
+                            match result {
+                                Ok(msg) => {
+                                    use tari_wallet::transaction_service::handle::TransactionEvent::*;
+                                    match (*msg).clone() {
+                                        NewBlockMined(tx_id) => {
+                                            match transaction_service.get_any_transaction(tx_id).await {
+                                                Ok(found_transaction) => {
+                                                    if let Some(WalletTransaction::PendingOutbound(tx)) = found_transaction {
+                                                        let transaction_event = convert_to_transaction_event(NEW_BLOCK_MINED.to_string(),
+                                                            TransactionWrapper::Outbound(Box::new(tx)));
+                                                        send_transaction_event(transaction_event, &mut sender).await;
+                                                    }
+
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            }
+                                        },
+                                        ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
+                                        TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | FauxTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
+                                        TransactionMined{tx_id, is_valid: _} | FauxTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
+                                        TransactionCancelled(tx_id, _) => {
+                                            match transaction_service.get_any_transaction(tx_id).await{
+                                                Ok(Some(wallet_tx)) => {
+                                                    use WalletTransaction::*;
+                                                    let transaction_event = match wallet_tx {
+                                                        Completed(tx)  => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Completed(Box::new(tx))),
+                                                        PendingInbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Inbound(Box::new(tx))),
+                                                        PendingOutbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Outbound(Box::new(tx))),
+                                                    };
+                                                    send_transaction_event(transaction_event, &mut sender).await;
+                                                },
+                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                                _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
+                                            }
+                                        },
+                                        TransactionCompletedImmediately(tx_id) => handle_pending_outbound(tx_id, SENT, &mut transaction_service, &mut sender).await,
+                                        TransactionSendResult(tx_id, status) => {
+                                            let is_sent = status.direct_send_result || status.store_and_forward_send_result;
+                                            let event = if is_sent { SENT } else { QUEUED };
+                                            handle_pending_outbound(tx_id, event, &mut transaction_service, &mut sender).await;
+                                        },
+                                        TransactionValidationStateChanged(_t_operation_id) => {
+                                            send_transaction_event(simple_event("unknown"), &mut sender).await;
+                                        },
+                                        ReceivedTransaction(_) | ReceivedTransactionReply(_)  | TransactionBroadcast(_) | TransactionMinedRequestTimedOut(_) | TransactionImported(_) => {
+                                            send_transaction_event(simple_event("not_supported"), &mut sender).await;
+                                        },
+                                        // Only the above variants trigger state refresh
+                                        _ => (),
+                                    }
+                                },
+                                Err(broadcast::error::RecvError::Lagged(n)) => {
+                                    warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
+                                }
+                                Err(broadcast::error::RecvError::Closed) => {}
+                            }
+                }
+                    }
+            }
+        });
+        Ok(Response::new(receiver))
     }
 
     async fn get_completed_transactions(
@@ -611,21 +732,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
         let message = request.into_inner();
 
-        let lock_height = if message.lock_height == 0 {
-            None
-        } else {
-            Some(message.lock_height)
-        };
-
         let mut wallet = self.wallet.clone();
 
         let tx_id = wallet
             .coin_split(
+                vec![], // TODO: refactor grpc to accept and use commitments
                 MicroTari::from(message.amount_per_split),
                 message.split_count as usize,
                 MicroTari::from(message.fee_per_gram),
                 message.message,
-                lock_height,
             )
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
@@ -1088,6 +1203,100 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }))
             },
         }
+    }
+
+    async fn seed_words(&self, _: Request<tari_rpc::Empty>) -> Result<Response<SeedWordsResponse>, Status> {
+        let cli = Cli::parse();
+        let file_path = cli.seed_words_file_name.unwrap();
+
+        if !file_path.is_file() {
+            return Err(Status::not_found("file not found"));
+        }
+
+        let file_name = file_path.clone().into_os_string().into_string().unwrap();
+
+        if file_name.is_empty() {
+            return Err(Status::not_found("seed_words_file_name is empty"));
+        }
+
+        let contents = fs::read_to_string(file_path)?;
+        let words = contents
+            .split(' ')
+            .collect::<Vec<&str>>()
+            .iter()
+            .map(|&x| x.into())
+            .collect::<Vec<String>>();
+        Ok(Response::new(SeedWordsResponse { words }))
+    }
+
+    async fn delete_seed_words_file(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<FileDeletedResponse>, Status> {
+        let cli = Cli::parse();
+        let file_path = cli.seed_words_file_name.unwrap();
+
+        if !file_path.is_file() {
+            return Err(Status::not_found("file not found"));
+        }
+
+        let file_name = file_path.clone().into_os_string().into_string().unwrap();
+
+        if file_name.is_empty() {
+            return Err(Status::not_found("seed_words_file_name is empty"));
+        }
+        fs::remove_file(file_path)?;
+        Ok(Response::new(FileDeletedResponse {}))
+    }
+}
+
+async fn handle_completed_tx(
+    tx_id: TxId,
+    event: &str,
+    transaction_service: &mut TransactionServiceHandle,
+    sender: &mut Sender<Result<TransactionEventResponse, Status>>,
+) {
+    match transaction_service.get_completed_transaction(tx_id).await {
+        Ok(completed) => {
+            let transaction_event =
+                convert_to_transaction_event(event.to_string(), TransactionWrapper::Completed(Box::new(completed)));
+            send_transaction_event(transaction_event, sender).await;
+        },
+        Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+    }
+}
+
+async fn handle_pending_outbound(
+    tx_id: TxId,
+    event: &str,
+    transaction_service: &mut TransactionServiceHandle,
+    sender: &mut Sender<Result<TransactionEventResponse, Status>>,
+) {
+    match transaction_service.get_pending_outbound_transactions().await {
+        Ok(mut txs) => {
+            if let Some(tx) = txs.remove(&tx_id) {
+                let transaction_event =
+                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx)));
+                send_transaction_event(transaction_event, sender).await;
+            } else {
+                error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
+            }
+        },
+        Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+    }
+}
+
+fn simple_event(event: &str) -> TransactionEvent {
+    TransactionEvent {
+        event: event.to_string(),
+        tx_id: String::default(),
+        source_pk: vec![],
+        dest_pk: vec![],
+        status: event.to_string(),
+        direction: event.to_string(),
+        amount: 0,
+        message: String::default(),
+        is_coinbase: false,
     }
 }
 

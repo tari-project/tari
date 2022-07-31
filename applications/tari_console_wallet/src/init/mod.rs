@@ -305,6 +305,7 @@ pub async fn init_wallet(
     let mut wallet = Wallet::start(
         config.wallet.clone(),
         config.peer_seeds.clone(),
+        config.auto_update.clone(),
         node_identity,
         factories,
         wallet_db,

@@ -29,7 +29,6 @@ use std::{
     ops::Shl,
 };
 
-use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -42,12 +41,13 @@ use tari_common_types::types::{
     RangeProof,
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
+    commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
     errors::RangeProofError,
     extended_range_proof::ExtendedRangeProofService,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService,
-    tari_utilities::{hex::to_hex, ByteArray},
+    ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
+    tari_utilities::ByteArray,
 };
 use tari_script::{ExecutionStack, TariScript};
 
@@ -71,8 +71,6 @@ use crate::{
     },
 };
 
-pub const LOG_TARGET: &str = "c::tx::tx_components::unblinded_output";
-
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
 // TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
@@ -91,11 +89,13 @@ pub struct UnblindedOutput {
     pub metadata_signature: ComSignature,
     pub script_lock_height: u64,
     pub encrypted_value: EncryptedValue,
+    pub minimum_value_promise: MicroTari,
 }
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroTari,
@@ -109,6 +109,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Self {
         Self {
             version,
@@ -123,6 +124,7 @@ impl UnblindedOutput {
             script_lock_height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         }
     }
 
@@ -138,6 +140,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Self {
         Self::new(
             TransactionOutputVersion::get_current_version(),
@@ -152,6 +155,7 @@ impl UnblindedOutput {
             script_lock_height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         )
     }
 
@@ -189,6 +193,7 @@ impl UnblindedOutput {
                 covenant: self.covenant.clone(),
                 version: self.version,
                 encrypted_value: self.encrypted_value.clone(),
+                minimum_value_promise: self.minimum_value_promise,
             },
             self.input_data.clone(),
             script_signature,
@@ -219,40 +224,67 @@ impl UnblindedOutput {
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
-        if self.features.recovery_byte != recovery_byte {
-            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
-            error!(
-                target: LOG_TARGET,
-                "Recovery byte set incorrectly - expected {}, got {} for commitment {}",
-                recovery_byte,
-                self.features.recovery_byte,
-                to_hex(commitment.as_bytes()),
-            );
-        }
+        let range_proof = self.construct_range_proof(factories, None)?;
 
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
             commitment,
-            RangeProof::from_bytes(
-                &factories
-                    .range_proof
-                    .construct_proof(&self.spending_key, self.value.into())?,
-            )
-            .map_err(|_| {
-                TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                    "Creating transaction output".to_string(),
-                ))
-            })?,
+            range_proof,
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
             self.covenant.clone(),
             self.encrypted_value.clone(),
+            self.minimum_value_promise,
         );
 
         Ok(output)
+    }
+
+    fn construct_range_proof(
+        &self,
+        factories: &CryptoFactories,
+        seed_nonce: Option<PrivateKey>,
+    ) -> Result<RangeProof, TransactionError> {
+        let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
+            match seed_nonce {
+                Some(nonce) => factories.range_proof.construct_proof_with_recovery_seed_nonce(
+                    &self.spending_key,
+                    self.value.into(),
+                    &nonce,
+                ),
+                None => factories
+                    .range_proof
+                    .construct_proof(&self.spending_key, self.value.into()),
+            }
+        } else {
+            let extended_mask =
+                RistrettoExtendedMask::assign(ExtensionDegree::DefaultPedersen, vec![self.spending_key.clone()])?;
+
+            let extended_witness = RistrettoExtendedWitness {
+                mask: extended_mask,
+                value: self.value.into(),
+                minimum_value_promise: self.minimum_value_promise.as_u64(),
+            };
+
+            factories
+                .range_proof
+                .construct_extended_proof(vec![extended_witness], seed_nonce)
+        };
+
+        let proof_bytes = proof_bytes_result.map_err(|err| {
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
+                "Failed to construct range proof: {}",
+                err
+            )))
+        })?;
+
+        RangeProof::from_bytes(&proof_bytes).map_err(|_| {
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                "Rangeproof factory returned invalid range proof bytes".to_string(),
+            ))
+        })
     }
 
     pub fn as_rewindable_transaction_output(
@@ -272,29 +304,13 @@ impl UnblindedOutput {
         let proof = if let Some(proof) = range_proof {
             proof.clone()
         } else {
-            let proof_bytes = factories.range_proof.construct_proof_with_recovery_seed_nonce(
-                &self.spending_key,
-                self.value.into(),
-                &rewind_data.rewind_blinding_key,
-            )?;
-            RangeProof::from_bytes(&proof_bytes).map_err(|_| {
-                TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                    "Creating rewindable transaction output".to_string(),
-                ))
-            })?
+            self.construct_range_proof(factories, Some(rewind_data.rewind_blinding_key.clone()))
+                .map_err(|_| {
+                    TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                        "Creating rewindable transaction output".to_string(),
+                    ))
+                })?
         };
-
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(rewind_data));
-        if self.features.recovery_byte != recovery_byte {
-            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
-            error!(
-                target: LOG_TARGET,
-                "Recovery byte set incorrectly (with rewind) - expected {}, got {} for commitment {}",
-                recovery_byte,
-                self.features.recovery_byte,
-                to_hex(commitment.as_bytes()),
-            );
-        }
 
         let output = TransactionOutput::new(
             self.version,
@@ -306,6 +322,7 @@ impl UnblindedOutput {
             self.metadata_signature.clone(),
             self.covenant.clone(),
             self.encrypted_value.clone(),
+            self.minimum_value_promise,
         );
 
         Ok(output)
@@ -328,6 +345,7 @@ impl UnblindedOutput {
             &self.script,
             &self.covenant,
             &self.encrypted_value,
+            self.minimum_value_promise,
         )
         .to_vec()
     }
@@ -368,6 +386,7 @@ impl Debug for UnblindedOutput {
             .field("sender_offset_public_key", &self.sender_offset_public_key)
             .field("metadata_signature", &self.metadata_signature)
             .field("script_lock_height", &self.script_lock_height)
+            .field("minimum_value_promise", &self.minimum_value_promise)
             .finish()
     }
 }

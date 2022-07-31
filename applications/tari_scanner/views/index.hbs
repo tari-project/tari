@@ -1,0 +1,28 @@
+<h1>Tari Scanner</h1>
+<h2>Current tip : {{tip}}</h2>
+{{#table id="validator_nodes" endpoint="/validator_nodes" rows=10}}
+  <th
+    id="{{id}}-column-0"
+    for_sort="data.id"
+    render="`<a href='/validator_node/${data.id}' class='pubkey'>${data.id}</a>`"
+  >Validator node</th>
+  <th id="{{id}}-column-1" render="data.first_signature || 'never'">First signature</th>
+  <th id="{{id}}-column-2" render="Object.keys(data.contracts).length"># of committees</th>
+  <th id="{{id}}-column-3" render="data.missed_checkpoints">Missed checkpoints</th>
+  <th id="{{id}}-column-4" render="Math.max(Object.values(data.last_checkpoint)) || 'never'">Last checkpoint</th>
+{{/table}}
+
+{{#table id="contracts" endpoint="/contracts" rows=10}}
+  <th
+    id="{{id}}-column-0"
+    for_sort="data.id"
+    render="`<a href='/contract/${data.id}' class='pubkey clickable'>${data.id}</a>`"
+  >Contract</th>
+  <th
+    id="{{id}}-column-1"
+    for_sort="data.name"
+    render="`<a href='/contract/${data.id}' class='clickable'>${data.name}</a>`"
+  >Name</th>
+  <th id="{{id}}-column-2" render="data.committee.length">Committee size</th>
+  <th id="{{id}}-column-3" render="data.last_checkpoint || 'never'">Last checkpoint</th>
+{{/table}}

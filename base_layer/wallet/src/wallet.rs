@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{cmp, marker::PhantomData, sync::Arc};
 
 use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::{ComSignature, PrivateKey, PublicKey},
+    types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -59,7 +59,7 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
 };
 use tari_p2p::{
-    auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
+    auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
@@ -104,6 +104,8 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet";
+/// The minimum buffer size for the wallet pubsub_connector channel
+const WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
@@ -143,6 +145,7 @@ where
     pub async fn start(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
+        auto_update: AutoUpdateConfig,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
@@ -154,7 +157,8 @@ where
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
-        let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
+        let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
+        let (publisher, subscription_factory) = pubsub_connector(buf_size, config.buffer_rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
@@ -169,7 +173,7 @@ where
             config.output_manager_service_config,
             config.transaction_service_config,
             config.buffer_size,
-            config.rate_limit
+            config.buffer_rate_limit
         );
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
@@ -223,14 +227,14 @@ where
             .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
-        let stack = if config.auto_update.is_update_enabled() {
+        let stack = if auto_update.is_update_enabled() {
             stack.add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::ConsoleWallet,
                 env!("CARGO_PKG_VERSION")
                     .to_string()
                     .parse()
                     .expect("Unable to parse console wallet version."),
-                config.auto_update.clone(),
+                auto_update.clone(),
             ))
         } else {
             stack
@@ -255,7 +259,7 @@ where
         let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
         let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
-        let updater_handle = if config.auto_update.is_update_enabled() {
+        let updater_handle = if auto_update.is_update_enabled() {
             Some(handles.expect_handle::<SoftwareUpdaterHandle>())
         } else {
             None
@@ -428,6 +432,7 @@ where
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_value: EncryptedValue,
+        minimum_value_promise: MicroTari,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -441,6 +446,7 @@ where
             script_lock_height,
             covenant,
             encrypted_value,
+            minimum_value_promise,
         );
 
         let tx_id = self
@@ -451,6 +457,7 @@ where
                 message,
                 Some(features.maturity),
                 ImportStatus::Imported,
+                None,
                 None,
                 None,
             )
@@ -493,6 +500,7 @@ where
                 message,
                 Some(unblinded_output.features.maturity),
                 ImportStatus::Imported,
+                None,
                 None,
                 None,
             )
@@ -538,18 +546,43 @@ where
         signature.verify_challenge(&public_key, challenge.clone().as_slice())
     }
 
+    /// Appraise the expected outputs and a fee
+    pub async fn preview_coin_split_with_commitments_no_amount(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        self.output_manager_service
+            .preview_coin_split_with_commitments_no_amount(commitments, split_count, fee_per_gram)
+            .await
+            .map_err(WalletError::OutputManagerError)
+    }
+
+    /// Appraise the expected outputs and a fee
+    pub async fn preview_coin_join_with_commitments(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        self.output_manager_service
+            .preview_coin_join_with_commitments(commitments, fee_per_gram)
+            .await
+            .map_err(WalletError::OutputManagerError)
+    }
+
     /// Do a coin split
     pub async fn coin_split(
         &mut self,
+        commitments: Vec<Commitment>,
         amount_per_split: MicroTari,
         split_count: usize,
         fee_per_gram: MicroTari,
         message: String,
-        lock_height: Option<u64>,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
-            .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+            .create_coin_split(commitments, amount_per_split, split_count, fee_per_gram)
             .await;
 
         match coin_split_tx {
@@ -558,6 +591,89 @@ where
                     .transaction_service
                     .submit_transaction(tx_id, split_tx, amount, message)
                     .await;
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
+    /// Do a coin split
+    pub async fn coin_split_even(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, WalletError> {
+        let coin_split_tx = self
+            .output_manager_service
+            .create_coin_split_even(commitments, split_count, fee_per_gram)
+            .await;
+
+        match coin_split_tx {
+            Ok((tx_id, split_tx, amount)) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .await;
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
+    /// Do a coin split
+    pub async fn coin_split_even_with_commitments(
+        &mut self,
+        commitments: Vec<Commitment>,
+        split_count: usize,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, WalletError> {
+        let coin_split_tx = self
+            .output_manager_service
+            .create_coin_split_even(commitments, split_count, fee_per_gram)
+            .await;
+
+        match coin_split_tx {
+            Ok((tx_id, split_tx, amount)) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .await;
+                match coin_tx {
+                    Ok(_) => Ok(tx_id),
+                    Err(e) => Err(WalletError::TransactionServiceError(e)),
+                }
+            },
+            Err(e) => Err(WalletError::OutputManagerError(e)),
+        }
+    }
+
+    pub async fn coin_join(
+        &mut self,
+        commitments: Vec<Commitment>,
+        fee_per_gram: MicroTari,
+        msg: Option<String>,
+    ) -> Result<TxId, WalletError> {
+        let coin_join_tx = self
+            .output_manager_service
+            .create_coin_join(commitments, fee_per_gram)
+            .await;
+
+        match coin_join_tx {
+            Ok((tx_id, tx, output_value)) => {
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, tx, output_value, msg.unwrap_or_default())
+                    .await;
+
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
