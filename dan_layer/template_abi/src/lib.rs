@@ -25,76 +25,14 @@
 //! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
 //! WASM modules.
 
-mod encoding;
-pub mod ops;
-
-use std::collections::HashMap;
-
+mod abi;
+pub use abi::*;
 pub use borsh::{self, BorshDeserialize as Decode, BorshSerialize as Encode};
+
+mod encoding;
 pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct TemplateDef {
-    pub template_name: String,
-    pub functions: Vec<FunctionDef>,
-}
+pub mod ops;
 
-impl TemplateDef {
-    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
-        self.functions.iter().find(|f| f.name.as_str() == name)
-    }
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct FunctionDef {
-    pub name: String,
-    pub arguments: Vec<Type>,
-    pub output: Type,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum Type {
-    Unit,
-    Bool,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    String,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CallInfo {
-    pub func_name: String,
-    pub args: Vec<Vec<u8>>,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct EmitLogArg {
-    pub message: String,
-    pub level: LogLevel,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum LogLevel {
-    Error,
-    Warn,
-    Info,
-    Debug,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CreateComponentArg {
-    // asset/component metadata
-    pub name: String,
-    pub quantity: u64,
-    pub metadata: HashMap<Vec<u8>, Vec<u8>>,
-    // encoded asset/component state
-    pub state: Vec<u8>,
-}
+mod types;
+pub use types::*;

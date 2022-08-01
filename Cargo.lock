@@ -5979,9 +5979,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.137"
+version = "1.0.142"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61ea8d54c77f8315140a05f4c7237403bf38b72704d031543aa1d16abbf517d1"
+checksum = "e590c437916fb6b221e1d00df6e3294f3fccd70ca7e92541c475d6ed6ef5fee2"
 dependencies = [
  "serde_derive",
 ]
@@ -6026,9 +6026,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.137"
+version = "1.0.142"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f26faba0c3959972377d3b2d306ee9f71faee9714294e41bb777f83f88578be"
+checksum = "34b5b8d809babe02f538c2cfec6f2c1ed10804c0e5a6a041a049a4f5588ccc2e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6647,7 +6647,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_script",
  "tari_utilities",
  "tonic",
@@ -6670,7 +6670,7 @@ dependencies = [
  "tari_common",
  "tari_common_types",
  "tari_comms",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_p2p",
  "tari_utilities",
  "thiserror",
@@ -6712,7 +6712,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_libtor",
  "tari_metrics",
  "tari_mmr",
@@ -6791,7 +6791,7 @@ dependencies = [
  "tari_app_utilities",
  "tari_common",
  "tari_common_types",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_dan_common_types",
  "tari_key_manager",
  "tari_mmr",
@@ -6826,7 +6826,7 @@ dependencies = [
  "sha3",
  "structopt",
  "tari_common_types",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_test_utils 0.34.0",
  "tempfile",
  "thiserror",
@@ -6850,7 +6850,7 @@ dependencies = [
  "lazy_static",
  "rand 0.8.5",
  "serde",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_utilities",
  "thiserror",
  "tokio 1.19.2",
@@ -6890,7 +6890,7 @@ dependencies = [
  "snow",
  "tari_common",
  "tari_comms_rpc_macros",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_metrics",
  "tari_shutdown",
  "tari_storage",
@@ -6940,7 +6940,7 @@ dependencies = [
  "tari_common_sqlite",
  "tari_comms",
  "tari_comms_rpc_macros",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils 0.34.0",
@@ -6999,7 +6999,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_key_manager",
  "tari_libtor",
  "tari_p2p",
@@ -7062,7 +7062,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_comms_rpc_macros",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_metrics",
  "tari_mmr",
  "tari_p2p",
@@ -7078,6 +7078,31 @@ dependencies = [
  "tracing",
  "tracing-attributes",
  "uint",
+]
+
+[[package]]
+name = "tari_crypto"
+version = "0.15.3"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.3#48001dd080b73bb60fedc629229ec7d60f51041a"
+dependencies = [
+ "base64 0.10.1",
+ "blake2 0.9.2",
+ "cbindgen 0.17.0",
+ "curve25519-dalek-ng",
+ "digest 0.9.0",
+ "lazy_static",
+ "log",
+ "merlin",
+ "once_cell",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha3",
+ "tari_bulletproofs",
+ "tari_bulletproofs_plus",
+ "tari_utilities",
+ "thiserror",
+ "zeroize",
 ]
 
 [[package]]
@@ -7141,7 +7166,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_comms_rpc_macros",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_dan_common_types",
  "tari_dan_engine",
  "tari_mmr",
@@ -7172,10 +7197,11 @@ dependencies = [
  "serde_json",
  "tari_common",
  "tari_common_types",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.3)",
  "tari_dan_common_types",
  "tari_mmr",
  "tari_template_abi",
+ "tari_template_types",
  "tari_utilities",
  "thiserror",
  "wasmer",
@@ -7234,7 +7260,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tari_common_types",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_utilities",
  "thiserror",
  "wasm-bindgen",
@@ -7286,7 +7312,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_utilities",
  "thiserror",
  "tokio 1.19.2",
@@ -7338,7 +7364,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_utilities",
  "thiserror",
  "tokio 1.19.2",
@@ -7357,7 +7383,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_utilities",
  "thiserror",
 ]
@@ -7376,7 +7402,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_common",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_utilities",
  "thiserror",
 ]
@@ -7407,7 +7433,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_comms_dht",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
@@ -7435,7 +7461,7 @@ dependencies = [
  "sha3",
  "tari_common",
  "tari_common_types",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_utilities",
  "thiserror",
 ]
@@ -7484,6 +7510,7 @@ name = "tari_template_abi"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "tari_template_types",
 ]
 
 [[package]]
@@ -7491,6 +7518,7 @@ name = "tari_template_lib"
 version = "0.1.0"
 dependencies = [
  "tari_template_abi",
+ "tari_template_types",
 ]
 
 [[package]]
@@ -7502,7 +7530,14 @@ dependencies = [
  "quote",
  "syn",
  "tari_template_abi",
- "tari_template_lib",
+]
+
+[[package]]
+name = "tari_template_types"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "serde",
 ]
 
 [[package]]
@@ -7574,7 +7609,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_comms_rpc_macros",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_dan_common_types",
  "tari_dan_core",
  "tari_dan_engine",
@@ -7628,7 +7663,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_key_manager",
  "tari_p2p",
  "tari_script",
@@ -7665,7 +7700,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_key_manager",
  "tari_p2p",
  "tari_script",
@@ -7891,7 +7926,7 @@ dependencies = [
  "serde_json",
  "tari_common_types",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.15.3 (git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.4)",
  "tari_script",
  "tari_utilities",
  "tokio 1.19.2",

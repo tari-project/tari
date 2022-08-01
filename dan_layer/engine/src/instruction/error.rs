@@ -20,7 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{packager::PackageId, wasm::WasmExecutionError};
+use tari_template_types::models::PackageId;
+
+use crate::wasm::WasmExecutionError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum InstructionError {

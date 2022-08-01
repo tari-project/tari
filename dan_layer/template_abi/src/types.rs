@@ -19,17 +19,73 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::models::resource::ResourceAddress;
+use tari_template_types::models::{Contract, ContractAddress, Package, PackageId};
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Vault {
-    address: ResourceAddress,
+use crate::{Decode, Encode};
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct TemplateDef {
+    pub template_name: String,
+    pub functions: Vec<FunctionDef>,
 }
 
-impl Vault {
-    pub fn new(address: ResourceAddress) -> Self {
-        Self { address }
+impl TemplateDef {
+    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
+        self.functions.iter().find(|f| f.name.as_str() == name)
     }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct FunctionDef {
+    pub name: String,
+    pub arguments: Vec<Type>,
+    pub output: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum Type {
+    Unit,
+    Bool,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    String,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct CallInfo {
+    pub func_name: String,
+    pub args: Vec<Vec<u8>>,
+    pub package: Package,
+    pub contract: Contract,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct EmitLogArg {
+    pub message: String,
+    pub level: LogLevel,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct CreateComponentArg {
+    pub contract_address: ContractAddress,
+    pub component_name: String,
+    pub package_id: PackageId,
+    pub state: Vec<u8>,
 }

@@ -46,13 +46,13 @@ pub fn generate_template(input: TokenStream) -> Result<TokenStream> {
     let dependencies = generate_dependencies();
 
     let output = quote! {
+        #dependencies
+
         #definition
 
         #abi
 
         #dispatcher
-
-        #dependencies
     };
 
     Ok(output)
@@ -94,6 +94,8 @@ mod tests {
         let output = generate_template(input).unwrap();
 
         assert_code_eq(output, quote! {
+            use tari_template_lib::{engine, get_context as context};
+
             pub mod template {
                 use tari_template_abi::borsh;
 
@@ -117,7 +119,7 @@ mod tests {
 
             #[no_mangle]
             pub extern "C" fn State_abi() -> *mut u8 {
-                use ::tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
+                use ::tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type, wrap_ptr};
 
                 let template = TemplateDef {
                     template_name: "State".to_string(),
@@ -146,8 +148,8 @@ mod tests {
 
             #[no_mangle]
             pub extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-                use ::tari_template_abi::{decode, encode_with_len, CallInfo};
-                use ::tari_template_lib::models::{get_state, set_state, initialise};
+                use ::tari_template_abi::{decode, encode_with_len, CallInfo, LogLevel, wrap_ptr};
+                use ::tari_template_lib::set_context_from_call_info;
 
                 if call_info.is_null() {
                     panic!("call_info is null");
@@ -156,34 +158,35 @@ mod tests {
                 let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
                 let call_info: CallInfo = decode(&call_data).unwrap();
 
+                set_context_from_call_info(&call_info);
+                engine().emit_log(LogLevel::Debug, format!("Dispatcher called with function {}" , call_info.func_name));
+
                 let result;
                 match call_info.func_name.as_str() {
                     "new" => {
                         let state = template::State::new();
-                        let rtn = initialise("State".to_string(), state);
+                        let rtn = engine().instantiate("State".to_string(), state);
                         result = encode_with_len(&rtn);
                     },
                     "get" => {
                         let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
-                        let mut state: template::State = get_state(arg_0);
+                        let mut state: template::State = engine().get_state(arg_0);
                         let rtn = template::State::get(&mut state);
                         result = encode_with_len(&rtn);
                     },
                     "set" => {
                         let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
                         let arg_1 = decode::<u32>(&call_info.args[1usize]).unwrap();
-                        let mut state: template::State = get_state(arg_0);
+                        let mut state: template::State = engine().get_state(arg_0);
                         let rtn = template::State::set(&mut state, arg_1);
                         result = encode_with_len(&rtn);
-                        set_state(arg_0, state);
+                        engine().set_state(arg_0, state);
                     },
                     _ => panic!("invalid function name")
                 };
 
                 wrap_ptr(result)
             }
-
-            use tari_template_lib::wrap_ptr;
         });
     }
 

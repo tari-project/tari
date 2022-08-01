@@ -20,38 +20,73 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Write};
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+    io,
+    io::Write,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::FixedHash;
 
-// This is to avoid adding borsh as a dependency in common types (and therefore every application).
-// TODO: Either this becomes the standard Hash type for the dan layer, or add borsh support to FixedHash.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Hash(FixedHash);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+pub struct Hash([u8; 32]);
 
 impl Hash {
-    pub fn into_inner(self) -> FixedHash {
+    pub fn into_inner(self) -> [u8; 32] {
         self.0
+    }
+
+    pub fn from_hex(s: &str) -> Result<Self, HashParseError> {
+        if s.len() != 64 {
+            return Err(HashParseError);
+        }
+
+        let mut hash = [0u8; 32];
+        for (i, h) in hash.iter_mut().enumerate() {
+            *h = u8::from_str_radix(&s[2 * i..2 * (i + 1)], 16).map_err(|_| HashParseError)?;
+        }
+        Ok(Hash(hash))
     }
 }
 
-impl From<FixedHash> for Hash {
-    fn from(hash: FixedHash) -> Self {
+impl From<[u8; 32]> for Hash {
+    fn from(hash: [u8; 32]) -> Self {
         Self(hash)
     }
 }
 
 impl BorshSerialize for Hash {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        (*self.0).serialize(writer)
+        self.0.serialize(writer)
     }
 }
 
 impl BorshDeserialize for Hash {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
         let hash = <[u8; 32] as BorshDeserialize>::deserialize(buf)?;
-        Ok(Hash(hash.into()))
+        Ok(Hash(hash))
+    }
+}
+
+impl Display for Hash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for x in self.0 {
+            write!(f, "{:02x?}", x)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct HashParseError;
+
+impl Error for HashParseError {}
+
+impl Display for HashParseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Failed to parse hash")
     }
 }
 

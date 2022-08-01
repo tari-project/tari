@@ -20,72 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
+use borsh::{BorshDeserialize, BorshSerialize};
 
-use digest::Digest;
-use rand::{rngs::OsRng, RngCore};
-use tari_template_types::models::PackageId;
+use crate::Hash;
 
-use crate::{
-    crypto,
-    packager::{error::PackageError, PackageModuleLoader},
-    wasm::{LoadedWasmModule, WasmModule},
-};
+pub type PackageId = Hash;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct Package {
-    id: PackageId,
-    wasm_modules: HashMap<String, LoadedWasmModule>,
+    pub id: PackageId,
 }
 
 impl Package {
-    pub fn builder() -> PackageBuilder {
-        PackageBuilder::new()
+    pub fn new(id: PackageId) -> Self {
+        Self { id }
     }
 
-    pub fn get_module_by_name(&self, name: &str) -> Option<&LoadedWasmModule> {
-        self.wasm_modules.get(name)
+    pub fn id(&self) -> &PackageId {
+        &self.id
     }
-
-    pub fn id(&self) -> PackageId {
-        self.id
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct PackageBuilder {
-    wasm_modules: Vec<WasmModule>,
-}
-
-impl PackageBuilder {
-    pub fn new() -> Self {
-        Self {
-            wasm_modules: Vec::new(),
-        }
-    }
-
-    pub fn add_wasm_module(&mut self, wasm_module: WasmModule) -> &mut Self {
-        self.wasm_modules.push(wasm_module);
-        self
-    }
-
-    pub fn build(&self) -> Result<Package, PackageError> {
-        let mut wasm_modules = HashMap::with_capacity(self.wasm_modules.len());
-        let id = new_package_id();
-        for wasm in &self.wasm_modules {
-            let loaded = wasm.load_module()?;
-            wasm_modules.insert(loaded.template_name().to_string(), loaded);
-        }
-
-        Ok(Package { id, wasm_modules })
-    }
-}
-
-fn new_package_id() -> PackageId {
-    let v = OsRng.next_u32();
-    let hash: [u8; 32] = crypto::hasher("package")
-          // TODO: Proper package id
-        .chain(&v.to_le_bytes())
-        .finalize().into();
-    hash.into()
 }

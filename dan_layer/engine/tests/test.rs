@@ -24,24 +24,23 @@ mod mock_runtime_interface;
 
 use borsh::BorshDeserialize;
 use mock_runtime_interface::MockRuntimeInterface;
-use tari_common_types::types::FixedHash;
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_dan_engine::{
     crypto::create_key_pair,
     instruction::{Instruction, InstructionBuilder, InstructionProcessor},
     models::ComponentId,
     packager::Package,
-    wasm::compile::build_wasm_module_from_source,
+    wasm::compile::compile_template,
 };
 use tari_template_abi::encode_with_len;
+use tari_template_types::models::PackageId;
 
 #[test]
 fn test_hello_world() {
     let template_test = TemplateTest::new("HelloWorld".to_string(), "tests/hello_world".to_string());
     let result: String = template_test.call_function("greet".to_string(), vec![]);
 
-    // FIXME: without the "encode_with_len" calls, the strings are different because of added padding characters
-    assert_eq!(encode_with_len(&result), encode_with_len(&"Hello World!"));
+    assert_eq!(result, "Hello World!");
 }
 
 #[test]
@@ -50,18 +49,23 @@ fn test_state() {
     let template_test = TemplateTest::new("State".to_string(), "tests/state".to_string());
 
     // constructor
-    let component: ComponentId = template_test.call_function("new".to_string(), vec![]);
+    let component1: ComponentId = template_test.call_function("new".to_string(), vec![]);
+    template_test.assert_calls(&["emit_log", "create_component"]);
+    template_test.clear_calls();
+
+    let component2: ComponentId = template_test.call_function("new".to_string(), vec![]);
+    assert_ne!(component1, component2);
 
     // call the "set" method to update the instance value
     let new_value = 20_u32;
     template_test.call_method::<()>("State".to_string(), "set".to_string(), vec![
-        encode_with_len(&component),
+        encode_with_len(&component2),
         encode_with_len(&new_value),
     ]);
 
     // call the "get" method to get the current value
     let value: u32 = template_test.call_method("State".to_string(), "get".to_string(), vec![encode_with_len(
-        &component,
+        &component2,
     )]);
     // TODO: when state storage is implemented in the engine, assert the previous setted value (20_u32)
     assert_eq!(value, 0);
@@ -69,17 +73,19 @@ fn test_state() {
 
 struct TemplateTest {
     template_name: String,
-    package_id: FixedHash,
+    package_id: PackageId,
     processor: InstructionProcessor<MockRuntimeInterface>,
     secret_key: RistrettoSecretKey,
+    runtime_interface: MockRuntimeInterface,
 }
 
 impl TemplateTest {
     pub fn new(template_name: String, template_path: String) -> Self {
-        let mut processor = InstructionProcessor::new(MockRuntimeInterface::new());
+        let runtime_interface = MockRuntimeInterface::new();
+        let mut processor = InstructionProcessor::new(runtime_interface.clone());
         let (secret_key, _pk) = create_key_pair();
 
-        let wasm = build_wasm_module_from_source(template_path).unwrap();
+        let wasm = compile_template(template_path).unwrap();
         let package = Package::builder().add_wasm_module(wasm).build().unwrap();
         let package_id = package.id();
         processor.load(package);
@@ -89,7 +95,17 @@ impl TemplateTest {
             package_id,
             processor,
             secret_key,
+            runtime_interface,
         }
+    }
+
+    pub fn assert_calls(&self, expected: &[&'static str]) {
+        let calls = self.runtime_interface.get_calls();
+        assert_eq!(calls, expected);
+    }
+
+    pub fn clear_calls(&self) {
+        self.runtime_interface.clear_calls();
     }
 
     pub fn call_function<T>(&self, func_name: String, args: Vec<Vec<u8>>) -> T

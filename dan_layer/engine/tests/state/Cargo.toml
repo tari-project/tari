@@ -10,6 +10,7 @@ edition = "2021"
 tari_template_abi = { path = "../../../template_abi" }
 tari_template_lib = { path = "../../../template_lib" }
 tari_template_macros = { path = "../../../template_macros" }
+tari_template_types = { path = "../../../template_types" }
 
 [profile.release]
 opt-level = 's'     # Optimize for size.

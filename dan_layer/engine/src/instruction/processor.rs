@@ -22,9 +22,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use tari_template_types::models::PackageId;
+
 use crate::{
     instruction::{error::InstructionError, Instruction, InstructionSet},
-    packager::{Package, PackageId},
+    packager::Package,
     runtime::{Runtime, RuntimeInterface},
     traits::Invokable,
     wasm::{ExecutionResult, Process},
@@ -73,7 +75,7 @@ where TRuntimeInterface: RuntimeInterface + Clone + 'static
                         .ok_or(InstructionError::TemplateNameNotFound { name: template })?;
 
                     // TODO: implement intelligent instance caching
-                    let process = Process::start(module.clone(), state.clone())?;
+                    let process = Process::start(module.clone(), state.clone(), package_id)?;
                     let result = process.invoke_by_name(&function, args)?;
                     results.push(result);
                 },
@@ -94,7 +96,7 @@ where TRuntimeInterface: RuntimeInterface + Clone + 'static
                         .ok_or(InstructionError::TemplateNameNotFound { name: component_id })?;
 
                     // TODO: implement intelligent instance caching
-                    let process = Process::start(module.clone(), state.clone())?;
+                    let process = Process::start(module.clone(), state.clone(), package_id)?;
                     let result = process.invoke_by_name(&method, args)?;
                     results.push(result);
                 },

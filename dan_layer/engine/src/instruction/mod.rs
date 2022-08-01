@@ -29,8 +29,8 @@ mod processor;
 pub use processor::InstructionProcessor;
 
 mod signature;
-
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
+pub use signature::InstructionSignature;
+use tari_template_types::models::PackageId;
 
 #[derive(Debug, Clone)]
 pub enum Instruction {

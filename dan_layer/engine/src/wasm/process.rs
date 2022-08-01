@@ -24,6 +24,7 @@ use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_template_abi::{decode, encode_into, encode_with_len, ops, CallInfo, CreateComponentArg, EmitLogArg, Type};
+use tari_template_types::models::{Contract, ContractAddress, PackageId};
 use wasmer::{Function, Instance, Module, Store, Val, WasmerEnv};
 
 use crate::{
@@ -43,17 +44,26 @@ pub struct Process {
     module: LoadedWasmModule,
     env: WasmEnv<Runtime>,
     instance: Instance,
+    package_id: PackageId,
+    contract_address: ContractAddress,
 }
 
 impl Process {
-    pub fn start(module: LoadedWasmModule, state: Runtime) -> Result<Self, WasmExecutionError> {
+    pub fn start(module: LoadedWasmModule, state: Runtime, package_id: PackageId) -> Result<Self, WasmExecutionError> {
         let store = Store::default();
         let mut env = WasmEnv::new(state);
         let tari_engine = Function::new_native_with_env(&store, env.clone(), Self::tari_engine_entrypoint);
         let resolver = env.create_resolver(&store, tari_engine);
         let instance = Instance::new(module.wasm_module(), &resolver)?;
         env.init_with_instance(&instance)?;
-        Ok(Self { module, env, instance })
+        Ok(Self {
+            module,
+            env,
+            instance,
+            package_id,
+            // TODO:
+            contract_address: ContractAddress::default(),
+        })
     }
 
     fn alloc_and_write<T: BorshSerialize>(&self, val: &T) -> Result<AllocPtr, WasmExecutionError> {
@@ -124,6 +134,10 @@ impl Invokable for Process {
             .ok_or_else(|| WasmExecutionError::FunctionNotFound { name: name.into() })?;
 
         let call_info = CallInfo {
+            contract: Contract {
+                address: self.contract_address,
+            },
+            package: tari_template_types::models::Package { id: self.package_id },
             func_name: func_def.name.clone(),
             args,
         };
