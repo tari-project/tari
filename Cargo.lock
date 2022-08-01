@@ -3197,6 +3197,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05a0bd019339e5d968b37855180087b7b9d512c5046fbd244cf8c95687927d6e"
+
+[[package]]
 name = "infer"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7239,6 +7245,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_dan_storage_lmdb"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "lmdb-zero",
+ "tari_dan_engine",
+ "tari_storage",
+ "tempfile",
+]
+
+[[package]]
 name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 dependencies = [
@@ -7530,6 +7547,24 @@ name = "tari_template_abi"
 version = "0.1.0"
 dependencies = [
  "borsh",
+]
+
+[[package]]
+name = "tari_template_lib"
+version = "0.1.0"
+dependencies = [
+ "tari_template_abi",
+]
+
+[[package]]
+name = "tari_template_macros"
+version = "0.1.0"
+dependencies = [
+ "indoc",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "tari_template_abi",
 ]
 
 [[package]]

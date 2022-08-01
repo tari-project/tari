@@ -1,4 +1,3 @@
-[workspace]
 [package]
 name = "tari_dan_storage_lmdb"
 version = "0.1.0"
