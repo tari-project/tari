@@ -510,6 +510,29 @@ Then(/node (.*) is at tip (.*)/, async function (node, name) {
 });
 
 Then(
+  /node (.*) lists blocks for heights (\d+) to (\d+)/,
+  async function (node, first, last) {
+    const client = this.getClient(node);
+    const start = first;
+    const end = last;
+    let heights = [];
+
+    for (let i = start; i <= end; i++) {
+      heights.push(i);
+    }
+    const blocks = await client.getBlocks(heights);
+    const results = blocks.map((result) =>
+      parseInt(result.block.header.height)
+    );
+    let i = 0; // for ordering check
+    for (let height = start; height <= end; height++) {
+      expect(results[i]).equal(height);
+      i++;
+    }
+  }
+);
+
+Then(
   /node (.*) lists headers (\d+) to (\d+) with correct heights/,
   async function (node, start, end) {
     const client = this.getClient(node);
@@ -522,6 +545,16 @@ Then(
     }
   }
 );
+
+When(/I get header by height (\d+) on (.*)/, async function (height, node) {
+  const client = this.getClient(node);
+  const header = await client.getHeaderByHeight(height);
+  this.lastResult = header.header;
+});
+
+Then(/header is returned with height (\d+)/, function (height) {
+  expect(this.lastResult.height).to.equal(height.toString());
+});
 
 When(
   /I run blockchain recovery on node (\S*)/,

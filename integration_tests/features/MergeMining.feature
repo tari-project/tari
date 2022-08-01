@@ -1,7 +1,7 @@
 # Copyright 2022 The Tari Project
 # SPDX-License-Identifier: BSD-3-Clause
 
-@merge-mining @base-node
+@merge-mining @base_node
   Feature: Merge Mining
 
     Scenario: Merge Mining Functionality Test Without Submitting To Origin

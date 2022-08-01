@@ -1,7 +1,7 @@
 # Copyright 2022 The Tari Project
 # SPDX-License-Identifier: BSD-3-Clause
 
-@reorg @base-node
+@reorg @base_node
 Feature: Reorgs
 
   @critical

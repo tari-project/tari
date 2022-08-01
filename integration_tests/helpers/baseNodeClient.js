@@ -52,6 +52,15 @@ class BaseNodeClient {
       });
   }
 
+  getHeaderByHeight(height) {
+    return this.client
+      .getHeaderByHeight(height)
+      .sendMessage({ height })
+      .then((header) => {
+        return header;
+      });
+  }
+
   getNetworkDifficulties(tip, start, end) {
     return this.client
       .getNetworkDifficulty()

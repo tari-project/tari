@@ -581,29 +581,6 @@ Then(
 );
 
 Then(
-  /node (.*) lists heights (\d+) to (\d+)/,
-  async function (node, first, last) {
-    const client = this.getClient(node);
-    const start = first;
-    const end = last;
-    let heights = [];
-
-    for (let i = start; i <= end; i++) {
-      heights.push(i);
-    }
-    const blocks = await client.getBlocks(heights);
-    const results = blocks.map((result) =>
-      parseInt(result.block.header.height)
-    );
-    let i = 0; // for ordering check
-    for (let height = start; height <= end; height++) {
-      expect(results[i]).equal(height);
-      i++;
-    }
-  }
-);
-
-Then(
   "I wait for recovery of wallet {word} to finish",
   { timeout: 600 * 1000 },
   async function (wallet_name) {

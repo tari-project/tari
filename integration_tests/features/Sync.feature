@@ -1,7 +1,7 @@
 # Copyright 2022 The Tari Project
 # SPDX-License-Identifier: BSD-3-Clause
 
-@sync @base-node
+@sync @base_node
 Feature: Block Sync
 
   Scenario Outline: Initial block sync

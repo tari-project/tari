@@ -1,7 +1,7 @@
 # Copyright 2022 The Tari Project
 # SPDX-License-Identifier: BSD-3-Clause
 
-@propagation @base-node
+@propagation @base_node
 Feature: Block Propagation
 
   Scenario Outline: Blocks are propagated through the network
