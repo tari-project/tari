@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Span, TokenStream, Ident};
 use quote::{format_ident, quote};
-use syn::{token::Brace, Block, Expr, ExprBlock, Result};
+use syn::{token::Brace, Block, Expr, ExprBlock, Result, Stmt, parse_quote};
 
 use crate::ast::{FunctionAst, TemplateAst};
 
@@ -71,7 +71,23 @@ pub fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
 }
 
 pub fn get_function_block(ast: FunctionAst) -> Expr {
-    let stmts = ast.statements;
+    // let args = vec![];
+    let mut stmts = vec![];
+
+    for (i, input_type) in ast.input_types.into_iter().enumerate() {
+        let arg_ident = format_ident!("arg_{}", i);
+        let type_ident = Ident::new(&input_type, Span::call_site());
+
+        let stmt: Stmt = parse_quote! {
+            let #arg_ident =
+                encode_with_len::<#type_ident>(&calldata.args[#i])
+                .unwrap();
+        };
+        
+        // args.push(parse_quote! { #arg_ident });
+        stmts.push(stmt);
+    }
+
     Expr::Block(ExprBlock {
         attrs: vec![],
         label: None,
@@ -126,7 +142,50 @@ mod tests {
                 let call_info: CallInfo = decode(&call_data).unwrap();
 
                 let result = match call_info.func_name.as_str() {
-                    "greet" => { "Hello World!".to_string() },
+                    "greet" => { },
+                    _ => panic!("invalid function name")
+                };
+
+                wrap_ptr(encode_with_len(&result))
+            }
+        });
+    }
+
+    #[test]
+    fn test_encoding() {
+        let input = TokenStream::from_str(indoc! {"
+            mod encoding {
+                struct Encoding {}
+                impl Encoding {
+                    pub fn foo(x: String, y: u32) -> String {
+                        format!(\"{} {}\", x, y)
+                    }
+                } 
+            }
+        "})
+        .unwrap();
+
+        let ast = parse2::<TemplateAst>(input).unwrap();
+
+        let output = generate_dispatcher(&ast).unwrap();
+
+        assert_code_eq(output, quote! {
+            #[no_mangle]
+            pub extern "C" fn Encoding_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+                use ::tari_template_abi::{decode, encode_with_len, CallInfo};
+
+                if call_info.is_null() {
+                    panic!("call_info is null");
+                }
+
+                let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
+                let call_info: CallInfo = decode(&call_data).unwrap();
+
+                let result = match call_info.func_name.as_str() {
+                    "foo" => {
+                        let arg_0 = encode_with_len::<String>(&calldata.args[0usize]).unwrap();
+                        let arg_1 = encode_with_len::<u32>(&calldata.args[1usize]).unwrap();
+                    },
                     _ => panic!("invalid function name")
                 };
 
