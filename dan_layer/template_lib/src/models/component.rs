@@ -20,4 +20,31 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// TODO: use the actual component id type
 pub type ComponentId = ([u8; 32], u32);
+
+use tari_template_abi::{Decode, Encode};
+
+pub trait ComponentState: Encode + Decode {}
+
+pub fn initialise<T: ComponentState>(_initial_state: T) -> u32 {
+    // TODO: call the engine initialize the component
+    // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+
+    0_u32
+}
+
+pub fn get_state<T: ComponentState>(_id: u32) -> T {
+    // TODO: call the engine to get the state
+    // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+
+    let len = std::mem::size_of::<T>();
+    let byte_vec = vec![0_u8; len];
+    let mut value = byte_vec.as_slice();
+    T::deserialize(&mut value).unwrap()
+}
+
+pub fn set_state<T: ComponentState>(_id: u32, _state: T) {
+    // TODO: call the engine to set the state
+    // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+}

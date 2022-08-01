@@ -33,7 +33,7 @@ pub mod models;
 
 // TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
 // available
-use std::{collections::HashMap, mem, ptr::copy, slice};
+use std::{collections::HashMap, mem, slice};
 
 use tari_template_abi::{encode_with_len, Decode, Encode, FunctionDef, TemplateDef};
 
@@ -119,21 +119,3 @@ pub fn call_debug<T: AsRef<[u8]>>(data: T) {
     unsafe { debug(ptr, len) }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
-    let cap = (len + 4) as usize;
-    let mut buf = Vec::<u8>::with_capacity(cap);
-    let ptr = buf.as_mut_ptr();
-    mem::forget(buf);
-    copy(len.to_le_bytes().as_ptr(), ptr, 4);
-    ptr
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn tari_free(ptr: *mut u8) {
-    let mut len = [0u8; 4];
-    copy(ptr, len.as_mut_ptr(), 4);
-
-    let cap = (u32::from_le_bytes(len) + 4) as usize;
-    let _ = Vec::<u8>::from_raw_parts(ptr, cap, cap);
-}

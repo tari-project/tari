@@ -171,6 +171,7 @@ dependencies = [
  "quote",
  "syn",
  "tari_template_abi",
+ "tari_template_lib",
 ]
 
 [[package]]
