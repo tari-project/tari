@@ -24,11 +24,13 @@ use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
     token::Comma,
+    Error,
     FnArg,
     Ident,
     ImplItem,
     ImplItemMethod,
     ItemImpl,
+    ItemMod,
     ItemStruct,
     Result,
     ReturnType,
@@ -44,8 +46,32 @@ pub struct TemplateAst {
 
 impl Parse for TemplateAst {
     fn parse(input: ParseStream) -> Result<Self> {
-        let struct_section: ItemStruct = input.parse()?;
-        let impl_section = input.parse()?;
+        // parse the "mod" block
+        let module: ItemMod = input.parse()?;
+
+        // get the contents of the "mod" block
+        let items = match module.content {
+            Some((_, items)) => items,
+            None => return Err(Error::new(module.ident.span(), "empty module")),
+        };
+
+        // there should be two items: the "struct" and the "impl" blocks
+        if items.len() != 2 {
+            return Err(Error::new(module.ident.span(), "invalid number of module sections"));
+        }
+
+        // get the "struct" block
+        let struct_section = match &items[0] {
+            syn::Item::Struct(struct_item) => struct_item.clone(),
+            _ => return Err(Error::new(module.ident.span(), "the first section is not a 'struct'")),
+        };
+
+        // get the "impl" block
+        let impl_section = match &items[1] {
+            syn::Item::Impl(impl_item) => impl_item.clone(),
+            _ => return Err(Error::new(module.ident.span(), "the second section is not an 'impl'")),
+        };
+
         let template_name = struct_section.ident.clone();
 
         Ok(Self {

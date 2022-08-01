@@ -20,22 +20,5 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, Mutex};
-
-pub fn tari_engine(env: &EngineEnvironment, op: i32, _args_ptr: i32, args_len: i32) -> i32 {
-    println!("tari_engine CALLED: op: {}, args: {}", op, args_len);
-    // TODO:
-    env.inc_counter();
-    0
-}
-
-#[derive(wasmer::WasmerEnv, Clone, Default)]
-pub struct EngineEnvironment {
-    counter: Arc<Mutex<i32>>,
-}
-
-impl EngineEnvironment {
-    pub fn inc_counter(&self) {
-        *self.counter.lock().unwrap() += 1;
-    }
-}
+pub const OP_EMIT_LOG: i32 = 0x00;
+pub const OP_CREATE_COMPONENT: i32 = 0x01;

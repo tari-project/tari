@@ -20,36 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-pub use builder::InstructionBuilder;
+use std::collections::HashMap;
 
-mod error;
+use tari_dan_common_types::Hash;
+use tari_template_abi::CreateComponentArg;
 
-mod processor;
-pub use processor::InstructionProcessor;
+pub type ComponentId = (Hash, u32);
 
-mod signature;
-
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
-
-#[derive(Debug, Clone)]
-pub enum Instruction {
-    CallFunction {
-        package_id: PackageId,
-        template: String,
-        function: String,
-        args: Vec<Vec<u8>>,
-    },
-    CallMethod {
-        package_id: PackageId,
-        component_id: String,
-        method: String,
-        args: Vec<Vec<u8>>,
-    },
+pub struct Component {
+    pub name: String,
+    pub quantity: u64,
+    pub metadata: HashMap<Vec<u8>, Vec<u8>>,
+    pub state: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
-pub struct InstructionSet {
-    pub instructions: Vec<Instruction>,
-    pub signature: InstructionSignature,
+impl From<CreateComponentArg> for Component {
+    fn from(arg: CreateComponentArg) -> Self {
+        Self {
+            name: arg.name,
+            quantity: arg.quantity,
+            metadata: arg.metadata,
+            state: arg.state,
+        }
+    }
 }

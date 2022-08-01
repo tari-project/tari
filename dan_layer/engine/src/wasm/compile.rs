@@ -24,7 +24,9 @@ use std::{fs, io, io::ErrorKind, path::Path, process::Command};
 
 use cargo_toml::{Manifest, Product};
 
-pub fn compile_template<P: AsRef<Path>>(package_dir: P) -> io::Result<Vec<u8>> {
+use super::module::WasmModule;
+
+pub fn build_wasm_module_from_source<P: AsRef<Path>>(package_dir: P) -> io::Result<WasmModule> {
     let status = Command::new("cargo")
         .current_dir(package_dir.as_ref())
         .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
@@ -65,5 +67,6 @@ pub fn compile_template<P: AsRef<Path>>(package_dir: P) -> io::Result<Vec<u8>> {
     path.set_extension("wasm");
 
     // return
-    fs::read(path)
+    let code = fs::read(path)?;
+    Ok(WasmModule::from_code(code))
 }
