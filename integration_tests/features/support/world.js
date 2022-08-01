@@ -727,7 +727,7 @@ class CustomWorld {
           console.log(
             `Node ${name} is at tip: ${currTip} (should be ${height})`
           );
-          result = result && (currTip === height);
+          result = result && currTip === height;
         });
         return result;
       },

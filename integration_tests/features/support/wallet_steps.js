@@ -1158,16 +1158,11 @@ When(
     const lastResult = await this.burn_tari(sourceWallet, amount, feePerGram);
     expect(lastResult.is_success).to.equal(true);
 
-    this.addTransaction(
-      sourceInfo.public_key,
-      lastResult.transaction_id
-    );
+    this.addTransaction(sourceInfo.public_key, lastResult.transaction_id);
     //lets now wait for this transaction to be at least broadcast before we continue.
     await waitFor(
       async () =>
-        sourceClient.isTransactionAtLeastBroadcast(
-          lastResult.transaction_id
-        ),
+        sourceClient.isTransactionAtLeastBroadcast(lastResult.transaction_id),
       true,
       60 * 1000,
       5 * 1000,
