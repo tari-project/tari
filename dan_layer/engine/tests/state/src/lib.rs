@@ -78,7 +78,7 @@ extern "C" fn State_abi() -> *mut u8 {
 }
 
 #[no_mangle]
-extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+unsafe extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
     let mut template_impl = TemplateImpl::new();
     use tari_template_abi::{ops::*, CreateComponentArg, EmitLogArg, LogLevel};
     use tari_template_lib::models::ComponentId;
