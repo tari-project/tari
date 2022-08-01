@@ -130,13 +130,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc855a42c7967b7c369eb5860f7164ef1f6f81c20c7cc1141f2a604e18723b03"
 
 [[package]]
-name = "state"
-version = "0.1.0"
-dependencies = [
- "tari_template_abi",
-]
-
-[[package]]
 name = "syn"
 version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -152,6 +145,13 @@ name = "tari_template_abi"
 version = "0.1.0"
 dependencies = [
  "borsh",
+]
+
+[[package]]
+name = "tari_template_lib"
+version = "0.1.0"
+dependencies = [
+ "tari_template_abi",
 ]
 
 [[package]]

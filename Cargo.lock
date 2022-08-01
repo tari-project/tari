@@ -7243,7 +7243,6 @@ name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "borsh",
  "diesel",
  "diesel_migrations",
  "log",
