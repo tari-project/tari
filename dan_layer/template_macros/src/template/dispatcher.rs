@@ -22,7 +22,7 @@
 
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
-use syn::{parse_quote, token::Brace, Block, Expr, ExprBlock, Result, Stmt};
+use syn::{parse_quote, token::Brace, Block, Expr, ExprBlock, Result};
 
 use crate::ast::{FunctionAst, TemplateAst, TypeAst};
 
@@ -35,7 +35,7 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
         #[no_mangle]
         pub extern "C" fn #dispatcher_function_name(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
             use ::tari_template_abi::{decode, encode_with_len, CallInfo};
-            use ::tari_template_lib::models::{get_state, set_state};
+            use ::tari_template_lib::models::{get_state, set_state, initialise};
 
             if call_info.is_null() {
                 panic!("call_info is null");
@@ -86,7 +86,7 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
             TypeAst::Receiver { mutability } => {
                 should_get_state = true;
                 should_set_state = mutability;
-                args.push(parse_quote! { &state });
+                args.push(parse_quote! { &mut state });
                 parse_quote! {
                     let #arg_ident =
                         encode_with_len::<u32>(&calldata.args[#i])
@@ -108,18 +108,31 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
 
     // load the component state
     if should_get_state {
-        stmts.push(get_state_statement(template_ident));
+        stmts.push(parse_quote! {
+            let mut state: template::#template_ident = get_state(arg_0);
+        });
     }
 
     // call the user defined function in the template
     let function_ident = Ident::new(&ast.name, Span::call_site());
-    stmts.push(parse_quote! {
-        result = template::#template_ident::#function_ident(#(#args),*);
-    });
+    if ast.is_constructor {
+        stmts.push(parse_quote! {
+            let state = template::#template_ident::#function_ident(#(#args),*);
+        });
+        stmts.push(parse_quote! {
+            result = initialise(state);
+        });
+    } else {
+        stmts.push(parse_quote! {
+            result = template::#template_ident::#function_ident(#(#args),*);
+        });
+    }
 
     // after user function invocation, update the component state
     if should_set_state {
-        stmts.push(set_state_statement());
+        stmts.push(parse_quote! {
+            set_state(arg_0, state);
+        });
     }
 
     // construct the code block for the function
@@ -133,18 +146,6 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
             stmts,
         },
     })
-}
-
-fn get_state_statement(template_ident: &Ident) -> Stmt {
-    parse_quote! {
-        let state: template::#template_ident = get_state(arg_0);
-    }
-}
-
-fn set_state_statement() -> Stmt {
-    parse_quote! {
-        set_state(arg_0, state);
-    }
 }
 
 #[cfg(test)]
@@ -180,6 +181,7 @@ mod tests {
             #[no_mangle]
             pub extern "C" fn Test_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
                 use ::tari_template_abi::{decode, encode_with_len, CallInfo};
+                use ::tari_template_lib::models::{get_state, set_state, initialise};
 
                 if call_info.is_null() {
                     panic!("call_info is null");
@@ -211,6 +213,9 @@ mod tests {
                     value: u32
                 }
                 impl Test {
+                    pub fn new() -> Self {
+                        Self { value: 0 }
+                    }
                     pub fn get(&self) -> u32 {
                         self.value
                     }
@@ -230,7 +235,7 @@ mod tests {
             #[no_mangle]
             pub extern "C" fn Test_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
                 use ::tari_template_abi::{decode, encode_with_len, CallInfo};
-                use ::tari_template_lib::models::{get_state, set_state};
+                use ::tari_template_lib::models::{get_state, set_state, initialise};
 
                 if call_info.is_null() {
                     panic!("call_info is null");
@@ -241,16 +246,20 @@ mod tests {
 
                 let result;
                 match call_info.func_name.as_str() {
+                    "new" => {
+                        let state = template::Test::new();
+                        result = initialise(state);
+                    },
                     "get" => {
                         let arg_0 = encode_with_len::<u32>(&calldata.args[0usize]).unwrap();
-                        let state: template::Test = get_state(arg_0);
-                        result = template::Test::get(&state);
+                        let mut state: template::Test = get_state(arg_0);
+                        result = template::Test::get(&mut state);
                     },
                     "set" => {
                         let arg_0 = encode_with_len::<u32>(&calldata.args[0usize]).unwrap();
                         let arg_1 = encode_with_len::<u32>(&calldata.args[1usize]).unwrap();
-                        let state: template::Test = get_state(arg_0);
-                        result = template::Test::set(&state, arg_1);
+                        let mut state: template::Test = get_state(arg_0);
+                        result = template::Test::set(&mut state, arg_1);
                         set_state(arg_0, state);
                     },
                     _ => panic!("invalid function name")

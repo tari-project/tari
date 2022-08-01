@@ -34,6 +34,7 @@ use syn::{
     ItemStruct,
     Result,
     ReturnType,
+    Signature,
     Stmt,
 };
 
@@ -98,6 +99,7 @@ impl TemplateAst {
                 input_types: Self::get_input_types(&m.sig.inputs),
                 output_type: Self::get_output_type_token(&m.sig.output),
                 statements: Self::get_statements(m),
+                is_constructor: Self::is_constructor(&m.sig),
             },
             _ => todo!(),
         }
@@ -140,6 +142,16 @@ impl TemplateAst {
     fn get_statements(method: &ImplItemMethod) -> Vec<Stmt> {
         method.block.stmts.clone()
     }
+
+    fn is_constructor(sig: &Signature) -> bool {
+        match &sig.output {
+            syn::ReturnType::Default => false, // the function does not return anything
+            syn::ReturnType::Type(_, t) => match t.as_ref() {
+                syn::Type::Path(type_path) => type_path.path.segments[0].ident == "Self",
+                _ => false,
+            },
+        }
+    }
 }
 
 pub struct FunctionAst {
@@ -147,6 +159,7 @@ pub struct FunctionAst {
     pub input_types: Vec<TypeAst>,
     pub output_type: Option<TypeAst>,
     pub statements: Vec<Stmt>,
+    pub is_constructor: bool,
 }
 
 pub enum TypeAst {
