@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod ast;
+mod component;
 mod template;
 
 use proc_macro::TokenStream;

@@ -24,7 +24,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_quote, Expr, Result};
 
-use crate::ast::{FunctionAst, TemplateAst};
+use crate::ast::{FunctionAst, TemplateAst, TypeAst};
 
 pub fn generate_abi(ast: &TemplateAst) -> Result<TokenStream> {
     let abi_function_name = format_ident!("{}_abi", ast.struct_section.ident);
@@ -51,13 +51,13 @@ pub fn generate_abi(ast: &TemplateAst) -> Result<TokenStream> {
 
 fn generate_function_def(f: &FunctionAst) -> Expr {
     let name = f.name.clone();
-    let arguments: Vec<Expr> = f
-        .input_types
-        .iter()
-        .map(String::as_str)
-        .map(generate_abi_type)
-        .collect();
-    let output = generate_abi_type(&f.output_type);
+
+    let arguments: Vec<Expr> = f.input_types.iter().map(generate_abi_type).collect();
+
+    let output = match &f.output_type {
+        Some(type_ast) => generate_abi_type(type_ast),
+        None => parse_quote!(Type::Unit),
+    };
 
     parse_quote!(
         FunctionDef {
@@ -68,23 +68,26 @@ fn generate_function_def(f: &FunctionAst) -> Expr {
     )
 }
 
-fn generate_abi_type(rust_type: &str) -> Expr {
-    // TODO: there may be a better way of handling this
+fn generate_abi_type(rust_type: &TypeAst) -> Expr {
     match rust_type {
-        "" => parse_quote!(Type::Unit),
-        "bool" => parse_quote!(Type::Bool),
-        "i8" => parse_quote!(Type::I8),
-        "i16" => parse_quote!(Type::I16),
-        "i32" => parse_quote!(Type::I32),
-        "i64" => parse_quote!(Type::I64),
-        "i128" => parse_quote!(Type::I128),
-        "u8" => parse_quote!(Type::U8),
-        "u16" => parse_quote!(Type::U16),
-        "u32" => parse_quote!(Type::U32),
-        "u64" => parse_quote!(Type::U64),
-        "u128" => parse_quote!(Type::U128),
-        "String" => parse_quote!(Type::String),
-        _ => todo!(),
+        TypeAst::Receiver { .. } => todo!(),
+        // TODO: there may be a better way of handling this
+        TypeAst::Typed(ident) => match ident.to_string().as_str() {
+            "" => parse_quote!(Type::Unit),
+            "bool" => parse_quote!(Type::Bool),
+            "i8" => parse_quote!(Type::I8),
+            "i16" => parse_quote!(Type::I16),
+            "i32" => parse_quote!(Type::I32),
+            "i64" => parse_quote!(Type::I64),
+            "i128" => parse_quote!(Type::I128),
+            "u8" => parse_quote!(Type::U8),
+            "u16" => parse_quote!(Type::U16),
+            "u32" => parse_quote!(Type::U32),
+            "u64" => parse_quote!(Type::U64),
+            "u128" => parse_quote!(Type::U128),
+            "String" => parse_quote!(Type::String),
+            _ => todo!(),
+        },
     }
 }
 

@@ -24,7 +24,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{parse_quote, token::Brace, Block, Expr, ExprBlock, Result, Stmt};
 
-use crate::ast::{FunctionAst, TemplateAst};
+use crate::ast::{FunctionAst, TemplateAst, TypeAst};
 
 pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
     let dispatcher_function_name = format_ident!("{}_main", ast.struct_section.ident);
@@ -35,6 +35,7 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
         #[no_mangle]
         pub extern "C" fn #dispatcher_function_name(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
             use ::tari_template_abi::{decode, encode_with_len, CallInfo};
+            use ::component::{get_state, set_state};
 
             if call_info.is_null() {
                 panic!("call_info is null");
@@ -45,7 +46,7 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
 
             let result;
             match call_info.func_name.as_str() {
-                #( #function_names => #function_blocks )*,
+                #( #function_names => #function_blocks ),*,
                 _ => panic!("invalid function name")
             };
 
@@ -56,11 +57,11 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
     Ok(output)
 }
 
-pub fn get_function_names(ast: &TemplateAst) -> Vec<String> {
+fn get_function_names(ast: &TemplateAst) -> Vec<String> {
     ast.get_functions().iter().map(|f| f.name.clone()).collect()
 }
 
-pub fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
+fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
     let mut blocks = vec![];
 
     for function in ast.get_functions() {
@@ -71,29 +72,57 @@ pub fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
     blocks
 }
 
-pub fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
+fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
     let mut args: Vec<Expr> = vec![];
     let mut stmts = vec![];
+    let mut should_get_state = false;
+    let mut should_set_state = false;
 
+    // encode all arguments of the functions
     for (i, input_type) in ast.input_types.into_iter().enumerate() {
         let arg_ident = format_ident!("arg_{}", i);
-        let type_ident = Ident::new(&input_type, Span::call_site());
-
-        let stmt: Stmt = parse_quote! {
-            let #arg_ident =
-                encode_with_len::<#type_ident>(&calldata.args[#i])
-                .unwrap();
+        let stmt = match input_type {
+            // "self" argument
+            TypeAst::Receiver { mutability } => {
+                should_get_state = true;
+                should_set_state = mutability;
+                args.push(parse_quote! { &state });
+                parse_quote! {
+                    let #arg_ident =
+                        encode_with_len::<u32>(&calldata.args[#i])
+                        .unwrap();
+                }
+            },
+            // non-self argument
+            TypeAst::Typed(type_ident) => {
+                args.push(parse_quote! { #arg_ident });
+                parse_quote! {
+                    let #arg_ident =
+                        encode_with_len::<#type_ident>(&calldata.args[#i])
+                        .unwrap();
+                }
+            },
         };
-
-        args.push(parse_quote! { #arg_ident });
         stmts.push(stmt);
     }
 
+    // load the component state
+    if should_get_state {
+        stmts.push(get_state_statement(template_ident));
+    }
+
+    // call the user defined function in the template
     let function_ident = Ident::new(&ast.name, Span::call_site());
     stmts.push(parse_quote! {
         result = template::#template_ident::#function_ident(#(#args),*);
     });
 
+    // after user function invocation, update the component state
+    if should_set_state {
+        stmts.push(set_state_statement());
+    }
+
+    // construct the code block for the function
     Expr::Block(ExprBlock {
         attrs: vec![],
         label: None,
@@ -104,6 +133,18 @@ pub fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
             stmts,
         },
     })
+}
+
+fn get_state_statement(template_ident: &Ident) -> Stmt {
+    parse_quote! {
+        let state: template::#template_ident = get_state(arg_0);
+    }
+}
+
+fn set_state_statement() -> Stmt {
+    parse_quote! {
+        set_state(arg_0, state);
+    }
 }
 
 #[cfg(test)]
@@ -118,54 +159,11 @@ mod tests {
     use crate::{ast::TemplateAst, template::dispatcher::generate_dispatcher};
 
     #[test]
-    fn test_hello_world() {
+    fn test_parameters() {
         let input = TokenStream::from_str(indoc! {"
-            mod hello_world {
-                struct HelloWorld {}
-                impl HelloWorld {
-                    pub fn greet() -> String {
-                        \"Hello World!\".to_string()
-                    }
-                } 
-            }
-        "})
-        .unwrap();
-
-        let ast = parse2::<TemplateAst>(input).unwrap();
-
-        let output = generate_dispatcher(&ast).unwrap();
-
-        assert_code_eq(output, quote! {
-            #[no_mangle]
-            pub extern "C" fn HelloWorld_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-                use ::tari_template_abi::{decode, encode_with_len, CallInfo};
-
-                if call_info.is_null() {
-                    panic!("call_info is null");
-                }
-
-                let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
-                let call_info: CallInfo = decode(&call_data).unwrap();
-
-                let result;
-                match call_info.func_name.as_str() {
-                    "greet" => {
-                        result = template::HelloWorld::greet();
-                    },
-                    _ => panic!("invalid function name")
-                };
-
-                wrap_ptr(encode_with_len(&result))
-            }
-        });
-    }
-
-    #[test]
-    fn test_encoding() {
-        let input = TokenStream::from_str(indoc! {"
-            mod encoding {
-                struct Encoding {}
-                impl Encoding {
+            mod test {
+                struct Test {}
+                impl Test {
                     pub fn foo(x: String, y: u32) -> String {
                         format!(\"{} {}\", x, y)
                     }
@@ -180,7 +178,7 @@ mod tests {
 
         assert_code_eq(output, quote! {
             #[no_mangle]
-            pub extern "C" fn Encoding_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+            pub extern "C" fn Test_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
                 use ::tari_template_abi::{decode, encode_with_len, CallInfo};
 
                 if call_info.is_null() {
@@ -195,7 +193,65 @@ mod tests {
                     "foo" => {
                         let arg_0 = encode_with_len::<String>(&calldata.args[0usize]).unwrap();
                         let arg_1 = encode_with_len::<u32>(&calldata.args[1usize]).unwrap();
-                        result = template::Encoding::foo(arg_0, arg_1);
+                        result = template::Test::foo(arg_0, arg_1);
+                    },
+                    _ => panic!("invalid function name")
+                };
+
+                wrap_ptr(encode_with_len(&result))
+            }
+        });
+    }
+
+    #[test]
+    fn test_state() {
+        let input = TokenStream::from_str(indoc! {"
+            mod test {
+                struct Test {
+                    value: u32
+                }
+                impl Test {
+                    pub fn get(&self) -> u32 {
+                        self.value
+                    }
+                    pub fn set(&mut self, value: u32) {
+                        self.value = value
+                    }
+                } 
+            }
+        "})
+        .unwrap();
+
+        let ast = parse2::<TemplateAst>(input).unwrap();
+
+        let output = generate_dispatcher(&ast).unwrap();
+
+        assert_code_eq(output, quote! {
+            #[no_mangle]
+            pub extern "C" fn Test_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+                use ::tari_template_abi::{decode, encode_with_len, CallInfo};
+                use ::component::{get_state, set_state};
+
+                if call_info.is_null() {
+                    panic!("call_info is null");
+                }
+
+                let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
+                let call_info: CallInfo = decode(&call_data).unwrap();
+
+                let result;
+                match call_info.func_name.as_str() {
+                    "get" => {
+                        let arg_0 = encode_with_len::<u32>(&calldata.args[0usize]).unwrap();
+                        let state: template::Test = get_state(arg_0);
+                        result = template::Test::get(&state);
+                    },
+                    "set" => {
+                        let arg_0 = encode_with_len::<u32>(&calldata.args[0usize]).unwrap();
+                        let arg_1 = encode_with_len::<u32>(&calldata.args[1usize]).unwrap();
+                        let state: template::Test = get_state(arg_0);
+                        result = template::Test::set(&state, arg_1);
+                        set_state(arg_0, state);
                     },
                     _ => panic!("invalid function name")
                 };
