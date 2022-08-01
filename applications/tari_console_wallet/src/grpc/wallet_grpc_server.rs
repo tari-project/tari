@@ -22,7 +22,6 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    ffi::OsString,
     fs,
     path::PathBuf,
 };
