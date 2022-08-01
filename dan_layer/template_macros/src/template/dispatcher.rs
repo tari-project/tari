@@ -24,7 +24,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{token::Brace, Block, Expr, ExprBlock, Result};
 
-use crate::ast::TemplateAst;
+use crate::ast::{FunctionAst, TemplateAst};
 
 pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
     let dispatcher_function_name = format_ident!("{}_main", ast.struct_section.ident);
@@ -63,20 +63,25 @@ pub fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
     let mut blocks = vec![];
 
     for function in ast.get_functions() {
-        let statements = function.statements;
-        blocks.push(Expr::Block(ExprBlock {
-            attrs: vec![],
-            label: None,
-            block: Block {
-                brace_token: Brace {
-                    span: Span::call_site(),
-                },
-                stmts: statements,
-            },
-        }));
+        let block = get_function_block(function);
+        blocks.push(block);
     }
 
     blocks
+}
+
+pub fn get_function_block(ast: FunctionAst) -> Expr {
+    let stmts = ast.statements;
+    Expr::Block(ExprBlock {
+        attrs: vec![],
+        label: None,
+        block: Block {
+            brace_token: Brace {
+                span: Span::call_site(),
+            },
+            stmts,
+        },
+    })
 }
 
 #[cfg(test)]
