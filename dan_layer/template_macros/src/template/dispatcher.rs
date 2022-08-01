@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use proc_macro2::{Span, TokenStream, Ident};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
-use syn::{token::Brace, Block, Expr, ExprBlock, Result, Stmt, parse_quote};
+use syn::{parse_quote, token::Brace, Block, Expr, ExprBlock, Result, Stmt};
 
 use crate::ast::{FunctionAst, TemplateAst};
 
@@ -43,7 +43,8 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
             let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
             let call_info: CallInfo = decode(&call_data).unwrap();
 
-            let result = match call_info.func_name.as_str() {
+            let result;
+            match call_info.func_name.as_str() {
                 #( #function_names => #function_blocks )*,
                 _ => panic!("invalid function name")
             };
@@ -63,15 +64,15 @@ pub fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
     let mut blocks = vec![];
 
     for function in ast.get_functions() {
-        let block = get_function_block(function);
+        let block = get_function_block(&ast.template_name, function);
         blocks.push(block);
     }
 
     blocks
 }
 
-pub fn get_function_block(ast: FunctionAst) -> Expr {
-    // let args = vec![];
+pub fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
+    let mut args: Vec<Expr> = vec![];
     let mut stmts = vec![];
 
     for (i, input_type) in ast.input_types.into_iter().enumerate() {
@@ -83,10 +84,15 @@ pub fn get_function_block(ast: FunctionAst) -> Expr {
                 encode_with_len::<#type_ident>(&calldata.args[#i])
                 .unwrap();
         };
-        
-        // args.push(parse_quote! { #arg_ident });
+
+        args.push(parse_quote! { #arg_ident });
         stmts.push(stmt);
     }
+
+    let function_ident = Ident::new(&ast.name, Span::call_site());
+    stmts.push(parse_quote! {
+        result = template::#template_ident::#function_ident(#(#args),*);
+    });
 
     Expr::Block(ExprBlock {
         attrs: vec![],
@@ -141,8 +147,11 @@ mod tests {
                 let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
                 let call_info: CallInfo = decode(&call_data).unwrap();
 
-                let result = match call_info.func_name.as_str() {
-                    "greet" => { },
+                let result;
+                match call_info.func_name.as_str() {
+                    "greet" => {
+                        result = template::HelloWorld::greet();
+                    },
                     _ => panic!("invalid function name")
                 };
 
@@ -181,10 +190,12 @@ mod tests {
                 let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
                 let call_info: CallInfo = decode(&call_data).unwrap();
 
-                let result = match call_info.func_name.as_str() {
+                let result;
+                match call_info.func_name.as_str() {
                     "foo" => {
                         let arg_0 = encode_with_len::<String>(&calldata.args[0usize]).unwrap();
                         let arg_1 = encode_with_len::<u32>(&calldata.args[1usize]).unwrap();
+                        result = template::Encoding::foo(arg_0, arg_1);
                     },
                     _ => panic!("invalid function name")
                 };
