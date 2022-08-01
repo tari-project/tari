@@ -1,6 +1,5 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-
 use tari_common::hashing_domain::HashingDomain;
 
 pub mod flow;
@@ -14,6 +13,7 @@ pub mod crypto;
 pub mod instruction;
 pub mod packager;
 pub mod runtime;
+pub mod state_store;
 pub mod traits;
 
 /// The DAN layer engine domain separated hashing domain
