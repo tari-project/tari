@@ -70,7 +70,9 @@ fn generate_function_def(f: &FunctionAst) -> Expr {
 
 fn generate_abi_type(rust_type: &TypeAst) -> Expr {
     match rust_type {
-        TypeAst::Receiver { .. } => todo!(),
+        // on "&self" we want to pass the component id
+        TypeAst::Receiver { .. } => get_component_id_type(),
+        // basic type
         // TODO: there may be a better way of handling this
         TypeAst::Typed(ident) => match ident.to_string().as_str() {
             "" => parse_quote!(Type::Unit),
@@ -86,9 +88,14 @@ fn generate_abi_type(rust_type: &TypeAst) -> Expr {
             "u64" => parse_quote!(Type::U64),
             "u128" => parse_quote!(Type::U128),
             "String" => parse_quote!(Type::String),
+            "Self" => get_component_id_type(),
             _ => todo!(),
         },
     }
+}
+
+fn get_component_id_type() -> Expr {
+    parse_quote!(Type::U32)
 }
 
 #[cfg(test)]
@@ -104,7 +111,7 @@ mod tests {
     use crate::ast::TemplateAst;
 
     #[test]
-    fn test_hello_world() {
+    fn test_signatures() {
         let input = TokenStream::from_str(indoc! {"
             mod foo {
                 struct Foo {}
@@ -115,7 +122,9 @@ mod tests {
                     pub fn some_args_function(a: i8, b: String) -> u32 {
                         1_u32
                     }
-                    pub fn no_return_function() {}  
+                    pub fn no_return_function() {}
+                    pub fn constructor() -> Self {}
+                    pub fn method(&self){}  
                 } 
             }
         "})
@@ -146,6 +155,16 @@ mod tests {
                         FunctionDef {
                             name: "no_return_function".to_string(),
                             arguments: vec![],
+                            output: Type::Unit,
+                        },
+                        FunctionDef {
+                            name: "constructor".to_string(),
+                            arguments: vec![],
+                            output: Type::U32,
+                        },
+                        FunctionDef {
+                            name: "method".to_string(),
+                            arguments: vec![Type::U32],
                             output: Type::Unit,
                         }
                     ],
