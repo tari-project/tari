@@ -1106,7 +1106,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let contents = fs::read_to_string(file_path)?;
         let words = contents
-            .split(" ")
+            .split(' ')
             .collect::<Vec<&str>>()
             .iter()
             .map(|&x| x.into())
