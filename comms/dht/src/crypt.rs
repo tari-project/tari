@@ -503,7 +503,7 @@ mod test {
         pad_message[1] = 255;
         pad_message[2] = 255;
         pad_message[3] = 255;
-        
+
         assert!(get_original_message_from_padded_text(pad_message.as_slice())
             .unwrap_err()
             .to_string()
