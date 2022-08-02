@@ -9284,9 +9284,9 @@ mod test {
             // println!("{:?}", mnemonic_seq);
 
             let mnemonic = vec![
-                "scale", "world", "galaxy", "impulse", "chair", "bone", "pledge", "history", "sudden", "assist", "hub",
-                "gauge", "mask", "total", "manual", "market", "obtain", "basket", "legend", "weird", "track", "rug",
-                "stumble", "harsh",
+                "theme", "stove", "win", "endorse", "ostrich", "voyage", "frequent", "battle", "crime", "volcano",
+                "dune", "also", "lunar", "banner", "clay", "that", "urge", "spin", "uncover", "extra", "village",
+                "mask", "trumpet", "bag",
             ];
 
             let seed_words = seed_words_create();

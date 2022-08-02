@@ -43,14 +43,16 @@ use chacha20::{
 use crc32fast::Hasher as CrcHasher;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
+use tari_common::mac_domain_hasher;
+use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::ByteArray;
 
 use crate::{
-    base_layer_key_manager_argon2_encoding,
-    base_layer_key_manager_chacha20_encoding,
-    base_layer_key_manager_mac_generation,
     error::KeyManagerError,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
+    KeyManagerArgon2Encoding,
+    KeyManagerChacha20Encoding,
+    KeyManagerMacGeneration,
 };
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
@@ -254,7 +256,9 @@ impl CipherSeed {
         // encryption nonce for ChaCha20 encryption, generated as a domain separated hash of the given salt. Following
         // https://libsodium.gitbook.io/doc/advanced/stream_ciphers/chacha20, as of the IEF variant, the produced encryption
         // nonce should be 96-bit long
-        let encryption_nonce = &base_layer_key_manager_chacha20_encoding().chain(salt).finalize();
+        let encryption_nonce = &mac_domain_hasher::<Blake256, KeyManagerChacha20Encoding>()
+            .chain(salt)
+            .finalize();
 
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
@@ -310,7 +314,7 @@ impl CipherSeed {
         // we take the first 32 bytes of the generated derived encryption key for MAC generation, see documentation
         let passphrase_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?[..32].to_vec();
 
-        Ok(base_layer_key_manager_mac_generation()
+        Ok(mac_domain_hasher::<Blake256, KeyManagerMacGeneration>()
             .chain(birthday)
             .chain(entropy)
             .chain(cipher_seed_version)
@@ -326,7 +330,9 @@ impl CipherSeed {
 
         // we produce a domain separated hash of the given salt, for Argon2 encryption use. As suggested in
         // https://en.wikipedia.org/wiki/Argon2, we shall use a 16-byte length hash salt
-        let argon2_salt = base_layer_key_manager_argon2_encoding().chain(salt).finalize();
+        let argon2_salt = mac_domain_hasher::<Blake256, KeyManagerArgon2Encoding>()
+            .chain(salt)
+            .finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
 
         // produce a base64 salt string
@@ -459,7 +465,7 @@ mod test {
         enciphered_seed[1] += 1;
 
         // clone the correct checksum
-        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec().clone();
+        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec();
 
         // generate a new checksum that coincides with the modified value
         let mut crc_hasher = CrcHasher::new();
@@ -486,7 +492,7 @@ mod test {
         enciphered_seed[5] += 1;
 
         // clone the correct checksum
-        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec().clone();
+        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec();
 
         // generate a new checksum that coincides with the modified value
         let mut crc_hasher = CrcHasher::new();
@@ -512,7 +518,7 @@ mod test {
         enciphered_seed[26] += 1;
 
         // clone the correct checksum
-        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec().clone();
+        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec();
 
         // generate a new checksum that coincides with the modified value
         let mut crc_hasher = CrcHasher::new();

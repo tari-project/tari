@@ -786,9 +786,9 @@ async fn test_recovery_birthday() {
     // println!("{:?}", mnemonic_seq);
 
     let seed_words: Vec<String> = [
-        "gas", "pond", "axis", "vendor", "radar", "attack", "resist", "gown", "screen", "airport", "arena", "fix",
-        "exit", "swift", "shrug", "category", "fringe", "noise", "track", "bright", "lesson", "forward", "detail",
-        "cement",
+        "parade", "allow", "earth", "sibling", "jealous", "tower", "pet", "project", "pole", "dizzy", "tower", "genre",
+        "marine", "immense", "region", "diagram", "dress", "symptom", "dutch", "require", "virus", "angry", "cotton",
+        "nominee",
     ]
     .iter()
     .map(|w| w.to_string())
