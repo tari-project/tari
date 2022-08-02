@@ -62,7 +62,7 @@ pub fn decrypt_bytes_integral_nonce(
     let (ciphertext, appended_mac) = ciphertext.split_at(ciphertext.len().saturating_sub(AES_MAC_BYTES));
     let nonce = GenericArray::from_slice(nonce);
 
-    let expected_mac = WalletEncryptionHasher::new("storage_encryption_mac")
+    let expected_mac = WalletEncryptionHasher::new_with_label("storage_encryption_mac")
         .chain(nonce.as_slice())
         .chain(ciphertext)
         .chain(domain)
@@ -90,7 +90,7 @@ pub fn encrypt_bytes_integral_nonce(
         .encrypt(nonce_ga, plaintext.as_bytes())
         .map_err(|e| e.to_string())?;
 
-    let mut mac = WalletEncryptionHasher::new("storage_encryption_mac")
+    let mut mac = WalletEncryptionHasher::new_with_label("storage_encryption_mac")
         .chain(nonce.as_slice())
         .chain(ciphertext.clone())
         .chain(domain.as_slice())
