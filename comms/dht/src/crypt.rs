@@ -540,7 +540,8 @@ mod test {
         let message = "My secret message, keep it secret !".as_bytes().to_vec();
         let mut encrypted = encrypt(&key, &message);
 
-        encrypted[size_of::<Nonce>() + LITTLE_ENDIAN_U64_SIZE_REPRESENTATION + 1] += 1;
+        let b = &mut encrypted[size_of::<Nonce>() + LITTLE_ENDIAN_U64_SIZE_REPRESENTATION + 1];
+        *b = b.wrapping_add(1);
 
         assert!(decrypt(&key, &encrypted).unwrap() != message);
     }
