@@ -89,7 +89,7 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
                 args.push(parse_quote! { &mut state });
                 parse_quote! {
                     let #arg_ident =
-                        encode_with_len::<u32>(&calldata.args[#i])
+                        decode::<u32>(&call_info.args[#i])
                         .unwrap();
                 }
             },
@@ -98,7 +98,7 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
                 args.push(parse_quote! { #arg_ident });
                 parse_quote! {
                     let #arg_ident =
-                        encode_with_len::<#type_ident>(&calldata.args[#i])
+                        decode::<#type_ident>(&call_info.args[#i])
                         .unwrap();
                 }
             },
@@ -193,8 +193,8 @@ mod tests {
                 let result;
                 match call_info.func_name.as_str() {
                     "foo" => {
-                        let arg_0 = encode_with_len::<String>(&calldata.args[0usize]).unwrap();
-                        let arg_1 = encode_with_len::<u32>(&calldata.args[1usize]).unwrap();
+                        let arg_0 = decode::<String>(&call_info.args[0usize]).unwrap();
+                        let arg_1 = decode::<u32>(&call_info.args[1usize]).unwrap();
                         result = template::Test::foo(arg_0, arg_1);
                     },
                     _ => panic!("invalid function name")
@@ -251,13 +251,13 @@ mod tests {
                         result = initialise(state);
                     },
                     "get" => {
-                        let arg_0 = encode_with_len::<u32>(&calldata.args[0usize]).unwrap();
+                        let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
                         let mut state: template::Test = get_state(arg_0);
                         result = template::Test::get(&mut state);
                     },
                     "set" => {
-                        let arg_0 = encode_with_len::<u32>(&calldata.args[0usize]).unwrap();
-                        let arg_1 = encode_with_len::<u32>(&calldata.args[1usize]).unwrap();
+                        let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
+                        let arg_1 = decode::<u32>(&call_info.args[1usize]).unwrap();
                         let mut state: template::Test = get_state(arg_0);
                         result = template::Test::set(&mut state, arg_1);
                         set_state(arg_0, state);

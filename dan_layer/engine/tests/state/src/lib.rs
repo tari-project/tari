@@ -20,127 +20,154 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_template_abi::{decode, encode_with_len, FunctionDef, Type};
-use tari_template_lib::{call_engine, generate_abi, generate_main, TemplateImpl};
 
-// that's what the example should look like from the user's perspective
-#[allow(dead_code)]
+
+use tari_template_macros::template;
+
+#[template]
 mod state_template {
-    use tari_template_abi::{borsh, Decode, Encode};
-
-    // #[tari::template]
-    #[derive(Encode, Decode)]
     pub struct State {
-        value: u32,
+        pub value: u32,
     }
 
-    // #[tari::impl]
     impl State {
-        // #[tari::constructor]
         pub fn new() -> Self {
             Self { value: 0 }
         }
 
-        pub fn set(&mut self, value: u32) {
+        pub fn set(&mut self, value: u32) -> u32 {
             self.value = value;
+            // TODO: allow empty return values
+            value
         }
 
         pub fn get(&self) -> u32 {
             self.value
         }
     }
+
 }
 
-// TODO: Macro generated code
-#[no_mangle]
-extern "C" fn State_abi() -> *mut u8 {
-    let template_name = "State".to_string();
+/*
+pub mod template {
+    use tari_template_abi::borsh;
+    
+    #[derive(tari_template_abi::borsh::BorshSerialize, tari_template_abi::borsh::BorshDeserialize)]
+    pub struct State {
+        value: u32
+    }
 
-    let functions = vec![
-        FunctionDef {
-            name: "new".to_string(),
-            arguments: vec![],
-            output: Type::U32, // the component_id
-        },
-        FunctionDef {
-            name: "set".to_string(),
-            arguments: vec![Type::U32, Type::U32], // the component_id and the new value
-            output: Type::Unit,                    // does not return anything
-        },
-        FunctionDef {
-            name: "get".to_string(),
-            arguments: vec![Type::U32], // the component_id
-            output: Type::U32,          // the stored value
-        },
-    ];
-
-    generate_abi(template_name, functions)
+    impl State {
+        pub fn new() -> Self {
+            Self { value: 0 }
+        }
+        pub fn get(&self) -> u32 {
+            self.value
+        }
+        pub fn set(&mut self, value: u32) -> u32 {
+            self.value = value;
+            value
+        }
+    }
 }
 
 #[no_mangle]
-extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-    let mut template_impl = TemplateImpl::new();
-    use tari_template_abi::{ops::*, CreateComponentArg, EmitLogArg, LogLevel};
-    use tari_template_lib::models::ComponentId;
+pub extern "C" fn State_abi() -> *mut u8 {
+    use ::tari_template_abi::{encode_with_len, FunctionDef, TemplateDef, Type};
 
-    tari_template_lib::call_engine::<_, ()>(OP_EMIT_LOG, &EmitLogArg {
-        message: "This is a log message from State_main!".to_string(),
-        level: LogLevel::Info,
-    });
+    let template = TemplateDef {
+        template_name: "State".to_string(),
+        functions: vec![
+            FunctionDef {
+                name: "new".to_string(),
+                arguments: vec![],
+                output: Type::U32,
+            },
+            FunctionDef {
+                name: "get".to_string(),
+                arguments: vec![Type::U32],
+                output: Type::U32,
+            },
+            FunctionDef {
+                name: "set".to_string(),
+                arguments: vec![Type::U32, Type::U32],
+                output: Type::Unit,
+            }
+        ],
+    };
 
-    // constructor
-    template_impl.add_function(
-        "new".to_string(),
-        Box::new(|_| {
-            let ret = state_template::State::new();
-            let encoded = encode_with_len(&ret);
-            // Call the engine to create a new component
-            // TODO: proper component id
-            // The macro will know to generate this call because of the #[tari(constructor)] attribute
-            // TODO: what happens if the user wants to return multiple components/types?
-            let component_id = call_engine::<_, ComponentId>(OP_CREATE_COMPONENT, &CreateComponentArg {
-                name: "State".to_string(),
-                quantity: 1,
-                metadata: Default::default(),
-                state: encoded,
-            });
-            let component_id = component_id.expect("no asset id returned");
-            encode_with_len(&component_id)
-        }),
-    );
-
-    template_impl.add_function(
-        "set".to_string(),
-        Box::new(|args| {
-            // read the function paramenters
-            let _component_id: u32 = decode(&args[0]).unwrap();
-            let _new_value: u32 = decode(&args[1]).unwrap();
-
-            // update the component value
-            // TODO: use a real op code (not "123") when they are implemented
-            call_engine::<_, ()>(123, &());
-
-            // the function does not return any value
-            // TODO: implement "Unit" type empty responses. Right now this fails: wrap_ptr(vec![])
-            encode_with_len(&0)
-        }),
-    );
-
-    template_impl.add_function(
-        "get".to_string(),
-        Box::new(|args| {
-            // read the function paramenters
-            let _component_id: u32 = decode(&args[0]).unwrap();
-
-            // get the component state
-            // TODO: use a real op code (not "123") when they are implemented
-            let _state = call_engine::<_, ()>(123, &());
-
-            // return the value
-            let value = 1_u32; // TODO: read from the component state
-            encode_with_len(&value)
-        }),
-    );
-
-    generate_main(call_info, call_info_len, template_impl)
+    let buf = encode_with_len(&template);
+    wrap_ptr(buf)
 }
+
+#[no_mangle]
+pub extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
+    use ::tari_template_abi::{decode, encode_with_len, CallInfo};
+    use ::tari_template_lib::models::{get_state, set_state, initialise};
+
+    if call_info.is_null() {
+        panic!("call_info is null");
+    }
+
+    let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
+    let call_info: CallInfo = decode(&call_data).unwrap();
+
+    let result;
+    match call_info.func_name.as_str() {
+        "new" => {
+            let state = template::State::new();
+            result = initialise(state);
+        },
+        "get" => {
+            let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
+            let mut state: template::State = get_state(arg_0);
+            result = template::State::get(&mut state);
+        },
+        "set" => {
+            let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
+            let arg_1 = decode::<u32>(&call_info.args[1usize]).unwrap();
+            let mut state: template::State = get_state(arg_0);
+            result = template::State::set(&mut state, arg_1);
+            set_state(arg_0, state);
+        },
+        _ => panic!("invalid function name")
+    };
+
+    wrap_ptr(encode_with_len(&result))
+}
+
+extern "C" {
+    pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+}
+
+pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
+    use std::mem;
+
+    let ptr = v.as_mut_ptr();
+    mem::forget(v);
+    ptr
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tari_alloc(len: u32) -> *mut u8 {
+    use std::{mem, intrinsics::copy};
+
+    let cap = (len + 4) as usize;
+    let mut buf = Vec::<u8>::with_capacity(cap);
+    let ptr = buf.as_mut_ptr();
+    mem::forget(buf);
+    copy(len.to_le_bytes().as_ptr(), ptr, 4);
+    ptr
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tari_free(ptr: *mut u8) {
+    use std::intrinsics::copy;
+
+    let mut len = [0u8; 4];
+    copy(ptr, len.as_mut_ptr(), 4);
+
+    let cap = (u32::from_le_bytes(len) + 4) as usize;
+    let _ = Vec::<u8>::from_raw_parts(ptr, cap, cap);
+}
+*/

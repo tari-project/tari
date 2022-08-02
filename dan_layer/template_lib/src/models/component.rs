@@ -25,16 +25,14 @@ pub type ComponentId = ([u8; 32], u32);
 
 use tari_template_abi::{Decode, Encode};
 
-pub trait ComponentState: Encode + Decode {}
-
-pub fn initialise<T: ComponentState>(_initial_state: T) -> u32 {
+pub fn initialise<T: Encode + Decode>(_initial_state: T) -> u32 {
     // TODO: call the engine initialize the component
     // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
 
     0_u32
 }
 
-pub fn get_state<T: ComponentState>(_id: u32) -> T {
+pub fn get_state<T: Encode + Decode>(_id: u32) -> T {
     // TODO: call the engine to get the state
     // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
 
@@ -44,7 +42,7 @@ pub fn get_state<T: ComponentState>(_id: u32) -> T {
     T::deserialize(&mut value).unwrap()
 }
 
-pub fn set_state<T: ComponentState>(_id: u32, _state: T) {
+pub fn set_state<T: Encode + Decode>(_id: u32, _state: T) {
     // TODO: call the engine to set the state
     // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
 }
