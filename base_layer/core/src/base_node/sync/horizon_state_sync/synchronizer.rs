@@ -743,7 +743,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         ));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
-        let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
+        let (calc_utxo_sum, calc_kernel_sum, calc_burned_sum) = self.calculate_commitment_sums(&header).await?;
 
         self.final_state_validator
             .validate(
@@ -751,6 +751,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.height(),
                 &calc_utxo_sum,
                 &calc_kernel_sum,
+                &calc_burned_sum,
             )
             .map_err(HorizonSyncError::FinalStateValidationFailed)?;
 
@@ -793,9 +794,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn calculate_commitment_sums(
         &mut self,
         header: &ChainHeader,
-    ) -> Result<(Commitment, Commitment), HorizonSyncError> {
+    ) -> Result<(Commitment, Commitment, Commitment), HorizonSyncError> {
         let mut utxo_sum = HomomorphicCommitment::default();
         let mut kernel_sum = HomomorphicCommitment::default();
+        let mut burned_sum = HomomorphicCommitment::default();
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
@@ -810,7 +812,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             for h in 0..=height {
                 let curr_header = db.fetch_chain_header(h)?;
-
                 trace!(
                     target: LOG_TARGET,
                     "Fetching utxos from db: height:{}, header.output_mmr:{}, prev_mmr:{}, end:{}",
@@ -866,6 +867,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
                 for k in kernels {
                     kernel_sum = &k.excess + &kernel_sum;
+                    if k.is_burned() {
+                        burned_sum = k.get_burn_commitment()? + &burned_sum;
+                    }
                 }
                 prev_kernel_mmr = curr_header.header().kernel_mmr_size;
 
@@ -888,7 +892,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 db.write(txn)?;
             }
 
-            Ok((utxo_sum, kernel_sum))
+            Ok((utxo_sum, kernel_sum, burned_sum))
         })
         .await?
     }

@@ -539,7 +539,19 @@ impl SenderTransactionProtocol {
         let mut s_agg = info.signatures[0].clone();
         info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
         let excess = PedersenCommitment::from_public_key(&info.public_excess);
-        let kernel = KernelBuilder::new()
+        let mut kernel_builder = KernelBuilder::new();
+        if features.is_burned() {
+            let mut commitment = None;
+            for o in &info.outputs {
+                if o.is_burned() {
+                    commitment = Some(o.commitment.clone());
+                }
+            }
+            kernel_builder = kernel_builder.with_burn_commitment(
+                commitment.ok_or_else(|| TPE::IncompleteStateError("No burned output found".to_string()))?,
+            );
+        }
+        let kernel = kernel_builder
             .with_fee(info.metadata.fee)
             .with_features(features)
             .with_lock_height(info.metadata.lock_height)

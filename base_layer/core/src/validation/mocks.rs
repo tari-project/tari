@@ -149,6 +149,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
         _height: u64,
         _total_utxo_sum: &Commitment,
         _total_kernel_sum: &Commitment,
+        _total_burned_sum: &Commitment,
     ) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

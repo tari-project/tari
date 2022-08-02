@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::collections::HashSet;
+
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
@@ -264,6 +266,33 @@ pub fn check_accounting_balance(
             );
             ValidationError::TransactionError(err)
         })
+}
+
+/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
+/// sum.
+#[allow(clippy::mutable_key_type)]
+pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
+    let mut burned_outputs = HashSet::new();
+    for output in body.outputs() {
+        if output.is_burned() {
+            // we dont care about duplicate commitments are they should have already been checked
+            burned_outputs.insert(output.commitment.clone());
+        }
+    }
+    for kernel in body.kernels() {
+        if kernel.is_burned() && burned_outputs.remove(kernel.get_burn_commitment()?) {
+            return Err(ValidationError::InvalidBurnError(
+                "Burned kernel does not match burned output".to_string(),
+            ));
+        }
+    }
+
+    if !burned_outputs.is_empty() {
+        return Err(ValidationError::InvalidBurnError(
+            "Burned output has no matching burned kernel".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 pub fn check_coinbase_output(
