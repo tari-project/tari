@@ -264,7 +264,7 @@ impl AggregateBody {
         for kernel in self.kernels() {
             if kernel.lock_height > height {
                 warn!(target: LOG_TARGET, "Kernel lock height was not reached: {}", kernel);
-                return Err(TransactionError::InvalidKernel);
+                return Err(TransactionError::InvalidKernel("Invalid lock height".to_string()));
             }
         }
         Ok(())

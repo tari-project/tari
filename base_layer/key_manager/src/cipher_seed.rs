@@ -23,12 +23,18 @@
 use std::{
     convert::TryFrom,
     mem::size_of,
-    time::{SystemTime, UNIX_EPOCH},
+    ops::Add,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use argon2::{
+    password_hash::{Salt, SaltString},
+    Argon2,
+    Params,
+    PasswordHasher,
+    Version,
+};
 use arrayvec::ArrayVec;
-use blake2::{digest::VariableOutput, VarBlake2b};
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
     ChaCha20,
@@ -36,18 +42,26 @@ use chacha20::{
     Nonce,
 };
 use crc32fast::Hasher as CrcHasher;
-use digest::Update;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
+use tari_common::mac_domain_hasher;
+use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::ByteArray;
 
 use crate::{
     error::KeyManagerError,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
+    KeyManagerArgon2Encoding,
+    KeyManagerChacha20Encoding,
+    KeyManagerMacGeneration,
 };
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
+// seconds elapsed from unix epoch until '2022-01-01' == 60 * 60 * 24 * 365 * 52
+pub const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1639872000;
 pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED";
+const ARGON2_SALT_BYTES: usize = 16;
+pub const CIPHER_SEED_BIRTHDAY_BYTES: usize = 2;
 pub const CIPHER_SEED_ENTROPY_BYTES: usize = 16;
 pub const CIPHER_SEED_SALT_BYTES: usize = 5;
 pub const CIPHER_SEED_MAC_BYTES: usize = 5;
@@ -70,7 +84,17 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 /// checksum    4 bytes
 ///
 /// In its enciphered form we will use the MAC-the-Encrypt pattern of AE so that the birthday and entropy will be
-/// encrypted. The version and salt are associated data that are included in the MAC but not encrypted.
+/// encrypted.
+///
+/// It is important to note that we don't generate the MAC directly from the provided low entropy passphrase.
+/// Instead, the intent is to use a password-based key derivation function to generate a derived key of higher
+/// effective entropy through the use of a carefully-designed function like Argon2 that's built for this purpose.
+/// The corresponding derived key has output of length 64-bytes, and we use the first and last 32-bytes for MAC and
+/// ChaCha20 encryption, respectively. In such way, we follow the motto of not reusing the same derived keys more
+/// than once. Another key ingredient in our approach is the use of domain separation, via the current hashing API.
+/// See https://github.com/tari-project/tari/issues/4182 for more information.
+///
+/// The version and salt are associated data that are included in the MAC but not encrypted.
 /// The enciphered data will look as follows:
 /// version     1 byte
 /// ciphertext  23 bytes
@@ -100,7 +124,12 @@ impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-        let days = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / SECONDS_PER_DAY;
+        let birthday_genesis_date = UNIX_EPOCH.add(Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH));
+        let days = SystemTime::now()
+            .duration_since(birthday_genesis_date)
+            .unwrap()
+            .as_secs() /
+            SECONDS_PER_DAY;
         let birthday = u16::try_from(days).unwrap_or(0u16);
         CipherSeed::new_with_birthday(birthday)
     }
@@ -134,19 +163,18 @@ impl CipherSeed {
 
         let passphrase = passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string());
 
-        // Construct HMAC and include the version and salt as Associated Data
-        let blake2_mac_hasher: VarBlake2b = VarBlake2b::new(CIPHER_SEED_MAC_BYTES)
-            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
-        let mut hmac = [0u8; CIPHER_SEED_MAC_BYTES];
-        blake2_mac_hasher
-            .chain(plaintext.clone())
-            .chain([CIPHER_SEED_VERSION])
-            .chain(self.salt)
-            .chain(passphrase.as_bytes())
-            .finalize_variable(|res| hmac.copy_from_slice(res));
+        // generate the current MAC
+        let mut mac = Self::generate_mac(
+            &self.birthday.to_le_bytes(),
+            &self.entropy(),
+            &[CIPHER_SEED_VERSION],
+            &self.salt,
+            passphrase.as_str(),
+        )?;
 
-        plaintext.append(&mut hmac.to_vec());
+        plaintext.append(&mut mac);
 
+        // apply cipher stream
         Self::apply_stream_cipher(&mut plaintext, &passphrase, &self.salt)?;
 
         let mut final_seed = vec![CIPHER_SEED_VERSION];
@@ -193,9 +221,10 @@ impl CipherSeed {
         let mut enciphered_seed = body.split_off(1);
         let received_version = body[0];
 
+        // apply cipher stream
         Self::apply_stream_cipher(&mut enciphered_seed, &passphrase, salt.as_slice())?;
 
-        let decrypted_hmac = enciphered_seed.split_off(enciphered_seed.len() - CIPHER_SEED_MAC_BYTES);
+        let decrypted_mac = enciphered_seed.split_off(enciphered_seed.len() - CIPHER_SEED_MAC_BYTES);
 
         let decrypted_entropy_vec: ArrayVec<_, CIPHER_SEED_ENTROPY_BYTES> =
             enciphered_seed.split_off(2).into_iter().collect();
@@ -203,22 +232,20 @@ impl CipherSeed {
             .into_inner()
             .map_err(|_| KeyManagerError::InvalidData)?;
 
-        let mut birthday_bytes: [u8; 2] = [0u8; 2];
+        let mut birthday_bytes: [u8; CIPHER_SEED_BIRTHDAY_BYTES] = [0u8; CIPHER_SEED_BIRTHDAY_BYTES];
         birthday_bytes.copy_from_slice(&enciphered_seed);
         let decrypted_birthday = u16::from_le_bytes(birthday_bytes);
 
-        let blake2_mac_hasher: VarBlake2b = VarBlake2b::new(CIPHER_SEED_MAC_BYTES)
-            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
-        let mut hmac = [0u8; CIPHER_SEED_MAC_BYTES];
-        blake2_mac_hasher
-            .chain(&birthday_bytes)
-            .chain(&decrypted_entropy)
-            .chain([CIPHER_SEED_VERSION])
-            .chain(salt.as_slice())
-            .chain(passphrase.as_bytes())
-            .finalize_variable(|res| hmac.copy_from_slice(res));
+        // generate the MAC
+        let mac = Self::generate_mac(
+            &decrypted_birthday.to_le_bytes(),
+            &decrypted_entropy,
+            &[CIPHER_SEED_VERSION],
+            salt.as_slice(),
+            passphrase.as_str(),
+        )?;
 
-        if decrypted_hmac != hmac.to_vec() {
+        if decrypted_mac != mac {
             return Err(KeyManagerError::DecryptionFailed);
         }
 
@@ -234,25 +261,21 @@ impl CipherSeed {
     }
 
     fn apply_stream_cipher(data: &mut Vec<u8>, passphrase: &str, salt: &[u8]) -> Result<(), KeyManagerError> {
-        let argon2 = Argon2::default();
-        let blake2_nonce_hasher: VarBlake2b = VarBlake2b::new(size_of::<Nonce>())
-            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
-
-        let mut encryption_nonce = [0u8; size_of::<Nonce>()];
-        blake2_nonce_hasher
+        // encryption nonce for ChaCha20 encryption, generated as a domain separated hash of the given salt. Following
+        // https://libsodium.gitbook.io/doc/advanced/stream_ciphers/chacha20, as of the IEF variant, the produced encryption
+        // nonce should be 96-bit long
+        let encryption_nonce = &mac_domain_hasher::<Blake256, KeyManagerChacha20Encoding>()
             .chain(salt)
-            .finalize_variable(|res| encryption_nonce.copy_from_slice(res));
-        let nonce_ga = Nonce::from_slice(&encryption_nonce);
+            .finalize();
 
-        // Create salt string stretched to the chacha nonce size, we only have space for 5 bytes of salt in the seed but
-        // will use key stretching to produce a longer nonce for the passphrase hash and the encryption nonce.
-        let salt_b64 = SaltString::b64_encode(&encryption_nonce)?;
+        let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
 
-        let derived_encryption_key = argon2
-            .hash_password_simple(passphrase.as_bytes(), salt_b64.as_str())?
-            .hash
-            .ok_or_else(|| KeyManagerError::CryptographicError("Problem generating encryption key hash".to_string()))?;
-        let key = Key::from_slice(derived_encryption_key.as_bytes());
+        let nonce_ga = Nonce::from_slice(encryption_nonce);
+
+        // we take the last 32 bytes of the generated derived encryption key for ChaCha20 cipher, see documentation
+        let derived_encryption_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?[32..].to_vec();
+
+        let key = Key::from_slice(derived_encryption_key.as_slice());
         let mut cipher = ChaCha20::new(key, nonce_ga);
         cipher.apply_keystream(data.as_mut_slice());
 
@@ -265,6 +288,92 @@ impl CipherSeed {
 
     pub fn birthday(&self) -> u16 {
         self.birthday
+    }
+}
+
+impl CipherSeed {
+    fn generate_mac(
+        birthday: &[u8],
+        entropy: &[u8],
+        cipher_seed_version: &[u8],
+        salt: &[u8],
+        passphrase: &str,
+    ) -> Result<Vec<u8>, KeyManagerError> {
+        // birthday should be 2 bytes long
+        if birthday.len() != CIPHER_SEED_BIRTHDAY_BYTES {
+            return Err(KeyManagerError::InvalidData);
+        }
+
+        // entropy should be 16 bytes long
+        if entropy.len() != CIPHER_SEED_ENTROPY_BYTES {
+            return Err(KeyManagerError::InvalidData);
+        }
+
+        // cipher_seed_version should be 1 byte long
+        if cipher_seed_version.len() != 1 {
+            return Err(KeyManagerError::InvalidData);
+        }
+
+        // salt should be 5 bytes long
+        if salt.len() != CIPHER_SEED_SALT_BYTES {
+            return Err(KeyManagerError::InvalidData);
+        }
+
+        // we take the first 32 bytes of the generated derived encryption key for MAC generation, see documentation
+        let passphrase_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?[..32].to_vec();
+
+        Ok(mac_domain_hasher::<Blake256, KeyManagerMacGeneration>()
+            .chain(birthday)
+            .chain(entropy)
+            .chain(cipher_seed_version)
+            .chain(salt)
+            .chain(passphrase_key.as_slice())
+            .finalize()
+            .as_ref()[..CIPHER_SEED_MAC_BYTES]
+            .to_vec())
+    }
+
+    fn generate_domain_separated_passphrase_hash(passphrase: &str, salt: &[u8]) -> Result<Vec<u8>, KeyManagerError> {
+        let argon2 = Argon2::default();
+
+        // we produce a domain separated hash of the given salt, for Argon2 encryption use. As suggested in
+        // https://en.wikipedia.org/wiki/Argon2, we shall use a 16-byte length hash salt
+        let argon2_salt = mac_domain_hasher::<Blake256, KeyManagerArgon2Encoding>()
+            .chain(salt)
+            .finalize();
+        let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
+
+        // produce a base64 salt string
+        let argon2_salt = SaltString::b64_encode(argon2_salt)?;
+
+        // to generate two 32-byte keys, we produce a 64-byte argon2 output, as the default output size
+        // for argon is 32, we have to update its parameters accordingly
+
+        // the following choice of parameters is based on
+        // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+        let params = Params {
+            m_cost: 37 * 1024,       // m-cost should be 37 Mib = 37 * 1024 Kib
+            t_cost: 1,               // t-cost
+            p_cost: 1,               // p-cost
+            output_size: 64,         // 64 bytes output size,
+            version: Version::V0x13, // version
+        };
+
+        // Argon2id algorithm: https://docs.rs/argon2/0.2.4/argon2/enum.Algorithm.html#variant.Argon2id
+        let algorithm = argon2::Algorithm::Argon2id;
+
+        // generate the given derived encryption key
+        let derived_encryption_key = argon2
+            .hash_password(
+                passphrase.as_bytes(),
+                Some(algorithm.ident()),
+                params,
+                Salt::try_from(argon2_salt.as_str())?,
+            )?
+            .hash
+            .ok_or_else(|| KeyManagerError::CryptographicError("Problem generating encryption key hash".to_string()))?;
+
+        Ok(derived_encryption_key.as_bytes().into())
     }
 }
 
@@ -311,6 +420,8 @@ impl Mnemonic<CipherSeed> for CipherSeed {
 
 #[cfg(test)]
 mod test {
+    use crc32fast::Hasher as CrcHasher;
+
     use crate::{
         cipher_seed::CipherSeed,
         error::KeyManagerError,
@@ -325,6 +436,7 @@ mod test {
 
         let deciphered_seed =
             CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("Passphrase".to_string())).unwrap();
+
         assert_eq!(seed, deciphered_seed);
 
         match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("WrongPassphrase".to_string())) {
@@ -339,7 +451,9 @@ mod test {
             _ => panic!("Version should not match"),
         }
 
+        // recover correct version
         enciphered_seed[0] = 0;
+
         // Prevent the 1 our 256 chances that it was already a zero
         if enciphered_seed[1] == 0 {
             enciphered_seed[1] = 1;
@@ -350,6 +464,89 @@ mod test {
             Err(KeyManagerError::CrcError) => (),
             _ => panic!("Crc should not match"),
         }
+
+        // the following consists of three tests in which checksum is correctly changed by adversary,
+        // after changing either birthday, entropy and salt. The MAC decryption should fail in all these
+        // three scenarios.
+
+        // change birthday
+        enciphered_seed[1] += 1;
+
+        // clone the correct checksum
+        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec();
+
+        // generate a new checksum that coincides with the modified value
+        let mut crc_hasher = CrcHasher::new();
+        crc_hasher.update(&enciphered_seed[..(enciphered_seed.len() - 4)]);
+
+        let calculated_checksum: [u8; 4] = crc_hasher.finalize().to_le_bytes();
+
+        // change checksum accordingly, from the viewpoint of an attacker
+        let n = enciphered_seed.len();
+        enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
+
+        // the MAC decryption should fail in this case
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+            Err(KeyManagerError::DecryptionFailed) => (),
+            _ => panic!("Decryption should fail"),
+        }
+
+        // recover original data
+        enciphered_seed[1] -= 1;
+        enciphered_seed[(n - 4)..].copy_from_slice(&checksum[..]);
+
+        // change entropy and repeat test
+
+        enciphered_seed[5] += 1;
+
+        // clone the correct checksum
+        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec();
+
+        // generate a new checksum that coincides with the modified value
+        let mut crc_hasher = CrcHasher::new();
+        crc_hasher.update(&enciphered_seed[..(enciphered_seed.len() - 4)]);
+
+        let calculated_checksum: [u8; 4] = crc_hasher.finalize().to_le_bytes();
+
+        // change checksum accordingly, from the viewpoint of an attacker
+        let n = enciphered_seed.len();
+        enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
+
+        // the MAC decryption should fail in this case
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+            Err(KeyManagerError::DecryptionFailed) => (),
+            _ => panic!("Decryption should fail"),
+        }
+
+        // recover original data
+        enciphered_seed[5] -= 1;
+        enciphered_seed[(n - 4)..].copy_from_slice(&checksum[..]);
+
+        // change salt and repeat test
+        enciphered_seed[26] += 1;
+
+        // clone the correct checksum
+        let checksum: Vec<u8> = enciphered_seed[(enciphered_seed.len() - 4)..].to_vec();
+
+        // generate a new checksum that coincides with the modified value
+        let mut crc_hasher = CrcHasher::new();
+        crc_hasher.update(&enciphered_seed[..(enciphered_seed.len() - 4)]);
+
+        let calculated_checksum: [u8; 4] = crc_hasher.finalize().to_le_bytes();
+
+        // change checksum accordingly, from the viewpoint of an attacker
+        let n = enciphered_seed.len();
+        enciphered_seed[(n - 4)..].copy_from_slice(&calculated_checksum);
+
+        // the MAC decryption should fail in this case
+        match CipherSeed::from_enciphered_bytes(&enciphered_seed, Some("passphrase".to_string())) {
+            Err(KeyManagerError::DecryptionFailed) => (),
+            _ => panic!("Decryption should fail"),
+        }
+
+        // recover original data
+        enciphered_seed[26] -= 1;
+        enciphered_seed[(n - 4)..].copy_from_slice(&checksum[..]);
     }
 
     #[test]

@@ -44,7 +44,6 @@ mod dns;
 // Re-export
 pub use socks_authentication::SocksAuthentication;
 pub use tari_common::configuration::Network;
-use tari_common::hashing_domain::HashingDomain;
 pub use tor_authentication::TorControlAuthentication;
 pub use transport::{Socks5TransportConfig, TcpTransportConfig, TorTransportConfig, TransportConfig, TransportType};
 
@@ -58,11 +57,3 @@ pub const MAJOR_NETWORK_VERSION: u8 = 0;
 /// Minor network version. This should change with each time the network protocol has changed in a backward-compatible
 /// way.
 pub const MINOR_NETWORK_VERSION: u8 = 0;
-
-/// The base layer p2p domain separated hashing domain
-/// Usage:
-///   let hash = p2p_hash_domain(.digest::<Blake256>(b"my secret");
-///   etc.
-pub fn p2p_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.p2p")
-}

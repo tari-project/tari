@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::collections::HashSet;
+
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
@@ -264,6 +266,33 @@ pub fn check_accounting_balance(
             );
             ValidationError::TransactionError(err)
         })
+}
+
+/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
+/// sum.
+#[allow(clippy::mutable_key_type)]
+pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
+    let mut burned_outputs = HashSet::new();
+    for output in body.outputs() {
+        if output.is_burned() {
+            // we dont care about duplicate commitments are they should have already been checked
+            burned_outputs.insert(output.commitment.clone());
+        }
+    }
+    for kernel in body.kernels() {
+        if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
+            return Err(ValidationError::InvalidBurnError(
+                "Burned kernel does not match burned output".to_string(),
+            ));
+        }
+    }
+
+    if !burned_outputs.is_empty() {
+        return Err(ValidationError::InvalidBurnError(
+            "Burned output has no matching burned kernel".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 pub fn check_coinbase_output(
@@ -1009,5 +1038,59 @@ mod test {
             unpack_enum!(ValidationError::TransactionError(err) = err);
             unpack_enum!(TransactionError::InvalidCoinbase = err);
         }
+    }
+
+    use crate::{covenants::Covenant, transactions::transaction_components::KernelFeatures};
+
+    #[test]
+    fn check_burned_succeeds_for_valid_outputs() {
+        let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0);
+        let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0);
+
+        let (output1, _, _) = test_helpers::create_utxo(
+            100.into(),
+            &CryptoFactories::default(),
+            &OutputFeatures::create_burn_output(),
+            &TariScript::default(),
+            &Covenant::default(),
+            0.into(),
+        );
+        let (output2, _, _) = test_helpers::create_utxo(
+            101.into(),
+            &CryptoFactories::default(),
+            &OutputFeatures::create_burn_output(),
+            &TariScript::default(),
+            &Covenant::default(),
+            0.into(),
+        );
+        let (output3, _, _) = test_helpers::create_utxo(
+            102.into(),
+            &CryptoFactories::default(),
+            &OutputFeatures::create_burn_output(),
+            &TariScript::default(),
+            &Covenant::default(),
+            0.into(),
+        );
+
+        kernel1.features = KernelFeatures::create_burn();
+        kernel1.burn_commitment = Some(output1.commitment.clone());
+        kernel2.features = KernelFeatures::create_burn();
+        kernel2.burn_commitment = Some(output2.commitment.clone());
+        let kernel3 = kernel1.clone();
+
+        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
+            kernel1.clone(),
+            kernel2.clone(),
+        ]);
+        assert!(check_total_burned(&body).is_ok());
+        // lets add an extra kernel
+        body.add_kernels(&mut vec![kernel3]);
+        assert!(check_total_burned(&body).is_err());
+        // lets add a kernel commitment mismatch
+        body.add_outputs(&mut vec![output3.clone()]);
+        assert!(check_total_burned(&body).is_err());
+        // Lets try one with a commitment with no kernel
+        let body2 = AggregateBody::new(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
+        assert!(check_total_burned(&body2).is_err());
     }
 }

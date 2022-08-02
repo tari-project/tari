@@ -20,50 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, io, io::ErrorKind, path::Path, process::Command};
+mod ast;
+mod template;
 
-use cargo_toml::{Manifest, Product};
+use proc_macro::TokenStream;
 
-pub fn compile_template<P: AsRef<Path>>(package_dir: P) -> io::Result<Vec<u8>> {
-    let status = Command::new("cargo")
-        .current_dir(package_dir.as_ref())
-        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
-        .status()?;
-    if !status.success() {
-        return Err(io::Error::new(
-            ErrorKind::Other,
-            format!("Failed to compile package: {:?}", package_dir.as_ref()),
-        ));
-    }
-
-    // resolve wasm name
-    let manifest = Manifest::from_path(&package_dir.as_ref().join("Cargo.toml")).unwrap();
-    let wasm_name = if let Some(Product { name: Some(name), .. }) = manifest.lib {
-        // lib name
-        name
-    } else if let Some(pkg) = manifest.package {
-        // package name
-        pkg.name.replace('-', "_")
-    } else {
-        // file name
-        package_dir
-            .as_ref()
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned()
-            .replace('-', "_")
-    };
-
-    // path of the wasm executable
-    let mut path = package_dir.as_ref().to_path_buf();
-    path.push("target");
-    path.push("wasm32-unknown-unknown");
-    path.push("release");
-    path.push(wasm_name);
-    path.set_extension("wasm");
-
-    // return
-    fs::read(path)
+#[proc_macro_attribute]
+pub fn template(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    template::generate_template(proc_macro2::TokenStream::from(item))
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
 }

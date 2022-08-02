@@ -129,6 +129,8 @@ pub enum ValidationError {
         output_type: OutputType,
         contract_id: FixedHash,
     },
+    #[error("Contains Invalid Burn: {0}")]
+    InvalidBurnError(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

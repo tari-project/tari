@@ -21,14 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod bullet_rangeproofs;
-mod default_hash_domain;
 mod fixed_hash;
-mod mac_hash_domain;
 
 pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     hash::blake2::Blake256,
-    hashing::DomainSeparatedHasher,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -43,8 +40,6 @@ pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
 pub use fixed_hash::{FixedHash, FixedHashSizeError};
-
-use crate::types::{default_hash_domain::DefaultHashDomain, mac_hash_domain::MacHashDomain};
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
@@ -86,9 +81,3 @@ pub type RangeProofService = BulletproofsPlusService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
-
-/// Generic domain separated hasher
-pub type DefaultDomainHasher<D> = DomainSeparatedHasher<D, DefaultHashDomain>;
-
-/// MAC domain separated hasher
-pub type MacDomainHasher<D> = DomainSeparatedHasher<D, MacHashDomain>;

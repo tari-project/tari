@@ -42,30 +42,32 @@ pub enum OutputType {
     Standard = 0,
     /// Output is a coinbase output, must not be spent until maturity.
     Coinbase = 1,
+    /// Output is a burned output and can not be spent ever.
+    Burn = 2,
     /// Output defines a side-chain contract.
-    ContractDefinition = 2,
+    ContractDefinition = 3,
     /// Output defines the constitution for a side-chain contract.
-    ContractConstitution = 3,
+    ContractConstitution = 4,
     /// Output indicates validator node acceptance to run a contract.
-    ContractValidatorAcceptance = 4,
+    ContractValidatorAcceptance = 5,
     /// Output is a contract checkpoint.
-    ContractCheckpoint = 5,
+    ContractCheckpoint = 6,
     /// Output that defines a contract constitution proposal.
-    ContractConstitutionProposal = 6,
+    ContractConstitutionProposal = 7,
     /// Output that indicates acceptance of an existing contract constitution amendment proposal.
-    ContractConstitutionChangeAcceptance = 7,
+    ContractConstitutionChangeAcceptance = 8,
     /// Output that defines an amendment of a contract constitution.
-    ContractAmendment = 8,
+    ContractAmendment = 9,
 
     // TODO: Remove these deprecated flags
-    NonFungible = 9,
-    AssetRegistration = 10,
-    MintNonFungible = 11,
-    BurnNonFungible = 12,
-    SidechainInitialCheckpoint = 13,
-    SidechainCheckpoint = 14,
-    CommitteeInitialDefinition = 15,
-    CommitteeDefinition = 16,
+    NonFungible = 10,
+    AssetRegistration = 11,
+    MintNonFungible = 12,
+    BurnNonFungible = 13,
+    SidechainInitialCheckpoint = 14,
+    SidechainCheckpoint = 15,
+    CommitteeInitialDefinition = 16,
+    CommitteeDefinition = 17,
 }
 
 impl OutputType {
@@ -144,8 +146,8 @@ mod tests {
     fn it_converts_from_byte_to_output_type() {
         assert_eq!(OutputType::from_byte(0), Some(OutputType::Standard));
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
-        assert_eq!(OutputType::from_byte(15), Some(OutputType::CommitteeInitialDefinition));
-        assert_eq!(OutputType::from_byte(16), Some(OutputType::CommitteeDefinition));
-        assert_eq!(OutputType::from_byte(17), None);
+        assert_eq!(OutputType::from_byte(16), Some(OutputType::CommitteeInitialDefinition));
+        assert_eq!(OutputType::from_byte(17), Some(OutputType::CommitteeDefinition));
+        assert_eq!(OutputType::from_byte(18), None);
     }
 }
