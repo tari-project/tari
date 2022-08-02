@@ -45,8 +45,8 @@ pub enum TransactionError {
     RangeProofError(#[from] RangeProofError),
     #[error("An error occurred while performing a commitment signature: {0}")]
     SigningError(#[from] CommitmentSignatureError),
-    #[error("Invalid kernel in body")]
-    InvalidKernel,
+    #[error("Invalid kernel in body : {0}")]
+    InvalidKernel(String),
     #[error("Invalid coinbase in body")]
     InvalidCoinbase,
     #[error("Invalid coinbase maturity in body")]
