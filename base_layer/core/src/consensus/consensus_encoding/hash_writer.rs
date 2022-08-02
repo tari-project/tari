@@ -23,7 +23,7 @@
 use std::io::Write;
 
 use digest::{consts::U32, Digest, FixedOutput, Update};
-use tari_common_types::types::HashDigest;
+use tari_crypto::hash::blake2::Blake256;
 
 use crate::consensus::ConsensusEncoding;
 
@@ -72,16 +72,21 @@ impl<H: Update> Write for ConsensusHashWriter<H> {
     }
 }
 
-impl Default for ConsensusHashWriter<HashDigest> {
+impl Default for ConsensusHashWriter<Blake256> {
     fn default() -> Self {
-        ConsensusHashWriter::new(HashDigest::new())
+        // Note: Do not use 'DomainSeparatedHasher' here as 'H.chain(a).chain(b).finalize() != H.chain(a||b).finalize()'
+        // A custom implementation with heap allocation will be inefficient.
+        ConsensusHashWriter::new(
+            Blake256::with_params(&[], b"tari.base_layer", b"core.consensus")
+                .expect("Correct assignment will not fail"),
+        )
     }
 }
 
 #[cfg(test)]
 mod test {
     use rand::{rngs::OsRng, RngCore};
-    use tari_common_types::types::HashDigest;
+    use tari_crypto::hash::blake2::Blake256;
 
     use super::*;
 
@@ -95,12 +100,32 @@ mod test {
         writer.write_all(&data[0..256]).unwrap();
         writer.write_all(&data[256..500]).unwrap();
         writer.write_all(&data[500..1024]).unwrap();
-        let hash = writer.finalize();
-        let empty: [u8; 32] = Update::chain(HashDigest::new(), [0u8; 1024]).finalize_fixed().into();
-        assert_ne!(hash, empty);
+        let hash_of_chunks = writer.finalize();
+        let hasher = Blake256::with_params(&[], b"tari.base_layer", b"core.consensus")
+            .expect("Correct assignment will not fail");
+        let hash_of_zeros: [u8; 32] = Update::chain(hasher, [0u8; 1024]).finalize_fixed().into();
+        assert_ne!(hash_of_chunks, hash_of_zeros);
 
         let mut writer = ConsensusHashWriter::default();
         writer.write_all(&data).unwrap();
-        assert_eq!(writer.finalize(), hash);
+        assert_eq!(writer.finalize(), hash_of_chunks);
+
+        // Testing no data in the buffer
+        let mut writer = ConsensusHashWriter::default();
+        writer.write_all(&[]).unwrap();
+        writer.write_all(&[]).unwrap();
+        writer.write_all(&[]).unwrap();
+        let hasher = Blake256::with_params(&[], b"tari.base_layer", b"core.consensus")
+            .expect("Correct assignment will not fail");
+        let hash_of_empty: [u8; 32] = Update::chain(hasher, &[]).finalize_fixed().into();
+        assert_eq!(writer.finalize(), hash_of_empty);
+    }
+
+    #[test]
+    fn it_returns_the_correct_size() {
+        let mut writer = ConsensusHashWriter::default();
+        let data = [0u8; 1024];
+        let size = writer.write(&data).unwrap();
+        assert_eq!(size, data.len());
     }
 }

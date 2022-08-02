@@ -24,6 +24,33 @@ class TransactionBuilder {
     return this.kv.private_key(id);
   }
 
+  normalizeBlake2bInput16(input) {
+    let ret;
+    if (input instanceof Uint8Array) {
+      ret = input;
+    } else if (typeof input === "string") {
+      const encoder = new TextEncoder();
+      ret = encoder.encode(input);
+    } else {
+      throw new Error("Input must be an string, Buffer or Uint8Array");
+    }
+    let buffer = new Uint8Array(16);
+    const len = ret.length < 16 ? ret.length : 16;
+    for (let i = 0; i < len; i++) {
+      buffer[i] = ret[i];
+    }
+    return buffer;
+  }
+
+  consensusHashWriterContext() {
+    // This mimics `impl Default for ConsensusHashWriter<Blake256>` in `hash_writer.rs`
+    const OUTPUT_LENGTH = 32; // bytes
+    const KEY = null; // optional key
+    const SALT = this.normalizeBlake2bInput16("tari.base_layer");
+    const PERSONAL = this.normalizeBlake2bInput16("core.consensus");
+    return blake2bInit(OUTPUT_LENGTH, KEY, SALT, PERSONAL);
+  }
+
   buildChallenge(publicNonce, fee, lockHeight) {
     const KEY = null; // optional key
     const OUTPUT_LENGTH = 32; // bytes
@@ -91,9 +118,7 @@ class TransactionBuilder {
     covenant,
     encryptedValue
   ) {
-    const KEY = null; // optional key
-    const OUTPUT_LENGTH = 32; // bytes
-    const context = blake2bInit(OUTPUT_LENGTH, KEY);
+    const context = this.consensusHashWriterContext();
     const buf_nonce = Buffer.from(publicNonce, "hex");
     const script_offset_public_key = Buffer.from(scriptOffsetPublicKey, "hex");
     const features_buffer = this.featuresToConsensusBytes(features);
@@ -117,9 +142,7 @@ class TransactionBuilder {
     public_key,
     commitment
   ) {
-    let KEY = null; // optional key
-    let OUTPUT_LENGTH = 32; // bytes
-    let context = blake2bInit(OUTPUT_LENGTH, KEY);
+    const context = this.consensusHashWriterContext();
     let buff_publicNonce = Buffer.from(publicNonce, "hex");
     let buff_public_key = Buffer.from(public_key, "hex");
     blake2bUpdate(context, buff_publicNonce);
@@ -132,9 +155,7 @@ class TransactionBuilder {
   }
 
   hashOutput(features, commitment, script, sender_offset_public_key) {
-    let KEY = null; // optional key
-    let OUTPUT_LENGTH = 32; // bytes
-    let context = blake2bInit(OUTPUT_LENGTH, KEY);
+    const context = this.consensusHashWriterContext();
     const features_buffer = this.featuresToConsensusBytes(features);
     // Version
     blake2bUpdate(context, [0x00]);
