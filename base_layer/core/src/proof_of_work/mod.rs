@@ -65,13 +65,3 @@ pub mod lwma_diff;
 
 #[cfg(feature = "base_node")]
 pub mod randomx_factory;
-
-use tari_common::hashing_domain::HashingDomain;
-
-/// The base layer core proof-of-work domain separated hashing domain
-/// Usage:
-///   let hash = core_proof_of_work_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_proof_of_work_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.proof_of_work")
-}

@@ -151,6 +151,10 @@ class WalletClient {
     return await this.client.transfer(args);
   }
 
+  async burn(args) {
+    return await this.client.CreateBurnTransaction(args);
+  }
+
   async sendHtlc(args) {
     return await this.client.SendShaAtomicSwapTransaction(args);
   }

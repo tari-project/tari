@@ -61,12 +61,3 @@ pub use new_block_template::NewBlockTemplate;
 mod new_blockheader_template;
 #[cfg(feature = "base_node")]
 pub use new_blockheader_template::NewBlockHeaderTemplate;
-use tari_common::hashing_domain::HashingDomain;
-
-/// The base layer core blocks domain separated hashing domain
-/// Usage:
-///   let hash = core_blocks_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_blocks_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.blocks")
-}
