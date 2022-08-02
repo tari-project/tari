@@ -777,10 +777,18 @@ async fn test_recovery_birthday() {
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();
 
+    // To create a new seed word sequence, uncomment below
+    // let seed = CipherSeed::new();
+    // use tari_key_manager::mnemonic::MnemonicLanguage;
+    // let mnemonic_seq = seed
+    //     .to_mnemonic(MnemonicLanguage::English, None)
+    //     .expect("Couldn't convert CipherSeed to Mnemonic");
+    // println!("{:?}", mnemonic_seq);
+
     let seed_words: Vec<String> = [
-        "theme", "spatial", "winner", "appear", "board", "float", "tennis", "grant", "story", "film", "accuse",
-        "october", "corn", "seven", "brain", "typical", "fiction", "eight", "inspire", "rapid", "whisper", "title",
-        "piano", "crew",
+        "parade", "allow", "earth", "sibling", "jealous", "tower", "pet", "project", "pole", "dizzy", "tower", "genre",
+        "marine", "immense", "region", "diagram", "dress", "symptom", "dutch", "require", "virus", "angry", "cotton",
+        "nominee",
     ]
     .iter()
     .map(|w| w.to_string())

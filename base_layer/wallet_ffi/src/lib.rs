@@ -9274,10 +9274,19 @@ mod test {
             let mut recovery_in_progress = true;
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
+            // To create a new seed word sequence, uncomment below
+            // let seed = CipherSeed::new();
+            // use tari_key_manager::mnemonic::MnemonicLanguage;
+            // use tari_key_manager::mnemonic::Mnemonic;
+            // let mnemonic_seq = seed
+            //     .to_mnemonic(MnemonicLanguage::English, None)
+            //     .expect("Couldn't convert CipherSeed to Mnemonic");
+            // println!("{:?}", mnemonic_seq);
+
             let mnemonic = vec![
-                "theme", "spatial", "winner", "appear", "board", "float", "tennis", "grant", "story", "film", "accuse",
-                "october", "corn", "seven", "brain", "typical", "fiction", "eight", "inspire", "rapid", "whisper",
-                "title", "piano", "crew",
+                "theme", "stove", "win", "endorse", "ostrich", "voyage", "frequent", "battle", "crime", "volcano",
+                "dune", "also", "lunar", "banner", "clay", "that", "urge", "spin", "uncover", "extra", "village",
+                "mask", "trumpet", "bag",
             ];
 
             let seed_words = seed_words_create();

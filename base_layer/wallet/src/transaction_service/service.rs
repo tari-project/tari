@@ -1465,7 +1465,7 @@ where
 
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
 
-        let c = WalletHasher::new("stealth_address")
+        let c = WalletHasher::new_with_label("stealth_address")
             .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
             .finalize();
 
@@ -2652,7 +2652,7 @@ mod tests {
 
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
-        let c = WalletHasher::new("stealth_address")
+        let c = WalletHasher::new_with_label("stealth_address")
             .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
             .finalize();
 
@@ -2669,7 +2669,7 @@ mod tests {
         if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
         {
             // calculating Ks with the provided R nonce from the script
-            let c = WalletHasher::new("stealth_address")
+            let c = WalletHasher::new_with_label("stealth_address")
                 .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
                 .finalize();
 
