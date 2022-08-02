@@ -23,7 +23,8 @@
 use std::{
     convert::TryFrom,
     mem::size_of,
-    time::{SystemTime, UNIX_EPOCH},
+    ops::Add,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use argon2::{
@@ -54,6 +55,8 @@ use crate::{
 };
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
+// seconds elapsed from unix epoch until '2022-01-01' == 60 * 60 * 24 * 365 * 52
+pub const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1639872000;
 pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED";
 const ARGON2_SALT_BYTES: usize = 16;
 pub const CIPHER_SEED_BIRTHDAY_BYTES: usize = 2;
@@ -119,7 +122,12 @@ impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-        let days = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / SECONDS_PER_DAY;
+        let birthday_genesis_date = UNIX_EPOCH.add(Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH));
+        let days = SystemTime::now()
+            .duration_since(birthday_genesis_date)
+            .unwrap()
+            .as_secs() /
+            SECONDS_PER_DAY;
         let birthday = u16::try_from(days).unwrap_or(0u16);
         CipherSeed::new_with_birthday(birthday)
     }
