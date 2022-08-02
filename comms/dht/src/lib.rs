@@ -125,7 +125,7 @@ use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 hash_domain!(DHTCommsHashDomain, "comms.dht");
 
 pub fn comms_dht_message_hash() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("message_hash")
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("message_hash")
 }
 
 pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
