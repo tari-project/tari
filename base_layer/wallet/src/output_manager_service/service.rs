@@ -2571,7 +2571,7 @@ where
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // computing shared secret
                     let shared_secret = PrivateKey::from_bytes(
-                        WalletHasher::new("stealth_address")
+                        WalletHasher::new_with_label("stealth_address")
                             .chain(PublicKey::shared_secret(&wallet_sk, nonce.as_ref()).as_bytes())
                             .finalize()
                             .as_ref(),

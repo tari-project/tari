@@ -45,6 +45,14 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             .map_err(|_| "excess_sig could not be converted".to_string())?;
 
         let kernel_features = u8::try_from(kernel.features).map_err(|_| "kernel features must be a single byte")?;
+        let commitment = if kernel.burn_commitment.is_empty() {
+            None
+        } else {
+            Some(
+                Commitment::from_bytes(&kernel.burn_commitment)
+                    .map_err(|err| format!("Burn commitment could not be converted:{}", err))?,
+            )
+        };
 
         Ok(Self::new(
             TransactionKernelVersion::try_from(
@@ -56,6 +64,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             kernel.lock_height,
             excess,
             excess_sig,
+            commitment,
         ))
     }
 }
@@ -63,6 +72,10 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
 impl From<TransactionKernel> for grpc::TransactionKernel {
     fn from(kernel: TransactionKernel) -> Self {
         let hash = kernel.hash();
+        let commitment = match kernel.burn_commitment {
+            Some(c) => c.as_bytes().to_vec(),
+            None => vec![],
+        };
 
         grpc::TransactionKernel {
             features: u32::from(kernel.features.bits()),
@@ -75,6 +88,7 @@ impl From<TransactionKernel> for grpc::TransactionKernel {
             }),
             hash,
             version: kernel.version as u32,
+            burn_commitment: commitment,
         }
     }
 }

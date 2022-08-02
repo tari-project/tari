@@ -83,6 +83,7 @@ pub fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
 mod tests {
     use std::str::FromStr;
 
+    use indoc::indoc;
     use proc_macro2::TokenStream;
     use quote::quote;
     use syn::parse2;
@@ -91,9 +92,16 @@ mod tests {
 
     #[test]
     fn test_hello_world() {
-        let input = TokenStream::from_str(
-            "struct HelloWorld {} impl HelloWorld { pub fn greet() -> String { \"Hello World!\".to_string() } }",
-        )
+        let input = TokenStream::from_str(indoc! {"
+            mod hello_world {
+                struct HelloWorld {}
+                impl HelloWorld {
+                    pub fn greet() -> String {
+                        \"Hello World!\".to_string()
+                    }
+                } 
+            }
+        "})
         .unwrap();
 
         let ast = parse2::<TemplateAst>(input).unwrap();

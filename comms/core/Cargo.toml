@@ -10,12 +10,12 @@ version = "0.34.0"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.3" }
 tari_common = {path = "../../common"}
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_storage = { version = "^0.34", path = "../../infrastructure/storage" }
 tari_shutdown = { version = "^0.34", path = "../../infrastructure/shutdown" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"

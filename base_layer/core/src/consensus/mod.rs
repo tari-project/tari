@@ -44,14 +44,5 @@ pub use consensus_encoding::{
 
 mod network;
 pub use network::NetworkConsensus;
-use tari_common::hashing_domain::HashingDomain;
 
 pub mod emission;
-
-/// The base layer core consensus domain separated hashing domain
-/// Usage:
-///   let hash = core_consensus_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn core_consensus_hash_domain() -> HashingDomain {
-    HashingDomain::new("base_layer.core.consensus")
-}

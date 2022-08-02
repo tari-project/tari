@@ -129,17 +129,17 @@ pub fn comms_dht_message_hash() -> DomainSeparatedHasher<CommsChallenge, DHTComm
 }
 
 pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("challenge")
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("challenge")
 }
 
 pub fn comms_dht_hash_domain_key_message() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("key_message")
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("key_message")
 }
 
 pub fn comms_dht_hash_domain_key_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("key_signature")
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("key_signature")
 }
 
 pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new("message_signature")
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("message_signature")
 }

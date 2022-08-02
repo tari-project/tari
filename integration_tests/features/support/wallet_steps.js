@@ -1148,6 +1148,34 @@ When(
 );
 
 When(
+  /I create a burn transaction of (.*) uT from (.*) at fee (.*)/,
+  { timeout: 65 * 1000 },
+  async function (amount, source, feePerGram) {
+    const sourceWallet = this.getWallet(source);
+    const sourceClient = await sourceWallet.connectClient();
+    const sourceInfo = await sourceClient.identify();
+
+    const lastResult = await this.burn_tari(sourceWallet, amount, feePerGram);
+    expect(lastResult.is_success).to.equal(true);
+
+    this.addTransaction(sourceInfo.public_key, lastResult.transaction_id);
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(lastResult.transaction_id),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      lastResult.transaction_id
+    );
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
   /I cancel last transaction in wallet (.*)/,
   { timeout: 20 * 1000 },
   async function (walletName) {

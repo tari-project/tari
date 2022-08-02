@@ -23,6 +23,7 @@
 use std::{
     convert::{TryFrom, TryInto},
     fs,
+    path::PathBuf,
 };
 
 use clap::Parser;
@@ -45,6 +46,8 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CreateBurnTransactionRequest,
+        CreateBurnTransactionResponse,
         CreateConstitutionDefinitionRequest,
         CreateConstitutionDefinitionResponse,
         CreateFollowOnAssetCheckpointRequest,
@@ -558,6 +561,39 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect();
 
         Ok(Response::new(TransferResponse { results }))
+    }
+
+    async fn create_burn_transaction(
+        &self,
+        request: Request<CreateBurnTransactionRequest>,
+    ) -> Result<Response<CreateBurnTransactionResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut transaction_service = self.get_transaction_service();
+        debug!(target: LOG_TARGET, "Trying to burn {} Tari", message.amount);
+        let response = match transaction_service
+            .burn_tari(message.amount.into(), message.fee_per_gram.into(), message.message)
+            .await
+        {
+            Ok(tx_id) => {
+                debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
+                CreateBurnTransactionResponse {
+                    transaction_id: tx_id.as_u64(),
+                    is_success: true,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to burn Tarid: {}", e);
+                CreateBurnTransactionResponse {
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
     }
 
     async fn get_transaction_info(
@@ -1205,47 +1241,38 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
     }
 
+    /// Returns the contents of a seed words file, provided via CLI
     async fn seed_words(&self, _: Request<tari_rpc::Empty>) -> Result<Response<SeedWordsResponse>, Status> {
         let cli = Cli::parse();
-        let file_path = cli.seed_words_file_name.unwrap();
 
-        if !file_path.is_file() {
-            return Err(Status::not_found("file not found"));
-        }
+        let filepath: PathBuf = match cli.seed_words_file_name {
+            Some(filepath) => filepath,
+            None => return Err(Status::not_found("file path is empty")),
+        };
 
-        let file_name = file_path.clone().into_os_string().into_string().unwrap();
-
-        if file_name.is_empty() {
-            return Err(Status::not_found("seed_words_file_name is empty"));
-        }
-
-        let contents = fs::read_to_string(file_path)?;
-        let words = contents
+        let words = fs::read_to_string(filepath)?
             .split(' ')
             .collect::<Vec<&str>>()
             .iter()
             .map(|&x| x.into())
             .collect::<Vec<String>>();
+
         Ok(Response::new(SeedWordsResponse { words }))
     }
 
+    /// Deletes the seed words file, provided via CLI
     async fn delete_seed_words_file(
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<FileDeletedResponse>, Status> {
         let cli = Cli::parse();
-        let file_path = cli.seed_words_file_name.unwrap();
 
-        if !file_path.is_file() {
-            return Err(Status::not_found("file not found"));
-        }
+        // WARNING: the filepath used is supplied as an argument
+        fs::remove_file(match cli.seed_words_file_name {
+            Some(filepath) => filepath,
+            None => return Err(Status::not_found("file path is empty")),
+        })?;
 
-        let file_name = file_path.clone().into_os_string().into_string().unwrap();
-
-        if file_name.is_empty() {
-            return Err(Status::not_found("seed_words_file_name is empty"));
-        }
-        fs::remove_file(file_path)?;
         Ok(Response::new(FileDeletedResponse {}))
     }
 }
