@@ -384,9 +384,10 @@ mod test {
     fn pad_message_correctness() {
         // test for small message
         let message = &[0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
-        let prepend_message = message.len().to_le_bytes();
-        let pad_message = pad_message_to_base_length_multiple(message);
-        let pad = [0u8; 107];
+     let prepend_message = (message.len() as u64).to_le_bytes();
+        let pad = iter::repeat(0u8)
+            .take(MESSAGE_BASE_LENGTH - message.len() - prepend_message.len())
+            .collect::<Vec<_>>();
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), MESSAGE_BASE_LENGTH);
