@@ -422,11 +422,13 @@ mod test {
         assert_eq!(pad, pad_message[prepend_message.len() + message.len()..]);
 
         // test for base message of multiple base length
- let message = &[100u8; MESSAGE_BASE_LENGTH * 9 - 123];
+        let message = &[100u8; MESSAGE_BASE_LENGTH * 9 - 123];
         let prepend_message = message.len().to_le_bytes();
-        let pad = iter::repeat(0u8)
+        let pad = std::iter::repeat(0u8)
             .take((9 * MESSAGE_BASE_LENGTH) - message.len() - prepend_message.len())
             .collect::<Vec<_>>();
+
+        let pad_message = pad_message_to_base_length_multiple(message);
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), 9 * MESSAGE_BASE_LENGTH);
