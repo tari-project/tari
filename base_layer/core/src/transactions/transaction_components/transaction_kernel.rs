@@ -65,6 +65,8 @@ pub struct TransactionKernel {
     /// An aggregated signature of the metadata in this kernel, signed by the individual excess values and the offset
     /// excess of the sender.
     pub excess_sig: Signature,
+    /// This is an optional field that must be set if the transaction contains a burned output.
+    pub burn_commitment: Option<Commitment>,
 }
 
 impl TransactionKernel {
@@ -75,6 +77,7 @@ impl TransactionKernel {
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
+        burn_commitment: Option<Commitment>,
     ) -> TransactionKernel {
         TransactionKernel {
             version,
@@ -83,6 +86,7 @@ impl TransactionKernel {
             lock_height,
             excess,
             excess_sig,
+            burn_commitment,
         }
     }
 
@@ -92,6 +96,7 @@ impl TransactionKernel {
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
+        burn_commitment: Option<Commitment>,
     ) -> TransactionKernel {
         TransactionKernel::new(
             TransactionKernelVersion::get_current_version(),
@@ -100,11 +105,17 @@ impl TransactionKernel {
             lock_height,
             excess,
             excess_sig,
+            burn_commitment,
         )
     }
 
     pub fn is_coinbase(&self) -> bool {
         self.features.contains(KernelFeatures::COINBASE_KERNEL)
+    }
+
+    /// Is this a burned output kernel?
+    pub fn is_burned(&self) -> bool {
+        self.features.contains(KernelFeatures::BURN_KERNEL)
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
@@ -123,6 +134,14 @@ impl TransactionKernel {
             ))
         }
     }
+
+    /// This gets the burn commitment if it exists
+    pub fn get_burn_commitment(&self) -> Result<&Commitment, TransactionError> {
+        match self.burn_commitment {
+            Some(ref burn_commitment) => Ok(burn_commitment),
+            None => Err(TransactionError::InvalidKernel("Burn commitment not found".to_string())),
+        }
+    }
 }
 
 impl Hashable for TransactionKernel {
@@ -136,7 +155,7 @@ impl Display for TransactionKernel {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(
             fmt,
-            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
+            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\nCommitment: {}\n",
             self.fee,
             self.lock_height,
             self.features,
@@ -144,6 +163,10 @@ impl Display for TransactionKernel {
             self.excess_sig
                 .to_json()
                 .unwrap_or_else(|_| "Failed to serialize signature".into()),
+            match self.burn_commitment {
+                Some(ref burn_commitment) => burn_commitment.to_hex(),
+                None => "None".to_string(),
+            }
         )
     }
 }
@@ -168,6 +191,7 @@ impl ConsensusEncoding for TransactionKernel {
         self.lock_height.consensus_encode(writer)?;
         self.excess.consensus_encode(writer)?;
         self.excess_sig.consensus_encode(writer)?;
+        self.burn_commitment.consensus_encode(writer)?;
         Ok(())
     }
 }
@@ -180,7 +204,8 @@ impl ConsensusDecoding for TransactionKernel {
         let lock_height = u64::consensus_decode(reader)?;
         let excess = Commitment::consensus_decode(reader)?;
         let excess_sig = Signature::consensus_decode(reader)?;
-        let kernel = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig);
+        let commitment = <Option<Commitment> as ConsensusDecoding>::consensus_decode(reader)?;
+        let kernel = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig, commitment);
         Ok(kernel)
     }
 }

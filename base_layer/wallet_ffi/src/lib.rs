@@ -1229,7 +1229,7 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
+///
 /// ------------------------------- Commitment Signature ---------------------------------------///
 
 /// Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors

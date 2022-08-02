@@ -20,12 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Tari WASM module ABI (application binary interface)
+//!
+//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
+//! WASM modules.
+
 mod encoding;
+pub mod ops;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-pub use encoding::{decode, encode_into, encode_with_len};
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub use borsh::{self, BorshDeserialize as Decode, BorshSerialize as Encode};
+pub use encoding::{decode, decode_len, encode_into, encode_with_len};
+
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct TemplateDef {
     pub template_name: String,
     pub functions: Vec<FunctionDef>,
@@ -37,14 +45,14 @@ impl TemplateDef {
     }
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct FunctionDef {
     pub name: String,
     pub arguments: Vec<Type>,
     pub output: Type,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum Type {
     Unit,
     Bool,
@@ -61,8 +69,32 @@ pub enum Type {
     String,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct CallInfo {
     pub func_name: String,
     pub args: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct EmitLogArg {
+    pub message: String,
+    pub level: LogLevel,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct CreateComponentArg {
+    // asset/component metadata
+    pub name: String,
+    pub quantity: u64,
+    pub metadata: HashMap<Vec<u8>, Vec<u8>>,
+    // encoded asset/component state
+    pub state: Vec<u8>,
 }

@@ -125,6 +125,10 @@ impl TariScript {
         })
     }
 
+    pub fn as_slice(&self) -> &[Opcode] {
+        self.script.as_slice()
+    }
+
     /// Calculate the hash of the script.
     /// `as_hash` returns [ScriptError::InvalidDigest] if the digest function does not produce at least 32 bytes of
     /// output.

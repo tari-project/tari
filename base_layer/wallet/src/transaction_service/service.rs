@@ -65,9 +65,6 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    hash::blake2::Blake256,
-    hash_domain,
-    hashing::DomainSeparatedHasher,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -117,7 +114,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::HashDigest,
+    types::{HashDigest, WalletHasher},
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
@@ -624,6 +621,14 @@ where
                     message,
                     transaction_broadcast_join_handles,
                 )
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::BurnTari {
+                amount,
+                fee_per_gram,
+                message,
+            } => self
+                .burn_tari(amount, fee_per_gram, message, transaction_broadcast_join_handles)
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::SendShaAtomicSwapTransaction(dest_pubkey, amount, fee_per_gram, message) => {
@@ -1323,6 +1328,118 @@ where
         .await
     }
 
+    /// Creates a transaction to burn some Tari
+    /// # Arguments
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn burn_tari(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let tx_id = TxId::new_random();
+        let output_features = OutputFeatures::create_burn_output();
+        // Prepare sender part of the transaction
+        let mut stp = self
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                amount,
+                UtxoSelectionCriteria::default(),
+                output_features,
+                fee_per_gram,
+                None,
+                message.clone(),
+                TariScript::default(),
+                Covenant::default(),
+                MicroTari::zero(),
+            )
+            .await?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used
+        let _single_round_sender_data = stp
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        let spend_key = PrivateKey::random(&mut OsRng);
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            PrivateKey::random(&mut OsRng),
+            spend_key,
+            &self.resources.factories,
+        );
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+
+        // Start finalizing
+
+        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize
+
+        stp.finalize(
+            KernelFeatures::create_burn(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
+        info!(target: LOG_TARGET, "Finalized burning transaction TxId: {}", tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast burn transaction
+
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.node_identity.public_key().clone(),
+                CommsPublicKey::default(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                message.clone(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await?;
+
+        Ok(tx_id)
+    }
+
     /// Sends a one side payment transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -1345,18 +1462,16 @@ where
                 "One-sided-to-stealth-address spend-to-self transactions not supported".to_string(),
             ));
         }
+
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
 
-        hash_domain!(
-            WalletServiceHashDomain,
-            "com.tari.base_layer.wallet.transaction_service"
-        );
-
-        let c = DomainSeparatedHasher::<Blake256, WalletServiceHashDomain>::new("stealth_address")
+        let c = WalletHasher::new("stealth_address")
             .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
             .finalize();
+
         let script_spending_key =
             PublicKey::from_secret_key(&PrivateKey::from_bytes(c.as_ref()).unwrap()) + dest_pubkey.clone();
+
         self.send_one_sided_or_stealth(
             dest_pubkey,
             amount,
@@ -2516,4 +2631,59 @@ fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
 pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: TransactionStatus,
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_crypto::ristretto::RistrettoSecretKey;
+    use tari_script::Opcode;
+    use WalletHasher;
+
+    use super::*;
+
+    #[test]
+    fn test_stealth_addresses() {
+        // recipient's keys
+        let (a, big_a) = PublicKey::random_keypair(&mut OsRng);
+        let (b, big_b) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender generates a random nonce key-pair: R=r⋅G
+        let (r, big_r) = PublicKey::random_keypair(&mut OsRng);
+
+        // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
+        // where H(⋅) is a cryptographic hash function
+        let c = WalletHasher::new("stealth_address")
+            .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
+            .finalize();
+
+        // using spending key `Ks=c⋅G+B` as the last public key in the one-sided payment script
+        let sender_spending_key =
+            PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b.clone();
+
+        let script = script!(PushPubKey(Box::new(big_r)) Drop PushPubKey(Box::new(sender_spending_key.clone())));
+
+        // ----------------------------------------------------------------------------
+        // imitating the receiving end, scanning and extraction
+
+        // Extracting the nonce R and a spending key from the script
+        if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
+        {
+            // calculating Ks with the provided R nonce from the script
+            let c = WalletHasher::new("stealth_address")
+                .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
+                .finalize();
+
+            // computing a spending key `Ks=(c+b)G` for comparison
+            let receiver_spending_key =
+                PublicKey::from_secret_key(&(RistrettoSecretKey::from_bytes(c.as_ref()).unwrap() + b));
+
+            // computing a scanning key `Ks=cG+B` for comparison
+            let scanning_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;
+
+            assert_eq!(provided_spending_key.as_ref(), &sender_spending_key);
+            assert_eq!(receiver_spending_key, sender_spending_key);
+            assert_eq!(scanning_key, sender_spending_key);
+            assert_eq!(scanning_key, receiver_spending_key);
+        }
+    }
 }

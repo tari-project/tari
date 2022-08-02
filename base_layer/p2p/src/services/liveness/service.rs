@@ -486,7 +486,7 @@ mod test {
             dht_header: DhtMessageHeader {
                 version: DhtProtocolVersion::latest(),
                 destination: Default::default(),
-                origin_mac: Vec::new(),
+                message_signature: Vec::new(),
                 ephemeral_public_key: None,
                 message_type: DhtMessageType::None,
                 flags: Default::default(),

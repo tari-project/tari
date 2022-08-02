@@ -45,6 +45,8 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CreateBurnTransactionRequest,
+        CreateBurnTransactionResponse,
         CreateConstitutionDefinitionRequest,
         CreateConstitutionDefinitionResponse,
         CreateFollowOnAssetCheckpointRequest,
@@ -558,6 +560,39 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect();
 
         Ok(Response::new(TransferResponse { results }))
+    }
+
+    async fn create_burn_transaction(
+        &self,
+        request: Request<CreateBurnTransactionRequest>,
+    ) -> Result<Response<CreateBurnTransactionResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut transaction_service = self.get_transaction_service();
+        debug!(target: LOG_TARGET, "Trying to burn {} Tari", message.amount);
+        let response = match transaction_service
+            .burn_tari(message.amount.into(), message.fee_per_gram.into(), message.message)
+            .await
+        {
+            Ok(tx_id) => {
+                debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
+                CreateBurnTransactionResponse {
+                    transaction_id: tx_id.as_u64(),
+                    is_success: true,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to burn Tarid: {}", e);
+                CreateBurnTransactionResponse {
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
     }
 
     async fn get_transaction_info(

@@ -30,7 +30,7 @@ pub use processor::InstructionProcessor;
 
 mod signature;
 
-use crate::{instruction::signature::InstructionSignature, package::PackageId};
+use crate::{instruction::signature::InstructionSignature, packager::PackageId};
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
@@ -38,6 +38,12 @@ pub enum Instruction {
         package_id: PackageId,
         template: String,
         function: String,
+        args: Vec<Vec<u8>>,
+    },
+    CallMethod {
+        package_id: PackageId,
+        component_id: String,
+        method: String,
         args: Vec<Vec<u8>>,
     },
 }

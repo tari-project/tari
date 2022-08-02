@@ -38,8 +38,8 @@ use crate::{
     crypt,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
-    origin_mac::OriginMac,
-    outbound::message::DhtOutboundMessage,
+    message_signature::MessageSignature,
+    outbound::{message::DhtOutboundMessage, DhtOutboundError},
     proto::envelope::{DhtEnvelope, DhtMessageType},
     version::DhtProtocolVersion,
 };
@@ -76,16 +76,16 @@ pub fn make_dht_header(
     include_origin: bool,
     trace: MessageTag,
     include_destination: bool,
-) -> DhtMessageHeader {
+) -> Result<DhtMessageHeader, DhtOutboundError> {
     let destination = if include_destination {
         NodeDestination::PublicKey(Box::new(node_identity.public_key().clone()))
     } else {
         NodeDestination::Unknown
     };
-    let mut origin_mac = Vec::new();
+    let mut message_signature = Vec::new();
 
     if include_origin {
-        let challenge = crypt::create_message_challenge_parts(
+        let binding_message_representation = crypt::create_message_domain_separated_hash_parts(
             DhtProtocolVersion::latest(),
             &destination,
             DhtMessageType::None,
@@ -94,13 +94,14 @@ pub fn make_dht_header(
             Some(e_public_key),
             message,
         );
-        origin_mac = make_valid_origin_mac(node_identity, &challenge);
+        let signature = make_valid_message_signature(node_identity, &binding_message_representation);
         if flags.is_encrypted() {
             let shared_secret = crypt::generate_ecdh_secret(e_secret_key, node_identity.public_key());
-            origin_mac = crypt::encrypt(&shared_secret, &origin_mac);
+            let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
+            message_signature = crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature)?;
         }
     }
-    DhtMessageHeader {
+    Ok(DhtMessageHeader {
         version: DhtProtocolVersion::latest(),
         destination,
         ephemeral_public_key: if flags.is_encrypted() {
@@ -108,16 +109,16 @@ pub fn make_dht_header(
         } else {
             None
         },
-        origin_mac,
+        message_signature,
         message_type: DhtMessageType::None,
         flags,
         message_tag: trace,
         expires: None,
-    }
+    })
 }
 
-pub fn make_valid_origin_mac(node_identity: &NodeIdentity, message: &[u8]) -> Vec<u8> {
-    OriginMac::new_signed(node_identity.secret_key().clone(), message)
+pub fn make_valid_message_signature(node_identity: &NodeIdentity, message: &[u8]) -> Vec<u8> {
+    MessageSignature::new_signed(node_identity.secret_key().clone(), message)
         .to_proto()
         .to_encoded_bytes()
 }
@@ -128,10 +129,10 @@ pub fn make_dht_inbound_message(
     flags: DhtMessageFlags,
     include_origin: bool,
     include_destination: bool,
-) -> DhtInboundMessage {
+) -> Result<DhtInboundMessage, DhtOutboundError> {
     let msg_tag = MessageTag::new();
-    let envelope = make_dht_envelope(node_identity, body, flags, include_origin, msg_tag, include_destination);
-    DhtInboundMessage::new(
+    let envelope = make_dht_envelope(node_identity, body, flags, include_origin, msg_tag, include_destination)?;
+    Ok(DhtInboundMessage::new(
         msg_tag,
         envelope.header.unwrap().try_into().unwrap(),
         Arc::new(Peer::new(
@@ -144,7 +145,7 @@ pub fn make_dht_inbound_message(
             Default::default(),
         )),
         envelope.body,
-    )
+    ))
 }
 
 pub fn make_keypair() -> (CommsSecretKey, CommsPublicKey) {
@@ -158,11 +159,12 @@ pub fn make_dht_envelope(
     include_origin: bool,
     trace: MessageTag,
     include_destination: bool,
-) -> DhtEnvelope {
+) -> Result<DhtEnvelope, DhtOutboundError> {
     let (e_secret_key, e_public_key) = make_keypair();
     if flags.is_encrypted() {
         let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
-        message = crypt::encrypt(&shared_secret, &message);
+        let key_message = crypt::generate_key_message(&shared_secret);
+        message = crypt::encrypt(&key_message, &message);
     }
     let header = make_dht_header(
         node_identity,
@@ -173,9 +175,9 @@ pub fn make_dht_envelope(
         include_origin,
         trace,
         include_destination,
-    )
+    )?
     .into();
-    DhtEnvelope::new(header, &message.into())
+    Ok(DhtEnvelope::new(header, &message.into()))
 }
 
 pub fn build_peer_manager() -> Arc<PeerManager> {
@@ -209,7 +211,7 @@ pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
         body: body.to_vec().into(),
         ephemeral_public_key: None,
         reply: None.into(),
-        origin_mac: None,
+        message_signature: None,
         is_broadcast: false,
         expires: None,
     }

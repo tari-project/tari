@@ -21,6 +21,75 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_template_abi::{FunctionDef, TemplateDef};
+use wasmer::{Extern, Function, Instance, Module, Store, Val, WasmerEnv};
+
+use crate::{
+    packager::PackageModuleLoader,
+    wasm::{environment::WasmEnv, WasmExecutionError},
+};
+
+#[derive(Debug, Clone)]
+pub struct WasmModule {
+    code: Vec<u8>,
+}
+
+impl WasmModule {
+    pub fn from_code(code: Vec<u8>) -> Self {
+        Self { code }
+    }
+
+    pub fn code(&self) -> &[u8] {
+        &self.code
+    }
+}
+
+impl PackageModuleLoader for WasmModule {
+    type Error = WasmExecutionError;
+    type Loaded = LoadedWasmModule;
+
+    fn load_module(&self) -> Result<Self::Loaded, Self::Error> {
+        let store = Store::default();
+        let module = Module::new(&store, &self.code)?;
+        let mut env = WasmEnv::new(());
+
+        fn stub(_env: &WasmEnv<()>, _op: i32, _arg_ptr: i32, _arg_len: i32) -> i32 {
+            panic!("WASM module called engine while loading ABI")
+        }
+
+        let stub = Function::new_native_with_env(&store, env.clone(), stub);
+        let imports = env.create_resolver(&store, stub);
+        let instance = Instance::new(&module, &imports)?;
+        env.init_with_instance(&instance)?;
+        validate_instance(&instance)?;
+        validate_environment(&env)?;
+
+        let template = initialize_and_load_template_abi(&instance, &env)?;
+        Ok(LoadedWasmModule::new(template, module))
+    }
+}
+
+fn initialize_and_load_template_abi(instance: &Instance, env: &WasmEnv<()>) -> Result<TemplateDef, WasmExecutionError> {
+    let abi_func = instance
+        .exports
+        .iter()
+        .find_map(|(name, export)| match export {
+            Extern::Function(f) if name.ends_with("_abi") => Some(f),
+            _ => None,
+        })
+        .ok_or(WasmExecutionError::NoAbiDefinition)?;
+
+    // Initialize ABI memory
+    let ret = abi_func.call(&[])?;
+    let ptr = match ret.get(0) {
+        Some(Val::I32(ptr)) => *ptr as u32,
+        Some(_) | None => return Err(WasmExecutionError::InvalidReturnTypeFromAbiFunc),
+    };
+
+    // Load ABI from memory
+    let data = env.read_memory_with_embedded_len(ptr)?;
+    let decoded = tari_template_abi::decode(&data).map_err(|_| WasmExecutionError::AbiDecodeError)?;
+    Ok(decoded)
+}
 
 #[derive(Debug, Clone)]
 pub struct LoadedWasmModule {
@@ -44,4 +113,33 @@ impl LoadedWasmModule {
     pub fn find_func_by_name(&self, function_name: &str) -> Option<&FunctionDef> {
         self.template.functions.iter().find(|f| f.name == *function_name)
     }
+}
+
+fn validate_environment(env: &WasmEnv<()>) -> Result<(), WasmExecutionError> {
+    const MAX_MEM_SIZE: usize = 2 * 1024 * 1024;
+    let mem_size = env.mem_size();
+    if mem_size.bytes().0 > MAX_MEM_SIZE {
+        return Err(WasmExecutionError::MaxMemorySizeExceeded);
+    }
+    // TODO other package validations
+
+    Ok(())
+}
+
+fn validate_instance(instance: &Instance) -> Result<(), WasmExecutionError> {
+    // Enforce that only permitted functions are allowed
+    let unexpected_abi_func = instance
+        .exports
+        .iter()
+        .functions()
+        .find(|(name, _)| !is_func_permitted(name));
+    if let Some((name, _)) = unexpected_abi_func {
+        return Err(WasmExecutionError::UnexpectedAbiFunction { name: name.to_string() });
+    }
+
+    Ok(())
+}
+
+fn is_func_permitted(name: &str) -> bool {
+    name.ends_with("_abi") || name.ends_with("_main") || name == "tari_alloc" || name == "tari_free"
 }
