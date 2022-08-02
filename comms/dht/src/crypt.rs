@@ -83,7 +83,7 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     // join prepend_message_len | message | zero_padding
     let mut output = Vec::with_capacity(output_size);
     output.extend_from_slice(&prepend_to_message);
-    output.extend_from_slice(&message);
+    output.extend_from_slice(message);
     output.extend(std::iter::repeat(0u8).take(output_size - n - k));
 
     output
