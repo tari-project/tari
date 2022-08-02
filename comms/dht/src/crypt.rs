@@ -56,7 +56,7 @@ pub struct CipherKey(chacha20::Key);
 pub struct AuthenticatedCipherKey(chacha20poly1305::Key);
 
 const LITTLE_ENDIAN_U64_SIZE_REPRESENTATION: usize = 8;
-const MESSAGE_BASE_LENGTH: usize = 128;
+const MESSAGE_BASE_LENGTH: usize = 6000;
 
 /// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
 pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPublicKey) -> [u8; 32] {
@@ -81,12 +81,10 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     let output_size = (div_n_base_len + 1) * MESSAGE_BASE_LENGTH;
 
     // join prepend_message_len | message | zero_padding
-    let mut output = prepend_to_message.to_vec();
-    output.append(&mut message.to_vec());
-    output.append(&mut [0u8; 128].to_vec());
-
-    // we have to truncate the vector to output_size
-    output.truncate(output_size);
+    let mut output = Vec::with_capacity(output_size);
+    output.extend_from_slice(&prepend_to_message);
+    output.extend_from_slice(&message);
+    output.extend(std::iter::repeat(0u8).take(output_size - n - k));
 
     output
 }
@@ -505,7 +503,7 @@ mod test {
 
         encrypted[size_of::<Nonce>() + 1] -= 1;
 
-        // failure in case message length fits whithin pad message length, but its original length has been modified
+        // failure in case message length fits within pad message length, but its original length has been modified
         encrypted[size_of::<Nonce>()] -= 1;
 
         // encrypted[size_of::<Nonce>()..size_of::<Nonce>() + le_bytes.len()].copy_from_slice(&le_bytes);
