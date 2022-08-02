@@ -23,7 +23,7 @@
 use digest::Digest;
 use rand::{self, rngs::OsRng};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
-use tari_comms::types::Challenge;
+use tari_comms::types::CommsChallenge;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
@@ -234,7 +234,7 @@ fn kernel_hash() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "ce54718b33405e8fc96ed68044af21febc84c7a74c2aa9d792947f2571c7a61b"
+        "72158351bed5c9b3d9d626821ea1d775e31456f4d762d09cee21a9032d214e3c"
     );
 }
 
@@ -253,7 +253,7 @@ fn kernel_metadata() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "db1522441628687beb21d4d8279e107e733aec9c8b7d513ef3c35b05c1e0150c"
+        "6bf18baef9296815dc9fa1a6ddee2e90a471c63ba86f8542311d2a73881ade18"
     )
 }
 
@@ -608,7 +608,7 @@ mod validate_internal_consistency {
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
         features.parent_public_key = Some(PublicKey::default());
-        let hash = Challenge::new()
+        let hash = CommsChallenge::new()
             .chain(Some(PublicKey::default()).to_consensus_bytes())
             .chain(Some(unique_id.clone()).to_consensus_bytes())
             .finalize();

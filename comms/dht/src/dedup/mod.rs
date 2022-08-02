@@ -32,7 +32,7 @@ pub use dedup_cache::DedupCacheDatabase;
 use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::{pipeline::PipelineError, types::Challenge};
+use tari_comms::{pipeline::PipelineError, types::CommsChallenge};
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -44,11 +44,15 @@ use crate::{
 const LOG_TARGET: &str = "comms::dht::dedup";
 
 pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
-    create_message_hash(&msg.dht_header.origin_mac, &msg.body)
+    create_message_hash(&msg.dht_header.message_signature, &msg.body)
 }
 
-pub fn create_message_hash(origin_mac: &[u8], body: &[u8]) -> [u8; 32] {
-    Challenge::new().chain(origin_mac).chain(&body).finalize().into()
+pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
+    CommsChallenge::new()
+        .chain(message_signature)
+        .chain(&body)
+        .finalize()
+        .into()
 }
 
 /// # DHT Deduplication middleware
@@ -176,7 +180,8 @@ mod test {
 
         assert!(dedup.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
-        let inbound_message = make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::empty(), false, false);
+        let inbound_message =
+            make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::empty(), false, false).unwrap();
         let decrypted_msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
 
         rt.block_on(dedup.call(decrypted_msg.clone())).unwrap();
@@ -201,7 +206,8 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             false,
-        );
+        )
+        .unwrap();
         let decrypted1 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
 
         let node_identity = make_node_identity();
@@ -211,7 +217,8 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             false,
-        );
+        )
+        .unwrap();
         let decrypted2 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
 
         assert_eq!(decrypted1.dedup_hash, decrypted2.dedup_hash);

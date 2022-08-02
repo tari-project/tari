@@ -45,7 +45,7 @@ use crate::{
     dedup,
     envelope::{timestamp_to_datetime, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
-    origin_mac::{OriginMac, OriginMacError, ProtoOriginMac},
+    message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
         envelope::DhtMessageType,
@@ -452,7 +452,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message
                 .dht_header
                 .as_ref()
-                .map(|h| h.origin_mac.as_slice())
+                .map(|h| h.message_signature.as_slice())
                 .unwrap_or(&[]),
             &message.body,
         );
@@ -564,10 +564,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             trace!(
                 target: LOG_TARGET,
                 "Attempting to decrypt origin mac ({} byte(s))",
-                header.origin_mac.len()
+                header.message_signature.len()
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
-            let decrypted = crypt::decrypt(&shared_secret, &header.origin_mac)?;
+            let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
+            let decrypted = crypt::decrypt_with_chacha20_poly1305(&key_signature, &header.message_signature)?;
             let authenticated_pk = Self::authenticate_message(&decrypted, header, body)?;
 
             trace!(
@@ -575,7 +576,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Attempting to decrypt message body ({} byte(s))",
                 body.len()
             );
-            let decrypted_bytes = crypt::decrypt(&shared_secret, body)?;
+
+            let key_message = crypt::generate_key_message(&shared_secret);
+            let decrypted_bytes = crypt::decrypt(&key_message, body)?;
             let envelope_body =
                 EnvelopeBody::decode(decrypted_bytes.as_slice()).map_err(|_| StoreAndForwardError::DecryptionFailed)?;
             if envelope_body.is_empty() {
@@ -583,10 +586,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
             Ok((Some(authenticated_pk), envelope_body))
         } else {
-            let authenticated_pk = if header.origin_mac.is_empty() {
+            let authenticated_pk = if header.message_signature.is_empty() {
                 None
             } else {
-                Some(Self::authenticate_message(&header.origin_mac, header, body)?)
+                Some(Self::authenticate_message(&header.message_signature, header, body)?)
             };
             let envelope_body = EnvelopeBody::decode(body).map_err(|_| StoreAndForwardError::MalformedMessage)?;
             Ok((authenticated_pk, envelope_body))
@@ -594,20 +597,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn authenticate_message(
-        cleartext_origin_mac_body: &[u8],
+        cleartext_message_signature_body: &[u8],
         header: &DhtMessageHeader,
         body: &[u8],
     ) -> Result<CommsPublicKey, StoreAndForwardError> {
-        let origin_mac = ProtoOriginMac::decode(cleartext_origin_mac_body)?;
-        let origin_mac = OriginMac::try_from(origin_mac)?;
+        let message_signature = ProtoMessageSignature::decode(cleartext_message_signature_body)?;
+        let message_signature = MessageSignature::try_from(message_signature)?;
 
-        let challenge = crypt::create_message_challenge(header, body);
+        let binding_message_representation = crypt::create_message_domain_separated_hash(header, body);
 
-        if origin_mac.verify(&challenge) {
-            Ok(origin_mac.into_signer_public_key())
+        if message_signature.verify(&binding_message_representation) {
+            Ok(message_signature.into_signer_public_key())
         } else {
-            Err(StoreAndForwardError::InvalidOriginMac(
-                OriginMacError::VerificationFailed,
+            Err(StoreAndForwardError::InvalidMessageSignature(
+                MessageSignatureError::VerificationFailed,
             ))
         }
     }
@@ -660,7 +663,10 @@ mod test {
         dht_header: DhtMessageHeader,
         stored_at: NaiveDateTime,
     ) -> StoredMessage {
-        let msg_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.origin_mac, message.as_bytes()));
+        let msg_hash = hex::to_hex(&dedup::create_message_hash(
+            &dht_header.message_signature,
+            message.as_bytes(),
+        ));
         let body = message.into_bytes();
         StoredMessage {
             id: 1,
@@ -703,7 +709,8 @@ mod test {
             false,
             MessageTag::new(),
             false,
-        );
+        )
+        .unwrap();
 
         let since = Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap();
         let mut message = DecryptedDhtMessage::succeeded(
@@ -715,7 +722,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafRequestMessages;
 
@@ -827,7 +835,7 @@ mod test {
     }
 
     #[runtime::test]
-    #[allow(clippy::similar_names)]
+    #[allow(clippy::similar_names, clippy::too_many_lines)]
     async fn receive_stored_messages() {
         let spy = service_spy();
         let (saf_requester, saf_mock_state) = create_store_and_forward_mock();
@@ -840,7 +848,7 @@ mod test {
         let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
 
         let inbound_msg_a =
-            make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED, true, false);
+            make_dht_inbound_message(&node_identity, msg_a.clone(), DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
@@ -849,7 +857,7 @@ mod test {
 
         let msg_b = &wrap_in_envelope_body!(b"B".to_vec()).to_encoded_bytes();
         let inbound_msg_b =
-            make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED, true, false);
+            make_dht_inbound_message(&node_identity, msg_b.clone(), DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         // Need to know the peer to process a stored message
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_b.source_peer))
@@ -874,6 +882,7 @@ mod test {
             false,
             false,
         )
+        .unwrap()
         .dht_header;
         let msg_clear_time = Utc::now()
             .checked_sub_signed(chrono::Duration::from_std(Duration::from_secs(120)).unwrap())
@@ -892,7 +901,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
@@ -960,7 +970,8 @@ mod test {
         let node_identity = make_node_identity();
 
         let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
-        let inbound_msg_a = make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false);
+        let inbound_msg_a =
+            make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
             .await
@@ -985,7 +996,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
@@ -1032,7 +1044,8 @@ mod test {
         let node_identity = make_node_identity();
 
         let msg_a = wrap_in_envelope_body!(&b"A".to_vec()).to_encoded_bytes();
-        let inbound_msg_a = make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false);
+        let inbound_msg_a =
+            make_dht_inbound_message(&node_identity, msg_a, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
         peer_manager
             .add_peer(Clone::clone(&*inbound_msg_a.source_peer))
             .await
@@ -1057,7 +1070,8 @@ mod test {
                 DhtMessageFlags::ENCRYPTED,
                 true,
                 false,
-            ),
+            )
+            .unwrap(),
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 

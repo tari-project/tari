@@ -80,7 +80,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
         dht_header: DhtMessageHeader {
             version: DhtProtocolVersion::latest(),
             ephemeral_public_key: None,
-            origin_mac: Vec::new(),
+            message_signature: Vec::new(),
             message_type: Default::default(),
             flags: Default::default(),
             destination: Default::default(),

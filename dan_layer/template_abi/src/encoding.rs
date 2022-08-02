@@ -24,9 +24,9 @@
 
 use std::io;
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::{Decode, Encode};
 
-pub fn encode_with_len<T: BorshSerialize>(val: &T) -> Vec<u8> {
+pub fn encode_with_len<T: Encode>(val: &T) -> Vec<u8> {
     let mut buf = Vec::with_capacity(512);
     buf.extend([0u8; 4]);
 
@@ -38,10 +38,24 @@ pub fn encode_with_len<T: BorshSerialize>(val: &T) -> Vec<u8> {
     buf
 }
 
-pub fn encode_into<T: BorshSerialize>(val: &T, buf: &mut Vec<u8>) -> io::Result<()> {
+pub fn encode_into<T: Encode>(val: &T, buf: &mut Vec<u8>) -> io::Result<()> {
     val.serialize(buf)
 }
 
-pub fn decode<T: BorshDeserialize>(mut input: &[u8]) -> io::Result<T> {
+pub fn decode<T: Decode>(mut input: &[u8]) -> io::Result<T> {
     T::deserialize(&mut input)
+}
+
+pub fn decode_len(input: &[u8]) -> io::Result<usize> {
+    if input.len() < 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "Not enough bytes to decode length",
+        ));
+    }
+
+    let mut buf = [0u8; 4];
+    buf.copy_from_slice(&input[..4]);
+    let len = u32::from_le_bytes(buf);
+    Ok(len as usize)
 }

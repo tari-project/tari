@@ -776,7 +776,11 @@ version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6358dedf60f4d9b8db43ad187391afe959746101346fe51bb978126bec61dfb"
 dependencies = [
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "heck 0.4.0",
  "indexmap",
  "log",
@@ -991,9 +995,15 @@ dependencies = [
 
 [[package]]
 name = "clap"
+<<<<<<< HEAD
 version = "3.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d53da17d37dba964b9b3ecb5c5a1f193a2762c700e6829201e645b9381c99dc7"
+=======
+version = "3.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44bbe24bbd31a185bc2c4f7c2abe80bea13a20d57ee4e55be70ac512bdc76417"
+>>>>>>> development
 dependencies = [
  "atty",
  "bitflags 1.3.2",
@@ -1008,9 +1018,15 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
+<<<<<<< HEAD
 version = "3.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c11d40217d16aee8508cc8e5fde8b4ff24639758608e5374e731b53f85749fb9"
+=======
+version = "3.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ba52acd3b0a5c33aeada5cdaa3267cdc7c594a98731d4268cdc1532f4264cb4"
+>>>>>>> development
 dependencies = [
  "heck 0.4.0",
  "proc-macro-error",
@@ -2252,8 +2268,13 @@ checksum = "c0408e2626025178a6a7f7ffc05a25bc47103229f19c113755de7bf63816290c"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
+<<<<<<< HEAD
  "redox_syscall 0.2.13",
  "winapi 0.3.9",
+=======
+ "redox_syscall 0.2.16",
+ "windows-sys 0.36.1",
+>>>>>>> development
 ]
 
 [[package]]
@@ -4616,7 +4637,11 @@ dependencies = [
  "cfg-if 1.0.0",
  "instant",
  "libc",
+<<<<<<< HEAD
  "redox_syscall 0.2.13",
+=======
+ "redox_syscall 0.2.16",
+>>>>>>> development
  "smallvec",
  "winapi 0.3.9",
 ]
@@ -4629,7 +4654,11 @@ checksum = "09a279cbf25cb0757810394fbc1e359949b59e348145c643a939a525692e6929"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
+<<<<<<< HEAD
  "redox_syscall 0.2.13",
+=======
+ "redox_syscall 0.2.16",
+>>>>>>> development
  "smallvec",
  "windows-sys 0.36.1",
 ]
@@ -5147,9 +5176,15 @@ checksum = "dbf0c48bc1d91375ae5c3cd81e3722dff1abcf81a30960240640d223f59fe0e5"
 
 [[package]]
 name = "proc-macro2"
+<<<<<<< HEAD
 version = "1.0.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c54b25569025b7fc9651de43004ae593a75ad88543b17178aa5e1b9c4f15f56f"
+=======
+version = "1.0.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c278e965f1d8cf32d6e0e96de3d3e79712178ae67986d9cf9151f51e95aac89b"
+>>>>>>> development
 dependencies = [
  "unicode-ident",
 ]
@@ -5474,9 +5509,15 @@ checksum = "41cc0f7e4d5d4544e8861606a285bb08d3e70712ccc7d2b84d7c0ccfaf4b05ce"
 
 [[package]]
 name = "redox_syscall"
+<<<<<<< HEAD
 version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62f25bc4c7e55e0b0b7a1d43fb893f4fa1361d0abe38b9ce4f323c2adfe6ef42"
+=======
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
+>>>>>>> development
 dependencies = [
  "bitflags 1.3.2",
 ]
@@ -5488,7 +5529,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b033d837a7cf162d7993aded9304e30a83213c648b6e389db233191f891e5c2b"
 dependencies = [
  "getrandom 0.2.7",
+<<<<<<< HEAD
  "redox_syscall 0.2.13",
+=======
+ "redox_syscall 0.2.16",
+>>>>>>> development
  "thiserror",
 ]
 
@@ -6652,7 +6697,11 @@ dependencies = [
 name = "tari_app_utilities"
 version = "0.34.0"
 dependencies = [
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "config",
  "dirs-next 1.0.2",
  "futures 0.3.21",
@@ -6679,7 +6728,11 @@ dependencies = [
  "async-trait",
  "bincode",
  "chrono",
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "config",
  "crossterm 0.23.2",
  "derive_more",
@@ -6768,7 +6821,11 @@ name = "tari_collectibles"
 version = "0.1.0"
 dependencies = [
  "blake2 0.9.2",
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "derivative",
  "diesel",
  "diesel_migrations",
@@ -6803,6 +6860,7 @@ name = "tari_common"
 version = "0.34.0"
 dependencies = [
  "anyhow",
+ "blake2 0.9.2",
  "config",
  "derivative",
  "dirs-next 1.0.2",
@@ -6816,6 +6874,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.9.9",
+ "sha3",
  "structopt",
  "tari_common_types",
  "tari_crypto",
@@ -6906,6 +6965,7 @@ dependencies = [
  "bitflags 1.3.2",
  "bytes 0.5.6",
  "chacha20 0.7.1",
+ "chacha20poly1305 0.9.1",
  "chrono",
  "clap 2.34.0",
  "diesel",
@@ -6965,7 +7025,11 @@ version = "0.34.0"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "config",
  "crossterm 0.17.7",
  "digest 0.9.0",
@@ -7073,8 +7137,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.15.1"
-source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.1#cf365739e24ce18eb52cfc5eddcf5a4adf8b4822"
+version = "0.15.3"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.15.3#48001dd080b73bb60fedc629229ec7d60f51041a"
 dependencies = [
  "base64 0.10.1",
  "blake2 0.9.2",
@@ -7100,9 +7164,11 @@ dependencies = [
 name = "tari_dan_common_types"
 version = "0.1.0"
 dependencies = [
+ "borsh",
  "prost",
  "prost-types",
  "tari_common",
+ "tari_common_types",
 ]
 
 [[package]]
@@ -7112,7 +7178,11 @@ dependencies = [
  "anyhow",
  "async-trait",
  "blake2 0.9.2",
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "digest 0.9.0",
  "futures 0.3.21",
  "lmdb-zero",
@@ -7210,6 +7280,7 @@ dependencies = [
  "sha2 0.9.9",
  "strum",
  "strum_macros",
+ "tari_common",
  "tari_common_types",
  "tari_crypto",
  "tari_utilities",
@@ -7243,7 +7314,11 @@ dependencies = [
  "bincode",
  "bytes 1.1.0",
  "chrono",
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "config",
  "crossterm 0.17.7",
  "derivative",
@@ -7294,7 +7369,11 @@ dependencies = [
  "base64 0.13.0",
  "bufstream",
  "chrono",
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "config",
  "crossbeam",
  "crossterm 0.17.7",
@@ -7491,8 +7570,8 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.4.4"
-source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.4#cf01f5e5c77457f59bd61ffbed1923f52f4a03c2"
+version = "0.4.5"
+source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.5#a9e059ba84f8d931aeaa2b88a52a1ce6503b2deb"
 dependencies = [
  "base58-monero",
  "base64 0.13.0",
@@ -7501,6 +7580,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "zeroize",
 ]
 
 [[package]]
@@ -7511,7 +7591,11 @@ dependencies = [
  "async-trait",
  "blake2 0.9.2",
  "bytecodec",
+<<<<<<< HEAD
  "clap 3.2.5",
+=======
+ "clap 3.2.15",
+>>>>>>> development
  "config",
  "digest 0.9.0",
  "futures 0.3.21",
@@ -7814,7 +7898,11 @@ dependencies = [
  "cfg-if 1.0.0",
  "fastrand",
  "libc",
+<<<<<<< HEAD
  "redox_syscall 0.2.13",
+=======
+ "redox_syscall 0.2.16",
+>>>>>>> development
  "remove_dir_all",
  "winapi 0.3.9",
 ]
@@ -7902,7 +7990,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fdfe0627923f7411a43ec9ec9c39c3a9b4151be313e0922042581fb6c9b717f"
 dependencies = [
  "libc",
+<<<<<<< HEAD
  "redox_syscall 0.2.13",
+=======
+ "redox_syscall 0.2.16",
+>>>>>>> development
  "winapi 0.3.9",
 ]
 
@@ -8827,9 +8919,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f76068e87fe9b837a6bc2ccded66784173eadb828c4168643e9fddf6f9ed2e61"
+checksum = "8905fd25fdadeb0e7e8bf43a9f46f9f972d6291ad0c7a32573b88dd13a6cfa6b"
 dependencies = [
  "leb128",
 ]
@@ -9073,9 +9165,15 @@ checksum = "718ed7c55c2add6548cca3ddd6383d738cd73b892df400e96b9aa876f0141d7a"
 
 [[package]]
 name = "wast"
+<<<<<<< HEAD
 version = "43.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "408feaebf6dbf9d154957873b14d00e8fba4cbc17a8cbb1bc9e4c1db425c50a8"
+=======
+version = "45.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "186c474c4f9bb92756b566d592a16591b4526b1a4841171caa3f31d7fe330d96"
+>>>>>>> development
 dependencies = [
  "leb128",
  "memchr",
@@ -9085,9 +9183,15 @@ dependencies = [
 
 [[package]]
 name = "wat"
+<<<<<<< HEAD
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b70bfff0cfaf33dc9d641196dbcd0023a2da8b4b9030c59535cb44e2884983b"
+=======
+version = "1.0.47"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2d4bc4724b4f02a482c8cab053dac5ef26410f264c06ce914958f9a42813556"
+>>>>>>> development
 dependencies = [
  "wast",
 ]

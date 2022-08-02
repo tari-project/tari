@@ -72,5 +72,6 @@ pub trait FinalHorizonStateValidation<B>: Send + Sync {
         height: u64,
         total_utxo_sum: &Commitment,
         total_kernel_sum: &Commitment,
+        total_burned_sum: &Commitment,
     ) -> Result<(), ValidationError>;
 }

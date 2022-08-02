@@ -277,7 +277,7 @@ mod test {
 
         let node_identity = make_node_identity();
         let inbound_msg =
-            make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false, false);
+            make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false, false).unwrap();
         let msg = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(Vec::new()),
             Some(node_identity.public_key().clone()),
@@ -303,7 +303,8 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             false,
-        );
+        )
+        .unwrap();
         let header = inbound_msg.dht_header.clone();
         let msg = DecryptedDhtMessage::failed(inbound_msg);
         service.call(msg).await.unwrap();

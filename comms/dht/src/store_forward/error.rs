@@ -33,7 +33,7 @@ use thiserror::Error;
 use crate::{
     actor::DhtActorError,
     envelope::DhtMessageError,
-    origin_mac::OriginMacError,
+    message_signature::MessageSignatureError,
     outbound::DhtOutboundError,
     storage::StorageError,
 };
@@ -52,7 +52,7 @@ pub enum StoreAndForwardError {
     #[error("Received stored message has an invalid destination")]
     InvalidDestination,
     #[error("Received stored message has an invalid origin signature: {0}")]
-    InvalidOriginMac(#[from] OriginMacError),
+    InvalidMessageSignature(#[from] MessageSignatureError),
     #[error("Invalid envelope body")]
     InvalidEnvelopeBody,
     #[error("DHT header is invalid")]
