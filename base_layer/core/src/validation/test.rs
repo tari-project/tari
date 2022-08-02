@@ -287,6 +287,7 @@ fn chain_balance_validation() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn chain_balance_validation_burned() {
     let factories = CryptoFactories::default();
     let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler).build();

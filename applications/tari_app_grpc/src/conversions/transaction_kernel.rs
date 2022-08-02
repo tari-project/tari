@@ -45,12 +45,13 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             .map_err(|_| "excess_sig could not be converted".to_string())?;
 
         let kernel_features = u8::try_from(kernel.features).map_err(|_| "kernel features must be a single byte")?;
-        let commitment = match kernel.burned_commitment.is_empty() {
-            true => None,
-            false => Some(
+        let commitment = if kernel.burned_commitment.is_empty() {
+            None
+        } else {
+            Some(
                 Commitment::from_bytes(&kernel.burned_commitment)
                     .map_err(|err| format!("Burned commitment could not be converted:{}", err))?,
-            ),
+            )
         };
 
         Ok(Self::new(
