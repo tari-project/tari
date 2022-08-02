@@ -23,6 +23,7 @@
 use std::{
     convert::{TryFrom, TryInto},
     fs,
+    path::PathBuf,
 };
 
 use clap::Parser;
@@ -1240,47 +1241,38 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
     }
 
+    /// Returns the contents of a seed words file, provided via CLI
     async fn seed_words(&self, _: Request<tari_rpc::Empty>) -> Result<Response<SeedWordsResponse>, Status> {
         let cli = Cli::parse();
-        let file_path = cli.seed_words_file_name.unwrap();
 
-        if !file_path.is_file() {
-            return Err(Status::not_found("file not found"));
-        }
+        let filepath: PathBuf = match cli.seed_words_file_name {
+            Some(filepath) => filepath,
+            None => return Err(Status::not_found("file path is empty")),
+        };
 
-        let file_name = file_path.clone().into_os_string().into_string().unwrap();
-
-        if file_name.is_empty() {
-            return Err(Status::not_found("seed_words_file_name is empty"));
-        }
-
-        let contents = fs::read_to_string(file_path)?;
-        let words = contents
+        let words = fs::read_to_string(filepath)?
             .split(' ')
             .collect::<Vec<&str>>()
             .iter()
             .map(|&x| x.into())
             .collect::<Vec<String>>();
+
         Ok(Response::new(SeedWordsResponse { words }))
     }
 
+    /// Deletes the seed words file, provided via CLI
     async fn delete_seed_words_file(
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<FileDeletedResponse>, Status> {
         let cli = Cli::parse();
-        let file_path = cli.seed_words_file_name.unwrap();
 
-        if !file_path.is_file() {
-            return Err(Status::not_found("file not found"));
-        }
+        // WARNING: the filepath used is supplied as an argument
+        fs::remove_file(match cli.seed_words_file_name {
+            Some(filepath) => filepath,
+            None => return Err(Status::not_found("file path is empty")),
+        })?;
 
-        let file_name = file_path.clone().into_os_string().into_string().unwrap();
-
-        if file_name.is_empty() {
-            return Err(Status::not_found("seed_words_file_name is empty"));
-        }
-        fs::remove_file(file_path)?;
         Ok(Response::new(FileDeletedResponse {}))
     }
 }

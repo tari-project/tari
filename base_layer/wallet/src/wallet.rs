@@ -697,10 +697,10 @@ where
     /// Remove encryption from all the Wallet db backends. If any backends do not have encryption applied then this will
     /// fail
     pub async fn remove_encryption(&mut self) -> Result<(), WalletError> {
-        self.db.remove_encryption().await?;
         self.output_manager_service.remove_encryption().await?;
         self.transaction_service.remove_encryption().await?;
         self.key_manager_service.remove_encryption().await?;
+        self.db.remove_encryption().await?;
         Ok(())
     }
 
