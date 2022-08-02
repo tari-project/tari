@@ -25,13 +25,15 @@ use std::marker::PhantomData;
 use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
+use tari_common::mac_domain_hasher;
 use tari_crypto::{
+    hash::blake2::Blake256,
     hashing::LengthExtensionAttackResistant,
     keys::SecretKey,
     tari_utilities::byte_array::ByteArrayError,
 };
 
-use crate::{KeyManagerDomain, cipher_seed::CipherSeed};
+use crate::{cipher_seed::CipherSeed, KeyManagerDomain};
 
 #[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
@@ -89,7 +91,7 @@ where
         // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
         // piece of data for concatenation, reducing the risk of collisions due to redundance of variable length
         // input
-        let derive_key = base_layer_key_manager()
+        let derive_key = mac_domain_hasher::<Blake256, KeyManagerDomain>()
             .chain(self.seed.entropy())
             .chain(self.branch_seed.as_str().as_bytes())
             .chain(key_index.to_le_bytes())
