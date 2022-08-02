@@ -498,6 +498,13 @@ mod test {
         let message = "This is my secret message, keep it secret !".as_bytes();
         let mut pad_message = pad_message_to_base_length_multiple(message);
 
+        // we modify the prepend length, in order to assert that the get original message
+        // method will output a different length message
+        pad_message[0] = 1;
+
+        let modified_message = get_original_message_from_padded_text(pad_message.as_slice()).unwrap();
+        assert!(message.len() != modified_message.len());
+
         // add big number from le bytes of prepend bytes
         pad_message[0] = 255;
         pad_message[1] = 255;
