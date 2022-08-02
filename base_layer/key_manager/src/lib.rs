@@ -14,6 +14,7 @@ pub mod mnemonic_wordlists;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+hash_domain!(KeyManagerDomain, "com.tari.tari_project.base_layer.key_manager", 1);
 hash_domain!(
     KeyManagerMacGeneration,
     "com.tari.tari_project.base_layer.key_manager.mac_generation",
