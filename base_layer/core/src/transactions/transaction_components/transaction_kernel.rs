@@ -115,7 +115,7 @@ impl TransactionKernel {
 
     /// Is this a burned output kernel?
     pub fn is_burned(&self) -> bool {
-        self.features.contains(KernelFeatures::BURNED_KERNEL)
+        self.features.contains(KernelFeatures::BURN_KERNEL)
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {

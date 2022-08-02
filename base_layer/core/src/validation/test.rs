@@ -362,7 +362,7 @@ fn chain_balance_validation_burned() {
     let (burned, burned_key, _) = create_utxo(
         100.into(),
         &factories,
-        &OutputFeatures::create_burned_output(),
+        &OutputFeatures::create_burn_output(),
         &script!(Nop),
         &Covenant::default(),
         MicroTari::zero(),
@@ -373,7 +373,7 @@ fn chain_balance_validation_burned() {
     let kernel2 = KernelBuilder::new()
         .with_signature(&sig2)
         .with_excess(&excess2)
-        .with_features(KernelFeatures::create_burned())
+        .with_features(KernelFeatures::create_burn())
         .with_burn_commitment(burned.commitment.clone())
         .build()
         .unwrap();

@@ -85,8 +85,6 @@ pub enum BlockHeaderValidationError {
     ProofOfWorkError(#[from] PowError),
     #[error("Monero seed hash too old")]
     OldSeedHash,
-    #[error("Invalid burn count in header")]
-    InvalidTotalBurned,
 }
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block

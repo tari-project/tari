@@ -36,8 +36,8 @@ bitflags! {
     pub struct KernelFeatures: u8 {
         /// Coinbase transaction
         const COINBASE_KERNEL = 1u8;
-        /// Burned output
-        const BURNED_KERNEL = 2u8;
+        /// Burned output transaction
+        const BURN_KERNEL = 2u8;
     }
 }
 
@@ -48,13 +48,13 @@ impl KernelFeatures {
     }
 
     /// Creates a burned kernel flag
-    pub fn create_burned() -> KernelFeatures {
-        KernelFeatures::BURNED_KERNEL
+    pub fn create_burn() -> KernelFeatures {
+        KernelFeatures::BURN_KERNEL
     }
 
     /// Does this feature include the burned flag?
     pub fn is_burned(&self) -> bool {
-        self.contains(KernelFeatures::BURNED_KERNEL)
+        self.contains(KernelFeatures::BURN_KERNEL)
     }
 }
 

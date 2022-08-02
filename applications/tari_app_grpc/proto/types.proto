@@ -152,7 +152,7 @@ message TransactionKernel {
     // Version
     uint32 version = 9;
     // Optional burned commitment
-    bytes burned_commitment = 10;
+    bytes burn_commitment = 10;
 }
 
 // A transaction input.

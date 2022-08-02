@@ -236,7 +236,7 @@ impl TransactionOutput {
 
     /// Returns true if the output is burned, otherwise false
     pub fn is_burned(&self) -> bool {
-        matches!(self.features.output_type, OutputType::Burned)
+        matches!(self.features.output_type, OutputType::Burn)
     }
 
     /// Convenience function that returns the challenge for the metadata commitment signature

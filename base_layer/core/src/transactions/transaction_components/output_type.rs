@@ -43,7 +43,7 @@ pub enum OutputType {
     /// Output is a coinbase output, must not be spent until maturity.
     Coinbase = 1,
     /// Output is a burned output and can not be spent ever.
-    Burned = 2,
+    Burn = 2,
     /// Output defines a side-chain contract.
     ContractDefinition = 3,
     /// Output defines the constitution for a side-chain contract.

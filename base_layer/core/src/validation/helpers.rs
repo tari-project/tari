@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
@@ -272,15 +272,15 @@ pub fn check_accounting_balance(
 /// sum.
 #[allow(clippy::mutable_key_type)]
 pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
-    let mut burned_outputs = HashMap::new();
+    let mut burned_outputs = HashSet::new();
     for output in body.outputs() {
         if output.is_burned() {
             // we dont care about duplicate commitments are they should have already been checked
-            burned_outputs.insert(output.commitment.clone(), true);
+            burned_outputs.insert(output.commitment.clone());
         }
     }
     for kernel in body.kernels() {
-        if kernel.is_burned() && burned_outputs.remove(kernel.get_burn_commitment()?).is_none() {
+        if kernel.is_burned() && burned_outputs.remove(kernel.get_burn_commitment()?) {
             return Err(ValidationError::InvalidBurnError(
                 "Burned kernel does not match burned output".to_string(),
             ));

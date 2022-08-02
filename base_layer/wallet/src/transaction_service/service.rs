@@ -1342,7 +1342,7 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let output_features = OutputFeatures::create_burned_output();
+        let output_features = OutputFeatures::create_burn_output();
         // Prepare sender part of the transaction
         let mut stp = self
             .output_manager_service
@@ -1389,7 +1389,7 @@ where
         // Finalize
 
         stp.finalize(
-            KernelFeatures::create_burned(),
+            KernelFeatures::create_burn(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),

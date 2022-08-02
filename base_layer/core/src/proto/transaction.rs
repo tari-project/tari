@@ -100,10 +100,8 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             .ok_or_else(|| "excess_sig not provided".to_string())?
             .try_into()?;
         let kernel_features = u8::try_from(kernel.features).map_err(|_| "Kernel features must be a single byte")?;
-        let commitment = match kernel.burned_commitment {
-            Some(burned_commitment) => {
-                Some(Commitment::from_bytes(&burned_commitment.data).map_err(|e| e.to_string())?)
-            },
+        let commitment = match kernel.burn_commitment {
+            Some(burn_commitment) => Some(Commitment::from_bytes(&burn_commitment.data).map_err(|e| e.to_string())?),
             None => None,
         };
 
@@ -132,7 +130,7 @@ impl From<TransactionKernel> for proto::types::TransactionKernel {
             fee: kernel.fee.into(),
             lock_height: kernel.lock_height,
             version: kernel.version as u32,
-            burned_commitment: commitment,
+            burn_commitment: commitment,
         }
     }
 }

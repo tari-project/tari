@@ -148,9 +148,9 @@ impl OutputFeatures {
     }
 
     /// creates output features for a burned output
-    pub fn create_burned_output() -> OutputFeatures {
+    pub fn create_burn_output() -> OutputFeatures {
         OutputFeatures {
-            output_type: OutputType::Burned,
+            output_type: OutputType::Burn,
             ..Default::default()
         }
     }
