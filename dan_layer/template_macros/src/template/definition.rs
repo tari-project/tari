@@ -33,7 +33,6 @@ pub fn generate_definition(ast: &TemplateAst) -> TokenStream {
 
     quote! {
         pub mod template {
-            use super::*;
             use tari_template_abi::borsh;
 
             #[derive(tari_template_abi::borsh::BorshSerialize, tari_template_abi::borsh::BorshDeserialize)]

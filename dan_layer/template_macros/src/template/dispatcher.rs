@@ -50,7 +50,7 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
                 _ => panic!("invalid function name")
             };
 
-            wrap_ptr(encode_with_len(&result))
+            wrap_ptr(result)
         }
     };
 
@@ -120,13 +120,18 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
             let state = template::#template_ident::#function_ident(#(#args),*);
         });
         stmts.push(parse_quote! {
-            result = initialise(state);
+            let rtn = initialise(state);
         });
     } else {
         stmts.push(parse_quote! {
-            result = template::#template_ident::#function_ident(#(#args),*);
+            let rtn = template::#template_ident::#function_ident(#(#args),*);
         });
     }
+
+    // encode the result value
+    stmts.push(parse_quote! {
+        result = encode_with_len(&rtn);
+    });
 
     // after user function invocation, update the component state
     if should_set_state {

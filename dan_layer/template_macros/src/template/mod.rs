@@ -83,9 +83,8 @@ mod tests {
                     pub fn get(&self) -> u32 {
                         self.value
                     }
-                    pub fn set(&mut self, value: u32) -> u32 {
+                    pub fn set(&mut self, value: u32) {
                         self.value = value;
-                        value
                     }
                 } 
             }
@@ -96,7 +95,6 @@ mod tests {
 
         assert_code_eq(output, quote! {
             pub mod template {
-                use super::*;
                 use tari_template_abi::borsh;
 
                 #[derive(tari_template_abi::borsh::BorshSerialize, tari_template_abi::borsh::BorshDeserialize)]
@@ -111,9 +109,8 @@ mod tests {
                     pub fn get(&self) -> u32 {
                         self.value
                     }
-                    pub fn set(&mut self, value: u32) -> u32 {
+                    pub fn set(&mut self, value: u32) {
                         self.value = value;
-                        value
                     }
                 }
             }
@@ -138,7 +135,7 @@ mod tests {
                         FunctionDef {
                             name: "set".to_string(),
                             arguments: vec![Type::U32, Type::U32],
-                            output: Type::U32,
+                            output: Type::Unit,
                         }
                     ],
                 };
@@ -163,24 +160,27 @@ mod tests {
                 match call_info.func_name.as_str() {
                     "new" => {
                         let state = template::State::new();
-                        result = initialise(state);
+                        let rtn = initialise(state);
+                        result = encode_with_len(&rtn);
                     },
                     "get" => {
                         let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
                         let mut state: template::State = get_state(arg_0);
-                        result = template::State::get(&mut state);
+                        let rtn = template::State::get(&mut state);
+                        result = encode_with_len(&rtn);
                     },
                     "set" => {
                         let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
                         let arg_1 = decode::<u32>(&call_info.args[1usize]).unwrap();
                         let mut state: template::State = get_state(arg_0);
-                        result = template::State::set(&mut state, arg_1);
+                        let rtn = template::State::set(&mut state, arg_1);
+                        result = encode_with_len(&rtn);
                         set_state(arg_0, state);
                     },
                     _ => panic!("invalid function name")
                 };
 
-                wrap_ptr(encode_with_len(&result))
+                wrap_ptr(result)
             }
 
             extern "C" {

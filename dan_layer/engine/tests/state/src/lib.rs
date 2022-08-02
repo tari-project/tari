@@ -33,10 +33,8 @@ mod state_template {
             Self { value: 0 }
         }
 
-        pub fn set(&mut self, value: u32) -> u32 {
+        pub fn set(&mut self, value: u32) {
             self.value = value;
-            // TODO: allow empty return values
-            value
         }
 
         pub fn get(&self) -> u32 {

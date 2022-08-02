@@ -55,7 +55,6 @@ fn test_state() {
         encode_with_len(&component_id),
         encode_with_len(&new_value),
     ]);
-
     let value: u32 = template_test.call_method("State".to_string(), "get".to_string(), vec![encode_with_len(
         &component_id,
     )]);
