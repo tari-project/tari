@@ -150,7 +150,6 @@ pub struct KeyManagerStateUpdateSql {
     primary_key_index: Option<Vec<u8>>,
 }
 
-// WARNING: using the same source key prefix for NewKeyManagerStateSql and KeyManagerStateSql
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
