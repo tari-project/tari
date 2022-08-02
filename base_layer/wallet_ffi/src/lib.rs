@@ -9275,9 +9275,9 @@ mod test {
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let mnemonic = vec![
-                "parade", "genius", "cradle", "milk", "perfect", "ride", "online", "world", "lady", "apple", "rent",
-                "business", "oppose", "force", "tumble", "escape", "tongue", "camera", "ceiling", "edge", "shine",
-                "gauge", "fossil", "orphan",
+                "theme", "spatial", "winner", "appear", "board", "float", "tennis", "grant", "story", "film", "accuse",
+                "october", "corn", "seven", "brain", "typical", "fiction", "eight", "inspire", "rapid", "whisper",
+                "title", "piano", "crew",
             ];
 
             let seed_words = seed_words_create();
