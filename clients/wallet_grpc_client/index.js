@@ -46,6 +46,7 @@ function Client(address) {
     "checkForUpdates",
     "revalidateAllTransactions",
     "SendShaAtomicSwapTransaction",
+    "CreateBurnTransaction",
     "claimShaAtomicSwapTransaction",
     "ClaimHtlcRefundTransaction",
     "registerAsset",

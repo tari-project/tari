@@ -123,7 +123,8 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
     }
     let (pk, sig) = test_helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
-    let kernel = TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig);
+    let kernel =
+        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig, None);
     let kernel = serde_json::to_string(&kernel).unwrap();
     let _result = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
 

@@ -179,32 +179,40 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
+    // To create a new seed word sequence, uncomment below
+    // let seed = CipherSeed::new();
+    // use tari_key_manager::mnemonic::MnemonicLanguage;
+    // let mnemonic_seq = seed
+    //     .to_mnemonic(MnemonicLanguage::English, None)
+    //     .expect("Couldn't convert CipherSeed to Mnemonic");
+    // println!("{:?}".to_string(), mnemonic_seq);
+
     let cipher_seed = CipherSeed::from_mnemonic(
         &[
-            "parade".to_string(),
-            "genius".to_string(),
-            "cradle".to_string(),
-            "milk".to_string(),
-            "perfect".to_string(),
-            "ride".to_string(),
-            "online".to_string(),
-            "world".to_string(),
-            "lady".to_string(),
-            "apple".to_string(),
-            "rent".to_string(),
-            "business".to_string(),
-            "oppose".to_string(),
-            "force".to_string(),
-            "tumble".to_string(),
-            "escape".to_string(),
-            "tongue".to_string(),
-            "camera".to_string(),
-            "ceiling".to_string(),
-            "edge".to_string(),
-            "shine".to_string(),
-            "gauge".to_string(),
-            "fossil".to_string(),
-            "orphan".to_string(),
+            "gas".to_string(),
+            "impulse".to_string(),
+            "achieve".to_string(),
+            "flame".to_string(),
+            "tuna".to_string(),
+            "property".to_string(),
+            "squeeze".to_string(),
+            "episode".to_string(),
+            "crop".to_string(),
+            "eagle".to_string(),
+            "robot".to_string(),
+            "hundred".to_string(),
+            "govern".to_string(),
+            "endorse".to_string(),
+            "fence".to_string(),
+            "egg".to_string(),
+            "theme".to_string(),
+            "again".to_string(),
+            "must".to_string(),
+            "accident".to_string(),
+            "abstract".to_string(),
+            "love".to_string(),
+            "trumpet".to_string(),
+            "expose".to_string(),
         ],
         None,
     )
@@ -495,7 +503,7 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     // test if a fee estimate would be possible with pending funds included
     // at this point 52000 uT is still spendable, with pending change incoming of 1690 uT
-    // so instead of returning "not enough funds", return "funds pending"
+    // so instead of returning "not enough funds".to_string(), return "funds pending"
     let spendable_amount = (3..=10).sum::<u64>() * amount;
     let err = oms
         .fee_estimate(spendable_amount, fee_per_gram, 1, 2)

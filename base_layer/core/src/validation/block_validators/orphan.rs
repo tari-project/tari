@@ -35,6 +35,7 @@ use crate::{
             check_kernel_lock_height,
             check_maturity,
             check_sorting_and_duplicates,
+            check_total_burned,
         },
         OrphanValidation,
         ValidationError,
@@ -99,6 +100,8 @@ impl OrphanValidation for OrphanBlockValidator {
             "SV - No duplicate inputs / outputs for {} ",
             &block_id
         );
+        check_total_burned(&block.body)?;
+        trace!(target: LOG_TARGET, "SV - Burned outputs ok for {} ", &block_id);
 
         // Check that the inputs are are allowed to be spent
         check_maturity(height, block.body.inputs())?;

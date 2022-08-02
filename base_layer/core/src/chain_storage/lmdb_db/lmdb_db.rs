@@ -1302,12 +1302,35 @@ impl LMDBDatabase {
         let leaf_count = witness_mmr.get_leaf_count()?;
 
         // Output hashes added before inputs so that inputs can spend outputs in this transaction (0-conf and combined)
+        let mut burned_outputs = Vec::new();
         let outputs = outputs
             .into_iter()
             .enumerate()
             .map(|(i, output)| {
                 output_mmr.push(output.hash())?;
                 witness_mmr.push(output.witness_hash())?;
+                // lets check burn
+                if output.is_burned() {
+                    let index = match output_mmr.find_leaf_index(&output.hash())? {
+                        Some(index) => {
+                            debug!(target: LOG_TARGET, "Output {} burned in current block", output);
+                            burned_outputs.push(output.commitment.clone());
+                            index
+                        },
+                        None => {
+                            return Err(ChainStorageError::UnexpectedResult(
+                                "Output MMR did not contain the expected output".to_string(),
+                            ))
+                        },
+                    };
+                    // We need to mark this as spent as well.
+                    if !output_mmr.delete(index) {
+                        return Err(ChainStorageError::InvalidOperation(format!(
+                            "Could not delete index {} from the output MMR",
+                            index
+                        )));
+                    }
+                };
                 Ok((output, leaf_count + i + 1))
             })
             .collect::<Result<Vec<_>, ChainStorageError>>()?;
@@ -1359,6 +1382,14 @@ impl LMDBDatabase {
         }
 
         for commitment in spent_zero_conf_commitments {
+            lmdb_delete(
+                txn,
+                &self.utxo_commitment_index,
+                commitment.as_bytes(),
+                "utxo_commitment_index",
+            )?;
+        }
+        for commitment in burned_outputs {
             lmdb_delete(
                 txn,
                 &self.utxo_commitment_index,
