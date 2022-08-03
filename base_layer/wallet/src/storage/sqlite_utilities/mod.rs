@@ -25,6 +25,7 @@ use std::{fs::File, path::Path, time::Duration};
 use fs2::FileExt;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
 
 use crate::{
@@ -125,7 +126,7 @@ pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorage
 
 pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     db_path: P,
-    passphrase: Option<String>,
+    passphrase: Option<SafePassword>,
     sqlite_pool_size: usize,
 ) -> Result<
     (
