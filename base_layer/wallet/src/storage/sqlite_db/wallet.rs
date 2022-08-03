@@ -607,7 +607,7 @@ fn check_db_encryption_status(
             let stored_hash =
                 PasswordHash::new(&db_passphrase_hash).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
 
-            if let Err(e) = argon2.verify_password(passphrase.as_bytes(), &stored_hash) {
+            if let Err(e) = argon2.verify_password(passphrase.reveal(), &stored_hash) {
                 error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
                 return Err(WalletStorageError::InvalidPassphrase);
             }
@@ -809,7 +809,7 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
 mod test {
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
-    use tari_utilities::hex::Hex;
+    use tari_utilities::{hex::Hex, SafePassword};
     use tempfile::tempdir;
 
     use crate::storage::{
