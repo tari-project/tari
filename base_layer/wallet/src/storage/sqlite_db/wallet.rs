@@ -46,6 +46,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
     message_format::MessageFormat,
+    SafePassword,
 };
 use tokio::time::Instant;
 
@@ -72,7 +73,7 @@ pub struct WalletSqliteDatabase {
 impl WalletSqliteDatabase {
     pub fn new(
         database_connection: WalletDbConnection,
-        passphrase: Option<String>,
+        passphrase: Option<SafePassword>,
     ) -> Result<Self, WalletStorageError> {
         let cipher = check_db_encryption_status(&database_connection, passphrase)?;
 
@@ -383,7 +384,7 @@ impl WalletBackend for WalletSqliteDatabase {
         }
     }
 
-    fn apply_encryption(&self, passphrase: String) -> Result<Aes256Gcm, WalletStorageError> {
+    fn apply_encryption(&self, passphrase: SafePassword) -> Result<Aes256Gcm, WalletStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
         if current_cipher.is_some() {
             return Err(WalletStorageError::AlreadyEncrypted);
@@ -404,13 +405,13 @@ impl WalletBackend for WalletSqliteDatabase {
         let passphrase_salt = SaltString::generate(&mut OsRng);
 
         let passphrase_hash = argon2
-            .hash_password_simple(passphrase.as_bytes(), &passphrase_salt)
+            .hash_password_simple(passphrase.reveal(), &passphrase_salt)
             .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
             .to_string();
         let encryption_salt = SaltString::generate(&mut OsRng);
 
         let derived_encryption_key = argon2
-            .hash_password_simple(passphrase.as_bytes(), encryption_salt.as_str())
+            .hash_password_simple(passphrase.reveal(), encryption_salt.as_str())
             .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
             .hash
             .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
@@ -560,7 +561,7 @@ impl WalletBackend for WalletSqliteDatabase {
 /// Master Public Key that is stored in the db
 fn check_db_encryption_status(
     database_connection: &WalletDbConnection,
-    passphrase: Option<String>,
+    passphrase: Option<SafePassword>,
 ) -> Result<Option<Aes256Gcm>, WalletStorageError> {
     let start = Instant::now();
     let conn = database_connection.get_pooled_connection()?;
@@ -581,13 +582,13 @@ fn check_db_encryption_status(
             let argon2 = Argon2::default();
             let stored_hash =
                 PasswordHash::new(&db_passphrase_hash).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
-            if let Err(e) = argon2.verify_password(passphrase.as_bytes(), &stored_hash) {
+            if let Err(e) = argon2.verify_password(passphrase.reveal(), &stored_hash) {
                 error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
                 return Err(WalletStorageError::InvalidPassphrase);
             }
 
             let derived_encryption_key = argon2
-                .hash_password_simple(passphrase.as_bytes(), encryption_salt.as_str())
+                .hash_password_simple(passphrase.reveal(), encryption_salt.as_str())
                 .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
                 .hash
                 .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
@@ -770,7 +771,7 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
 mod test {
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
-    use tari_utilities::hex::Hex;
+    use tari_utilities::{hex::Hex, SafePassword};
     use tempfile::tempdir;
 
     use crate::storage::{
@@ -826,7 +827,7 @@ mod test {
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
 
-        let passphrase = "an example very very secret key.".to_string();
+        let passphrase = SafePassword::from("an example very very secret key.".to_string());
 
         assert!(WalletSqliteDatabase::new(connection.clone(), Some(passphrase.clone())).is_err());
 
@@ -879,7 +880,7 @@ mod test {
         };
         assert_eq!(seed, read_seed1);
 
-        let passphrase = "an example very very secret key.".to_string();
+        let passphrase = "an example very very secret key.".to_string().into();
         db.apply_encryption(passphrase).unwrap();
         let read_seed2 = match db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
             DbValue::MasterSeed(sk) => sk,
