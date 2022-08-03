@@ -44,16 +44,16 @@ use chacha20::{
 use crc32fast::Hasher as CrcHasher;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use tari_common::mac_domain_hasher;
 use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::ByteArray;
 
 use crate::{
     error::KeyManagerError,
+    mac_domain_hasher,
     mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
-    KeyManagerArgon2Encoding,
-    KeyManagerChacha20Encoding,
-    KeyManagerMacGeneration,
+    LABEL_ARGON_ENCODING,
+    LABEL_CHACHA20_ENCODING,
+    LABEL_MAC_GENERATION,
 };
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
@@ -264,7 +264,7 @@ impl CipherSeed {
         // encryption nonce for ChaCha20 encryption, generated as a domain separated hash of the given salt. Following
         // https://libsodium.gitbook.io/doc/advanced/stream_ciphers/chacha20, as of the IEF variant, the produced encryption
         // nonce should be 96-bit long
-        let encryption_nonce = &mac_domain_hasher::<Blake256, KeyManagerChacha20Encoding>()
+        let encryption_nonce = mac_domain_hasher::<Blake256>(LABEL_CHACHA20_ENCODING)
             .chain(salt)
             .finalize();
 
@@ -273,9 +273,9 @@ impl CipherSeed {
         let nonce_ga = Nonce::from_slice(encryption_nonce);
 
         // we take the last 32 bytes of the generated derived encryption key for ChaCha20 cipher, see documentation
-        let derived_encryption_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?[32..].to_vec();
+        let derived_encryption_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?;
 
-        let key = Key::from_slice(derived_encryption_key.as_slice());
+        let key = Key::from_slice(&derived_encryption_key[32..]);
         let mut cipher = ChaCha20::new(key, nonce_ga);
         cipher.apply_keystream(data.as_mut_slice());
 
@@ -320,14 +320,14 @@ impl CipherSeed {
         }
 
         // we take the first 32 bytes of the generated derived encryption key for MAC generation, see documentation
-        let passphrase_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?[..32].to_vec();
+        let passphrase_key = Self::generate_domain_separated_passphrase_hash(passphrase, salt)?;
 
-        Ok(mac_domain_hasher::<Blake256, KeyManagerMacGeneration>()
+        Ok(mac_domain_hasher::<Blake256>(LABEL_MAC_GENERATION)
             .chain(birthday)
             .chain(entropy)
             .chain(cipher_seed_version)
             .chain(salt)
-            .chain(passphrase_key.as_slice())
+            .chain(&passphrase_key[32..])
             .finalize()
             .as_ref()[..CIPHER_SEED_MAC_BYTES]
             .to_vec())
@@ -338,7 +338,7 @@ impl CipherSeed {
 
         // we produce a domain separated hash of the given salt, for Argon2 encryption use. As suggested in
         // https://en.wikipedia.org/wiki/Argon2, we shall use a 16-byte length hash salt
-        let argon2_salt = mac_domain_hasher::<Blake256, KeyManagerArgon2Encoding>()
+        let argon2_salt = mac_domain_hasher::<Blake256>(LABEL_ARGON_ENCODING)
             .chain(salt)
             .finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
