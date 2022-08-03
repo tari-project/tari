@@ -25,15 +25,13 @@ use std::marker::PhantomData;
 use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common::mac_domain_hasher;
 use tari_crypto::{
-    hash::blake2::Blake256,
     hashing::LengthExtensionAttackResistant,
     keys::SecretKey,
     tari_utilities::byte_array::ByteArrayError,
 };
 
-use crate::{cipher_seed::CipherSeed, KeyManagerDomain};
+use crate::{cipher_seed::CipherSeed, mac_domain_hasher, LABEL_DERIVE_KEY};
 
 #[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
@@ -89,9 +87,9 @@ where
     /// hash function H which is Length attack resistant, such as Blake2b.
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
         // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
-        // piece of data for concatenation, reducing the risk of collisions due to redundance of variable length
+        // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
         // input
-        let derive_key = mac_domain_hasher::<Blake256, KeyManagerDomain>()
+        let derive_key = mac_domain_hasher::<D>(LABEL_DERIVE_KEY)
             .chain(self.seed.entropy())
             .chain(self.branch_seed.as_str().as_bytes())
             .chain(key_index.to_le_bytes())
