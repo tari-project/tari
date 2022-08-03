@@ -21,4 +21,4 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod component;
-pub use component::ComponentId;
+pub use component::*;
