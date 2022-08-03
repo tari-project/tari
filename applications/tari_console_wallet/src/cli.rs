@@ -27,7 +27,10 @@ use clap::{Args, Parser, Subcommand};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
-use tari_utilities::hex::{Hex, HexError};
+use tari_utilities::{
+    hex::{Hex, HexError},
+    SafePassword,
+};
 
 const DEFAULT_NETWORK: &str = "dibbler";
 
@@ -45,7 +48,7 @@ pub(crate) struct Cli {
     /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
     /// possible.
     #[clap(long, env = "TARI_WALLET_PASSWORD", hide_env_values = true)]
-    pub password: Option<String>,
+    pub password: Option<SafePassword>,
     /// Change the password for the console wallet
     #[clap(long, alias = "update-password")]
     pub change_password: bool,

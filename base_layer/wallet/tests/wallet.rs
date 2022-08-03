@@ -61,7 +61,7 @@ use tari_p2p::{
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, random};
-use tari_utilities::Hashable;
+use tari_utilities::{Hashable, SafePassword};
 use tari_wallet::{
     contacts_service::{
         handle::ContactsLivenessEvent,
@@ -114,7 +114,7 @@ async fn create_wallet(
     database_name: &str,
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
-    passphrase: Option<String>,
+    passphrase: Option<SafePassword>,
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::LocalNet;
@@ -316,14 +316,14 @@ async fn test_wallet() {
     let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("sqlite3");
 
     alice_wallet
-        .apply_encryption("It's turtles all the way down".to_string())
+        .apply_encryption("It's turtles all the way down".to_string().into())
         .await
         .unwrap();
 
     // Second encryption should fail
     #[allow(clippy::match_wild_err_arm)]
     match alice_wallet
-        .apply_encryption("It's turtles all the way down".to_string())
+        .apply_encryption("It's turtles all the way down".to_string().into())
         .await
     {
         Ok(_) => panic!("Should not be able to encrypt twice"),
@@ -342,7 +342,7 @@ async fn test_wallet() {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
 
-    let result = WalletSqliteDatabase::new(connection.clone(), Some("wrong passphrase".to_string()));
+    let result = WalletSqliteDatabase::new(connection.clone(), Some("wrong passphrase".to_string().into()));
 
     if let Err(err) = result {
         assert!(matches!(err, WalletStorageError::InvalidPassphrase));
@@ -350,7 +350,7 @@ async fn test_wallet() {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
 
-    let db = WalletSqliteDatabase::new(connection, Some("It's turtles all the way down".to_string()))
+    let db = WalletSqliteDatabase::new(connection, Some("It's turtles all the way down".to_string().into()))
         .expect("Should be able to instantiate db with cipher");
     drop(db);
 
@@ -360,7 +360,7 @@ async fn test_wallet() {
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
-        Some("It's turtles all the way down".to_string()),
+        Some("It's turtles all the way down".to_string().into()),
         None,
     )
     .await
