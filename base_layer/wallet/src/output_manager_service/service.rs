@@ -1012,12 +1012,12 @@ where
         match self
             .resources
             .db
-            .clear_pending_coinbase_transaction_at_block_height(block_height)
+            .clear_pending_coinbase_transaction_with_hash(output.hash.as_slice())
         {
             Ok(_) => {
                 debug!(
                     target: LOG_TARGET,
-                    "An existing pending coinbase was cleared for block height {}", block_height
+                    "An existing pending coinbase was cleared with hash {}", output.hash.to_hex()
                 )
             },
             Err(e) => match e {

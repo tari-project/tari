@@ -576,6 +576,16 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
+    pub fn find_pending_coinbase_with_hash(
+        hash: &[u8],
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::status.ne(OutputStatus::Unspent as i32))
+            .filter(outputs::hash.eq(Some(hash)))
+            .first::<OutputSql>(conn)?)
+    }
+
     /// Find a particular Output, if it exists and is in the specified Spent state
     pub fn find_pending_coinbase_at_block_height(
         block_height: u64,
