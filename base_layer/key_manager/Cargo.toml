@@ -10,10 +10,11 @@ edition = "2021"
 [lib]
 crate-type = ["lib", "cdylib"]
 
+# NB: All dependencies must support or be gated for the WASM target.
 [dependencies]
 tari_common_types = { version = "^0.34", path = "../../base_layer/common_types" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.1" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.4" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.3" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
 
 arrayvec = "0.7.1"
 argon2 = { version = "0.2", features = ["std"] }

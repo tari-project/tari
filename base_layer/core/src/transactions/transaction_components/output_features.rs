@@ -147,6 +147,14 @@ impl OutputFeatures {
         }
     }
 
+    /// creates output features for a burned output
+    pub fn create_burn_output() -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::Burn,
+            ..Default::default()
+        }
+    }
+
     pub fn for_asset_registration(
         metadata: Vec<u8>,
         public_key: PublicKey,

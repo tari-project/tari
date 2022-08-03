@@ -30,7 +30,7 @@ hash_domain!(TariEngineHashDomain, "tari.dan.engine", 0);
 pub type TariEngineHasher = DomainSeparatedHasher<Blake256, TariEngineHashDomain>;
 
 pub fn hasher(label: &'static str) -> impl Digest<OutputSize = digest::consts::U32> {
-    TariEngineHasher::new(label)
+    TariEngineHasher::new_with_label(label)
 }
 
 pub fn create_key_pair() -> (PrivateKey, PublicKey) {

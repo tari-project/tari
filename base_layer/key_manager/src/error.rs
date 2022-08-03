@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use argon2::password_hash::Error as PasswordHashError;
+use tari_crypto::errors::SliceError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
@@ -42,6 +43,8 @@ pub enum KeyManagerError {
     VersionMismatch,
     #[error("Decrypted data failed Version or MAC validation")]
     DecryptionFailed,
+    #[error("The requested fixed slice length exceeds the available slice length")]
+    SliceError(#[from] SliceError),
 }
 
 #[derive(Debug, Error, PartialEq)]
