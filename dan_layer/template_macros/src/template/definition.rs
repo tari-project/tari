@@ -27,15 +27,16 @@ use crate::ast::TemplateAst;
 
 pub fn generate_definition(ast: &TemplateAst) -> TokenStream {
     let template_name = format_ident!("{}", ast.struct_section.ident);
+    let template_fields = &ast.struct_section.fields;
+    let semi_token = &ast.struct_section.semi_token;
     let functions = &ast.impl_section.items;
 
     quote! {
         pub mod template {
-            use super::*;
+            use tari_template_abi::borsh;
 
-            pub struct #template_name {
-                // TODO: fill template fields
-            }
+            #[derive(tari_template_abi::borsh::BorshSerialize, tari_template_abi::borsh::BorshDeserialize)]
+            pub struct #template_name #template_fields #semi_token
 
             impl #template_name {
                 #(#functions)*

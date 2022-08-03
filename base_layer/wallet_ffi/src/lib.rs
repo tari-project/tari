@@ -9276,17 +9276,16 @@ mod test {
 
             // To create a new seed word sequence, uncomment below
             // let seed = CipherSeed::new();
-            // use tari_key_manager::mnemonic::MnemonicLanguage;
-            // use tari_key_manager::mnemonic::Mnemonic;
+            // use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
             // let mnemonic_seq = seed
             //     .to_mnemonic(MnemonicLanguage::English, None)
             //     .expect("Couldn't convert CipherSeed to Mnemonic");
             // println!("{:?}", mnemonic_seq);
 
             let mnemonic = vec![
-                "theme", "stove", "win", "endorse", "ostrich", "voyage", "frequent", "battle", "crime", "volcano",
-                "dune", "also", "lunar", "banner", "clay", "that", "urge", "spin", "uncover", "extra", "village",
-                "mask", "trumpet", "bag",
+                "scale", "poem", "sorry", "language", "gorilla", "despair", "alarm", "jungle", "invite", "orient",
+                "blast", "try", "jump", "escape", "estate", "reward", "race", "taxi", "pitch", "soccer", "matter",
+                "team", "parrot", "enter",
             ];
 
             let seed_words = seed_words_create();

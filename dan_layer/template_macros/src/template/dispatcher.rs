@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
-use syn::{token::Brace, Block, Expr, ExprBlock, Result};
+use syn::{parse_quote, token::Brace, Block, Expr, ExprBlock, Result};
 
-use crate::ast::TemplateAst;
+use crate::ast::{FunctionAst, TemplateAst, TypeAst};
 
 pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
     let dispatcher_function_name = format_ident!("{}_main", ast.struct_section.ident);
@@ -35,6 +35,7 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
         #[no_mangle]
         pub extern "C" fn #dispatcher_function_name(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
             use ::tari_template_abi::{decode, encode_with_len, CallInfo};
+            use ::tari_template_lib::models::{get_state, set_state, initialise};
 
             if call_info.is_null() {
                 panic!("call_info is null");
@@ -43,94 +44,113 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
             let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
             let call_info: CallInfo = decode(&call_data).unwrap();
 
-            let result = match call_info.func_name.as_str() {
-                #( #function_names => #function_blocks )*,
+            let result;
+            match call_info.func_name.as_str() {
+                #( #function_names => #function_blocks ),*,
                 _ => panic!("invalid function name")
             };
 
-            wrap_ptr(encode_with_len(&result))
+            wrap_ptr(result)
         }
     };
 
     Ok(output)
 }
 
-pub fn get_function_names(ast: &TemplateAst) -> Vec<String> {
+fn get_function_names(ast: &TemplateAst) -> Vec<String> {
     ast.get_functions().iter().map(|f| f.name.clone()).collect()
 }
 
-pub fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
+fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
     let mut blocks = vec![];
 
     for function in ast.get_functions() {
-        let statements = function.statements;
-        blocks.push(Expr::Block(ExprBlock {
-            attrs: vec![],
-            label: None,
-            block: Block {
-                brace_token: Brace {
-                    span: Span::call_site(),
-                },
-                stmts: statements,
-            },
-        }));
+        let block = get_function_block(&ast.template_name, function);
+        blocks.push(block);
     }
 
     blocks
 }
 
-#[cfg(test)]
-mod tests {
-    use std::str::FromStr;
+fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
+    let mut args: Vec<Expr> = vec![];
+    let mut stmts = vec![];
+    let mut should_get_state = false;
+    let mut should_set_state = false;
 
-    use indoc::indoc;
-    use proc_macro2::TokenStream;
-    use quote::quote;
-    use syn::parse2;
-
-    use crate::{ast::TemplateAst, template::dispatcher::generate_dispatcher};
-
-    #[test]
-    fn test_hello_world() {
-        let input = TokenStream::from_str(indoc! {"
-            mod hello_world {
-                struct HelloWorld {}
-                impl HelloWorld {
-                    pub fn greet() -> String {
-                        \"Hello World!\".to_string()
-                    }
-                } 
-            }
-        "})
-        .unwrap();
-
-        let ast = parse2::<TemplateAst>(input).unwrap();
-
-        let output = generate_dispatcher(&ast).unwrap();
-
-        assert_code_eq(output, quote! {
-            #[no_mangle]
-            pub extern "C" fn HelloWorld_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-                use ::tari_template_abi::{decode, encode_with_len, CallInfo};
-
-                if call_info.is_null() {
-                    panic!("call_info is null");
+    // encode all arguments of the functions
+    for (i, input_type) in ast.input_types.into_iter().enumerate() {
+        let arg_ident = format_ident!("arg_{}", i);
+        let stmt = match input_type {
+            // "self" argument
+            TypeAst::Receiver { mutability } => {
+                should_get_state = true;
+                should_set_state = mutability;
+                args.push(parse_quote! { &mut state });
+                parse_quote! {
+                    let #arg_ident =
+                        decode::<u32>(&call_info.args[#i])
+                        .unwrap();
                 }
+            },
+            // non-self argument
+            TypeAst::Typed(type_ident) => {
+                args.push(parse_quote! { #arg_ident });
+                parse_quote! {
+                    let #arg_ident =
+                        decode::<#type_ident>(&call_info.args[#i])
+                        .unwrap();
+                }
+            },
+        };
+        stmts.push(stmt);
+    }
 
-                let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
-                let call_info: CallInfo = decode(&call_data).unwrap();
-
-                let result = match call_info.func_name.as_str() {
-                    "greet" => { "Hello World!".to_string() },
-                    _ => panic!("invalid function name")
-                };
-
-                wrap_ptr(encode_with_len(&result))
-            }
+    // load the component state
+    if should_get_state {
+        stmts.push(parse_quote! {
+            let mut state: template::#template_ident = get_state(arg_0);
         });
     }
 
-    fn assert_code_eq(a: TokenStream, b: TokenStream) {
-        assert_eq!(a.to_string(), b.to_string());
+    // call the user defined function in the template
+    let function_ident = Ident::new(&ast.name, Span::call_site());
+    if ast.is_constructor {
+        stmts.push(parse_quote! {
+            let state = template::#template_ident::#function_ident(#(#args),*);
+        });
+
+        let template_name_str = template_ident.to_string();
+        stmts.push(parse_quote! {
+            let rtn = initialise(#template_name_str.to_string(), state);
+        });
+    } else {
+        stmts.push(parse_quote! {
+            let rtn = template::#template_ident::#function_ident(#(#args),*);
+        });
     }
+
+    // encode the result value
+    stmts.push(parse_quote! {
+        result = encode_with_len(&rtn);
+    });
+
+    // after user function invocation, update the component state
+    if should_set_state {
+        stmts.push(parse_quote! {
+            set_state(arg_0, state);
+        });
+    }
+
+    // construct the code block for the function
+    Expr::Block(ExprBlock {
+        attrs: vec![],
+        label: None,
+        block: Block {
+            brace_token: Brace {
+                span: Span::call_site(),
+            },
+            stmts,
+        },
+    })
 }

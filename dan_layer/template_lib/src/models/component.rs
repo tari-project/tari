@@ -20,4 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// TODO: use the actual component id type
 pub type ComponentId = ([u8; 32], u32);
+
+use tari_template_abi::{Decode, Encode, encode_with_len, ops::OP_CREATE_COMPONENT, CreateComponentArg};
+
+use crate::call_engine;
+
+pub fn initialise<T: Encode + Decode>(template_name: String, initial_state: T) -> ComponentId {
+    let encoded_state = encode_with_len(&initial_state);
+
+    // Call the engine to create a new component
+    // TODO: proper component id
+    // TODO: what happens if the user wants to return multiple components/types?
+    let component_id = call_engine::<_, ComponentId>(OP_CREATE_COMPONENT, &CreateComponentArg {
+        name: template_name,
+        quantity: 1,
+        metadata: Default::default(),
+        state: encoded_state,
+    });
+    component_id.expect("no asset id returned")
+}
+
+pub fn get_state<T: Encode + Decode>(_id: u32) -> T {
+    // get the component state
+    // TODO: use a real op code (not "123") when they are implemented
+    let _state = call_engine::<_, ()>(123, &());
+
+    // create and return a mock state because state is not implemented yet in the engine
+    let len = std::mem::size_of::<T>();
+    let byte_vec = vec![0_u8; len];
+    let mut mock_value = byte_vec.as_slice();
+    T::deserialize(&mut mock_value).unwrap()
+}
+
+pub fn set_state<T: Encode + Decode>(_id: u32, _state: T) {
+    // update the component value
+    // TODO: use a real op code (not "123") when they are implemented
+    call_engine::<_, ()>(123, &());
+}
