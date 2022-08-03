@@ -1017,7 +1017,8 @@ where
             Ok(_) => {
                 debug!(
                     target: LOG_TARGET,
-                    "An existing pending coinbase was cleared with hash {}", output.hash.to_hex()
+                    "An existing pending coinbase was cleared with hash {}",
+                    output.hash.to_hex()
                 )
             },
             Err(e) => match e {

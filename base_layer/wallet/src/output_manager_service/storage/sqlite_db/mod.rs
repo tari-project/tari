@@ -1074,10 +1074,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn clear_pending_coinbase_transaction_with_hash(
-        &self,
-        hash: &[u8],
-    ) -> Result<(), OutputManagerStorageError> {
+    fn clear_pending_coinbase_transaction_with_hash(&self, hash: &[u8]) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();

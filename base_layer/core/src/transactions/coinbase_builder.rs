@@ -25,6 +25,9 @@ use rand::rngs::OsRng;
 use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
+    hash_domain,
+    hashing::DomainSeparatedHasher,
     keys::{PublicKey as PK, SecretKey},
 };
 use tari_script::{inputs, script, TariScript};
@@ -51,6 +54,7 @@ use crate::{
             UnblindedOutput,
         },
         transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
+        types::WalletServiceHashingDomain,
     },
 };
 
@@ -203,7 +207,11 @@ impl CoinbaseBuilder {
         let sig = Signature::sign(spending_key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
 
-        let sender_offset_private_key = PrivateKey::from_bytes(Blake256::digest(spending_key)); // H(spending_key) <- Blake256
+        let hasher =
+            DomainSeparatedHasher::<Blake256, WalletServiceHashingDomain>::new_with_label("sender_offset_private_key");
+        let spending_key_hash_bytes = hasher.chain(spending_key).finalize().as_ref();
+
+        let sender_offset_private_key = PrivateKey::from_bytes(hspending_key_hash_bytes);
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
