@@ -781,14 +781,14 @@ async fn test_recovery_birthday() {
     // let seed = CipherSeed::new();
     // use tari_key_manager::mnemonic::MnemonicLanguage;
     // let mnemonic_seq = seed
-    //     .to_mnemonic(MnemonicLanguage::English, None)
+    //     .to_mnemonic(MnemonicLanguage::Spanish, None)
     //     .expect("Couldn't convert CipherSeed to Mnemonic");
     // println!("{:?}", mnemonic_seq);
 
     let seed_words: Vec<String> = [
-        "parade", "allow", "earth", "sibling", "jealous", "tower", "pet", "project", "pole", "dizzy", "tower", "genre",
-        "marine", "immense", "region", "diagram", "dress", "symptom", "dutch", "require", "virus", "angry", "cotton",
-        "nominee",
+        "octavo", "joroba", "aplicar", "lamina", "semilla", "tiempo", "codigo", "contar", "maniqui", "guiso",
+        "imponer", "barba", "torpedo", "mejilla", "fijo", "grave", "caer", "libertad", "sol", "sordo", "alacran",
+        "bucle", "diente", "vereda",
     ]
     .iter()
     .map(|w| w.to_string())
