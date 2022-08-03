@@ -78,14 +78,14 @@ There will also be three testnets in addition to mainnet:
   occur fairly frequently, perhaps several times a year.
   * `localnet` - While not strictly a testnet, this is the default testnet used when compiling and running the `development` branch. 
 
-## Feature flags
+## Feature gates
 
-When developing a new feature in Tari, it will initially be placed behind a feature flag -- similar to how Rust 
+When developing a new feature in Tari, it will initially be placed behind a feature gate -- similar to how Rust 
 nightly features are gated. This offers the comfort and flexibility that should a feature not be ready in the first 
 6-8 months of development (i.e. by the time it first hits the `mainnet` branch), it will not be active on the 
 mainnet, since the feature will not be active.
 
-The name of the feature flag is assigned in the tracking issue 
+The name of the feature gate is assigned in the tracking issue 
 of the RFC that describes the feature. Once the feature is complete and ready for testing, it can be enabled in the 
 next release of `dibbler`. A feature can be tested on the `dibbler` testnet for as long as necessary. Even though the 
 code for this feature will be included in the following `nextnet` release, the feature will not be active. 
@@ -151,9 +151,9 @@ A very rough outline of the flow goes as follows:
   maintained at the bottom of the RFC.
 - If someone wants to implement the RFC, usually the RFC author -- but it needn't be -- he/she will create a tracking 
   issue for the RFC. The tracking issue collects all the conversations around the implementation of the RFC in one 
-  place. The status RFC will then change to ![WIP status](./meta/img/status-wip.svg). A feature flag 
+  place. The status RFC will then change to ![WIP status](./meta/img/status-wip.svg). A feature gate 
   name will be assigned to the feature at this stage.
-- Development for this feature happens behind the feature flag, and PRs are submitted against the `development` branch.
+- Development for this feature happens behind the feature gate, and PRs are submitted against the `development` branch.
 - Once the implementation is complete and active on mainnet, the RFC status can then be changed to
   ![active status](./meta/img/status-active.svg).
 - The RFC should be updated to match the implementation. The changes must be summarised in the Change Log. Once the 
@@ -299,7 +299,7 @@ There are also some non-goals for a code review:
 
 If PR doesn’t have 100% coverage or breaks something non-critical, we may still merge it at our discretion as long as
 * Issues have been generated and triaged to cover the gaps.
-* The changes are behind a feature flag.
+* The changes are behind a feature gate.
 
 In your code review summary, please mention
 * How much effort went into the review (e.g. full review, untested but looks ok - aka "UT ACK", Github review)
