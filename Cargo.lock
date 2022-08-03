@@ -7215,7 +7215,6 @@ dependencies = [
  "sha2 0.9.9",
  "strum",
  "strum_macros",
- "tari_common",
  "tari_common_types",
  "tari_crypto",
  "tari_utilities",
