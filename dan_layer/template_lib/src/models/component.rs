@@ -23,26 +23,39 @@
 // TODO: use the actual component id type
 pub type ComponentId = ([u8; 32], u32);
 
-use tari_template_abi::{Decode, Encode};
+use tari_template_abi::{Decode, Encode, encode_with_len, ops::OP_CREATE_COMPONENT, CreateComponentArg};
 
-pub fn initialise<T: Encode + Decode>(_initial_state: T) -> u32 {
-    // TODO: call the engine initialize the component
-    // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+use crate::call_engine;
 
-    0_u32
+pub fn initialise<T: Encode + Decode>(template_name: String, initial_state: T) -> ComponentId {
+    let encoded_state = encode_with_len(&initial_state);
+
+    // Call the engine to create a new component
+    // TODO: proper component id
+    // TODO: what happens if the user wants to return multiple components/types?
+    let component_id = call_engine::<_, ComponentId>(OP_CREATE_COMPONENT, &CreateComponentArg {
+        name: template_name,
+        quantity: 1,
+        metadata: Default::default(),
+        state: encoded_state,
+    });
+    component_id.expect("no asset id returned")
 }
 
 pub fn get_state<T: Encode + Decode>(_id: u32) -> T {
-    // TODO: call the engine to get the state
-    // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+    // get the component state
+    // TODO: use a real op code (not "123") when they are implemented
+    let _state = call_engine::<_, ()>(123, &());
 
+    // create and return a mock state because state is not implemented yet in the engine
     let len = std::mem::size_of::<T>();
     let byte_vec = vec![0_u8; len];
-    let mut value = byte_vec.as_slice();
-    T::deserialize(&mut value).unwrap()
+    let mut mock_value = byte_vec.as_slice();
+    T::deserialize(&mut mock_value).unwrap()
 }
 
 pub fn set_state<T: Encode + Decode>(_id: u32, _state: T) {
-    // TODO: call the engine to set the state
-    // tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+    // update the component value
+    // TODO: use a real op code (not "123") when they are implemented
+    call_engine::<_, ()>(123, &());
 }

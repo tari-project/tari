@@ -119,8 +119,10 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
         stmts.push(parse_quote! {
             let state = template::#template_ident::#function_ident(#(#args),*);
         });
+
+        let template_name_str = template_ident.to_string();
         stmts.push(parse_quote! {
-            let rtn = initialise(state);
+            let rtn = initialise(#template_name_str.to_string(), state);
         });
     } else {
         stmts.push(parse_quote! {

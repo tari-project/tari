@@ -160,7 +160,7 @@ mod tests {
                 match call_info.func_name.as_str() {
                     "new" => {
                         let state = template::State::new();
-                        let rtn = initialise(state);
+                        let rtn = initialise("State".to_string(), state);
                         result = encode_with_len(&rtn);
                     },
                     "get" => {

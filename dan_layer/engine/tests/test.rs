@@ -29,6 +29,7 @@ use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_dan_engine::{
     crypto::create_key_pair,
     instruction::{Instruction, InstructionBuilder, InstructionProcessor},
+    models::ComponentId,
     packager::Package,
     wasm::compile::build_wasm_module_from_source,
 };
@@ -45,41 +46,25 @@ fn test_hello_world() {
 
 #[test]
 fn test_state() {
+    // TODO: use the Component and ComponentId types in the template
     let template_test = TemplateTest::new("State".to_string(), "tests/state".to_string());
 
-    let component_id: u32 = template_test.call_function("new".to_string(), vec![]);
-    assert_eq!(component_id, 0);
+    // constructor
+    let component: ComponentId = template_test.call_function("new".to_string(), vec![]);
 
+    // call the "set" method to update the instance value
     let new_value = 20_u32;
     template_test.call_method::<()>("State".to_string(), "set".to_string(), vec![
-        encode_with_len(&component_id),
+        encode_with_len(&component),
         encode_with_len(&new_value),
     ]);
-    let value: u32 = template_test.call_method("State".to_string(), "get".to_string(), vec![encode_with_len(
-        &component_id,
-    )]);
-    assert_eq!(value, 0);
 
-    // TODO: use the Component and ComponentId types in the template
-    // let template_test = TemplateTest::new("State".to_string(), "tests/state".to_string());
-    //
-    // constructor
-    // let component: ComponentId = template_test.call_function("new".to_string(), vec![]);
-    // assert_eq!(component.1, 0);
-    // let component: ComponentId = template_test.call_function("new".to_string(), vec![]);
-    // assert_eq!(component.1, 1);
-    //
-    // call the "set" method to update the instance value
-    // let new_value = 20_u32;
-    // template_test.call_method::<()>("State".to_string(), "set".to_string(), vec![
-    // encode_with_len(&component),
-    // encode_with_len(&new_value),
-    // ]);
     // call the "get" method to get the current value
-    // let value: u32 = template_test.call_method("State".to_string(), "get".to_string(), vec![encode_with_len(
-    // &component,
-    // )]);
-    // assert_eq!(value, 1);
+    let value: u32 = template_test.call_method("State".to_string(), "get".to_string(), vec![encode_with_len(
+        &component,
+    )]);
+    // TODO: when state storage is implemented in the engine, assert the previous setted value (20_u32)
+    assert_eq!(value, 0);
 }
 
 struct TemplateTest {
