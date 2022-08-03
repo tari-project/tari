@@ -30,13 +30,11 @@ use std::{
     io::{Read, Write},
 };
 
-use digest::FixedOutput;
 use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     BlindingFactor,
-    Challenge,
     ComSignature,
     Commitment,
     CommitmentFactory,
@@ -57,12 +55,19 @@ use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter},
+    consensus::{
+        ConsensusDecoding,
+        ConsensusEncoding,
+        ConsensusEncodingSized,
+        ConsensusHasher,
+        DomainSeparatedConsensusHasher,
+    },
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
         transaction_components,
         transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionError, TransactionInput},
+        TransactionHashDomain,
     },
 };
 
@@ -193,7 +198,7 @@ impl TransactionOutput {
         );
         if !self.metadata_signature.verify_challenge(
             &(&self.commitment + &self.sender_offset_public_key),
-            &challenge.finalize_fixed(),
+            &challenge,
             &CommitmentFactory::default(),
         ) {
             return Err(TransactionError::InvalidSignatureError(
@@ -240,7 +245,7 @@ impl TransactionOutput {
     }
 
     /// Convenience function that returns the challenge for the metadata commitment signature
-    pub fn get_metadata_signature_challenge(&self, partial_commitment_nonce: Option<&PublicKey>) -> Challenge {
+    pub fn get_metadata_signature_challenge(&self, partial_commitment_nonce: Option<&PublicKey>) -> [u8; 32] {
         let nonce_commitment = match partial_commitment_nonce {
             None => self.metadata_signature.public_nonce().clone(),
             Some(partial_nonce) => self.metadata_signature.public_nonce() + partial_nonce,
@@ -269,8 +274,8 @@ impl TransactionOutput {
         covenant: &Covenant,
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
-    ) -> Challenge {
-        let common = ConsensusHashWriter::default()
+    ) -> [u8; 32] {
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature_challenge")
             .chain(public_commitment_nonce)
             .chain(script)
             .chain(features)
@@ -280,8 +285,8 @@ impl TransactionOutput {
             .chain(encrypted_value);
 
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.into_digest(),
-            TransactionOutputVersion::V2 => common.chain(&minimum_value_promise).into_digest(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+            TransactionOutputVersion::V2 => common.chain(&minimum_value_promise).finalize(),
         }
     }
 
@@ -329,7 +334,7 @@ impl TransactionOutput {
             &secret_x,
             &nonce_a,
             &nonce_b,
-            &e.finalize_fixed(),
+            &e,
             &CommitmentFactory::default(),
         )?)
     }
@@ -391,7 +396,7 @@ impl TransactionOutput {
     }
 
     pub fn witness_hash(&self) -> Vec<u8> {
-        ConsensusHashWriter::default()
+        ConsensusHasher::default()
             .chain(&self.proof)
             .chain(&self.metadata_signature)
             .finalize()
