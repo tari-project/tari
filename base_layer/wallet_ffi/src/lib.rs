@@ -131,7 +131,7 @@ use tari_p2p::{
 };
 use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex, hex::Hex};
+use tari_utilities::{hex, hex::Hex, SafePassword};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
@@ -4256,7 +4256,7 @@ pub unsafe extern "C" fn wallet_create(
             .to_str()
             .expect("A non-null passphrase should be able to be converted to string")
             .to_owned();
-        Some(pf)
+        Some(SafePassword::from(pf))
     };
 
     let network = if network_str.is_null() {
@@ -6792,8 +6792,8 @@ pub unsafe extern "C" fn wallet_apply_encryption(
 
     let pf = CStr::from_ptr(passphrase)
         .to_str()
-        .expect("A non-null passphrase should be able to be converted to string")
-        .to_owned();
+        .map(|s| SafePassword::from(s.to_owned()))
+        .expect("A non-null passphrase should be able to be converted to string");
 
     if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.apply_encryption(pf)) {
         error = LibWalletError::from(e).code;
@@ -9276,17 +9276,16 @@ mod test {
 
             // To create a new seed word sequence, uncomment below
             // let seed = CipherSeed::new();
-            // use tari_key_manager::mnemonic::MnemonicLanguage;
-            // use tari_key_manager::mnemonic::Mnemonic;
+            // use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
             // let mnemonic_seq = seed
             //     .to_mnemonic(MnemonicLanguage::English, None)
             //     .expect("Couldn't convert CipherSeed to Mnemonic");
             // println!("{:?}", mnemonic_seq);
 
             let mnemonic = vec![
-                "theme", "stove", "win", "endorse", "ostrich", "voyage", "frequent", "battle", "crime", "volcano",
-                "dune", "also", "lunar", "banner", "clay", "that", "urge", "spin", "uncover", "extra", "village",
-                "mask", "trumpet", "bag",
+                "scale", "poem", "sorry", "language", "gorilla", "despair", "alarm", "jungle", "invite", "orient",
+                "blast", "try", "jump", "escape", "estate", "reward", "race", "taxi", "pitch", "soccer", "matter",
+                "team", "parrot", "enter",
             ];
 
             let seed_words = seed_words_create();

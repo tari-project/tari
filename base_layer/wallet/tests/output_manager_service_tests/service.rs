@@ -185,35 +185,17 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     // let mnemonic_seq = seed
     //     .to_mnemonic(MnemonicLanguage::English, None)
     //     .expect("Couldn't convert CipherSeed to Mnemonic");
-    // println!("{:?}".to_string(), mnemonic_seq);
+    // println!("{:?}", mnemonic_seq);
 
     let cipher_seed = CipherSeed::from_mnemonic(
         &[
-            "gas".to_string(),
-            "impulse".to_string(),
-            "achieve".to_string(),
-            "flame".to_string(),
-            "tuna".to_string(),
-            "property".to_string(),
-            "squeeze".to_string(),
-            "episode".to_string(),
-            "crop".to_string(),
-            "eagle".to_string(),
-            "robot".to_string(),
-            "hundred".to_string(),
-            "govern".to_string(),
-            "endorse".to_string(),
-            "fence".to_string(),
-            "egg".to_string(),
-            "theme".to_string(),
-            "again".to_string(),
-            "must".to_string(),
-            "accident".to_string(),
-            "abstract".to_string(),
-            "love".to_string(),
-            "trumpet".to_string(),
-            "expose".to_string(),
-        ],
+            "cactus", "fruit", "amount", "strong", "join", "tuna", "combine", "actor", "plug", "north", "defense",
+            "husband", "roof", "alpha", "present", "daughter", "spare", "trial", "border", "bridge", "actor",
+            "receive", "leader", "fashion",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>(),
         None,
     )
     .unwrap();
