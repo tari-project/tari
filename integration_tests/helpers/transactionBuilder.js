@@ -95,18 +95,17 @@ class TransactionBuilder {
     covenant,
     encryptedValue
   ) {
-    const buf_nonce = Buffer.from(publicNonce, "hex");
-    const script_offset_public_key = Buffer.from(scriptOffsetPublicKey, "hex");
+    const publicCommitmentNonce = Buffer.from(publicNonce, "hex");
+    const sender_offset_public_key = Buffer.from(scriptOffsetPublicKey, "hex");
     const features_buffer = this.featuresToConsensusBytes(features);
-
     // base_layer/core/src/transactions/transaction/transaction_output.rs
     let hash = new DomainHasher(
       "com.tari.base_layer.core.transactions.v0.metadata_signature"
     )
-      .chain(buf_nonce)
+      .chain(publicCommitmentNonce)
       .chain(this.toLengthEncoded(script))
       .chain(features_buffer)
-      .chain(script_offset_public_key)
+      .chain(sender_offset_public_key)
       .chain(commitment)
       .chain(this.toLengthEncoded(covenant))
       .chain(encryptedValue)

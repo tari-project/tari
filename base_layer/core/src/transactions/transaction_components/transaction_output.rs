@@ -275,7 +275,7 @@ impl TransactionOutput {
         encrypted_value: &EncryptedValue,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
-        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature_challenge")
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
             .chain(public_commitment_nonce)
             .chain(script)
             .chain(features)
