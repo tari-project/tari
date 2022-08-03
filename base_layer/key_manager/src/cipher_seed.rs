@@ -20,12 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    mem::size_of,
-    ops::Add,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{convert::TryFrom, mem::size_of};
 
 use argon2::{
     password_hash::{Salt, SaltString},
@@ -123,8 +118,9 @@ pub struct CipherSeed {
 impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-        let birthday_genesis_date = UNIX_EPOCH.add(Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH));
+        let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
         let days = SystemTime::now()
             .duration_since(birthday_genesis_date)
             .unwrap()
