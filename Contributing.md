@@ -58,7 +58,11 @@ Post mainnet, there are 4 release branches in the Tari repo:
 * `dibbler` - this branch contains experimental features that might not work, be rigorously tested, or even break 
   consensus if the code were to run on mainnet.
 
-Almost all new code enters the codebase via the `development` branch. Hotfixes and urgent updates can be made on 
+Almost all new code enters the codebase via the `development` branch. Every release cycle, the `dibbler` branch is reset
+to point to a recent `development` commit, along with the set of newly gated features that are ready for testing. This
+process is described in more detail below.
+
+Hotfixes and urgent updates can be made on 
 other branches from time to time. These changes will then be cherry-picked into the other branches to keep 
 the code base consistent.
 
@@ -80,36 +84,39 @@ There will also be three testnets in addition to mainnet:
 
 ## Feature gates
 
-When developing a new feature in Tari, it will initially be placed behind a feature gate -- similar to how Rust 
-nightly features are gated. This offers the comfort and flexibility that should a feature not be ready in the first 
-6-8 months of development (i.e. by the time it first hits the `mainnet` branch), it will not be active on the 
-mainnet, since the feature will not be active.
+When developing a new feature in Tari, it will initially be placed behind a feature gate. This offers the comfort and 
+flexibility that should a feature not be ready in the first 6-8 months of development (i.e. by the time it first hits 
+the `mainnet` branch), it will not be active on mainnet, since the feature will not be active.
 
-The name of the feature gate is assigned in the tracking issue 
-of the RFC that describes the feature. Once the feature is complete and ready for testing, it can be enabled in the 
-next release of `dibbler`. A feature can be tested on the `dibbler` testnet for as long as necessary. Even though the 
-code for this feature will be included in the following `nextnet` release, the feature will not be active. 
-Once the community feels that the feature is ready for mainnet, it will be activated on `nextnet`. This gives us 
-another 2 months of testing in an environment that is reasonably close to what might be expected on mainnet. 
+The name of the feature gate is assigned in the tracking issue of the RFC that describes the feature. New features 
+initially have a status of `New`. New features are only included in dibbler binaries. They are ignored in nextnet or 
+mainnet builds. A feature can be tested on the `dibbler` testnet for as long as necessary. 
 
-As the next release approaches, the community will decide whether to "stabilise" the feature, i.e. remove the 
-feature gate. The feature will then be live on mainnet with the next release. If the feature is not 
-stabilised, it remains in testing for another cycle.
+Once the feature is ready for final testing, it can be enabled in the next release of `nextnet`, by updating 
+the feature status to `Testing`. All `Testing` features will be included in nextnet builds.  
 
-Notice that stabilising involves removing the feature gate entirely so that the code is included by default. Put 
-another way, the code running on `mainnet` is always the code that compiles with the default set of features.  
+Once the community feels that the feature is ready for mainnet, it will be activated by promoting the 
+feature status to `Active`. The attributes marking the feature in the code are removed at this point. The 
+feature record remains in `build.rs` with an `Active` state in perpetuity so that the history of feature development 
+can be maintained.
+
+If we decide to kill a feature, we do NOT remove the feature gate record in `build.rs`, but mark it as `Removed`. 
+This maintains the record of the feature development history. The code marked by this attribute may be removed.
 
 ## Versioning
 
 The release period is **TWO MONTHS**.
 
 At every release period, 
-* the HEAD of `development` becomes `dibbler`.
-* the HEAD of `dibbler`  becomes `nextnet`. Any features that are in the stabilisation cycle are activated.
-* Otherwise, all in-development features on `dibbler` remain behind feature gates. 
+* the HEAD of `development` becomes `dibbler`. New features that are ready for testing are created with a `New` status.
+* the HEAD of `dibbler`  becomes `nextnet`. Any features that are in the stabilisation cycle are updated to `Testing`.
+* Otherwise, all in-development features on `dibbler` remain behind feature gates. Features that are ready to go 
+  live in the following release are updated to `Active`.
 * the HEAD of `nextnet` becomes `mainnet`. A new version is tagged and this becomes the next mainnet release.
 
-The versioning roughly follows [semver semantics](https://semver.org/):
+Each release is also versioned and tagged with a version number.
+
+The version number roughly follows [semver semantics](https://semver.org/):
 * Increase MAJOR version number on each hard fork.
 * Increase MINOR version number on each release cycle. 
 * Minor versions are reset to zero at each hard fork.
@@ -120,6 +127,10 @@ There are some implications for this model:
 months to upgrade their software.
 * However, sometimes Monero forks happen in under 2 months, so there may be occasional “quick releases” where we 
   execute a release cycle outside the usual cadence.
+
+Note that hard-fork activations are not necessarily triggered by feature gates. Hard forks are usually triggered by 
+flag days based on block height. This means that if hard-fork code is behind a feature gate, this feature needs to 
+be `Active` well before the flag day so that it will trigger at the appropriate time.
 
 [compiler release process]: https://internals.rust-lang.org/t/release-channels-git-branching-and-the-release-process/1940
 
@@ -142,14 +153,14 @@ A very rough outline of the flow goes as follows:
 - Someone has an idea for an improvement or feature.
 - They bring it up and discuss it with the community in the [Discord] #dev channel.
 - Someone --usually the leading proponent-- writes up a detailed specification of the proposal as an RFC and submits it 
-  as a PR to this repo.
+  as a PR to the [RFC repo].
 - The community reviews and comments on the RFC. At this stage, a number for the RFC will be assigned.
 - After several drafts and revisions, the PR gets merged, and the RFC enters
   ![draft status](./meta/img/status-draft.svg).
 - At this point, the RFC can still undergo changes via PRs. The RFC remains in
   ![draft status](./meta/img/status-draft.svg), and the changes are logged in a _Change Log_  
   maintained at the bottom of the RFC.
-- If someone wants to implement the RFC, usually the RFC author -- but it needn't be -- he/she will create a tracking 
+- If someone wants to implement the RFC, usually the RFC author -- but it needn't be -- they will create a tracking 
   issue for the RFC. The tracking issue collects all the conversations around the implementation of the RFC in one 
   place. The status RFC will then change to ![WIP status](./meta/img/status-wip.svg). A feature gate 
   name will be assigned to the feature at this stage.
@@ -172,6 +183,7 @@ Taking on this thankless task is an excellent way for new contributors to learn 
 to the project!
 
 [Discord]: https://discord.gg/q3Sfzb8S2V
+[RFC repo]: https://github.com/tari-project/rfcs
 
 ## Pull requests
 
@@ -194,7 +206,7 @@ Keeping PRs focused on one thing has many benefits:
 - It maintains focus. It would suck if an entire PR was blocked from being merged because some other unrelated 
   change was causing an issue.
 
-If a PR tries too much multi-tasking, it will likely be labelled `CR-one_job` and parked. The solution is 
+If a PR tries to do too much multi-tasking, it will likely be labelled `CR-one_job` and parked. The solution is 
 simple: Break the PR up into 2 or more PRs, each addressing a single issue. Mention in the git comments that you 
 have done this.
 
@@ -205,14 +217,14 @@ PRs should be under 400 lines long.
 
 Unit tests do not count towards this line count.
 
-Documentation and RFCs do not contribute to line count. However, RFC PRs should generally not have any code in the 
+Documentation and RFCs do not contribute to line count. However, RFC PRs should generally not have any code in them 
 at all (since PRs [do one job]). 
 
 In some circumstances, green-field code can break this rule. But then you really MUST make reviewers' lives as easy 
 as possible by offering multiple commits, reams of documentation, git commit messages and helpful tests.
 
 The 400 line limit represents about an hour of solid code review time. Research indicates that spending more than 
-this in a single session leads to significantly more bugs scuttling through the gate.
+this in a single session leads to significantly more bugs scuttling through the door.
 
 If your PR is long, you can expect a reviewer to label it `CR-too_long` and ask you to break it up.
 
@@ -246,7 +258,7 @@ All tests still pass but could improve coverage by adding additional tests with 
 signatures (TODO - not in this PR)
 ```
 
-You may find that a reviewer tags your PR with `CR-insufficient_context`. He is asking you to add 
+You may find that a reviewer tags your PR with `CR-insufficient_context`. They are asking you to add 
 additional context for the change. This can be submitted by tidying up and expanding your git commit messages, the 
 PR description, or both.
 
@@ -256,8 +268,8 @@ introduced.
 
 ## Code reviews
 
-Post mainnet, PRs require 3 or more positive reviews from previous contributors, including at least one positive review 
-from a contributor with write access to the repo.
+Post-mainnet, PRs require 3 or more positive reviews from previous contributors, including at least one positive 
+review from a contributor with write access to the repo.
 
 When reviewing PRs, here are some guidelines and suggestions to help maintain the safety and quality of code:
 
@@ -352,7 +364,7 @@ Describes the type of PR or issue. E.g.
 * `C-tech_debt` - The PR tidies up technical debt. It will typically be attached to an issue carrying the same label.
 * `C-performance` - The PR adds no new functionality but improves performance. Benchmarks will be included.
 * `C-bug` - The PR fixes a bug, typically associated with an issue.
-* `C-tracking_isse` - This is a tracking issue for an RFC implementation.
+* `C-tracking_issue` - This is a tracking issue for an RFC implementation.
 
 ### Area (A)
 
@@ -361,7 +373,9 @@ Describes the functional area of the code the PR or issue covers predominantly. 
 * `A-base_node`
 * `A-comms`
 * `A-wallet`
-* `A-constitutions`
+* `A-templates`
+* `A-dan`
+* `A-tari_engine`
 
 ### Process-related (P)
 
