@@ -72,7 +72,7 @@ pub fn create_coinbase(
     let p = TestParams::new();
 
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&p.spend_key));
-    let sig = create_signature(p.spend_key.clone(), 0.into(), 0);
+    let sig = create_signature(p.spend_key.clone(), 0.into(), 0, KernelFeatures::create_coinbase());
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
@@ -121,7 +121,7 @@ fn print_new_genesis_block_dibbler() {
 // #[ignore = "used to generate a new igor genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
 /// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_igor
-/// --exact --nocapture --ignored`
+/// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
 fn print_new_genesis_block_igor() {
@@ -141,7 +141,7 @@ fn print_new_genesis_block(network: Network) {
         &Covenant::default(),
         MicroTari::zero(),
     );
-    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
+    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0, KernelFeatures::COINBASE_KERNEL);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)

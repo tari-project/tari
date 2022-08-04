@@ -30,7 +30,7 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, CommitmentFactory, HashOutput, PrivateKey, PublicKey},
+    types::{BlindingFactor, Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey},
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -59,6 +59,7 @@ use crate::{
         transaction_protocol::{
             recipient::RecipientInfo,
             sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+            KernelFeatures,
             RewindData,
             TransactionMetadata,
         },
@@ -104,6 +105,8 @@ pub struct SenderTransactionInitializer {
     recipient_minimum_value_promise: FixedSet<MicroTari>,
     private_commitment_nonces: FixedSet<PrivateKey>,
     tx_id: Option<TxId>,
+    kernel_features: KernelFeatures,
+    burn_commitment: Option<Commitment>,
     fee: Fee,
 }
 
@@ -148,6 +151,8 @@ impl SenderTransactionInitializer {
             recipient_covenants: FixedSet::new(num_recipients),
             recipient_minimum_value_promise: FixedSet::new(num_recipients),
             private_commitment_nonces: FixedSet::new(num_recipients),
+            kernel_features: KernelFeatures::empty(),
+            burn_commitment: None,
             tx_id: None,
         }
     }
@@ -282,6 +287,18 @@ impl SenderTransactionInitializer {
     /// Provide a text message for receiver
     pub fn with_message(&mut self, message: String) -> &mut Self {
         self.message = Some(message);
+        self
+    }
+
+    /// This will select the desired kernel features to be signed by the receiver
+    pub fn with_kernel_features(&mut self, features: KernelFeatures) -> &mut Self {
+        self.kernel_features = features;
+        self
+    }
+
+    /// This will allow the receipient to sign the burn commitment
+    pub fn with_burn_commitment(&mut self, commitment: Option<Commitment>) -> &mut Self {
+        self.burn_commitment = commitment;
         self
     }
 
@@ -661,6 +678,8 @@ impl SenderTransactionInitializer {
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
+                kernel_features: self.kernel_features,
+                burn_commitment: self.burn_commitment.clone(),
             },
             inputs: self.inputs,
             outputs,

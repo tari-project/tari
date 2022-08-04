@@ -32,9 +32,8 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::{EncryptedValue, TransactionOutput, TransactionOutputVersion},
+    transaction_components::{EncryptedValue, TransactionKernel, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
-        build_challenge,
         recipient::RecipientSignedMessage as RD,
         sender::SingleRoundSenderData as SD,
         RewindData,
@@ -62,14 +61,26 @@ impl SingleReceiverTransactionProtocol {
         let output =
             SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, rewind_data)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
+        let tx_meta = if output.is_burned() {
+            let mut meta = sender_info.metadata.clone();
+            meta.burn_commitment = Some(output.commitment().clone());
+            meta
+        } else {
+            sender_info.metadata.clone()
+        };
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
-        let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
+        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+            &(&sender_info.public_nonce + &public_nonce),
+            &(&sender_info.public_excess + &public_spending_key),
+            &tx_meta,
+        );
         let signature = Signature::sign(spending_key, nonce, &e).map_err(TPE::SigningError)?;
         let data = RD {
             tx_id: sender_info.tx_id,
             output,
             public_spend_key: public_spending_key,
             partial_signature: signature,
+            tx_metadata: tx_meta,
         };
         Ok(data)
     }
@@ -160,16 +171,14 @@ mod test {
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction_components::{OutputFeatures, OutputType},
+        transaction_components::{OutputFeatures, OutputType, TransactionKernel},
         transaction_protocol::{
-            build_challenge,
             sender::SingleRoundSenderData,
             single_receiver::SingleReceiverTransactionProtocol,
             TransactionMetadata,
             TransactionProtocolError,
         },
     };
-
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);
         let k = PrivateKey::random(&mut OsRng);
@@ -198,10 +207,7 @@ mod test {
         let (r, k, of) = generate_output_parms();
         let pubkey = PublicKey::from_secret_key(&k);
         let pubnonce = PublicKey::from_secret_key(&r);
-        let m = TransactionMetadata {
-            fee: MicroTari(100),
-            lock_height: 0,
-        };
+        let m = TransactionMetadata::new(MicroTari(100), 0);
         let script_offset_secret_key = PrivateKey::random(&mut OsRng);
         let sender_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
         let private_commitment_nonce = PrivateKey::random(&mut OsRng);
@@ -210,7 +216,7 @@ mod test {
         let info = SingleRoundSenderData {
             tx_id: 500u64.into(),
             amount: MicroTari(1500),
-            public_excess: pub_xs,
+            public_excess: pub_xs.clone(),
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
@@ -225,7 +231,8 @@ mod test {
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
-        let e = build_challenge(&(&pub_rs + &pubnonce), &m);
+        let excess = &pub_xs + PublicKey::from_secret_key(&k);
+        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&(&pub_rs + &pubnonce), &excess, &m);
         assert!(
             prot.partial_signature.verify_challenge(&pubkey, &e),
             "Partial signature is incorrect"

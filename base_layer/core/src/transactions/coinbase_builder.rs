@@ -46,11 +46,12 @@ use crate::{
             OutputFeatures,
             Transaction,
             TransactionBuilder,
+            TransactionKernel,
             TransactionOutput,
             TransactionOutputVersion,
             UnblindedOutput,
         },
-        transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
+        transaction_protocol::{RewindData, TransactionMetadata},
     },
 };
 
@@ -198,8 +199,9 @@ impl CoinbaseBuilder {
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
-        let metadata = TransactionMetadata::default();
-        let challenge = build_challenge(&public_nonce, &metadata);
+        let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
+        let challenge =
+            TransactionKernel::build_kernel_challenge_from_tx_meta(&public_nonce, excess.as_public_key(), &metadata);
         let sig = Signature::sign(spending_key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
 
@@ -280,7 +282,7 @@ impl CoinbaseBuilder {
 mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_common_types::types::{BlindingFactor, PrivateKey};
+    use tari_common_types::types::{BlindingFactor, PrivateKey, Signature};
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     use crate::{
@@ -290,7 +292,14 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::uT,
             test_helpers::TestParams,
-            transaction_components::{EncryptedValue, KernelFeatures, OutputFeatures, OutputType, TransactionError},
+            transaction_components::{
+                EncryptedValue,
+                KernelFeatures,
+                OutputFeatures,
+                OutputType,
+                TransactionError,
+                TransactionKernel,
+            },
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
@@ -491,6 +500,7 @@ mod test {
             )
             .is_ok());
     }
+    use tari_crypto::keys::PublicKey;
 
     #[test]
     #[allow(clippy::identity_op)]
@@ -514,7 +524,7 @@ mod test {
             .with_fees(1 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key);
-        let (tx2, _) = builder
+        let (tx2, output) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
         let mut tx_kernel_test = tx.clone();
@@ -523,6 +533,18 @@ mod test {
         let coinbase2 = tx2.body.outputs()[0].clone();
         let mut coinbase_kernel2 = tx2.body.kernels()[0].clone();
         coinbase_kernel2.features = KernelFeatures::empty();
+        // fix signature
+        let p2 = TestParams::new();
+        let challenge = TransactionKernel::build_kernel_challenge(
+            &p2.public_nonce,
+            &PublicKey::from_secret_key(&output.spending_key),
+            coinbase_kernel2.fee,
+            coinbase_kernel2.lock_height,
+            &KernelFeatures::empty(),
+            &None,
+        );
+        coinbase_kernel2.excess_sig = Signature::sign(output.spending_key, p2.nonce, &challenge).unwrap();
+
         tx.body.add_output(coinbase2);
         tx.body.add_kernel(coinbase_kernel2);
 

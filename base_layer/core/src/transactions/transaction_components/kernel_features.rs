@@ -58,6 +58,12 @@ impl KernelFeatures {
     }
 }
 
+impl Default for KernelFeatures {
+    fn default() -> Self {
+        KernelFeatures::empty()
+    }
+}
+
 impl ConsensusEncoding for KernelFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         writer.write_all(&[self.bits][..])?;

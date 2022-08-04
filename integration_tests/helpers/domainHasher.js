@@ -38,6 +38,11 @@ class DomainHasher {
     return this;
   }
 
+  chain_fixed_int(number, bits) {
+    blake2bUpdate(this.hasher, toLittleEndian(number, bits));
+    return this;
+  }
+
   finalize() {
     return blake2bFinal(this.hasher);
   }

@@ -31,16 +31,17 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, Signature};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
+use tari_common_types::types::{Commitment, PublicKey, Signature};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
 use super::TransactionKernelVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher, DomainSeparatedConsensusHasher},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
-        transaction_protocol::{build_challenge, TransactionMetadata},
+        transaction_protocol::TransactionMetadata,
+        TransactionHashDomain,
     },
 };
 
@@ -121,11 +122,14 @@ impl TransactionKernel {
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
         let excess = self.excess.as_public_key();
         let r = self.excess_sig.get_public_nonce();
-        let m = TransactionMetadata {
-            lock_height: self.lock_height,
-            fee: self.fee,
-        };
-        let c = build_challenge(r, &m);
+        let c = TransactionKernel::build_kernel_challenge(
+            r,
+            excess,
+            self.fee,
+            self.lock_height,
+            &self.features,
+            &self.burn_commitment,
+        );
         if self.excess_sig.verify_challenge(excess, &c) {
             Ok(())
         } else {
@@ -141,6 +145,48 @@ impl TransactionKernel {
             Some(ref burn_commitment) => Ok(burn_commitment),
             None => Err(TransactionError::InvalidKernel("Burn commitment not found".to_string())),
         }
+    }
+
+    /// This is a helper fuction for build kernel challange that does not take in the individual fields,
+    /// but rather takes in the TransactionMetadata object.
+    pub fn build_kernel_challenge_from_tx_meta(
+        sum_public_nonces: &PublicKey,
+        total_excess: &PublicKey,
+        tx_meta: &TransactionMetadata,
+    ) -> [u8; 32] {
+        TransactionKernel::build_kernel_challenge(
+            sum_public_nonces,
+            total_excess,
+            tx_meta.fee,
+            tx_meta.lock_height,
+            &tx_meta.kernel_features,
+            &tx_meta.burn_commitment,
+        )
+    }
+
+    /// Helper function to creates the kernel excess signature challenge.
+    /// The challenge is defined as the hash of the following data:
+    ///  Public nonce
+    ///  Fee
+    ///  Lock height
+    ///  Features of the kernel
+    ///  Burn commitment if present
+    pub fn build_kernel_challenge(
+        sum_public_nonces: &PublicKey,
+        total_excess: &PublicKey,
+        fee: MicroTari,
+        lock_height: u64,
+        features: &KernelFeatures,
+        burn_commitment: &Option<Commitment>,
+    ) -> [u8; 32] {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
+            .chain(sum_public_nonces)
+            .chain(total_excess)
+            .chain(&fee)
+            .chain(&lock_height)
+            .chain(features)
+            .chain(burn_commitment)
+            .finalize()
     }
 }
 
