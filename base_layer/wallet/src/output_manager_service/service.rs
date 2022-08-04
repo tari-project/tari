@@ -960,7 +960,7 @@ where
     }
 
     /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
-    /// this blockheight will be cancelled.
+    /// the corresponding output hash will be cancelled.
     /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
     /// keychain is based on the wallets master_key and the "coinbase" branch.
     async fn get_coinbase_transaction(
@@ -1008,7 +1008,7 @@ where
             None,
         )?;
 
-        // Clear any existing pending coinbase transactions for this blockheight if they exist
+        // Clear any existing pending coinbase transactions having this output hash, if they exist
         match self
             .resources
             .db

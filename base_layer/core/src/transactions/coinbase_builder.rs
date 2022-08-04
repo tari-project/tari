@@ -21,16 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use rand::rngs::OsRng;
 use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
-    hash_domain,
     hashing::DomainSeparatedHasher,
-    keys::{PublicKey as PK, SecretKey},
+    keys::{PublicKey as PK},
 };
 use tari_script::{inputs, script, TariScript};
+use tari_utilities::ByteArray;
 use thiserror::Error;
 
 use crate::{
@@ -76,6 +75,8 @@ pub enum CoinbaseBuildError {
     BuildError(String),
     #[error("Some inconsistent data was given to the builder. This transaction is not valid")]
     InvalidTransaction,
+    #[error("Unable to produce a spender offset key from spend key hash")]
+    InvalidSenderOffsetKey,
 }
 
 pub struct CoinbaseBuilder {
@@ -209,9 +210,11 @@ impl CoinbaseBuilder {
 
         let hasher =
             DomainSeparatedHasher::<Blake256, WalletServiceHashingDomain>::new_with_label("sender_offset_private_key");
-        let spending_key_hash_bytes = hasher.chain(spending_key).finalize().as_ref();
+        let spending_key_hash = hasher.chain(spending_key.as_bytes()).finalize();
+        let spending_key_hash_bytes = spending_key_hash.as_ref();
 
-        let sender_offset_private_key = PrivateKey::from_bytes(hspending_key_hash_bytes);
+        let sender_offset_private_key =
+            PrivateKey::from_bytes(spending_key_hash_bytes).map_err(|_| CoinbaseBuildError::InvalidSenderOffsetKey)?;
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 

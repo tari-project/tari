@@ -1324,7 +1324,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        value2
+        value1 + value2
     );
     let tx3 = oms
         .output_manager_handle
@@ -1338,7 +1338,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        value2 + value3
+        value1 + value2 + value3
     );
 
     let output = tx3.body.outputs()[0].clone();
