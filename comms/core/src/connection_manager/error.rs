@@ -85,6 +85,8 @@ pub enum ConnectionManagerError {
     ListenerOneshotCancelled,
     #[error("Peer sent invalid identity signature")]
     PeerIdentityInvalidSignature,
+    #[error("Peer did not provide an identity signature")]
+    PeerIdentityNoSignature,
     #[error("Peer did not provide any public addresses")]
     PeerIdentityNoAddresses,
 }
