@@ -97,7 +97,8 @@ mod test {
 
         expect_success("/ip4/254.0.1.2/tcp/1234", &["254.0.1.2"]);
         expect_success("/ip6/::1/tcp/1234", &["::1"]);
-        expect_success("/dns4/localhost/tcp/1234", &["::1", "127.0.0.1"]);
+        // Test DNS name resolution
+        expect_success("/dns4/localhost/tcp/1234", &["127.0.0.1", "::1"]);
     }
 
     #[test]
