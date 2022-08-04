@@ -1312,6 +1312,24 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
             .pending_incoming_balance,
         value1
     );
+
+    // duplicate the same transaction, creates the same utxo, does previous coinbase should be removed
+    // and we should get value1 for the balance
+    let _tx1 = oms
+        .output_manager_handle
+        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
+        .await
+        .unwrap();
+    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
+    assert_eq!(
+        oms.output_manager_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .pending_incoming_balance,
+        value1
+    );
+
     let _tx2 = oms
         .output_manager_handle
         .get_coinbase_transaction(2u64.into(), reward2, fees2, 1)
