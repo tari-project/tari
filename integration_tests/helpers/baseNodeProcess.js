@@ -144,7 +144,6 @@ class BaseNodeProcess {
       }
 
       let overrides = this.excludeTestEnvars ? {} : this.getOverrides();
-      console.error(overrides);
 
       // clear the .env file
       fs.writeFileSync(`${this.baseDir}/.overrides`, "");
