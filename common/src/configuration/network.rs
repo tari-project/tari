@@ -44,6 +44,7 @@ pub enum Network {
     Weatherwax = 0xa3,
     Igor = 0x24,
     Dibbler = 0x25,
+    Esmeralda = 0x26,
 }
 
 impl Network {
@@ -61,6 +62,7 @@ impl Network {
             Weatherwax => "weatherwax",
             Igor => "igor",
             Dibbler => "dibbler",
+            Esmeralda => "esmeralda",
             LocalNet => "localnet",
         }
     }
@@ -86,6 +88,7 @@ impl FromStr for Network {
             "localnet" => Ok(LocalNet),
             "igor" => Ok(Igor),
             "dibbler" => Ok(Dibbler),
+            "esmeralda" => Ok(Esmeralda),
             invalid => Err(ConfigurationError::new(
                 "network",
                 Some(value.to_string()),
@@ -128,6 +131,7 @@ mod test {
         let weatherwas = Network::Weatherwax;
         let igor = Network::Igor;
         let dibbler = Network::Dibbler;
+        let esmeralda = Network::Esmeralda;
 
         // test .as_byte()
         assert_eq!(mainnet.as_byte(), 0x00_u8);
@@ -137,6 +141,7 @@ mod test {
         assert_eq!(weatherwas.as_byte(), 0xa3_u8);
         assert_eq!(igor.as_byte(), 0x24_u8);
         assert_eq!(dibbler.as_byte(), 0x25_u8);
+        assert_eq!(esmeralda.as_byte(), 0x26_u8);
 
         // test .as_key_str()
         assert_eq!(mainnet.as_key_str(), "mainnet");
@@ -146,6 +151,7 @@ mod test {
         assert_eq!(weatherwas.as_key_str(), "weatherwax");
         assert_eq!(igor.as_key_str(), "igor");
         assert_eq!(dibbler.as_key_str(), "dibbler");
+        assert_eq!(esmeralda.as_key_str(), "esmeralda");
     }
 
     #[test]
@@ -163,6 +169,7 @@ mod test {
         let weatherwas_str = "weatherwax";
         let igor_str = "igor";
         let dibbler_str = "dibbler";
+        let esmeralda_str = "esmeralda";
 
         // test .from_str()
         assert_eq!(Network::from_str(mainnet_str).unwrap(), Network::MainNet);
@@ -172,6 +179,7 @@ mod test {
         assert_eq!(Network::from_str(weatherwas_str).unwrap(), Network::Weatherwax);
         assert_eq!(Network::from_str(igor_str).unwrap(), Network::Igor);
         assert_eq!(Network::from_str(dibbler_str).unwrap(), Network::Dibbler);
+        assert_eq!(Network::from_str(esmeralda_str).unwrap(), Network::Esmeralda);
         // catch error case
         let err_network = Network::from_str("invalid network");
         assert!(err_network.is_err());

@@ -59,12 +59,13 @@ use crate::{
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
-    use Network::{Dibbler, Igor, LocalNet, MainNet, Ridcully, Stibbons, Weatherwax};
+    use Network::{Esmeralda,Dibbler, Igor, LocalNet, MainNet, Ridcully, Stibbons, Weatherwax};
     match network {
         MainNet => get_mainnet_genesis_block(),
-        Dibbler => get_dibbler_genesis_block(),
         Igor => get_igor_genesis_block(),
-        LocalNet => get_dibbler_genesis_block(),
+        Esmeralda => get_esmeralda_genesis_block(),
+        LocalNet => get_esmeralda_genesis_block(),
+        Dibbler => unimplemented!("Dibbler is longer supported"),
         Ridcully => unimplemented!("Ridcully is longer supported"),
         Stibbons => unimplemented!("Stibbons is longer supported"),
         Weatherwax => unimplemented!("Weatherwax longer supported"),
@@ -167,12 +168,12 @@ fn get_igor_genesis_block_raw() -> Block {
     }
 }
 
-pub fn get_dibbler_genesis_block() -> ChainBlock {
-    let mut block = get_dibbler_genesis_block_raw();
+pub fn get_esmeralda_genesis_block() -> ChainBlock {
+    let mut block = get_esmeralda_genesis_block_raw();
 
     // Add faucet utxos
     let mut utxos = Vec::new();
-    let file = include_str!("faucets/dibbler_faucet.json");
+    let file = include_str!("faucets/esmeralda_faucet.json");
     let mut counter = 1;
     for line in file.lines() {
         if counter < 4001 {
@@ -189,7 +190,7 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     block.body.sort();
 
     // Use this code if you need to generate new Merkle roots
-    // NB: `dibbler_genesis_sanity_check` must pass
+    // NB: `esmerlada_genesis_sanity_check` must pass
 
     // use croaring::Bitmap;
     // use tari_mmr::{MerkleMountainRange, MutableMmr};
@@ -217,9 +218,9 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     // println!("output mr: {}", block.header.output_mr.to_hex());
 
     // Hardcode the Merkle roots once they've been computed above
-    block.header.kernel_mr = from_hex("af55d39195d0f2bc16558e3e79e91fe65f52519189a14e842a39ac6bcb7170ae").unwrap();
-    block.header.witness_mr = from_hex("a2f1e88886a3e8ecf8966625588d846bd236b85ac6b361acb7aed70b7287e99b").unwrap();
-    block.header.output_mr = from_hex("c9e4382a60e6f190eb21aeb815d7449be27fe24b27867db798635c49ed134a5c").unwrap();
+    block.header.kernel_mr = from_hex("300a7ef7bdbfa27058b11302ce9700a08eff7c7d91e94f75c21f3b4482905b96").unwrap();
+    block.header.witness_mr = from_hex("4ecd3bb4a3f6bd620d037b255a32a47258c62f12a8e67f2ffefd9e9bb84a1118").unwrap();
+    block.header.output_mr = from_hex("66ac81147988d4856de58e16538c48138f2acab3a060efb749de74e8d779bcf4").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -233,76 +234,76 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
-fn get_dibbler_genesis_block_raw() -> Block {
+fn get_esmeralda_genesis_block_raw() -> Block {
     // Note: Use print_new_genesis_block in core/tests/helpers/block_builders.rs to generate the required fields below
     let excess_sig = Signature::new(
-        PublicKey::from_hex("0646f943fcfab97b981d259e1da31f170b9119234d35e235d88bf9d4f53fbd61").unwrap(),
-        PrivateKey::from_hex("aceea89fe16c6bcb2c188dd6ec519d89a035544419ec465feb129b1f67749c0d").unwrap(),
+        PublicKey::from_hex("9669e4f6b0ce11025c0e324334df0740da6bb4e65822ec0fd8a54553101f246a").unwrap(),
+        PrivateKey::from_hex("81d95524c319eb50bbafed95f5147ab772fbdfc023434361b5310f75723e3100").unwrap(),
     );
     let coinbase = TransactionOutput::new(
-            TransactionOutputVersion::get_current_version(),
-            OutputFeatures {
-                version: OutputFeaturesVersion::get_current_version(),
-                output_type: OutputType::Coinbase,
-                maturity: 60,
-                metadata: Vec::new(),
-                unique_id: None,
-                sidechain_features: None,
-                parent_public_key: None,
-                asset: None,
-                mint_non_fungible: None,
-                sidechain_checkpoint: None,
-                committee_definition: None,
-            },
-            Commitment::from_hex("3682a4cfc556c0b5102065bfbb21fcd3b62b26ebad28d90f9d6720e1cea31d2c").unwrap(),
-            BulletRangeProof::from_hex("01d202a095c27dc9e19ffd8456ac85dc45c9ff7505d84a37af6c8a3b572b97531f98e40484332d968e000451c3e8b14e7c9704a15905564e49e10ac909df52dd2d8467a19c9f51f74ff16c98dfd97e5f22146a7d8a4eef280050c9729a0d2b1b0cce1cfe8050440b01362bd486485f7155f04ff1e885e5b5e594dbe91add2564015c0ba23e9faea20df2396d1cdd7a1c784f40945b0205a69e814520c7202a335e76516965be5a78d126b510b8b73da2adb82b350c2a32d86780b74a00da873d2748991cb0a13206620f5a12aa849e0f3ab030ed6e769d9ba725cacd464955e54f360ddddf79a86da74ace814b5c4cccd3c76b985733d91803024f38a62ab43244f2ae4ea7631a7779c879d27815094e200fb0b36769b855d0934cd061a0ca05162aecccc847b80c4d305e54f855d4a7bec5d4f8f3618fcabef44e9aecf2a3b37bc0ead352597ee7a38cc401c4471c53e1889e1affe6f9ae964cce719604296e0310f61f241b42260720bec94bb6e514dd9a94cdc2e8d8dd4377e9c805d324b4265413aa79caf926a27b7182ca8222a9e80024a878eee84b34c4c2422f3aabb44072c8f1a7a1fad46fb4d1c474c4d9dabfebfc73dd0c3c51b5942d6d78223faa0dcae2007c9eeee04d7cca47ee230980e8a32637f39ce3d4526f3e49a7907ef63b9cf3fac169e5db0ad9b1c1b898814aea6568457922271e1428e9bfa273a94006d77f15bf981dcb2a0c70bdc63f86241159b97d463f7fd0d3ef581c727fe1210bc3d0509596dbede6d84f6e199498c97bc3e497553bac19673c5055384e3c3f02").unwrap(),
-            // A default script can never be spent, intentionally
-            TariScript::default(),
-            // The Sender offset public key is not checked for coinbase outputs
-            PublicKey::default(),
-            // For genesis block: Metadata signature will never be checked
-            ComSignature::default(),
-            // Covenant
-            Covenant::default(),
-            EncryptedValue::default(),
-            // Genesis blocks don't need to prove a minimum value
-            MicroTari::zero(),
-        );
+        TransactionOutputVersion::get_current_version(),
+        OutputFeatures {
+            version: OutputFeaturesVersion::get_current_version(),
+            output_type: OutputType::Coinbase,
+            maturity: 60,
+            metadata: Vec::new(),
+            unique_id: None,
+            sidechain_features: None,
+            parent_public_key: None,
+            asset: None,
+            mint_non_fungible: None,
+            sidechain_checkpoint: None,
+            committee_definition: None,
+        },
+        Commitment::from_hex("6a7c60dd96da6c4c4e7f9198a7dee85351d40896d5cd6cd715dece6078cbf058").unwrap(),
+        BulletRangeProof::from_hex("017ceea5bd4bf50040be924148b2298d4d460ba2af8ab0f4c12fbbc2a59147cd7830d3e45a5efb3b22dbcb42592176720836a1dbc3142dd37289dd6ff3c72eb768c6de833d80acd763c639eac60214f9d68f222d07c6a1ba583b34eae005b6512928a16af409992efeb98b1e86b43212c91de8933b3742afd33118587f3e5f6f4cbeee3dd6fb2ecd6086cc6aedb9414fd261de9bce728ee6f746b6e37b99a5f85428c298b5c741879a77758fccc1149c39a526cba1a2f2f4ec9a443c6159d3687a323dd8ac4493c67ed307318ca08ae2b805f399e43d13e25ccd31a3a67cf724594828b99a759efab02194118801056d0b898b234bfda3364e69444360ccc61a0c8e864bb3d077213ee0264217fc21971dfe3861eec053daa51b2ccce0ad6bbc3e22271d13cc9371b8f5da16b63e5ac91ea335cbe4adf9cef355fe44746d7d5c47c63dab7453fb6b752368e7653fd7f0e8938250e018a541da29e0cab39452950bc6ce6a3cfa12af48e2f607c94fa1cf980d3a89af39e26db10403f9d61c357a12dc27b9a9970d02dc8e7afda8972ddbaf9778a142b6551489510efc5b73b6a674e4b1cd35a522fccdee96e3bfff02b95ba2f9f9206fabff1bcb8eef975d61d6137008d063d3f0ef7b1479777a9188e3dd3a8f8397ecd9d379e8947b39c99f7b12afbe93dc4929b9e8f11151ff7e1f29162642d0bcec3add8a1d11012aea75e3092a518154383fe36eea80e57bf450f81e02bd14d019db6d84986d07d57fd2330b7a60886c36068bf3b3cf90d082904277f7be83a7e59b0d89b2bc792223fef208").unwrap(),
+        // A default script can never be spent, intentionally
+        TariScript::default(),
+        // The Sender offset public key is not checked for coinbase outputs
+        PublicKey::default(),
+        // For genesis block: Metadata signature will never be checked
+        ComSignature::default(),
+        // Covenant
+        Covenant::default(),
+        EncryptedValue::default(),
+        // Genesis blocks don't need to prove a minimum value
+        MicroTari::zero(),
+    );
     let kernel = TransactionKernel::new(
         TransactionKernelVersion::V0,
         KernelFeatures::COINBASE_KERNEL,
         MicroTari(0),
         0,
-        Commitment::from_hex("b050c0aa325f70666b83f1636423f724f3886bbaff11179a76be0df47829bf73").unwrap(),
+        Commitment::from_hex("4618a4b84050124d07af8d8afd0b83fc46e17b2781421c7f9ed0acb6ceaa9943").unwrap(),
         excess_sig,
         None,
     );
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("24 Jun 2022 10:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("03 Aug 2022 10:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
-    let timestamp = genesis.timestamp() as u64;
+        let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
-            version: 2,
+            version: 3,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
-            output_mr: from_hex("bb866666548a998c82d14746b730b929f2ee0074d8d1652261dd6e751f9e821c").unwrap(),
-            witness_mr: from_hex("1a0f889a52e089e909bd2a39a9ac185b0645d0e0125e4a38eec76314ca455ad6").unwrap(),
+            output_mr: from_hex("9295f004c2e42bd31e1704225bd7f13c4dbd734690540fc79effa18ac515afd2").unwrap(),
+            witness_mr: from_hex("6e9d24328e76d2492e48654fd010eed295086bfff117a097a4ebc70e6a11bf8a").unwrap(),
             output_mmr_size: 1,
-            kernel_mr: from_hex("7be2dfbaf3a4892bed506ed606edc6dd4f09eba0f75d1260c82864e50c2d888c").unwrap(),
+            kernel_mr: from_hex("299fe7e82670a3e2d15ca4a316c5c4d23abcc0a9fe2fb3bd675af335304051a5").unwrap(),
             kernel_mmr_size: 1,
             input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
             )
-            .unwrap(),
+                .unwrap(),
             total_script_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
             )
-            .unwrap(),
+                .unwrap(),
             nonce: 0,
             pow: ProofOfWork {
                 pow_algo: PowAlgorithm::Sha3,
@@ -329,10 +330,10 @@ mod test {
     };
 
     #[test]
-    fn dibbler_genesis_sanity_check() {
-        // Note: Generate new data for `pub fn get_dibbler_genesis_block()` and `fn get_dibbler_genesis_block_raw()`
+    fn esmeralda_genesis_sanity_check() {
+        // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
-        let block = get_dibbler_genesis_block();
+        let block = get_esmeralda_genesis_block();
         assert_eq!(block.block().body.outputs().len(), 4001);
 
         let factories = CryptoFactories::default();
@@ -349,13 +350,10 @@ mod test {
             block.header().output_mmr_size
         );
 
-        // todo replace this back in with new esmarelda gen block
-        // for kernel in block.block().body.kernels() {
-        // kernel.verify_signature().unwrap();
-        // }
-        // we only validate the coinbase, aggregated faucet kernel signature is invalid.
-        block.block().body.kernels()[0].verify_signature().unwrap();
 
+        for kernel in block.block().body.kernels() {
+            kernel.verify_signature().unwrap();
+        }
         assert!(block
             .block()
             .body
@@ -387,10 +385,10 @@ mod test {
         let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
 
-        let db = create_new_blockchain_with_network(Network::Dibbler);
+        let db = create_new_blockchain_with_network(Network::Esmeralda);
 
         let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(Network::Dibbler).build(), Default::default())
+        ChainBalanceValidator::new(ConsensusManager::builder(Network::Esmeralda).build(), Default::default())
             .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
     }

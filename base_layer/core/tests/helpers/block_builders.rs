@@ -107,14 +107,14 @@ fn genesis_template(
 }
 
 #[test]
-// #[ignore = "used to generate a new dibbler genesis block"]
+// #[ignore = "used to generate a new esmeralda genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_dibbler
-/// --exact --nocapture --ignored`
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_esmeralda
+/// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-fn print_new_genesis_block_dibbler() {
-    print_new_genesis_block(Network::Dibbler);
+fn print_new_genesis_block_esmeralda() {
+    print_new_genesis_block(Network::Esmeralda);
 }
 
 #[test]
