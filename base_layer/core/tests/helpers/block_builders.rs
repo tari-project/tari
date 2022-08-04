@@ -133,10 +133,11 @@ fn print_new_genesis_block(network: Network) {
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
+    let lock_height = consensus_manager.consensus_constants(0).coinbase_lock_height();
     let (utxo, key, _) = create_utxo(
         value,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(lock_height),
         &script![Nop],
         &Covenant::default(),
         MicroTari::zero(),

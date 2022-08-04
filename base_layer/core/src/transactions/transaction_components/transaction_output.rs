@@ -285,7 +285,7 @@ impl TransactionOutput {
             .chain(encrypted_value)
             .chain(&minimum_value_promise);
         match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.into_digest(),
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
         }
     }
 

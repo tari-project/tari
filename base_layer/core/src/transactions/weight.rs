@@ -39,17 +39,8 @@ pub struct WeightParams {
 impl WeightParams {
     pub const fn v1() -> Self {
         Self {
-            kernel_weight: 3,
-            input_weight: 1,
-            output_weight: 13,
-            metadata_bytes_per_gram: None,
-        }
-    }
-
-    pub const fn v2() -> Self {
-        Self {
-            kernel_weight: 10, // adj. +2
-            input_weight: 8,   // adj. -3
+            kernel_weight: 10,
+            input_weight: 8,
             output_weight: 53,
             // SAFETY: the value isn't 0. NonZeroU64::new(x).expect(...) is not const so cannot be used in const fn
             metadata_bytes_per_gram: Some(unsafe { NonZeroU64::new_unchecked(16) }),
@@ -63,17 +54,12 @@ pub struct TransactionWeight(WeightParams);
 impl TransactionWeight {
     /// Creates a new `TransactionWeight` with latest weight params
     pub fn latest() -> Self {
-        Self(WeightParams::v2())
+        Self(WeightParams::v1())
     }
 
     /// Creates a new `TransactionWeight` with v1 weight params
     pub fn v1() -> Self {
         Self(WeightParams::v1())
-    }
-
-    /// Creates a new `TransactionWeight` with v2 weight params
-    pub fn v2() -> Self {
-        Self(WeightParams::v2())
     }
 
     /// Calculate the weight in grams of a transaction based on the number of kernels, inputs, outputs and rounded up

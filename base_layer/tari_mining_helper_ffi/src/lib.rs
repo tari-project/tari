@@ -371,8 +371,8 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 4331691006372378854;
-        const DIFFICULTY: Difficulty = Difficulty::from_u64(1217);
+        const NONCE: u64 = 69588223433024681;
+        const DIFFICULTY: Difficulty = Difficulty::from_u64(2847);
         // Use this to generate new NONCE and DIFFICULTY
         // Use ONLY if you know encoding has changed
         // let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();

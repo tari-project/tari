@@ -58,7 +58,6 @@ use tari_common_types::{
     array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
     types::{BlindingFactor, BlockHash, BLOCK_HASH_LENGTH},
 };
-use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
@@ -217,7 +216,7 @@ impl BlockHeader {
     /// Provides a hash of the header, used for the merge mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn merged_mining_hash(&self) -> Vec<u8> {
-            Blake256::new()
+        ConsensusHasher::default()
                 .chain(&self.version)
                 .chain(&self.height)
                 .chain(&self.prev_hash)
@@ -275,13 +274,13 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
-            Blake256::new()
-                // TODO: this excludes extraneous length varint used for Vec<u8> since a hash is always 32-bytes. Clean this
-                //       up if we decide to migrate to a fixed 32-byte type
-                .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())
-                .chain(&self.pow)
-                .chain(&self.nonce)
-                .finalize().to_vec()
+        ConsensusHasher::default()
+            // TODO: this excludes extraneous length varint used for Vec<u8> since a hash is always 32-bytes. Clean this
+            //       up if we decide to migrate to a fixed 32-byte type
+            .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())
+            .chain(&self.pow)
+            .chain(&self.nonce)
+            .finalize().to_vec()
     }
 }
 
