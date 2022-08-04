@@ -33,7 +33,7 @@ pub mod models;
 
 // TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
 // available
-use std::{collections::HashMap, mem, slice};
+use std::{collections::HashMap, mem, ptr::copy, slice};
 
 use tari_template_abi::{encode_with_len, Decode, Encode, FunctionDef, TemplateDef};
 
