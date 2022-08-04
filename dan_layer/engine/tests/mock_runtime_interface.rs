@@ -27,11 +27,13 @@ use tari_dan_engine::{
     crypto,
     models::{Component, ComponentId},
     runtime::{RuntimeError, RuntimeInterface},
+    state_store::{memory::MemoryStateStore, AtomicDb, StateReader, StateWriter},
 };
 use tari_template_abi::LogLevel;
 #[derive(Debug, Clone, Default)]
 pub struct MockRuntimeInterface {
     ids: Arc<AtomicU32>,
+    state: MemoryStateStore,
     calls: Arc<RwLock<Vec<&'static str>>>,
 }
 
@@ -39,8 +41,13 @@ impl MockRuntimeInterface {
     pub fn new() -> Self {
         Self {
             ids: Arc::new(AtomicU32::new(0)),
+            state: MemoryStateStore::default(),
             calls: Arc::new(RwLock::new(vec![])),
         }
+    }
+
+    pub fn state_store(&self) -> MemoryStateStore {
+        self.state.clone()
     }
 
     pub fn next_id(&self) -> u32 {
@@ -69,13 +76,27 @@ impl RuntimeInterface for MockRuntimeInterface {
         log::log!(target: "tari::dan::engine::runtime", level, "{}", message);
     }
 
-    fn create_component(&self, _new_component: Component) -> Result<ComponentId, RuntimeError> {
+    fn create_component(&self, new_component: Component) -> Result<ComponentId, RuntimeError> {
         self.calls.write().unwrap().push("create_component");
         let component_id: [u8; 32] = crypto::hasher("component")
             .chain(self.next_id().to_le_bytes())
             .finalize()
             .into();
 
+        let mut tx = self.state.write_access().map_err(RuntimeError::StateDbError)?;
+        tx.set_state(&component_id, new_component)?;
+        self.state.commit(tx).map_err(RuntimeError::StateDbError)?;
+
         Ok(component_id.into())
+    }
+
+    fn get_component(&self, component_id: &ComponentId) -> Result<Component, RuntimeError> {
+        let component = self
+            .state
+            .read_access()
+            .map_err(RuntimeError::StateDbError)?
+            .get_state(component_id)?
+            .ok_or(RuntimeError::ComponentNotFound { id: *component_id })?;
+        Ok(component)
     }
 }

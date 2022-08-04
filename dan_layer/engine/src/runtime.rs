@@ -29,7 +29,10 @@ use std::{
 use tari_common_types::types::FixedHash;
 use tari_template_abi::LogLevel;
 
-use crate::models::{Bucket, Component, ComponentId};
+use crate::{
+    models::{Bucket, Component, ComponentId},
+    state_store::StateStoreError,
+};
 
 #[derive(Clone)]
 pub struct Runtime {
@@ -66,11 +69,16 @@ pub struct ChangeTracker {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
-    #[error("todo")]
-    Todo,
+    #[error("State DB error: {0}")]
+    StateDbError(#[from] anyhow::Error),
+    #[error("State storage error: {0}")]
+    StateStoreError(#[from] StateStoreError),
+    #[error("Component not found with id '{id}'")]
+    ComponentNotFound { id: ComponentId },
 }
 
 pub trait RuntimeInterface: Send + Sync {
     fn emit_log(&self, level: LogLevel, message: &str);
     fn create_component(&self, component: Component) -> Result<ComponentId, RuntimeError>;
+    fn get_component(&self, component_id: &ComponentId) -> Result<Component, RuntimeError>;
 }

@@ -22,7 +22,7 @@
 
 use tari_template_types::models::PackageId;
 
-use crate::wasm::WasmExecutionError;
+use crate::{runtime::RuntimeError, wasm::WasmExecutionError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum InstructionError {
@@ -32,4 +32,6 @@ pub enum InstructionError {
     PackageNotFound { package_id: PackageId },
     #[error("Invalid template")]
     TemplateNameNotFound { name: String },
+    #[error(transparent)]
+    RuntimeError(#[from] RuntimeError),
 }

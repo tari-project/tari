@@ -73,11 +73,19 @@ impl<'a> StateReader for MemoryTransaction<RwLockReadGuard<'a, InnerKvMap>> {
     fn get_state_raw(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StateStoreError> {
         Ok(self.pending.get(key).cloned().or_else(|| self.guard.get(key).cloned()))
     }
+
+    fn exists(&self, key: &[u8]) -> Result<bool, StateStoreError> {
+        Ok(self.pending.contains_key(key) || self.guard.contains_key(key))
+    }
 }
 
 impl<'a> StateReader for MemoryTransaction<RwLockWriteGuard<'a, InnerKvMap>> {
     fn get_state_raw(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StateStoreError> {
         Ok(self.pending.get(key).cloned().or_else(|| self.guard.get(key).cloned()))
+    }
+
+    fn exists(&self, key: &[u8]) -> Result<bool, StateStoreError> {
+        Ok(self.pending.contains_key(key) || self.guard.contains_key(key))
     }
 }
 

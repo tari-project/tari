@@ -25,6 +25,7 @@ use std::{
     fmt::{Display, Formatter},
     io,
     io::Write,
+    ops::Deref,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -51,9 +52,23 @@ impl Hash {
     }
 }
 
+impl AsRef<[u8]> for Hash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 impl From<[u8; 32]> for Hash {
     fn from(hash: [u8; 32]) -> Self {
         Self(hash)
+    }
+}
+
+impl Deref for Hash {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

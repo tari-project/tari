@@ -28,8 +28,9 @@ use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_dan_engine::{
     crypto::create_key_pair,
     instruction::{Instruction, InstructionBuilder, InstructionProcessor},
-    models::ComponentId,
+    models::{Component, ComponentId},
     packager::Package,
+    state_store::{memory::MemoryStateStore, AtomicDb, StateReader},
     wasm::compile::compile_template,
 };
 use tari_template_abi::encode_with_len;
@@ -47,6 +48,7 @@ fn test_hello_world() {
 fn test_state() {
     // TODO: use the Component and ComponentId types in the template
     let template_test = TemplateTest::new("State".to_string(), "tests/state".to_string());
+    let store = template_test.state_store();
 
     // constructor
     let component1: ComponentId = template_test.call_function("new".to_string(), vec![]);
@@ -56,19 +58,34 @@ fn test_state() {
     let component2: ComponentId = template_test.call_function("new".to_string(), vec![]);
     assert_ne!(component1, component2);
 
+    let component: Component = store
+        .read_access()
+        .unwrap()
+        .get_state(&component1)
+        .unwrap()
+        .expect("component1 not found");
+    assert_eq!(component.module_name, "State");
+    let component: Component = store
+        .read_access()
+        .unwrap()
+        .get_state(&component2)
+        .unwrap()
+        .expect("component2 not found");
+    assert_eq!(component.module_name, "State");
+
     // call the "set" method to update the instance value
     let new_value = 20_u32;
-    template_test.call_method::<()>("State".to_string(), "set".to_string(), vec![
+    template_test.call_method::<()>(component2, "set".to_string(), vec![
         encode_with_len(&component2),
         encode_with_len(&new_value),
     ]);
 
     // call the "get" method to get the current value
-    let value: u32 = template_test.call_method("State".to_string(), "get".to_string(), vec![encode_with_len(
-        &component2,
-    )]);
-    // TODO: when state storage is implemented in the engine, assert the previous setted value (20_u32)
+    let value: u32 = template_test.call_method(component2, "get".to_string(), vec![encode_with_len(&component2)]);
+
+    // TODO: component needs to be saved in the macro code
     assert_eq!(value, 0);
+    // assert_eq!(value, new_value);
 }
 
 struct TemplateTest {
@@ -99,6 +116,10 @@ impl TemplateTest {
         }
     }
 
+    pub fn state_store(&self) -> MemoryStateStore {
+        self.runtime_interface.state_store()
+    }
+
     pub fn assert_calls(&self, expected: &[&'static str]) {
         let calls = self.runtime_interface.get_calls();
         assert_eq!(calls, expected);
@@ -124,7 +145,7 @@ impl TemplateTest {
         result[0].decode::<T>().unwrap()
     }
 
-    pub fn call_method<T>(&self, component_id: String, method_name: String, args: Vec<Vec<u8>>) -> T
+    pub fn call_method<T>(&self, component_id: ComponentId, method_name: String, args: Vec<Vec<u8>>) -> T
     where T: BorshDeserialize {
         let instruction = InstructionBuilder::new()
             .add_instruction(Instruction::CallMethod {

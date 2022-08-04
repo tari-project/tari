@@ -56,33 +56,6 @@ impl TemplateImpl {
     }
 }
 
-// /// Generate main
-// ///
-// /// # Safety
-// /// The caller must provide a valid pointer and length.
-// pub unsafe fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: TemplateImpl) -> *mut u8 {
-//     if call_info.is_null() {
-//         panic!("call_info is null");
-//     }
-//
-//     let call_data = slice::from_raw_parts(call_info, call_info_len);
-//     let call_info: CallInfo = decode(call_data).unwrap();
-//
-//     set_context_from_call_info(&call_info);
-//
-//     // get the function
-//     let function = match template_impl.0.get(&call_info.func_name) {
-//         Some(f) => f,
-//         None => panic!("invalid function name"),
-//     };
-//
-//     // call the function
-//     let result = function(call_info.args);
-//
-//     // return the encoded results of the function call
-//     wrap_ptr(result)
-// }
-
 pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
     let ptr = v.as_mut_ptr();
     mem::forget(v);

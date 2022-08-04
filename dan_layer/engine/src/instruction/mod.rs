@@ -32,6 +32,8 @@ mod signature;
 pub use signature::InstructionSignature;
 use tari_template_types::models::PackageId;
 
+use crate::models::ComponentId;
+
 #[derive(Debug, Clone)]
 pub enum Instruction {
     CallFunction {
@@ -42,7 +44,7 @@ pub enum Instruction {
     },
     CallMethod {
         package_id: PackageId,
-        component_id: String,
+        component_id: ComponentId,
         method: String,
         args: Vec<Vec<u8>>,
     },
