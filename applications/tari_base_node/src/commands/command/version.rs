@@ -45,7 +45,7 @@ impl CommandContext {
         println!("Author: {}", consts::APP_AUTHOR);
         println!("Avx2: {}", if cfg!(feature = "avx2") { "enabled" } else { "disabled" });
 
-        if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
+        if let Some(ref update) = *self.software_updater.update_notifier().borrow() {
             println!(
                 "Version {} of the {} is available: {} (sha: {})",
                 update.version(),
