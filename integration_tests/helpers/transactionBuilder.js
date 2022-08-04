@@ -26,15 +26,16 @@ class TransactionBuilder {
   }
 
   buildKernelChallenge(publicNonce, publicExcess, fee, lockHeight, features) {
-    const option_none = Buffer.from('00', "hex");    
+    const option_none = Buffer.from("00", "hex");
+    const varint_height = Buffer.from([lockHeight]);
     let hash = new DomainHasher(
       "com.tari.base_layer.core.transactions.v0.kernel_signature"
     )
       .chain(publicNonce)
       .chain(publicExcess)
-      .chain(fee)
-      .chain(lockHeight)
-      .chain(features)
+      .chain_fixed_int(fee, 64)
+      .chain(varint_height)
+      .chain_fixed_int(features, 8)
       .chain(option_none)
       .finalize();
 
