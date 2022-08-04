@@ -10,6 +10,7 @@ proc-macro = true
 
 [dependencies]
 tari_template_abi = { path = "../template_abi" }
+tari_template_lib = { path = "../template_lib" }
 syn = { version = "1.0.98", features = ["full"] }
 proc-macro2 = "1.0.42"
 quote = "1.0.20"

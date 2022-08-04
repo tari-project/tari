@@ -34,6 +34,7 @@ use syn::{
     ItemStruct,
     Result,
     ReturnType,
+    Signature,
     Stmt,
 };
 
@@ -95,38 +96,44 @@ impl TemplateAst {
         match item {
             ImplItem::Method(m) => FunctionAst {
                 name: m.sig.ident.to_string(),
-                input_types: Self::get_input_type_tokens(&m.sig.inputs),
+                input_types: Self::get_input_types(&m.sig.inputs),
                 output_type: Self::get_output_type_token(&m.sig.output),
                 statements: Self::get_statements(m),
+                is_constructor: Self::is_constructor(&m.sig),
             },
             _ => todo!(),
         }
     }
 
-    fn get_input_type_tokens(inputs: &Punctuated<FnArg, Comma>) -> Vec<String> {
+    fn get_input_types(inputs: &Punctuated<FnArg, Comma>) -> Vec<TypeAst> {
         inputs
             .iter()
             .map(|arg| match arg {
                 // TODO: handle the "self" case
-                syn::FnArg::Receiver(_) => todo!(),
-                syn::FnArg::Typed(t) => Self::get_type_token(&t.ty),
+                syn::FnArg::Receiver(r) => {
+                    // TODO: validate that it's indeed a reference ("&") to self
+
+                    let mutability = r.mutability.is_some();
+                    TypeAst::Receiver { mutability }
+                },
+                syn::FnArg::Typed(t) => Self::get_type_ast(&t.ty),
             })
             .collect()
     }
 
-    fn get_output_type_token(ast_type: &ReturnType) -> String {
+    fn get_output_type_token(ast_type: &ReturnType) -> Option<TypeAst> {
         match ast_type {
-            syn::ReturnType::Default => String::new(), // the function does not return anything
-            syn::ReturnType::Type(_, t) => Self::get_type_token(t),
+            syn::ReturnType::Default => None, // the function does not return anything
+            syn::ReturnType::Type(_, t) => Some(Self::get_type_ast(t)),
         }
     }
 
-    fn get_type_token(syn_type: &syn::Type) -> String {
+    fn get_type_ast(syn_type: &syn::Type) -> TypeAst {
         match syn_type {
             syn::Type::Path(type_path) => {
                 // TODO: handle "Self"
                 // TODO: detect more complex types
-                type_path.path.segments[0].ident.to_string()
+                TypeAst::Typed(type_path.path.segments[0].ident.clone())
             },
             _ => todo!(),
         }
@@ -135,11 +142,27 @@ impl TemplateAst {
     fn get_statements(method: &ImplItemMethod) -> Vec<Stmt> {
         method.block.stmts.clone()
     }
+
+    fn is_constructor(sig: &Signature) -> bool {
+        match &sig.output {
+            syn::ReturnType::Default => false, // the function does not return anything
+            syn::ReturnType::Type(_, t) => match t.as_ref() {
+                syn::Type::Path(type_path) => type_path.path.segments[0].ident == "Self",
+                _ => false,
+            },
+        }
+    }
 }
 
 pub struct FunctionAst {
     pub name: String,
-    pub input_types: Vec<String>,
-    pub output_type: String,
+    pub input_types: Vec<TypeAst>,
+    pub output_type: Option<TypeAst>,
     pub statements: Vec<Stmt>,
+    pub is_constructor: bool,
+}
+
+pub enum TypeAst {
+    Receiver { mutability: bool },
+    Typed(Ident),
 }

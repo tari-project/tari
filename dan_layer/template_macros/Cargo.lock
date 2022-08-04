@@ -85,13 +85,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "hello_world"
-version = "0.1.0"
-dependencies = [
- "tari_template_abi",
- "tari_template_lib",
- "tari_template_macros",
-]
+name = "indoc"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05a0bd019339e5d968b37855180087b7b9d512c5046fbd244cf8c95687927d6e"
 
 [[package]]
 name = "libc"
@@ -167,6 +164,7 @@ dependencies = [
 name = "tari_template_macros"
 version = "0.1.0"
 dependencies = [
+ "indoc",
  "proc-macro2",
  "quote",
  "syn",

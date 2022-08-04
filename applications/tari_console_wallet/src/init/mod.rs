@@ -39,6 +39,7 @@ use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{initialization::CommsInitializationError, peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::SafePassword;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -72,20 +73,19 @@ pub enum WalletBoot {
 /// Gets the password provided by command line argument or environment variable if available.
 /// Otherwise prompts for the password to be typed in.
 pub fn get_or_prompt_password(
-    arg_password: Option<String>,
-    config_password: Option<String>,
-) -> Result<Option<String>, ExitError> {
+    arg_password: Option<SafePassword>,
+    config_password: Option<SafePassword>,
+) -> Result<Option<SafePassword>, ExitError> {
     if arg_password.is_some() {
         return Ok(arg_password);
     }
 
     let env = std::env::var_os(TARI_WALLET_PASSWORD);
     if let Some(p) = env {
-        let env_password = Some(
-            p.into_string()
-                .map_err(|_| ExitError::new(ExitCode::IOError, "Failed to convert OsString into String"))?,
-        );
-        return Ok(env_password);
+        let env_password = p
+            .into_string()
+            .map_err(|_| ExitError::new(ExitCode::IOError, "Failed to convert OsString into String"))?;
+        return Ok(Some(env_password.into()));
     }
 
     if config_password.is_some() {
@@ -97,7 +97,7 @@ pub fn get_or_prompt_password(
     Ok(Some(password))
 }
 
-fn prompt_password(prompt: &str) -> Result<String, ExitError> {
+fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
     let password = loop {
         let pass = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
         if pass.is_empty() {
@@ -108,13 +108,13 @@ fn prompt_password(prompt: &str) -> Result<String, ExitError> {
         }
     };
 
-    Ok(password)
+    Ok(SafePassword::from(password))
 }
 
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
     config: &ApplicationConfig,
-    arg_password: Option<String>,
+    arg_password: Option<SafePassword>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), ExitError> {
     let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal).await?;
@@ -221,7 +221,7 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
 #[allow(clippy::too_many_lines)]
 pub async fn init_wallet(
     config: &ApplicationConfig,
-    arg_password: Option<String>,
+    arg_password: Option<SafePassword>,
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
