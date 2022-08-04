@@ -116,9 +116,10 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
             peer.supported_protocols = supported_protocols.clone();
             peer.user_agent = peer_identity.user_agent;
-            if let Some(identity_signature) = peer_identity.identity_signature {
-                add_valid_identity_signature_to_peer(&mut peer, identity_signature)?;
-            }
+            let identity_sig = peer_identity
+                .identity_signature
+                .ok_or(ConnectionManagerError::PeerIdentityNoSignature)?;
+            add_valid_identity_signature_to_peer(&mut peer, identity_sig)?;
             peer
         },
         None => {
@@ -137,10 +138,10 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 peer_identity.user_agent,
             );
             new_peer.connection_stats.set_connection_success();
-            // TODO(testnetreset): Require an identity signature once majority nodes are upgraded
-            if let Some(identity_sig) = peer_identity.identity_signature {
-                add_valid_identity_signature_to_peer(&mut new_peer, identity_sig)?;
-            }
+            let identity_sig = peer_identity
+                .identity_signature
+                .ok_or(ConnectionManagerError::PeerIdentityNoSignature)?;
+            add_valid_identity_signature_to_peer(&mut new_peer, identity_sig)?;
             if let Some(addr) = dialed_addr {
                 new_peer.addresses.mark_last_seen_now(addr);
             }
