@@ -83,6 +83,18 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I check if last imported transactions are valid in wallet WALLET_C
 
+  Scenario: Wallet has two connected miners, coin bases are computed correctly
+    Given I have a seed node NODE
+    And I have 1 base nodes connected to all seed nodes
+    And I have wallet WALLET_A connected to all seed nodes
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 2 blocks
+    When mining node MINER2 mines 2 blocks
+    When mining node MINER mines 3 blocks
+    When mining node MINER2 mines 3 blocks
+    Then all nodes are at height 10
+    Then I wait for wallet WALLET_A to have at least 20000000000 uT
+
   @flaky
   Scenario: Wallet imports spent outputs that become invalidated
     Given I have a seed node NODE
