@@ -30,18 +30,18 @@ use std::{
     io::{Read, Write},
 };
 
-use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Challenge, Commitment, PublicKey, Signature};
+use tari_common_types::types::{Commitment, PublicKey, Signature};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
 use super::TransactionKernelVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher, ToConsensusBytes},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher, DomainSeparatedConsensusHasher},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
         transaction_protocol::TransactionMetadata,
+        TransactionHashDomain,
     },
 };
 
@@ -179,16 +179,14 @@ impl TransactionKernel {
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
     ) -> [u8; 32] {
-        let mut challenge = Challenge::new()
-            .chain(sum_public_nonces.as_bytes())
-            .chain(total_excess.as_bytes())
-            .chain(u64::from(fee).to_le_bytes())
-            .chain(lock_height.to_le_bytes())
-            .chain(features.to_consensus_bytes());
-        if let Some(burn_commitment) = burn_commitment {
-            challenge = challenge.chain(burn_commitment.as_bytes());
-        }
-        challenge.finalize().into()
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
+            .chain(sum_public_nonces)
+            .chain(total_excess)
+            .chain(&fee)
+            .chain(&lock_height)
+            .chain(features)
+            .chain(burn_commitment)
+            .finalize()
     }
 }
 

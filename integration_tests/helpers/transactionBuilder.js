@@ -26,18 +26,19 @@ class TransactionBuilder {
   }
 
   buildKernelChallenge(publicNonce, publicExcess, fee, lockHeight, features) {
-    const KEY = null; // optional key
-    const OUTPUT_LENGTH = 32; // bytes
-    const context = blake2bInit(OUTPUT_LENGTH, KEY);
-    const buff = Buffer.from(publicNonce, "hex");
-    const buff2 = Buffer.from(publicExcess, "hex");
-    blake2bUpdate(context, buff);
-    blake2bUpdate(context, buff2);
-    blake2bUpdate(context, toLittleEndian(fee, 64));
-    blake2bUpdate(context, toLittleEndian(lockHeight, 64));
-    blake2bUpdate(context, toLittleEndian(features, 8));
-    const final = blake2bFinal(context);
-    return Buffer.from(final).toString("hex");
+    const option_none = Buffer.from('00', "hex");    
+    let hash = new DomainHasher(
+      "com.tari.base_layer.core.transactions.v0.kernel_signature"
+    )
+      .chain(publicNonce)
+      .chain(publicExcess)
+      .chain(fee)
+      .chain(lockHeight)
+      .chain(features)
+      .chain(option_none)
+      .finalize();
+
+    return Buffer.from(hash).toString("hex");
   }
 
   featuresToConsensusBytes(features) {
