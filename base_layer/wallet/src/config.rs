@@ -34,6 +34,7 @@ use tari_common::{
 };
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
+use tari_utilities::SafePassword;
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -72,7 +73,7 @@ pub struct WalletConfig {
     /// The main wallet db sqlite database backend connection pool size for concurrent reads
     pub db_connection_pool_size: usize,
     /// The main wallet password
-    pub password: Option<String>, // TODO: Make clear on drop
+    pub password: Option<SafePassword>,
     /// The auto ping interval to use for contacts liveness data
     #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
