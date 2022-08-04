@@ -24,8 +24,9 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 pub fn generate_dependencies() -> TokenStream {
+    // TODO: these public abi functions are already declared in the common template lib/abi
     quote! {
-        use tari_template_lib::{wrap_ptr, tari_alloc, tari_free};
+        use tari_template_lib::wrap_ptr;
         // extern "C" {
         //     pub fn tari_engine(op: u32, input_ptr: *const u8, input_len: usize) -> *mut u8;
         // }
