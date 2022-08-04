@@ -23,8 +23,10 @@
 use std::{io, io::Write, marker::PhantomData};
 
 use digest::{consts::U32, Digest};
-use tari_common_types::types::HashDigest;
-use tari_crypto::hashing::{DomainSeparatedHasher, DomainSeparation};
+use tari_crypto::{
+    hash::blake2::Blake256,
+    hashing::{DomainSeparatedHasher, DomainSeparation},
+};
 
 use crate::consensus::ConsensusEncoding;
 
@@ -33,7 +35,7 @@ pub struct DomainSeparatedConsensusHasher<M: DomainSeparation>(PhantomData<M>);
 
 impl<M: DomainSeparation> DomainSeparatedConsensusHasher<M> {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(label: &'static str) -> ConsensusHasher<DomainSeparatedHasher<HashDigest, M>> {
+    pub fn new(label: &'static str) -> ConsensusHasher<DomainSeparatedHasher<Blake256, M>> {
         ConsensusHasher::new(DomainSeparatedHasher::new_with_label(label))
     }
 }
@@ -70,9 +72,9 @@ where D: Digest<OutputSize = U32>
     }
 }
 
-impl Default for ConsensusHasher<HashDigest> {
+impl Default for ConsensusHasher<Blake256> {
     fn default() -> Self {
-        ConsensusHasher::new(HashDigest::new())
+        ConsensusHasher::new(Blake256::new())
     }
 }
 

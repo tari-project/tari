@@ -25,7 +25,7 @@ use std::{iter::repeat_with, sync::Arc};
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
+use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -57,6 +57,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
+    hash::blake2::Blake256,
     keys::PublicKey as PublicKeyTrait,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
@@ -210,13 +211,13 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = MutableMmr::<HashDigest, _>::new(kernel_hashes, Bitmap::create())
+    header.kernel_mr = MutableMmr::<Blake256, _>::new(kernel_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.output_mr = MutableMmr::<HashDigest, _>::new(out_hashes, Bitmap::create())
+    header.output_mr = MutableMmr::<Blake256, _>::new(out_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.witness_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create())
+    header.witness_mr = MutableMmr::<Blake256, _>::new(rp_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
     Ok(Block { header, body })

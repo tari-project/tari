@@ -2199,7 +2199,7 @@ mod test {
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus, TxId},
-        types::{HashDigest, PrivateKey, PublicKey, Signature},
+        types::{PrivateKey, PublicKey, Signature},
     };
     use tari_core::{
         covenants::Covenant,
@@ -2213,7 +2213,10 @@ mod test {
             SenderTransactionProtocol,
         },
     };
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+    use tari_crypto::{
+        hash::blake2::Blake256,
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    };
     use tari_script::{script, ExecutionStack, TariScript};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
@@ -2286,7 +2289,7 @@ mod test {
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-        let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
+        let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),

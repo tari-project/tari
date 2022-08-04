@@ -25,8 +25,8 @@ use std::io;
 use digest::{Digest, Output};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashDigest, PrivateKey, PublicKey, Signature};
-use tari_crypto::keys::PublicKey as PublicKeyT;
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
@@ -62,9 +62,9 @@ impl SignerSignature {
         signer: &PublicKey,
         challenge: C,
         public_nonce: &PublicKey,
-    ) -> Output<HashDigest> {
+    ) -> Output<Blake256> {
         // TODO: Use domain-seperated hasher from tari_crypto
-        HashDigest::new()
+        Blake256::new()
             .chain(signer.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(challenge)
