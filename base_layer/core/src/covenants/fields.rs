@@ -29,7 +29,7 @@ use std::{
 
 use digest::Digest;
 use integer_encoding::VarIntWriter;
-use tari_common_types::types::HashDigest;
+use tari_crypto::hash::blake2::Blake256;
 
 use crate::{
     consensus::ToConsensusBytes,
@@ -367,8 +367,8 @@ impl OutputFields {
         self.fields.is_empty()
     }
 
-    pub fn construct_challenge_from(&self, output: &TransactionOutput) -> HashDigest {
-        let mut challenge = HashDigest::new();
+    pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake256 {
+        let mut challenge = Blake256::new();
         for field in &self.fields {
             challenge.update(field.get_field_value_bytes(output));
         }
@@ -596,7 +596,7 @@ mod test {
                 output.features.consensus_encode(&mut challenge).unwrap();
                 output.commitment.consensus_encode(&mut challenge).unwrap();
                 output.script.consensus_encode(&mut challenge).unwrap();
-                let expected_hash = HashDigest::new().chain(&challenge).finalize();
+                let expected_hash = Blake256::new().chain(&challenge).finalize();
                 assert_eq!(hash, expected_hash);
             }
         }

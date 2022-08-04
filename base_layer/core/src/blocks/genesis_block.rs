@@ -192,17 +192,17 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     // NB: `dibbler_genesis_sanity_check` must pass
 
     // use croaring::Bitmap;
-    // use tari_common_types::types::HashDigest;
     // use tari_mmr::{MerkleMountainRange, MutableMmr};
+    // use tari_crypto::hash::blake2::Blake256;
     //
-    // let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
+    // let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
     // for k in block.body.kernels() {
     //     println!("k: {}", k);
     //     kernel_mmr.push(k.hash()).unwrap();
     // }
     //
-    // let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
-    // let mut output_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create()).unwrap();
+    // let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+    // let mut output_mmr = MutableMmr::<Blake256, _>::new(Vec::new(), Bitmap::create()).unwrap();
     //
     // for o in block.body.outputs() {
     //     witness_mmr.push(o.witness_hash()).unwrap();
@@ -316,7 +316,8 @@ fn get_dibbler_genesis_block_raw() -> Block {
 #[cfg(test)]
 mod test {
     use croaring::Bitmap;
-    use tari_common_types::types::{Commitment, HashDigest};
+    use tari_common_types::types::Commitment;
+    use tari_crypto::hash::blake2::Blake256;
     use tari_mmr::{MerkleMountainRange, MutableMmr};
 
     use super::*;
@@ -360,13 +361,13 @@ mod test {
             .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL)));
 
         // Check MMR
-        let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
+        let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash()).unwrap();
         }
 
-        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
-        let mut output_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create()).unwrap();
+        let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+        let mut output_mmr = MutableMmr::<Blake256, _>::new(Vec::new(), Bitmap::create()).unwrap();
 
         for o in block.block().body.outputs() {
             witness_mmr.push(o.witness_hash()).unwrap();

@@ -25,7 +25,7 @@ use std::{
     fmt::{Debug, Error, Formatter},
 };
 
-use digest::{Digest, FixedOutput};
+use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
@@ -233,7 +233,7 @@ impl SenderTransactionInitializer {
         );
         if !output.metadata_signature.verify_challenge(
             &(&commitment + &output.sender_offset_public_key),
-            &e.finalize_fixed(),
+            &e,
             &commitment_factory,
         ) {
             return self.clone().build_err(&*format!(

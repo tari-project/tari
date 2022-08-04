@@ -526,11 +526,12 @@ mod fetch_total_size_stats {
     #[test]
     fn it_measures_the_number_of_entries() {
         let db = setup();
+        let genesis_output_count = db.fetch_header(0).unwrap().unwrap().output_mmr_size;
         let _block_and_outputs = add_many_chained_blocks(2, &db);
         let stats = db.fetch_total_size_stats().unwrap();
         assert_eq!(
             stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
-            4003
+            genesis_output_count + 2
         );
     }
 }
@@ -580,7 +581,7 @@ mod fetch_header_containing_utxo_mmr {
     fn it_returns_genesis() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        assert_eq!(genesis.block().body.outputs().len(), 4001);
+        assert!(!genesis.block().body.outputs().is_empty());
         let mut mmr_position = 0;
         genesis.block().body.outputs().iter().for_each(|_| {
             let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();

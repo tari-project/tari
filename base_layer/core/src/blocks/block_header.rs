@@ -57,15 +57,16 @@ use serde::{
 };
 use tari_common_types::{
     array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
-    types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
+    types::{BlindingFactor, BlockHash, BLOCK_HASH_LENGTH},
 };
+use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHasher},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 
@@ -219,7 +220,7 @@ impl BlockHeader {
     pub fn merged_mining_hash(&self) -> Vec<u8> {
         if self.version <= 2 {
             // TODO: Remove deprecated header hashing #testnetreset
-            HashDigest::new()
+            Blake256::new()
                 .chain(self.version.to_le_bytes())
                 .chain(self.height.to_le_bytes())
                 .chain(self.prev_hash.as_bytes())
@@ -235,7 +236,7 @@ impl BlockHeader {
                 .finalize()
                 .to_vec()
         } else {
-            ConsensusHashWriter::default()
+            ConsensusHasher::default()
                 .chain(&self.version)
                 .chain(&self.height)
                 .chain(&self.prev_hash)
@@ -295,14 +296,14 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
         if self.version <= 2 {
-            HashDigest::new()
+            Blake256::new()
                 .chain(self.merged_mining_hash())
                 .chain(self.pow.to_bytes())
                 .chain(self.nonce.to_le_bytes())
                 .finalize()
                 .to_vec()
         } else {
-            ConsensusHashWriter::default()
+            ConsensusHasher::default()
                 // TODO: this excludes extraneous length varint used for Vec<u8> since a hash is always 32-bytes. Clean this
                 //       up if we decide to migrate to a fixed 32-byte type
                 .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())

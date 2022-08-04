@@ -63,6 +63,7 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
+    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
@@ -96,7 +97,7 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::{HashDigest, WalletHasher},
+    types::WalletHasher,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -924,7 +925,7 @@ where
         }
 
         let stp = builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1146,7 +1147,7 @@ where
         // }
 
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, u64::MAX)
+            .build::<Blake256>(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // if let Some((spending_key, script_private_key)) = change_keys {
         //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
@@ -1305,7 +1306,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1806,7 +1807,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2038,7 +2039,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2226,7 +2227,7 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let mut stp = tx_builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2361,7 +2362,7 @@ where
 
                 let factories = CryptoFactories::default();
                 let mut stp = builder
-                    .build::<HashDigest>(
+                    .build::<Blake256>(
                         &self.resources.factories,
                         None,
                         self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2452,7 +2453,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2732,7 +2733,7 @@ impl fmt::Display for Balance {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+    Blake256::new().chain(key.as_bytes()).finalize().to_vec()
 }
 
 #[derive(Debug, Clone)]

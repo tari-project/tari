@@ -36,7 +36,7 @@ use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 
 use super::TransactionKernelVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
@@ -147,7 +147,7 @@ impl TransactionKernel {
 impl Hashable for TransactionKernel {
     /// Produce a canonical hash for a transaction kernel.
     fn hash(&self) -> Vec<u8> {
-        ConsensusHashWriter::default().chain(self).finalize().to_vec()
+        ConsensusHasher::default().chain(self).finalize().to_vec()
     }
 }
 
