@@ -20,48 +20,4 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Move to tari template lib crate
-
-use std::io;
-
-use crate::{Decode, Encode};
-
-pub fn encode_with_len<T: Encode>(val: &T) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(512);
-    buf.extend([0u8; 4]);
-
-    encode_into(val, &mut buf).expect("Vec<u8> Write impl is infallible");
-
-    let len = ((buf.len() - 4) as u32).to_le_bytes();
-    buf[..4].copy_from_slice(&len);
-
-    buf
-}
-
-pub fn encode_into<T: Encode>(val: &T, buf: &mut Vec<u8>) -> io::Result<()> {
-    val.serialize(buf)
-}
-
-pub fn encode<T: Encode>(val: &T) -> io::Result<Vec<u8>> {
-    let mut buf = Vec::with_capacity(512);
-    encode_into(val, &mut buf)?;
-    Ok(buf)
-}
-
-pub fn decode<T: Decode>(mut input: &[u8]) -> io::Result<T> {
-    T::deserialize(&mut input)
-}
-
-pub fn decode_len(input: &[u8]) -> io::Result<usize> {
-    if input.len() < 4 {
-        return Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "Not enough bytes to decode length",
-        ));
-    }
-
-    let mut buf = [0u8; 4];
-    buf.copy_from_slice(&input[..4]);
-    let len = u32::from_le_bytes(buf);
-    Ok(len as usize)
-}
+pub mod engine_state_store;

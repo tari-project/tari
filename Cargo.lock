@@ -3169,6 +3169,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05a0bd019339e5d968b37855180087b7b9d512c5046fbd244cf8c95687927d6e"
+
+[[package]]
 name = "infer"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5266,9 +5272,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
-version = "1.0.18"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1feb54ed693b93a84e14094943b84b7c4eae204c512b7ccb95ab0c66d278ad1"
+checksum = "bbe448f377a7d6961e30f5955f9b8d106c3f5e449d493ee1b125c1d43c2b5179"
 dependencies = [
  "proc-macro2",
 ]
@@ -6510,9 +6516,9 @@ checksum = "171758edb47aa306a78dfa4ab9aeb5167405bd4e3dc2b64e88f6a84bbe98bd63"
 
 [[package]]
 name = "syn"
-version = "1.0.96"
+version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0748dd251e24453cb8717f0354206b91557e4ec8703673a4b30208f2abaf1ebf"
+checksum = "58dbef6ec655055e20b86b15a8cc6d439cca19b667537ac6a1369572d151ab13"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7176,10 +7182,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_dan_storage_lmdb"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "lmdb-zero",
+ "tari_dan_engine",
+ "tari_storage",
+ "tempfile",
+]
+
+[[package]]
 name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "borsh",
  "diesel",
  "diesel_migrations",
  "log",
@@ -7466,6 +7484,25 @@ name = "tari_template_abi"
 version = "0.1.0"
 dependencies = [
  "borsh",
+]
+
+[[package]]
+name = "tari_template_lib"
+version = "0.1.0"
+dependencies = [
+ "tari_template_abi",
+]
+
+[[package]]
+name = "tari_template_macros"
+version = "0.1.0"
+dependencies = [
+ "indoc",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "tari_template_abi",
+ "tari_template_lib",
 ]
 
 [[package]]

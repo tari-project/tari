@@ -1,4 +1,3 @@
-[workspace]
 [package]
 name = "tari_template_lib"
 version = "0.1.0"
