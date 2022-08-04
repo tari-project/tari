@@ -388,7 +388,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
+            faucet_value: 0 * T,
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -491,29 +491,27 @@ impl ConsensusConstants {
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        vec![
-            ConsensusConstants {
-                effective_from_height: 0,
-                coinbase_lock_height: 3,
-                blockchain_version: 3,
-                valid_blockchain_version_range: 0..=3,
-                future_time_limit: 540,
-                difficulty_block_window: 90,
-                max_block_transaction_weight: 127_795,
-                median_timestamp_count: 11,
-                emission_initial: 18_462_816_327 * uT,
-                emission_decay: &ESMERALDA_DECAY_PARAMS,
-                emission_tail: 800 * T,
-                max_randomx_seed_height: u64::MAX,
-                proof_of_work: algos,
-                faucet_value: (10 * 4000) * T,
-                transaction_weight: TransactionWeight::v2(),
-                max_script_byte_size: 2048,
-                input_version_range,
-                output_version_range,
-                kernel_version_range,
-            },
-        ]
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 3,
+            blockchain_version: 3,
+            valid_blockchain_version_range: 0..=3,
+            future_time_limit: 540,
+            difficulty_block_window: 90,
+            max_block_transaction_weight: 127_795,
+            median_timestamp_count: 11,
+            emission_initial: 18_462_816_327 * uT,
+            emission_decay: &ESMERALDA_DECAY_PARAMS,
+            emission_tail: 800 * T,
+            max_randomx_seed_height: u64::MAX,
+            proof_of_work: algos,
+            faucet_value: (10 * 4000) * T,
+            transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
+        }]
     }
 
     pub fn mainnet() -> Vec<Self> {

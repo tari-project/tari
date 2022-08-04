@@ -59,7 +59,7 @@ use crate::{
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
-    use Network::{Esmeralda,Dibbler, Igor, LocalNet, MainNet, Ridcully, Stibbons, Weatherwax};
+    use Network::{Dibbler, Esmeralda, Igor, LocalNet, MainNet, Ridcully, Stibbons, Weatherwax};
     match network {
         MainNet => get_mainnet_genesis_block(),
         Igor => get_igor_genesis_block(),
@@ -80,6 +80,29 @@ pub fn get_igor_genesis_block() -> ChainBlock {
     // lets get the block
     let block = get_igor_genesis_block_raw();
 
+    // user this code to generate the correct header mr fields for igor if the gen block changes.
+    // use croaring::Bitmap;
+    // use tari_common_types::types::HashDigest;
+    // use tari_mmr::{MerkleMountainRange, MutableMmr};
+    //
+    // let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
+    // for k in block.body.kernels() {
+    //     println!("k: {}", k);
+    //     kernel_mmr.push(k.hash()).unwrap();
+    // }
+    //
+    // let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
+    // let mut output_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create()).unwrap();
+    //
+    // for o in block.body.outputs() {
+    //     witness_mmr.push(o.witness_hash()).unwrap();
+    //     output_mmr.push(o.hash()).unwrap();
+    // }
+    //
+    // println!("kernel mr: {}",kernel_mmr.get_merkle_root().unwrap().to_hex());
+    // println!("witness mr: {}", witness_mmr.get_merkle_root().unwrap().to_hex());
+    // println!("output mr: {}", output_mmr.get_merkle_root().unwrap().to_hex());
+
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
@@ -94,8 +117,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
 fn get_igor_genesis_block_raw() -> Block {
     let sig = Signature::new(
-        PublicKey::from_hex("4488793b42f196272fa83f0b3d44ce4726d80318972ab1136b409ab7c744ae37,").unwrap(),
-        PrivateKey::from_hex("c540beec61c57af5812398a23bf25478296437868dadae5d3254ef711c04b30f").unwrap(),
+        PublicKey::from_hex("6682dd9a8a4d5bc1d43c11e011ca542d27761bb00e4bd0f0f88f47ac0bfe311d").unwrap(),
+        PrivateKey::from_hex("01786c3b17a7523e507374b01d2d09dadebe21e5d5a9a07af275d47cb26df804").unwrap(),
     );
     let mut body = AggregateBody::new(
         vec![],
@@ -106,10 +129,10 @@ fn get_igor_genesis_block_raw() -> Block {
                 .. Default::default()
             },
             Commitment::from_hex(
-                "4007211a1c6cc2f9992ce23769c02a4e9f37170765527935dd3f331e6ca04d73",
+                "62d6930c22ecfd9fc265edbffca5f9108ec6e7a961fd27bbab596198e905995c",
             )
                 .unwrap(),
-            BulletRangeProof::from_hex("01da5f3db36c55ab6b99ebe3b204c5dfa78d0fa6eff4f7004b0d38109b7f447846aaa196d260f39b7b74e459ce1cc2adc5756329dd95ecabe68a14faa58312de38a4cd867f683ffb5e1ed8f2135c627f977c62249aba80b5f6a1e2e88aba7dbe7226f6fbe21ac82732ad5ef136224bce5910406a69dd8425e4508ddd0deff45b1a1aa4d298765b9bd603a29b60409f2f607cb6e910c8f5050ada662a281361435682f12ed51403872be454367a0dc0bb55a84cdf7328aee944a5ee22f831fedd00c0a7539faf15866770a1f6a5fbda5fe7030626508fa9e450f061191411290c3dbc6f4ee66e9fffde0520d309738f3251aaf3c46765df25c00cf5e4c35a50ed2e9483ec9d989c4043ede9405ed148258ddfbd157e6802234c112b35613b843a2570c08e71267df17c5e7fea0658d43a4b6971bc7b9229b433bac2cff0db1ca51ec23b6fe3423875cb5384116c90924125300130269ef644368aea5fc27715686ef6ece57f0089124c9711c73ad66bf6ffd82bd163297275ae52503ff772a5a523b0d09653b7f6df144ffabed39e8c7c56ff21b2296d480737ec8a688462dc54214a8aa8b9c0c3b3db82bd084ed95dd5609dcdd8a44d196928395cc1b1a9bac749eaa55a2c6bb8ac6cdb97dd0d9602fde08eac62c77bd61d27ee02c92f2cf6e373bb6257cdd436eca805c72c39a2e57d10316832b1a27a15c101d7fab0e872d10de295e55507309d60c653a3114acf8845c2568cb165d97bc6526308eae4551a0f02009c5bb2ec89d268007f148155c897ebbc4d3a5fa929b51948bb2d263c0001").unwrap(),
+            BulletRangeProof::from_hex("01102c714afb17f842001083054f0308bd73e545972d0be8e0b9fea7a521cc601d441445056083c120bca3580cfe946513ab022bdbd8a4fd217f92e4bf4664d43900288adcf419a4500cfb083d349e25fbbab6aefb7aeaace7c6691172f560a966987653db8c143edd8592432959a2f11b8435cbffa7e9fc430dc5ed15a41bca49f81f8a4f206f613c86777744525b22fe98696690ab89f28c50592352d99d046c8a159d08e2e82b989adb7e892bacf15b1565d1e92dda81156d6b1345685ae1598adadf0442963ea949f90d58145d6fbaa6ebc7f7b23fc0e848610df0de71033680dc536816b878f2f94f6c03ea196776b46979e67496d9979be5be973b0e1f14664cedab31f3a081f6116fc82cb30908cd55064ec69597d1936793667bc31454f66f6e35905b2d7654b42911234c67248656fb5258ba46684d2d6fa7d595ac2a96c7395e64920552d7194b0450c2314c88492ba6417dd4c308014f88e2d9e833a2bb96c00a01d2d596a65ccfc684ebb60eecd0a0a4ee806880f48beebcb5282e666117acb844d4dfc7db372f90d9038320cc38db40c9129cb88038aff128a17d9c2de3db921b3efb5d513724552b87049bb6f78c6bd34f196ee99c1a7bbeb46824221f522cd7eabad5c2ae4e3d8c63dcd3fcca58b1a3d576755c50f4622bc50cd329ee85b9f933c01c7bee7d6df0ca5b821040ff3ccc5ec08e0867561faf4d01b35e77f2d96c309dae2b92ffd738efb9f1b1db23213c6f6953af3cbc84e4c1073e7b710d8c833d5959a25c2951679239cc70e5f653d0f660134e3bbe90350a06").unwrap(),
             // For genesis block: A default script can never be spent, intentionally
             TariScript::default(),
             // Script offset never checked for coinbase, thus can use default
@@ -126,7 +149,7 @@ fn get_igor_genesis_block_raw() -> Block {
             MicroTari(0),
             0,
             Commitment::from_hex(
-                "58f6c7b149e49eac2a51498d0027a98c7f8115c3d808ca03717b0837303d614a",
+                "f6c86b0938afc666ee027f4951b4fceaec11b2eca0bbb4ffa18a2194a1f4804a",
             )
                 .unwrap(),
             sig,None
@@ -135,7 +158,7 @@ fn get_igor_genesis_block_raw() -> Block {
     );
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("24 Jun 2022 10:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("3 Aug 2022 10:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -144,10 +167,10 @@ fn get_igor_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
-            output_mr: from_hex("8c50b1b393d50f72140746cfef314612bf2d832cbb8a4af39df7ff70023f2632").unwrap(),
-            witness_mr: from_hex("35950652ecf2fa8d600fa99becd7ceae9474f2f351e2c94fd7989c9bbc81c9ff").unwrap(),
+            output_mr: from_hex("5e7af98764274c1fd983a1b49b8f74642075729cc86ab1317b20442e35e0097b").unwrap(),
+            witness_mr: from_hex("f31922a3c80cd8f755d47c957f0c29ccf866a436b283b07dac5a06ab0672f55d").unwrap(),
             output_mmr_size: 1,
-            kernel_mr: from_hex("9196491fe5659ced84b894ed1ee859400a051b9321b9d3ba54dba499fb7397d7").unwrap(),
+            kernel_mr: from_hex("486d1ab0438bd0a160616648acf886b68efb7a8cd8210efb2d2aabc53f87a962").unwrap(),
             kernel_mmr_size: 1,
             input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: PrivateKey::from_hex(
@@ -283,7 +306,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("03 Aug 2022 10:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
-        let timestamp = genesis.timestamp() as u64;
+    let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
             version: 3,
@@ -299,11 +322,11 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
             )
-                .unwrap(),
+            .unwrap(),
             total_script_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
             )
-                .unwrap(),
+            .unwrap(),
             nonce: 0,
             pow: ProofOfWork {
                 pow_algo: PowAlgorithm::Sha3,
@@ -350,7 +373,6 @@ mod test {
             block.header().output_mmr_size
         );
 
-
         for kernel in block.block().body.kernels() {
             kernel.verify_signature().unwrap();
         }
@@ -388,7 +410,71 @@ mod test {
         let db = create_new_blockchain_with_network(Network::Esmeralda);
 
         let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(Network::Esmeralda).build(), Default::default())
+        ChainBalanceValidator::new(
+            ConsensusManager::builder(Network::Esmeralda).build(),
+            Default::default(),
+        )
+        .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
+        .unwrap();
+    }
+
+    #[test]
+    fn igor_genesis_sanity_check() {
+        let block = get_igor_genesis_block();
+        assert_eq!(block.block().body.outputs().len(), 1);
+
+        let factories = CryptoFactories::default();
+        assert!(block.block().body.outputs().iter().any(|o| o.is_coinbase()));
+        let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
+        batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
+        // Coinbase and faucet kernel
+        assert_eq!(
+            block.block().body.kernels().len() as u64,
+            block.header().kernel_mmr_size
+        );
+        assert_eq!(
+            block.block().body.outputs().len() as u64,
+            block.header().output_mmr_size
+        );
+
+        for kernel in block.block().body.kernels() {
+            kernel.verify_signature().unwrap();
+        }
+        assert!(block
+            .block()
+            .body
+            .kernels()
+            .iter()
+            .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL)));
+
+        // Check MMR
+        let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
+        for k in block.block().body.kernels() {
+            kernel_mmr.push(k.hash()).unwrap();
+        }
+
+        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(Vec::new());
+        let mut output_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create()).unwrap();
+
+        for o in block.block().body.outputs() {
+            witness_mmr.push(o.witness_hash()).unwrap();
+            output_mmr.push(o.hash()).unwrap();
+        }
+
+        assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr);
+        assert_eq!(witness_mmr.get_merkle_root().unwrap(), block.header().witness_mr);
+        assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr);
+
+        // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
+        // is correct)
+
+        let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
+        let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
+
+        let db = create_new_blockchain_with_network(Network::Igor);
+
+        let lock = db.db_read_access().unwrap();
+        ChainBalanceValidator::new(ConsensusManager::builder(Network::Igor).build(), Default::default())
             .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
     }
