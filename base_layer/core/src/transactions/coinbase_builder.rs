@@ -26,7 +26,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     hash::blake2::Blake256,
     hashing::DomainSeparatedHasher,
-    keys::{PublicKey as PK},
+    keys::PublicKey as PK,
 };
 use tari_script::{inputs, script, TariScript};
 use tari_utilities::ByteArray;
