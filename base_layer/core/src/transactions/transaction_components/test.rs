@@ -480,8 +480,8 @@ mod output_features {
 
         let mut buf = Vec::new();
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 10);
-        assert_eq!(features.consensus_encode_exact_size(), 10);
+        assert_eq!(buf.len(), 11);
+        assert_eq!(features.consensus_encode_exact_size(), 11);
 
         let mut features = OutputFeatures::default();
         features.version = OutputFeaturesVersion::V1;
@@ -498,24 +498,14 @@ mod output_features {
         features_u64_max.version = OutputFeaturesVersion::V0;
         let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size_u8_max);
-        assert_eq!(known_size_u8_max, 19);
-        features_u64_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 19);
-        assert_eq!(features_u64_max.consensus_encode_exact_size(), 19);
-        let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        assert_eq!(features_u64_max, decoded_features);
-
-        features_u64_max.version = OutputFeaturesVersion::V1;
-        let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         assert_eq!(known_size_u8_max, 20);
-        let mut buf = Vec::with_capacity(known_size_u8_max);
         features_u64_max.consensus_encode(&mut buf).unwrap();
         assert_eq!(buf.len(), 20);
         assert_eq!(features_u64_max.consensus_encode_exact_size(), 20);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features_u64_max, decoded_features);
 
-        features_u64_max.version = OutputFeaturesVersion::V2;
+        features_u64_max.version = OutputFeaturesVersion::V1;
         let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         assert_eq!(known_size_u8_max, 20);
         let mut buf = Vec::with_capacity(known_size_u8_max);

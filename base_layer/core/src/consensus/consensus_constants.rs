@@ -374,8 +374,8 @@ impl ConsensusConstants {
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
-            blockchain_version: 2,
-            valid_blockchain_version_range: 0..=3,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -388,7 +388,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: 0 * T,
+            faucet_value: 0.into(),
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -494,8 +494,8 @@ impl ConsensusConstants {
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 3,
-            blockchain_version: 3,
-            valid_blockchain_version_range: 0..=3,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,

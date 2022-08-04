@@ -163,11 +163,11 @@ fn get_igor_genesis_block_raw() -> Block {
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
-            version: 3,
+            version: 0,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
-            output_mr: from_hex("5e7af98764274c1fd983a1b49b8f74642075729cc86ab1317b20442e35e0097b").unwrap(),
+            output_mr: from_hex("116ab118ba910d932718d47c45f7274542187dfab950963ec9601722ce461516").unwrap(),
             witness_mr: from_hex("f31922a3c80cd8f755d47c957f0c29ccf866a436b283b07dac5a06ab0672f55d").unwrap(),
             output_mmr_size: 1,
             kernel_mr: from_hex("486d1ab0438bd0a160616648acf886b68efb7a8cd8210efb2d2aabc53f87a962").unwrap(),
@@ -239,11 +239,11 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // println!("kernel mr: {}", block.header.kernel_mr.to_hex());
     // println!("witness mr: {}", block.header.witness_mr.to_hex());
     // println!("output mr: {}", block.header.output_mr.to_hex());
-
+    //
     // Hardcode the Merkle roots once they've been computed above
     block.header.kernel_mr = from_hex("300a7ef7bdbfa27058b11302ce9700a08eff7c7d91e94f75c21f3b4482905b96").unwrap();
     block.header.witness_mr = from_hex("4ecd3bb4a3f6bd620d037b255a32a47258c62f12a8e67f2ffefd9e9bb84a1118").unwrap();
-    block.header.output_mr = from_hex("66ac81147988d4856de58e16538c48138f2acab3a060efb749de74e8d779bcf4").unwrap();
+    block.header.output_mr = from_hex("57367b768b5940ffded73b3fe2670f2e3a14d34b1aa089b7e34b57c8f343a44e").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -309,7 +309,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
-            version: 3,
+            version: 0,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),

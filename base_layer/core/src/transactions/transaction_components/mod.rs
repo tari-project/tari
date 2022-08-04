@@ -109,10 +109,10 @@ pub(super) fn hash_output(
         .chain(commitment)
         .chain(script)
         .chain(covenant)
-        .chain(encrypted_value);
+        .chain(encrypted_value)
+        .chain(&minimum_value_promise);
 
     match version {
         TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common_hash.finalize(),
-        TransactionOutputVersion::V2 => common_hash.chain(&minimum_value_promise).finalize(),
     }
 }
