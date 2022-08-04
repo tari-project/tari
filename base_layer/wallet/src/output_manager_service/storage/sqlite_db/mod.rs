@@ -1453,13 +1453,23 @@ impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
 }
 
 impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            Self::KNOWN_ONESIDED_PAYMENT_SCRIPT,
+            self.script_hash.as_slice(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
+    }
+
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        self.private_key = encrypt_bytes_integral_nonce(cipher, self.private_key.clone())?;
+        self.private_key = encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), self.private_key.clone())?;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        self.private_key = decrypt_bytes_integral_nonce(cipher, self.private_key.clone())?;
+        self.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), self.private_key.clone())?;
         Ok(())
     }
 }
