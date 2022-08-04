@@ -1443,20 +1443,38 @@ impl InboundTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for InboundTransactionSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            Self::INBOUND_TRANSACTION,
+            self.tx_id.to_le_bytes().as_slice(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
+    }
+
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.receiver_protocol.as_bytes().to_vec())?;
-        self.receiver_protocol = encrypted_protocol.to_hex();
+        self.receiver_protocol = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("receiver_protocol"),
+            self.receiver_protocol.as_bytes().to_vec(),
+        )?
+        .to_hex();
+
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
+            self.domain("receiver_protocol"),
             from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
+
         self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
         Ok(())
     }
 }
@@ -1613,20 +1631,38 @@ impl OutboundTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            Self::OUTBOUND_TRANSACTION,
+            self.tx_id.to_le_bytes().as_slice(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
+    }
+
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.sender_protocol.as_bytes().to_vec())?;
-        self.sender_protocol = encrypted_protocol.to_hex();
+        self.sender_protocol = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("sender_protocol"),
+            self.sender_protocol.as_bytes().to_vec(),
+        )?
+        .to_hex();
+
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
+            self.domain("sender_protocol"),
             from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
+
         self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
         Ok(())
     }
 }
@@ -1941,20 +1977,38 @@ impl CompletedTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
+    fn domain(&self, field_name: &'static str) -> Vec<u8> {
+        [
+            Self::COMPLETED_TRANSACTION,
+            self.tx_id.to_le_bytes().as_slice(),
+            field_name.as_bytes(),
+        ]
+        .concat()
+        .to_vec()
+    }
+
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.transaction_protocol.as_bytes().to_vec())?;
-        self.transaction_protocol = encrypted_protocol.to_hex();
+        self.transaction_protocol = encrypt_bytes_integral_nonce(
+            cipher,
+            self.domain("transaction_protocol"),
+            self.transaction_protocol.as_bytes().to_vec(),
+        )?
+        .to_hex();
+
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
+            self.domain("transaction_protocol"),
             from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
+
         self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
             .map_err(|e| e.to_string())?
             .to_string();
+
         Ok(())
     }
 }
