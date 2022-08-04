@@ -76,11 +76,12 @@ use tari_core::{
         fee::Fee,
         tari_amount::*,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
+        transaction_components::{KernelBuilder, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
+            TransactionMetadata,
         },
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -1454,7 +1455,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(25),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -1491,8 +1492,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
 
     stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
         .unwrap();
-    stp.finalize(KernelFeatures::empty(), &factories, None, u64::MAX)
-        .unwrap();
+    stp.finalize(&factories, None, u64::MAX).unwrap();
     let tx = stp.get_transaction().unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
@@ -1570,7 +1570,7 @@ async fn finalize_tx_with_missing_output() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(20),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -1607,8 +1607,7 @@ async fn finalize_tx_with_missing_output() {
 
     stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
         .unwrap();
-    stp.finalize(KernelFeatures::empty(), &factories, None, u64::MAX)
-        .unwrap();
+    stp.finalize(&factories, None, u64::MAX).unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: recipient_reply.tx_id.as_u64(),
@@ -2925,7 +2924,7 @@ async fn test_restarting_transaction_protocols() {
         .add_single_recipient_info(alice_reply.clone(), &factories.range_proof)
         .unwrap();
 
-    match bob_stp.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
+    match bob_stp.finalize(&factories, None, u64::MAX) {
         Ok(_) => (),
         Err(e) => panic!("Should be able to finalize tx: {}", e),
     };

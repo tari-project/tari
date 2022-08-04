@@ -20,25 +20,47 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::protocol as proto;
-use crate::transactions::transaction_protocol::TransactionMetadata;
+use std::convert::TryFrom;
 
-impl From<proto::TransactionMetadata> for TransactionMetadata {
-    fn from(metadata: proto::TransactionMetadata) -> Self {
-        Self {
+use tari_common_types::types::Commitment;
+use tari_utilities::ByteArray;
+
+use super::protocol as proto;
+use crate::transactions::transaction_protocol::{KernelFeatures, TransactionMetadata};
+
+impl TryFrom<proto::TransactionMetadata> for TransactionMetadata {
+    type Error = String;
+
+    fn try_from(metadata: proto::TransactionMetadata) -> Result<Self, Self::Error> {
+        let kernel_features =
+            u8::try_from(metadata.kernel_features).map_err(|_| "Kernel features must be a single byte")?;
+        let commitment = match metadata.burned_commitment {
+            Some(burned_commitment) => {
+                Some(Commitment::from_bytes(&burned_commitment.data).map_err(|e| e.to_string())?)
+            },
+            None => None,
+        };
+        Ok(Self {
             fee: metadata.fee.into(),
             lock_height: metadata.lock_height,
-        }
+            kernel_features: KernelFeatures::from_bits(kernel_features)
+                .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
+            burn_commitment: commitment,
+        })
     }
 }
 
 impl From<TransactionMetadata> for proto::TransactionMetadata {
     fn from(metadata: TransactionMetadata) -> Self {
+        let commitment = metadata.burn_commitment.map(|commitment| commitment.into());
         Self {
             // The absolute fee for the transaction
             fee: metadata.fee.into(),
             // The earliest block this transaction can be mined
             lock_height: metadata.lock_height,
+            kernel_features: u32::from(metadata.kernel_features.bits()),
+            // optional burn commitment if present
+            burned_commitment: commitment,
         }
     }
 }

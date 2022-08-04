@@ -25,14 +25,17 @@ class TransactionBuilder {
     return this.kv.private_key(id);
   }
 
-  buildChallenge(publicNonce, fee, lockHeight) {
+  buildKernelChallenge(publicNonce, publicExcess, fee, lockHeight, features) {
     const KEY = null; // optional key
     const OUTPUT_LENGTH = 32; // bytes
     const context = blake2bInit(OUTPUT_LENGTH, KEY);
     const buff = Buffer.from(publicNonce, "hex");
+    const buff2 = Buffer.from(publicExcess, "hex");
     blake2bUpdate(context, buff);
+    blake2bUpdate(context, buff2);
     blake2bUpdate(context, toLittleEndian(fee, 64));
     blake2bUpdate(context, toLittleEndian(lockHeight, 64));
+    blake2bUpdate(context, toLittleEndian(features, 8));
     const final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
@@ -375,10 +378,15 @@ class TransactionBuilder {
     const excess = tari_crypto.commit(privateKey, BigInt(0));
     this.kv.new_key("common_nonce");
     const publicNonce = this.kv.public_key("common_nonce");
-    const challenge = this.buildChallenge(
+    let PublicKeyExcess = tari_crypto.pubkey_from_secret(
+      privateKey.toString("hex")
+    );
+    const challenge = this.buildKernelChallenge(
       publicNonce,
+      PublicKeyExcess,
       this.fee,
-      this.lockHeight
+      this.lockHeight,
+      0
     );
     const privateNonce = this.kv.private_key("common_nonce");
     const sig = tari_crypto.sign_challenge_with_nonce(
@@ -430,7 +438,16 @@ class TransactionBuilder {
     const excess = tari_crypto.commit(privateKey, BigInt(0));
     this.kv.new_key("nonce");
     const public_nonce = this.kv.public_key("nonce");
-    const challenge = this.buildChallenge(public_nonce, 0, 0);
+    let PublicKeyExcess = tari_crypto.pubkey_from_secret(
+      privateKey.toString("hex")
+    );
+    const challenge = this.buildKernelChallenge(
+      public_nonce,
+      PublicKeyExcess,
+      0,
+      0,
+      1
+    );
     const private_nonce = this.kv.private_key("nonce");
     const sig = tari_crypto.sign_challenge_with_nonce(
       privateKey,

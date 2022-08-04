@@ -682,7 +682,7 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_components::{KernelFeatures, OutputFeatures},
+            transaction_components::OutputFeatures,
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,
@@ -789,9 +789,7 @@ mod test {
 
         let factories = CryptoFactories::default();
         let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
-        stx_protocol
-            .finalize(KernelFeatures::empty(), &factories, None, u64::MAX)
-            .unwrap();
+        stx_protocol.finalize(&factories, None, u64::MAX).unwrap();
 
         let tx3 = stx_protocol.get_transaction().unwrap().clone();
 

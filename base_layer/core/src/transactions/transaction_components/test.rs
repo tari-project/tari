@@ -281,7 +281,7 @@ fn check_timelocks() {
         MicroTari::zero(),
     );
 
-    let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
+    let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
     let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
     // lets add time locks
