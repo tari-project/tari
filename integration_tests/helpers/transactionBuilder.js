@@ -1,13 +1,14 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-var tari_crypto = require("tari_crypto");
-var { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+const tari_crypto = require("tari_crypto");
+const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 const {
   toLittleEndian,
   littleEndianHexStringToBigEndianHexString,
   combineTwoTariKeys,
 } = require("../helpers/util");
+const DomainHasher = require("../helpers/domainHasher");
 const { OutputType } = require("./types");
 
 class TransactionBuilder {
@@ -78,6 +79,9 @@ class TransactionBuilder {
   }
 
   toLengthEncoded(buf) {
+    if (buf.length > 127) {
+      throw new Error("toLengthEncoded: Buffer too long");
+    }
     // TODO: varint encoding, this is only valid up to len=127
     return Buffer.concat([Buffer.from([buf.length]), buf]);
   }
@@ -91,23 +95,23 @@ class TransactionBuilder {
     covenant,
     encryptedValue
   ) {
-    const KEY = null; // optional key
-    const OUTPUT_LENGTH = 32; // bytes
-    const context = blake2bInit(OUTPUT_LENGTH, KEY);
-    const buf_nonce = Buffer.from(publicNonce, "hex");
-    const script_offset_public_key = Buffer.from(scriptOffsetPublicKey, "hex");
+    const publicCommitmentNonce = Buffer.from(publicNonce, "hex");
+    const sender_offset_public_key = Buffer.from(scriptOffsetPublicKey, "hex");
     const features_buffer = this.featuresToConsensusBytes(features);
-
     // base_layer/core/src/transactions/transaction/transaction_output.rs
-    blake2bUpdate(context, buf_nonce);
-    blake2bUpdate(context, this.toLengthEncoded(script));
-    blake2bUpdate(context, features_buffer);
-    blake2bUpdate(context, script_offset_public_key);
-    blake2bUpdate(context, commitment);
-    blake2bUpdate(context, this.toLengthEncoded(covenant));
-    blake2bUpdate(context, encryptedValue);
-    const final = blake2bFinal(context);
-    return Buffer.from(final).toString("hex");
+    let hash = new DomainHasher(
+      "com.tari.base_layer.core.transactions.v0.metadata_signature"
+    )
+      .chain(publicCommitmentNonce)
+      .chain(this.toLengthEncoded(script))
+      .chain(features_buffer)
+      .chain(sender_offset_public_key)
+      .chain(commitment)
+      .chain(this.toLengthEncoded(covenant))
+      .chain(encryptedValue)
+      .finalize();
+
+    return Buffer.from(hash).toString("hex");
   }
 
   buildScriptChallenge(
@@ -117,18 +121,19 @@ class TransactionBuilder {
     public_key,
     commitment
   ) {
-    let KEY = null; // optional key
-    let OUTPUT_LENGTH = 32; // bytes
-    let context = blake2bInit(OUTPUT_LENGTH, KEY);
     let buff_publicNonce = Buffer.from(publicNonce, "hex");
     let buff_public_key = Buffer.from(public_key, "hex");
-    blake2bUpdate(context, buff_publicNonce);
-    blake2bUpdate(context, this.toLengthEncoded(script));
-    blake2bUpdate(context, this.toLengthEncoded(input_data));
-    blake2bUpdate(context, buff_public_key);
-    blake2bUpdate(context, commitment);
-    let final = blake2bFinal(context);
-    return Buffer.from(final).toString("hex");
+    let hash = new DomainHasher(
+      "com.tari.base_layer.core.transactions.v0.script_challenge"
+    )
+      .chain(buff_publicNonce)
+      .chain(this.toLengthEncoded(script))
+      .chain(this.toLengthEncoded(input_data))
+      .chain(buff_public_key)
+      .chain(commitment)
+      .finalize();
+
+    return Buffer.from(hash).toString("hex");
   }
 
   hashOutput(features, commitment, script, sender_offset_public_key) {

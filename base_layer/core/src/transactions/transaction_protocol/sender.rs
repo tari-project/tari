@@ -23,7 +23,7 @@
 use std::fmt;
 
 use derivative::Derivative;
-use digest::{Digest, FixedOutput};
+use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
@@ -493,9 +493,7 @@ impl SenderTransactionProtocol {
     ) -> Result<ComSignature, TPE> {
         // Create sender signature
         let public_commitment_nonce = PublicKey::from_secret_key(private_commitment_nonce);
-        let e = output
-            .get_metadata_signature_challenge(Some(&public_commitment_nonce))
-            .finalize_fixed();
+        let e = output.get_metadata_signature_challenge(Some(&public_commitment_nonce));
         let sender_signature =
             Signature::sign(sender_offset_private_key.clone(), private_commitment_nonce.clone(), &e)?;
         let sender_signature = sender_signature.get_signature();
@@ -805,7 +803,6 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey, RangeProof};
     use tari_crypto::{
@@ -964,9 +961,7 @@ mod test {
         assert!(output.verify_metadata_signature().is_err());
         assert!(partial_metadata_signature.verify_challenge(
             &commitment,
-            &output
-                .get_metadata_signature_challenge(Some(&sender_public_commitment_nonce))
-                .finalize(),
+            &output.get_metadata_signature_challenge(Some(&sender_public_commitment_nonce)),
             &commitment_factory
         ));
 
