@@ -157,8 +157,10 @@ mod sync_utxos {
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
 
         let block = chain.get("B").unwrap();
+        let total_outputs = block.block().header.output_mmr_size;
+        let start = total_outputs - 2;
         let msg = SyncUtxosRequest {
-            start: 3500,
+            start,
             end_header_hash: block.hash().clone(),
             include_pruned_utxos: true,
             include_deleted_bitmaps: false,
@@ -170,6 +172,6 @@ mod sync_utxos {
             .collect::<Vec<_>>()
             .await;
 
-        assert!(utxo_indexes.iter().all(|index| (3500..=4002).contains(index)));
+        assert!(utxo_indexes.iter().all(|index| (start..=start + 2).contains(index)));
     }
 }

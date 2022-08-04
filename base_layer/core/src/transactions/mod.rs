@@ -4,7 +4,9 @@
 pub mod aggregated_body;
 
 mod crypto_factories;
+
 pub use crypto_factories::CryptoFactories;
+use tari_crypto::hash_domain;
 
 mod coinbase_builder;
 pub use coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};
@@ -24,3 +26,5 @@ pub mod weight;
 
 #[macro_use]
 pub mod test_helpers;
+
+hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
