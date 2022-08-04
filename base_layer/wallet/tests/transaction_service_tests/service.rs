@@ -139,7 +139,6 @@ use tari_wallet::{
         },
         TransactionServiceInitializer,
     },
-    types::HashDigest,
 };
 use tempfile::tempdir;
 use tokio::{
@@ -2165,7 +2164,7 @@ async fn test_transaction_cancellation() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
+    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id2 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
@@ -2247,7 +2246,7 @@ async fn test_transaction_cancellation() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
+    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id3 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
@@ -4224,7 +4223,7 @@ async fn test_resend_on_startup() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
+    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let stp_msg = stp.build_single_round_message().unwrap();
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
@@ -4701,7 +4700,7 @@ async fn test_transaction_timeout_cancellation() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
+    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let stp_msg = stp.build_single_round_message().unwrap();
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 

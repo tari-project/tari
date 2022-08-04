@@ -46,8 +46,9 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
 };
+use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 use tari_utilities::{
@@ -1281,7 +1282,7 @@ impl LMDBDatabase {
             ..
         } = data;
 
-        let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_kernel_set);
+        let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(pruned_kernel_set);
 
         for kernel in kernels {
             total_kernel_sum = &total_kernel_sum + &kernel.excess;
@@ -1296,8 +1297,8 @@ impl LMDBDatabase {
             })?;
             self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
-        let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
-        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
+        let mut output_mmr = MutableMmr::<Blake256, _>::new(pruned_output_set, Bitmap::create())?;
+        let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(pruned_proof_set);
 
         let leaf_count = witness_mmr.get_leaf_count()?;
 
@@ -2729,7 +2730,7 @@ impl UniqueIdIndexKey {
     /// `parent_public_key` - the parent asset public key to which the token is assigned
     /// `unique_id` - a series of bytes representing the token uniquely for the asset
     pub fn new(parent_public_key: Option<&PublicKey>, unique_id: &[u8]) -> Self {
-        let unique_id_hash = HashDigest::default().chain(unique_id).finalize();
+        let unique_id_hash = Blake256::default().chain(unique_id).finalize();
         Self::from_raw_parts(
             parent_public_key.map(|p| p.as_bytes()).unwrap_or(&[0; 32][..]),
             &unique_id_hash,
