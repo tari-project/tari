@@ -175,9 +175,23 @@ fn print_new_genesis_block(network: Network) {
         block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
         block.body.kernels()[0].excess_sig.get_signature().to_hex()
     );
+    println!();
+    println!(
+        "Coinbase metasig: public_nonce {}, signature_u {}, signature_v {}",
+        block.body.outputs()[0].metadata_signature.public_nonce().to_hex(),
+        block.body.outputs()[0].metadata_signature.u().to_hex(),
+        block.body.outputs()[0].metadata_signature.v().to_hex(),
+    );
+    println!();
     println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
     println!("UTXO range_proof: {}", block.body.outputs()[0].proof.to_hex());
+    println!(
+        "UTXO sender offset pubkey: {}",
+        block.body.outputs()[0].sender_offset_public_key.to_hex()
+    );
+    println!();
     println!("kernel excess: {}", block.body.kernels()[0].excess.to_hex());
+    println!();
     println!("header output_mr: {}", block.header.output_mr.to_hex());
     println!("header witness_mr: {}", block.header.witness_mr.to_hex());
     println!("header kernel_mr: {}", block.header.kernel_mr.to_hex());
