@@ -109,14 +109,12 @@ where
                 if output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
                     let (input_data, script_key) = if let Some(index) = known_script_index {
                         (
-                            known_scripts[index].input.clone(),known_scripts[index].private_key.clone(),
+                            known_scripts[index].input.clone(),
+                            known_scripts[index].private_key.clone(),
                         )
                     } else {
                         let key = PrivateKey::random(&mut OsRng);
-                        (
-
-                            inputs!(PublicKey::from_secret_key(&key)),key
-                        )
+                        (inputs!(PublicKey::from_secret_key(&key)), key)
                     };
                     let uo = UnblindedOutput::new(
                         output.version,
