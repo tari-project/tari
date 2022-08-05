@@ -176,6 +176,11 @@ function toLittleEndian(n, numBits) {
       buf.writeUInt32LE(n);
       return buf;
     }
+    case 64: {
+      let buf = Buffer.alloc(numBits / 8);
+      buf.writeUInt64LE(n);
+      return buf;
+    }
     default: {
       const s = toLittleEndianInner(n);
 

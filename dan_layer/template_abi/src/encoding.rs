@@ -42,6 +42,12 @@ pub fn encode_into<T: Encode>(val: &T, buf: &mut Vec<u8>) -> io::Result<()> {
     val.serialize(buf)
 }
 
+pub fn encode<T: Encode>(val: &T) -> io::Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(512);
+    encode_into(val, &mut buf)?;
+    Ok(buf)
+}
+
 pub fn decode<T: Decode>(mut input: &[u8]) -> io::Result<T> {
     T::deserialize(&mut input)
 }

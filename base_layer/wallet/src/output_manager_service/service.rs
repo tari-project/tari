@@ -53,7 +53,7 @@ use tari_core::{
             UnblindedOutput,
             UnblindedOutputBuilder,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RewindData},
+        transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
         CoinbaseBuilder,
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -63,6 +63,7 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
+    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
@@ -96,7 +97,7 @@ use crate::{
         },
         tasks::TxoValidationTask,
     },
-    types::{HashDigest, WalletHasher},
+    types::WalletHasher,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -281,7 +282,7 @@ where
                 utxo_selection,
                 output_features,
                 fee_per_gram,
-                lock_height,
+                tx_meta,
                 message,
                 script,
                 covenant,
@@ -292,7 +293,7 @@ where
                     amount,
                     utxo_selection,
                     fee_per_gram,
-                    lock_height,
+                    tx_meta,
                     message,
                     *output_features,
                     script,
@@ -847,7 +848,7 @@ where
         amount: MicroTari,
         utxo_selection: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
-        lock_height: Option<u64>,
+        tx_meta: TransactionMetadata,
         message: String,
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
@@ -880,7 +881,6 @@ where
 
         let mut builder = SenderTransactionProtocol::builder(1, self.resources.consensus_constants.clone());
         builder
-            .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
@@ -896,6 +896,8 @@ where
             )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_lock_height(tx_meta.lock_height)
+            .with_kernel_features(tx_meta.kernel_features)
             .with_tx_id(tx_id);
 
         for uo in input_selection.iter() {
@@ -924,7 +926,7 @@ where
         }
 
         let stp = builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1081,7 +1083,8 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_prevent_fee_gt_amount(false);
+            .with_prevent_fee_gt_amount(false)
+            .with_kernel_features(KernelFeatures::empty());
 
         for uo in input_selection.iter() {
             builder.with_input(
@@ -1147,7 +1150,7 @@ where
         // }
 
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, u64::MAX)
+            .build::<Blake256>(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // if let Some((spending_key, script_private_key)) = change_keys {
         //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
@@ -1191,7 +1194,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize(KernelFeatures::empty(), &self.resources.factories, None, u64::MAX)?;
+        stp.finalize(&self.resources.factories, None, u64::MAX)?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
@@ -1237,6 +1240,7 @@ where
             .with_message(message)
             .with_rewindable_outputs(self.resources.rewind_data.clone())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_kernel_features(KernelFeatures::empty())
             .with_tx_id(tx_id);
 
         for uo in input_selection.iter() {
@@ -1306,7 +1310,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1340,12 +1344,7 @@ where
         self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(
-            KernelFeatures::empty(),
-            &factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -1717,6 +1716,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(PrivateKey::random(&mut OsRng))
             .with_private_nonce(PrivateKey::random(&mut OsRng))
+            .with_kernel_features(KernelFeatures::empty())
             .with_rewindable_outputs(self.resources.rewind_data.clone());
 
         // collecting inputs from source outputs
@@ -1807,7 +1807,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1838,7 +1838,6 @@ where
 
         // finalizing transaction
         stp.finalize(
-            KernelFeatures::empty(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1940,7 +1939,8 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(PrivateKey::random(&mut OsRng))
             .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_rewindable_outputs(self.resources.rewind_data.clone());
+            .with_rewindable_outputs(self.resources.rewind_data.clone())
+            .with_kernel_features(KernelFeatures::empty());
 
         // collecting inputs from source outputs
         let inputs: Vec<TransactionInput> = src_outputs
@@ -2039,7 +2039,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2089,7 +2089,6 @@ where
 
         // finalizing transaction
         stp.finalize(
-            KernelFeatures::empty(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2152,7 +2151,8 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(PrivateKey::random(&mut OsRng))
             .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_rewindable_outputs(self.resources.rewind_data.clone());
+            .with_rewindable_outputs(self.resources.rewind_data.clone())
+            .with_kernel_features(KernelFeatures::empty());
 
         // collecting inputs from source outputs
         let inputs: Vec<TransactionInput> = src_outputs
@@ -2227,7 +2227,7 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let mut stp = tx_builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2258,7 +2258,6 @@ where
 
         // finalizing transaction
         stp.finalize(
-            KernelFeatures::empty(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2343,6 +2342,7 @@ where
                     .with_offset(offset.clone())
                     .with_private_nonce(nonce.clone())
                     .with_message(message)
+                    .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(
                         rewound_output.as_transaction_input(&self.resources.factories.commitment)?,
@@ -2362,7 +2362,7 @@ where
 
                 let factories = CryptoFactories::default();
                 let mut stp = builder
-                    .build::<HashDigest>(
+                    .build::<Blake256>(
                         &self.resources.factories,
                         None,
                         self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2390,12 +2390,7 @@ where
                 self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-                stp.finalize(
-                    KernelFeatures::empty(),
-                    &factories,
-                    None,
-                    self.last_seen_tip_height.unwrap_or(u64::MAX),
-                )?;
+                stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
                 let tx = stp.take_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -2434,6 +2429,7 @@ where
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_message(message)
+            .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(
                 output.as_transaction_input(&self.resources.factories.commitment)?,
@@ -2453,7 +2449,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(
+            .build::<Blake256>(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2479,12 +2475,7 @@ where
 
         let fee = stp.get_fee_amount()?;
 
-        stp.finalize(
-            KernelFeatures::empty(),
-            &factories,
-            None,
-            self.last_seen_tip_height.unwrap_or(u64::MAX),
-        )?;
+        stp.finalize(&factories, None, self.last_seen_tip_height.unwrap_or(u64::MAX))?;
 
         let tx = stp.take_transaction()?;
 
@@ -2733,7 +2724,7 @@ impl fmt::Display for Balance {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+    Blake256::new().chain(key.as_bytes()).finalize().to_vec()
 }
 
 #[derive(Debug, Clone)]

@@ -15,9 +15,9 @@
 # All DNS seed records must pass DNSSEC validation
 #dns_seeds_use_dnssec = false
 
-[dibbler.p2p.seeds]
+[esmeralda.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
-dns_seeds = ["seeds.dibbler.tari.com"]
+dns_seeds = ["seeds.esmeralda.tari.com"]
 # Custom specified peer seed nodes
 peer_seeds = [
     # 333388d1cbe3e2bd17453d052f

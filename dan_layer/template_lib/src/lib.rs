@@ -33,7 +33,7 @@ pub mod models;
 
 // TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
 // available
-use std::{collections::HashMap, mem, slice};
+use std::{collections::HashMap, mem, ptr::copy, slice};
 
 use tari_template_abi::{encode_with_len, Decode, Encode, FunctionDef, TemplateDef};
 
@@ -49,6 +49,7 @@ pub fn generate_abi(template_name: String, functions: Vec<FunctionDef>) -> *mut 
 
 type FunctionImpl = Box<dyn Fn(Vec<Vec<u8>>) -> Vec<u8>>;
 
+#[derive(Default)]
 pub struct TemplateImpl(HashMap<String, FunctionImpl>);
 
 impl TemplateImpl {
@@ -57,17 +58,21 @@ impl TemplateImpl {
     }
 
     pub fn add_function(&mut self, name: String, implementation: FunctionImpl) {
-        self.0.insert(name.clone(), implementation);
+        self.0.insert(name, implementation);
     }
 }
 
-pub fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: TemplateImpl) -> *mut u8 {
+/// Generate main
+///
+/// # Safety
+/// The caller must provide a valid pointer and length.
+pub unsafe fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: TemplateImpl) -> *mut u8 {
     use tari_template_abi::{decode, CallInfo};
     if call_info.is_null() {
         panic!("call_info is null");
     }
 
-    let call_data = unsafe { slice::from_raw_parts(call_info, call_info_len) };
+    let call_data = slice::from_raw_parts(call_info, call_info_len);
     let call_info: CallInfo = decode(call_data).unwrap();
 
     // get the function
@@ -96,9 +101,9 @@ pub fn call_engine<T: Encode, U: Decode + std::fmt::Debug>(op: i32, input: &T) -
     }
 
     let slice = unsafe { slice::from_raw_parts(ptr as *const _, 4) };
-    let len = decode_len(&slice).unwrap();
+    let len = decode_len(slice).unwrap();
     let slice = unsafe { slice::from_raw_parts(ptr.offset(4), len) };
-    let ret = decode(&slice).unwrap();
+    let ret = decode(slice).unwrap();
     Some(ret)
 }
 
@@ -119,3 +124,28 @@ pub fn call_debug<T: AsRef<[u8]>>(data: T) {
     unsafe { debug(ptr, len) }
 }
 
+/// Allocates a block of memory of length `len` bytes.
+#[no_mangle]
+pub extern "C" fn tari_alloc(len: u32) -> *mut u8 {
+    let cap = (len + 4) as usize;
+    let mut buf = Vec::<u8>::with_capacity(cap);
+    let ptr = buf.as_mut_ptr();
+    mem::forget(buf);
+    unsafe {
+        copy(len.to_le_bytes().as_ptr(), ptr, 4);
+    }
+    ptr
+}
+
+/// Frees a block of memory allocated by `tari_alloc`.
+///
+/// # Safety
+/// Caller must ensure that ptr must be a valid pointer to a block of memory allocated by `tari_alloc`.
+#[no_mangle]
+pub unsafe extern "C" fn tari_free(ptr: *mut u8) {
+    let mut len = [0u8; 4];
+    copy(ptr, len.as_mut_ptr(), 4);
+
+    let cap = (u32::from_le_bytes(len) + 4) as usize;
+    drop(Vec::<u8>::from_raw_parts(ptr, cap, cap));
+}

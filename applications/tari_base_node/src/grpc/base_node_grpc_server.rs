@@ -1563,7 +1563,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
         let mut resp = tari_rpc::SoftwareUpdate::default();
 
-        if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
+        if let Some(ref update) = *self.software_updater.update_notifier().borrow() {
             resp.has_update = true;
             resp.version = update.version().to_string();
             resp.sha = update.to_hash_hex();

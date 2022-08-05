@@ -396,12 +396,8 @@ impl ConsensusEncoding for OutputFeatures {
         self.mint_non_fungible.consensus_encode(writer)?;
         self.sidechain_checkpoint.consensus_encode(writer)?;
         self.metadata.consensus_encode(writer)?;
-        match self.version {
-            OutputFeaturesVersion::V0 => (),
-            _ => {
-                self.committee_definition.consensus_encode(writer)?;
-            },
-        }
+        self.committee_definition.consensus_encode(writer)?;
+
         Ok(())
     }
 }
@@ -425,10 +421,8 @@ impl ConsensusDecoding for OutputFeatures {
             <Option<SideChainCheckpointFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         const MAX_METADATA_SIZE: usize = 1024;
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
-        let committee_definition = match version {
-            OutputFeaturesVersion::V0 => None,
-            _ => <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?,
-        };
+        let committee_definition =
+            <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         Ok(Self {
             version,
             output_type: flags,

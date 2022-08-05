@@ -143,7 +143,7 @@ impl Default for BaseNodeConfig {
         };
         Self {
             override_from: None,
-            network: Network::LocalNet,
+            network: Network::Esmeralda,
             grpc_address: Some("/ip4/127.0.0.1/tcp/18142".parse().unwrap()),
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,

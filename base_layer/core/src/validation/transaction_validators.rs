@@ -31,7 +31,7 @@ use crate::{
         CryptoFactories,
     },
     validation::{
-        helpers::{check_inputs_are_utxos, check_outputs},
+        helpers::{check_inputs_are_utxos, check_outputs, check_total_burned},
         MempoolTransactionValidation,
         ValidationError,
     },
@@ -291,6 +291,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityVa
 
         verify_timelocks(tx, tip_height)?;
         verify_no_duplicated_inputs_outputs(tx)?;
+        check_total_burned(&tx.body)?;
         Ok(())
     }
 }
