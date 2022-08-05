@@ -76,7 +76,7 @@ mod helpers;
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::Dibbler;
+    let network = Network::Esmeralda;
     let rules = ConsensusManager::builder(network).build();
     let backend = create_test_db();
     let validators = Validators::new(
@@ -109,7 +109,7 @@ fn test_monero_blocks() {
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
     let factories = CryptoFactories::default();
-    let network = Network::Dibbler;
+    let network = Network::Esmeralda;
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
@@ -257,7 +257,7 @@ fn test_orphan_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(80)
+        .with_max_block_transaction_weight(320)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
@@ -681,7 +681,7 @@ async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(80)
+        .with_max_block_transaction_weight(320)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;

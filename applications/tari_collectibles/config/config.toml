@@ -5,18 +5,18 @@
 ########################################################################################################################
 
 [common]
-#override_from="dibbler"
+#override_from="esmeralda"
 #base_path="<HOME>/.tari"
 #data_dir="data"
 
 [auto_update]
-override_from="dibbler"
+override_from="esmeralda"
 # This interval in seconds to check for software updates. Setting this to 0 disables checking.
 check_interval = 300
 
-[dibbler.auto_update]
+[esmeralda.auto_update]
 # Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
-update_uris = ["updates.dibbler.taripulse.com"]
+update_uris = ["updates.esmeralda.taripulse.com"]
 # Customize the location of the update SHA hashes and maintainer-signed signature.
 # "auto_update.hashes_url" = "https://<address>/hashes.txt"
 # "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
@@ -67,18 +67,18 @@ db_resize_threshold_mb = 100
 # Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
 track_reorgs = true
 
-# Configuration options for testnet dibbler
-[dibbler.base_node]
+# Configuration options for testnet esmeralda
+[esmeralda.base_node]
 
 
 # db config defaults
 
-# The amount of messages that will be permitted in the flood ban timespan of 100s (Default dibbler = 100000,
+# The amount of messages that will be permitted in the flood ban timespan of 100s (Default esmeralda = 100000,
 # default mainnet = 100000)
 flood_ban_max_msg_count = 100_000
 
 # The relative path to store persistent data
-data_dir = "dibbler"
+data_dir = "esmeralda"
 
 # This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
 # couple of nodes that you always want to have in sync.
@@ -318,7 +318,7 @@ base_node_tor_identity_file = "config/base_node_tor.json"
 
 [wallet]
 # Override common.network for wallet
-# network = "dibbler"
+# network = "esmeralda"
 
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
@@ -415,8 +415,8 @@ base_node_service_request_max_age = 180
 # Required for control_auth_type = "password"
 #control_auth_password = "super-secure-password"
 
-# Wallet configuration options for dibbler
-[wallet.dibbler]
+# Wallet configuration options for esmeralda
+[wallet.esmeralda]
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable.
@@ -567,7 +567,7 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 ########################################################################################################################
 
 [merge_mining_proxy]
-#override_from = "dibbler"
+#override_from = "esmeralda"
 monerod_url = [ # stagenet
 "http://stagenet.xmr-tw.org:38081",
 "http://stagenet.community.xmr.to:38081",
@@ -597,7 +597,7 @@ monerod_username = ""
 monerod_password = ""
 monerod_use_auth = false
 
-#[merge_mining_proxy.dibbler]
+#[merge_mining_proxy.esmeralda]
 # Put any network specific settings here
 
 

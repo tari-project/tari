@@ -5,6 +5,7 @@ syntax = "proto3";
 
 import "types.proto";
 import "transaction.proto";
+import "transaction_metadata.proto";
 
 package tari.transaction_protocol;
 
@@ -14,4 +15,6 @@ message RecipientSignedMessage {
     tari.types.TransactionOutput output = 2;
     bytes public_spend_key = 3;
     tari.types.Signature partial_signature = 4;
+    // The transaction metadata
+    TransactionMetadata metadata = 5;
 }

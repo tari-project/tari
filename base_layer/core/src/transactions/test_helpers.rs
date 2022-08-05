@@ -53,7 +53,7 @@ use crate::{
             TransactionOutput,
             UnblindedOutput,
         },
-        transaction_protocol::{build_challenge, RewindData, TransactionMetadata, TransactionProtocolError},
+        transaction_protocol::{RewindData, TransactionMetadata, TransactionProtocolError},
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
@@ -149,7 +149,7 @@ impl TestParams {
             sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
             sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
             commitment_factory: CommitmentFactory::default(),
-            transaction_weight: TransactionWeight::v2(),
+            transaction_weight: TransactionWeight::v1(),
             rewind_data: RewindData {
                 rewind_blinding_key: PrivateKey::random(&mut OsRng),
                 encryption_key: PrivateKey::random(&mut OsRng),
@@ -262,16 +262,20 @@ pub fn generate_keys() -> TestKeySet {
 }
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
-pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, Signature) {
+pub fn create_random_signature(fee: MicroTari, lock_height: u64, features: KernelFeatures) -> (PublicKey, Signature) {
     let (k, p) = PublicKey::random_keypair(&mut OsRng);
-    (p, create_signature(k, fee, lock_height))
+    (p, create_signature(k, fee, lock_height, features))
 }
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
-pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64) -> Signature {
+pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64, features: KernelFeatures) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata { fee, lock_height };
-    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
+    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+        &PublicKey::from_secret_key(&r),
+        &PublicKey::from_secret_key(&k),
+        &tx_meta,
+    );
     Signature::sign(k, r, &e).unwrap()
 }
 
@@ -280,12 +284,13 @@ pub fn create_random_signature_from_s_key(
     s_key: PrivateKey,
     fee: MicroTari,
     lock_height: u64,
+    features: KernelFeatures,
 ) -> (PublicKey, Signature) {
     let _rng = rand::thread_rng();
     let r = PrivateKey::random(&mut OsRng);
     let p = PK::from_secret_key(&s_key);
-    let tx_meta = TransactionMetadata { fee, lock_height };
-    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
+    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&PublicKey::from_secret_key(&r), &p, &tx_meta);
     (p, Signature::sign(s_key, r, &e).unwrap())
 }
 
@@ -594,6 +599,7 @@ pub fn create_sender_transaction_protocol_with(
         .with_fee_per_gram(fee_per_gram)
         .with_offset(test_params.offset.clone())
         .with_private_nonce(test_params.nonce.clone())
+        .with_kernel_features(KernelFeatures::empty())
         .with_change_secret(test_params.change_spend_key);
 
     inputs.into_iter().for_each(|input| {
@@ -608,7 +614,7 @@ pub fn create_sender_transaction_protocol_with(
     });
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
-    stx_protocol.finalize(KernelFeatures::empty(), &factories, None, u64::MAX)?;
+    stx_protocol.finalize(&factories, None, u64::MAX)?;
 
     Ok(stx_protocol)
 }
@@ -620,7 +626,7 @@ pub fn create_sender_transaction_protocol_with(
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
     let (mut stx_protocol, outputs) = create_stx_protocol(schema);
     stx_protocol
-        .finalize(KernelFeatures::empty(), &CryptoFactories::default(), None, u64::MAX)
+        .finalize(&CryptoFactories::default(), None, u64::MAX)
         .unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
     (txn, outputs)
@@ -746,7 +752,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
 
 pub fn create_coinbase_kernel(excess: &PrivateKey) -> TransactionKernel {
     let public_excess = PublicKey::from_secret_key(excess);
-    let s = create_signature(excess.clone(), 0.into(), 0);
+    let s = create_signature(excess.clone(), 0.into(), 0, KernelFeatures::COINBASE_KERNEL);
     KernelBuilder::new()
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .with_excess(&Commitment::from_public_key(&public_excess))
@@ -756,11 +762,12 @@ pub fn create_coinbase_kernel(excess: &PrivateKey) -> TransactionKernel {
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
-pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel {
-    let (excess, s) = create_random_signature(fee, lock_height);
+pub fn create_test_kernel(fee: MicroTari, lock_height: u64, features: KernelFeatures) -> TransactionKernel {
+    let (excess, s) = create_random_signature(fee, lock_height, features);
     KernelBuilder::new()
         .with_fee(fee)
         .with_lock_height(lock_height)
+        .with_features(features)
         .with_excess(&Commitment::from_public_key(&excess))
         .with_signature(&s)
         .build()

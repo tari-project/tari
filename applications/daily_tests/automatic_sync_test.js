@@ -7,7 +7,7 @@ const path = require("path");
 const helpers = require("./helpers");
 const BaseNodeProcess = require("integration_tests/helpers/baseNodeProcess");
 
-const NETWORK = "dibbler";
+const NETWORK = "esmeralda";
 
 const SyncType = {
   Archival: "Archival",

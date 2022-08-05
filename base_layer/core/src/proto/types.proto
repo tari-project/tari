@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package tari.types;
 
-// Define the data type that is used to store results of `HashDigest`
+// Define the data type that is used to store results of `Blake256`
 message HashOutput {
     bytes data = 1;
 }

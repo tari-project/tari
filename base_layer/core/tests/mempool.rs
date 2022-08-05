@@ -55,8 +55,15 @@ use tari_core::{
             TransactionSchema,
             UtxoTestParams,
         },
-        transaction_components::{KernelBuilder, OutputFeatures, OutputType, Transaction, TransactionOutput},
-        transaction_protocol::{build_challenge, TransactionMetadata},
+        transaction_components::{
+            KernelBuilder,
+            OutputFeatures,
+            OutputType,
+            Transaction,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        transaction_protocol::TransactionMetadata,
         CryptoFactories,
     },
     tx,
@@ -971,12 +978,12 @@ async fn consensus_validation_large_tx() {
         .collect::<Result<Vec<TransactionOutput>, _>>()
         .unwrap();
 
-    let tx_meta = TransactionMetadata { fee, lock_height: 0 };
+    let tx_meta = TransactionMetadata::new(fee, 0);
 
     let public_nonce = PublicKey::from_secret_key(&nonce);
     let offset_blinding_factor = &excess_blinding_factor - &offset;
     let excess = PublicKey::from_secret_key(&offset_blinding_factor);
-    let e = build_challenge(&public_nonce, &tx_meta);
+    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&public_nonce, &excess, &tx_meta);
     let k = offset_blinding_factor;
     let r = nonce;
     let s = Signature::sign(k, r, &e).unwrap();

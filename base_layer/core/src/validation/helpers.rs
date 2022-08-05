@@ -922,7 +922,7 @@ mod test {
 
         #[test]
         fn it_checks_the_kernel_timelock() {
-            let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
+            let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
             kernel.lock_height = 2;
             assert!(matches!(
                 check_kernel_lock_height(1, &[kernel.clone()]),
@@ -1044,8 +1044,8 @@ mod test {
 
     #[test]
     fn check_burned_succeeds_for_valid_outputs() {
-        let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0);
-        let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0);
+        let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
+        let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
@@ -1072,9 +1072,7 @@ mod test {
             0.into(),
         );
 
-        kernel1.features = KernelFeatures::create_burn();
         kernel1.burn_commitment = Some(output1.commitment.clone());
-        kernel2.features = KernelFeatures::create_burn();
         kernel2.burn_commitment = Some(output2.commitment.clone());
         let kernel3 = kernel1.clone();
 

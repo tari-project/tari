@@ -22,7 +22,7 @@
 
 use tari_common_types::types::{Commitment, FixedHash};
 
-use crate::consensus::ConsensusHashWriter;
+use crate::consensus::ConsensusHasher;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CheckpointChallenge(FixedHash);
@@ -35,7 +35,7 @@ impl CheckpointChallenge {
         checkpoint_number: u64,
     ) -> Self {
         // TODO: Use new tari_crypto domain-separated hashing
-        let hash = ConsensusHashWriter::default()
+        let hash = ConsensusHasher::default()
             .chain(contract_id)
             .chain(checkpoint_commitment)
             .chain(merkle_root)

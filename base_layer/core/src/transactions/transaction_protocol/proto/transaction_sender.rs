@@ -98,8 +98,8 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             PublicKey::from_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
         let metadata = data
             .metadata
-            .map(Into::into)
-            .ok_or_else(|| "Transaction metadata not provided".to_string())?;
+            .map(TryInto::try_into)
+            .ok_or_else(|| "Transaction metadata not provided".to_string())??;
         let message = data.message;
         let public_commitment_nonce =
             PublicKey::from_bytes(&data.public_commitment_nonce).map_err(|err| err.to_string())?;

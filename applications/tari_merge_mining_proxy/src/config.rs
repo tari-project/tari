@@ -105,7 +105,7 @@ mod test {
             [config_b.merge_mining_proxy]
               submit_to_origin = false
               monerod_url = [ "http://network.b.org" ]
-              monerod_password = "password_dibbler"
+              monerod_password = "password_esmeralda"
               base_node_grpc_address = "/dns4/base_node_b/tcp/8080"
             "#;
 
@@ -124,7 +124,7 @@ mod test {
         assert_eq!(config.monerod_url.as_slice(), &["http://network.b.org".to_string()]);
         assert!(!config.submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
-        assert_eq!(config.monerod_password.as_str(), "password_dibbler");
+        assert_eq!(config.monerod_password.as_str(), "password_esmeralda");
         assert_eq!(
             config.base_node_grpc_address.to_string().as_str(),
             "/dns4/base_node_b/tcp/8080"
