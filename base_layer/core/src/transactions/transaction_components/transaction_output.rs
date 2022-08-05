@@ -282,11 +282,10 @@ impl TransactionOutput {
             .chain(sender_offset_public_key)
             .chain(commitment)
             .chain(covenant)
-            .chain(encrypted_value);
-
+            .chain(encrypted_value)
+            .chain(&minimum_value_promise);
         match version {
             TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
-            TransactionOutputVersion::V2 => common.chain(&minimum_value_promise).finalize(),
         }
     }
 

@@ -133,7 +133,7 @@ mod header_validators {
 #[allow(clippy::too_many_lines)]
 fn chain_balance_validation() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let (faucet_utxo, faucet_key, _) = create_utxo(
@@ -289,7 +289,7 @@ fn chain_balance_validation() {
 #[allow(clippy::too_many_lines)]
 fn chain_balance_validation_burned() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let (faucet_utxo, faucet_key, _) = create_utxo(
