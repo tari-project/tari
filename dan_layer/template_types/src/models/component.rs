@@ -20,5 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: use the actual component id type
+use borsh::{BorshDeserialize, BorshSerialize};
+
+use crate::models::{ContractAddress, PackageId};
+
 pub type ComponentId = crate::Hash;
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct ComponentInstance {
+    pub component_id: ComponentId,
+    pub contract_address: ContractAddress,
+    pub package_id: PackageId,
+    pub module_name: String,
+    pub state: Vec<u8>,
+}
+impl ComponentInstance {
+    pub fn new(component_id: ComponentId, component: Component) -> Self {
+        Self {
+            component_id,
+            contract_address: component.contract_address,
+            package_id: component.package_id,
+            module_name: component.module_name,
+            state: component.state,
+        }
+    }
+
+    pub fn id(&self) -> ComponentId {
+        self.component_id
+    }
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct Component {
+    pub contract_address: ContractAddress,
+    pub package_id: PackageId,
+    pub module_name: String,
+    pub state: Vec<u8>,
+}

@@ -22,15 +22,18 @@
 
 use tari_template_abi::{
     call_engine,
-    encode_with_len,
+    decode,
+    encode,
     ops::*,
     CreateComponentArg,
     Decode,
     EmitLogArg,
     Encode,
+    GetComponentArg,
     LogLevel,
+    SetComponentStateArg,
 };
-use tari_template_types::models::ComponentId;
+use tari_template_types::models::{Component, ComponentId};
 
 use crate::{context::Context, get_context};
 
@@ -49,15 +52,15 @@ impl TariEngine {
         Self { context }
     }
 
-    pub fn instantiate<T: Encode + Decode>(&self, template_name: String, initial_state: T) -> ComponentId {
-        let encoded_state = encode_with_len(&initial_state);
+    pub fn instantiate<T: Encode>(&self, template_name: String, initial_state: T) -> ComponentId {
+        let encoded_state = encode(&initial_state).unwrap();
 
         // Call the engine to create a new component
         // TODO: proper component id
         // TODO: what happens if the user wants to return multiple components/types?
         let component_id = call_engine::<_, ComponentId>(OP_CREATE_COMPONENT, &CreateComponentArg {
             contract_address: *self.context.contract().address(),
-            component_name: template_name,
+            module_name: template_name,
             state: encoded_state,
             package_id: *self.context.package().id(),
         });
@@ -71,21 +74,16 @@ impl TariEngine {
         });
     }
 
-    pub fn get_state<T: Encode + Decode>(&self, _id: u32) -> T {
-        // get the component state
-        // TODO: use a real op code (not "123") when they are implemented
-        let _state = call_engine::<_, ()>(123, &());
+    /// Get the component state
+    pub fn get_component_state<T: Decode>(&self, component_id: ComponentId) -> T {
+        let component = call_engine::<_, Component>(OP_GET_COMPONENT, &GetComponentArg { component_id })
+            .expect("Component not found");
 
-        // create and return a mock state because state is not implemented yet in the engine
-        let len = std::mem::size_of::<T>();
-        let byte_vec = vec![0_u8; len];
-        let mut mock_value = byte_vec.as_slice();
-        T::deserialize(&mut mock_value).unwrap()
+        decode(&component.state).expect("Failed to decode component state")
     }
 
-    pub fn set_state<T: Encode + Decode>(&self, _id: u32, _state: T) {
-        // update the component value
-        // TODO: use a real op code (not "123") when they are implemented
-        call_engine::<_, ()>(123, &());
+    pub fn set_component_state<T: Encode>(&self, component_id: ComponentId, state: T) {
+        let state = encode(&state).unwrap();
+        call_engine::<_, ()>(OP_SET_COMPONENT_STATE, &SetComponentStateArg { component_id, state });
     }
 }

@@ -40,10 +40,10 @@ use crate::ast::TemplateAst;
 pub fn generate_template(input: TokenStream) -> Result<TokenStream> {
     let ast = parse2::<TemplateAst>(input).unwrap();
 
+    let dependencies = generate_dependencies();
     let definition = generate_definition(&ast);
     let abi = generate_abi(&ast)?;
     let dispatcher = generate_dispatcher(&ast)?;
-    let dependencies = generate_dependencies();
 
     let output = quote! {
         #dependencies
@@ -94,12 +94,13 @@ mod tests {
         let output = generate_template(input).unwrap();
 
         assert_code_eq(output, quote! {
+            use tari_template_abi::{borsh, call_debug as debug, Decode, Encode};
             use tari_template_lib::{engine, get_context as context};
 
             pub mod template {
-                use tari_template_abi::borsh;
+                use super::*;
 
-                #[derive(tari_template_abi::borsh::BorshSerialize, tari_template_abi::borsh::BorshDeserialize)]
+                #[derive(Decode, Encode)]
                 pub struct State {
                     value: u32
                 }
@@ -169,18 +170,18 @@ mod tests {
                         result = encode_with_len(&rtn);
                     },
                     "get" => {
-                        let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
-                        let mut state: template::State = engine().get_state(arg_0);
+                        let component = decode::<::tari_template_types::models::ComponentInstance>(&call_info.args[0usize]).unwrap();
+                        let mut state = decode::<template::State>(&component.state).unwrap();
                         let rtn = template::State::get(&mut state);
                         result = encode_with_len(&rtn);
                     },
                     "set" => {
-                        let arg_0 = decode::<u32>(&call_info.args[0usize]).unwrap();
+                        let component = decode::<::tari_template_types::models::ComponentInstance>(&call_info.args[0usize]).unwrap();
+                        let mut state = decode::<template::State>(&component.state).unwrap();
                         let arg_1 = decode::<u32>(&call_info.args[1usize]).unwrap();
-                        let mut state: template::State = engine().get_state(arg_0);
                         let rtn = template::State::set(&mut state, arg_1);
                         result = encode_with_len(&rtn);
-                        engine().set_state(arg_0, state);
+                        engine().set_component_state(component.id(), state);
                     },
                     _ => panic!("invalid function name")
                 };

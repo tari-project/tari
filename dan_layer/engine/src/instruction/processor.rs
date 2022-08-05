@@ -22,7 +22,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use tari_template_abi::encode_with_len;
+use tari_template_abi::encode;
 use tari_template_types::models::PackageId;
 
 use crate::{
@@ -98,7 +98,7 @@ where TRuntimeInterface: RuntimeInterface + Clone + 'static
                     })?;
 
                     let mut final_args = Vec::with_capacity(args.len() + 1);
-                    final_args.push(encode_with_len(&component));
+                    final_args.push(encode(&component).unwrap());
                     final_args.extend(args);
 
                     // TODO: implement intelligent instance caching

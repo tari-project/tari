@@ -79,7 +79,6 @@ fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
 fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
     let mut args: Vec<Expr> = vec![];
     let mut stmts = vec![];
-    let mut should_get_state = false;
     let mut should_set_state = false;
 
     // encode all arguments of the functions
@@ -88,33 +87,30 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
         let stmt = match input_type {
             // "self" argument
             TypeAst::Receiver { mutability } => {
-                should_get_state = true;
                 should_set_state = mutability;
                 args.push(parse_quote! { &mut state });
-                parse_quote! {
-                    let #arg_ident =
-                        decode::<u32>(&call_info.args[#i])
-                        .unwrap();
-                }
+                vec![
+                    parse_quote! {
+                        let component =
+                            decode::<::tari_template_types::models::ComponentInstance>(&call_info.args[#i])
+                            .unwrap();
+                    },
+                    parse_quote! {
+                        let mut state = decode::<template::#template_ident>(&component.state).unwrap();
+                    },
+                ]
             },
             // non-self argument
             TypeAst::Typed(type_ident) => {
                 args.push(parse_quote! { #arg_ident });
-                parse_quote! {
+                vec![parse_quote! {
                     let #arg_ident =
                         decode::<#type_ident>(&call_info.args[#i])
                         .unwrap();
-                }
+                }]
             },
         };
-        stmts.push(stmt);
-    }
-
-    // load the component state
-    if should_get_state {
-        stmts.push(parse_quote! {
-            let mut state: template::#template_ident = engine().get_state(arg_0);
-        });
+        stmts.extend(stmt);
     }
 
     // call the user defined function in the template
@@ -142,7 +138,7 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
     // after user function invocation, update the component state
     if should_set_state {
         stmts.push(parse_quote! {
-            engine().set_state(arg_0, state);
+            engine().set_component_state(component.id(), state);
         });
     }
 

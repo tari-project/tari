@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_template_types::models::{Contract, ContractAddress, Package, PackageId};
+use tari_template_types::models::{ComponentId, Contract, ContractAddress, Package, PackageId};
 
 use crate::{Decode, Encode};
 
@@ -85,7 +85,18 @@ pub enum LogLevel {
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct CreateComponentArg {
     pub contract_address: ContractAddress,
-    pub component_name: String,
+    pub module_name: String,
     pub package_id: PackageId,
+    pub state: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct GetComponentArg {
+    pub component_id: ComponentId,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct SetComponentStateArg {
+    pub component_id: ComponentId,
     pub state: Vec<u8>,
 }

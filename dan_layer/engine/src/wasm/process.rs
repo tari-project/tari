@@ -23,8 +23,19 @@
 use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_template_abi::{decode, encode_into, encode_with_len, ops, CallInfo, CreateComponentArg, EmitLogArg, Type};
-use tari_template_types::models::{Contract, ContractAddress, PackageId};
+use tari_template_abi::{
+    decode,
+    encode_into,
+    encode_with_len,
+    ops,
+    CallInfo,
+    CreateComponentArg,
+    EmitLogArg,
+    GetComponentArg,
+    SetComponentStateArg,
+    Type,
+};
+use tari_template_types::models::{Component, Contract, ContractAddress, PackageId};
 use wasmer::{Function, Instance, Module, Store, Val, WasmerEnv};
 
 use crate::{
@@ -87,16 +98,31 @@ impl Process {
                 return 0;
             },
         };
+
         let result = match op {
             ops::OP_EMIT_LOG => Self::handle(env, arg, |env, arg: EmitLogArg| {
                 env.state().interface().emit_log(arg.level, &arg.message);
                 Result::<_, WasmExecutionError>::Ok(())
             }),
             ops::OP_CREATE_COMPONENT => Self::handle(env, arg, |env, arg: CreateComponentArg| {
-                env.state().interface().create_component(arg.into())
+                env.state().interface().create_component(Component {
+                    contract_address: arg.contract_address,
+                    package_id: arg.package_id,
+                    module_name: arg.module_name,
+                    state: arg.state,
+                })
+            }),
+            ops::OP_GET_COMPONENT => Self::handle(env, arg, |env, arg: GetComponentArg| {
+                env.state().interface().get_component(&arg.component_id)
+            }),
+            ops::OP_SET_COMPONENT_STATE => Self::handle(env, arg, |env, arg: SetComponentStateArg| {
+                env.state()
+                    .interface()
+                    .set_component_state(&arg.component_id, arg.state)
             }),
             _ => Err(WasmExecutionError::InvalidOperation { op }),
         };
+
         result.unwrap_or_else(|err| {
             log::error!(target: LOG_TARGET, "{}", err);
             0

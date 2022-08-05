@@ -22,3 +22,5 @@
 
 pub const OP_EMIT_LOG: i32 = 0x00;
 pub const OP_CREATE_COMPONENT: i32 = 0x01;
+pub const OP_GET_COMPONENT: i32 = 0x02;
+pub const OP_SET_COMPONENT_STATE: i32 = 0x03;

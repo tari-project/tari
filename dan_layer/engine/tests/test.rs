@@ -28,13 +28,12 @@ use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_dan_engine::{
     crypto::create_key_pair,
     instruction::{Instruction, InstructionBuilder, InstructionProcessor},
-    models::{Component, ComponentId},
     packager::Package,
     state_store::{memory::MemoryStateStore, AtomicDb, StateReader},
     wasm::compile::compile_template,
 };
-use tari_template_abi::encode_with_len;
-use tari_template_types::models::PackageId;
+use tari_template_abi::encode;
+use tari_template_types::models::{ComponentId, ComponentInstance, PackageId};
 
 #[test]
 fn test_hello_world() {
@@ -46,46 +45,40 @@ fn test_hello_world() {
 
 #[test]
 fn test_state() {
-    // TODO: use the Component and ComponentId types in the template
     let template_test = TemplateTest::new("State".to_string(), "tests/state".to_string());
     let store = template_test.state_store();
 
     // constructor
-    let component1: ComponentId = template_test.call_function("new".to_string(), vec![]);
+    let component_id1: ComponentId = template_test.call_function("new".to_string(), vec![]);
     template_test.assert_calls(&["emit_log", "create_component"]);
     template_test.clear_calls();
 
-    let component2: ComponentId = template_test.call_function("new".to_string(), vec![]);
-    assert_ne!(component1, component2);
+    let component_id2: ComponentId = template_test.call_function("new".to_string(), vec![]);
+    assert_ne!(component_id1, component_id2);
 
-    let component: Component = store
+    let component: ComponentInstance = store
         .read_access()
         .unwrap()
-        .get_state(&component1)
+        .get_state(&component_id1)
         .unwrap()
         .expect("component1 not found");
     assert_eq!(component.module_name, "State");
-    let component: Component = store
+    let component: ComponentInstance = store
         .read_access()
         .unwrap()
-        .get_state(&component2)
+        .get_state(&component_id2)
         .unwrap()
         .expect("component2 not found");
     assert_eq!(component.module_name, "State");
 
     // call the "set" method to update the instance value
     let new_value = 20_u32;
-    template_test.call_method::<()>(component2, "set".to_string(), vec![
-        encode_with_len(&component2),
-        encode_with_len(&new_value),
-    ]);
+    template_test.call_method::<()>(component_id2, "set".to_string(), vec![encode(&new_value).unwrap()]);
 
     // call the "get" method to get the current value
-    let value: u32 = template_test.call_method(component2, "get".to_string(), vec![encode_with_len(&component2)]);
+    let value: u32 = template_test.call_method(component_id2, "get".to_string(), vec![]);
 
-    // TODO: component needs to be saved in the macro code
-    assert_eq!(value, 0);
-    // assert_eq!(value, new_value);
+    assert_eq!(value, new_value);
 }
 
 struct TemplateTest {
