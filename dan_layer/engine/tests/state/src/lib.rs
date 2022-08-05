@@ -41,5 +41,4 @@ mod state_template {
             self.value
         }
     }
-
 }

@@ -23,7 +23,7 @@
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 
-const DEFAULT_NETWORK: &str = "dibbler";
+const DEFAULT_NETWORK: &str = "esmeralda";
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

@@ -35,6 +35,7 @@ use crate::transactions::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
         RewindData,
+        TransactionMetadata,
         TransactionProtocolError,
     },
 };
@@ -88,6 +89,7 @@ pub struct RecipientSignedMessage {
     pub output: TransactionOutput,
     pub public_spend_key: PublicKey,
     pub partial_signature: Signature,
+    pub tx_metadata: TransactionMetadata,
 }
 
 /// The generalised transaction recipient protocol. A different state transition network is followed depending on
@@ -215,9 +217,8 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction_components::{EncryptedValue, OutputFeatures},
+            transaction_components::{EncryptedValue, OutputFeatures, TransactionKernel},
             transaction_protocol::{
-                build_challenge,
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 RewindData,
                 TransactionMetadata,
@@ -230,10 +231,7 @@ mod test {
     fn single_round_recipient() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let m = TransactionMetadata {
-            fee: MicroTari(125),
-            lock_height: 0,
-        };
+        let m = TransactionMetadata::new(MicroTari(125), 0);
         let script = TariScript::default();
         let amount = MicroTari(500);
 
@@ -264,7 +262,8 @@ mod test {
             .open_value(&p.spend_key, 500, &data.output.commitment));
         data.output.verify_range_proof(&factories.range_proof).unwrap();
         let r_sum = &msg.public_nonce + &p.public_nonce;
-        let e = build_challenge(&r_sum, &m);
+        let excess = &msg.public_excess + &PublicKey::from_secret_key(&p.spend_key);
+        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(&r_sum, &excess, &m);
         let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap();
         assert_eq!(data.partial_signature, s);
     }
@@ -280,10 +279,7 @@ mod test {
             encryption_key: PrivateKey::random(&mut OsRng),
         };
         let amount = MicroTari(500);
-        let m = TransactionMetadata {
-            fee: MicroTari(125),
-            lock_height: 0,
-        };
+        let m = TransactionMetadata::new(MicroTari(125), 0);
         let script = TariScript::default();
 
         let features = OutputFeatures::default();

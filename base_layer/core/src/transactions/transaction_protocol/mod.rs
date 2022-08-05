@@ -86,11 +86,9 @@
 // #![allow(clippy::op_ref)]
 
 use derivative::Derivative;
-use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_comms::types::CommsChallenge;
-use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError, tari_utilities::byte_array::ByteArray};
+use tari_common_types::types::PrivateKey;
+use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
@@ -100,6 +98,9 @@ pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
+use tari_common_types::types::Commitment;
+
+use crate::transactions::transaction_components::KernelFeatures;
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {
@@ -135,13 +136,37 @@ pub enum TransactionProtocolError {
     EncryptionError,
 }
 
-/// Transaction metadata, including the fee and lock height
+/// Transaction metadata, this includes all the fields that needs to be signed on the kernel
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
     pub fee: MicroTari,
     /// The earliest block this transaction can be mined
     pub lock_height: u64,
+    /// The kernel features
+    pub kernel_features: KernelFeatures,
+    /// optional burn commitment if present
+    pub burn_commitment: Option<Commitment>,
+}
+
+impl TransactionMetadata {
+    pub fn new(fee: MicroTari, lock_height: u64) -> Self {
+        Self {
+            fee,
+            lock_height,
+            kernel_features: KernelFeatures::default(),
+            burn_commitment: None,
+        }
+    }
+
+    pub fn new_with_features(fee: MicroTari, lock_height: u64, kernel_features: KernelFeatures) -> Self {
+        Self {
+            fee,
+            lock_height,
+            kernel_features,
+            burn_commitment: None,
+        }
+    }
 }
 
 #[derive(Derivative, Clone)]
@@ -150,14 +175,4 @@ pub struct RewindData {
     #[derivative(Debug = "ignore")]
     pub rewind_blinding_key: PrivateKey,
     pub encryption_key: PrivateKey,
-}
-
-/// Convenience function that calculates the challenge for the Schnorr signatures
-pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> [u8; 32] {
-    CommsChallenge::new()
-        .chain(sum_public_nonces.as_bytes())
-        .chain(&u64::from(metadata.fee).to_le_bytes())
-        .chain(&metadata.lock_height.to_le_bytes())
-        .finalize()
-        .into()
 }

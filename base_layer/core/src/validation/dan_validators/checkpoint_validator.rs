@@ -135,7 +135,7 @@ mod test {
     use tari_common_types::types::FixedHash;
 
     use crate::{
-        consensus::ConsensusHashWriter,
+        consensus::ConsensusHasher,
         validation::dan_validators::{
             helpers::create_checkpoint_challenge,
             test_helpers::{
@@ -290,7 +290,7 @@ mod test {
 
         // To create an invalid signature, let's use a challenge from a different checkpoint
         let mut checkpoint = create_contract_checkpoint(0);
-        let challenge: FixedHash = ConsensusHashWriter::default()
+        let challenge: FixedHash = ConsensusHasher::default()
             .chain(&"invalid data".as_bytes())
             .finalize()
             .into();

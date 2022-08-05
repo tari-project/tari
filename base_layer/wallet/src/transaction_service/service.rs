@@ -58,6 +58,7 @@ use tari_core::{
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
             RewindData,
+            TransactionMetadata,
         },
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -65,6 +66,7 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -114,7 +116,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::{HashDigest, WalletHasher},
+    types::WalletHasher,
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
@@ -582,6 +584,7 @@ where
                     *output_features,
                     fee_per_gram,
                     message,
+                    TransactionMetadata::default(),
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
                     rp,
@@ -883,6 +886,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
+        tx_meta: TransactionMetadata,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -964,6 +968,7 @@ where
             amount,
             fee_per_gram,
             message,
+            tx_meta,
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
             None,
@@ -1024,7 +1029,7 @@ where
                 UtxoSelectionCriteria::default(),
                 OutputFeatures::default(),
                 fee_per_gram,
-                None,
+                TransactionMetadata::default(),
                 message.clone(),
                 script.clone(),
                 covenant.clone(),
@@ -1104,7 +1109,6 @@ where
         // Finalize
 
         stp.finalize(
-            KernelFeatures::empty(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1186,7 +1190,7 @@ where
                 UtxoSelectionCriteria::default(),
                 output_features,
                 fee_per_gram,
-                None,
+                TransactionMetadata::default(),
                 message.clone(),
                 script,
                 Covenant::default(),
@@ -1243,7 +1247,6 @@ where
         // Finalize
 
         stp.finalize(
-            KernelFeatures::empty(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1344,6 +1347,7 @@ where
         let tx_id = TxId::new_random();
         let output_features = OutputFeatures::create_burn_output();
         // Prepare sender part of the transaction
+        let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
             .output_manager_service
             .prepare_transaction_to_send(
@@ -1352,7 +1356,7 @@ where
                 UtxoSelectionCriteria::default(),
                 output_features,
                 fee_per_gram,
-                None,
+                tx_meta,
                 message.clone(),
                 TariScript::default(),
                 Covenant::default(),
@@ -1389,7 +1393,6 @@ where
         // Finalize
 
         stp.finalize(
-            KernelFeatures::create_burn(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1794,6 +1797,7 @@ where
                     tx.amount,
                     tx.fee,
                     tx.message,
+                    TransactionMetadata::default(),
                     None,
                     stage,
                     None,
@@ -2623,7 +2627,7 @@ pub struct PendingCoinbaseSpendingKey {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+    Blake256::new().chain(key.as_bytes()).finalize().to_vec()
 }
 
 /// Contains the generated TxId and TransactionStatus transaction send result

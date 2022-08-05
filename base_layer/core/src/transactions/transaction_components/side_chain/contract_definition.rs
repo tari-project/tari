@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PublicKey};
 
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter, MaxSizeVec},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHasher, MaxSizeVec},
     transactions::transaction_components::FixedString,
 };
 
@@ -50,7 +50,7 @@ impl ContractDefinition {
     }
 
     pub fn calculate_contract_id(&self) -> FixedHash {
-        ConsensusHashWriter::default().chain(self).finalize().into()
+        ConsensusHasher::default().chain(self).finalize().into()
     }
 }
 

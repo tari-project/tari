@@ -40,7 +40,7 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter, MaxSizeBytes},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher, DomainSeparatedConsensusHasher, MaxSizeBytes},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -52,6 +52,7 @@ use crate::{
             TransactionError,
             UnblindedOutput,
         },
+        TransactionHashDomain,
     },
 };
 
@@ -170,13 +171,15 @@ impl TransactionInput {
         commitment: &Commitment,
     ) -> [u8; 32] {
         match version {
-            TransactionInputVersion::V0 | TransactionInputVersion::V1 => ConsensusHashWriter::default()
-                .chain(nonce_commitment)
-                .chain(script)
-                .chain(input_data)
-                .chain(script_public_key)
-                .chain(commitment)
-                .finalize(),
+            TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
+                DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
+                    .chain(nonce_commitment)
+                    .chain(script)
+                    .chain(input_data)
+                    .chain(script_public_key)
+                    .chain(commitment)
+                    .finalize()
+            },
         }
     }
 
@@ -378,7 +381,7 @@ impl TransactionInput {
                 ref minimum_value_promise,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let writer = ConsensusHashWriter::default()
+                let writer = ConsensusHasher::default()
                     .chain(version)
                     .chain(features)
                     .chain(commitment)

@@ -64,7 +64,7 @@ async function run(options = {}) {
     true,
     {
       transport: "tor",
-      network: "dibbler",
+      network: "esmeralda",
       grpc_console_wallet_address: "/ip4/127.0.0.1/tcp/18111",
       baseDir: options.baseDir || "./temp/base-nodes/",
     },
