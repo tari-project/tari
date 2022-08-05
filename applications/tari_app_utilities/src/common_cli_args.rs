@@ -23,6 +23,7 @@ use std::{error::Error, path::PathBuf};
 
 use clap::Args;
 use log::Level;
+use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Args, Debug)]
 pub struct CommonCliArgs {
@@ -101,8 +102,10 @@ impl CommonCliArgs {
             path
         }
     }
+}
 
-    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
+impl ConfigOverrideProvider for CommonCliArgs {
+    fn get_config_property_overrides(&self, _default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
         overrides.push(("common.base_path".to_string(), self.base_path.clone()));
         overrides

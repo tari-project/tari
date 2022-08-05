@@ -65,6 +65,19 @@ pub fn socket_or_multi(addr: &str) -> Result<Multiaddr, Error> {
         .or_else(|_| addr.parse::<Multiaddr>())
 }
 
+/// Implement this trait to specify custom configuration overrides for a network when loading the config
+pub trait ConfigOverrideProvider {
+    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)>;
+}
+
+pub struct NoConfigOverrides;
+
+impl ConfigOverrideProvider for NoConfigOverrides {
+    fn get_config_property_overrides(&self, _default_network: Network) -> Vec<(String, String)> {
+        Vec::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::net::{Ipv4Addr, Ipv6Addr};
