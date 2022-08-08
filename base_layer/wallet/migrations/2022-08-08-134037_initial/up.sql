@@ -55,10 +55,11 @@ CREATE TABLE key_manager_states (
 );
 
 CREATE TABLE key_manager_states_old (
-    id  INTEGER PRIMARY KEY NOT NULL,
-    seed TEXT UNIQUE NOT NULL,
-    primary_key_index BLOB NOT NULL,
-    timestamp DATETIME NOT NULL
+    id                INTEGER PRIMARY KEY NOT NULL,
+    seed              BLOB                NOT NULL,
+    branch_seed       TEXT UNIQUE         NOT NULL,
+    primary_key_index BLOB                NOT NULL,
+    timestamp         DATETIME            NOT NULL
 )
 
 CREATE TABLE known_one_sided_payment_scripts (
