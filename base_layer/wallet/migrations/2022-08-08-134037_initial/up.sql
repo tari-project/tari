@@ -60,7 +60,7 @@ CREATE TABLE key_manager_states_old (
     branch_seed       TEXT UNIQUE         NOT NULL,
     primary_key_index BLOB                NOT NULL,
     timestamp         DATETIME            NOT NULL
-)
+);
 
 CREATE TABLE known_one_sided_payment_scripts (
     script_hash        BLOB PRIMARY KEY NOT NULL,
