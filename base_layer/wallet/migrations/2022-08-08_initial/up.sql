@@ -42,9 +42,9 @@ CREATE TABLE inbound_transactions (
     message             TEXT               NOT NULL,
     timestamp           DATETIME           NOT NULL,
     cancelled           INTEGER            NOT NULL,
-    direct_send_success INTEGER            NOT NULL,
-    send_count          INTEGER            NOT NULL,
-    last_send_timestamp TIMESTAMP,
+    direct_send_success INTEGER default 0  NOT NULL,
+    send_count          INTEGER default 0  NOT NULL,
+    last_send_timestamp DATETIME,
 )
 
 CREATE TABLE key_manager_states (
