@@ -93,14 +93,14 @@ fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, &cli.config_property_overrides())?;
+    let cfg = load_configuration(config_path.as_path(), true, &cli)?;
     initialize_logging(
         &cli.common.log_config_path("wallet"),
         include_str!("../log4rs_sample.yml"),
     )?;
 
+    #[cfg_attr(feature = "libtor", allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
-    config.wallet.network = cli.network.parse()?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

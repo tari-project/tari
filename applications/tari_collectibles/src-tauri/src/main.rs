@@ -59,11 +59,7 @@ pub fn process_command(command: Commands, state: &ConcurrentAppState) -> Result<
 
 fn main() -> Result<(), Box<dyn Error>> {
   let cli = Cli::parse();
-  let cfg = load_configuration(
-    cli.common.config_path(),
-    true,
-    &cli.config_property_overrides(),
-  )?;
+  let cfg = load_configuration(cli.common.config_path(), true, &cli)?;
 
   let config = CollectiblesConfig::load_from(&cfg)?;
   let state = ConcurrentAppState::new(cli.common.get_base_path(), config);

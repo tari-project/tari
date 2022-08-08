@@ -98,14 +98,14 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
-    println!("Starting validator node on network {}", cli.network);
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
+    let cfg = load_configuration(config_path, true, &cli)?;
     initialize_logging(
         &cli.common.log_config_path("validator"),
         include_str!("../log4rs_sample.yml"),
     )?;
     let config = ApplicationConfig::load_from(&cfg)?;
+    println!("Starting validator node on network {}", config.network);
     let runtime = build_runtime()?;
     runtime.block_on(run_node(&config))?;
 
