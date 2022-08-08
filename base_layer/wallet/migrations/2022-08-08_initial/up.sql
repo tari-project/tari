@@ -27,10 +27,29 @@ CREATE TABLE completed_transactions (
 )
 
 CREATE TABLE contacts (
-    public_key  BLOB PRIMARY KEY NOT NULL,
-    node_id     BLOB             NOT NULL,
+    public_key  BLOB PRIMARY KEY NOT NULL UNIQUE,
+    node_id     BLOB             NOT NULL UNIQUE,
     alias       TEXT             NOT NULL,
     last_seen   DATETIME,
     latency     INTEGER,
 )
 
+CREATE TABLE inbound_transactions (
+    tx_id               BIGINT PRIMARY KEY NOT NULL,
+    source_public_key   BLOB               NOT NULL,
+    amount              BIGINT             NOT NULL,
+    receiver_protocol   TEXT               NOT NULL,
+    message             TEXT               NOT NULL,
+    timestamp           DATETIME           NOT NULL,
+    cancelled           INTEGER            NOT NULL,
+    direct_send_success INTEGER            NOT NULL,
+    send_count          INTEGER            NOT NULL,
+    last_send_timestamp TIMESTAMP,
+)
+
+CREATE TABLE key_manager_states (
+    id                INTEGER PRIMARY KEY NOT NULL,
+    branch_seed       TEXT                NOT NULL,
+    primary_key_index BLOB                NOT NULL,
+    timestamp         DATETIME            NOT NULL,
+)
