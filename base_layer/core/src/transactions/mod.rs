@@ -28,3 +28,4 @@ pub mod weight;
 pub mod test_helpers;
 
 hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
+hash_domain!(TransactionKdfDomain, "com.tari.base_layer.core.transactions.kdf", 0);
