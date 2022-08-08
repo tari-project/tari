@@ -16,14 +16,14 @@ CREATE TABLE completed_transactions (
     cancelled                   INTEGER,
     direction                   INTEGER,
     coinbase_block_height       BIGINT,
-    send_count                  INTEGER default 0  NOT NULL,
+    send_count                  INTEGER DEFAULT 0  NOT NULL,
     last_send_timestamp         DATETIME,
     confirmations               BIGINT,
     mined_height                BIGINT,
     mined_in_block              BLOB,
     mined_timestamp             DATETIME,
-    transaction_signature_nonce BLOB    default 0  NOT NULL,
-    transaction_signature_key   BLOB    default 0  NOT NULL,
+    transaction_signature_nonce BLOB    DEFAULT 0  NOT NULL,
+    transaction_signature_key   BLOB    DEFAULT 0  NOT NULL,
 )
 
 CREATE TABLE contacts (
@@ -42,8 +42,8 @@ CREATE TABLE inbound_transactions (
     message             TEXT               NOT NULL,
     timestamp           DATETIME           NOT NULL,
     cancelled           INTEGER            NOT NULL,
-    direct_send_success INTEGER default 0  NOT NULL,
-    send_count          INTEGER default 0  NOT NULL,
+    direct_send_success INTEGER DEFAULT 0  NOT NULL,
+    send_count          INTEGER DEFAULT 0  NOT NULL,
     last_send_timestamp DATETIME,
 )
 
@@ -67,7 +67,7 @@ CREATE TABLE known_one_sided_payment_scripts (
     private_key        BLOB             NOT NULL,
     script             BLOB             NOT NULL,
     input              BLOB             NOT NULL,
-    script_lock_height BLOB             NOT NULL,
+    script_lock_height UNSIGNED BIGINT  NOT NULL DEFAULT 0
 )
 
 CREATE TABLE outbount_transactions (
