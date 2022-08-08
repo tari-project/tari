@@ -10,6 +10,7 @@ package tari.rpc;
 // The gRPC interface for interacting with the base node.
 service BaseNode {
     // Lists headers in the current best chain
+    // TODO: Rename to GetHeaders maybe?
     rpc ListHeaders(ListHeadersRequest) returns (stream BlockHeader);
     // Get header by hash
     rpc GetHeaderByHash(GetHeaderByHashRequest) returns (BlockHeaderResponse);
@@ -22,8 +23,10 @@ service BaseNode {
     // Returns the network Constants
     rpc GetConstants(Empty) returns (ConsensusConstants);
     // Returns Block Sizes
+    // TODO: Is this necessary?
     rpc GetBlockSize (BlockGroupRequest) returns (BlockGroupResponse);
     // Returns Block Fees
+    // TODO: Is this necessary?
     rpc GetBlockFees (BlockGroupRequest) returns (BlockGroupResponse);
     // Get Version
     rpc GetVersion(Empty) returns (StringValue);
@@ -36,30 +39,42 @@ service BaseNode {
     // Get the block template
     rpc GetNewBlockTemplate(NewBlockTemplateRequest) returns (NewBlockTemplateResponse);
     // Construct a new block from a provided template
+    // TODO: Remove in favour of GetNewBlockBlob
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
     // Construct a new block and header blob from a provided template
     rpc GetNewBlockBlob(NewBlockTemplate) returns (GetNewBlockBlobResult);
     // Submit a new block for propagation
+    // TODO: Remove in favour of SubmitNewBlockBlob
     rpc SubmitBlock(Block) returns (SubmitBlockResponse);
     // Submit a new mined block blob for propagation
     rpc SubmitBlockBlob(BlockBlobRequest) returns (SubmitBlockResponse);
     // Submit a transaction for propagation
     rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
     // Get the base node sync information
+    // TODO: Do we need both GetSyncInfo and GetSyncProgress?
     rpc GetSyncInfo(Empty) returns (SyncInfoResponse);
     // Get the base node sync information
+    // TODO: Do we need both GetSyncInfo and GetSyncProgress?
     rpc GetSyncProgress(Empty) returns (SyncProgressResponse);
     // Get the base node tip information
+    // TODO: Can GetSyncInfo be merged with this?
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
     // Search for blocks containing the specified kernels
+    // TODO: This interface is messy, how do you take into account if one of the kernels could not be found
+    // Perhaps change the return type to a Map or include the result as Found or NotFound
     rpc SearchKernels(SearchKernelsRequest) returns (stream HistoricalBlock);
     // Search for blocks containing the specified commitments
+    // TODO: This interface is messy, how do you take into account if one of the utxos could not be found
+    // Perhaps change the return type to a Map or include the result as Found or NotFound
     rpc SearchUtxos(SearchUtxosRequest) returns (stream HistoricalBlock);
     // Fetch any utxos that exist in the main chain
+    // TODO: Find out if it's still necessary to have this method. Possibly can be merged with SearchUtxos
     rpc FetchMatchingUtxos(FetchMatchingUtxosRequest) returns (stream FetchMatchingUtxosResponse);
-    // get all peers from the base node
+    // Get all peers from the base node
     rpc GetPeers(GetPeersRequest) returns (stream GetPeersResponse);
+    // Get all of the transaction in the mempool
     rpc GetMempoolTransactions(GetMempoolTransactionsRequest) returns (stream GetMempoolTransactionsResponse);
+    // Find the location (mempool or mined or not found) of a transaction by using the excess signature
     rpc TransactionState(TransactionStateRequest) returns (TransactionStateResponse);
     // This returns the node's network identity
     rpc Identify (Empty) returns (NodeIdentity);
@@ -67,6 +82,8 @@ service BaseNode {
     rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
     // List currently connected peers
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+    //------ GOT HERE ------
+
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
 
@@ -390,6 +407,7 @@ message SubmitTransactionResponse {
     SubmitTransactionResult result =1;
 }
 
+// TODO: Find out if all of these are still used
 enum SubmitTransactionResult {
     NONE = 0;
     ACCEPTED = 1;

@@ -69,9 +69,9 @@ Given("I have {int} seed nodes", { timeout: 60 * 1000 }, async function (n) {
 });
 
 Given(
-  /I have a base node (.*) connected to all seed nodes/,
+  /I have (a )?base node (.*) connected to all seed nodes/,
   { timeout: 20 * 1000 },
-  async function (name) {
+  async function (_n, name) {
     await this.createAndAddNode(name, this.seedAddresses());
   }
 );
@@ -550,6 +550,16 @@ When(/I get header by height (\d+) on (.*)/, async function (height, node) {
   const client = this.getClient(node);
   const header = await client.getHeaderByHeight(height);
   this.lastResult = header.header;
+});
+
+When(/I save the hash of the last header to (\S+)/, async function (name) {
+    this.variables[name] = this.lastResult.hash;
+});
+
+When(/I get header by hash (\S+) on (.*)/, async function (hash, node) {
+    const client = this.getClient(node);
+    const header = await client.getHeaderByHash(this.variables[hash]);
+    this.lastResult = header.header;
 });
 
 Then(/header is returned with height (\d+)/, function (height) {

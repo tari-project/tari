@@ -43,6 +43,7 @@ class CustomWorld {
     this.transactionOutputs = {};
     this.testrun = `run${Date.now()}`;
     this.lastResult = null;
+    this.variables = {};
     this.blocks = {};
     this.transactions = {};
     this.peers = {};
