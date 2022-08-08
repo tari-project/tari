@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, fmt};
+use std::{borrow::Cow, collections::HashMap, fmt, num::ParseIntError};
 
 use nom::{
     bytes::complete::take_while1,
@@ -38,6 +38,12 @@ pub struct ParseError(pub String);
 
 impl From<NomErr<'_>> for ParseError {
     fn from(err: NomErr<'_>) -> Self {
+        ParseError(err.to_string())
+    }
+}
+
+impl From<ParseIntError> for ParseError {
+    fn from(err: ParseIntError) -> Self {
         ParseError(err.to_string())
     }
 }
@@ -67,6 +73,17 @@ pub fn response_line(line: &str) -> Result<ResponseLine, ParseError> {
         code,
         value: rest.to_owned(),
     })
+}
+
+pub fn multi_key_value(line: &str) -> Result<HashMap<Cow<'_, str>, Vec<Cow<'_, str>>>, ParseError> {
+    let parts = line.split(' ');
+    let mut kv = HashMap::new();
+    for part in parts {
+        let (identifier, value) = key_value(part)?;
+        kv.insert(identifier, value);
+    }
+
+    Ok(kv)
 }
 
 pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Vec<Cow<'_, str>>), ParseError> {
