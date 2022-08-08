@@ -70,7 +70,7 @@ CREATE TABLE known_one_sided_payment_scripts (
     script_lock_height UNSIGNED BIGINT  NOT NULL DEFAULT 0
 )
 
-CREATE TABLE outbount_transactions (
+CREATE TABLE outbound_transactions (
     tx_id                  BIGINT PRIMARY KEY NOT NULL,
     destination_public_key BLOB               NOT NULL,
     amount                 BIGINT             NOT NULL,
@@ -78,9 +78,9 @@ CREATE TABLE outbount_transactions (
     sender_protocol        TEXT               NOT NULL,
     message                TEXT               NOT NULL,
     timestamp              DATETIME           NOT NULL,
-    cancelled              INTEGER            NOT NULL,
-    direct_send_success    INTEGER            NOT NULL,
-    send_count             INTEGER            NOT NULL,
+    cancelled              INTEGER DEFAULT 0  NOT NULL,
+    direct_send_success    INTEGER DEFAULT 0  NOT NULL,
+    send_count             INTEGER DEFAULT 0  NOT NULL,
     last_send_timestamp    DATETIME           NOT NULL,
 )
 
