@@ -61,16 +61,13 @@ pub type BlindingFactor = RistrettoSecretKey;
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHasher = Blake256;
 
-/// Specify the Hash function for general hashing
-pub type HashDigest = Blake256;
-
 /// Specify the digest type for signature challenges
 pub type Challenge = Blake256;
 
 /// The type of output that `Challenge` produces
 pub type MessageHash = Vec<u8>;
 
-/// Define the data type that is used to store results of `HashDigest`
+/// Define the data type that is used to store results of a hash output
 pub type HashOutput = Vec<u8>;
 
 pub const RANGE_PROOF_BIT_LENGTH: usize = 64; // 2^64

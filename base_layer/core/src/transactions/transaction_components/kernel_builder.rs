@@ -60,8 +60,8 @@ impl KernelBuilder {
     }
 
     /// Build a transaction kernel with the provided burn commitment
-    pub fn with_burn_commitment(mut self, burn_commitment: Commitment) -> KernelBuilder {
-        self.burn_commitment = Some(burn_commitment);
+    pub fn with_burn_commitment(mut self, burn_commitment: Option<Commitment>) -> KernelBuilder {
+        self.burn_commitment = burn_commitment;
         self
     }
 

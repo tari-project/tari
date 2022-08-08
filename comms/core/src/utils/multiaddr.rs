@@ -89,15 +89,16 @@ mod test {
 
     #[test]
     fn multiaddr_to_socketaddr_ok() {
-        fn expect_success(addr: &str, expected_ip: &str) {
+        fn expect_success(addr: &str, expected_ips: &[&str]) {
             let addr = Multiaddr::from_str(addr).unwrap();
             let sock_addr = super::multiaddr_to_socketaddr(&addr).unwrap();
-            assert_eq!(sock_addr.ip().to_string(), expected_ip);
+            assert!(expected_ips.iter().any(|ip| *ip == sock_addr.ip().to_string()));
         }
 
-        expect_success("/ip4/254.0.1.2/tcp/1234", "254.0.1.2");
-        expect_success("/ip6/::1/tcp/1234", "::1");
-        expect_success("/dns4/taridns.dyn-ip.me/tcp/1234", "127.0.0.1");
+        expect_success("/ip4/254.0.1.2/tcp/1234", &["254.0.1.2"]);
+        expect_success("/ip6/::1/tcp/1234", &["::1"]);
+        // Test DNS name resolution
+        expect_success("/dns4/localhost/tcp/1234", &["127.0.0.1", "::1"]);
     }
 
     #[test]

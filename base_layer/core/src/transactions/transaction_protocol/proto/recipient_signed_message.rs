@@ -43,12 +43,17 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .partial_signature
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction partial signature not provided".to_string())??;
+        let metadata = message
+            .metadata
+            .map(TryInto::try_into)
+            .ok_or_else(|| "Transaction metadata not provided".to_string())??;
 
         Ok(Self {
             tx_id: message.tx_id.into(),
             output,
             public_spend_key,
             partial_signature,
+            tx_metadata: metadata,
         })
     }
 }
@@ -60,6 +65,7 @@ impl From<RecipientSignedMessage> for proto::RecipientSignedMessage {
             output: Some(message.output.into()),
             public_spend_key: message.public_spend_key.to_vec(),
             partial_signature: Some(message.partial_signature.into()),
+            metadata: Some(message.tx_metadata.into()),
         }
     }
 }

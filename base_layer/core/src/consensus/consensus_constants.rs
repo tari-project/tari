@@ -296,7 +296,7 @@ impl ConsensusConstants {
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 2,
-            blockchain_version: 1,
+            blockchain_version: 2,
             valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window,
@@ -374,8 +374,8 @@ impl ConsensusConstants {
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
-            blockchain_version: 2,
-            valid_blockchain_version_range: 0..=3,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -388,8 +388,8 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
-            transaction_weight: TransactionWeight::v2(),
+            faucet_value: 0.into(),
+            transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
             output_version_range,
@@ -438,7 +438,7 @@ impl ConsensusConstants {
                 max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos.clone(),
                 faucet_value: (10 * 4000) * T,
-                transaction_weight: TransactionWeight::v2(),
+                transaction_weight: TransactionWeight::v1(),
                 max_script_byte_size: 2048,
                 input_version_range: input_version_range.clone(),
                 output_version_range: output_version_range.clone(),
@@ -460,13 +460,59 @@ impl ConsensusConstants {
                 max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos,
                 faucet_value: (10 * 4000) * T,
-                transaction_weight: TransactionWeight::v2(),
+                transaction_weight: TransactionWeight::v1(),
                 max_script_byte_size: 2048,
                 input_version_range,
                 output_version_range,
                 kernel_version_range,
             },
         ]
+    }
+
+    /// *
+    /// Esmeralda testnet has the following characteristics:
+    /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
+    /// * 21 billion tXTR with a 3-year half-life
+    /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
+    /// * Coinbase lock height - 12 hours = 360 blocks
+    pub fn esmeralda() -> Vec<Self> {
+        let mut algos = HashMap::new();
+        // sha3/monero to 40/60 split
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            // todo put proper lock height after testing
+            coinbase_lock_height: 3,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
+            future_time_limit: 540,
+            difficulty_block_window: 90,
+            max_block_transaction_weight: 127_795,
+            median_timestamp_count: 11,
+            emission_initial: 18_462_816_327 * uT,
+            emission_decay: &ESMERALDA_DECAY_PARAMS,
+            emission_tail: 800 * T,
+            max_randomx_seed_height: u64::MAX,
+            proof_of_work: algos,
+            faucet_value: (10 * 4000) * T,
+            transaction_weight: TransactionWeight::v1(),
+            max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
+        }]
     }
 
     pub fn mainnet() -> Vec<Self> {
@@ -501,7 +547,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: MicroTari::from(0),
-            transaction_weight: TransactionWeight::v2(),
+            transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
             output_version_range,
@@ -512,6 +558,7 @@ impl ConsensusConstants {
 
 static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
 const DIBBLER_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
+const ESMERALDA_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {
@@ -597,12 +644,12 @@ mod test {
     };
 
     #[test]
-    fn dibbler_schedule() {
-        let dibbler = ConsensusConstants::dibbler();
+    fn esmeralda_schedule() {
+        let esmeralda = ConsensusConstants::esmeralda();
         let schedule = EmissionSchedule::new(
-            dibbler[0].emission_initial,
-            dibbler[0].emission_decay,
-            dibbler[0].emission_tail,
+            esmeralda[0].emission_initial,
+            esmeralda[0].emission_decay,
+            esmeralda[0].emission_tail,
         );
         let reward = schedule.block_reward(0);
         assert_eq!(reward, 18_462_816_327 * uT);
@@ -616,6 +663,6 @@ mod test {
         assert_eq!(reward, 800_000_598 * uT);
         assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
         let (_, reward, _) = rewards.next().unwrap();
-        assert_eq!(reward, dibbler[0].emission_tail);
+        assert_eq!(reward, esmeralda[0].emission_tail);
     }
 }

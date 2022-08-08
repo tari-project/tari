@@ -45,7 +45,7 @@ pub type SoftwareUpdateNotifier = watch::Receiver<Option<SoftwareUpdate>>;
 
 #[derive(Clone)]
 pub struct SoftwareUpdaterHandle {
-    new_update_notifier: SoftwareUpdateNotifier,
+    update_notifier: SoftwareUpdateNotifier,
     request_tx: mpsc::Sender<oneshot::Sender<Option<SoftwareUpdate>>>,
 }
 
@@ -53,8 +53,13 @@ impl SoftwareUpdaterHandle {
     /// Returns watch notifier that emits a value whenever a new software update is detected.
     /// First the current SoftwareUpdate (if any) is emitted. Thereafter, only software updates with a greater version
     /// number are emitted.
-    pub fn new_update_notifier(&self) -> &SoftwareUpdateNotifier {
-        &self.new_update_notifier
+    pub fn update_notifier(&self) -> &SoftwareUpdateNotifier {
+        &self.update_notifier
+    }
+
+    /// Returns the latest update or None if the updater has not retrieved the latest update yet.
+    pub fn latest_update(&self) -> watch::Ref<'_, Option<SoftwareUpdate>> {
+        self.update_notifier.borrow()
     }
 
     /// Returns watch notifier that triggers after a check for software updates
@@ -177,7 +182,7 @@ impl ServiceInitializer for SoftwareUpdaterService {
         let (request_tx, request_rx) = mpsc::channel(1);
 
         context.register_handle(SoftwareUpdaterHandle {
-            new_update_notifier: new_update_notif.clone(),
+            update_notifier: new_update_notif.clone(),
             request_tx,
         });
         context.spawn_until_shutdown(move |_| service.run(request_rx, notifier, new_update_notif));

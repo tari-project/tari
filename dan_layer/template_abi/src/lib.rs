@@ -31,7 +31,7 @@ pub mod ops;
 use std::collections::HashMap;
 
 pub use borsh::{self, BorshDeserialize as Decode, BorshSerialize as Encode};
-pub use encoding::{decode, decode_len, encode_into, encode_with_len};
+pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct TemplateDef {

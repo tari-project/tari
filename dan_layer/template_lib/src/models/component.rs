@@ -23,7 +23,7 @@
 // TODO: use the actual component id type
 pub type ComponentId = ([u8; 32], u32);
 
-use tari_template_abi::{Decode, Encode, encode_with_len, ops::OP_CREATE_COMPONENT, CreateComponentArg};
+use tari_template_abi::{encode_with_len, ops::OP_CREATE_COMPONENT, CreateComponentArg, Decode, Encode};
 
 use crate::call_engine;
 
