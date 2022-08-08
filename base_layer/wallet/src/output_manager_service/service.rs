@@ -1014,7 +1014,7 @@ where
         match self
             .resources
             .db
-            .clear_pending_coinbase_transaction_with_hash(output.hash.as_slice())
+            .clear_pending_coinbase_transaction_at_block_height(block_height)
         {
             Ok(_) => {
                 debug!(
