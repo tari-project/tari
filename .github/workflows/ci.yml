@@ -101,7 +101,6 @@ jobs:
         with:
           command: check
           args: --release --package tari_wallet_ffi
-
   build-stable:
     name: check stable
     runs-on: [ self-hosted, ubuntu18.04-high-cpu ]
@@ -143,23 +142,6 @@ jobs:
         with:
           command: check
           args: --release --package tari_wallet_ffi
-  javascript:
-    name: npm packages
-    runs-on: [ ubuntu-20.04 ]
-    steps:
-      - name: checkout
-        uses: actions/checkout@v2
-      - name: build collectibles web-app
-        run: |
-          cd applications/tari_collectibles/web-app
-          npm ci
-          npm run build
-      - name: lint/fmt tari explorer
-        run: |
-          cd applications/tari_explorer
-          npm ci
-          npm run lint
-          npm run check-fmt
   licenses:
     name: file licenses
     runs-on: [ ubuntu-20.04 ]
