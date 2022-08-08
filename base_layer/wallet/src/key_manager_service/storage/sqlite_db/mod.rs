@@ -33,18 +33,13 @@ use tokio::time::Instant;
 use crate::{
     key_manager_service::{
         error::KeyManagerStorageError,
-        storage::{
-            database::{KeyManagerBackend, KeyManagerState},
-            sqlite_db::key_manager_state_old::KeyManagerStateSqlOld,
-        },
+        storage::database::{KeyManagerBackend, KeyManagerState},
     },
-    output_manager_service::resources::OutputManagerKeyManagerBranch,
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::encryption::Encryptable,
 };
 
 mod key_manager_state;
-mod key_manager_state_old;
 
 const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 
@@ -67,8 +62,6 @@ impl KeyManagerSqliteDatabase {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
         };
-        // Todo remove at next testnet reset (currently on Dibbler) #testnet_reset
-        db.do_migration()?;
         Ok(db)
     }
 
@@ -86,31 +79,6 @@ impl KeyManagerSqliteDatabase {
         if let Some(cipher) = cipher.as_ref() {
             o.encrypt(cipher)
                 .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
-        }
-        Ok(())
-    }
-
-    // Todo remove at next testnet reset (currently on Dibbler) #testnet_reset
-    fn do_migration(&self) -> Result<(), KeyManagerStorageError> {
-        let conn = self.database_connection.get_pooled_connection()?;
-        let old_state = KeyManagerStateSqlOld::index(&conn)?;
-        if !old_state.is_empty() {
-            // there should only be 1 if there is an old state.
-            let spending_km = KeyManagerState {
-                branch_seed: OutputManagerKeyManagerBranch::Spend.get_branch_key(),
-                primary_key_index: old_state[0].primary_key_index as u64,
-            };
-            let spending_script_km = KeyManagerState {
-                branch_seed: OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
-                primary_key_index: old_state[0].primary_key_index as u64,
-            };
-            let mut km_sql_spending = NewKeyManagerStateSql::from(spending_km);
-            self.encrypt_if_necessary(&mut km_sql_spending)?;
-            km_sql_spending.commit(&conn)?;
-            let mut km_sql_script = NewKeyManagerStateSql::from(spending_script_km);
-            self.encrypt_if_necessary(&mut km_sql_script)?;
-            km_sql_script.commit(&conn)?;
-            KeyManagerStateSqlOld::delete(&conn)?;
         }
         Ok(())
     }
