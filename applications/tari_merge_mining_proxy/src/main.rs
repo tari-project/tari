@@ -67,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(&config_path, true, &cli.config_property_overrides())?;
+    let cfg = load_configuration(&config_path, true, &cli)?;
     initialize_logging(
         &cli.common.log_config_path("proxy"),
         include_str!("../log4rs_sample.yml"),

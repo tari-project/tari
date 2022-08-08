@@ -34,7 +34,7 @@ use chacha20poly1305::{
 };
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::hash::{blake2::Blake256, error::HashError};
 use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
 
@@ -69,6 +69,8 @@ impl ByteArray for EncryptedValue {
 pub enum EncryptionError {
     #[error("Encryption failed: {0}")]
     EncryptionFailed(Error),
+    #[error("Hash error: {0}")]
+    HashError(#[from] HashError),
 }
 
 // chacha error is not StdError compatible
@@ -86,7 +88,7 @@ impl EncryptedValue {
         commitment: &Commitment,
         value: MicroTari,
     ) -> Result<EncryptedValue, EncryptionError> {
-        let aead_key = kdf_aead(encryption_key, commitment);
+        let aead_key = kdf_aead(encryption_key, commitment)?;
         // Encrypt the value (with fixed length) using ChaCha20-Poly1305 with a fixed zero nonce
         let aead_payload = Payload {
             msg: &value.as_u64().to_le_bytes(),
@@ -104,7 +106,7 @@ impl EncryptedValue {
         commitment: &Commitment,
         value: &EncryptedValue,
     ) -> Result<MicroTari, EncryptionError> {
-        let aead_key = kdf_aead(encryption_key, commitment);
+        let aead_key = kdf_aead(encryption_key, commitment)?;
         // Authenticate and decrypt the value
         let aead_payload = Payload {
             msg: value.as_bytes(),
@@ -118,14 +120,13 @@ impl EncryptedValue {
 }
 
 // Generate a ChaCha20-Poly1305 key from an ECDH shared secret and commitment using Blake2b
-fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Key {
+fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Result<Key, HashError> {
     const AEAD_KEY_LENGTH: usize = 32; // The length in bytes of a ChaCha20-Poly1305 AEAD key
-    let mut hasher = Blake256::with_params(&[], b"SCAN_AEAD".as_ref(), b"TARI_KDF".as_ref())
-        .expect("Given Blake256 params should not produce failure");
+    let mut hasher = Blake256::with_params(&[], b"SCAN_AEAD".as_ref(), b"TARI_KDF".as_ref())?;
     hasher.update(shared_secret.as_bytes());
     hasher.update(commitment.as_bytes());
     let output = hasher.finalize();
-    *Key::from_slice(&output[..AEAD_KEY_LENGTH])
+    Ok(*Key::from_slice(&output[..AEAD_KEY_LENGTH]))
 }
 
 impl ConsensusEncoding for EncryptedValue {
