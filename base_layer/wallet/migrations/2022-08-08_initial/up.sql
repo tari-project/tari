@@ -81,7 +81,7 @@ CREATE TABLE outbound_transactions (
     cancelled              INTEGER DEFAULT 0  NOT NULL,
     direct_send_success    INTEGER DEFAULT 0  NOT NULL,
     send_count             INTEGER DEFAULT 0  NOT NULL,
-    last_send_timestamp    DATETIME           NOT NULL,
+    last_send_timestamp    DATETIME           NULL,
 )
 
 CREATE TABLE outputs (
