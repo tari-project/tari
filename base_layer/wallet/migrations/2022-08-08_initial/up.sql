@@ -13,5 +13,6 @@ CREATE TABLE completed_transactions (
     status                 INTEGER            NOT NULL,
     message                TEXT               NOT NULL,
     timestamp              DATETIME           NOT NULL,
-    
+    cancelled 
+
 )
