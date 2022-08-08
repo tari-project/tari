@@ -22,7 +22,6 @@
 
 use std::{convert::TryInto, fmt, sync::Arc};
 
-use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use itertools::Itertools;
@@ -98,6 +97,7 @@ use crate::{
         tasks::TxoValidationTask,
     },
     types::WalletHasher,
+    WalletSecretKeysDomainHasher,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -2712,7 +2712,11 @@ impl fmt::Display for Balance {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    Blake256::new().chain(key.as_bytes()).finalize().to_vec()
+    WalletSecretKeysDomainHasher::new()
+        .chain(key.as_bytes())
+        .finalize()
+        .as_ref()
+        .to_vec()
 }
 
 #[derive(Debug, Clone)]
