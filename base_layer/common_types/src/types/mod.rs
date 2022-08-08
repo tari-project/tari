@@ -21,14 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod bullet_rangeproofs;
-mod default_hash_domain;
 mod fixed_hash;
-mod mac_hash_domain;
 
 pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     hash::blake2::Blake256,
-    hashing::DomainSeparatedHasher,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -43,8 +40,6 @@ pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
 pub use fixed_hash::{FixedHash, FixedHashSizeError};
-
-use crate::types::{default_hash_domain::DefaultHashDomain, mac_hash_domain::MacHashDomain};
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
@@ -66,16 +61,13 @@ pub type BlindingFactor = RistrettoSecretKey;
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHasher = Blake256;
 
-/// Specify the Hash function for general hashing
-pub type HashDigest = Blake256;
-
 /// Specify the digest type for signature challenges
 pub type Challenge = Blake256;
 
 /// The type of output that `Challenge` produces
 pub type MessageHash = Vec<u8>;
 
-/// Define the data type that is used to store results of `HashDigest`
+/// Define the data type that is used to store results of a hash output
 pub type HashOutput = Vec<u8>;
 
 pub const RANGE_PROOF_BIT_LENGTH: usize = 64; // 2^64
@@ -86,9 +78,3 @@ pub type RangeProofService = BulletproofsPlusService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
-
-/// Generic domain separated hasher
-pub type DefaultDomainHasher<D> = DomainSeparatedHasher<D, DefaultHashDomain>;
-
-/// MAC domain separated hasher
-pub type MacDomainHasher<D> = DomainSeparatedHasher<D, MacHashDomain>;

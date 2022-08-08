@@ -22,8 +22,7 @@
 
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
-
-const DEFAULT_NETWORK: &str = "dibbler";
+use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -35,16 +34,17 @@ pub(crate) struct Cli {
     #[clap(long, aliases = &["tracing", "enable-tracing"])]
     pub tracing_enabled: bool,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
-    pub network: String,
+    #[clap(long, env = "TARI_NETWORK")]
+    pub network: Option<String>,
 }
 
-impl Cli {
-    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
-        let mut overrides = self.common.config_property_overrides();
-        overrides.push(("network".to_string(), self.network.clone()));
-        overrides.push(("validator_node.override_from".to_string(), self.network.clone()));
-        overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
+impl ConfigOverrideProvider for Cli {
+    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
+        let mut overrides = self.common.get_config_property_overrides(default_network);
+        let network = self.network.clone().unwrap_or_else(|| default_network.to_string());
+        overrides.push(("network".to_string(), network.clone()));
+        overrides.push(("validator_node.override_from".to_string(), network.clone()));
+        overrides.push(("p2p.seeds.override_from".to_string(), network));
         overrides
     }
 }

@@ -23,6 +23,7 @@ use std::{error::Error, path::PathBuf};
 
 use clap::Args;
 use log::Level;
+use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Args, Debug)]
 pub struct CommonCliArgs {
@@ -45,7 +46,7 @@ pub struct CommonCliArgs {
     #[clap()]
     pub log_level: Option<Level>,
 
-    /// Overrides for properties in the config file, e.g. -p base_node.netwok=dibbler
+    /// Overrides for properties in the config file, e.g. -p base_node.netwok=esmeralda
     #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
     pub config_property_overrides: Vec<(String, String)>,
 }
@@ -101,8 +102,10 @@ impl CommonCliArgs {
             path
         }
     }
+}
 
-    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
+impl ConfigOverrideProvider for CommonCliArgs {
+    fn get_config_property_overrides(&self, _default_network: Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
         overrides.push(("common.base_path".to_string(), self.base_path.clone()));
         overrides

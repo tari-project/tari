@@ -22,7 +22,6 @@
 #![allow(clippy::too_many_arguments)]
 mod digital_assets_error;
 pub use digital_assets_error::DigitalAssetError;
-use tari_common::hashing_domain::HashingDomain;
 
 mod helpers;
 pub mod models;
@@ -32,11 +31,3 @@ pub mod template_command;
 pub mod templates;
 pub mod types;
 pub mod workers;
-
-/// The DAN layer core domain separated hashing domain
-/// Usage:
-///   let hash = dan_layer_core_hash_domain().digest::<Blake256>(b"my secret");
-///   etc.
-pub fn dan_layer_core_hash_domain() -> HashingDomain {
-    HashingDomain::new("dan_layer.core")
-}

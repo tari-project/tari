@@ -38,11 +38,12 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{KernelFeatures, OutputFeatures},
+        transaction_components::OutputFeatures,
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::SingleRoundSenderData,
+            TransactionMetadata,
         },
         SenderTransactionProtocol,
     },
@@ -97,6 +98,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     prev_header: Option<HashOutput>,
     height: Option<u64>,
+    tx_meta: TransactionMetadata,
     sender_protocol: Option<SenderTransactionProtocol>,
 }
 
@@ -114,6 +116,7 @@ where
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
+        tx_meta: TransactionMetadata,
         service_request_reply_channel: Option<
             oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
         >,
@@ -135,6 +138,7 @@ where
             stage,
             prev_header,
             height,
+            tx_meta,
             sender_protocol,
         }
     }
@@ -221,7 +225,7 @@ where
                 UtxoSelectionCriteria::default(),
                 OutputFeatures::default(),
                 self.fee_per_gram,
-                None,
+                self.tx_meta.clone(),
                 self.message.clone(),
                 script!(Nop),
                 Covenant::default(),
@@ -554,7 +558,6 @@ where
         outbound_tx
             .sender_protocol
             .finalize(
-                KernelFeatures::empty(),
                 &self.resources.factories,
                 self.prev_header.clone(),
                 self.height.unwrap_or(u64::MAX),

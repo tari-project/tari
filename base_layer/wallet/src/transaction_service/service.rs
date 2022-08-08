@@ -58,6 +58,7 @@ use tari_core::{
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
             RewindData,
+            TransactionMetadata,
         },
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -65,6 +66,7 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
+    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -114,7 +116,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::{HashDigest, WalletHasher},
+    types::WalletHasher,
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
@@ -582,6 +584,7 @@ where
                     *output_features,
                     fee_per_gram,
                     message,
+                    TransactionMetadata::default(),
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
                     rp,
@@ -621,6 +624,14 @@ where
                     message,
                     transaction_broadcast_join_handles,
                 )
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::BurnTari {
+                amount,
+                fee_per_gram,
+                message,
+            } => self
+                .burn_tari(amount, fee_per_gram, message, transaction_broadcast_join_handles)
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::SendShaAtomicSwapTransaction(dest_pubkey, amount, fee_per_gram, message) => {
@@ -875,6 +886,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroTari,
         message: String,
+        tx_meta: TransactionMetadata,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -956,6 +968,7 @@ where
             amount,
             fee_per_gram,
             message,
+            tx_meta,
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
             None,
@@ -1016,7 +1029,7 @@ where
                 UtxoSelectionCriteria::default(),
                 OutputFeatures::default(),
                 fee_per_gram,
-                None,
+                TransactionMetadata::default(),
                 message.clone(),
                 script.clone(),
                 covenant.clone(),
@@ -1042,6 +1055,7 @@ where
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
         let spend_key = PrivateKey::from_bytes(
             CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
@@ -1096,7 +1110,6 @@ where
         // Finalize
 
         stp.finalize(
-            KernelFeatures::empty(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1178,7 +1191,7 @@ where
                 UtxoSelectionCriteria::default(),
                 output_features,
                 fee_per_gram,
-                None,
+                TransactionMetadata::default(),
                 message.clone(),
                 script,
                 Covenant::default(),
@@ -1235,7 +1248,6 @@ where
         // Finalize
 
         stp.finalize(
-            KernelFeatures::empty(),
             &self.resources.factories,
             None,
             self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1320,6 +1332,118 @@ where
         .await
     }
 
+    /// Creates a transaction to burn some Tari
+    /// # Arguments
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn burn_tari(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let tx_id = TxId::new_random();
+        let output_features = OutputFeatures::create_burn_output();
+        // Prepare sender part of the transaction
+        let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
+        let mut stp = self
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                amount,
+                UtxoSelectionCriteria::default(),
+                output_features,
+                fee_per_gram,
+                tx_meta,
+                message.clone(),
+                TariScript::default(),
+                Covenant::default(),
+                MicroTari::zero(),
+            )
+            .await?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used
+        let _single_round_sender_data = stp
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        let spend_key = PrivateKey::random(&mut OsRng);
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            PrivateKey::random(&mut OsRng),
+            spend_key,
+            &self.resources.factories,
+        );
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+
+        // Start finalizing
+
+        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize
+
+        stp.finalize(
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
+        info!(target: LOG_TARGET, "Finalized burning transaction TxId: {}", tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast burn transaction
+
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.node_identity.public_key().clone(),
+                CommsPublicKey::default(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                message.clone(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await?;
+
+        Ok(tx_id)
+    }
+
     /// Sends a one side payment transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -1345,7 +1469,7 @@ where
 
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
 
-        let c = WalletHasher::new("stealth_address")
+        let c = WalletHasher::new_with_label("stealth_address")
             .chain((dest_pubkey.clone() * nonce_private_key).as_bytes())
             .finalize();
 
@@ -1674,6 +1798,7 @@ where
                     tx.amount,
                     tx.fee,
                     tx.message,
+                    TransactionMetadata::default(),
                     None,
                     stage,
                     None,
@@ -2503,7 +2628,7 @@ pub struct PendingCoinbaseSpendingKey {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+    Blake256::new().chain(key.as_bytes()).finalize().to_vec()
 }
 
 /// Contains the generated TxId and TransactionStatus transaction send result
@@ -2532,7 +2657,7 @@ mod tests {
 
         // Sender calculates a ECDH shared secret: c=H(r⋅a⋅G)=H(a⋅R)=H(r⋅A),
         // where H(⋅) is a cryptographic hash function
-        let c = WalletHasher::new("stealth_address")
+        let c = WalletHasher::new_with_label("stealth_address")
             .chain(PublicKey::shared_secret(&r, &big_a).as_bytes())
             .finalize();
 
@@ -2549,7 +2674,7 @@ mod tests {
         if let [Opcode::PushPubKey(big_r), Opcode::Drop, Opcode::PushPubKey(provided_spending_key)] = script.as_slice()
         {
             // calculating Ks with the provided R nonce from the script
-            let c = WalletHasher::new("stealth_address")
+            let c = WalletHasher::new_with_label("stealth_address")
                 .chain(PublicKey::shared_secret(&a, big_r).as_bytes())
                 .finalize();
 

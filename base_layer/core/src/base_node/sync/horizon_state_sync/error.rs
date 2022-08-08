@@ -53,6 +53,8 @@ pub enum HorizonSyncError {
     JoinError(#[from] task::JoinError),
     #[error("A range proof verification has produced an error: {0}")]
     RangeProofError(#[from] RangeProofError),
+    #[error("An invalid transaction has been encountered: {0}")]
+    TransactionError(#[from] TransactionError),
     #[error("Invalid kernel signature: {0}")]
     InvalidKernelSignature(TransactionError),
     #[error("MMR did not match for {mmr_tree} at height {at_height}. Expected {actual_hex} to equal {expected_hex}")]

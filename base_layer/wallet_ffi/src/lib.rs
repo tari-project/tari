@@ -131,7 +131,7 @@ use tari_p2p::{
 };
 use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex, hex::Hex};
+use tari_utilities::{hex, hex::Hex, SafePassword};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
@@ -3834,7 +3834,7 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 /// `database_path` - The database path char array pointer which. This is the folder path where the
 /// database files will be created and the application has write access to
 /// `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
-/// `network`: name of network to connect to. Valid values are: dibbler, igor, localnet, mainnet
+/// `network`: name of network to connect to. Valid values are: esmeralda, dibbler, igor, localnet, mainnet
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4256,7 +4256,7 @@ pub unsafe extern "C" fn wallet_create(
             .to_str()
             .expect("A non-null passphrase should be able to be converted to string")
             .to_owned();
-        Some(pf)
+        Some(SafePassword::from(pf))
     };
 
     let network = if network_str.is_null() {
@@ -6792,8 +6792,8 @@ pub unsafe extern "C" fn wallet_apply_encryption(
 
     let pf = CStr::from_ptr(passphrase)
         .to_str()
-        .expect("A non-null passphrase should be able to be converted to string")
-        .to_owned();
+        .map(|s| SafePassword::from(s.to_owned()))
+        .expect("A non-null passphrase should be able to be converted to string");
 
     if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.apply_encryption(pf)) {
         error = LibWalletError::from(e).code;
@@ -9274,10 +9274,18 @@ mod test {
             let mut recovery_in_progress = true;
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
+            // To create a new seed word sequence, uncomment below
+            // let seed = CipherSeed::new();
+            // use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
+            // let mnemonic_seq = seed
+            //     .to_mnemonic(MnemonicLanguage::English, None)
+            //     .expect("Couldn't convert CipherSeed to Mnemonic");
+            // println!("{:?}", mnemonic_seq);
+
             let mnemonic = vec![
-                "parade", "genius", "cradle", "milk", "perfect", "ride", "online", "world", "lady", "apple", "rent",
-                "business", "oppose", "force", "tumble", "escape", "tongue", "camera", "ceiling", "edge", "shine",
-                "gauge", "fossil", "orphan",
+                "scale", "poem", "sorry", "language", "gorilla", "despair", "alarm", "jungle", "invite", "orient",
+                "blast", "try", "jump", "escape", "estate", "reward", "race", "taxi", "pitch", "soccer", "matter",
+                "team", "parrot", "enter",
             ];
 
             let seed_words = seed_words_create();

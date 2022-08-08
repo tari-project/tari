@@ -86,7 +86,7 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
 use super::tari_amount::MicroTari;
-use crate::{consensus::ConsensusHashWriter, covenants::Covenant};
+use crate::{consensus::ConsensusHasher, covenants::Covenant};
 
 /// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
 /// ordering as well as for the output hash calculation for TransactionInput.
@@ -103,16 +103,16 @@ pub(super) fn hash_output(
     encrypted_value: &EncryptedValue,
     minimum_value_promise: MicroTari,
 ) -> [u8; 32] {
-    let common_hash = ConsensusHashWriter::default()
+    let common_hash = ConsensusHasher::default()
         .chain(&version)
         .chain(features)
         .chain(commitment)
         .chain(script)
         .chain(covenant)
-        .chain(encrypted_value);
+        .chain(encrypted_value)
+        .chain(&minimum_value_promise);
 
     match version {
         TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common_hash.finalize(),
-        TransactionOutputVersion::V2 => common_hash.chain(&minimum_value_promise).finalize(),
     }
 }

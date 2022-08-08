@@ -45,6 +45,21 @@ Feature: Block Sync
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
     Then all nodes are at height 20
 
+  @critical @pruned @broken
+  Scenario: Pruned node should handle burned output
+   Given I have a seed node NODE
+   And I have 2 base nodes connected to all seed nodes
+   And I have wallet WALLET_A connected to all seed nodes
+   And I have mining node MINER connected to base node NODE and wallet WALLET_A
+   When mining node MINER mines 15 blocks
+   Then all nodes are at height 15
+   When I wait for wallet WALLET_A to have at least 55000000000 uT
+   When I create a burn transaction of 1000000 uT from WALLET_A at fee 100
+   When mining node MINER mines 10 blocks
+   Then all nodes are at height 25
+   Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
+   Then all nodes are at height 20
+
   @critical
   Scenario: When a new node joins the network, it receives all peers
     Given I have 10 seed nodes

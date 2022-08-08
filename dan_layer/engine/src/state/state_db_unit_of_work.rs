@@ -9,7 +9,7 @@ use std::{
 
 use digest::Digest;
 use log::*;
-use tari_common_types::types::{FixedHash, HashDigest};
+use tari_common_types::types::FixedHash;
 use tari_crypto::hash::blake2::Blake256;
 use tari_dan_common_types::storage::UnitOfWorkTracker;
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
@@ -231,14 +231,14 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWorkReader for StateDb
                     key_value.value.to_hex()
                 );
                 if let Some(updated_value) = find_update(&inner, &schema, &key_value.key) {
-                    let hasher = HashDigest::new();
+                    let hasher = Blake256::new();
                     mmr.push(hasher.chain(&key_value.key).chain(updated_value).finalize().to_vec())?;
                 } else {
-                    let hasher = HashDigest::new();
+                    let hasher = Blake256::new();
                     mmr.push(hasher.chain(&key_value.key).chain(&key_value.value).finalize().to_vec())?;
                 }
             }
-            let hasher = HashDigest::new();
+            let hasher = Blake256::new();
             top_level_mmr.push(hasher.chain(schema).chain(mmr.get_merkle_root()?).finalize().to_vec())?;
         }
 

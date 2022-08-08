@@ -25,10 +25,11 @@ use crate::{
 };
 use clap::{Parser, Subcommand};
 use tari_app_utilities::common_cli_args::CommonCliArgs;
-use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common::{
+  configuration::{ConfigOverrideProvider, Network},
+  exit_codes::{ExitCode, ExitError},
+};
 use uuid::Uuid;
-
-const DEFAULT_NETWORK: &str = "dibbler";
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -40,17 +41,18 @@ pub(crate) struct Cli {
   #[clap(subcommand)]
   pub command: Option<Commands>,
   /// Supply a network (overrides existing configuration)
-  #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
-  pub network: String,
+  #[clap(long, env = "TARI_NETWORK")]
+  pub network: Option<String>,
 }
 
-impl Cli {
-  pub fn config_property_overrides(&self) -> Vec<(String, String)> {
-    let mut overrides = self.common.config_property_overrides();
-    overrides.push((
-      "collectibles.override_from".to_string(),
-      self.network.clone(),
-    ));
+impl ConfigOverrideProvider for Cli {
+  fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
+    let mut overrides = self.common.get_config_property_overrides(default_network);
+    let network = self
+      .network
+      .clone()
+      .unwrap_or_else(|| default_network.to_string());
+    overrides.push(("collectibles.override_from".to_string(), network));
     overrides
   }
 }

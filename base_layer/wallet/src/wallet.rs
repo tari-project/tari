@@ -69,6 +69,7 @@ use tari_p2p::{
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::SafePassword;
 
 use crate::{
     assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
@@ -685,7 +686,7 @@ where
 
     /// Apply encryption to all the Wallet db backends. The Wallet backend will test if the db's are already encrypted
     /// in which case this will fail.
-    pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
+    pub async fn apply_encryption(&mut self, passphrase: SafePassword) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
         let cipher = self.db.apply_encryption(passphrase).await?;
         self.output_manager_service.apply_encryption(cipher.clone()).await?;
@@ -697,10 +698,10 @@ where
     /// Remove encryption from all the Wallet db backends. If any backends do not have encryption applied then this will
     /// fail
     pub async fn remove_encryption(&mut self) -> Result<(), WalletError> {
-        self.db.remove_encryption().await?;
         self.output_manager_service.remove_encryption().await?;
         self.transaction_service.remove_encryption().await?;
         self.key_manager_service.remove_encryption().await?;
+        self.db.remove_encryption().await?;
         Ok(())
     }
 

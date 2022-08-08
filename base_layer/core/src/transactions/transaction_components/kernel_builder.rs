@@ -37,6 +37,7 @@ pub struct KernelBuilder {
     lock_height: u64,
     excess: Option<Commitment>,
     excess_sig: Option<Signature>,
+    burn_commitment: Option<Commitment>,
 }
 
 /// Implementation of the transaction kernel
@@ -55,6 +56,12 @@ impl KernelBuilder {
     /// Build a transaction kernel with the provided fee
     pub fn with_fee(mut self, fee: MicroTari) -> KernelBuilder {
         self.fee = fee;
+        self
+    }
+
+    /// Build a transaction kernel with the provided burn commitment
+    pub fn with_burn_commitment(mut self, burn_commitment: Option<Commitment>) -> KernelBuilder {
+        self.burn_commitment = burn_commitment;
         self
     }
 
@@ -86,6 +93,7 @@ impl KernelBuilder {
             self.lock_height,
             self.excess.unwrap(),
             self.excess_sig.unwrap(),
+            self.burn_commitment,
         ))
     }
 }
@@ -98,6 +106,7 @@ impl Default for KernelBuilder {
             lock_height: 0,
             excess: None,
             excess_sig: None,
+            burn_commitment: None,
         }
     }
 }

@@ -50,7 +50,7 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RewindData},
+        transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
         SenderTransactionProtocol,
@@ -179,33 +179,23 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
+    // To create a new seed word sequence, uncomment below
+    // let seed = CipherSeed::new();
+    // use tari_key_manager::mnemonic::MnemonicLanguage;
+    // let mnemonic_seq = seed
+    //     .to_mnemonic(MnemonicLanguage::English, None)
+    //     .expect("Couldn't convert CipherSeed to Mnemonic");
+    // println!("{:?}", mnemonic_seq);
+
     let cipher_seed = CipherSeed::from_mnemonic(
         &[
-            "parade".to_string(),
-            "genius".to_string(),
-            "cradle".to_string(),
-            "milk".to_string(),
-            "perfect".to_string(),
-            "ride".to_string(),
-            "online".to_string(),
-            "world".to_string(),
-            "lady".to_string(),
-            "apple".to_string(),
-            "rent".to_string(),
-            "business".to_string(),
-            "oppose".to_string(),
-            "force".to_string(),
-            "tumble".to_string(),
-            "escape".to_string(),
-            "tongue".to_string(),
-            "camera".to_string(),
-            "ceiling".to_string(),
-            "edge".to_string(),
-            "shine".to_string(),
-            "gauge".to_string(),
-            "fossil".to_string(),
-            "orphan".to_string(),
-        ],
+            "cactus", "fruit", "amount", "strong", "join", "tuna", "combine", "actor", "plug", "north", "defense",
+            "husband", "roof", "alpha", "present", "daughter", "spare", "trial", "border", "bridge", "actor",
+            "receive", "leader", "fashion",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>(),
         None,
     )
     .unwrap();
@@ -436,7 +426,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -469,7 +459,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             String::new(),
             script!(Nop),
             Covenant::default(),
@@ -495,7 +485,7 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     // test if a fee estimate would be possible with pending funds included
     // at this point 52000 uT is still spendable, with pending change incoming of 1690 uT
-    // so instead of returning "not enough funds", return "funds pending"
+    // so instead of returning "not enough funds".to_string(), return "funds pending"
     let spendable_amount = (3..=10).sum::<u64>() * amount;
     let err = oms
         .fee_estimate(spendable_amount, fee_per_gram, 1, 2)
@@ -552,7 +542,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -614,7 +604,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -642,7 +632,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -714,7 +704,7 @@ async fn test_utxo_selection_with_tx_priority() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -793,7 +783,7 @@ async fn utxo_selection_for_contract_checkpoint() {
                 signatures: CommitteeSignatures::empty(),
             }),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             String::new(),
             script!(Nop),
             Covenant::default(),
@@ -836,7 +826,7 @@ async fn send_not_enough_funds() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(4),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -896,7 +886,7 @@ async fn send_no_change() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -962,7 +952,7 @@ async fn send_not_enough_for_change() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -1003,7 +993,7 @@ async fn cancel_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(4),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -1096,7 +1086,7 @@ async fn test_get_balance() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(4),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -1153,7 +1143,7 @@ async fn sending_transaction_persisted_while_offline() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(4),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -1186,7 +1176,7 @@ async fn sending_transaction_persisted_while_offline() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(4),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
@@ -1487,7 +1477,7 @@ async fn test_txo_validation() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroTari::from(10),
-            None,
+            TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),

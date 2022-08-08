@@ -23,7 +23,7 @@
 use std::fmt;
 
 use derivative::Derivative;
-use digest::{Digest, FixedOutput};
+use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
@@ -54,18 +54,17 @@ use crate::{
         tari_amount::*,
         transaction_components::{
             KernelBuilder,
-            KernelFeatures,
             OutputFeatures,
             Transaction,
             TransactionBuilder,
             TransactionInput,
+            TransactionKernel,
             TransactionOutput,
             UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
         transaction_protocol::{
-            build_challenge,
             recipient::{RecipientInfo, RecipientSignedMessage},
             transaction_initializer::SenderTransactionInitializer,
             TransactionMetadata,
@@ -478,6 +477,7 @@ impl SenderTransactionProtocol {
                 info.public_excess = &info.public_excess + &rec.public_spend_key;
                 info.public_nonce_sum = &info.public_nonce_sum + rec.partial_signature.get_public_nonce();
                 info.signatures.push(rec.partial_signature);
+                info.metadata = rec.tx_metadata;
                 self.state = SenderState::Finalizing(info.clone());
                 Ok(())
             },
@@ -493,9 +493,7 @@ impl SenderTransactionProtocol {
     ) -> Result<ComSignature, TPE> {
         // Create sender signature
         let public_commitment_nonce = PublicKey::from_secret_key(private_commitment_nonce);
-        let e = output
-            .get_metadata_signature_challenge(Some(&public_commitment_nonce))
-            .finalize_fixed();
+        let e = output.get_metadata_signature_challenge(Some(&public_commitment_nonce));
         let sender_signature =
             Signature::sign(sender_offset_private_key.clone(), private_commitment_nonce.clone(), &e)?;
         let sender_signature = sender_signature.get_signature();
@@ -521,11 +519,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Attempts to build the final transaction.
-    fn build_transaction(
-        info: &RawTransactionInfo,
-        features: KernelFeatures,
-        factories: &CryptoFactories,
-    ) -> Result<Transaction, TPE> {
+    fn build_transaction(info: &RawTransactionInfo, factories: &CryptoFactories) -> Result<Transaction, TPE> {
         let mut tx_builder = TransactionBuilder::new();
         for i in &info.inputs {
             tx_builder.add_input(i.clone());
@@ -539,10 +533,12 @@ impl SenderTransactionProtocol {
         let mut s_agg = info.signatures[0].clone();
         info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
         let excess = PedersenCommitment::from_public_key(&info.public_excess);
+
         let kernel = KernelBuilder::new()
             .with_fee(info.metadata.fee)
-            .with_features(features)
+            .with_features(info.metadata.kernel_features)
             .with_lock_height(info.metadata.lock_height)
+            .with_burn_commitment(info.metadata.burn_commitment.clone())
             .with_excess(&excess)
             .with_signature(&s_agg)
             .build()?;
@@ -586,7 +582,13 @@ impl SenderTransactionProtocol {
     fn sign(&mut self) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::Finalizing(info) => {
-                let e = build_challenge(&info.public_nonce_sum, &info.metadata);
+                let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+                    &info.public_nonce_sum,
+                    &info.public_excess,
+                    &info.metadata,
+                );
+                // let e = build_challenge(&info.public_nonce_sum, &info.metadata);
+
                 let k = info.offset_blinding_factor.clone();
                 let r = info.private_nonce.clone();
                 let s = Signature::sign(k, r, &e).map_err(TPE::SigningError)?;
@@ -607,7 +609,6 @@ impl SenderTransactionProtocol {
     /// returns `Ok(false)` in this instance.
     pub fn finalize(
         &mut self,
-        features: KernelFeatures,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
         height: u64,
@@ -625,9 +626,7 @@ impl SenderTransactionProtocol {
         // Validate the inputs we have, and then construct the final transaction
         match &self.state {
             SenderState::Finalizing(info) => {
-                let result = self
-                    .validate()
-                    .and_then(|_| Self::build_transaction(info, features, factories));
+                let result = self.validate().and_then(|_| Self::build_transaction(info, factories));
                 match result {
                     Ok(mut transaction) => {
                         transaction.body.sort();
@@ -793,7 +792,6 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey, RangeProof};
     use tari_crypto::{
@@ -814,13 +812,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::{
-                EncryptedValue,
-                KernelFeatures,
-                OutputFeatures,
-                TransactionOutput,
-                TransactionOutputVersion,
-            },
+            transaction_components::{EncryptedValue, OutputFeatures, TransactionOutput, TransactionOutputVersion},
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -952,9 +944,7 @@ mod test {
         assert!(output.verify_metadata_signature().is_err());
         assert!(partial_metadata_signature.verify_challenge(
             &commitment,
-            &output
-                .get_metadata_signature_challenge(Some(&sender_public_commitment_nonce))
-                .finalize(),
+            &output.get_metadata_signature_challenge(Some(&sender_public_commitment_nonce)),
             &commitment_factory
         ));
 
@@ -999,7 +989,7 @@ mod test {
         let mut sender = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         assert!(!sender.is_failed());
         assert!(sender.is_finalizing());
-        match sender.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
+        match sender.finalize(&factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         }
@@ -1047,7 +1037,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
+        match alice.finalize(&factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -1130,7 +1120,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
+        match alice.finalize(&factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -1331,7 +1321,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
+        match alice.finalize(&factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };

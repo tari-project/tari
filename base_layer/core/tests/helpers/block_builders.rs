@@ -25,7 +25,7 @@ use std::{iter::repeat_with, sync::Arc};
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
+use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -57,6 +57,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
+    hash::blake2::Blake256,
     keys::PublicKey as PublicKeyTrait,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
@@ -71,7 +72,7 @@ pub fn create_coinbase(
     let p = TestParams::new();
 
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&p.spend_key));
-    let sig = create_signature(p.spend_key.clone(), 0.into(), 0);
+    let sig = create_signature(p.spend_key.clone(), 0.into(), 0, KernelFeatures::create_coinbase());
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
@@ -106,21 +107,21 @@ fn genesis_template(
 }
 
 #[test]
-// #[ignore = "used to generate a new dibbler genesis block"]
+// #[ignore = "used to generate a new esmeralda genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_dibbler
-/// --exact --nocapture --ignored`
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_esmeralda
+/// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-fn print_new_genesis_block_dibbler() {
-    print_new_genesis_block(Network::Dibbler);
+fn print_new_genesis_block_esmeralda() {
+    print_new_genesis_block(Network::Esmeralda);
 }
 
 #[test]
 // #[ignore = "used to generate a new igor genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
 /// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_igor
-/// --exact --nocapture --ignored`
+/// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
 fn print_new_genesis_block_igor() {
@@ -132,15 +133,16 @@ fn print_new_genesis_block(network: Network) {
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
+    let lock_height = consensus_manager.consensus_constants(0).coinbase_lock_height();
     let (utxo, key, _) = create_utxo(
         value,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(lock_height),
         &script![Nop],
         &Covenant::default(),
         MicroTari::zero(),
     );
-    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
+    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0, KernelFeatures::COINBASE_KERNEL);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
@@ -173,9 +175,23 @@ fn print_new_genesis_block(network: Network) {
         block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
         block.body.kernels()[0].excess_sig.get_signature().to_hex()
     );
+    println!();
+    println!(
+        "Coinbase metasig: public_nonce {}, signature_u {}, signature_v {}",
+        block.body.outputs()[0].metadata_signature.public_nonce().to_hex(),
+        block.body.outputs()[0].metadata_signature.u().to_hex(),
+        block.body.outputs()[0].metadata_signature.v().to_hex(),
+    );
+    println!();
     println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
     println!("UTXO range_proof: {}", block.body.outputs()[0].proof.to_hex());
+    println!(
+        "UTXO sender offset pubkey: {}",
+        block.body.outputs()[0].sender_offset_public_key.to_hex()
+    );
+    println!();
     println!("kernel excess: {}", block.body.kernels()[0].excess.to_hex());
+    println!();
     println!("header output_mr: {}", block.header.output_mr.to_hex());
     println!("header witness_mr: {}", block.header.witness_mr.to_hex());
     println!("header kernel_mr: {}", block.header.kernel_mr.to_hex());
@@ -210,13 +226,13 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = MutableMmr::<HashDigest, _>::new(kernel_hashes, Bitmap::create())
+    header.kernel_mr = MutableMmr::<Blake256, _>::new(kernel_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.output_mr = MutableMmr::<HashDigest, _>::new(out_hashes, Bitmap::create())
+    header.output_mr = MutableMmr::<Blake256, _>::new(out_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.witness_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create())
+    header.witness_mr = MutableMmr::<Blake256, _>::new(rp_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
     Ok(Block { header, body })

@@ -39,7 +39,6 @@ pub enum TransactionOutputVersion {
     V0 = 0,
     /// Currently only used in tests, this can be used as the next version
     V1 = 1,
-    V2 = 2,
 }
 
 impl TransactionOutputVersion {
@@ -59,7 +58,6 @@ impl TryFrom<u8> for TransactionOutputVersion {
         match value {
             0 => Ok(TransactionOutputVersion::V0),
             1 => Ok(TransactionOutputVersion::V1),
-            2 => Ok(TransactionOutputVersion::V2),
             _ => Err("Unknown version!".to_string()),
         }
     }
@@ -99,7 +97,6 @@ mod test {
     fn test_try_from() {
         assert_eq!(TransactionOutputVersion::try_from(0), Ok(TransactionOutputVersion::V0));
         assert_eq!(TransactionOutputVersion::try_from(1), Ok(TransactionOutputVersion::V1));
-        assert_eq!(TransactionOutputVersion::try_from(2), Ok(TransactionOutputVersion::V2));
         assert!(TransactionOutputVersion::try_from(3).is_err());
     }
 

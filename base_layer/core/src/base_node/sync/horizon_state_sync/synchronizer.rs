@@ -31,10 +31,11 @@ use std::{
 use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
-use tari_common_types::types::{Commitment, HashDigest, RangeProofService};
+use tari_common_types::types::{Commitment, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_crypto::{
     commitment::HomomorphicCommitment,
+    hash::blake2::Blake256,
     tari_utilities::{hex::Hex, Hashable},
 };
 use tari_mmr::{MerkleMountainRange, MutableMmr};
@@ -325,7 +326,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     .fetch_block_accumulated_data(current_header.header().prev_hash.clone())
                     .await?;
                 let kernel_pruned_set = block_data.dissolve().0;
-                let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernel_pruned_set);
+                let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(kernel_pruned_set);
 
                 for hash in kernel_hashes.drain(..) {
                     kernel_mmr.push(hash)?;
@@ -486,8 +487,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .await?;
         let (_, output_pruned_set, witness_pruned_set, _) = block_data.dissolve();
 
-        let mut output_mmr = MerkleMountainRange::<HashDigest, _>::new(output_pruned_set);
-        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(witness_pruned_set);
+        let mut output_mmr = MerkleMountainRange::<Blake256, _>::new(output_pruned_set);
+        let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(witness_pruned_set);
         let mut constants = self.rules.consensus_constants(current_header.height()).clone();
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
@@ -595,7 +596,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     bitmap.run_optimize();
 
                     let pruned_output_set = output_mmr.get_pruned_hash_set()?;
-                    let output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set.clone(), bitmap.clone())?;
+                    let output_mmr = MutableMmr::<Blake256, _>::new(pruned_output_set.clone(), bitmap.clone())?;
 
                     let mmr_root = output_mmr.get_merkle_root()?;
                     if mmr_root != current_header.header().output_mr {
@@ -743,7 +744,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         ));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
-        let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
+        let (calc_utxo_sum, calc_kernel_sum, calc_burned_sum) = self.calculate_commitment_sums(&header).await?;
 
         self.final_state_validator
             .validate(
@@ -751,6 +752,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.height(),
                 &calc_utxo_sum,
                 &calc_kernel_sum,
+                &calc_burned_sum,
             )
             .map_err(HorizonSyncError::FinalStateValidationFailed)?;
 
@@ -793,9 +795,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn calculate_commitment_sums(
         &mut self,
         header: &ChainHeader,
-    ) -> Result<(Commitment, Commitment), HorizonSyncError> {
+    ) -> Result<(Commitment, Commitment, Commitment), HorizonSyncError> {
         let mut utxo_sum = HomomorphicCommitment::default();
         let mut kernel_sum = HomomorphicCommitment::default();
+        let mut burned_sum = HomomorphicCommitment::default();
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
@@ -810,7 +813,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             for h in 0..=height {
                 let curr_header = db.fetch_chain_header(h)?;
-
                 trace!(
                     target: LOG_TARGET,
                     "Fetching utxos from db: height:{}, header.output_mmr:{}, prev_mmr:{}, end:{}",
@@ -866,6 +868,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
                 for k in kernels {
                     kernel_sum = &k.excess + &kernel_sum;
+                    if k.is_burned() {
+                        burned_sum = k.get_burn_commitment()? + &burned_sum;
+                    }
                 }
                 prev_kernel_mmr = curr_header.header().kernel_mmr_size;
 
@@ -888,7 +893,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 db.write(txn)?;
             }
 
-            Ok((utxo_sum, kernel_sum))
+            Ok((utxo_sum, kernel_sum, burned_sum))
         })
         .await?
     }

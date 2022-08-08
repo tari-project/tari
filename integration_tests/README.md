@@ -8,6 +8,18 @@
   ```
   npm install
   ```
+- Open terminal in the `tari-project\clients\base_node_grpc_client` folder and run
+  ```
+  npm install
+  ```
+  - Open terminal in the `tari-project\clients\validator_node_grpc_client` folder and run
+  ```
+  npm install
+  ```
+  - Open terminal in the `tari-project\clients\wallet_grpc_client` folder and run
+  ```
+  npm install
+  ```
 
 ## Procedure to run
 

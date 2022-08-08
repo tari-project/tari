@@ -234,7 +234,7 @@ fn kernel_hash() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "ce54718b33405e8fc96ed68044af21febc84c7a74c2aa9d792947f2571c7a61b"
+        "72158351bed5c9b3d9d626821ea1d775e31456f4d762d09cee21a9032d214e3c"
     );
 }
 
@@ -253,7 +253,7 @@ fn kernel_metadata() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "db1522441628687beb21d4d8279e107e733aec9c8b7d513ef3c35b05c1e0150c"
+        "6bf18baef9296815dc9fa1a6ddee2e90a471c63ba86f8542311d2a73881ade18"
     )
 }
 
@@ -281,7 +281,7 @@ fn check_timelocks() {
         MicroTari::zero(),
     );
 
-    let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
+    let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
     let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
     // lets add time locks
@@ -480,8 +480,8 @@ mod output_features {
 
         let mut buf = Vec::new();
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 10);
-        assert_eq!(features.consensus_encode_exact_size(), 10);
+        assert_eq!(buf.len(), 11);
+        assert_eq!(features.consensus_encode_exact_size(), 11);
 
         let mut features = OutputFeatures::default();
         features.version = OutputFeaturesVersion::V1;
@@ -498,24 +498,14 @@ mod output_features {
         features_u64_max.version = OutputFeaturesVersion::V0;
         let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size_u8_max);
-        assert_eq!(known_size_u8_max, 19);
-        features_u64_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 19);
-        assert_eq!(features_u64_max.consensus_encode_exact_size(), 19);
-        let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        assert_eq!(features_u64_max, decoded_features);
-
-        features_u64_max.version = OutputFeaturesVersion::V1;
-        let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         assert_eq!(known_size_u8_max, 20);
-        let mut buf = Vec::with_capacity(known_size_u8_max);
         features_u64_max.consensus_encode(&mut buf).unwrap();
         assert_eq!(buf.len(), 20);
         assert_eq!(features_u64_max.consensus_encode_exact_size(), 20);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features_u64_max, decoded_features);
 
-        features_u64_max.version = OutputFeaturesVersion::V2;
+        features_u64_max.version = OutputFeaturesVersion::V1;
         let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         assert_eq!(known_size_u8_max, 20);
         let mut buf = Vec::with_capacity(known_size_u8_max);

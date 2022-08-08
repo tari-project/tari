@@ -138,7 +138,7 @@ mod test {
 
     // Checks that the moving average hash rate at every block is correct
     // We use larger sample data than the SHA window size (12 periods) to check bounds
-    // We assumed a constant target block time of 300 secs (the SHA3 target time for Dibbler)
+    // We assumed a constant target block time of 300 secs (the SHA3 target time for Esmeralda)
     // These expected hash rate values where calculated in a spreadsheet
     #[test]
     fn correct_moving_average_calculation() {
@@ -180,8 +180,8 @@ mod test {
     }
 
     fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler)
-            .add_consensus_constants(ConsensusConstants::dibbler()[0].clone())
+        let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda)
+            .add_consensus_constants(ConsensusConstants::esmeralda()[0].clone())
             .build();
         HashRateMovingAverage::new(pow_algo, consensus_manager)
     }

@@ -25,11 +25,13 @@ use std::{path::PathBuf, time::Duration};
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use tari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
+use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroTari};
-use tari_utilities::hex::{Hex, HexError};
-
-const DEFAULT_NETWORK: &str = "dibbler";
+use tari_utilities::{
+    hex::{Hex, HexError},
+    SafePassword,
+};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -45,7 +47,7 @@ pub(crate) struct Cli {
     /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
     /// possible.
     #[clap(long, env = "TARI_WALLET_PASSWORD", hide_env_values = true)]
-    pub password: Option<String>,
+    pub password: Option<SafePassword>,
     /// Change the password for the console wallet
     #[clap(long, alias = "update-password")]
     pub change_password: bool,
@@ -74,17 +76,19 @@ pub(crate) struct Cli {
     #[clap(long, alias = "auto-exit")]
     pub command_mode_auto_exit: bool,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
-    pub network: String,
+    #[clap(long, env = "TARI_NETWORK")]
+    pub network: Option<String>,
     #[clap(subcommand)]
     pub command2: Option<CliCommands>,
 }
 
-impl Cli {
-    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
-        let mut overrides = self.common.config_property_overrides();
-        overrides.push(("wallet.override_from".to_string(), self.network.clone()));
-        overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
+impl ConfigOverrideProvider for Cli {
+    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
+        let mut overrides = self.common.get_config_property_overrides(default_network);
+        let network = self.network.clone().unwrap_or_else(|| default_network.to_string());
+        overrides.push(("wallet.network".to_string(), network.clone()));
+        overrides.push(("wallet.override_from".to_string(), network.clone()));
+        overrides.push(("p2p.seeds.override_from".to_string(), network));
         overrides
     }
 }
