@@ -45,7 +45,7 @@ pub struct CommonCliArgs {
     #[clap()]
     pub log_level: Option<Level>,
 
-    /// Overrides for properties in the config file, e.g. -p base_node.netwok=dibbler
+    /// Overrides for properties in the config file, e.g. -p base_node.netwok=esmeralda
     #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
     pub config_property_overrides: Vec<(String, String)>,
 }

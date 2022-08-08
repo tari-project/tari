@@ -149,7 +149,7 @@ impl TestParams {
             sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
             sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
             commitment_factory: CommitmentFactory::default(),
-            transaction_weight: TransactionWeight::v2(),
+            transaction_weight: TransactionWeight::v1(),
             rewind_data: RewindData {
                 rewind_blinding_key: PrivateKey::random(&mut OsRng),
                 encryption_key: PrivateKey::random(&mut OsRng),

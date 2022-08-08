@@ -107,14 +107,14 @@ fn genesis_template(
 }
 
 #[test]
-// #[ignore = "used to generate a new dibbler genesis block"]
+// #[ignore = "used to generate a new esmeralda genesis block"]
 /// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_dibbler
-/// --exact --nocapture --ignored`
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_esmeralda
+/// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-fn print_new_genesis_block_dibbler() {
-    print_new_genesis_block(Network::Dibbler);
+fn print_new_genesis_block_esmeralda() {
+    print_new_genesis_block(Network::Esmeralda);
 }
 
 #[test]
@@ -133,10 +133,11 @@ fn print_new_genesis_block(network: Network) {
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
+    let lock_height = consensus_manager.consensus_constants(0).coinbase_lock_height();
     let (utxo, key, _) = create_utxo(
         value,
         &factories,
-        &OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(lock_height),
         &script![Nop],
         &Covenant::default(),
         MicroTari::zero(),
@@ -174,9 +175,23 @@ fn print_new_genesis_block(network: Network) {
         block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
         block.body.kernels()[0].excess_sig.get_signature().to_hex()
     );
+    println!();
+    println!(
+        "Coinbase metasig: public_nonce {}, signature_u {}, signature_v {}",
+        block.body.outputs()[0].metadata_signature.public_nonce().to_hex(),
+        block.body.outputs()[0].metadata_signature.u().to_hex(),
+        block.body.outputs()[0].metadata_signature.v().to_hex(),
+    );
+    println!();
     println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
     println!("UTXO range_proof: {}", block.body.outputs()[0].proof.to_hex());
+    println!(
+        "UTXO sender offset pubkey: {}",
+        block.body.outputs()[0].sender_offset_public_key.to_hex()
+    );
+    println!();
     println!("kernel excess: {}", block.body.kernels()[0].excess.to_hex());
+    println!();
     println!("header output_mr: {}", block.header.output_mr.to_hex());
     println!("header witness_mr: {}", block.header.witness_mr.to_hex());
     println!("header kernel_mr: {}", block.header.kernel_mr.to_hex());
