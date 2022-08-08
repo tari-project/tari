@@ -205,7 +205,7 @@ impl CoinbaseBuilder {
         let sig = Signature::sign(spending_key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
 
-        let sender_offset_private_key = PrivateKey::from_bytes(Blake256::digest(spending_key)); // H(spending_key) <- Blake256
+        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
         let covenant = self.covenant;
 
