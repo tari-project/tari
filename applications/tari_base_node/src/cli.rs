@@ -22,6 +22,7 @@
 
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
+use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -51,16 +52,18 @@ pub(crate) struct Cli {
     pub network: Option<String>,
 }
 
-impl Cli {
-    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
-        let mut overrides = self.common.config_property_overrides();
-        if let Some(network) = &self.network {
-            overrides.push(("base_node.override_from".to_string(), network.clone()));
-            overrides.push(("p2p.seeds.override_from".to_string(), network.clone()));
-            overrides.push(("auto_update.override_from".to_string(), network.clone()));
-            #[cfg(features = "metrics")]
-            overrides.push(("metrics.override_from".to_string(), network.clone()));
-        }
+impl ConfigOverrideProvider for Cli {
+    fn get_config_property_overrides(&self, default_network: Network) -> Vec<(String, String)> {
+        let mut overrides = self.common.get_config_property_overrides(default_network);
+        let network = self
+            .network
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| default_network.to_string());
+        overrides.push(("base_node.override_from".to_string(), network.to_string()));
+        overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
+        overrides.push(("auto_update.override_from".to_string(), network.to_string()));
+        overrides.push(("metrics.override_from".to_string(), network));
         overrides
     }
 }

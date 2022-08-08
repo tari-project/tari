@@ -12,14 +12,18 @@ use serde::{
     Serializer,
 };
 
-use crate::{ConfigError, LOG_TARGET};
+use crate::{
+    configuration::{ConfigOverrideProvider, Network},
+    ConfigError,
+    LOG_TARGET,
+};
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
-pub fn load_configuration<P: AsRef<Path>>(
+pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     config_path: P,
     create_if_not_exists: bool,
-    overrides: &[(String, String)],
+    overrides: &TOverride,
 ) -> Result<Config, ConfigError> {
     debug!(
         target: LOG_TARGET,
@@ -34,24 +38,47 @@ pub fn load_configuration<P: AsRef<Path>>(
         .as_ref()
         .to_str()
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
-    let mut cfg = Config::builder()
+    let cfg = Config::builder()
         .add_source(config::File::with_name(filename))
         .add_source(
             config::Environment::with_prefix("TARI")
                 .prefix_separator("_")
                 .separator("__"),
-        );
+        )
+        .build()
+        .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
+    let network = match cfg.get_string("network") {
+        Ok(network) => {
+            Network::from_str(&network).map_err(|e| ConfigError::new("Invalid network", Some(e.to_string())))?
+        },
+        Err(config::ConfigError::NotFound(_)) => {
+            debug!(target: LOG_TARGET, "No network configuration found. Using default.");
+            Network::default()
+        },
+        Err(e) => {
+            return Err(ConfigError::new(
+                "Could not get network configuration",
+                Some(e.to_string()),
+            ));
+        },
+    };
+
+    info!(target: LOG_TARGET, "Configuration file loaded.");
+    let overrides = overrides.get_config_property_overrides(network);
+    if overrides.is_empty() {
+        return Ok(cfg);
+    }
+
+    let mut cfg = Config::builder().add_source(cfg);
     for (key, value) in overrides {
         cfg = cfg
             .set_override(key.as_str(), value.as_str())
             .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
     }
-
     let cfg = cfg
         .build()
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
-    info!(target: LOG_TARGET, "Configuration file loaded.");
 
     Ok(cfg)
 }
