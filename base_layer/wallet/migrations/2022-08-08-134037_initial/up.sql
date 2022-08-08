@@ -1,7 +1,7 @@
 CREATE TABLE client_key_values (
     key   TEXT PRIMARY KEY NOT NULL,
     value TEXT             NOT NULL,
-)
+);
 
 CREATE TABLE completed_transactions (
     tx_id                       BIGINT PRIMARY KEY NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE completed_transactions (
     mined_timestamp             DATETIME           NULL,
     transaction_signature_nonce BLOB    DEFAULT 0  NOT NULL,
     transaction_signature_key   BLOB    DEFAULT 0  NOT NULL,
-)
+);
 
 CREATE TABLE contacts (
     public_key  BLOB PRIMARY KEY NOT NULL UNIQUE,
@@ -32,7 +32,7 @@ CREATE TABLE contacts (
     alias       TEXT             NOT NULL,
     last_seen   DATETIME         NULL,
     latency     INTEGER          NULL,
-)
+);
 
 CREATE TABLE inbound_transactions (
     tx_id               BIGINT PRIMARY KEY NOT NULL,
@@ -45,22 +45,14 @@ CREATE TABLE inbound_transactions (
     direct_send_success INTEGER DEFAULT 0  NOT NULL,
     send_count          INTEGER DEFAULT 0  NOT NULL,
     last_send_timestamp DATETIME           NULL,
-)
+);
 
 CREATE TABLE key_manager_states (
     id                INTEGER PRIMARY KEY NOT NULL,
     branch_seed       TEXT UNIQUE         NOT NULL,
     primary_key_index BLOB                NOT NULL,
     timestamp         DATETIME            NOT NULL,
-)
-
-CREATE TABLE key_manager_states_old (
-    id                BIGINT PRIMARY KEY NOT NULL,
-    seed              BLOB               NOT NULL,
-    branch_seed       TEXT               NOT NULL,
-    primary_key_index BIGINT             NOT NULL,
-    timestamp         DATETIME           NOT NULL,
-)
+);
 
 CREATE TABLE known_one_sided_payment_scripts (
     script_hash        BLOB PRIMARY KEY NOT NULL,
@@ -68,7 +60,7 @@ CREATE TABLE known_one_sided_payment_scripts (
     script             BLOB             NOT NULL,
     input              BLOB             NOT NULL,
     script_lock_height UNSIGNED BIGINT  NOT NULL DEFAULT 0
-)
+);
 
 CREATE TABLE outbound_transactions (
     tx_id                  BIGINT PRIMARY KEY NOT NULL,
@@ -82,7 +74,7 @@ CREATE TABLE outbound_transactions (
     direct_send_success    INTEGER DEFAULT 0  NOT NULL,
     send_count             INTEGER DEFAULT 0  NOT NULL,
     last_send_timestamp    DATETIME           NULL,
-)
+);
 
 CREATE TABLE outputs (
     id                         INTEGER PRIMARY KEY NOT NULL,
@@ -119,8 +111,8 @@ CREATE TABLE outputs (
     encrypted_value            BLOB                NOT NULL,
     contract_id                BLOB                NULL,
     minimum_value_precision    BIGINT              NOT NULL,
-    CONSTRAINT unique_commitment UNIQUE (commitment)
-)
+    CONSTRAINT unique_commitment UNIQUE (commitment),
+);
 
 CREATE TABLE scanned_blocks (
     header_hash BLOB PRIMARY KEY NOT NULL,
@@ -128,9 +120,9 @@ CREATE TABLE scanned_blocks (
     num_outputs BIGINT           NULL,
     amount      BIGINT           NULL,
     timestamp   DATETIME         NOT NULL,
-)
+);
 
 CREATE TABLE wallet_settings (
     key   TEXT PRIMARY KEY NOT NULL,
     value TEXT             NOT NULL,
-)
+);
