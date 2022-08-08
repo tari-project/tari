@@ -228,7 +228,10 @@ where T: OutputManagerBackend + 'static
         Ok(result)
     }
 
-    pub fn fetch_by_commitment(&self, commitment: Commitment) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_by_commitment(
+        &self,
+        commitment: Commitment,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let result = match self.db.fetch(&DbKey::AnyOutputByCommitment(commitment))? {
             Some(DbValue::UnspendOutputs(outputs)) => outputs,
             Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),

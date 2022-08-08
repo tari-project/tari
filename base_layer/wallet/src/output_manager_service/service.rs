@@ -91,9 +91,8 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
         storage::{
-            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
+            database::{backend::*, DbKey, OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
-            database::{DbKey, backend::*},
             OutputStatus,
         },
         tasks::TxoValidationTask,
