@@ -93,6 +93,7 @@ use crate::{
         storage::{
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            sqlite_db::*,
             OutputStatus,
         },
         tasks::TxoValidationTask,
@@ -1010,38 +1011,18 @@ where
             None,
         )?;
 
-        // Clear any existing pending coinbase transactions having this output hash, if they exist
-        match self
-            .resources
-            .db
-            .clear_pending_coinbase_transaction_with_hash(output.hash.as_slice())
-        {
-            Ok(_) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "An existing pending coinbase was cleared with hash {}",
-                    output.hash.to_hex()
-                )
-            },
-            Err(e) => match e {
-                OutputManagerStorageError::DieselError(DieselError::NotFound) => {},
-                _ => return Err(OutputManagerError::from(e)),
-            },
-        };
-
-        // Clear any matching outputs for this commitment. Even if the older output is valid
-        // we are losing no information as this output has the same commitment.
-        match self.resources.db.remove_output_by_commitment(output.commitment.clone()) {
+        // If there is no existing output available, we store the one we produced.
+        match self.resources.db.find_by_commitment(output.commitment.clone()) {
             Ok(_) => {},
-            Err(OutputManagerStorageError::ValueNotFound) => {},
+            Err(OutputManagerStorageError::ValueNotFound) => {
+                self.resources
+                    .db
+                    .add_output_to_be_received(tx_id, output, Some(block_height))?;
+
+                self.confirm_encumberance(tx_id)?;
+            },
             Err(e) => return Err(e.into()),
-        }
-
-        self.resources
-            .db
-            .add_output_to_be_received(tx_id, output, Some(block_height))?;
-
-        self.confirm_encumberance(tx_id)?;
+        };
 
         Ok(tx)
     }

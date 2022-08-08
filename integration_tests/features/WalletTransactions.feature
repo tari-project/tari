@@ -88,6 +88,7 @@ Feature: Wallet Transactions
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
     And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    And I have mining node MINER2 connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 2 blocks
     When mining node MINER2 mines 2 blocks
     When mining node MINER mines 3 blocks
