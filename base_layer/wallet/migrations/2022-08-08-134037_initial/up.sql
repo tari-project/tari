@@ -1,6 +1,6 @@
 CREATE TABLE client_key_values (
     key   TEXT PRIMARY KEY NOT NULL,
-    value TEXT             NOT NULL,
+    value TEXT             NOT NULL
 );
 
 CREATE TABLE completed_transactions (
@@ -23,7 +23,7 @@ CREATE TABLE completed_transactions (
     mined_in_block              BLOB               NULL,
     mined_timestamp             DATETIME           NULL,
     transaction_signature_nonce BLOB    DEFAULT 0  NOT NULL,
-    transaction_signature_key   BLOB    DEFAULT 0  NOT NULL,
+    transaction_signature_key   BLOB    DEFAULT 0  NOT NULL
 );
 
 CREATE TABLE contacts (
@@ -31,7 +31,7 @@ CREATE TABLE contacts (
     node_id     BLOB             NOT NULL UNIQUE,
     alias       TEXT             NOT NULL,
     last_seen   DATETIME         NULL,
-    latency     INTEGER          NULL,
+    latency     INTEGER          NULL
 );
 
 CREATE TABLE inbound_transactions (
@@ -44,14 +44,14 @@ CREATE TABLE inbound_transactions (
     cancelled           INTEGER            NOT NULL,
     direct_send_success INTEGER DEFAULT 0  NOT NULL,
     send_count          INTEGER DEFAULT 0  NOT NULL,
-    last_send_timestamp DATETIME           NULL,
+    last_send_timestamp DATETIME           NULL
 );
 
 CREATE TABLE key_manager_states (
     id                INTEGER PRIMARY KEY NOT NULL,
     branch_seed       TEXT UNIQUE         NOT NULL,
     primary_key_index BLOB                NOT NULL,
-    timestamp         DATETIME            NOT NULL,
+    timestamp         DATETIME            NOT NULL
 );
 
 CREATE TABLE known_one_sided_payment_scripts (
@@ -73,7 +73,7 @@ CREATE TABLE outbound_transactions (
     cancelled              INTEGER DEFAULT 0  NOT NULL,
     direct_send_success    INTEGER DEFAULT 0  NOT NULL,
     send_count             INTEGER DEFAULT 0  NOT NULL,
-    last_send_timestamp    DATETIME           NULL,
+    last_send_timestamp    DATETIME           NULL
 );
 
 CREATE TABLE outputs (
@@ -111,7 +111,7 @@ CREATE TABLE outputs (
     encrypted_value            BLOB                NOT NULL,
     contract_id                BLOB                NULL,
     minimum_value_precision    BIGINT              NOT NULL,
-    CONSTRAINT unique_commitment UNIQUE (commitment),
+    CONSTRAINT unique_commitment UNIQUE (commitment)
 );
 
 CREATE TABLE scanned_blocks (
@@ -119,10 +119,10 @@ CREATE TABLE scanned_blocks (
     height      BIGINT           NOT NULL,
     num_outputs BIGINT           NULL,
     amount      BIGINT           NULL,
-    timestamp   DATETIME         NOT NULL,
+    timestamp   DATETIME         NOT NULL
 );
 
 CREATE TABLE wallet_settings (
     key   TEXT PRIMARY KEY NOT NULL,
-    value TEXT             NOT NULL,
+    value TEXT             NOT NULL
 );
