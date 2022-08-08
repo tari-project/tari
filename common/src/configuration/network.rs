@@ -68,9 +68,11 @@ impl Network {
     }
 }
 
+/// The default network for all applications
 impl Default for Network {
     fn default() -> Self {
-        Network::MainNet
+        // TODO: set the default network to mainnet
+        Network::Esmeralda
     }
 }
 
@@ -157,7 +159,7 @@ mod test {
     #[test]
     fn network_default() {
         let network = Network::default();
-        assert_eq!(network, Network::MainNet);
+        assert_eq!(network, Network::Esmeralda);
     }
 
     #[test]
