@@ -97,9 +97,9 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Get the output that was most recently spent, ordered descending by mined height
     fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Check if there is a pending coinbase transaction at this block height, if there is clear it.
-    fn clear_pending_coinbase_transaction_with_hash(
+    fn clear_pending_coinbase_transaction_at_block_height(
         &self,
-        hash: &[u8],
+        block_height: u64,
     ) -> Result<(), OutputManagerStorageError>;
     /// Set if a coinbase output is abandoned or not
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError>;

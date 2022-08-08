@@ -220,11 +220,11 @@ where T: OutputManagerBackend + 'static
     }
 
     /// Check if there is a pending coinbase transaction at this block height, if there is clear it.
-    pub fn clear_pending_coinbase_transaction_with_hash(
+    pub fn clear_pending_coinbase_transaction_at_block_height(
         &self,
-        hash: &[u8],
+        block_height: u64,
     ) -> Result<(), OutputManagerStorageError> {
-        self.db.clear_pending_coinbase_transaction_with_hash(hash)
+        self.db.clear_pending_coinbase_transaction_at_block_height(block_height)
     }
 
     pub fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
