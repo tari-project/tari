@@ -1,1 +1,0 @@
--- This migration is only meant for fresh databases on a testnet reset, so the down is not needed
