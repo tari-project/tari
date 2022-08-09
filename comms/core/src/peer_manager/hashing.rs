@@ -21,10 +21,21 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use tari_crypto::{hash_domain, hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant}};
+use tari_crypto::{
+    hash_domain,
+    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
+};
 
-hash_domain!(CommsCorePeerManagerDomain, "com.tari.tari_project.comms.core.peer_manager", 1);
+hash_domain!(
+    CommsCorePeerManagerDomain,
+    "com.tari.tari_project.comms.core.peer_manager",
+    1
+);
 
-pub(crate) fn comms_core_peer_manager_domain<D: Digest + LengthExtensionAttackResistant>(label: &'static str) -> DomainSeparatedHasher<D, CommsCorePeerManagerDomain> {
+pub(crate) const IDENTITY_SIGNATURE: &str = "identity_signature";
+
+pub(crate) fn comms_core_peer_manager_domain<D: Digest + LengthExtensionAttackResistant>(
+    label: &'static str,
+) -> DomainSeparatedHasher<D, CommsCorePeerManagerDomain> {
     DomainSeparatedHasher::<D, CommsCorePeerManagerDomain>::new_with_label(label)
 }
