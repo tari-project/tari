@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #[macro_use]
 extern crate bitflags;
-extern crate core;
 
 pub mod blocks;
 #[cfg(feature = "base_node")]
