@@ -89,10 +89,13 @@ where
         let start = Instant::now();
         let outputs_length = outputs.len();
 
+        let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
+
         let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = Vec::new();
         for output in outputs {
             // TODO: Only outputs with scripts `== script!(Nop)` is recover-able - can this be improved?
-            if output.script != script!(Nop) {
+            let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
+            if output.script != script!(Nop) && known_script_index.is_none() {
                 continue;
             }
             let committed_value = EncryptedValue::decrypt_value(
@@ -104,14 +107,22 @@ where
                 let blinding_factor =
                     output.recover_mask(&self.factories.range_proof, &self.rewind_data.rewind_blinding_key)?;
                 if output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
-                    let script_key = PrivateKey::random(&mut OsRng);
+                    let (input_data, script_key) = if let Some(index) = known_script_index {
+                        (
+                            known_scripts[index].input.clone(),
+                            known_scripts[index].private_key.clone(),
+                        )
+                    } else {
+                        let key = PrivateKey::random(&mut OsRng);
+                        (inputs!(PublicKey::from_secret_key(&key)), key)
+                    };
                     let uo = UnblindedOutput::new(
                         output.version,
                         committed_value,
                         blinding_factor,
                         output.features,
                         output.script,
-                        inputs!(PublicKey::from_secret_key(&script_key)),
+                        input_data,
                         script_key,
                         output.sender_offset_public_key,
                         output.metadata_signature,
