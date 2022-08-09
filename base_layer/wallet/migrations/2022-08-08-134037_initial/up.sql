@@ -118,7 +118,7 @@ CREATE TABLE outputs (
     mined_timestamp            DATETIME            NULL,
     encrypted_value            BLOB                NOT NULL,
     contract_id                BLOB                NULL,
-    minimum_value_precision    BIGINT              NOT NULL,
+    minimum_value_promise    BIGINT              NOT NULL,
     CONSTRAINT unique_commitment UNIQUE (commitment)
 );
 
