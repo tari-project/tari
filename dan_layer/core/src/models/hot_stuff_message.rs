@@ -201,7 +201,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
     }
 
     pub fn create_signature_challenge(&self) -> Vec<u8> {
-        let mut b = dan_layer_core_hasher::<Blake256>(HOT_STUFF_MESSAGE_LABEL)
+        let mut b = dan_layer_models_hasher::<Blake256>(HOT_STUFF_MESSAGE_LABEL)
             .chain(&[self.message_type.as_u8()])
             .chain(self.view_number.as_u64().to_le_bytes());
         if let Some(ref node) = self.node {

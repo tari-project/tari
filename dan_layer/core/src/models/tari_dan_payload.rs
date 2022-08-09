@@ -62,10 +62,10 @@ impl TariDanPayload {
         let mut out = [0u8; 32];
 
         if let Some(ref ck) = self.checkpoint {
-            let result = result.chain(ck.consensus_hash()).finalize();
-        } else {
-            let result = result.finalize();
+            let result = result.chain(ck.consensus_hash());
         }
+
+        let result = result.finalize();
 
         out.copy_from_slice(result.as_ref());
         out.into()

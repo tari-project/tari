@@ -85,7 +85,7 @@ impl Instruction {
             .chain(self.method.as_bytes())
             .chain(&self.args)
             .finalize();
-        
+
         let mut out = [0u8; 32];
         out.copy_from_slice(b.as_ref());
 
