@@ -25,7 +25,9 @@ use tari_common_types::types::FixedHash;
 use tari_core::transactions::transaction_components::SignerSignature;
 use tari_crypto::hash::blake2::Blake256;
 
+use super::HOT_STUFF_MESSAGE_LABEL;
 use crate::models::{
+    dan_layer_core_hasher,
     HotStuffMessageType,
     HotStuffTreeNode,
     Payload,
@@ -200,7 +202,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
     }
 
     pub fn create_signature_challenge(&self) -> Vec<u8> {
-        let mut b = Blake256::new()
+        let mut b = dan_layer_core_hasher::<Blake256>(HOT_STUFF_MESSAGE_LABEL)
             .chain(&[self.message_type.as_u8()])
             .chain(self.view_number.as_u64().to_le_bytes());
         if let Some(ref node) = self.node {
@@ -209,7 +211,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             b = b.chain(node_hash.as_bytes());
         } else {
         }
-        b.finalize().to_vec()
+        b.finalize().as_ref().to_vec()
     }
 
     pub fn view_number(&self) -> ViewId {

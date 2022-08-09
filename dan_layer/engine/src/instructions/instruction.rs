@@ -9,6 +9,8 @@ use tari_crypto::hash::blake2::Blake256;
 use tari_dan_common_types::TemplateId;
 use tari_utilities::hex::Hex;
 
+use super::hashing::{dan_layer_engine_instructions, INSTRUCTION_LABEL};
+
 #[derive(Clone, Debug)]
 pub struct Instruction {
     template_id: TemplateId,
@@ -79,7 +81,9 @@ impl Instruction {
     }
 
     pub fn calculate_hash(&self) -> FixedHash {
-        let b = Blake256::new().chain(self.method.as_bytes()).chain(&self.args);
+        let b = dan_layer_engine_instructions(INSTRUCTION_LABEL)
+            .chain(self.method.as_bytes())
+            .chain(&self.args);
         // b.chain(self.from.as_bytes())
         //     .chain(com_sig_to_bytes(&self.signature))
         b.finalize().into()

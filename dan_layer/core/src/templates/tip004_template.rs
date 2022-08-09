@@ -29,7 +29,11 @@ use tari_dan_common_types::proto::tips::tip004;
 use tari_dan_engine::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader};
 use tari_utilities::hex::Hex;
 
-use crate::{models::InstructionSet, DigitalAssetError};
+use crate::{
+    hashing::{dan_layer_templates_hasher, TIP004_TEMPLATE_LABEL},
+    models::InstructionSet,
+    DigitalAssetError,
+};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip004_template";
 
@@ -95,7 +99,11 @@ fn mint<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfWork)
 }
 
 fn hash_of(s: &str) -> Vec<u8> {
-    Blake256::new().chain(s).finalize().to_vec()
+    dan_layer_templates_hasher::<Blake256>(TIP004_TEMPLATE_LABEL)
+        .chain(s)
+        .finalize()
+        .as_ref()
+        .to_vec()
 }
 
 fn balance_of<TUnitOfWork: StateDbUnitOfWorkReader>(
