@@ -36,7 +36,7 @@ pub struct TariDanPayload {
     checkpoint: Option<CheckpointData>,
 }
 
-impl TariDanPayload {
+impl TariDanPaconstruct_challengeyload {
     pub fn new(instruction_set: InstructionSet, checkpoint: Option<CheckpointData>) -> Self {
         let mut result = Self {
             hash: FixedHash::zero(),
@@ -61,9 +61,9 @@ impl TariDanPayload {
 
         let mut out = [0u8; 32];
 
-        if let Some(ref ck) = self.checkpoint {
-            let result = result.chain(ck.consensus_hash());
-        }
+        let result = if let Some(ref ck) = self.checkpoint {
+            result.chain(ck.consensus_hash())
+        };
 
         let result = result.finalize();
 
