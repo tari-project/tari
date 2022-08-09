@@ -1,6 +1,5 @@
 PRAGMA foreign_keys=OFF;
-ALTER TABLE key_manager_states
-    RENAME TO key_manager_states_old;
+DROP TABLE IF EXISTS key_manager_states;
 
 CREATE TABLE key_manager_states (
                                     id                INTEGER PRIMARY KEY   NOT NULL,
