@@ -233,7 +233,7 @@ where T: OutputManagerBackend + 'static
         commitment: Commitment,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let result = match self.db.fetch(&DbKey::AnyOutputByCommitment(commitment))? {
-            Some(DbValue::UnspendOutputs(outputs)) => outputs,
+            Some(DbValue::UnspentOutputs(outputs)) => outputs,
             Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
             None => vec![],
         };
