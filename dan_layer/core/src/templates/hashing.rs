@@ -36,6 +36,6 @@ pub(crate) const TIP004_TEMPLATE_LABEL: &str = "tip004_template";
 
 pub(crate) fn dan_layer_templates_hasher<D: Digest + LengthExtensionAttackResistant>(
     label: &'static str,
-) -> DomainSeparatedHasher<D, DanLayerCoreModelsDomain> {
-    DomainSeparatedHasher::<D, DanLayerCoreModelsDomain>::new_with_label(label)
+) -> DomainSeparatedHasher<D, DanLayerCoreTemplatesDomain> {
+    DomainSeparatedHasher::<D, DanLayerCoreTemplatesDomain>::new_with_label(label)
 }

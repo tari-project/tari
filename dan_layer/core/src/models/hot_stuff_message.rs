@@ -20,14 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
 use tari_common_types::types::FixedHash;
 use tari_core::transactions::transaction_components::SignerSignature;
 use tari_crypto::hash::blake2::Blake256;
 
 use super::HOT_STUFF_MESSAGE_LABEL;
 use crate::models::{
-    dan_layer_core_hasher,
+    dan_layer_models_hasher,
     HotStuffMessageType,
     HotStuffTreeNode,
     Payload,

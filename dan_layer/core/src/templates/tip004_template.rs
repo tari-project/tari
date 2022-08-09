@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
 use log::*;
 use prost::Message;
 use tari_core::transactions::transaction_components::TemplateParameter;
@@ -29,11 +28,8 @@ use tari_dan_common_types::proto::tips::tip004;
 use tari_dan_engine::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader};
 use tari_utilities::hex::Hex;
 
-use crate::{
-    hashing::{dan_layer_templates_hasher, TIP004_TEMPLATE_LABEL},
-    models::InstructionSet,
-    DigitalAssetError,
-};
+use super::hashing::{dan_layer_templates_hasher, TIP004_TEMPLATE_LABEL};
+use crate::{models::InstructionSet, DigitalAssetError};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip004_template";
 

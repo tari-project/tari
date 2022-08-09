@@ -22,7 +22,6 @@
 
 use std::fmt::Debug;
 
-use digest::Digest;
 use tari_common_types::types::FixedHash;
 use tari_crypto::hash::blake2::Blake256;
 use tari_dan_engine::instructions::Instruction;
@@ -59,11 +58,17 @@ impl TariDanPayload {
     fn calculate_hash(&self) -> FixedHash {
         let result =
             dan_layer_models_hasher::<Blake256>(TARI_DAN_PAYLOAD_LABEL).chain(self.instruction_set.consensus_hash());
+
+        let mut out = [0u8; 32];
+
         if let Some(ref ck) = self.checkpoint {
-            result.chain(ck.consensus_hash()).finalize().into()
+            let result = result.chain(ck.consensus_hash()).finalize();
         } else {
-            result.finalize().into()
+            let result = result.finalize();
         }
+
+        out.copy_from_slice(result.as_ref());
+        out.into()
     }
 }
 

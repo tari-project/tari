@@ -87,7 +87,7 @@ impl Instruction {
             .finalize();
         
         let mut out = [0u8; 32];
-        out.clone_from_slice(b.as_ref());
+        out.copy_from_slice(b.as_ref());
 
         out.into()
     }
