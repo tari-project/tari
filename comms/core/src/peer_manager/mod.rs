@@ -79,7 +79,6 @@ mod identity_signature;
 pub use identity_signature::IdentitySignature;
 
 mod hashing;
-pub use hashing;
 
 pub mod node_id;
 pub use node_id::NodeId;
