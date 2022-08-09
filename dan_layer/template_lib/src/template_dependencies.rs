@@ -20,11 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod component;
-pub use component::*;
+//! Public types that are available to all template authors.
 
-mod contract;
-pub use contract::{Contract, ContractAddress};
+pub use borsh;
+pub use tari_template_abi::{call_debug as debug, Decode, Encode};
 
-mod package;
-pub use package::{Package, PackageId};
+pub use crate::{
+    args::LogLevel,
+    engine,
+    get_context as context,
+    models::{Bucket, BucketId, ResourceAddress, Vault},
+};

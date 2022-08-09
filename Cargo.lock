@@ -5979,9 +5979,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.142"
+version = "1.0.143"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e590c437916fb6b221e1d00df6e3294f3fccd70ca7e92541c475d6ed6ef5fee2"
+checksum = "53e8e5d5b70924f74ff5c6d64d9a5acd91422117c60f48c4e07855238a254553"
 dependencies = [
  "serde_derive",
 ]
@@ -6026,9 +6026,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.142"
+version = "1.0.143"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34b5b8d809babe02f538c2cfec6f2c1ed10804c0e5a6a041a049a4f5588ccc2e"
+checksum = "d3d8e8de557aee63c26b85b947f5e59b690d0454c753f3adeb5cd7835ab88391"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7176,7 +7176,7 @@ dependencies = [
  "tari_dan_common_types",
  "tari_mmr",
  "tari_template_abi",
- "tari_template_types",
+ "tari_template_lib",
  "tari_utilities",
  "thiserror",
  "wasmer",
@@ -7485,15 +7485,15 @@ name = "tari_template_abi"
 version = "0.1.0"
 dependencies = [
  "borsh",
- "tari_template_types",
 ]
 
 [[package]]
 name = "tari_template_lib"
 version = "0.1.0"
 dependencies = [
+ "borsh",
+ "serde",
  "tari_template_abi",
- "tari_template_types",
 ]
 
 [[package]]
@@ -7504,15 +7504,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
- "tari_template_abi",
-]
-
-[[package]]
-name = "tari_template_types"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "serde",
 ]
 
 [[package]]

@@ -19,22 +19,39 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use tari_template_abi::{Decode, Encode};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::models::{ComponentId, ContractAddress, PackageId};
 
-pub type ContractAddress = crate::Hash;
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Contract {
-    pub address: ContractAddress,
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct EmitLogArg {
+    pub message: String,
+    pub level: LogLevel,
 }
 
-impl Contract {
-    pub fn new(address: ContractAddress) -> Self {
-        Self { address }
-    }
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
 
-    pub fn address(&self) -> &ContractAddress {
-        &self.address
-    }
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct CreateComponentArg {
+    pub contract_address: ContractAddress,
+    pub module_name: String,
+    pub package_id: PackageId,
+    pub state: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct GetComponentArg {
+    pub component_id: ComponentId,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct SetComponentStateArg {
+    pub component_id: ComponentId,
+    pub state: Vec<u8>,
 }

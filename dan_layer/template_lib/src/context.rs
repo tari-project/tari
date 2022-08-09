@@ -22,25 +22,21 @@
 
 use std::{borrow::Borrow, cell::RefCell};
 
-use tari_template_abi::CallInfo;
-use tari_template_types::models::{Contract, Package};
+use tari_template_abi::{decode, CallInfo};
+
+use crate::{
+    abi_context::AbiContext,
+    models::{Contract, Package},
+};
 
 thread_local! {
     static CONTEXT: RefCell<Option<AbiContext>> = RefCell::new(None);
 }
 
-#[derive(Debug)]
-pub struct AbiContext {
-    package: Package,
-    contract: Contract,
-}
-
 pub fn set_context_from_call_info(call_info: &CallInfo) {
+    let abi_context = decode(&call_info.abi_context).expect("Failed to decode ABI context");
     with_context(|ctx| {
-        *ctx = Some(AbiContext {
-            package: call_info.package.clone(),
-            contract: call_info.contract.clone(),
-        });
+        *ctx = Some(abi_context);
     });
 }
 

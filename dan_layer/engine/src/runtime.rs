@@ -27,8 +27,10 @@ use std::{
 };
 
 use tari_common_types::types::FixedHash;
-use tari_template_abi::LogLevel;
-use tari_template_types::models::{Component, ComponentId, ComponentInstance};
+use tari_template_lib::{
+    args::LogLevel,
+    models::{Component, ComponentId, ComponentInstance},
+};
 
 use crate::{models::Bucket, state_store::StateStoreError};
 

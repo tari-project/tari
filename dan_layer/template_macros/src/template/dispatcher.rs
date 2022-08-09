@@ -34,7 +34,7 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
     let output = quote! {
         #[no_mangle]
         pub extern "C" fn #dispatcher_function_name(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-            use ::tari_template_abi::{decode, encode_with_len, CallInfo, LogLevel, wrap_ptr};
+            use ::tari_template_abi::{decode, encode_with_len, CallInfo, wrap_ptr};
             use ::tari_template_lib::set_context_from_call_info;
 
             if call_info.is_null() {
@@ -92,7 +92,7 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
                 vec![
                     parse_quote! {
                         let component =
-                            decode::<::tari_template_types::models::ComponentInstance>(&call_info.args[#i])
+                            decode::<::tari_template_lib::models::ComponentInstance>(&call_info.args[#i])
                             .unwrap();
                     },
                     parse_quote! {

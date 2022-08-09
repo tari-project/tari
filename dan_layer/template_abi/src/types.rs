@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_template_types::models::{ComponentId, Contract, ContractAddress, Package, PackageId};
-
 use crate::{Decode, Encode};
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -64,39 +62,5 @@ pub enum Type {
 pub struct CallInfo {
     pub func_name: String,
     pub args: Vec<Vec<u8>>,
-    pub package: Package,
-    pub contract: Contract,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct EmitLogArg {
-    pub message: String,
-    pub level: LogLevel,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub enum LogLevel {
-    Error,
-    Warn,
-    Info,
-    Debug,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CreateComponentArg {
-    pub contract_address: ContractAddress,
-    pub module_name: String,
-    pub package_id: PackageId,
-    pub state: Vec<u8>,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct GetComponentArg {
-    pub component_id: ComponentId,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct SetComponentStateArg {
-    pub component_id: ComponentId,
-    pub state: Vec<u8>,
+    pub abi_context: Vec<u8>,
 }

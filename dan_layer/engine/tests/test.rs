@@ -33,7 +33,7 @@ use tari_dan_engine::{
     wasm::compile::compile_template,
 };
 use tari_template_abi::encode;
-use tari_template_types::models::{ComponentId, ComponentInstance, PackageId};
+use tari_template_lib::models::{ComponentId, ComponentInstance, PackageId};
 
 #[test]
 fn test_hello_world() {

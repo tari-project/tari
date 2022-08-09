@@ -23,7 +23,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use tari_template_abi::encode;
-use tari_template_types::models::PackageId;
+use tari_template_lib::models::PackageId;
 
 use crate::{
     instruction::{error::InstructionError, Instruction, InstructionSet},

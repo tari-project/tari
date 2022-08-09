@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_template_abi::{CreateComponentArg, Decode, Encode};
-use tari_template_types::{
+use tari_template_lib::{
     models::{ContractAddress, PackageId},
     Hash,
 };

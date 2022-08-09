@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use digest::Digest;
 use rand::{rngs::OsRng, RngCore};
-use tari_template_types::models::PackageId;
+use tari_template_lib::models::PackageId;
 
 use crate::{
     crypto,

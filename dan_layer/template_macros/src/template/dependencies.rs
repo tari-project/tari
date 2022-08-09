@@ -26,7 +26,6 @@ use quote::quote;
 /// Returns code that contains global functions and types implicitly available to contract authors
 pub fn generate_dependencies() -> TokenStream {
     quote! {
-        use tari_template_abi::{borsh, call_debug as debug, Decode, Encode};
-        use tari_template_lib::{engine, get_context as context};
+        use tari_template_lib::template_dependencies::*;
     }
 }

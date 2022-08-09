@@ -20,17 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
+use tari_template_abi::{Decode, Encode};
 
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
+use crate::models::{Contract, Package};
 
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
-
-mod types;
-pub use types::*;
+#[derive(Debug, Decode, Encode)]
+pub struct AbiContext {
+    pub package: Package,
+    pub contract: Contract,
+}

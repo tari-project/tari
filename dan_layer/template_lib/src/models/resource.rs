@@ -20,7 +20,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub const OP_EMIT_LOG: i32 = 0x00;
-pub const OP_CREATE_COMPONENT: i32 = 0x01;
-pub const OP_GET_COMPONENT: i32 = 0x02;
-pub const OP_SET_COMPONENT_STATE: i32 = 0x03;
+use std::marker::PhantomData;
+
+use crate::{hash::HashParseError, Hash};
+
+#[derive(Debug)]
+pub struct ResourceAddress<T> {
+    address: Hash,
+    _t: PhantomData<T>,
+}
+
+impl<T> ResourceAddress<T> {
+    //     pub fn descriptor(&self) -> (Hash, UniversalTypeId) {
+    //         (self.address, T::universal_type_id())
+    //     }
+
+    pub fn from_hex(s: &str) -> Result<Self, HashParseError> {
+        Ok(ResourceAddress {
+            address: Hash::from_hex(s)?,
+            _t: PhantomData,
+        })
+    }
+}
+
+impl<T> Clone for ResourceAddress<T> {
+    fn clone(&self) -> Self {
+        Self {
+            address: self.address,
+            _t: PhantomData,
+        }
+    }
+}
+
+impl<T> Copy for ResourceAddress<T> {}

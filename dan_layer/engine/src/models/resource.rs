@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_template_abi::{Decode, Encode};
-use tari_template_types::Hash;
+use tari_template_lib::Hash;
 
 pub type ResourceAddress = Hash;
 
@@ -29,10 +29,24 @@ pub type ResourceAddress = Hash;
 pub enum Resource {
     Coin {
         address: ResourceAddress,
+        // type_descriptor: TypeDescriptor,
         amount: u64,
     },
     Token {
         address: ResourceAddress,
+        // type_descriptor: TypeDescriptor,
         token_ids: Vec<u64>,
     },
+}
+
+pub trait ResourceTypeDescriptor {
+    fn type_descriptor(&self) -> TypeDescriptor;
+}
+
+// The thinking here, that a resource address + a "local" type id together can used to validate type safety of the
+// resources at runtime. The local type id can be defined as a unique id within the scope of the contract. We'll have to
+// get further to see if this can work or is even needed.
+#[derive(Debug, Clone, Encode, Decode, serde::Deserialize)]
+pub struct TypeDescriptor {
+    type_id: u16,
 }

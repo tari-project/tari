@@ -94,8 +94,7 @@ mod tests {
         let output = generate_template(input).unwrap();
 
         assert_code_eq(output, quote! {
-            use tari_template_abi::{borsh, call_debug as debug, Decode, Encode};
-            use tari_template_lib::{engine, get_context as context};
+            use tari_template_lib::template_dependencies::*;
 
             pub mod template {
                 use super::*;
@@ -149,7 +148,7 @@ mod tests {
 
             #[no_mangle]
             pub extern "C" fn State_main(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-                use ::tari_template_abi::{decode, encode_with_len, CallInfo, LogLevel, wrap_ptr};
+                use ::tari_template_abi::{decode, encode_with_len, CallInfo, wrap_ptr};
                 use ::tari_template_lib::set_context_from_call_info;
 
                 if call_info.is_null() {
@@ -170,13 +169,13 @@ mod tests {
                         result = encode_with_len(&rtn);
                     },
                     "get" => {
-                        let component = decode::<::tari_template_types::models::ComponentInstance>(&call_info.args[0usize]).unwrap();
+                        let component = decode::<::tari_template_lib::models::ComponentInstance>(&call_info.args[0usize]).unwrap();
                         let mut state = decode::<template::State>(&component.state).unwrap();
                         let rtn = template::State::get(&mut state);
                         result = encode_with_len(&rtn);
                     },
                     "set" => {
-                        let component = decode::<::tari_template_types::models::ComponentInstance>(&call_info.args[0usize]).unwrap();
+                        let component = decode::<::tari_template_lib::models::ComponentInstance>(&call_info.args[0usize]).unwrap();
                         let mut state = decode::<template::State>(&component.state).unwrap();
                         let arg_1 = decode::<u32>(&call_info.args[1usize]).unwrap();
                         let rtn = template::State::set(&mut state, arg_1);

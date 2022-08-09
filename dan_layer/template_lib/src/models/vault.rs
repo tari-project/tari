@@ -20,40 +20,37 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use tari_template_abi::{Decode, Encode};
 
-use crate::models::{ContractAddress, PackageId};
+use crate::models::{Bucket, ResourceAddress};
 
-pub type ComponentId = crate::Hash;
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct ComponentInstance {
-    pub component_id: ComponentId,
-    pub contract_address: ContractAddress,
-    pub package_id: PackageId,
-    pub module_name: String,
-    pub state: Vec<u8>,
-}
-impl ComponentInstance {
-    pub fn new(component_id: ComponentId, component: Component) -> Self {
-        Self {
-            component_id,
-            contract_address: component.contract_address,
-            package_id: component.package_id,
-            module_name: component.module_name,
-            state: component.state,
-        }
-    }
-
-    pub fn id(&self) -> ComponentId {
-        self.component_id
-    }
+#[derive(Clone, Debug, Decode, Encode)]
+pub struct Vault<T> {
+    resource_address: ResourceAddress<T>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Component {
-    pub contract_address: ContractAddress,
-    pub package_id: PackageId,
-    pub module_name: String,
-    pub state: Vec<u8>,
+impl<T> Vault<T> {
+    pub fn new(resource_address: ResourceAddress<T>) -> Self {
+        // Call to call_engine will rather be in the ResourceBuilder/VaultBuilder, and the resulting address passed in
+        // here. let resource_address = call_engine(OP_RESOURCE_INVOKE, ResourceInvoke {
+        //     resource_ref: ResourceRef::Vault,
+        //     action: ResourceAction::Create,
+        //     args: args![],
+        // });
+
+        Self { resource_address }
+    }
+
+    pub fn put(&mut self, _bucket: Bucket<T>) {
+        // let _ok: () = call_engine(OP_RESOURCE_INVOKE, ResourceInvoke {
+        //     resource_ref: ResourceRef::VaultRef(self.resource_address()),
+        //     action: ResourceAction::Put,
+        //     args: args![bucket],
+        // });
+        todo!()
+    }
+
+    pub fn resource_address(&self) -> ResourceAddress<T> {
+        self.resource_address
+    }
 }

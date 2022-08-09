@@ -19,9 +19,27 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+pub mod abi_context;
 
+mod hash;
+pub use hash::Hash;
+
+pub mod args;
+pub mod models;
+pub mod ops;
+
+// ---------------------------------------- WASM target exports ------------------------------------------------
+
+#[cfg(target_arch = "wasm32")]
+pub mod template_dependencies;
+
+#[cfg(target_arch = "wasm32")]
 mod context;
+#[cfg(target_arch = "wasm32")]
 pub use context::{get_context, set_context_from_call_info};
 
+#[cfg(target_arch = "wasm32")]
 mod engine;
+
+#[cfg(target_arch = "wasm32")]
 pub use engine::engine;

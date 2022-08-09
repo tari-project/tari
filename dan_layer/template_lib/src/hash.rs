@@ -28,7 +28,7 @@ use std::{
     ops::Deref,
 };
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use tari_template_abi::{Decode, Encode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
@@ -72,15 +72,15 @@ impl Deref for Hash {
     }
 }
 
-impl BorshSerialize for Hash {
+impl Encode for Hash {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         self.0.serialize(writer)
     }
 }
 
-impl BorshDeserialize for Hash {
+impl Decode for Hash {
     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let hash = <[u8; 32] as BorshDeserialize>::deserialize(buf)?;
+        let hash = <[u8; 32] as Decode>::deserialize(buf)?;
         Ok(Hash(hash))
     }
 }

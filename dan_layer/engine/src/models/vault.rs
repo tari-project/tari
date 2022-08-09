@@ -19,17 +19,18 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::models::resource::ResourceAddress;
+use tari_template_abi::{Decode, Encode};
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+use crate::models::Resource;
+
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Vault {
-    address: ResourceAddress,
+    resource: Resource,
 }
 
 impl Vault {
-    pub fn new(address: ResourceAddress) -> Self {
-        Self { address }
+    pub fn new(resource: Resource) -> Self {
+        Self { resource }
     }
 }

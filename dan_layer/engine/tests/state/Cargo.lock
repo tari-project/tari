@@ -136,7 +136,6 @@ dependencies = [
  "tari_template_abi",
  "tari_template_lib",
  "tari_template_macros",
- "tari_template_types",
 ]
 
 [[package]]
@@ -155,15 +154,14 @@ name = "tari_template_abi"
 version = "0.1.0"
 dependencies = [
  "borsh",
- "tari_template_types",
 ]
 
 [[package]]
 name = "tari_template_lib"
 version = "0.1.0"
 dependencies = [
+ "borsh",
  "tari_template_abi",
- "tari_template_types",
 ]
 
 [[package]]
@@ -173,14 +171,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
- "tari_template_abi",
-]
-
-[[package]]
-name = "tari_template_types"
-version = "0.1.0"
-dependencies = [
- "borsh",
 ]
 
 [[package]]

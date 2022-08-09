@@ -28,8 +28,10 @@ use tari_dan_engine::{
     runtime::{RuntimeError, RuntimeInterface},
     state_store::{memory::MemoryStateStore, AtomicDb, StateReader, StateWriter},
 };
-use tari_template_abi::LogLevel;
-use tari_template_types::models::{Component, ComponentId, ComponentInstance};
+use tari_template_lib::{
+    args::LogLevel,
+    models::{Component, ComponentId, ComponentInstance},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct MockRuntimeInterface {

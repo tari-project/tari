@@ -20,23 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use borsh::{BorshDeserialize, BorshSerialize};
-
-use crate::Hash;
-
-pub type PackageId = Hash;
-
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Package {
-    pub id: PackageId,
-}
-
-impl Package {
-    pub fn new(id: PackageId) -> Self {
-        Self { id }
-    }
-
-    pub fn id(&self) -> &PackageId {
-        &self.id
-    }
-}
+pub const OP_EMIT_LOG: i32 = 0x00;
+pub const OP_CREATE_COMPONENT: i32 = 0x01;
+pub const OP_GET_COMPONENT: i32 = 0x02;
+pub const OP_SET_COMPONENT_STATE: i32 = 0x03;
+pub const OP_RESOURCE_INVOKE: i32 = 0x04;

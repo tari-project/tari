@@ -30,7 +30,7 @@ pub use processor::InstructionProcessor;
 
 mod signature;
 pub use signature::InstructionSignature;
-use tari_template_types::models::{ComponentId, PackageId};
+use tari_template_lib::models::{ComponentId, PackageId};
 
 #[derive(Debug, Clone)]
 pub enum Instruction {

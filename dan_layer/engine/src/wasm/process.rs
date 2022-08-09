@@ -23,19 +23,13 @@
 use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_template_abi::{
-    decode,
-    encode_into,
-    encode_with_len,
+use tari_template_abi::{decode, encode, encode_into, encode_with_len, CallInfo, Type};
+use tari_template_lib::{
+    abi_context::AbiContext,
+    args::{CreateComponentArg, EmitLogArg, GetComponentArg, SetComponentStateArg},
+    models::{Component, Contract, ContractAddress, Package, PackageId},
     ops,
-    CallInfo,
-    CreateComponentArg,
-    EmitLogArg,
-    GetComponentArg,
-    SetComponentStateArg,
-    Type,
 };
-use tari_template_types::models::{Component, Contract, ContractAddress, PackageId};
 use wasmer::{Function, Instance, Module, Store, Val, WasmerEnv};
 
 use crate::{
@@ -148,6 +142,16 @@ impl Process {
         //       out-of-bounds access error.
         Ok(ptr.as_i32())
     }
+
+    fn encoded_abi_context(&self) -> Vec<u8> {
+        encode(&AbiContext {
+            package: Package { id: self.package_id },
+            contract: Contract {
+                address: self.contract_address,
+            },
+        })
+        .unwrap()
+    }
 }
 
 impl Invokable for Process {
@@ -160,10 +164,7 @@ impl Invokable for Process {
             .ok_or_else(|| WasmExecutionError::FunctionNotFound { name: name.into() })?;
 
         let call_info = CallInfo {
-            contract: Contract {
-                address: self.contract_address,
-            },
-            package: tari_template_types::models::Package { id: self.package_id },
+            abi_context: self.encoded_abi_context(),
             func_name: func_def.name.clone(),
             args,
         };
