@@ -3,7 +3,6 @@
 
 use std::fmt::{Display, Formatter};
 
-use digest::Digest;
 use tari_common_types::types::{FixedHash, PublicKey};
 use tari_crypto::hash::blake2::Blake256;
 use tari_dan_common_types::TemplateId;
@@ -81,12 +80,16 @@ impl Instruction {
     }
 
     pub fn calculate_hash(&self) -> FixedHash {
-        let b = dan_layer_engine_instructions(INSTRUCTION_LABEL)
+        // Blake256 has 32-byte output
+        let b = dan_layer_engine_instructions::<Blake256>(INSTRUCTION_LABEL)
             .chain(self.method.as_bytes())
-            .chain(&self.args);
-        // b.chain(self.from.as_bytes())
-        //     .chain(com_sig_to_bytes(&self.signature))
-        b.finalize().into()
+            .chain(&self.args)
+            .finalize();
+        
+        let mut out = [0u8; 32];
+        out.clone_from_slice(b.as_ref());
+
+        out.into()
     }
 }
 

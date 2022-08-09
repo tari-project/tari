@@ -37,5 +37,5 @@ pub(crate) const INSTRUCTION_LABEL: &str = "instruction";
 pub(crate) fn dan_layer_engine_instructions<D: Digest + LengthExtensionAttackResistant>(
     label: &'static str,
 ) -> DomainSeparatedHasher<D, DanLayerEngineInstructionsDomain> {
-    DomainSeparatedHasher::<D, DanLayerCoreModelsDomain>::new_with_label(label)
+    DomainSeparatedHasher::<D, DanLayerEngineInstructionsDomain>::new_with_label(label)
 }

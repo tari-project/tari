@@ -4,5 +4,5 @@
 mod hashing;
 mod instruction;
 
-pub(crate) use hashing::dan_layer_engine;
+pub(crate) use hashing::dan_layer_engine_instructions;
 pub use instruction::Instruction;
