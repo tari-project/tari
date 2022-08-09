@@ -22,6 +22,8 @@
 
 mod mock_runtime_interface;
 
+use std::path::Path;
+
 use borsh::BorshDeserialize;
 use mock_runtime_interface::MockRuntimeInterface;
 use tari_crypto::ristretto::RistrettoSecretKey;
@@ -30,30 +32,32 @@ use tari_dan_engine::{
     instruction::{Instruction, InstructionBuilder, InstructionProcessor},
     packager::Package,
     state_store::{memory::MemoryStateStore, AtomicDb, StateReader},
-    wasm::compile::compile_template,
+    wasm::{compile::compile_template, LoadedWasmModule},
 };
-use tari_template_abi::encode;
-use tari_template_lib::models::{ComponentId, ComponentInstance, PackageId};
+use tari_template_lib::{
+    args,
+    models::{ComponentId, ComponentInstance},
+};
 
 #[test]
 fn test_hello_world() {
-    let template_test = TemplateTest::new("HelloWorld".to_string(), "tests/hello_world".to_string());
-    let result: String = template_test.call_function("greet".to_string(), vec![]);
+    let template_test = TemplateTest::new(vec!["tests/hello_world"]);
+    let result: String = template_test.call_function("HelloWorld", "greet", args![]);
 
     assert_eq!(result, "Hello World!");
 }
 
 #[test]
 fn test_state() {
-    let template_test = TemplateTest::new("State".to_string(), "tests/state".to_string());
+    let template_test = TemplateTest::new(vec!["tests/state"]);
     let store = template_test.state_store();
 
     // constructor
-    let component_id1: ComponentId = template_test.call_function("new".to_string(), vec![]);
+    let component_id1: ComponentId = template_test.call_function("State", "new", args![]);
     template_test.assert_calls(&["emit_log", "create_component"]);
     template_test.clear_calls();
 
-    let component_id2: ComponentId = template_test.call_function("new".to_string(), vec![]);
+    let component_id2: ComponentId = template_test.call_function("State", "new", args![]);
     assert_ne!(component_id1, component_id2);
 
     let component: ComponentInstance = store
@@ -73,36 +77,74 @@ fn test_state() {
 
     // call the "set" method to update the instance value
     let new_value = 20_u32;
-    template_test.call_method::<()>(component_id2, "set".to_string(), vec![encode(&new_value).unwrap()]);
+    template_test.call_method::<()>(component_id2, "set", args![new_value]);
 
     // call the "get" method to get the current value
-    let value: u32 = template_test.call_method(component_id2, "get".to_string(), vec![]);
+    let value: u32 = template_test.call_method(component_id2, "get", args![]);
+
+    assert_eq!(value, new_value);
+}
+
+#[test]
+fn test_composed() {
+    let template_test = TemplateTest::new(vec!["tests/state", "tests/hello_world"]);
+
+    let functions = template_test
+        .get_module("HelloWorld")
+        .template_def()
+        .functions
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(functions, vec!["greet", "new", "custom_greeting"]);
+
+    let functions = template_test
+        .get_module("State")
+        .template_def()
+        .functions
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(functions, vec!["new", "set", "get"]);
+
+    let component_state: ComponentId = template_test.call_function("State", "new", args![]);
+    let component_hw: ComponentId = template_test.call_function("HelloWorld", "new", args!["أهلا"]);
+
+    let result: String = template_test.call_method(component_hw, "custom_greeting", args!["Wasm"]);
+    assert_eq!(result, "أهلا Wasm!");
+
+    // call the "set" method to update the instance value
+    let new_value = 20_u32;
+    template_test.call_method::<()>(component_state, "set", args![new_value]);
+
+    // call the "get" method to get the current value
+    let value: u32 = template_test.call_method(component_state, "get", args![]);
 
     assert_eq!(value, new_value);
 }
 
 struct TemplateTest {
-    template_name: String,
-    package_id: PackageId,
+    package: Package,
     processor: InstructionProcessor<MockRuntimeInterface>,
     secret_key: RistrettoSecretKey,
     runtime_interface: MockRuntimeInterface,
 }
 
 impl TemplateTest {
-    pub fn new(template_name: String, template_path: String) -> Self {
+    pub fn new<P: AsRef<Path>>(template_paths: Vec<P>) -> Self {
         let runtime_interface = MockRuntimeInterface::new();
-        let mut processor = InstructionProcessor::new(runtime_interface.clone());
         let (secret_key, _pk) = create_key_pair();
 
-        let wasm = compile_template(template_path).unwrap();
-        let package = Package::builder().add_wasm_module(wasm).build().unwrap();
-        let package_id = package.id();
-        processor.load(package);
+        let wasms = template_paths.into_iter().map(|path| compile_template(path).unwrap());
+        let mut builder = Package::builder();
+        for wasm in wasms {
+            builder.add_wasm_module(wasm);
+        }
+        let package = builder.build().unwrap();
+        let processor = InstructionProcessor::new(runtime_interface.clone(), package.clone());
 
         Self {
-            template_name,
-            package_id,
+            package,
             processor,
             secret_key,
             runtime_interface,
@@ -122,13 +164,17 @@ impl TemplateTest {
         self.runtime_interface.clear_calls();
     }
 
-    pub fn call_function<T>(&self, func_name: String, args: Vec<Vec<u8>>) -> T
+    pub fn get_module(&self, module_name: &str) -> &LoadedWasmModule {
+        self.package.get_module_by_name(module_name).unwrap()
+    }
+
+    pub fn call_function<T>(&self, template_name: &str, func_name: &str, args: Vec<Vec<u8>>) -> T
     where T: BorshDeserialize {
         let instruction = InstructionBuilder::new()
             .add_instruction(Instruction::CallFunction {
-                package_id: self.package_id,
-                template: self.template_name.clone(),
-                function: func_name,
+                package_id: self.package.id(),
+                template: template_name.to_owned(),
+                function: func_name.to_owned(),
                 args,
             })
             .sign(&self.secret_key)
@@ -138,13 +184,13 @@ impl TemplateTest {
         result[0].decode::<T>().unwrap()
     }
 
-    pub fn call_method<T>(&self, component_id: ComponentId, method_name: String, args: Vec<Vec<u8>>) -> T
+    pub fn call_method<T>(&self, component_id: ComponentId, method_name: &str, args: Vec<Vec<u8>>) -> T
     where T: BorshDeserialize {
         let instruction = InstructionBuilder::new()
             .add_instruction(Instruction::CallMethod {
-                package_id: self.package_id,
+                package_id: self.package.id(),
                 component_id,
-                method: method_name,
+                method: method_name.to_owned(),
                 args,
             })
             .sign(&self.secret_key)

@@ -55,3 +55,22 @@ pub struct SetComponentStateArg {
     pub component_id: ComponentId,
     pub state: Vec<u8>,
 }
+
+#[macro_export]
+macro_rules! __template_lib_count {
+    () => (0usize);
+    ( $x:tt $($next:tt)* ) => (1usize + $crate::__template_lib_count!($($next)*));
+}
+
+#[macro_export]
+macro_rules! args {
+    () => (Vec::new());
+
+    ($($args:expr),+) => {{
+        let mut args = Vec::with_capacity($crate::__template_lib_count!($($args),+));
+        $(
+            args.push(tari_template_abi::encode(&$args).unwrap());
+        )+
+        args
+    }}
+}

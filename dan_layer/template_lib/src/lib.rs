@@ -24,6 +24,7 @@ pub mod abi_context;
 mod hash;
 pub use hash::Hash;
 
+#[macro_use]
 pub mod args;
 pub mod models;
 pub mod ops;

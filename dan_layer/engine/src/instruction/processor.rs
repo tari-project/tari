@@ -20,10 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use tari_template_abi::encode;
-use tari_template_lib::models::PackageId;
 
 use crate::{
     instruction::{error::InstructionError, Instruction, InstructionSet},
@@ -33,25 +32,20 @@ use crate::{
     wasm::{ExecutionResult, Process},
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct InstructionProcessor<TRuntimeInterface> {
-    packages: HashMap<PackageId, Package>,
+    package: Package,
     runtime_interface: TRuntimeInterface,
 }
 
 impl<TRuntimeInterface> InstructionProcessor<TRuntimeInterface>
 where TRuntimeInterface: RuntimeInterface + Clone + 'static
 {
-    pub fn new(runtime_interface: TRuntimeInterface) -> Self {
+    pub fn new(runtime_interface: TRuntimeInterface, package: Package) -> Self {
         Self {
-            packages: HashMap::new(),
+            package,
             runtime_interface,
         }
-    }
-
-    pub fn load(&mut self, package: Package) -> &mut Self {
-        self.packages.insert(package.id(), package);
-        self
     }
 
     pub fn execute(&self, instruction_set: InstructionSet) -> Result<Vec<ExecutionResult>, InstructionError> {
@@ -67,11 +61,12 @@ where TRuntimeInterface: RuntimeInterface + Clone + 'static
                     function,
                     args,
                 } => {
-                    let package = self
-                        .packages
-                        .get(&package_id)
-                        .ok_or(InstructionError::PackageNotFound { package_id })?;
-                    let module = package
+                    if package_id != self.package.id() {
+                        return Err(InstructionError::PackageNotFound { package_id });
+                    }
+
+                    let module = self
+                        .package
                         .get_module_by_name(&template)
                         .ok_or(InstructionError::TemplateNameNotFound { name: template })?;
 
@@ -85,13 +80,11 @@ where TRuntimeInterface: RuntimeInterface + Clone + 'static
                     method,
                     args,
                 } => {
-                    let package = self
-                        .packages
-                        .get(&package_id)
-                        .ok_or(InstructionError::PackageNotFound { package_id })?;
-
+                    if package_id != self.package.id() {
+                        return Err(InstructionError::PackageNotFound { package_id });
+                    }
                     let component = self.runtime_interface.get_component(&component_id)?;
-                    let module = package.get_module_by_name(&component.module_name).ok_or_else(|| {
+                    let module = self.package.get_module_by_name(&component.module_name).ok_or_else(|| {
                         InstructionError::TemplateNameNotFound {
                             name: component.module_name.clone(),
                         }

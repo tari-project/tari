@@ -110,6 +110,10 @@ impl LoadedWasmModule {
         &self.template.template_name
     }
 
+    pub fn template_def(&self) -> &TemplateDef {
+        &self.template
+    }
+
     pub fn find_func_by_name(&self, function_name: &str) -> Option<&FunctionDef> {
         self.template.functions.iter().find(|f| f.name == *function_name)
     }
