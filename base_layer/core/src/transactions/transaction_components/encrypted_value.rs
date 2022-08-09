@@ -25,7 +25,6 @@
 
 use std::io::{self, Read, Write};
 
-use blake2::Digest;
 use chacha20poly1305::{
     aead::{Aead, Error, NewAead, Payload},
     ChaCha20Poly1305,
@@ -34,13 +33,13 @@ use chacha20poly1305::{
 };
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher};
 use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::tari_amount::MicroTari,
+    transactions::{tari_amount::MicroTari, TransactionKdfDomain},
 };
 
 const SIZE: usize = 24;
@@ -120,12 +119,12 @@ impl EncryptedValue {
 // Generate a ChaCha20-Poly1305 key from an ECDH shared secret and commitment using Blake2b
 fn kdf_aead(shared_secret: &PrivateKey, commitment: &Commitment) -> Key {
     const AEAD_KEY_LENGTH: usize = 32; // The length in bytes of a ChaCha20-Poly1305 AEAD key
-    let mut hasher = Blake256::with_params(&[], b"SCAN_AEAD".as_ref(), b"TARI_KDF".as_ref())
-        .expect("Given Blake256 params should not produce failure");
-    hasher.update(shared_secret.as_bytes());
-    hasher.update(commitment.as_bytes());
-    let output = hasher.finalize();
-    *Key::from_slice(&output[..AEAD_KEY_LENGTH])
+    let output = DomainSeparatedHasher::<Blake256, TransactionKdfDomain>::new_with_label("encrypted_value")
+        .chain(shared_secret.as_bytes())
+        .chain(commitment.as_bytes())
+        .finalize();
+
+    *Key::from_slice(&output.as_ref()[..AEAD_KEY_LENGTH])
 }
 
 impl ConsensusEncoding for EncryptedValue {
