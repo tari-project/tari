@@ -48,7 +48,7 @@ pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
 }
 
 pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
-    CommsChallenge::new()
+    comms_dht_dedup_message_hash::<CommsChallenge>()
         .chain(message_signature)
         .chain(&body)
         .finalize()
