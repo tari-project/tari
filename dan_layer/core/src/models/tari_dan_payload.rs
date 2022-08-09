@@ -36,7 +36,7 @@ pub struct TariDanPayload {
     checkpoint: Option<CheckpointData>,
 }
 
-impl TariDanPaconstruct_challengeyload {
+impl TariDanPayload {
     pub fn new(instruction_set: InstructionSet, checkpoint: Option<CheckpointData>) -> Self {
         let mut result = Self {
             hash: FixedHash::zero(),
