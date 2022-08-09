@@ -27,10 +27,10 @@ use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::{hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyTrait};
 use tari_utilities::ByteArray;
 
-use super::hashing::{comms_core_peer_manager_domain, IDENTITY_SIGNATURE};
+use super::hashing::{comms_core_peer_manager_domain, CommsCorePeerManagerDomain, IDENTITY_SIGNATURE};
 use crate::{
     message::MessageExt,
     multiaddr::Multiaddr,
@@ -137,7 +137,7 @@ impl IdentitySignature {
         features: PeerFeatures,
         addresses: I,
         updated_at: DateTime<Utc>,
-    ) -> CommsChallenge {
+    ) -> DomainSeparatedHasher<CommsChallenge, CommsCorePeerManagerDomain> {
         // e = H(P||R||m)
         let challenge = comms_core_peer_manager_domain::<CommsChallenge>(IDENTITY_SIGNATURE)
             .chain(public_key.as_bytes())
