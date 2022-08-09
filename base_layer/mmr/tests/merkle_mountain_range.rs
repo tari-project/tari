@@ -23,24 +23,24 @@
 #[allow(dead_code)]
 mod support;
 
-use digest::Digest;
-use support::{combine_hashes, create_mmr, int_to_hash, Hasher};
-use tari_mmr::MerkleMountainRange;
+use support::{combine_hashes, create_mmr, int_to_hash};
+
+use crate::support::{MmrTestHasherBlake256, TestMmr};
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]
 fn zero_length_mmr() {
-    let mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let mmr = TestMmr::new(Vec::default());
     assert_eq!(mmr.len(), Ok(0));
     assert_eq!(mmr.is_empty(), Ok(true));
-    let empty_hash = Hasher::digest(b"").to_vec();
+    let empty_hash = MmrTestHasherBlake256::new().digest(b"").as_ref().to_vec();
     assert_eq!(mmr.get_merkle_root(), Ok(empty_hash));
 }
 
 /// Successively build up an MMR and check that the roots, heights and indices are all correct.
 #[test]
 fn build_mmr() {
-    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let mut mmr = TestMmr::new(Vec::default());
     // Add a single item
     let h0 = int_to_hash(0);
 
@@ -98,8 +98,8 @@ fn build_mmr() {
 
 #[test]
 fn equality_check() {
-    let mut ma = MerkleMountainRange::<Hasher, _>::new(Vec::default());
-    let mut mb = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let mut ma = TestMmr::new(Vec::default());
+    let mut mb = TestMmr::new(Vec::default());
     assert!(ma == mb);
     assert!(ma.push(int_to_hash(1)).is_ok());
     assert!(ma != mb);
@@ -118,7 +118,7 @@ fn validate() {
 
 #[test]
 fn restore_from_leaf_hashes() {
-    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let mut mmr = TestMmr::new(Vec::default());
     let leaf_hashes = mmr.get_leaf_hashes(0, 1).unwrap();
     assert_eq!(leaf_hashes.len(), 0);
 
@@ -157,7 +157,7 @@ fn restore_from_leaf_hashes() {
 
 #[test]
 fn find_leaf_index() {
-    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+    let mut mmr = TestMmr::new(Vec::default());
     let h0 = int_to_hash(0);
     let h1 = int_to_hash(1);
     let h2 = int_to_hash(2);

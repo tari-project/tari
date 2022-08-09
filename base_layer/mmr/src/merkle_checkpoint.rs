@@ -28,6 +28,7 @@ use serde::{
     de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{Serialize, SerializeStruct, Serializer},
 };
+use tari_common::DomainDigest;
 
 use crate::{backend::ArrayLike, error::MerkleMountainRangeError, mutable_mmr::MutableMmr, Hash};
 
@@ -55,7 +56,7 @@ impl MerkleCheckPoint {
     /// from here.
     pub fn apply<D, B2>(&self, mmr: &mut MutableMmr<D, B2>) -> Result<(), MerkleMountainRangeError>
     where
-        D: Digest,
+        D: Digest + DomainDigest,
         B2: ArrayLike<Value = Hash>,
     {
         for node in &self.nodes_added {
