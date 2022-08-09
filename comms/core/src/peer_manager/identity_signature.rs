@@ -23,7 +23,6 @@
 use std::convert::{TryFrom, TryInto};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -74,8 +73,9 @@ impl IdentitySignature {
             features,
             addresses,
             updated_at,
-        );
-        let signature = Signature::sign(secret_key.clone(), secret_nonce, &challenge.finalize())
+        )
+        .finalize();
+        let signature = Signature::sign(secret_key.clone(), secret_nonce, &challenge.as_ref())
             .expect("unreachable panic: challenge hash digest is the correct length");
         Self {
             version: Self::LATEST_VERSION,
@@ -126,8 +126,9 @@ impl IdentitySignature {
             features,
             addresses,
             self.updated_at,
-        );
-        self.signature.verify_challenge(public_key, &challenge.finalize())
+        )
+        .finalize();
+        self.signature.verify_challenge(public_key, challenge.as_ref())
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
