@@ -1074,30 +1074,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn clear_pending_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-    ) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        let output = OutputSql::find_pending_coinbase_at_block_height(block_height, &conn)?;
-
-        output.delete(&conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - clear_pending_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
