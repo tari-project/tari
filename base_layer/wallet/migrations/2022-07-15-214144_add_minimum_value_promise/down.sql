@@ -1,1 +1,0 @@
-ALTER TABLE outputs DROP COLUMN minimum_value_promise;

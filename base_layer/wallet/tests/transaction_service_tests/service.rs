@@ -3059,7 +3059,7 @@ async fn test_restarting_transaction_protocols() {
 }
 
 #[tokio::test]
-async fn test_coinbase_transactions_rejection_same_height() {
+async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_height() {
     let factories = CryptoFactories::default();
 
     let (connection, _temp_dir) = make_wallet_database_connection(None);
@@ -3105,7 +3105,35 @@ async fn test_coinbase_transactions_rejection_same_height() {
         fees1 + reward1
     );
 
-    // Create another coinbase Txn at the same block height; the previous one will be cancelled
+    // Create a second coinbase txn at the first block height, with same output hash as the previous one
+    // the previous one should be cancelled
+    let _tx1b = alice_ts_interface
+        .transaction_service_handle
+        .generate_coinbase_transaction(reward1, fees1, block_height_a)
+        .await
+        .unwrap();
+    let transactions = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transactions()
+        .await
+        .unwrap();
+    assert_eq!(transactions.len(), 1);
+    let _tx_id1b = transactions
+        .values()
+        .find(|tx| tx.amount == fees1 + reward1)
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        alice_ts_interface
+            .output_manager_service_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1
+    );
+
+    // Create another coinbase Txn at the same block height; the previous one should not be cancelled
     let _tx2 = alice_ts_interface
         .transaction_service_handle
         .generate_coinbase_transaction(reward2, fees2, block_height_a)
@@ -3129,10 +3157,10 @@ async fn test_coinbase_transactions_rejection_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees2 + reward2
+        fees1 + reward1 + fees2 + reward2
     );
 
-    // Create a third coinbase Txn at the second block height; only the last two will be valid
+    // Create a third coinbase Txn at the second block height; all the three should be valid
     let _tx3 = alice_ts_interface
         .transaction_service_handle
         .generate_coinbase_transaction(reward3, fees3, block_height_b)
@@ -3156,7 +3184,7 @@ async fn test_coinbase_transactions_rejection_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees2 + reward2 + fees3 + reward3
+        fees1 + reward1 + fees2 + reward2 + fees3 + reward3
     );
 
     assert!(!transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3241,7 +3269,7 @@ async fn test_coinbase_generation_and_monitoring() {
         fees1 + reward1 + fees2 + reward2
     );
 
-    // Take out a second one at the second height which should overwrite the initial one
+    // Take out a second one at the second height which should not overwrite the initial one
     let _tx2b = alice_ts_interface
         .transaction_service_handle
         .generate_coinbase_transaction(reward2, fees2b, block_height_b)
@@ -3265,7 +3293,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1 + fees2b + reward2
+        fees1 + reward1 + fees2b + reward2 + fees2 + reward2
     );
 
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3914,6 +3942,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
     for tx in transactions.values() {
         assert_eq!(tx.amount, fees1 + reward1);
     }
+    // balance should be fees1 + reward1, not double
     assert_eq!(
         ts_interface
             .output_manager_service_handle
@@ -3948,7 +3977,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees2 + reward2
+        fees1 + reward1 + fees2 + reward2
     );
 
     // a requested coinbase transaction for a new height should be different
@@ -3975,7 +4004,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        2 * (fees2 + reward2)
+        fees1 + reward1 + 2 * (fees2 + reward2)
     );
 }
 
