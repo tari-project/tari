@@ -61,7 +61,7 @@ use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
-use tari_mmr::MutableMmr;
+use tari_mmr::{MerkleMountainRange, MutableMmr};
 use tari_script::script;
 
 pub fn create_coinbase(
@@ -113,7 +113,7 @@ fn genesis_template(
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-fn print_new_genesis_block_esmeralda() {
+fn print_new_genesis_block_esme() {
     print_new_genesis_block(Network::Esmeralda);
 }
 
@@ -151,11 +151,25 @@ fn print_new_genesis_block(network: Network) {
         .build()
         .unwrap();
 
-    header.kernel_mr = kernel.hash();
+    let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+    kernel_mmr.push(kernel.hash()).unwrap();
+
+    let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+    witness_mmr.push(utxo.witness_hash()).unwrap();
+    let mut output_mmr = MutableMmr::<Blake256, _>::new(Vec::new(), Bitmap::create()).unwrap();
+    output_mmr.push(utxo.hash()).unwrap();
+
+    header.kernel_mr = kernel_mmr.get_merkle_root().unwrap();
     header.kernel_mmr_size += 1;
-    header.output_mr = utxo.hash();
-    header.witness_mr = utxo.witness_hash();
+    header.output_mr = output_mmr.get_merkle_root().unwrap();
+    header.witness_mr = witness_mmr.get_merkle_root().unwrap();
     header.output_mmr_size += 1;
+
+    // header.kernel_mr = kernel.hash();
+    // header.kernel_mmr_size += 1;
+    // header.output_mr = utxo.hash();
+    // header.witness_mr = utxo.witness_hash();
+    // header.output_mmr_size += 1;
 
     let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
 
@@ -170,19 +184,22 @@ fn print_new_genesis_block(network: Network) {
 
     // Note: This is printed in the same order as needed for 'fn get_dibbler_genesis_block_raw()'
     println!();
+    println!("{} genesis block", network);
+    println!();
     println!(
-        "kernel excess_sig: public_nonce {}, signature {}",
+        "kernel excess_sig: public_nonce {} signature {}",
         block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
         block.body.kernels()[0].excess_sig.get_signature().to_hex()
     );
     println!();
     println!(
-        "Coinbase metasig: public_nonce {}, signature_u {}, signature_v {}",
+        "Coinbase metasig: public_nonce {} signature_u {} signature_v {}",
         block.body.outputs()[0].metadata_signature.public_nonce().to_hex(),
         block.body.outputs()[0].metadata_signature.u().to_hex(),
         block.body.outputs()[0].metadata_signature.v().to_hex(),
     );
     println!();
+    println!("Genesis coinbase maturity: {}", lock_height);
     println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
     println!("UTXO range_proof: {}", block.body.outputs()[0].proof.to_hex());
     println!(
