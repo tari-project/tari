@@ -71,9 +71,10 @@ fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
     (
         parts
             .next()
+            .map(|s| s.trim())
             .expect("splitn always emits at least one part")
             .to_lowercase(),
-        parts.next(),
+        parts.next().map(|s| s.trim()),
     )
 }
 
@@ -143,36 +144,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tor_parser_test() {
-        let auth = TorControlAuthentication::from_str("none");
-        assert_eq!(auth, Ok(TorControlAuthentication::None));
+    fn tor_parser_valid_case() {
+        let auth = TorControlAuthentication::from_str("auto").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Auto);
 
-        let auth = TorControlAuthentication::from_str("password=");
-        assert_eq!(auth, Ok(TorControlAuthentication::Password("".into())));
+        let auth = TorControlAuthentication::from_str("none").unwrap();
+        assert_eq!(auth, TorControlAuthentication::None);
 
-        let auth = TorControlAuthentication::from_str("password=123");
-        assert_eq!(auth, Ok(TorControlAuthentication::Password("123".into())));
+        let auth = TorControlAuthentication::from_str("password=").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Password("".into()));
 
-        let auth = TorControlAuthentication::from_str("cookie=");
-        assert_eq!(auth, Ok(TorControlAuthentication::hex("".into())));
+        let auth = TorControlAuthentication::from_str("password     =     123         ").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Password("123".into()));
 
-        let auth = TorControlAuthentication::from_str("cookie=8b6f");
-        assert_eq!(auth, Ok(TorControlAuthentication::hex("8b6f".into())));
+        let auth = TorControlAuthentication::from_str("password=123").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Password("123".into()));
 
-        let auth = TorControlAuthentication::from_str("cookie=@");
+        let auth = TorControlAuthentication::from_str("cookie=").unwrap();
+        assert_eq!(auth, TorControlAuthentication::hex("".into()));
+
+        let auth = TorControlAuthentication::from_str("cookie=8b6f").unwrap();
+        assert_eq!(auth, TorControlAuthentication::hex("8b6f".into()));
+
+        let auth = TorControlAuthentication::from_str("cookie=@").unwrap();
         assert_eq!(
             auth,
-            Ok(TorControlAuthentication::Cookie(TorCookie::FilePath(
-                DEFAULT_TOR_COOKIE_PATH.into()
-            )))
+            TorControlAuthentication::Cookie(TorCookie::FilePath(DEFAULT_TOR_COOKIE_PATH.into()))
         );
 
-        let auth = TorControlAuthentication::from_str("cookie=@/path/to/file");
+        let auth = TorControlAuthentication::from_str("cookie=@/path/to/file").unwrap();
         assert_eq!(
             auth,
-            Ok(TorControlAuthentication::Cookie(TorCookie::FilePath(
-                "/path/to/file".into()
-            )))
+            TorControlAuthentication::Cookie(TorCookie::FilePath("/path/to/file".into()))
         );
+    }
+
+    #[test]
+    fn tor_parser_invalid_case() {
+        TorControlAuthentication::from_str("").unwrap_err();
+        TorControlAuthentication::from_str("not_valid").unwrap_err();
+        TorControlAuthentication::from_str("cookie abcd").unwrap_err();
     }
 }
