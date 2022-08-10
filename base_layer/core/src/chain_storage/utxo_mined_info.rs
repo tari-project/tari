@@ -45,6 +45,7 @@ mod test {
                 mmr_position: 0,
                 mined_height: 0,
                 header_hash: vec![],
+                mined_timestamp: 0,
             }
         }
     }
