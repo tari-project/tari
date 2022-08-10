@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,41 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Common Tari comms types
-
-use tari_crypto::{
-    hash::blake2::Blake256,
-    hash_domain,
-    keys::PublicKey,
-    ristretto::RistrettoPublicKey,
-    signatures::SchnorrSignature,
+use anyhow::{anyhow, Error};
+use async_trait::async_trait;
+use clap::Parser;
+use tari_app_utilities::utilities::UniPublicKey;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
-use tari_storage::lmdb_store::LMDBStore;
-#[cfg(test)]
-use tari_storage::HashmapDatabase;
-#[cfg(not(test))]
-use tari_storage::LMDBWrapper;
 
-use crate::peer_manager::{Peer, PeerId};
+use super::{CommandContext, HandleCommand};
 
-/// Public key type
-pub type CommsPublicKey = RistrettoPublicKey;
-pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
+/// Adds a peer
+#[derive(Debug, Parser)]
+pub struct ArgsAddPeer {
+    /// Peer public key
+    public_key: UniPublicKey,
+    /// Peer address
+    address: Multiaddr,
+}
 
-/// Specify the digest type for the signature challenges
-pub type CommsChallenge = Blake256;
-/// Comms signature type
-pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
-
-/// Specify the RNG that should be used for random selection
-pub type CommsRng = rand::rngs::OsRng;
-
-/// Datastore and Database used for persistence storage
-pub type CommsDataStore = LMDBStore;
-
-#[cfg(not(test))]
-pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
-#[cfg(test)]
-pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
-
-hash_domain!(CommsCoreHashDomain, "com.tari.comms.core", 0);
+#[async_trait]
+impl HandleCommand<ArgsAddPeer> for CommandContext {
+    async fn handle_command(&mut self, args: ArgsAddPeer) -> Result<(), Error> {
+        let public_key = args.public_key.into();
+        if self.peer_manager.exists(&public_key).await {
+            return Err(anyhow!("Peer with public key '{}' already exists", public_key));
+        }
+        let node_id = NodeId::from_public_key(&public_key);
+        let peer = Peer::new(
+            public_key,
+            node_id.clone(),
+            vec![args.address].into(),
+            PeerFlags::empty(),
+            PeerFeatures::empty(),
+            vec![],
+            String::new(),
+        );
+        self.peer_manager.add_peer(peer).await?;
+        println!("Peer with node id '{}'was added to the base node.", node_id);
+        Ok(())
+    }
+}

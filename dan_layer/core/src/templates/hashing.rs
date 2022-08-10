@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,47 +19,23 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::io;
 
-use thiserror::Error;
-use tokio_util::codec::LinesCodecError;
+use digest::Digest;
+use tari_crypto::{
+    hash_domain,
+    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
+};
 
-use super::parsers::ParseError;
+hash_domain!(
+    DanLayerCoreTemplatesDomain,
+    "com.tari.tari_project.dan_layer.core.templates",
+    1
+);
 
-#[derive(Debug, Error)]
-pub enum TorClientError {
-    #[error("Failed to read/write line to socket. The maximum line length was exceeded.")]
-    MaxLineLengthExceeded,
-    #[error("IO Error: {0}")]
-    Io(#[from] io::Error),
-    #[error("Command failed: {0}")]
-    TorCommandFailed(String),
-    #[error("Tor control port connection unexpectedly closed")]
-    UnexpectedEof,
-    #[error("Parse error: {0}")]
-    ParseError(#[from] ParseError),
-    #[error("The server returned no response")]
-    ServerNoResponse,
-    #[error("The server returned an invalid response: {0}")]
-    ServerInvalidResponse(String),
-    #[error("Server did not return a ServiceID for ADD_ONION command")]
-    AddOnionNoServiceId,
-    #[error("The given service id was invalid")]
-    InvalidServiceId,
-    #[error("Onion address is exists")]
-    OnionAddressCollision,
-    #[error("Response returned an no value for key")]
-    KeyValueNoValue,
-    #[error("The command sender disconnected")]
-    CommandSenderDisconnected,
-}
+pub(crate) const TIP004_TEMPLATE_LABEL: &str = "tip004_template";
 
-impl From<LinesCodecError> for TorClientError {
-    fn from(err: LinesCodecError) -> Self {
-        use LinesCodecError::{Io, MaxLineLengthExceeded};
-        match err {
-            MaxLineLengthExceeded => TorClientError::MaxLineLengthExceeded,
-            Io(err) => TorClientError::Io(err),
-        }
-    }
+pub(crate) fn dan_layer_templates_hasher<D: Digest + LengthExtensionAttackResistant>(
+    label: &'static str,
+) -> DomainSeparatedHasher<D, DanLayerCoreTemplatesDomain> {
+    DomainSeparatedHasher::<D, DanLayerCoreTemplatesDomain>::new_with_label(label)
 }

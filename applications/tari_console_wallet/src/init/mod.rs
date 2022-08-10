@@ -30,14 +30,13 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
-    tor::HiddenServiceControllerError,
     types::CommsPublicKey,
     NodeIdentity,
 };
 use tari_core::transactions::CryptoFactories;
 use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
-use tari_p2p::{initialization::CommsInitializationError, peer_seeds::SeedPeer, TransportType};
+use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::SafePassword;
 use tari_wallet::{
@@ -319,10 +318,7 @@ pub async fn init_wallet(
     )
     .await
     .map_err(|e| match e {
-        WalletError::CommsInitializationError(CommsInitializationError::HiddenServiceControllerError(
-            HiddenServiceControllerError::TorControlPortOffline,
-        )) => ExitError::new(ExitCode::TorOffline, e),
-        WalletError::CommsInitializationError(e) => ExitError::new(ExitCode::WalletError, e),
+        WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
         e => ExitError::new(
             ExitCode::WalletError,
             &format!("Error creating Wallet Container: {}", e),

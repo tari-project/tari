@@ -814,7 +814,7 @@ where B: BlockchainBackend + 'static
                 metrics::rejected_blocks(block.header.height, &block_hash).inc();
                 warn!(
                     target: LOG_TARGET,
-                    "Peer {} sent an invalid header: {}",
+                    "Peer {} sent an invalid block: {}",
                     source_peer
                         .as_ref()
                         .map(ToString::to_string)

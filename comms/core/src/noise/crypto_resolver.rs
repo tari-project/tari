@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use digest::Digest;
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
@@ -27,11 +28,13 @@ use snow::{
     types::{Cipher, Dh, Hash, Random},
 };
 use tari_crypto::{
+    hash::blake2::Blake256,
+    hashing::DomainSeparatedHasher,
     keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
 
-use crate::types::{CommsPublicKey, CommsSecretKey};
+use crate::types::{CommsCoreHashDomain, CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
     ($inslice:expr, $outslice:expr) => {
@@ -61,6 +64,11 @@ impl CryptoResolver for TariCryptoResolver {
     fn resolve_cipher(&self, choice: &CipherChoice) -> Option<Box<dyn Cipher>> {
         self.0.resolve_cipher(choice)
     }
+}
+
+fn noise_kdf(shared_key: &CommsPublicKey) -> [u8; 32] {
+    let hasher = DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh");
+    Digest::finalize(hasher.chain(shared_key.as_bytes())).into()
 }
 
 #[derive(Default)]
@@ -107,8 +115,8 @@ impl Dh for CommsDiffieHellman {
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), ()> {
         let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| ())?;
         let shared = CommsPublicKey::shared_secret(&self.secret_key, &pk);
-        let shared_bytes = shared.as_bytes();
-        copy_slice!(shared_bytes, out);
+        let hash = noise_kdf(&shared);
+        copy_slice!(hash, out);
         Ok(())
     }
 }
@@ -149,11 +157,11 @@ mod test {
 
         let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut OsRng);
         let expected_shared = CommsPublicKey::shared_secret(&secret_key2, &public_key);
+        let expected_shared = noise_kdf(&expected_shared);
 
         let mut out = [0; 32];
         dh.dh(public_key2.as_bytes(), &mut out).unwrap();
-        let shared = CommsPublicKey::from_bytes(&out).unwrap();
 
-        assert_eq!(shared, expected_shared);
+        assert_eq!(out, expected_shared);
     }
 }

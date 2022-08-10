@@ -25,10 +25,12 @@ use crate::tor::control_client::response::ResponseLine;
 mod add_onion;
 mod del_onion;
 mod key_value;
+mod protocol_info;
 
 pub use add_onion::{AddOnion, AddOnionFlag, AddOnionResponse};
 pub use del_onion::DelOnion;
 pub use key_value::{get_conf, get_info, set_events, KeyValueCommand};
+pub use protocol_info::{ProtocolInfo, ProtocolInfoResponse};
 
 pub trait TorCommand {
     type Output;
