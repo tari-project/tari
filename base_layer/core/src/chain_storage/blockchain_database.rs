@@ -892,7 +892,7 @@ where B: BlockchainBackend
         if self.is_add_block_disabled() {
             warn!(
                 target: LOG_TARGET,
-                "add_block is disabled. Ignoring candidate block #{} ({})",
+                "add_block is disabled, node busy syncing. Ignoring candidate block #{} ({})",
                 block.header.height,
                 block.hash().to_hex()
             );
@@ -1229,6 +1229,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     let metadata = db.fetch_chain_metadata()?;
     if header.prev_hash != *metadata.best_block() {
+        error!(target: LOG_TARGET, "Block hash: {}", header.hash().to_hex());
+        error!(target: LOG_TARGET, "Block : {}", block);
         return Err(ChainStorageError::CannotCalculateNonTipMmr(format!(
             "Block (#{}) previous hash is {} but the current tip is #{} {}",
             header.height,

@@ -584,7 +584,23 @@ where B: BlockchainBackend + 'static
             coinbase_output,
             kernel_excess_sigs: excess_sigs,
         } = new_block;
-
+        // if this is reorg block we need to ask the peer to send us the full block as our mempool wont match it.
+        let current_meta = self.blockchain_db.get_chain_metadata().await?;
+        if header.prev_hash != *current_meta.best_block() {
+            let header_hash = header.hash();
+            debug!(
+                target: LOG_TARGET,
+                "Orphaned block #{}: ({}), current tip is: #{} ({}). We need to fetch the complete block from peer: \
+                 ({})",
+                header.height,
+                header_hash.to_hex(),
+                current_meta.height_of_longest_chain(),
+                current_meta.best_block().to_hex(),
+                source_peer,
+            );
+            let block = self.request_full_block_from_peer(source_peer, header_hash).await?;
+            return Ok(block);
+        }
         let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 

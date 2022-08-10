@@ -55,7 +55,7 @@ use crate::{
         StateMachineHandle,
     },
     blocks::{Block, NewBlock},
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, ChainStorageError},
     proto as shared_protos,
     proto::base_node as proto,
 };
@@ -297,8 +297,14 @@ where B: BlockchainBackend + 'static
         task::spawn(async move {
             let result = handle_incoming_block(inbound_nch, new_block).await;
 
-            if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle incoming block message: {:?}", e);
+            match result {
+                Err(BaseNodeServiceError::CommsInterfaceError(CommsInterfaceError::ChainStorageError(
+                    ChainStorageError::CannotAcquireFileLock,
+                ))) => {
+                    // Special case, dont log this again as an error
+                },
+                Err(e) => error!(target: LOG_TARGET, "Failed to handle incoming block message: {:?}", e),
+                _ => {},
             }
         });
     }
