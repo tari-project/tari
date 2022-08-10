@@ -19,16 +19,18 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::FixedHash;
 
-pub type VaultId = FixedHash;
+use tari_template_abi::{Decode, Encode};
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Vault {}
+use crate::models::Resource;
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct Vault {
+    resource: Resource,
+}
 
 impl Vault {
-    pub fn empty() -> Self {
-        Self {}
+    pub fn new(resource: Resource) -> Self {
+        Self { resource }
     }
 }

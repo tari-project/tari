@@ -20,5 +20,37 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub const OP_EMIT_LOG: i32 = 0x00;
-pub const OP_CREATE_COMPONENT: i32 = 0x01;
+use tari_template_abi::{Decode, Encode};
+
+use crate::models::{Bucket, ResourceAddress};
+
+#[derive(Clone, Debug, Decode, Encode)]
+pub struct Vault<T> {
+    resource_address: ResourceAddress<T>,
+}
+
+impl<T> Vault<T> {
+    pub fn new(resource_address: ResourceAddress<T>) -> Self {
+        // Call to call_engine will rather be in the ResourceBuilder/VaultBuilder, and the resulting address passed in
+        // here. let resource_address = call_engine(OP_RESOURCE_INVOKE, ResourceInvoke {
+        //     resource_ref: ResourceRef::Vault,
+        //     action: ResourceAction::Create,
+        //     args: args![],
+        // });
+
+        Self { resource_address }
+    }
+
+    pub fn put(&mut self, _bucket: Bucket<T>) {
+        // let _ok: () = call_engine(OP_RESOURCE_INVOKE, ResourceInvoke {
+        //     resource_ref: ResourceRef::VaultRef(self.resource_address()),
+        //     action: ResourceAction::Put,
+        //     args: args![bucket],
+        // });
+        todo!()
+    }
+
+    pub fn resource_address(&self) -> ResourceAddress<T> {
+        self.resource_address
+    }
+}

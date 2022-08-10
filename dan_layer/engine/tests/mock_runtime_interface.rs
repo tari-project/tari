@@ -20,34 +20,59 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{atomic::AtomicU32, Arc};
+use std::sync::{atomic::AtomicU32, Arc, RwLock};
 
-use tari_dan_common_types::Hash;
+use digest::Digest;
 use tari_dan_engine::{
-    models::{Component, ComponentId},
+    crypto,
     runtime::{RuntimeError, RuntimeInterface},
+    state_store::{memory::MemoryStateStore, AtomicDb, StateReader, StateWriter},
 };
-use tari_template_abi::LogLevel;
+use tari_template_lib::{
+    args::LogLevel,
+    models::{Component, ComponentId, ComponentInstance},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct MockRuntimeInterface {
     ids: Arc<AtomicU32>,
+    state: MemoryStateStore,
+    calls: Arc<RwLock<Vec<&'static str>>>,
 }
 
 impl MockRuntimeInterface {
     pub fn new() -> Self {
         Self {
             ids: Arc::new(AtomicU32::new(0)),
+            state: MemoryStateStore::default(),
+            calls: Arc::new(RwLock::new(vec![])),
         }
+    }
+
+    pub fn state_store(&self) -> MemoryStateStore {
+        self.state.clone()
     }
 
     pub fn next_id(&self) -> u32 {
         self.ids.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
+
+    pub fn get_calls(&self) -> Vec<&'static str> {
+        self.calls.read().unwrap().clone()
+    }
+
+    pub fn clear_calls(&self) {
+        self.calls.write().unwrap().clear();
+    }
+
+    fn add_call(&self, call: &'static str) {
+        self.calls.write().unwrap().push(call);
+    }
 }
 
 impl RuntimeInterface for MockRuntimeInterface {
     fn emit_log(&self, level: LogLevel, message: &str) {
+        self.add_call("emit_log");
         let level = match level {
             LogLevel::Error => log::Level::Error,
             LogLevel::Warn => log::Level::Warn,
@@ -58,7 +83,42 @@ impl RuntimeInterface for MockRuntimeInterface {
         log::log!(target: "tari::dan::engine::runtime", level, "{}", message);
     }
 
-    fn create_component(&self, _new_component: Component) -> Result<ComponentId, RuntimeError> {
-        Ok((Hash::default(), self.next_id()))
+    fn create_component(&self, new_component: Component) -> Result<ComponentId, RuntimeError> {
+        self.add_call("create_component");
+        let component_id: [u8; 32] = crypto::hasher("component")
+            .chain(self.next_id().to_le_bytes())
+            .finalize()
+            .into();
+
+        let component = ComponentInstance::new(component_id.into(), new_component);
+        let mut tx = self.state.write_access().map_err(RuntimeError::StateDbError)?;
+        tx.set_state(&component_id, component)?;
+        self.state.commit(tx).map_err(RuntimeError::StateDbError)?;
+
+        Ok(component_id.into())
+    }
+
+    fn get_component(&self, component_id: &ComponentId) -> Result<ComponentInstance, RuntimeError> {
+        self.add_call("get_component");
+        let component = self
+            .state
+            .read_access()
+            .map_err(RuntimeError::StateDbError)?
+            .get_state(component_id)?
+            .ok_or(RuntimeError::ComponentNotFound { id: *component_id })?;
+        Ok(component)
+    }
+
+    fn set_component_state(&self, component_id: &ComponentId, state: Vec<u8>) -> Result<(), RuntimeError> {
+        self.add_call("set_component_state");
+        let mut tx = self.state.write_access().map_err(RuntimeError::StateDbError)?;
+        let mut component: ComponentInstance = tx
+            .get_state(component_id)?
+            .ok_or(RuntimeError::ComponentNotFound { id: *component_id })?;
+        component.state = state;
+        tx.set_state(&component_id, component)?;
+        self.state.commit(tx).map_err(RuntimeError::StateDbError)?;
+
+        Ok(())
     }
 }

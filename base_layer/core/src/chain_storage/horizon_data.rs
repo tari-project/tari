@@ -45,3 +45,17 @@ impl HorizonData {
         &self.utxo_sum
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn coverage_horizon_data() {
+        let obj = HorizonData::zero();
+        obj.kernel_sum();
+        obj.utxo_sum();
+        drop(obj.clone());
+        format!("{:?}", obj);
+    }
+}

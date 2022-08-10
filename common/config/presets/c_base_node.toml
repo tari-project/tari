@@ -206,8 +206,8 @@ track_reorgs = true
 #tor.socks_auth = "none"
 # Use this socks address instead of getting it from the tor proxy. (default = )
 #tor.socks_address_override =
-# Authentication to use for the tor control server (default = "none")
-#tor.control_auth = "none" # or "password=xxxxxx"
+# Authentication to use for the tor control server (default = "auto")
+#tor.control_auth = "auto" # or "password=xxxxxx"
 # The onion port to use.
 #tor.onion_port = 18141
 # When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is

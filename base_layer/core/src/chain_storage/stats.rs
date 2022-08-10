@@ -213,3 +213,101 @@ impl Display for EnvInfo {
         )
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    impl DbStat {
+        pub fn sample() -> Self {
+            DbStat {
+                name: "coverage",
+                psize: 10,
+                depth: 0,
+                leaf_pages: 1,
+                branch_pages: 2,
+                overflow_pages: 3,
+                entries: 0,
+            }
+        }
+    }
+
+    impl DbSize {
+        pub fn sample() -> Self {
+            Self {
+                name: "coverage",
+                num_entries: 0,
+                total_key_size: u64::MAX,
+                total_value_size: 1,
+            }
+        }
+    }
+
+    impl EnvInfo {
+        pub fn sample() -> Self {
+            Self {
+                mapsize: 0,
+                last_pgno: 0,
+                last_txnid: 0,
+                maxreaders: 0,
+                numreaders: 0,
+            }
+        }
+    }
+
+    impl DbBasicStats {
+        pub fn sample() -> Self {
+            Self {
+                root: DbStat::sample(),
+                env_info: EnvInfo::sample(),
+                db_stats: vec![DbStat::sample()],
+            }
+        }
+    }
+
+    #[test]
+    fn coverage_db_stat() {
+        let obj = DbStat::sample();
+        assert_eq!(obj.total_page_size(), 60);
+        drop(obj.clone());
+        format!("{:?} | {}", obj, obj);
+    }
+
+    #[test]
+    fn coverage_db_basic_stats() {
+        let obj = DbBasicStats::sample();
+        obj.root();
+        obj.env_info();
+        obj.db_stats();
+        drop(obj.clone());
+        format!("{:?} | {}", obj, obj);
+    }
+
+    #[test]
+    fn coverage_db_size() {
+        let mut obj = DbSize::sample();
+        drop(obj.clone());
+        assert_eq!(obj.total(), u64::MAX);
+        assert_eq!(obj.avg_bytes_per_entry(), 0);
+        obj.num_entries = obj.total();
+        assert_eq!(obj.avg_bytes_per_entry(), 1);
+        format!("{:?}", obj);
+    }
+
+    #[test]
+    fn coverage_env_info() {
+        let obj = EnvInfo::sample();
+        drop(obj.clone());
+        format!("{:?} | {}", obj, obj);
+    }
+
+    #[test]
+    fn coverage_db_total_size_stats() {
+        let vec = vec![DbSize::sample()];
+        let obj = DbTotalSizeStats::from(vec);
+        let obj = obj.sizes.into_iter().collect::<DbTotalSizeStats>();
+        obj.sizes();
+        drop(obj.clone());
+        format!("{:?}", obj);
+    }
+}

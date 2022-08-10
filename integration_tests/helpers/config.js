@@ -159,6 +159,7 @@ function createEnv(opts) {
     [`${network}.base_node.p2p.transport.type`]: "tcp",
     [`${network}.base_node.p2p.transport.tcp.listener_address`]: `/ip4/127.0.0.1/tcp/${baseNodePort}`,
     [`${network}.base_node.p2p.public_address`]: `/ip4/127.0.0.1/tcp/${baseNodePort}`,
+    ["base_node.report_grpc_error"]: true,
 
     [`wallet.grpc_address`]: walletGrpcAddress,
     [`${network}.wallet.grpc_address`]: walletGrpcAddress,

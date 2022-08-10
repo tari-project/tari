@@ -4,8 +4,8 @@
 mod bucket;
 pub use bucket::Bucket;
 
-mod component;
-pub use component::{Component, ComponentId};
+mod resource;
+pub use resource::{Resource, ResourceAddress};
 
 mod vault;
-pub use vault::{Vault, VaultId};
+pub use vault::Vault;

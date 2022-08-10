@@ -33,3 +33,26 @@ pub struct UtxoMinedInfo {
     pub header_hash: BlockHash,
     pub mined_timestamp: u64,
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    impl UtxoMinedInfo {
+        pub fn sample() -> Self {
+            Self {
+                output: PrunedOutput::sample(),
+                mmr_position: 0,
+                mined_height: 0,
+                header_hash: vec![],
+            }
+        }
+    }
+
+    #[test]
+    fn coverage_utxo_mined_info() {
+        let obj = UtxoMinedInfo::sample();
+        drop(obj.clone());
+        format!("{:?}", obj);
+    }
+}

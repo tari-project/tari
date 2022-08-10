@@ -23,13 +23,13 @@
 use std::convert::{TryFrom, TryInto};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::{hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyTrait};
 use tari_utilities::ByteArray;
 
+use super::hashing::{comms_core_peer_manager_domain, CommsCorePeerManagerDomain, IDENTITY_SIGNATURE};
 use crate::{
     message::MessageExt,
     multiaddr::Multiaddr,
@@ -73,8 +73,9 @@ impl IdentitySignature {
             features,
             addresses,
             updated_at,
-        );
-        let signature = Signature::sign(secret_key.clone(), secret_nonce, &challenge.finalize())
+        )
+        .finalize();
+        let signature = Signature::sign(secret_key.clone(), secret_nonce, challenge.as_ref())
             .expect("unreachable panic: challenge hash digest is the correct length");
         Self {
             version: Self::LATEST_VERSION,
@@ -125,8 +126,9 @@ impl IdentitySignature {
             features,
             addresses,
             self.updated_at,
-        );
-        self.signature.verify_challenge(public_key, &challenge.finalize())
+        )
+        .finalize();
+        self.signature.verify_challenge(public_key, challenge.as_ref())
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -136,9 +138,9 @@ impl IdentitySignature {
         features: PeerFeatures,
         addresses: I,
         updated_at: DateTime<Utc>,
-    ) -> CommsChallenge {
+    ) -> DomainSeparatedHasher<CommsChallenge, CommsCorePeerManagerDomain> {
         // e = H(P||R||m)
-        let challenge = CommsChallenge::new()
+        let challenge = comms_core_peer_manager_domain::<CommsChallenge>(IDENTITY_SIGNATURE)
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(version.to_le_bytes())

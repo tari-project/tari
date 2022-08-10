@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 
 use d3ne::{InputData, Node, OutputData, OutputDataBuilder, Worker};
 
-use crate::models::Bucket;
+use crate::models::{Bucket, ResourceAddress};
 
 pub struct MintBucketWorker {}
 
@@ -48,10 +48,10 @@ impl Worker for MintBucketWorker {
     }
 
     fn work(&self, node: &Node, inputs: InputData) -> anyhow::Result<OutputData> {
-        let amount = u64::try_from(node.get_number_field("amount", &inputs)?)?;
+        let _amount = u64::try_from(node.get_number_field("amount", &inputs)?)?;
         let token_id = u64::try_from(node.get_number_field("token_id", &inputs)?)?;
-        let asset_id = u64::try_from(node.get_number_field("asset_id", &inputs)?)?;
-        let bucket = Bucket::new(amount, token_id, asset_id);
+        let vault_id = ResourceAddress::from_hex(&node.get_string_field("vault_id", &inputs)?)?;
+        let bucket = Bucket::for_token(vault_id, vec![token_id]);
         let output = OutputDataBuilder::new()
             .data("default", Box::new(()))
             .data("bucket", Box::new(bucket))

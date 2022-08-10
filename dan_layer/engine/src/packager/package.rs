@@ -24,15 +24,13 @@ use std::collections::HashMap;
 
 use digest::Digest;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::types::FixedHash;
+use tari_template_lib::models::PackageId;
 
 use crate::{
     crypto,
     packager::{error::PackageError, PackageModuleLoader},
     wasm::{LoadedWasmModule, WasmModule},
 };
-
-pub type PackageId = FixedHash;
 
 #[derive(Debug, Clone)]
 pub struct Package {
@@ -85,8 +83,9 @@ impl PackageBuilder {
 
 fn new_package_id() -> PackageId {
     let v = OsRng.next_u32();
-    crypto::hasher("package")
+    let hash: [u8; 32] = crypto::hasher("package")
           // TODO: Proper package id
         .chain(&v.to_le_bytes())
-        .finalize().into()
+        .finalize().into();
+    hash.into()
 }
