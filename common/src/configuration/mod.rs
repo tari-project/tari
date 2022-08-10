@@ -28,12 +28,12 @@
 //! ...
 //! [base_node]
 //! # common vars for all base_node instances
-//! [base_node.weatherwax]
+//! [base_node.esmeralda]
 //! # overrides for rincewnd testnet
 //! [base_node.mainnet]
 //! # overrides for mainnet
 //! [wallet]
-//! [wallet.weatherwax]
+//! [wallet.esmeralda]
 //! # etc..
 //! ```
 
