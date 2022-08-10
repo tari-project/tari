@@ -26,7 +26,7 @@ use cargo_toml::{Manifest, Product};
 
 use super::module::WasmModule;
 
-pub fn build_wasm_module_from_source<P: AsRef<Path>>(package_dir: P) -> io::Result<WasmModule> {
+pub fn compile_template<P: AsRef<Path>>(package_dir: P) -> io::Result<WasmModule> {
     let status = Command::new("cargo")
         .current_dir(package_dir.as_ref())
         .args(["build", "--target", "wasm32-unknown-unknown", "--release"])

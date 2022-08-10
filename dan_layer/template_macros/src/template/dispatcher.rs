@@ -34,8 +34,8 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
     let output = quote! {
         #[no_mangle]
         pub extern "C" fn #dispatcher_function_name(call_info: *mut u8, call_info_len: usize) -> *mut u8 {
-            use ::tari_template_abi::{decode, encode_with_len, CallInfo};
-            use ::tari_template_lib::models::{get_state, set_state, initialise};
+            use ::tari_template_abi::{decode, encode_with_len, CallInfo, wrap_ptr};
+            use ::tari_template_lib::set_context_from_call_info;
 
             if call_info.is_null() {
                 panic!("call_info is null");
@@ -43,6 +43,10 @@ pub fn generate_dispatcher(ast: &TemplateAst) -> Result<TokenStream> {
 
             let call_data = unsafe { Vec::from_raw_parts(call_info, call_info_len, call_info_len) };
             let call_info: CallInfo = decode(&call_data).unwrap();
+
+            set_context_from_call_info(&call_info);
+            // TODO: wrap this in a nice macro
+            engine().emit_log(LogLevel::Debug, format!("Dispatcher called with function {}", call_info.func_name));
 
             let result;
             match call_info.func_name.as_str() {
@@ -75,7 +79,6 @@ fn get_function_blocks(ast: &TemplateAst) -> Vec<Expr> {
 fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
     let mut args: Vec<Expr> = vec![];
     let mut stmts = vec![];
-    let mut should_get_state = false;
     let mut should_set_state = false;
 
     // encode all arguments of the functions
@@ -84,33 +87,30 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
         let stmt = match input_type {
             // "self" argument
             TypeAst::Receiver { mutability } => {
-                should_get_state = true;
                 should_set_state = mutability;
                 args.push(parse_quote! { &mut state });
-                parse_quote! {
-                    let #arg_ident =
-                        decode::<u32>(&call_info.args[#i])
-                        .unwrap();
-                }
+                vec![
+                    parse_quote! {
+                        let component =
+                            decode::<::tari_template_lib::models::ComponentInstance>(&call_info.args[#i])
+                            .unwrap();
+                    },
+                    parse_quote! {
+                        let mut state = decode::<template::#template_ident>(&component.state).unwrap();
+                    },
+                ]
             },
             // non-self argument
             TypeAst::Typed(type_ident) => {
                 args.push(parse_quote! { #arg_ident });
-                parse_quote! {
+                vec![parse_quote! {
                     let #arg_ident =
                         decode::<#type_ident>(&call_info.args[#i])
                         .unwrap();
-                }
+                }]
             },
         };
-        stmts.push(stmt);
-    }
-
-    // load the component state
-    if should_get_state {
-        stmts.push(parse_quote! {
-            let mut state: template::#template_ident = get_state(arg_0);
-        });
+        stmts.extend(stmt);
     }
 
     // call the user defined function in the template
@@ -122,7 +122,7 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
 
         let template_name_str = template_ident.to_string();
         stmts.push(parse_quote! {
-            let rtn = initialise(#template_name_str.to_string(), state);
+            let rtn = engine().instantiate(#template_name_str.to_string(), state);
         });
     } else {
         stmts.push(parse_quote! {
@@ -138,7 +138,7 @@ fn get_function_block(template_ident: &Ident, ast: FunctionAst) -> Expr {
     // after user function invocation, update the component state
     if should_set_state {
         stmts.push(parse_quote! {
-            set_state(arg_0, state);
+            engine().set_component_state(component.id(), state);
         });
     }
 

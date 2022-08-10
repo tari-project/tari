@@ -126,4 +126,16 @@ pub mod canned_responses {
     ];
 
     pub const ERR_552: &[&str] = &["552 Unrecognised configuration key \"dummy\""];
+    pub const PROTOCOL_INFO_NO_AUTH_OK: &[&str] = &[
+        "250-PROTOCOLINFO 1",
+        "250-AUTH METHODS=NULL",
+        "250-VERSION Tor=\"0.4.6.10\"",
+        "250 OK",
+    ];
+    pub const PROTOCOL_INFO_COOKIE_AUTH_OK: &[&str] = &[
+        "250-PROTOCOLINFO 1",
+        "250-AUTH METHODS=COOKIE,SAFECOOKIE COOKIEFILE=\"/home/user/.tor/control_auth_cookie\"",
+        "250-VERSION Tor=\"0.4.6.10\"",
+        "250 OK",
+    ];
 }

@@ -36,7 +36,10 @@ use futures::future;
 use lmdb_zero::open;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::configuration::Network;
+use tari_common::{
+    configuration::Network,
+    exit_codes::{ExitCode, ExitError},
+};
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
@@ -98,6 +101,26 @@ pub enum CommsInitializationError {
     InvalidTorForwardAddress(std::io::Error),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
+}
+
+impl CommsInitializationError {
+    pub fn to_exit_error(&self) -> ExitError {
+        #[allow(clippy::enum_glob_use)]
+        use HiddenServiceControllerError::*;
+        match self {
+            CommsInitializationError::HiddenServiceControllerError(TorControlPortOffline) => {
+                ExitError::new(ExitCode::TorOffline, self)
+            },
+            CommsInitializationError::HiddenServiceControllerError(HashedPasswordAuthAutoNotSupported) => {
+                ExitError::new(ExitCode::TorAuthConfiguration, self)
+            },
+            CommsInitializationError::HiddenServiceControllerError(FailedToLoadCookieFile(_)) => {
+                ExitError::new(ExitCode::TorAuthUnreadableCookie, self)
+            },
+
+            _ => ExitError::new(ExitCode::NetworkError, self),
+        }
+    }
 }
 
 /// Initialize Tari Comms configured for tests

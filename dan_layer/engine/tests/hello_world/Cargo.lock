@@ -160,6 +160,7 @@ dependencies = [
 name = "tari_template_lib"
 version = "0.1.0"
 dependencies = [
+ "borsh",
  "tari_template_abi",
 ]
 
@@ -170,8 +171,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
- "tari_template_abi",
- "tari_template_lib",
 ]
 
 [[package]]

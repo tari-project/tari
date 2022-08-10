@@ -20,51 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Write};
+//! Public types that are available to all template authors.
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::FixedHash;
+pub use borsh;
+pub use tari_template_abi::{call_debug as debug, Decode, Encode};
 
-// This is to avoid adding borsh as a dependency in common types (and therefore every application).
-// TODO: Either this becomes the standard Hash type for the dan layer, or add borsh support to FixedHash.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Hash(FixedHash);
-
-impl Hash {
-    pub fn into_inner(self) -> FixedHash {
-        self.0
-    }
-}
-
-impl From<FixedHash> for Hash {
-    fn from(hash: FixedHash) -> Self {
-        Self(hash)
-    }
-}
-
-impl BorshSerialize for Hash {
-    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        (*self.0).serialize(writer)
-    }
-}
-
-impl BorshDeserialize for Hash {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let hash = <[u8; 32] as BorshDeserialize>::deserialize(buf)?;
-        Ok(Hash(hash.into()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn serialize_deserialize() {
-        let hash = Hash::default();
-        let mut buf = Vec::new();
-        hash.serialize(&mut buf).unwrap();
-        let hash2 = Hash::deserialize(&mut &buf[..]).unwrap();
-        assert_eq!(hash, hash2);
-    }
-}
+pub use crate::{
+    args::LogLevel,
+    engine,
+    get_context as context,
+    models::{Bucket, BucketId, ResourceAddress, Vault},
+};
