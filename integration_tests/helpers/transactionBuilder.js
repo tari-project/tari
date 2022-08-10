@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 const tari_crypto = require("tari_crypto");
-const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 const {
   toLittleEndian,
   littleEndianHexStringToBigEndianHexString,
   combineTwoTariKeys,
+  assertBufferType,
+  varintEncode,
 } = require("../helpers/util");
-const DomainHasher = require("../helpers/domainHasher");
+const { consensusHashers } = require("./hashing");
 const { OutputType } = require("./types");
 
 class TransactionBuilder {
@@ -27,15 +28,13 @@ class TransactionBuilder {
 
   buildKernelChallenge(publicNonce, publicExcess, fee, lockHeight, features) {
     const option_none = Buffer.from("00", "hex");
-    const varint_height = Buffer.from([lockHeight]);
-    let hash = new DomainHasher(
-      "com.tari.base_layer.core.transactions.v0.kernel_signature"
-    )
-      .chain(publicNonce)
-      .chain(publicExcess)
-      .chain_fixed_int(fee, 64)
-      .chain(varint_height)
-      .chain_fixed_int(features, 8)
+    let hash = consensusHashers
+      .transactionHasher("kernel_signature")
+      .chain(publicNonce, "hex")
+      .chain(publicExcess, "hex")
+      .chain(toLittleEndian(fee, 64))
+      .chain(varintEncode(lockHeight))
+      .chain(toLittleEndian(features, 8))
       .chain(option_none)
       .finalize();
 
@@ -79,18 +78,15 @@ class TransactionBuilder {
       // TODO: metadata (len is 0)
       Buffer.from([0x00]),
       // TODO: committee_definition (len is 0)
-      OUTPUT_FEATURES_VERSION === 0x00 ? Buffer.from([]) : bufFromOpt(null),
+      bufFromOpt(null),
     ]);
   }
 
   toLengthEncoded(buf) {
-    if (buf.length > 127) {
-      throw new Error("toLengthEncoded: Buffer too long");
-    }
-    // TODO: varint encoding, this is only valid up to len=127
-    return Buffer.concat([Buffer.from([buf.length]), buf]);
+    return Buffer.concat([varintEncode(buf.length), buf]);
   }
 
+  // Everything passed into this function must be a byte buffer except for features, minimumValuePromise
   buildMetaChallenge(
     script,
     features,
@@ -98,25 +94,29 @@ class TransactionBuilder {
     publicNonce,
     commitment,
     covenant,
-    encryptedValue
+    encryptedValue,
+    minimumValuePromise
   ) {
-    const publicCommitmentNonce = Buffer.from(publicNonce, "hex");
-    const sender_offset_public_key = Buffer.from(scriptOffsetPublicKey, "hex");
-    const features_buffer = this.featuresToConsensusBytes(features);
+    assertBufferType(script);
+    assertBufferType(scriptOffsetPublicKey, 32);
+    assertBufferType(publicNonce, 32);
+    assertBufferType(commitment, 32);
+    assertBufferType(covenant);
+    assertBufferType(encryptedValue);
     // base_layer/core/src/transactions/transaction/transaction_output.rs
-    let hash = new DomainHasher(
-      "com.tari.base_layer.core.transactions.v0.metadata_signature"
-    )
-      .chain(publicCommitmentNonce)
+    let hash = consensusHashers
+      .transactionHasher("metadata_signature")
+      .chain(publicNonce)
       .chain(this.toLengthEncoded(script))
-      .chain(features_buffer)
-      .chain(sender_offset_public_key)
+      .chain(this.featuresToConsensusBytes(features))
+      .chain(scriptOffsetPublicKey)
       .chain(commitment)
       .chain(this.toLengthEncoded(covenant))
       .chain(encryptedValue)
+      .chain(toLittleEndian(minimumValuePromise, 64))
       .finalize();
 
-    return Buffer.from(hash).toString("hex");
+    return Buffer.from(hash);
   }
 
   buildScriptChallenge(
@@ -126,34 +126,21 @@ class TransactionBuilder {
     public_key,
     commitment
   ) {
-    let buff_publicNonce = Buffer.from(publicNonce, "hex");
-    let buff_public_key = Buffer.from(public_key, "hex");
-    let hash = new DomainHasher(
-      "com.tari.base_layer.core.transactions.v0.script_challenge"
-    )
-      .chain(buff_publicNonce)
+    assertBufferType(publicNonce);
+    assertBufferType(script);
+    assertBufferType(input_data);
+    assertBufferType(public_key, 32);
+    assertBufferType(commitment, 32);
+    let hash = consensusHashers
+      .transactionHasher("script_challenge")
+      .chain(publicNonce)
       .chain(this.toLengthEncoded(script))
       .chain(this.toLengthEncoded(input_data))
-      .chain(buff_public_key)
+      .chain(public_key)
       .chain(commitment)
       .finalize();
 
-    return Buffer.from(hash).toString("hex");
-  }
-
-  hashOutput(features, commitment, script, sender_offset_public_key) {
-    let KEY = null; // optional key
-    let OUTPUT_LENGTH = 32; // bytes
-    let context = blake2bInit(OUTPUT_LENGTH, KEY);
-    const features_buffer = this.featuresToConsensusBytes(features);
-    // Version
-    blake2bUpdate(context, [0x00]);
-    blake2bUpdate(context, features_buffer);
-    blake2bUpdate(context, commitment);
-    blake2bUpdate(context, script);
-    blake2bUpdate(context, sender_offset_public_key);
-    let final = blake2bFinal(context);
-    return Buffer.from(final).toString("hex");
+    return Buffer.from(hash);
   }
 
   changeFee(fee) {
@@ -162,28 +149,29 @@ class TransactionBuilder {
 
   addInput(input) {
     let nopScriptBytes = Buffer.from([0x73]);
-    let scriptPublicKey = tari_crypto.pubkey_from_secret(
+    let scriptPublicKeyHex = tari_crypto.pubkey_from_secret(
       input.scriptPrivateKey.toString("hex")
     );
+    let scriptPublicKey = Buffer.from(scriptPublicKeyHex, "hex");
     // The 0x04 is type code for a pubkey in TariScript
-    let input_data = Buffer.concat([
-      Buffer.from([0x04]),
-      Buffer.from(scriptPublicKey, "hex"),
-    ]);
+    let input_data = Buffer.concat([Buffer.from([0x04]), scriptPublicKey]);
     this.kv.new_key("common_nonce_1");
     this.kv.new_key("common_nonce_2");
     let private_nonce_1 = this.kv.private_key("common_nonce_1");
     let private_nonce_2 = this.kv.private_key("common_nonce_2");
-    let public_nonce = tari_crypto.commit_private_keys(
+    let public_nonce_hex = tari_crypto.commit_private_keys(
       private_nonce_1,
       private_nonce_2
     ).commitment;
+    let public_nonce = Buffer.from(public_nonce_hex, "hex");
+
+    let commitment = input.output.commitment;
     let challenge = this.buildScriptChallenge(
       public_nonce,
       nopScriptBytes,
       input_data,
       scriptPublicKey,
-      input.output.commitment
+      commitment
     );
     let amount_key = Buffer.from(toLittleEndian(input.amount, 256)).toString(
       "hex"
@@ -198,7 +186,7 @@ class TransactionBuilder {
       total_key,
       private_nonce_1,
       private_nonce_2,
-      challenge
+      challenge.toString("hex")
     );
     this.inputs.push({
       input: {
@@ -235,9 +223,10 @@ class TransactionBuilder {
     let scriptOffsetPrivateKey = Buffer.from(
       toLittleEndian(scriptOffsetPrivateKeyNum, 256)
     ).toString("hex");
-    let scriptOffsetPublicKey = tari_crypto.pubkey_from_secret(
+    let scriptOffsetPublicKeyHex = tari_crypto.pubkey_from_secret(
       scriptOffsetPrivateKey.toString("hex")
     );
+    let scriptOffsetPublicKey = Buffer.from(scriptOffsetPublicKeyHex, "hex");
 
     let nopScriptBytes = Buffer.from([0x73]);
     let covenantBytes = Buffer.from([]);
@@ -252,10 +241,11 @@ class TransactionBuilder {
     this.kv.new_key("common_nonce_2");
     let private_nonce_1 = this.kv.private_key("common_nonce_1");
     let private_nonce_2 = this.kv.private_key("common_nonce_2");
-    let public_nonce = tari_crypto.commit_private_keys(
+    let public_nonce_hex = tari_crypto.commit_private_keys(
       private_nonce_1,
       private_nonce_2
     ).commitment;
+    let public_nonce = Buffer.from(public_nonce_hex, "hex");
     let commitment = Buffer.from(
       tari_crypto.commit(privateKey, BigInt(amount)).commitment,
       "hex"
@@ -278,6 +268,7 @@ class TransactionBuilder {
       mint_non_fungible: null,
       sidechain_checkpoint: null,
     });
+    let minimumValuePromise = 0;
     let meta_challenge = this.buildMetaChallenge(
       nopScriptBytes,
       outputFeatures,
@@ -285,7 +276,8 @@ class TransactionBuilder {
       public_nonce,
       commitment,
       covenantBytes,
-      encryptedValue
+      encryptedValue,
+      minimumValuePromise
     );
     let total_key = combineTwoTariKeys(
       scriptOffsetPrivateKey.toString(),
@@ -296,7 +288,7 @@ class TransactionBuilder {
       total_key,
       private_nonce_1,
       private_nonce_2,
-      meta_challenge
+      meta_challenge.toString("hex")
     );
     let output = {
       amount: amount,
@@ -428,9 +420,10 @@ class TransactionBuilder {
     let scriptOffsetPrivateKey = Buffer.from(
       toLittleEndian(scriptOffsetPrivateKeyNum, 256)
     ).toString("hex");
-    let scriptOffsetPublicKey = tari_crypto.pubkey_from_secret(
+    let scriptOffsetPublicKeyHex = tari_crypto.pubkey_from_secret(
       scriptOffsetPrivateKey.toString("hex")
     );
+    let scriptOffsetPublicKey = Buffer.from(scriptOffsetPublicKeyHex, "hex");
 
     let rangeproofFactory = tari_crypto.ExtendedRangeProofFactory.new();
     let rangeproof = rangeproofFactory.create_proof(
@@ -443,6 +436,7 @@ class TransactionBuilder {
     let PublicKeyExcess = tari_crypto.pubkey_from_secret(
       privateKey.toString("hex")
     );
+
     const challenge = this.buildKernelChallenge(
       public_nonce,
       PublicKeyExcess,
@@ -464,10 +458,11 @@ class TransactionBuilder {
     this.kv.new_key("common_nonce_2");
     let private_nonce_1 = this.kv.private_key("common_nonce_1");
     let private_nonce_2 = this.kv.private_key("common_nonce_2");
-    let public_nonce_c = tari_crypto.commit_private_keys(
+    let public_nonce_c_hex = tari_crypto.commit_private_keys(
       private_nonce_1,
       private_nonce_2
     ).commitment;
+    let public_nonce_c = Buffer.from(public_nonce_c_hex, "hex");
     let commitment = Buffer.from(
       tari_crypto.commit(privateKey, BigInt(value + fee)).commitment,
       "hex"
@@ -487,6 +482,7 @@ class TransactionBuilder {
       mint_non_fungible: null,
       sidechain_checkpoint: null,
     };
+    let minimumValuePromise = 0;
     let meta_challenge = this.buildMetaChallenge(
       nopScriptBytes,
       outputFeatures,
@@ -494,7 +490,8 @@ class TransactionBuilder {
       public_nonce_c,
       commitment,
       covenantBytes,
-      encryptedValue
+      encryptedValue,
+      minimumValuePromise
     );
     let total_key = combineTwoTariKeys(
       scriptOffsetPrivateKey.toString(),
@@ -505,7 +502,7 @@ class TransactionBuilder {
       total_key,
       private_nonce_1,
       private_nonce_2,
-      meta_challenge
+      meta_challenge.toString("hex")
     );
 
     return {

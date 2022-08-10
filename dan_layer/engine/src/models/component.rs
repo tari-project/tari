@@ -20,26 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
+use tari_template_abi::{CreateComponentArg, Decode, Encode};
+use tari_template_lib::{
+    models::{ContractAddress, PackageId},
+    Hash,
+};
 
-use tari_dan_common_types::Hash;
-use tari_template_abi::CreateComponentArg;
+pub type ComponentId = Hash;
 
-pub type ComponentId = (Hash, u32);
-
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Component {
-    pub name: String,
-    pub quantity: u64,
-    pub metadata: HashMap<Vec<u8>, Vec<u8>>,
+    pub contract_address: ContractAddress,
+    pub package_id: PackageId,
+    pub module_name: String,
     pub state: Vec<u8>,
 }
 
 impl From<CreateComponentArg> for Component {
     fn from(arg: CreateComponentArg) -> Self {
         Self {
-            name: arg.name,
-            quantity: arg.quantity,
-            metadata: arg.metadata,
+            contract_address: arg.contract_address,
+            package_id: arg.package_id,
+            module_name: arg.component_name,
             state: arg.state,
         }
     }

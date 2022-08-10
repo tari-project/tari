@@ -34,6 +34,7 @@ mod state_template {
         }
 
         pub fn set(&mut self, value: u32) {
+            debug(format!("Changing value from {} to {}", self.value, value));
             self.value = value;
         }
 
