@@ -67,3 +67,28 @@ impl PrunedOutput {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    impl PrunedOutput {
+        pub fn sample() -> Self {
+            Self::Pruned {
+                output_hash: vec![],
+                witness_hash: vec![],
+            }
+        }
+    }
+
+    #[test]
+    fn coverage_pruned_output() {
+        let obj = PrunedOutput::sample();
+        assert!(obj.is_pruned());
+        drop(obj.clone());
+        format!("{:?}", obj);
+        obj.hash();
+        obj.as_transaction_output();
+        obj.into_unpruned_output();
+    }
+}
