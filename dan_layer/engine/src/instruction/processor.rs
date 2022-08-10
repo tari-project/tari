@@ -20,35 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
+
+use tari_template_abi::encode;
 
 use crate::{
     instruction::{error::InstructionError, Instruction, InstructionSet},
-    packager::{Package, PackageId},
+    packager::Package,
     runtime::{Runtime, RuntimeInterface},
     traits::Invokable,
     wasm::{ExecutionResult, Process},
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct InstructionProcessor<TRuntimeInterface> {
-    packages: HashMap<PackageId, Package>,
+    package: Package,
     runtime_interface: TRuntimeInterface,
 }
 
 impl<TRuntimeInterface> InstructionProcessor<TRuntimeInterface>
 where TRuntimeInterface: RuntimeInterface + Clone + 'static
 {
-    pub fn new(runtime_interface: TRuntimeInterface) -> Self {
+    pub fn new(runtime_interface: TRuntimeInterface, package: Package) -> Self {
         Self {
-            packages: HashMap::new(),
+            package,
             runtime_interface,
         }
-    }
-
-    pub fn load(&mut self, package: Package) -> &mut Self {
-        self.packages.insert(package.id(), package);
-        self
     }
 
     pub fn execute(&self, instruction_set: InstructionSet) -> Result<Vec<ExecutionResult>, InstructionError> {
@@ -57,25 +54,25 @@ where TRuntimeInterface: RuntimeInterface + Clone + 'static
         // TODO: implement engine
         let state = Runtime::new(Arc::new(self.runtime_interface.clone()));
         for instruction in instruction_set.instructions {
-            match instruction {
+            let result = match instruction {
                 Instruction::CallFunction {
                     package_id,
                     template,
                     function,
                     args,
                 } => {
-                    let package = self
-                        .packages
-                        .get(&package_id)
-                        .ok_or(InstructionError::PackageNotFound { package_id })?;
-                    let module = package
+                    if package_id != self.package.id() {
+                        return Err(InstructionError::PackageNotFound { package_id });
+                    }
+
+                    let module = self
+                        .package
                         .get_module_by_name(&template)
                         .ok_or(InstructionError::TemplateNameNotFound { name: template })?;
 
                     // TODO: implement intelligent instance caching
-                    let process = Process::start(module.clone(), state.clone())?;
-                    let result = process.invoke_by_name(&function, args)?;
-                    results.push(result);
+                    let process = Process::start(module.clone(), state.clone(), package_id)?;
+                    process.invoke_by_name(&function, args)?
                 },
                 Instruction::CallMethod {
                     package_id,
@@ -83,22 +80,27 @@ where TRuntimeInterface: RuntimeInterface + Clone + 'static
                     method,
                     args,
                 } => {
-                    let package = self
-                        .packages
-                        .get(&package_id)
-                        .ok_or(InstructionError::PackageNotFound { package_id })?;
-                    // TODO: load component, not module - component_id is currently hard-coded as the template name in
-                    // tests
-                    let module = package
-                        .get_module_by_name(&component_id)
-                        .ok_or(InstructionError::TemplateNameNotFound { name: component_id })?;
+                    if package_id != self.package.id() {
+                        return Err(InstructionError::PackageNotFound { package_id });
+                    }
+                    let component = self.runtime_interface.get_component(&component_id)?;
+                    let module = self.package.get_module_by_name(&component.module_name).ok_or_else(|| {
+                        InstructionError::TemplateNameNotFound {
+                            name: component.module_name.clone(),
+                        }
+                    })?;
+
+                    let mut final_args = Vec::with_capacity(args.len() + 1);
+                    final_args.push(encode(&component).unwrap());
+                    final_args.extend(args);
 
                     // TODO: implement intelligent instance caching
-                    let process = Process::start(module.clone(), state.clone())?;
-                    let result = process.invoke_by_name(&method, args)?;
-                    results.push(result);
+                    let process = Process::start(module.clone(), state.clone(), package_id)?;
+                    process.invoke_by_name(&method, final_args)?
                 },
-            }
+            };
+
+            results.push(result);
         }
 
         Ok(results)

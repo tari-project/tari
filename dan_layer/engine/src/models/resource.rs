@@ -20,17 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
+use tari_template_abi::{Decode, Encode};
+use tari_template_lib::Hash;
 
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
+pub type ResourceAddress = Hash;
 
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
+#[derive(Debug, Clone, Encode, Decode, serde::Deserialize)]
+pub enum Resource {
+    Coin {
+        address: ResourceAddress,
+        // type_descriptor: TypeDescriptor,
+        amount: u64,
+    },
+    Token {
+        address: ResourceAddress,
+        // type_descriptor: TypeDescriptor,
+        token_ids: Vec<u64>,
+    },
+}
 
-mod types;
-pub use types::*;
+pub trait ResourceTypeDescriptor {
+    fn type_descriptor(&self) -> TypeDescriptor;
+}
+
+// The thinking here, that a resource address + a "local" type id together can used to validate type safety of the
+// resources at runtime. The local type id can be defined as a unique id within the scope of the contract. We'll have to
+// get further to see if this can work or is even needed.
+#[derive(Debug, Clone, Encode, Decode, serde::Deserialize)]
+pub struct TypeDescriptor {
+    type_id: u16,
+}

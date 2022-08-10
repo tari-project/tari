@@ -19,18 +19,58 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use tari_template_abi::{Decode, Encode};
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
+use crate::models::{ComponentId, ContractAddress, PackageId};
 
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct EmitLogArg {
+    pub message: String,
+    pub level: LogLevel,
+}
 
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
 
-mod types;
-pub use types::*;
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct CreateComponentArg {
+    pub contract_address: ContractAddress,
+    pub module_name: String,
+    pub package_id: PackageId,
+    pub state: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct GetComponentArg {
+    pub component_id: ComponentId,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct SetComponentStateArg {
+    pub component_id: ComponentId,
+    pub state: Vec<u8>,
+}
+
+#[macro_export]
+macro_rules! __template_lib_count {
+    () => (0usize);
+    ( $x:tt $($next:tt)* ) => (1usize + $crate::__template_lib_count!($($next)*));
+}
+
+#[macro_export]
+macro_rules! args {
+    () => (Vec::new());
+
+    ($($args:expr),+) => {{
+        let mut args = Vec::with_capacity($crate::__template_lib_count!($($args),+));
+        $(
+            args.push(tari_template_abi::encode(&$args).unwrap());
+        )+
+        args
+    }}
+}

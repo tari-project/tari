@@ -20,17 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
+use std::{borrow::Borrow, cell::RefCell};
 
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
+use tari_template_abi::{decode, CallInfo};
 
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
+use crate::{
+    abi_context::AbiContext,
+    models::{Contract, Package},
+};
 
-mod types;
-pub use types::*;
+thread_local! {
+    static CONTEXT: RefCell<Option<AbiContext>> = RefCell::new(None);
+}
+
+pub fn set_context_from_call_info(call_info: &CallInfo) {
+    let abi_context = decode(&call_info.abi_context).expect("Failed to decode ABI context");
+    with_context(|ctx| {
+        *ctx = Some(abi_context);
+    });
+}
+
+pub fn with_context<R, F: FnOnce(&mut Option<AbiContext>) -> R>(f: F) -> R {
+    CONTEXT.borrow().with(|c| f(&mut c.borrow_mut()))
+}
+
+pub fn get_context() -> Context {
+    Context
+}
+
+#[derive(Debug, Default)]
+pub struct Context;
+impl Context {
+    pub fn package(&self) -> Package {
+        with_context(|ctx| ctx.as_ref().unwrap().package.clone())
+    }
+
+    pub fn contract(&self) -> Contract {
+        with_context(|ctx| ctx.as_ref().unwrap().contract.clone())
+    }
+}

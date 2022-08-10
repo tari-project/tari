@@ -20,17 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
+use std::marker::PhantomData;
 
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
+pub type BucketId = u32;
 
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
+pub struct Bucket<T> {
+    id: BucketId,
+    _t: PhantomData<T>,
+}
 
-mod types;
-pub use types::*;
+impl<T> Bucket<T> {
+    pub fn id(&self) -> BucketId {
+        self.id
+    }
+}

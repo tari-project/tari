@@ -4,8 +4,6 @@
 pub mod proto;
 pub mod storage;
 
-mod hash;
 mod template_id;
 
-pub use hash::Hash;
 pub use template_id::TemplateId;

@@ -20,17 +20,47 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
+use crate::{Decode, Encode};
 
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct TemplateDef {
+    pub template_name: String,
+    pub functions: Vec<FunctionDef>,
+}
 
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
+impl TemplateDef {
+    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
+        self.functions.iter().find(|f| f.name.as_str() == name)
+    }
+}
 
-mod types;
-pub use types::*;
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct FunctionDef {
+    pub name: String,
+    pub arguments: Vec<Type>,
+    pub output: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum Type {
+    Unit,
+    Bool,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    String,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct CallInfo {
+    pub func_name: String,
+    pub args: Vec<Vec<u8>>,
+    pub abi_context: Vec<u8>,
+}

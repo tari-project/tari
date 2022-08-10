@@ -20,17 +20,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
+use std::marker::PhantomData;
 
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
+use crate::{hash::HashParseError, Hash};
 
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
+#[derive(Debug)]
+pub struct ResourceAddress<T> {
+    address: Hash,
+    _t: PhantomData<T>,
+}
 
-mod types;
-pub use types::*;
+impl<T> ResourceAddress<T> {
+    //     pub fn descriptor(&self) -> (Hash, UniversalTypeId) {
+    //         (self.address, T::universal_type_id())
+    //     }
+
+    pub fn from_hex(s: &str) -> Result<Self, HashParseError> {
+        Ok(ResourceAddress {
+            address: Hash::from_hex(s)?,
+            _t: PhantomData,
+        })
+    }
+}
+
+impl<T> Clone for ResourceAddress<T> {
+    fn clone(&self) -> Self {
+        Self {
+            address: self.address,
+            _t: PhantomData,
+        }
+    }
+}
+
+impl<T> Copy for ResourceAddress<T> {}

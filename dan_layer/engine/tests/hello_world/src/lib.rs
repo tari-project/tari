@@ -24,11 +24,21 @@ use tari_template_macros::template;
 
 #[template]
 mod hello_world {
-    struct HelloWorld {}
+    struct HelloWorld {
+        greeting: String,
+    }
 
     impl HelloWorld {
         pub fn greet() -> String {
             "Hello World!".to_string()
+        }
+
+        pub fn new(greeting: String) -> Self {
+            Self { greeting }
+        }
+
+        pub fn custom_greeting(&self, name: String) -> String {
+            format!("{} {}!", self.greeting, name)
         }
     }
 }

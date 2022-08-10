@@ -20,17 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # Tari WASM module ABI (application binary interface)
-//!
-//! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
-//! WASM modules.
-
-mod abi;
-pub use abi::*;
-pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
-
-mod encoding;
-pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
-
-mod types;
-pub use types::*;
+pub const OP_EMIT_LOG: i32 = 0x00;
+pub const OP_CREATE_COMPONENT: i32 = 0x01;
+pub const OP_GET_COMPONENT: i32 = 0x02;
+pub const OP_SET_COMPONENT_STATE: i32 = 0x03;
+pub const OP_RESOURCE_INVOKE: i32 = 0x04;
