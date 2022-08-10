@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 const net = require("net");
+const varint = require("varint");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 const { expect } = require("chai");
@@ -429,7 +430,24 @@ const findUtxoWithOutputMessage = async (wallet, message) => {
   return accepted;
 };
 
+function assertBufferType(buf, len = null) {
+  if (!Buffer.isBuffer(buf)) {
+    throw new Error("Expected buffer");
+  }
+  if (len !== null) {
+    if (buf.length !== len) {
+      throw new Error("Expected buffer of length " + len);
+    }
+  }
+}
+
+function varintEncode(num) {
+  return Buffer.from(varint.encode(num));
+}
+
 module.exports = {
+  assertBufferType,
+  varintEncode,
   getRandomInt,
   sleep,
   waitFor,
