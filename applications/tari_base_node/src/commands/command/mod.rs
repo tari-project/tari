@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod add_peer;
 mod ban_peer;
 mod block_timing;
 mod check_db;
@@ -108,6 +109,7 @@ pub enum Command {
     PingPeer(ping_peer::Args),
     ResetOfflinePeers(reset_offline_peers::Args),
     RewindBlockchain(rewind_blockchain::Args),
+    AddPeer(add_peer::ArgsAddPeer),
     BanPeer(ban_peer::ArgsBan),
     UnbanPeer(ban_peer::ArgsUnban),
     UnbanAllPeers(unban_all_peers::Args),
@@ -224,6 +226,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::ListPeers(args) => self.handle_command(args).await,
             Command::DialPeer(args) => self.handle_command(args).await,
             Command::PingPeer(args) => self.handle_command(args).await,
+            Command::AddPeer(args) => self.handle_command(args).await,
             Command::BanPeer(args) => self.handle_command(args).await,
             Command::UnbanPeer(args) => self.handle_command(args).await,
             Command::ResetOfflinePeers(args) => self.handle_command(args).await,
