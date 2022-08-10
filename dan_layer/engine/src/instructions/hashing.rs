@@ -20,7 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod hashing;
-pub mod tip002_template;
-pub mod tip004_template;
-pub mod tip721_template;
+use digest::Digest;
+use tari_crypto::{
+    hash_domain,
+    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
+};
+
+hash_domain!(
+    DanLayerEngineInstructionsDomain,
+    "com.tari.tari_project.dan_layer.engine.instructions",
+    1
+);
+
+pub(crate) const INSTRUCTION_LABEL: &str = "instruction";
+
+pub(crate) fn dan_layer_engine_instructions<D: Digest + LengthExtensionAttackResistant>(
+    label: &'static str,
+) -> DomainSeparatedHasher<D, DanLayerEngineInstructionsDomain> {
+    DomainSeparatedHasher::<D, DanLayerEngineInstructionsDomain>::new_with_label(label)
+}
