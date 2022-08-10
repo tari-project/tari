@@ -100,7 +100,7 @@ fn main_inner() -> Result<(), ExitError> {
     )?;
 
     #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
-    let config = ApplicationConfig::load_from(&cfg)?;
+    let mut config = ApplicationConfig::load_from(&cfg)?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
