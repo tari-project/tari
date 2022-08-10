@@ -165,11 +165,11 @@ A very rough outline of the flow goes as follows:
   place. The status RFC will then change to ![WIP status](./meta/img/status-wip.svg). A feature gate 
   name will be assigned to the feature at this stage.
 - Development for this feature happens behind the feature gate, and PRs are submitted against the `development` branch.
-- Once the implementation is complete and active on mainnet, the RFC status can then be changed to
-  ![active status](./meta/img/status-active.svg).
+- Once the implementation is complete and active on dibbler, the RFC status can then be changed to
+  ![testing status](./meta/img/status-testing.svg).
 - The RFC should be updated to match the implementation. The changes must be summarised in the Change Log. Once the 
   feature is stabilised and is live on mainnet, the status can be updated to
-  ![stable status](./meta/img/status-stable.svg).
+  ![stable status](./meta/img/status-active.svg).
 
 If an RFC ever becomes redundant, DO NOT delete it. Mark the RFC as 
 ![deprecated](./meta/img/status-deprecated.svg) and move it to the _Deprecated_ chapter of the RFC handbook.
