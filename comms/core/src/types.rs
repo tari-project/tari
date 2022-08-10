@@ -24,6 +24,7 @@
 
 use tari_crypto::{
     hash::blake2::Blake256,
+    hash_domain,
     keys::PublicKey,
     ristretto::RistrettoPublicKey,
     signatures::SchnorrSignature,
@@ -55,3 +56,5 @@ pub type CommsDataStore = LMDBStore;
 pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
 #[cfg(test)]
 pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
+
+hash_domain!(CommsCoreHashDomain, "com.tari.comms.core", 0);
