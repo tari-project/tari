@@ -91,6 +91,10 @@ impl<'a, T: Deref<Target = ConstTransaction<'a>>> StateReader for LmdbTransactio
             .to_opt()
             .map_err(StateStoreError::custom)
     }
+
+    fn exists(&self, key: &[u8]) -> Result<bool, StateStoreError> {
+        Ok(self.get_state_raw(key)?.is_some())
+    }
 }
 
 impl<'a> StateWriter for LmdbTransaction<WriteTransaction<'a>> {
@@ -128,6 +132,7 @@ mod tests {
         {
             let mut access = store.write_access().unwrap();
             access.set_state(b"abc", user_data.clone()).unwrap();
+            assert!(access.exists(b"abc").unwrap());
             let res = access.get_state(b"abc").unwrap();
             assert_eq!(res, Some(user_data.clone()));
             let res = access.get_state::<_, UserData>(b"def").unwrap();
@@ -139,6 +144,7 @@ mod tests {
             let access = store.read_access().unwrap();
             let res = access.get_state::<_, UserData>(b"abc").unwrap();
             assert_eq!(res, None);
+            assert!(!access.exists(b"abc").unwrap());
         }
 
         {

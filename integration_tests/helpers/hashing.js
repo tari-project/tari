@@ -24,23 +24,20 @@
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 const { toLittleEndian } = require("./util");
-class DomainHasher {
-  constructor(label, output_len = 32, key = null) {
-    this.hasher = blake2bInit(output_len, key);
-    this.chain(Buffer.from(label, "utf-8"));
+
+class Blake256 {
+  constructor() {
+    this.hasher = blake2bInit(32);
   }
 
-  chain(value) {
-    let buf = Buffer.from(value);
-    let le = toLittleEndian(buf.length, 64);
-    blake2bUpdate(this.hasher, le);
+  chain(value, encoding = undefined) {
+    this.update(value, encoding);
+    return this;
+  }
+
+  update(value, encoding = undefined) {
+    let buf = Buffer.isBuffer(value) ? value : Buffer.from(value, encoding);
     blake2bUpdate(this.hasher, buf);
-    return this;
-  }
-
-  chain_fixed_int(number, bits) {
-    blake2bUpdate(this.hasher, toLittleEndian(number, bits));
-    return this;
   }
 
   finalize() {
@@ -48,4 +45,52 @@ class DomainHasher {
   }
 }
 
-module.exports = DomainHasher;
+class DomainHashing {
+  constructor(label) {
+    this.hasher = new Blake256();
+    this.update(Buffer.from(label, "utf-8"));
+  }
+  chain(value, encoding = undefined) {
+    this.update(value, encoding);
+    return this;
+  }
+
+  update(value, encoding = undefined) {
+    let buf = Buffer.isBuffer(value) ? value : Buffer.from(value, encoding);
+    let le = toLittleEndian(buf.length, 64);
+    this.hasher.update(le);
+    this.hasher.update(buf);
+  }
+
+  finalize() {
+    return this.hasher.finalize();
+  }
+}
+
+exports.DomainHashing = DomainHashing;
+exports.Blake256 = Blake256;
+
+function hasherWithLabel(label) {
+  let len = toLittleEndian(label.length, 64);
+  let hasher = new Blake256();
+  return hasher.chain(len).chain(label, "utf-8");
+}
+
+module.exports = {
+  // DomainHashing,
+  Blake256,
+  domainHashers: {
+    transactionKdf(label) {
+      return new DomainHashing(
+        `com.tari.base_layer.core.transactions.v0.kdf.${label}`
+      );
+    },
+  },
+  consensusHashers: {
+    transactionHasher(label) {
+      return hasherWithLabel(
+        `com.tari.base_layer.core.transactions.v0.${label}`
+      );
+    },
+  },
+};

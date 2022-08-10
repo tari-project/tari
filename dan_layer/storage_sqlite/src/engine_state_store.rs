@@ -110,6 +110,23 @@ impl<'a> StateReader for SqliteTransaction<'a> {
 
         Ok(val)
     }
+
+    fn exists(&self, key: &[u8]) -> Result<bool, StateStoreError> {
+        use crate::schema::metadata::dsl;
+        let val = dsl::metadata
+            .count()
+            .filter(metadata::key.eq(key))
+            .limit(1)
+            .first::<i64>(self.conn)
+            .map_err(|source| {
+                StateStoreError::custom(SqliteStorageError::DieselError {
+                    source,
+                    operation: "get state".to_string(),
+                })
+            })?;
+
+        Ok(val > 0)
+    }
 }
 
 impl<'a> StateWriter for SqliteTransaction<'a> {
@@ -177,6 +194,7 @@ mod tests {
             access.set_state(b"abc", user_data.clone()).unwrap();
             let res = access.get_state(b"abc").unwrap();
             assert_eq!(res, Some(user_data.clone()));
+            assert!(access.exists(b"abc").unwrap());
             let res = access.get_state::<_, UserData>(b"def").unwrap();
             assert_eq!(res, None);
             // Drop without commit rolls back
@@ -186,6 +204,7 @@ mod tests {
             let access = store.read_access().unwrap();
             let res = access.get_state::<_, UserData>(b"abc").unwrap();
             assert_eq!(res, None);
+            assert!(!access.exists(b"abc").unwrap());
         }
 
         {
