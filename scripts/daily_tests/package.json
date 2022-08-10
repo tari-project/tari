@@ -24,6 +24,6 @@
   "devDependencies": {
     "@babel/eslint-plugin": "^7.14.5",
     "eslint-plugin-prettier": "^4.0.0",
-    "mocha": "^9.1.0"
+    "mocha": "^9.2.2"
   }
 }
