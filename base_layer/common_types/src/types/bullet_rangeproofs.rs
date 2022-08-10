@@ -22,7 +22,6 @@
 
 use std::fmt;
 
-use digest::Digest;
 use serde::{
     de::{self, Visitor},
     Deserialize,
@@ -32,14 +31,18 @@ use serde::{
 };
 use tari_utilities::{hex::*, ByteArray, ByteArrayError, Hashable};
 
-use crate::types::Blake256;
+use super::{base_layer_common_types_domain_hasher, BULLET_RANGEPROOFS_HASHER_LABEL};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BulletRangeProof(pub Vec<u8>);
 /// Implement the hashing function for RangeProof for use in the MMR
 impl Hashable for BulletRangeProof {
     fn hash(&self) -> Vec<u8> {
-        Blake256::new().chain(&self.0).finalize().to_vec()
+        base_layer_common_types_domain_hasher(BULLET_RANGEPROOFS_HASHER_LABEL)
+            .chain(&self.0)
+            .finalize()
+            .as_ref()
+            .to_vec()
     }
 }
 
