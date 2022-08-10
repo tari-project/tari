@@ -584,7 +584,36 @@ where B: BlockchainBackend + 'static
             coinbase_output,
             kernel_excess_sigs: excess_sigs,
         } = new_block;
+        // If the block is empty, we dont have to check ask for the block, as we already have the full block available
+        // to us.
+        if excess_sigs.is_empty() {
+            let block = BlockBuilder::new(header.version)
+                .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+                .with_header(header)
+                .build();
+            return Ok(Arc::new(block));
+        }
 
+        let block_hash = header.hash();
+        // We check the current tip and orphan status of the block because we cannot guarantee that mempool state is
+        // correct and the mmr root calculation is only valid if the block is building on the tip.
+        let current_meta = self.blockchain_db.get_chain_metadata().await?;
+        if header.prev_hash != *current_meta.best_block() {
+            debug!(
+                target: LOG_TARGET,
+                "Orphaned block #{}: ({}), current tip is: #{} ({}). We need to fetch the complete block from peer: \
+                 ({})",
+                header.height,
+                block_hash.to_hex(),
+                current_meta.height_of_longest_chain(),
+                current_meta.best_block().to_hex(),
+                source_peer,
+            );
+            let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
+            return Ok(block);
+        }
+
+        // We know that the block is neither and orphan or a coinbase, so lets ask our mempool for the transactions
         let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
@@ -599,7 +628,7 @@ where B: BlockchainBackend + 'static
                 target: LOG_TARGET,
                 "All transactions for block #{} ({}) found in mempool",
                 header.height,
-                header.hash().to_hex()
+                block_hash.to_hex()
             );
         } else {
             debug!(
@@ -623,7 +652,6 @@ where B: BlockchainBackend + 'static
             }
 
             if !not_found.is_empty() {
-                let block_hash = header.hash();
                 warn!(
                     target: LOG_TARGET,
                     "Peer {} was not able to return all transactions for block #{} ({}). {} transaction(s) not found. \
@@ -655,9 +683,14 @@ where B: BlockchainBackend + 'static
         // Perform a sanity check on the reconstructed block, if the MMR roots don't match then it's possible one or
         // more transactions in our mempool had the same excess/signature for a *different* transaction.
         // This is extremely unlikely, but still possible. In case of a mismatch, request the full block from the peer.
-        let (block, mmr_roots) = self.blockchain_db.calculate_mmr_roots(block).await?;
+        let (block, mmr_roots) = match self.blockchain_db.calculate_mmr_roots(block).await {
+            Err(_) => {
+                let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
+                return Ok(block);
+            },
+            Ok(v) => v,
+        };
         if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots) {
-            let block_hash = block.hash();
             warn!(
                 target: LOG_TARGET,
                 "Reconstructed block #{} ({}) failed MMR check validation!. Requesting full block. Error: {}",
