@@ -37,6 +37,7 @@ pub mod mock;
 mod router;
 use std::{
     borrow::Cow,
+    cmp,
     convert::TryFrom,
     future::Future,
     io,
@@ -175,7 +176,7 @@ impl RpcServerBuilder {
     }
 
     pub fn with_maximum_simultaneous_sessions(mut self, limit: usize) -> Self {
-        self.maximum_simultaneous_sessions = Some(limit);
+        self.maximum_simultaneous_sessions = Some(cmp::min(limit, BoundedExecutor::max_theoretical_tasks()));
         self
     }
 
@@ -242,6 +243,7 @@ where
     ) -> Self {
         Self {
             executor: match config.maximum_simultaneous_sessions {
+                Some(usize::MAX) => BoundedExecutor::allow_maximum(),
                 Some(num) => BoundedExecutor::from_current(num),
                 None => BoundedExecutor::allow_maximum(),
             },
