@@ -299,7 +299,7 @@ where B: BlockchainBackend + 'static
 
             match result {
                 Err(BaseNodeServiceError::CommsInterfaceError(CommsInterfaceError::ChainStorageError(
-                    ChainStorageError::CannotAcquireFileLock,
+                    ChainStorageError::AddBlockOperationLocked,
                 ))) => {
                     // Special case, dont log this again as an error
                 },

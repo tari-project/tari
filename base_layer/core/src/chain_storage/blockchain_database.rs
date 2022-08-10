@@ -1229,8 +1229,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     let metadata = db.fetch_chain_metadata()?;
     if header.prev_hash != *metadata.best_block() {
-        error!(target: LOG_TARGET, "Block hash: {}", header.hash().to_hex());
-        error!(target: LOG_TARGET, "Block : {}", block);
         return Err(ChainStorageError::CannotCalculateNonTipMmr(format!(
             "Block (#{}) previous hash is {} but the current tip is #{} {}",
             header.height,
