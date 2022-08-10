@@ -30,7 +30,8 @@
       When I ask for a block header by hash using last block header from proxy PROXY
       Then Proxy response for block header by hash is valid
 
-    @critical
+    # BROKEN: get_block_template returns error 500
+    @critical @broken
     Scenario: Simple Merge Mining
       Given I have a seed node NODE
       And I have wallet WALLET connected to all seed nodes

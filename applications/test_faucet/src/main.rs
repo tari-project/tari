@@ -44,7 +44,7 @@ struct Key {
 /// UTXO generation is pretty slow (esp range proofs), so we'll use async threads to speed things up.
 /// We'll use blocking thread tasks to do the CPU intensive utxo generation, and then push the results
 /// through a channel where a file-writer is waiting to persist the results to disk.
-#[tokio::main(worker_threads = 2)]
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let num_keys: usize = std::env::args()
         .skip(1)

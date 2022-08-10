@@ -22,6 +22,7 @@
 
 use std::{convert::TryFrom, fmt, fmt::Formatter, fs, io::Error, str::FromStr};
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use tari_comms::tor;
 use tari_utilities::hex::Hex;
@@ -37,6 +38,7 @@ pub enum TorCookie {
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(try_from = "String")]
 pub enum TorControlAuthentication {
+    Auto,
     None,
     Password(String),
     /// Cookie authentication. The contents of the cookie file encoded as hex
@@ -50,6 +52,7 @@ impl TorControlAuthentication {
 
     pub fn make_tor_auth(self) -> Result<tor::Authentication, Error> {
         match self {
+            TorControlAuthentication::Auto => Ok(tor::Authentication::Auto),
             TorControlAuthentication::None => Ok(tor::Authentication::None),
             TorControlAuthentication::Password(passwd) => Ok(tor::Authentication::HashedPassword(passwd)),
             TorControlAuthentication::Cookie(cookie) => match cookie {
@@ -68,14 +71,16 @@ fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
     (
         parts
             .next()
+            .map(|s| s.trim())
             .expect("splitn always emits at least one part")
             .to_lowercase(),
-        parts.next(),
+        parts.next().map(|s| s.trim()),
     )
 }
 
+// Used by serde
 impl TryFrom<String> for TorControlAuthentication {
-    type Error = String;
+    type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         value.as_str().parse()
@@ -83,17 +88,19 @@ impl TryFrom<String> for TorControlAuthentication {
 }
 
 impl FromStr for TorControlAuthentication {
-    type Err = String;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (auth_type, maybe_value) = parse_key_value(s, '=');
         match auth_type.as_str() {
+            "auto" => Ok(TorControlAuthentication::Auto),
             "none" => Ok(TorControlAuthentication::None),
             "password" => {
                 let password = maybe_value.ok_or_else(|| {
-                    "Invalid format for 'password' tor authentication type. It should be in the format \
-                     'password=xxxxxx'."
-                        .to_string()
+                    anyhow!(
+                        "Invalid format for 'password' tor authentication type. It should be in the format \
+                         'password=xxxxxx'."
+                    )
                 })?;
                 Ok(TorControlAuthentication::Password(password.to_string()))
             },
@@ -108,14 +115,13 @@ impl FromStr for TorControlAuthentication {
                         Ok(TorControlAuthentication::Cookie(TorCookie::Hex(value.to_string())))
                     }
                 } else {
-                    Err(
+                    Err(anyhow!(
                         "Invalid format for 'cookie' tor authentication type. It should be in the format \
                          'cookie=xxxxxx'."
-                            .into(),
-                    )
+                    ))
                 }
             },
-            s => Err(format!("Invalid tor auth type '{}'", s)),
+            s => Err(anyhow!("Invalid tor auth type '{}'", s)),
         }
     }
 }
@@ -125,6 +131,7 @@ impl fmt::Debug for TorControlAuthentication {
         #[allow(clippy::enum_glob_use)]
         use TorControlAuthentication::*;
         match self {
+            Auto => write!(f, "Auto"),
             None => write!(f, "None"),
             Password(_) => write!(f, "Password(...)"),
             Cookie(_) => write!(f, "Cookie(...)"),
@@ -137,36 +144,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tor_parser_test() {
-        let auth = TorControlAuthentication::from_str("none");
-        assert_eq!(auth, Ok(TorControlAuthentication::None));
+    fn tor_parser_valid_case() {
+        let auth = TorControlAuthentication::from_str("auto").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Auto);
 
-        let auth = TorControlAuthentication::from_str("password=");
-        assert_eq!(auth, Ok(TorControlAuthentication::Password("".into())));
+        let auth = TorControlAuthentication::from_str("none").unwrap();
+        assert_eq!(auth, TorControlAuthentication::None);
 
-        let auth = TorControlAuthentication::from_str("password=123");
-        assert_eq!(auth, Ok(TorControlAuthentication::Password("123".into())));
+        let auth = TorControlAuthentication::from_str("password=").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Password("".into()));
 
-        let auth = TorControlAuthentication::from_str("cookie=");
-        assert_eq!(auth, Ok(TorControlAuthentication::hex("".into())));
+        let auth = TorControlAuthentication::from_str("password     =     123         ").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Password("123".into()));
 
-        let auth = TorControlAuthentication::from_str("cookie=8b6f");
-        assert_eq!(auth, Ok(TorControlAuthentication::hex("8b6f".into())));
+        let auth = TorControlAuthentication::from_str("password=123").unwrap();
+        assert_eq!(auth, TorControlAuthentication::Password("123".into()));
 
-        let auth = TorControlAuthentication::from_str("cookie=@");
+        let auth = TorControlAuthentication::from_str("cookie=").unwrap();
+        assert_eq!(auth, TorControlAuthentication::hex("".into()));
+
+        let auth = TorControlAuthentication::from_str("cookie=8b6f").unwrap();
+        assert_eq!(auth, TorControlAuthentication::hex("8b6f".into()));
+
+        let auth = TorControlAuthentication::from_str("cookie=@").unwrap();
         assert_eq!(
             auth,
-            Ok(TorControlAuthentication::Cookie(TorCookie::FilePath(
-                DEFAULT_TOR_COOKIE_PATH.into()
-            )))
+            TorControlAuthentication::Cookie(TorCookie::FilePath(DEFAULT_TOR_COOKIE_PATH.into()))
         );
 
-        let auth = TorControlAuthentication::from_str("cookie=@/path/to/file");
+        let auth = TorControlAuthentication::from_str("cookie=@/path/to/file").unwrap();
         assert_eq!(
             auth,
-            Ok(TorControlAuthentication::Cookie(TorCookie::FilePath(
-                "/path/to/file".into()
-            )))
+            TorControlAuthentication::Cookie(TorCookie::FilePath("/path/to/file".into()))
         );
+    }
+
+    #[test]
+    fn tor_parser_invalid_case() {
+        TorControlAuthentication::from_str("").unwrap_err();
+        TorControlAuthentication::from_str("not_valid").unwrap_err();
+        TorControlAuthentication::from_str("cookie abcd").unwrap_err();
     }
 }

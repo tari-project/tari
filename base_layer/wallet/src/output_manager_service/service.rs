@@ -22,7 +22,6 @@
 
 use std::{convert::TryInto, fmt, sync::Arc};
 
-use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use itertools::Itertools;
@@ -98,6 +97,7 @@ use crate::{
         tasks::TxoValidationTask,
     },
     types::WalletHasher,
+    WalletSecretKeysDomainHasher,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -962,7 +962,7 @@ where
     }
 
     /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
-    /// this blockheight will be cancelled.
+    /// the corresponding output hash will be cancelled.
     /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
     /// keychain is based on the wallets master_key and the "coinbase" branch.
     async fn get_coinbase_transaction(
@@ -1010,37 +1010,26 @@ where
             None,
         )?;
 
-        // Clear any existing pending coinbase transactions for this blockheight if they exist
-        match self
-            .resources
-            .db
-            .clear_pending_coinbase_transaction_at_block_height(block_height)
-        {
-            Ok(_) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "An existing pending coinbase was cleared for block height {}", block_height
-                )
-            },
-            Err(e) => match e {
-                OutputManagerStorageError::DieselError(DieselError::NotFound) => {},
-                _ => return Err(OutputManagerError::from(e)),
-            },
-        };
+        // If there is no existing output available, we store the one we produced.
+        match self.resources.db.fetch_by_commitment(output.commitment.clone()) {
+            Ok(outs) => {
+                if outs.is_empty() {
+                    self.resources
+                        .db
+                        .add_output_to_be_received(tx_id, output, Some(block_height))?;
 
-        // Clear any matching outputs for this commitment. Even if the older output is valid
-        // we are losing no information as this output has the same commitment.
-        match self.resources.db.remove_output_by_commitment(output.commitment.clone()) {
-            Ok(_) => {},
-            Err(OutputManagerStorageError::ValueNotFound) => {},
+                    self.confirm_encumberance(tx_id)?;
+                }
+            },
+            Err(OutputManagerStorageError::ValueNotFound) => {
+                self.resources
+                    .db
+                    .add_output_to_be_received(tx_id, output, Some(block_height))?;
+
+                self.confirm_encumberance(tx_id)?;
+            },
             Err(e) => return Err(e.into()),
-        }
-
-        self.resources
-            .db
-            .add_output_to_be_received(tx_id, output, Some(block_height))?;
-
-        self.confirm_encumberance(tx_id)?;
+        };
 
         Ok(tx)
     }
@@ -2723,7 +2712,11 @@ impl fmt::Display for Balance {
 }
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
-    Blake256::new().chain(key.as_bytes()).finalize().to_vec()
+    WalletSecretKeysDomainHasher::new()
+        .chain(key.as_bytes())
+        .finalize()
+        .as_ref()
+        .to_vec()
 }
 
 #[derive(Debug, Clone)]

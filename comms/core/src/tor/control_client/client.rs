@@ -41,7 +41,7 @@ use super::{
 };
 use crate::{
     multiaddr::Multiaddr,
-    tor::control_client::{event::TorControlEvent, monitor::spawn_monitor},
+    tor::control_client::{commands::ProtocolInfoResponse, event::TorControlEvent, monitor::spawn_monitor},
     transports::{TcpTransport, Transport},
 };
 
@@ -93,7 +93,7 @@ impl TorControlPortClient {
     /// Authenticate with the tor control port
     pub async fn authenticate(&mut self, authentication: &Authentication) -> Result<(), TorClientError> {
         match authentication {
-            Authentication::None => {
+            Authentication::Auto | Authentication::None => {
                 self.send_line("AUTHENTICATE".to_string()).await?;
             },
             Authentication::HashedPassword(passwd) => {
@@ -108,6 +108,12 @@ impl TorControlPortClient {
         self.recv_ok().await?;
 
         Ok(())
+    }
+
+    /// The PROTOCOLINFO command.
+    pub async fn protocol_info(&mut self) -> Result<ProtocolInfoResponse, TorClientError> {
+        let command = commands::ProtocolInfo::new();
+        self.request_response(command).await
     }
 
     /// The GETCONF command. Returns configuration keys matching the `conf_name`.
@@ -244,6 +250,9 @@ impl TorControlPortClient {
 /// Represents tor control port authentication mechanisms
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
+    /// Attempt to configure authentication automatically. This only works for no auth, or cookie auth.
+    /// The cookie must be readable by the current process user.
+    Auto,
     /// No control port authentication required
     None,
     /// A hashed password will be sent to authenticate
@@ -260,8 +269,9 @@ impl Default for Authentication {
 
 impl fmt::Display for Authentication {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Authentication::{Cookie, HashedPassword, None};
+        use Authentication::{Auto, Cookie, HashedPassword, None};
         match self {
+            Auto => write!(f, "Auto"),
             None => write!(f, "None"),
             HashedPassword(_) => write!(f, "HashedPassword"),
             Cookie(_) => write!(f, "Cookie"),
@@ -522,5 +532,56 @@ mod test {
 
         let request = mock_state.take_requests().await.pop().unwrap();
         assert_eq!(request, "DEL_ONION some-fake-id");
+    }
+
+    #[runtime::test]
+    async fn protocol_info_cookie_ok() {
+        let (mut tor, mock_state) = setup_test().await;
+
+        mock_state
+            .set_canned_response(canned_responses::PROTOCOL_INFO_COOKIE_AUTH_OK)
+            .await;
+
+        let info = tor.protocol_info().await.unwrap();
+
+        let request = mock_state.take_requests().await.pop().unwrap();
+        assert_eq!(request, "PROTOCOLINFO");
+
+        assert_eq!(info.protocol_info_version, 1);
+        assert_eq!(info.auth_methods.methods, vec!["COOKIE", "SAFECOOKIE"]);
+        assert_eq!(
+            info.auth_methods.cookie_file,
+            Some("/home/user/.tor/control_auth_cookie".to_string())
+        );
+    }
+
+    #[runtime::test]
+    async fn protocol_info_no_auth_ok() {
+        let (mut tor, mock_state) = setup_test().await;
+
+        mock_state
+            .set_canned_response(canned_responses::PROTOCOL_INFO_NO_AUTH_OK)
+            .await;
+
+        let info = tor.protocol_info().await.unwrap();
+
+        let request = mock_state.take_requests().await.pop().unwrap();
+        assert_eq!(request, "PROTOCOLINFO");
+
+        assert_eq!(info.protocol_info_version, 1);
+        assert_eq!(info.auth_methods.methods, vec!["NULL"]);
+        assert_eq!(info.auth_methods.cookie_file, None);
+    }
+
+    #[runtime::test]
+    async fn protocol_info_err() {
+        let (mut tor, mock_state) = setup_test().await;
+
+        mock_state.set_canned_response(canned_responses::ERR_552).await;
+
+        tor.protocol_info().await.unwrap_err();
+
+        let request = mock_state.take_requests().await.pop().unwrap();
+        assert_eq!(request, "PROTOCOLINFO");
     }
 }

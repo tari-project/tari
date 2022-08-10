@@ -23,7 +23,13 @@
 use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_template_abi::{decode, encode_into, encode_with_len, ops, CallInfo, CreateComponentArg, EmitLogArg, Type};
+use tari_template_abi::{decode, encode, encode_into, encode_with_len, CallInfo, Type};
+use tari_template_lib::{
+    abi_context::AbiContext,
+    args::{CreateComponentArg, EmitLogArg, GetComponentArg, SetComponentStateArg},
+    models::{Component, Contract, ContractAddress, Package, PackageId},
+    ops,
+};
 use wasmer::{Function, Instance, Module, Store, Val, WasmerEnv};
 
 use crate::{
@@ -43,17 +49,26 @@ pub struct Process {
     module: LoadedWasmModule,
     env: WasmEnv<Runtime>,
     instance: Instance,
+    package_id: PackageId,
+    contract_address: ContractAddress,
 }
 
 impl Process {
-    pub fn start(module: LoadedWasmModule, state: Runtime) -> Result<Self, WasmExecutionError> {
+    pub fn start(module: LoadedWasmModule, state: Runtime, package_id: PackageId) -> Result<Self, WasmExecutionError> {
         let store = Store::default();
         let mut env = WasmEnv::new(state);
         let tari_engine = Function::new_native_with_env(&store, env.clone(), Self::tari_engine_entrypoint);
         let resolver = env.create_resolver(&store, tari_engine);
         let instance = Instance::new(module.wasm_module(), &resolver)?;
         env.init_with_instance(&instance)?;
-        Ok(Self { module, env, instance })
+        Ok(Self {
+            module,
+            env,
+            instance,
+            package_id,
+            // TODO:
+            contract_address: ContractAddress::default(),
+        })
     }
 
     fn alloc_and_write<T: BorshSerialize>(&self, val: &T) -> Result<AllocPtr, WasmExecutionError> {
@@ -77,16 +92,31 @@ impl Process {
                 return 0;
             },
         };
+
         let result = match op {
             ops::OP_EMIT_LOG => Self::handle(env, arg, |env, arg: EmitLogArg| {
                 env.state().interface().emit_log(arg.level, &arg.message);
                 Result::<_, WasmExecutionError>::Ok(())
             }),
             ops::OP_CREATE_COMPONENT => Self::handle(env, arg, |env, arg: CreateComponentArg| {
-                env.state().interface().create_component(arg.into())
+                env.state().interface().create_component(Component {
+                    contract_address: arg.contract_address,
+                    package_id: arg.package_id,
+                    module_name: arg.module_name,
+                    state: arg.state,
+                })
+            }),
+            ops::OP_GET_COMPONENT => Self::handle(env, arg, |env, arg: GetComponentArg| {
+                env.state().interface().get_component(&arg.component_id)
+            }),
+            ops::OP_SET_COMPONENT_STATE => Self::handle(env, arg, |env, arg: SetComponentStateArg| {
+                env.state()
+                    .interface()
+                    .set_component_state(&arg.component_id, arg.state)
             }),
             _ => Err(WasmExecutionError::InvalidOperation { op }),
         };
+
         result.unwrap_or_else(|err| {
             log::error!(target: LOG_TARGET, "{}", err);
             0
@@ -112,6 +142,16 @@ impl Process {
         //       out-of-bounds access error.
         Ok(ptr.as_i32())
     }
+
+    fn encoded_abi_context(&self) -> Vec<u8> {
+        encode(&AbiContext {
+            package: Package { id: self.package_id },
+            contract: Contract {
+                address: self.contract_address,
+            },
+        })
+        .unwrap()
+    }
 }
 
 impl Invokable for Process {
@@ -124,6 +164,7 @@ impl Invokable for Process {
             .ok_or_else(|| WasmExecutionError::FunctionNotFound { name: name.into() })?;
 
         let call_info = CallInfo {
+            abi_context: self.encoded_abi_context(),
             func_name: func_def.name.clone(),
             args,
         };

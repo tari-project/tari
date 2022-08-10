@@ -22,11 +22,11 @@
 
 use std::fmt::Debug;
 
-use digest::Digest;
 use tari_common_types::types::FixedHash;
 use tari_crypto::hash::blake2::Blake256;
 use tari_dan_engine::instructions::Instruction;
 
+use super::{dan_layer_models_hasher, hashing::TARI_DAN_PAYLOAD_LABEL};
 use crate::models::{ConsensusHash, InstructionSet, Payload};
 
 #[derive(Debug, Clone)]
@@ -56,12 +56,19 @@ impl TariDanPayload {
     }
 
     fn calculate_hash(&self) -> FixedHash {
-        let result = Blake256::new().chain(self.instruction_set.consensus_hash());
-        if let Some(ref ck) = self.checkpoint {
-            result.chain(ck.consensus_hash()).finalize().into()
+        let result =
+            dan_layer_models_hasher::<Blake256>(TARI_DAN_PAYLOAD_LABEL).chain(self.instruction_set.consensus_hash());
+
+        let mut out = [0u8; 32];
+
+        let result = if let Some(ref ck) = self.checkpoint {
+            result.chain(ck.consensus_hash()).finalize()
         } else {
-            result.finalize().into()
-        }
+            result.finalize()
+        };
+
+        out.copy_from_slice(result.as_ref());
+        out.into()
     }
 }
 

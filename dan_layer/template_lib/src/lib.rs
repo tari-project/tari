@@ -19,133 +19,28 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+pub mod abi_context;
 
-//! # Tari WASM module library
-//!
-//! This library provides primitives and functionality that allows Tari WASM modules to interact with the Tari engine.
-//! It is intended to be used by WASM modules that are written in Rust and compiled into WASM.
-//!
-//! The tari engine itself should never depend on this crate.
-//!
-//! TODO: no_std support
+mod hash;
+pub use hash::Hash;
 
+#[macro_use]
+pub mod args;
 pub mod models;
+pub mod ops;
 
-// TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
-// available
-use std::{collections::HashMap, mem, ptr::copy, slice};
+// ---------------------------------------- WASM target exports ------------------------------------------------
 
-use tari_template_abi::{encode_with_len, Decode, Encode, FunctionDef, TemplateDef};
+#[cfg(target_arch = "wasm32")]
+pub mod template_dependencies;
 
-pub fn generate_abi(template_name: String, functions: Vec<FunctionDef>) -> *mut u8 {
-    let template = TemplateDef {
-        template_name,
-        functions,
-    };
+#[cfg(target_arch = "wasm32")]
+mod context;
+#[cfg(target_arch = "wasm32")]
+pub use context::{get_context, set_context_from_call_info};
 
-    let buf = encode_with_len(&template);
-    wrap_ptr(buf)
-}
+#[cfg(target_arch = "wasm32")]
+mod engine;
 
-type FunctionImpl = Box<dyn Fn(Vec<Vec<u8>>) -> Vec<u8>>;
-
-#[derive(Default)]
-pub struct TemplateImpl(HashMap<String, FunctionImpl>);
-
-impl TemplateImpl {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    pub fn add_function(&mut self, name: String, implementation: FunctionImpl) {
-        self.0.insert(name, implementation);
-    }
-}
-
-/// Generate main
-///
-/// # Safety
-/// The caller must provide a valid pointer and length.
-pub unsafe fn generate_main(call_info: *mut u8, call_info_len: usize, template_impl: TemplateImpl) -> *mut u8 {
-    use tari_template_abi::{decode, CallInfo};
-    if call_info.is_null() {
-        panic!("call_info is null");
-    }
-
-    let call_data = slice::from_raw_parts(call_info, call_info_len);
-    let call_info: CallInfo = decode(call_data).unwrap();
-
-    // get the function
-    let function = match template_impl.0.get(&call_info.func_name) {
-        Some(f) => f,
-        None => panic!("invalid function name"),
-    };
-
-    // call the function
-    let result = function(call_info.args);
-
-    // return the encoded results of the function call
-    wrap_ptr(result)
-}
-
-pub fn call_engine<T: Encode, U: Decode + std::fmt::Debug>(op: i32, input: &T) -> Option<U> {
-    use tari_template_abi::{decode, decode_len, encode_into};
-
-    let mut encoded = Vec::with_capacity(512);
-    encode_into(input, &mut encoded).unwrap();
-    let len = encoded.len();
-    let input_ptr = wrap_ptr(encoded) as *const _;
-    let ptr = unsafe { tari_engine(op, input_ptr, len) };
-    if ptr.is_null() {
-        return None;
-    }
-
-    let slice = unsafe { slice::from_raw_parts(ptr as *const _, 4) };
-    let len = decode_len(slice).unwrap();
-    let slice = unsafe { slice::from_raw_parts(ptr.offset(4), len) };
-    let ret = decode(slice).unwrap();
-    Some(ret)
-}
-
-pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
-    let ptr = v.as_mut_ptr();
-    mem::forget(v);
-    ptr
-}
-
-extern "C" {
-    fn tari_engine(op: i32, input_ptr: *const u8, input_len: usize) -> *mut u8;
-    fn debug(input_ptr: *const u8, input_len: usize);
-}
-
-pub fn call_debug<T: AsRef<[u8]>>(data: T) {
-    let ptr = data.as_ref().as_ptr();
-    let len = data.as_ref().len();
-    unsafe { debug(ptr, len) }
-}
-
-/// Allocates a block of memory of length `len` bytes.
-#[no_mangle]
-pub extern "C" fn tari_alloc(len: u32) -> *mut u8 {
-    let cap = (len + 4) as usize;
-    let mut buf = Vec::<u8>::with_capacity(cap);
-    let ptr = buf.as_mut_ptr();
-    mem::forget(buf);
-    unsafe {
-        copy(len.to_le_bytes().as_ptr(), ptr, 4);
-    }
-    ptr
-}
-
-/// Frees a block of memory allocated by `tari_alloc`.
-///
-/// # Safety
-/// Caller must ensure that ptr must be a valid pointer to a block of memory allocated by `tari_alloc`.
-#[no_mangle]
-pub unsafe extern "C" fn tari_free(ptr: *mut u8) {
-    let mut len = [0u8; 4];
-    copy(ptr, len.as_mut_ptr(), 4);
-
-    let cap = (u32::from_le_bytes(len) + 4) as usize;
-    drop(Vec::<u8>::from_raw_parts(ptr, cap, cap));
-}
+#[cfg(target_arch = "wasm32")]
+pub use engine::engine;

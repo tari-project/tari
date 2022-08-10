@@ -190,7 +190,7 @@ impl Default for TorTransportConfig {
             control_address: "/ip4/127.0.0.1/tcp/9051".parse().unwrap(),
             socks_auth: SocksAuthentication::None,
             socks_address_override: None,
-            control_auth: TorControlAuthentication::None,
+            control_auth: TorControlAuthentication::Auto,
             onion_port: NonZeroU16::new(18141).unwrap(),
             proxy_bypass_addresses: vec![],
             proxy_bypass_for_outbound_tcp: false,
