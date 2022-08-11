@@ -191,12 +191,6 @@ jobs:
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v1
 
-      - name: Compile collectibles GUI
-        run: |
-          cd applications/tari_collectibles/web-app
-          npm install
-          npm run build
-
         # Fix me soon!
       - name: Build rust binaries - hardcoded (linux-arm64)
         if: ${{ matrix.builds.name == 'linux-arm64' }}
@@ -244,8 +238,6 @@ jobs:
             "tari_console_wallet"
             "tari_miner"
             "tari_merge_mining_proxy"
-            "tari_validator_node"
-            "tari_collectibles"
           )
           for FILE in "${FILES[@]}"; do
             if [ -f "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" ]; then
@@ -290,8 +282,6 @@ jobs:
             "tari_console_wallet"
             "tari_miner"
             "tari_merge_mining_proxy"
-            "tari_validator_node"
-            "tari_collectibles"
           )
           for FILE in "${FILES[@]}"; do
             codesign --options runtime --force --verify --verbose --timestamp --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
