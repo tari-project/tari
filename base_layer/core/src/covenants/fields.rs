@@ -597,15 +597,6 @@ mod test {
                 let hash = fields.construct_challenge_from(&output).finalize();
                 let hash = hash.to_vec();
 
-                // let mut challenge = Vec::new();
-                // output.features.consensus_encode(&mut challenge).unwrap();
-                // output.commitment.consensus_encode(&mut challenge).unwrap();
-                // output.script.consensus_encode(&mut challenge).unwrap();
-                // let expected_hash =
-                // DomainSeparatedConsensusHasher::<BaseLayerCovenantsDomain>::new(COVENANTS_FIELD_HASHER_LABEL)
-                //     .chain(&challenge)
-                //     .finalize();
-
                 let mut hasher = Blake256::new();
                 BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
                 let expected_hash = hasher
