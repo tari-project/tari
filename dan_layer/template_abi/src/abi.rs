@@ -22,38 +22,18 @@
 
 // TODO: we should only use stdlib if the template dev needs to include it e.g. use core::mem when stdlib is not
 // available
-use std::{collections::HashMap, mem, ptr::copy, slice};
-
-use crate::{decode, decode_len, encode_into, encode_with_len, Decode, Encode, FunctionDef, TemplateDef};
-
-pub fn generate_abi(template_name: String, functions: Vec<FunctionDef>) -> *mut u8 {
-    let template = TemplateDef {
-        template_name,
-        functions,
-    };
-
-    let buf = encode_with_len(&template);
-    wrap_ptr(buf)
-}
+use crate::{
+    decode,
+    decode_len,
+    encode_into,
+    rust::{fmt, mem, ptr::copy, slice, vec::Vec},
+    Decode,
+    Encode,
+};
 
 extern "C" {
     pub fn tari_engine(op: i32, input_ptr: *const u8, input_len: usize) -> *mut u8;
     pub fn debug(input_ptr: *const u8, input_len: usize);
-}
-
-type FunctionImpl = Box<dyn Fn(Vec<Vec<u8>>) -> Vec<u8>>;
-
-#[derive(Default)]
-pub struct TemplateImpl(HashMap<String, FunctionImpl>);
-
-impl TemplateImpl {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    pub fn add_function(&mut self, name: String, implementation: FunctionImpl) {
-        self.0.insert(name, implementation);
-    }
 }
 
 pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
@@ -62,7 +42,7 @@ pub fn wrap_ptr(mut v: Vec<u8>) -> *mut u8 {
     ptr
 }
 
-pub fn call_engine<T: Encode, U: Decode + std::fmt::Debug>(op: i32, input: &T) -> Option<U> {
+pub fn call_engine<T: Encode, U: Decode + fmt::Debug>(op: i32, input: &T) -> Option<U> {
     let mut encoded = Vec::with_capacity(512);
     encode_into(input, &mut encoded).unwrap();
     let len = encoded.len();

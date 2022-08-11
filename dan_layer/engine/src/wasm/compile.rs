@@ -26,10 +26,20 @@ use cargo_toml::{Manifest, Product};
 
 use super::module::WasmModule;
 
-pub fn compile_template<P: AsRef<Path>>(package_dir: P) -> io::Result<WasmModule> {
+pub fn compile_template<P: AsRef<Path>>(package_dir: P, features: &[&str]) -> io::Result<WasmModule> {
+    let mut args = ["build", "--target", "wasm32-unknown-unknown", "--release"]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    if !features.is_empty() {
+        args.push("--features".to_string());
+        args.extend(features.iter().map(ToString::to_string));
+    }
+
     let status = Command::new("cargo")
         .current_dir(package_dir.as_ref())
-        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
+        .args(args)
         .status()?;
     if !status.success() {
         return Err(io::Error::new(

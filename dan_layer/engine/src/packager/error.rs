@@ -26,4 +26,14 @@ use crate::wasm::WasmExecutionError;
 pub enum PackageError {
     #[error(transparent)]
     WasmModuleError(#[from] WasmExecutionError),
+    #[error("Template called engine during initialization")]
+    TemplateCalledEngineDuringInitialization,
+    #[error(transparent)]
+    CompileError(#[from] wasmer::CompileError),
+    #[error(transparent)]
+    InstantiationError(#[from] wasmer::InstantiationError),
+    #[error(transparent)]
+    HostEnvInitError(#[from] wasmer::HostEnvInitError),
+    #[error("Runtime error: {0}")]
+    RuntimeError(#[from] wasmer::RuntimeError),
 }

@@ -573,6 +573,7 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn reconcile_block(
         &mut self,
         source_peer: NodeId,
