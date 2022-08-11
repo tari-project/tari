@@ -100,7 +100,6 @@ class WalletProcess {
       }
 
       console.log(`--------------------- ${this.name} ----------------------`);
-      console.log(overrides);
       const configArgs = [];
       Object.keys(overrides).forEach((k) => {
         configArgs.push("-p");

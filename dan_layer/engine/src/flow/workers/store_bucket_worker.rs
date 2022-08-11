@@ -70,7 +70,12 @@ impl<TUnitOfWork: StateDbUnitOfWork> Worker for StoreBucketWorker<TUnitOfWork> {
         let bucket: Bucket = serde_json::from_str(&node.get_string_field("bucket", &inputs)?)?;
         let to = PublicKey::from_hex(&node.get_string_field("to", &inputs)?)?;
         let mut state = self.state_db.write().unwrap();
-        let balance_key = format!("token_id-{}-{}", bucket.asset_id(), bucket.token_id());
+        // TODO: handle panics
+        let balance_key = format!(
+            "token_id-{}-{}",
+            bucket.resource_address(),
+            bucket.token_ids().unwrap()[0]
+        );
         let balance = state.get_u64(&balance_key, to.as_bytes())?.unwrap_or(0);
         state.set_u64(
             &balance_key,

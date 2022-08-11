@@ -10,7 +10,10 @@ use d3ne::{InputData, Node, OutputData, OutputDataBuilder, Worker};
 use tari_common_types::types::PublicKey;
 use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::{models::Bucket, state::StateDbUnitOfWork};
+use crate::{
+    models::{Bucket, ResourceAddress},
+    state::StateDbUnitOfWork,
+};
 
 pub struct CreateBucketWorker<TUnitOfWork: StateDbUnitOfWork> {
     pub state_db: Arc<RwLock<TUnitOfWork>>,
@@ -24,11 +27,11 @@ impl<TUnitOfWork: StateDbUnitOfWork> Worker for CreateBucketWorker<TUnitOfWork> 
     fn work(&self, node: &Node, input_data: InputData) -> anyhow::Result<OutputData> {
         // TODO: return proper errors....
         let amount = u64::try_from(node.get_number_field("amount", &input_data)?)?;
+        let vault_id = ResourceAddress::from_hex(&node.get_string_field("vault_id", &input_data)?)?;
         let token_id = u64::try_from(node.get_number_field("token_id", &input_data)?)?;
-        let asset_id = u64::try_from(node.get_number_field("asset_id", &input_data)?)?;
         let from = PublicKey::from_hex(&node.get_string_field("from", &input_data)?).expect("Not a valid pub key");
         let mut state = self.state_db.write().unwrap();
-        let balance_key = format!("token_id-{}-{}", asset_id, token_id);
+        let balance_key = format!("token_id-{}-{}", vault_id, token_id);
         let balance = state.get_u64(&balance_key, from.as_bytes())?.unwrap_or(0);
         let new_balance = balance.checked_sub(amount).expect("Not enough funds to create bucket");
         state
@@ -36,7 +39,7 @@ impl<TUnitOfWork: StateDbUnitOfWork> Worker for CreateBucketWorker<TUnitOfWork> 
             .expect("Could not save state");
         let output = OutputDataBuilder::new()
             .data("default", Box::new(()))
-            .data("bucket", Box::new(Bucket::new(amount, token_id, asset_id)))
+            .data("bucket", Box::new(Bucket::for_token(vault_id, vec![token_id])))
             .build();
         Ok(output)
     }
