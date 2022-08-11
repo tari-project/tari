@@ -20,51 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    rust::{string::String, vec::Vec},
-    Decode,
-    Encode,
-};
+mod mock_runtime_interface;
+pub use mock_runtime_interface::*;
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct TemplateDef {
-    pub template_name: String,
-    pub functions: Vec<FunctionDef>,
-}
-
-impl TemplateDef {
-    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
-        self.functions.iter().find(|f| f.name.as_str() == name)
-    }
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct FunctionDef {
-    pub name: String,
-    pub arguments: Vec<Type>,
-    pub output: Type,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum Type {
-    Unit,
-    Bool,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    String,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CallInfo {
-    pub func_name: String,
-    pub args: Vec<Vec<u8>>,
-    pub abi_context: Vec<u8>,
-}
+mod template_test;
+pub use template_test::TemplateTest;
