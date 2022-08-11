@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{fs, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{future, future::Either, pin_mut, StreamExt};
 use log::*;
 use tari_shutdown::OptionalShutdownSignal;
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{sync::broadcast, time};
 
@@ -60,12 +61,20 @@ pub enum HiddenServiceControllerError {
     FailedToParseSocksAddress,
     #[error("TorClientError: {0}")]
     TorClientError(#[from] TorClientError),
-    #[error("Unable to connect to the Tor control port")]
+    #[error(
+        "Unable to connect to the Tor control port. Make sure tor is running and 'ControlPort 9051' is in your torrc."
+    )]
     TorControlPortOffline,
     #[error("The given tor service id is not a valid detached service id")]
     InvalidDetachedServiceId,
     #[error("The shutdown signal interrupted the HiddenServiceController")]
     ShutdownSignalInterrupt,
+    #[error("Tor is configured to use a hashed password for control port auth. Please add the.")]
+    HashedPasswordAuthAutoNotSupported,
+    #[error("Tor is configured with an unsupported authentication method '{0}'.")]
+    UnrecognizedAuthenticationMethod(String),
+    #[error("Failed to load tor cookie file: {0}")]
+    FailedToLoadCookieFile(io::Error),
 }
 
 pub struct HiddenServiceController {
@@ -182,7 +191,6 @@ impl HiddenServiceController {
         if !self.is_authenticated {
             self.connect().await?;
             self.authenticate().await?;
-            self.is_authenticated = true;
         }
         Ok(())
     }
@@ -250,9 +258,49 @@ impl HiddenServiceController {
         Ok(())
     }
 
+    async fn detect_authentication(&mut self) -> Result<Authentication, HiddenServiceControllerError> {
+        let client = self.client_mut()?;
+        let info = client.protocol_info().await?;
+        info!(
+            target: LOG_TARGET,
+            "Detected tor v{} configured with control port auth: {}",
+            info.tor_version,
+            info.auth_methods.methods.join(", ")
+        );
+        if info.auth_methods.methods.iter().any(|s| s == "COOKIE") {
+            let cookie_path = info.auth_methods.cookie_file.ok_or_else(|| {
+                TorClientError::ServerInvalidResponse(
+                    "PROTOCOLINFO: COOKIE auth however no cookie file was specified".to_string(),
+                )
+            })?;
+
+            let data = fs::read(cookie_path)
+                .map_err(HiddenServiceControllerError::FailedToLoadCookieFile)?
+                .to_hex();
+            Ok(Authentication::Cookie(data))
+        } else if info.auth_methods.methods.iter().any(|s| s == "NULL") {
+            Ok(Authentication::None)
+        } else if info.auth_methods.methods.iter().any(|s| s == "HASHEDPASSWORD") {
+            Err(HiddenServiceControllerError::HashedPasswordAuthAutoNotSupported)
+        } else {
+            Err(HiddenServiceControllerError::UnrecognizedAuthenticationMethod(
+                info.auth_methods
+                    .methods
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "<none>".to_string()),
+            ))
+        }
+    }
+
     async fn authenticate(&mut self) -> Result<(), HiddenServiceControllerError> {
-        let auth = self.control_server_auth.clone();
+        let auth = if let Authentication::Auto = &self.control_server_auth {
+            self.detect_authentication().await?
+        } else {
+            self.control_server_auth.clone()
+        };
         self.client_mut()?.authenticate(&auth).await?;
+        self.is_authenticated = true;
         Ok(())
     }
 

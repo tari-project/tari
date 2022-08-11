@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod memory;
+pub mod memory;
 
 use std::{error::Error, io};
 
@@ -49,6 +49,8 @@ pub trait StateReader {
         let value = value.map(|v| V::deserialize(&mut v.as_slice())).transpose()?;
         Ok(value)
     }
+
+    fn exists(&self, key: &[u8]) -> Result<bool, StateStoreError>;
 }
 
 pub trait StateWriter: StateReader {

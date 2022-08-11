@@ -24,8 +24,6 @@ pub enum WasmExecutionError {
     WasmRuntimeError(#[from] wasmer::RuntimeError),
     #[error(transparent)]
     HostEnvInitError(#[from] HostEnvInitError),
-    #[error(transparent)]
-    CompileError(#[from] wasmer::CompileError),
     #[error("Function {name} not found")]
     FunctionNotFound { name: String },
     #[error("Expected function {function} to return a pointer")]

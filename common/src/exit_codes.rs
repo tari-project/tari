@@ -44,16 +44,36 @@ impl From<anyhow::Error> for ExitError {
 
 const TOR_HINT: &str = r#"Unable to connect to the Tor control port.
 
-Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
+Please check that you have the Tor proxy running and that access to the Tor control port is turned on in your `torrc`.
 
 If you are unsure of what to do, use the following command to start the Tor proxy:
 tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1"#;
 
+const TOR_CONFIG_AUTH_HINT: &str = r#"Unable to authenticate to the Tor control port.
+
+Please check the Tor control port configuration in your torrc and update your Tari configuration to match the configured authentication method.
+
+If you are unsure of what to do, use the following command to start the Tor proxy:
+tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1 --cookieauthentication 1"#;
+
+const TOR_AUTH_UNREADABLE_COOKIE_HINT: &str = r#"Unable to read tor control port cookie file.
+
+The current user must have permissions to read the tor control port cookie file. 
+
+On a linux system this means adding your current user to the `debian-tor` group with the following command (requires root):
+sudo usermod -aG debian-tor $USER
+
+If you are unsure of what to do, use the following command to start the Tor proxy:
+tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1 --cookieauthentication 1"#;
+
 impl ExitCode {
     pub fn hint(&self) -> Option<&str> {
-        use ExitCode::TorOffline;
+        #[allow(clippy::enum_glob_use)]
+        use ExitCode::*;
         match self {
             TorOffline => Some(TOR_HINT),
+            TorAuthConfiguration => Some(TOR_CONFIG_AUTH_HINT),
+            TorAuthUnreadableCookie => Some(TOR_AUTH_UNREADABLE_COOKIE_HINT),
             _ => None,
         }
     }
@@ -96,6 +116,10 @@ pub enum ExitCode {
     DigitalAssetError = 116,
     #[error("Unable to create or load an identity file")]
     IdentityError = 117,
+    #[error("Tor control port authentication is not configured correctly")]
+    TorAuthConfiguration = 118,
+    #[error("Unable to read Tor cookie file")]
+    TorAuthUnreadableCookie = 119,
 }
 
 impl From<super::ConfigError> for ExitError {

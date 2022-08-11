@@ -29,8 +29,8 @@ mod processor;
 pub use processor::InstructionProcessor;
 
 mod signature;
-
-use crate::{instruction::signature::InstructionSignature, packager::PackageId};
+pub use signature::InstructionSignature;
+use tari_template_lib::models::{ComponentId, PackageId};
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
@@ -42,7 +42,7 @@ pub enum Instruction {
     },
     CallMethod {
         package_id: PackageId,
-        component_id: String,
+        component_id: ComponentId,
         method: String,
         args: Vec<Vec<u8>>,
     },

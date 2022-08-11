@@ -25,6 +25,7 @@ pub mod util;
 pub mod wallet;
 
 pub use operation_id::OperationId;
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 
 #[macro_use]
 extern crate diesel;
@@ -54,3 +55,10 @@ pub type WalletSqlite = Wallet<
     ContactsServiceSqliteDatabase,
     KeyManagerSqliteDatabase,
 >;
+
+hash_domain!(
+    WalletSecretKeysDomain,
+    "com.tari.tari_project.base_layer.wallet.secret_keys",
+    1
+);
+type WalletSecretKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletSecretKeysDomain>;

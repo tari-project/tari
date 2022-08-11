@@ -1,0 +1,22 @@
+[workspace]
+[package]
+name = "hello_world"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_template_abi = { path = "../../../../template_abi", default-features = false }
+tari_template_lib = { path = "../../../../template_lib" }
+tari_template_macros = { path = "../../../../template_macros" }
+
+[profile.release]
+opt-level = 's'     # Optimize for size.
+lto = true          # Enable Link Time Optimization.
+codegen-units = 1   # Reduce number of codegen units to increase optimizations.
+panic = 'abort'     # Abort on panic.
+strip = "debuginfo" # Strip debug info.
+
+[lib]
+crate-type = ["cdylib", "lib"]

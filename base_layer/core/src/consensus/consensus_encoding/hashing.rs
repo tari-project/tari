@@ -20,23 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// use std::{io, io::Write};
+
 use std::{io, io::Write, marker::PhantomData};
 
 use digest::{consts::U32, Digest};
-use tari_crypto::{
-    hash::blake2::Blake256,
-    hashing::{DomainSeparatedHasher, DomainSeparation},
-};
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
 use crate::consensus::ConsensusEncoding;
 
 /// Domain separated consensus encoding hasher.
-pub struct DomainSeparatedConsensusHasher<M: DomainSeparation>(PhantomData<M>);
+pub struct DomainSeparatedConsensusHasher<M>(PhantomData<M>);
 
 impl<M: DomainSeparation> DomainSeparatedConsensusHasher<M> {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(label: &'static str) -> ConsensusHasher<DomainSeparatedHasher<Blake256, M>> {
-        ConsensusHasher::new(DomainSeparatedHasher::new_with_label(label))
+    pub fn new(label: &'static str) -> ConsensusHasher<Blake256> {
+        let mut digest = Blake256::new();
+        M::add_domain_separation_tag(&mut digest, label);
+        ConsensusHasher::from_digest(digest)
     }
 }
 
@@ -46,7 +47,7 @@ pub struct ConsensusHasher<D> {
 }
 
 impl<D: Digest> ConsensusHasher<D> {
-    pub fn new(digest: D) -> Self {
+    fn from_digest(digest: D) -> Self {
         Self {
             writer: WriteHashWrapper(digest),
         }
@@ -74,11 +75,12 @@ where D: Digest<OutputSize = U32>
 
 impl Default for ConsensusHasher<Blake256> {
     fn default() -> Self {
-        ConsensusHasher::new(Blake256::new())
+        ConsensusHasher::from_digest(Blake256::new())
     }
 }
 
-/// This private struct wraps a Digest and implements the Write trait to satisfy the consensus encoding trait..
+/// This private struct wraps a Digest and implements the Write trait to satisfy the consensus encoding trait.
+/// Do not use the DomainSeparatedHasher with this.
 #[derive(Clone)]
 struct WriteHashWrapper<D>(D);
 
@@ -95,18 +97,36 @@ impl<D: Digest> Write for WriteHashWrapper<D> {
 
 #[cfg(test)]
 mod tests {
-    use tari_crypto::{hash::blake2::Blake256, hash_domain};
+    use tari_crypto::hash_domain;
+    use tari_script::script;
 
     use super::*;
 
+    hash_domain!(TestHashDomain, "tari.test", 0);
+
     #[test]
     fn it_hashes_using_the_domain_hasher() {
-        hash_domain!(TestHashDomain, "tari.test", 0);
-        let expected_hash = DomainSeparatedHasher::<Blake256, TestHashDomain>::new_with_label("foo")
-            .chain(b"\xff\x01")
-            .finalize();
+        let mut hasher = Blake256::new();
+        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
+
+        let expected_hash = hasher.chain(b"\xff\x01").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
             .chain(&255u64)
+            .finalize();
+
+        assert_eq!(hash, expected_hash.as_ref());
+    }
+
+    #[test]
+    fn it_adds_to_hash_challenge_in_complete_chunks() {
+        // Script is chosen because the consensus encoding impl for TariScript has 2 writes
+        let test_subject = script!(Nop);
+        let mut hasher = Blake256::new();
+        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
+
+        let expected_hash = hasher.chain(b"\x01\x73").finalize();
+        let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
+            .chain(&test_subject)
             .finalize();
 
         assert_eq!(hash, expected_hash.as_ref());
