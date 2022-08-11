@@ -22,9 +22,11 @@
 
 // TODO: Move to tari template lib crate
 
-use std::io;
-
-use crate::{Decode, Encode};
+use crate::{
+    rust::{io, vec::Vec},
+    Decode,
+    Encode,
+};
 
 pub fn encode_with_len<T: Encode>(val: &T) -> Vec<u8> {
     let mut buf = Vec::with_capacity(512);

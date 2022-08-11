@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //! # Tari WASM module ABI (application binary interface)
 //!
 //! This library provides types and encoding that allow low-level communication between the Tari WASM runtime and the
@@ -31,6 +33,8 @@ pub use borsh::{BorshDeserialize as Decode, BorshSerialize as Encode};
 
 mod encoding;
 pub use encoding::{decode, decode_len, encode, encode_into, encode_with_len};
+
+mod rust;
 
 mod types;
 pub use types::*;

@@ -6,4 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-borsh = "0.9.3"
+borsh = { version ="0.9.3", default-features = false }
+
+[features]
+default = ["std"]
+std = ["borsh/std"]
