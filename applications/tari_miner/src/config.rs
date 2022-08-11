@@ -47,9 +47,9 @@ use tari_comms::multiaddr::Multiaddr;
 #[serde(deny_unknown_fields)]
 pub struct MinerConfig {
     /// GRPC address of base node
-    pub base_node_addr: Multiaddr,
+    pub base_node_grpc_address: Multiaddr,
     /// GRPC address of console wallet
-    pub wallet_addr: Multiaddr,
+    pub wallet_grpc_address: Multiaddr,
     /// Number of mining threads
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
@@ -83,8 +83,8 @@ impl SubConfigPath for MinerConfig {
 impl Default for MinerConfig {
     fn default() -> Self {
         Self {
-            base_node_addr: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18142").unwrap(),
-            wallet_addr: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18143").unwrap(),
+            base_node_grpc_address: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18142").unwrap(),
+            wallet_grpc_address: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18143").unwrap(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,
@@ -136,9 +136,9 @@ mine_on_tip_only = false
             .unwrap();
         let config = MinerConfig::load_from(&cfg).expect("Failed to load config");
         assert_eq!(config.num_mining_threads, 2);
-        assert_eq!(config.wallet_addr, MinerConfig::default().wallet_addr);
+        assert_eq!(config.wallet_grpc_address, MinerConfig::default().wallet_grpc_address);
         assert_eq!(
-            config.base_node_addr.to_string(),
+            config.base_node_grpc_address.to_string(),
             "/dns4/my_base_node/tcp/1234".to_string()
         );
         assert!(!config.mine_on_tip_only);

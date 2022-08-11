@@ -195,10 +195,10 @@ async fn main_inner() -> Result<(), ExitError> {
 }
 
 async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = multiaddr_to_socketaddr(&config.base_node_addr)?;
+    let base_node_addr = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
     info!(target: LOG_TARGET, "🔗 Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
-    let wallet_addr = multiaddr_to_socketaddr(&config.wallet_addr)?;
+    let wallet_addr = multiaddr_to_socketaddr(&config.wallet_grpc_address)?;
     info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
     let wallet_conn = WalletClient::connect(format!("http://{}", wallet_addr)).await?;
 

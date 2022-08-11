@@ -8,10 +8,10 @@
 [miner]
 
 # GRPC address of base node (default = "/ip4/127.0.0.1/tcp/18142")
-#base_node_addr = "/ip4/127.0.0.1/tcp/18142"
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # GRPC address of console wallet (default = "/ip4/127.0.0.1/tcp/18143")
-#wallet_addr = "/ip4/127.0.0.1/tcp/18143"
+#wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
 
 # Number of mining threads (default: number of logical CPU cores)
 #num_mining_threads = 8
