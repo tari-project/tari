@@ -40,7 +40,7 @@ derivative = "2.2.0"
 diesel = { version = "1.4.8", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
 diesel_migrations = "1.4.0"
 digest = "0.9.0"
-fs2 = "0.3.0"
+fs2 = "0.4.0"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
 libsqlite3-sys = { version = "0.22.2", features = ["bundled"], optional = true }
 lmdb-zero = "0.4.4"
