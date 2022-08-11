@@ -20,51 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    rust::{string::String, vec::Vec},
-    Decode,
-    Encode,
-};
+#[cfg(not(feature = "std"))]
+mod no_std {
+    extern crate alloc;
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct TemplateDef {
-    pub template_name: String,
-    pub functions: Vec<FunctionDef>,
+    pub use alloc::{string, vec};
+    pub use core::{fmt, mem, ptr, slice};
+
+    pub use borsh::maybestd::io;
 }
 
-impl TemplateDef {
-    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
-        self.functions.iter().find(|f| f.name.as_str() == name)
-    }
+#[cfg(not(feature = "std"))]
+pub use no_std::*;
+
+#[cfg(feature = "std")]
+mod rust_std {
+    pub use ::std::{fmt, io, mem, ptr, slice, string, vec};
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct FunctionDef {
-    pub name: String,
-    pub arguments: Vec<Type>,
-    pub output: Type,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum Type {
-    Unit,
-    Bool,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    String,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CallInfo {
-    pub func_name: String,
-    pub args: Vec<Vec<u8>>,
-    pub abi_context: Vec<u8>,
-}
+#[cfg(feature = "std")]
+pub use rust_std::*;

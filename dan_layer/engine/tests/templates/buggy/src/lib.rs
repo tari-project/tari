@@ -19,52 +19,48 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![allow(non_snake_case)]
 
-use crate::{
-    rust::{string::String, vec::Vec},
-    Decode,
-    Encode,
-};
+use core::ptr;
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct TemplateDef {
-    pub template_name: String,
-    pub functions: Vec<FunctionDef>,
+pub use tari_template_abi::{tari_alloc, tari_free};
+
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+#[cfg(any(feature = "call_engine_in_abi", feature = "unexpected_export_function"))]
+#[no_mangle]
+pub extern "C" fn Buggy_abi() -> *mut u8 {
+    use tari_template_abi::*;
+    // Call the engine in the ABI code, you aren't allowed to do that *shakes head*
+    #[cfg(feature = "call_engine_in_abi")]
+    unsafe {
+        tari_engine(123, ptr::null_mut(), 0)
+    };
+    wrap_ptr(encode_with_len(&TemplateDef {
+        template_name: "".to_string(),
+        functions: vec![],
+    }))
 }
 
-impl TemplateDef {
-    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
-        self.functions.iter().find(|f| f.name.as_str() == name)
-    }
+#[cfg(feature = "return_null_abi")]
+#[no_mangle]
+pub extern "C" fn Buggy_abi() -> *mut u8 {
+    ptr::null_mut()
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct FunctionDef {
-    pub name: String,
-    pub arguments: Vec<Type>,
-    pub output: Type,
+#[no_mangle]
+pub extern "C" fn Buggy_main(_call_info: *mut u8, _call_info_len: usize) -> *mut u8 {
+    ptr::null_mut()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum Type {
-    Unit,
-    Bool,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    String,
+extern "C" {
+    pub fn tari_engine(op: i32, input_ptr: *const u8, input_len: usize) -> *mut u8;
+    pub fn debug(input_ptr: *const u8, input_len: usize);
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct CallInfo {
-    pub func_name: String,
-    pub args: Vec<Vec<u8>>,
-    pub abi_context: Vec<u8>,
+#[cfg(feature = "unexpected_export_function")]
+#[no_mangle]
+pub extern "C" fn i_shouldnt_be_here() -> *mut u8 {
+    ptr::null_mut()
 }
