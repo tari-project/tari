@@ -612,11 +612,6 @@ mod validate_internal_consistency {
             .finalize()
             .to_vec();
 
-        // let hash = DomainSeparatedConsensusHasher::<BaseLayerCovenantsDomain>::new(COVENANTS_FIELD_HASHER_LABEL)
-        //     .chain(&Some(PublicKey::default()).to_consensus_bytes())
-        //     .chain(&Some(unique_id.clone()).to_consensus_bytes())
-        //     .finalize();
-
         let mut slice = [0u8; FixedHash::byte_size()];
         slice.copy_from_slice(hash.as_ref());
         let hash = FixedHash::from(slice);
