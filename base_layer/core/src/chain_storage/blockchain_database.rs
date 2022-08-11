@@ -1237,9 +1237,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
             metadata.best_block().to_hex()
         )));
     }
-
-    let deleted = db.fetch_deleted_bitmap()?;
-    let deleted = deleted.into_bitmap();
+    let deleted = db.fetch_deleted_bitmap()?.into_bitmap();
 
     let BlockAccumulatedData {
         kernels,
@@ -1258,6 +1256,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let mut output_mmr = MutableMmr::<Blake256, _>::new(outputs, deleted)?;
     let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(range_proofs);
     let mut input_mmr = MerkleMountainRange::<Blake256, _>::new(PrunedHashSet::default());
+    let mut deleted_outputs = Vec::new();
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash())?;
@@ -1275,21 +1274,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
                     field: "hash",
                     value: output_hash.to_hex(),
                 })?;
-            if !output_mmr.delete(index) {
-                let num_leaves = u32::try_from(output_mmr.get_leaf_count())
-                    .map_err(|_| ChainStorageError::CriticalError("UTXO MMR leaf count overflows u32".to_string()))?;
-                if index < num_leaves && output_mmr.deleted().contains(index) {
-                    return Err(ChainStorageError::InvalidOperation(format!(
-                        "UTXO {} was already marked as deleted.",
-                        output_hash.to_hex()
-                    )));
-                }
-
-                return Err(ChainStorageError::InvalidOperation(format!(
-                    "Could not delete index {} from the output MMR ({} leaves)",
-                    index, num_leaves
-                )));
-            }
+            deleted_outputs.push((index, output_hash));
         }
     }
 
@@ -1319,7 +1304,9 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
                 index
             },
         };
-
+        deleted_outputs.push((index, output_hash));
+    }
+    for (index, output_hash) in deleted_outputs {
         if !output_mmr.delete(index) {
             let num_leaves = u32::try_from(output_mmr.get_leaf_count())
                 .map_err(|_| ChainStorageError::CriticalError("UTXO MMR leaf count overflows u32".to_string()))?;
@@ -1329,7 +1316,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
                     output_hash.to_hex()
                 )));
             }
-
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Could not delete index {} from the output MMR ({} leaves)",
                 index, num_leaves
