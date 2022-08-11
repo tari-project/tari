@@ -13,12 +13,6 @@ members = [
     "comms/core",
     "comms/dht",
     "comms/rpc_macros",
-    "dan_layer/core",
-    "dan_layer/storage_lmdb",
-    "dan_layer/storage_sqlite",
-    "dan_layer/template_abi",
-    "dan_layer/template_lib",
-    "dan_layer/template_macros",
     "common_sqlite",
     "infrastructure/libtor",
     "infrastructure/metrics",
@@ -32,7 +26,6 @@ members = [
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
     "applications/tari_miner",
-    "applications/tari_validator_node",
 
 ]
 #
