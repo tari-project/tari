@@ -22,13 +22,13 @@
 
 use std::io;
 
-use digest::{Digest, Output};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey, Signature};
-use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyT};
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHash, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
+use super::{base_layer_core_transactions_side_chain_domain, SIGNER_SIGNATURE_LABEL};
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, Default)]
@@ -47,24 +47,23 @@ impl SignerSignature {
         let (nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
 
         let final_challenge = Self::build_final_challenge(&signer, challenge, &public_nonce);
-        let signature =
-            Signature::sign(signer_secret.clone(), nonce, &*final_challenge).expect("challenge is the correct length");
+        let signature = Signature::sign(signer_secret.clone(), nonce, final_challenge.as_ref())
+            .expect("challenge is the correct length");
         Self { signer, signature }
     }
 
     pub fn verify<C: AsRef<[u8]>>(signature: &Signature, signer: &PublicKey, challenge: C) -> bool {
         let public_nonce = signature.get_public_nonce();
         let final_challenge = Self::build_final_challenge(signer, challenge, public_nonce);
-        signature.verify_challenge(signer, &final_challenge)
+        signature.verify_challenge(signer, final_challenge.as_ref())
     }
 
     fn build_final_challenge<C: AsRef<[u8]>>(
         signer: &PublicKey,
         challenge: C,
         public_nonce: &PublicKey,
-    ) -> Output<Blake256> {
-        // TODO: Use domain-seperated hasher from tari_crypto
-        Blake256::new()
+    ) -> DomainSeparatedHash<Blake256> {
+        base_layer_core_transactions_side_chain_domain(SIGNER_SIGNATURE_LABEL)
             .chain(signer.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(challenge)

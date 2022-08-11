@@ -38,7 +38,6 @@ use std::{
     time::Instant,
 };
 
-use blake2::Digest;
 use croaring::Bitmap;
 use fs2::FileExt;
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
@@ -57,6 +56,7 @@ use tari_utilities::{
     ByteArray,
 };
 
+use super::{base_layer_core_chain_storage_lmdb_hasher, LMDB_STORAGE_HASH_LABEL};
 use crate::{
     blocks::{
         Block,
@@ -2730,10 +2730,12 @@ impl UniqueIdIndexKey {
     /// `parent_public_key` - the parent asset public key to which the token is assigned
     /// `unique_id` - a series of bytes representing the token uniquely for the asset
     pub fn new(parent_public_key: Option<&PublicKey>, unique_id: &[u8]) -> Self {
-        let unique_id_hash = Blake256::default().chain(unique_id).finalize();
+        let unique_id_hash = base_layer_core_chain_storage_lmdb_hasher::<Blake256>(LMDB_STORAGE_HASH_LABEL)
+            .chain(unique_id)
+            .finalize();
         Self::from_raw_parts(
             parent_public_key.map(|p| p.as_bytes()).unwrap_or(&[0; 32][..]),
-            &unique_id_hash,
+            unique_id_hash.as_ref(),
             // u64::MAX
             &[0xff; 8][..],
         )

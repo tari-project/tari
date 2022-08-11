@@ -20,9 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use digest::Digest;
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
+use tari_crypto::{
+    hash_domain,
+    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
+};
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
@@ -71,4 +76,14 @@ pub(crate) struct TransactionKernelRowData {
     pub header_hash: HashOutput,
     pub mmr_position: u32,
     pub hash: HashOutput,
+}
+
+hash_domain!(BaseLayerCoreDomain, "com.tari.tari-project.base_layer.core");
+
+pub(crate) const LMDB_STORAGE_HASH_LABEL: &str = "lmdb_db";
+
+pub(crate) fn base_layer_core_chain_storage_lmdb_hasher<D: Digest + LengthExtensionAttackResistant>(
+    label: &'static str,
+) -> DomainSeparatedHasher<D, BaseLayerCoreDomain> {
+    DomainSeparatedHasher::<D, BaseLayerCoreDomain>::new_with_label(label)
 }

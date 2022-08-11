@@ -23,7 +23,6 @@
 use digest::Digest;
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldsHashedEqFilter;
 
@@ -32,8 +31,9 @@ impl Filter for FieldsHashedEqFilter {
         let fields = context.next_arg()?.require_outputfields()?;
         let hash = context.next_arg()?.require_hash()?;
         output_set.retain(|output| {
-            let challenge = fields.construct_challenge_from(output);
-            Ok(challenge.finalize()[..] == *hash)
+            let challenge = fields.construct_challenge_from(output).finalize();
+            let challenge = challenge.to_vec();
+            Ok(challenge[..] == *hash)
         })?;
         Ok(())
     }
@@ -41,13 +41,19 @@ impl Filter for FieldsHashedEqFilter {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{Challenge, FixedHash};
+    use tari_common_types::types::FixedHash;
+    use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
     use super::*;
     use crate::{
         consensus::ToConsensusBytes,
         covenant,
-        covenants::{filters::test::setup_filter_test, test::create_input},
+        covenants::{
+            filters::test::setup_filter_test,
+            test::create_input,
+            BaseLayerCovenantsDomain,
+            COVENANTS_FIELD_HASHER_LABEL,
+        },
         transactions::transaction_components::{OutputFeatures, SideChainFeatures},
     };
 
@@ -58,9 +64,9 @@ mod test {
             sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::hash_bytes("A")))),
             ..Default::default()
         };
-        let hashed = Challenge::new().chain(features.to_consensus_bytes()).finalize();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(hashed.as_slice());
+        let mut hasher = Blake256::new();
+        BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
+        let hash = hasher.chain(&features.to_consensus_bytes()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {

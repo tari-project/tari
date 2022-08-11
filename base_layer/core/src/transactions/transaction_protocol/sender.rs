@@ -45,6 +45,7 @@ use tari_crypto::{
 };
 use tari_script::TariScript;
 
+use super::{base_layer_core_transaction_protocol_domain, CALCULATE_TX_ID_LABEL};
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
@@ -702,12 +703,12 @@ impl fmt::Display for SenderTransactionProtocol {
 }
 
 pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> TxId {
-    let hash = D::new()
+    let hash = base_layer_core_transaction_protocol_domain::<D>(CALCULATE_TX_ID_LABEL)
         .chain(pub_nonce.as_bytes())
         .chain(index.to_le_bytes())
         .finalize();
     let mut bytes: [u8; 8] = [0u8; 8];
-    bytes.copy_from_slice(&hash[..8]);
+    bytes.copy_from_slice(&hash.as_ref()[..8]);
     u64::from_le_bytes(bytes).into()
 }
 

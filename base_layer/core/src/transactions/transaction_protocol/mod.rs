@@ -86,6 +86,7 @@
 // #![allow(clippy::op_ref)]
 
 use derivative::Derivative;
+use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
@@ -99,6 +100,7 @@ pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
 use tari_common_types::types::Commitment;
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
 use crate::transactions::transaction_components::KernelFeatures;
 
@@ -175,4 +177,19 @@ pub struct RewindData {
     #[derivative(Debug = "ignore")]
     pub rewind_blinding_key: PrivateKey,
     pub encryption_key: PrivateKey,
+}
+
+// hash domain
+hash_domain!(
+    BaseLayerCoreTransactionProtocolDomain,
+    "com.tari.tari-project.base_layer.core.transactions.transaction_protocol",
+    1
+);
+
+pub(crate) const CALCULATE_TX_ID_LABEL: &str = "calculate_tx_id";
+
+pub(crate) fn base_layer_core_transaction_protocol_domain<D: Digest>(
+    label: &'static str,
+) -> DomainSeparatedHasher<D, BaseLayerCoreTransactionProtocolDomain> {
+    DomainSeparatedHasher::<D, BaseLayerCoreTransactionProtocolDomain>::new_with_label(label)
 }

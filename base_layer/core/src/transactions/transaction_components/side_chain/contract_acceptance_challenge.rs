@@ -20,22 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
 use tari_common_types::types::{Commitment, FixedHash};
-use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::ByteArray;
 
+use super::{base_layer_core_transactions_side_chain_domain, CONTRACT_ACCEPTANCE_CHALLENGE_LABEL};
 #[derive(Debug, Clone, Copy)]
 pub struct ContractAcceptanceChallenge(FixedHash);
 
 impl ContractAcceptanceChallenge {
     pub fn new(constiution_commitment: &Commitment, contract_id: &FixedHash) -> Self {
-        // TODO: Use new tari_crypto domain-separated hashing
-        let hash = Blake256::new()
+        let hash = base_layer_core_transactions_side_chain_domain(CONTRACT_ACCEPTANCE_CHALLENGE_LABEL)
             .chain(constiution_commitment.as_bytes())
             .chain(contract_id.as_slice())
-            .finalize()
-            .into();
+            .finalize();
+
+        let mut slice = [0u8; FixedHash::byte_size()];
+        slice.copy_from_slice(hash.as_ref());
+
+        let hash = FixedHash::from(slice);
+
         Self(hash)
     }
 }

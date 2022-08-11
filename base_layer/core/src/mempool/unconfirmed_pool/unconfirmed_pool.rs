@@ -26,13 +26,13 @@ use std::{
     sync::Arc,
 };
 
-use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{HashOutput, PrivateKey, PublicKey, Signature};
 use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
+use super::{base_layer_core_mempool_hash_domain, UNCONFIRMED_POOL_HASH_DOMAIN_LABEL};
 use crate::{
     blocks::Block,
     mempool::{
@@ -46,7 +46,6 @@ use crate::{
         weight::TransactionWeight,
     },
 };
-
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 type TransactionKey = usize;
@@ -660,11 +659,14 @@ fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
             .as_ref()
             .map(|pk| pk.as_bytes())
             .unwrap_or_else(|| root_pk.as_bytes());
-        Blake256::new()
+        let hash = base_layer_core_mempool_hash_domain::<Blake256>(UNCONFIRMED_POOL_HASH_DOMAIN_LABEL)
             .chain(parent_pk_bytes)
             .chain(unique_id)
-            .finalize()
-            .into()
+            .finalize();
+
+        let mut output = [0u8; 32];
+        output.copy_from_slice(hash.as_ref());
+        output
     })
 }
 
@@ -1027,11 +1029,14 @@ mod test {
         unconfirmed_pool
             .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
             .unwrap();
-        let expected_hash: [u8; 32] = Blake256::new()
+
+        let domain_separated_hash = base_layer_core_mempool_hash_domain::<Blake256>(UNCONFIRMED_POOL_HASH_DOMAIN_LABEL)
             .chain(parent_pk.as_bytes())
             .chain(&unique_id)
-            .finalize()
-            .into();
+            .finalize();
+
+        let mut expected_hash: [u8; 32] = [0u8; 32];
+        expected_hash.copy_from_slice(domain_separated_hash.as_ref());
         let entry = unconfirmed_pool.txs_by_unique_id.get(&expected_hash).unwrap();
         let tx_id1 = unconfirmed_pool
             .txs_by_signature
