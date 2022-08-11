@@ -9,7 +9,6 @@ const {
 } = require("@cucumber/cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
-const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
@@ -122,28 +121,6 @@ class CustomWorld {
   /// Create but don't add the node
   createNode(name, options) {
     return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
-  }
-
-  async createValidatorNode(vn_name, base_node_name, wallet_name) {
-    const baseNode = this.getNode(base_node_name);
-    const walletNode = this.getWallet(wallet_name);
-
-    const baseNodeGrpcAddress = `127.0.0.1:${baseNode.getGrpcPort()}`;
-    const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
-
-    let vn = new ValidatorNodeProcess(
-      vn_name,
-      false,
-      [],
-      this.logFilePathBaseNode,
-      undefined,
-      baseNodeGrpcAddress,
-      walletGrpcAddress
-    );
-
-    await vn.startNew();
-
-    return vn;
   }
 
   async createAndAddNode(name, addresses) {
@@ -752,10 +729,6 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await baseNode.init();
   await baseNode.compile();
 
-  const danNode = new ValidatorNodeProcess("compile");
-  console.log("Compiling validator node...");
-  await danNode.compile();
-
   const wallet = new WalletProcess("compile");
   console.log("Compiling wallet...");
   await wallet.init();
@@ -783,19 +756,6 @@ BeforeAll({ timeout: 2400000 }, async function () {
   console.log("Compiling miner...");
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
-
-  const vn = new ValidatorNodeProcess(
-    "compile",
-    false,
-    {},
-    null,
-    null,
-    "127.0.0.1:9999",
-    "127.0.0.1:9998"
-  );
-  console.log("Compiling validator node...");
-  await vn.compile();
-
   console.log("Compiling wallet FFI...");
   await InterfaceFFI.compile();
   console.log("Finished compilation.");
