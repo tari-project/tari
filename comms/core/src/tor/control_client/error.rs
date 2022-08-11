@@ -40,6 +40,8 @@ pub enum TorClientError {
     ParseError(#[from] ParseError),
     #[error("The server returned no response")]
     ServerNoResponse,
+    #[error("The server returned an invalid response: {0}")]
+    ServerInvalidResponse(String),
     #[error("Server did not return a ServiceID for ADD_ONION command")]
     AddOnionNoServiceId,
     #[error("The given service id was invalid")]

@@ -1,0 +1,26 @@
+[workspace]
+[package]
+name = "buggy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_template_abi = { path = "../../../../template_abi", default-features = false }
+wee_alloc = "0.4.5"
+
+[profile.release]
+opt-level = 's'     # Optimize for size.
+lto = true          # Enable Link Time Optimization.
+codegen-units = 1   # Reduce number of codegen units to increase optimizations.
+panic = 'abort'     # Abort on panic.
+strip = "debuginfo" # Strip debug info.
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+call_engine_in_abi = []
+return_null_abi = []
+unexpected_export_function = []

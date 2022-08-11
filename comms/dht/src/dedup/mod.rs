@@ -33,6 +33,10 @@ use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use tari_comms::{pipeline::PipelineError, types::CommsChallenge};
+use tari_crypto::{
+    hash_domain,
+    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
+};
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -42,17 +46,29 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::dedup";
+const DEDUP_MESSAGE_HASH_LABEL: &str = "dedup.meesage_hash";
+
+hash_domain!(CommsDhtDedupDomain, "com.tari.tari_project.comms.dht", 1);
+
+fn comms_dht_dedup_message_hash<D: Digest + LengthExtensionAttackResistant>(
+    label: &'static str,
+) -> DomainSeparatedHasher<D, CommsDhtDedupDomain> {
+    DomainSeparatedHasher::<D, CommsDhtDedupDomain>::new_with_label(label)
+}
 
 pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
     create_message_hash(&msg.dht_header.message_signature, &msg.body)
 }
 
 pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
-    CommsChallenge::new()
+    let result = comms_dht_dedup_message_hash::<CommsChallenge>(DEDUP_MESSAGE_HASH_LABEL)
         .chain(message_signature)
         .chain(&body)
-        .finalize()
-        .into()
+        .finalize();
+
+    let mut out = [0u8; 32];
+    out.copy_from_slice(result.as_ref());
+    out
 }
 
 /// # DHT Deduplication middleware
@@ -197,7 +213,7 @@ mod test {
     #[test]
     fn deterministic_hash() {
         const TEST_MSG: &[u8] = b"test123";
-        const EXPECTED_HASH: &str = "90cccd774db0ac8c6ea2deff0e26fc52768a827c91c737a2e050668d8c39c224";
+        const EXPECTED_HASH: &str = "d6333668f259f677703fbe4e89152ee41c7c01f6dec502befc63120246523ffe";
 
         let node_identity = make_node_identity();
         let dht_message = make_dht_inbound_message(

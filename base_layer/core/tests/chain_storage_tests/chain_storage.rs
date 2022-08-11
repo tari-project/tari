@@ -33,6 +33,7 @@ use tari_core::{
         BlockchainDatabaseConfig,
         ChainStorageError,
         DbTransaction,
+        MmrTree,
         Validators,
     },
     consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
@@ -238,6 +239,44 @@ fn rewind_to_height() {
     assert_eq!(db.get_height().unwrap(), 3);
     db.rewind_to_height(1).unwrap();
     assert_eq!(db.get_height().unwrap(), 1);
+}
+
+#[test]
+fn test_coverage_chain_storage() {
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let network = Network::LocalNet;
+    let rules = ConsensusManagerBuilder::new(network).build();
+    let db = create_test_db();
+    assert_eq!(db.kernel_count().unwrap(), 0);
+    let store = BlockchainDatabase::new(
+        db,
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+        DifficultyCalculator::new(rules.clone(), Default::default()),
+    )
+    .unwrap();
+
+    let block0 = store.fetch_block(0).unwrap();
+    append_block(
+        &store,
+        &block0.clone().try_into_chain_block().unwrap(),
+        vec![],
+        &rules,
+        1.into(),
+    )
+    .unwrap();
+    assert_eq!(store.fetch_all_reorgs().unwrap(), vec![]);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Kernel).unwrap(), 3);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Utxo).unwrap(), 4002);
+
+    let mut txn = DbTransaction::new();
+    txn.insert_bad_block(block0.hash().clone(), 0);
+    store.commit(txn).unwrap();
 }
 
 #[test]

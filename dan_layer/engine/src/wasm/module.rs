@@ -20,11 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 use tari_template_abi::{FunctionDef, TemplateDef};
 use wasmer::{Extern, Function, Instance, Module, Store, Val, WasmerEnv};
 
 use crate::{
-    packager::PackageModuleLoader,
+    packager::{PackageError, PackageModuleLoader},
     wasm::{environment::WasmEnv, WasmExecutionError},
 };
 
@@ -44,16 +49,18 @@ impl WasmModule {
 }
 
 impl PackageModuleLoader for WasmModule {
-    type Error = WasmExecutionError;
+    type Error = PackageError;
     type Loaded = LoadedWasmModule;
 
     fn load_module(&self) -> Result<Self::Loaded, Self::Error> {
         let store = Store::default();
         let module = Module::new(&store, &self.code)?;
-        let mut env = WasmEnv::new(());
+        let violation_flag = Arc::new(AtomicBool::new(false));
+        let mut env = WasmEnv::new(violation_flag.clone());
 
-        fn stub(_env: &WasmEnv<()>, _op: i32, _arg_ptr: i32, _arg_len: i32) -> i32 {
-            panic!("WASM module called engine while loading ABI")
+        fn stub(env: &WasmEnv<Arc<AtomicBool>>, _op: i32, _arg_ptr: i32, _arg_len: i32) -> i32 {
+            env.state().store(true, Ordering::Relaxed);
+            0
         }
 
         let stub = Function::new_native_with_env(&store, env.clone(), stub);
@@ -64,16 +71,22 @@ impl PackageModuleLoader for WasmModule {
         validate_environment(&env)?;
 
         let template = initialize_and_load_template_abi(&instance, &env)?;
+        if violation_flag.load(Ordering::Relaxed) {
+            return Err(PackageError::TemplateCalledEngineDuringInitialization);
+        }
         Ok(LoadedWasmModule::new(template, module))
     }
 }
 
-fn initialize_and_load_template_abi(instance: &Instance, env: &WasmEnv<()>) -> Result<TemplateDef, WasmExecutionError> {
+fn initialize_and_load_template_abi(
+    instance: &Instance,
+    env: &WasmEnv<Arc<AtomicBool>>,
+) -> Result<TemplateDef, WasmExecutionError> {
     let abi_func = instance
         .exports
         .iter()
         .find_map(|(name, export)| match export {
-            Extern::Function(f) if name.ends_with("_abi") => Some(f),
+            Extern::Function(f) if name.ends_with("_abi") && f.param_arity() == 0 && f.result_arity() == 1 => Some(f),
             _ => None,
         })
         .ok_or(WasmExecutionError::NoAbiDefinition)?;
@@ -110,18 +123,21 @@ impl LoadedWasmModule {
         &self.template.template_name
     }
 
+    pub fn template_def(&self) -> &TemplateDef {
+        &self.template
+    }
+
     pub fn find_func_by_name(&self, function_name: &str) -> Option<&FunctionDef> {
         self.template.functions.iter().find(|f| f.name == *function_name)
     }
 }
 
-fn validate_environment(env: &WasmEnv<()>) -> Result<(), WasmExecutionError> {
+fn validate_environment(env: &WasmEnv<Arc<AtomicBool>>) -> Result<(), WasmExecutionError> {
     const MAX_MEM_SIZE: usize = 2 * 1024 * 1024;
     let mem_size = env.mem_size();
     if mem_size.bytes().0 > MAX_MEM_SIZE {
         return Err(WasmExecutionError::MaxMemorySizeExceeded);
     }
-    // TODO other package validations
 
     Ok(())
 }

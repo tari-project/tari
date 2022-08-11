@@ -45,7 +45,7 @@ Assuming you want to install the Tari applications into your home folder, then, 
     cd ~
     tar -xf <PATH_TO_BINARY_INSTALL_FILE>
 
-After this, the Tari applications will be located in `~/tari_weatherwax_testnet` with a selection of
+After this, the Tari applications will be located in `~/tari_esmeralda_testnet` with a selection of
 soft links to run them.
 
 #### On Windows
@@ -433,11 +433,11 @@ For MiningCore see the [Linux](https://github.com/tari-project/miningcore/#build
 
 The configuration prerequisites are the same for all four Tari applications. After performing a
 [default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
-will be created in the `~/tari_weatherwax_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+will be created in the `~/tari_esmeralda_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled for
-the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under sections **`base_node.weatherwax`** and **`wallet`** respectively:
+the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under sections **`base_node.esmeralda`** and **`wallet`** respectively:
 
 ```
 [wallet]
@@ -446,7 +446,7 @@ grpc_address = "127.0.0.1:18143"
 ```
 
 ```
-[base_node.weatherwax]
+[base_node.esmeralda]
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
@@ -606,19 +606,19 @@ XMRig can also be build from sources. If that is your preference, follow these i
 
 The configuration prerequisites are the same for all three Tari applications. After performing a
 [default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
-will be created in the `~/tari_weatherwax_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+will be created in the `~/tari_esmeralda_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled if
 they are not enabled already:
 
-- For the Tari Base Node and the Tari Console Wallet, under sections **`base_node.weatherwax`** and **`wallet`** respectively
+- For the Tari Base Node and the Tari Console Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
   ```
   [wallet]
   grpc_address = "127.0.0.1:18143"
   ```
   ```
-  [base_node.weatherwax]
+  [base_node.esmeralda]
   transpo*_r_*t = "tor"
   allow_test_addresses = false
   base_node_grpc_address = "127.0.0.1:18142"
