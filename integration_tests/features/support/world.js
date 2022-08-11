@@ -694,6 +694,7 @@ class CustomWorld {
     let result = true;
     await waitFor(
       async () => {
+        result = true;
         await this.forEachClientAsync(async (client, name) => {
           await waitFor(
             async () => await client.getTipHeight(),
