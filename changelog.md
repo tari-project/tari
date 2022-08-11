@@ -2,6 +2,222 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.35.0](https://github.com/tari-project/tari/compare/v0.32.12...v0.35.0) (2022-08-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **comms:** use domain hasher for noise DH key derivation (#4432)
+* **core:** consensus hashing without extraneous length prefixes for each write (#4420)
+* new esmeralda network (#4391)
+* fix kernel mutability (#4377)
+* **dht:** add message padding for message decryption, to reduce message length leaks (fixes #4140) (#4362)
+* improve wallet key derivation by use of proper domain separation (see issue  #4170) (#4316)
+* add burned outputs (#4364)
+* **base_layer:** new output field for minimum value range proof (#4319)
+
+### Features
+
+* accept 'esme' as network name on cli ([#4401](https://github.com/tari-project/tari/issues/4401)) ([966aa0b](https://github.com/tari-project/tari/commit/966aa0b7ac5ca77247ae50f9c78beba2ea3a6d87))
+* add burned outputs ([#4364](https://github.com/tari-project/tari/issues/4364)) ([60f3877](https://github.com/tari-project/tari/commit/60f3877f224d2311cd9e31770f8dbbed536ce742))
+* add hashing api to wallet secret keys ([#4424](https://github.com/tari-project/tari/issues/4424)) ([d944574](https://github.com/tari-project/tari/commit/d944574905c3bb63cbcad0dbfa5222e8efe77717))
+* add quarantine and backup keys ([#4289](https://github.com/tari-project/tari/issues/4289)) ([ed9f8cb](https://github.com/tari-project/tari/commit/ed9f8cbfd85aad4ca63b0f574c4854c02fee1840))
+* add sending to stealth address (command, grpc, gui) ([#4307](https://github.com/tari-project/tari/issues/4307)) ([a897278](https://github.com/tari-project/tari/commit/a897278be21d54b0a529faad38502ed52e428a6d))
+* add tari_crypto hashing api support ([#4328](https://github.com/tari-project/tari/issues/4328)) ([dba167b](https://github.com/tari-project/tari/commit/dba167beab6e92071d51a2415b865417b39a3d5a))
+* add tari_scanner ([#4280](https://github.com/tari-project/tari/issues/4280)) ([bd672eb](https://github.com/tari-project/tari/commit/bd672eb01b7f2fbc842809f7fcda8323a50bc996))
+* **base_layer/core:** add domain hashing wrapper for consensus encoding ([#4381](https://github.com/tari-project/tari/issues/4381)) ([ad11ec5](https://github.com/tari-project/tari/commit/ad11ec50db19bdf3f92c998ad2c806623ba1714c))
+* **base_layer:** checkpoint quorum validation ([#4303](https://github.com/tari-project/tari/issues/4303)) ([e1704f4](https://github.com/tari-project/tari/commit/e1704f46a3276dd0bfbc0182352939ca4a3e8828))
+* **base_layer:** checkpoint signature validation ([#4297](https://github.com/tari-project/tari/issues/4297)) ([850e78f](https://github.com/tari-project/tari/commit/850e78f4c2589650c19009d89fda2ce75cafc08d))
+* **base_layer:** new output field for minimum value range proof ([#4319](https://github.com/tari-project/tari/issues/4319)) ([5cff7a9](https://github.com/tari-project/tari/commit/5cff7a99dc80b2cd6f0cdaff3d580388b9416fa1))
+* **base_layer:** remove the initial_reward field for contracts ([#4313](https://github.com/tari-project/tari/issues/4313)) ([a7daf3a](https://github.com/tari-project/tari/commit/a7daf3a9a3902d0e5a9624045254adca247261a2))
+* **base-node:** adds `add-peer` command ([#4430](https://github.com/tari-project/tari/issues/4430)) ([b2563a2](https://github.com/tari-project/tari/commit/b2563a27bc491cdf4a08e5fcd63c4a0d9cef1174))
+* build arm64 binaries from json matrix ([#4342](https://github.com/tari-project/tari/issues/4342)) ([53397e0](https://github.com/tari-project/tari/commit/53397e07d679a9afbd21ffb97d6309025294b891))
+* bump tari_crypto version -> v0.15.4 ([#4382](https://github.com/tari-project/tari/issues/4382)) ([5dd7811](https://github.com/tari-project/tari/commit/5dd781190e1eef272de1423bb53076407d173ad9))
+* bump toolchain for GHA from nightly-2021-11-20 to nightly-2022-05-01 ([#4308](https://github.com/tari-project/tari/issues/4308)) ([dbdadcf](https://github.com/tari-project/tari/commit/dbdadcf2e1030464ed098ef9b9d004614164c5cc))
+* bump toolchain for GHA from nightly-2021-11-20 to nightly-2022-05-01 for develop ([#4329](https://github.com/tari-project/tari/issues/4329)) ([9797c19](https://github.com/tari-project/tari/commit/9797c1902b83122617dd3dde859d5c63dc71b170))
+* **comms:** auto detects configured tor control port auth ([#4428](https://github.com/tari-project/tari/issues/4428)) ([98a7b0c](https://github.com/tari-project/tari/commit/98a7b0c623a71f858e4670e80db609e66c74b96c))
+* **dan/engine:** add more engine primitives and add template context ([#4388](https://github.com/tari-project/tari/issues/4388)) ([a481f89](https://github.com/tari-project/tari/commit/a481f896bc6ee6e4114c163b5b15d9bb617c9792))
+* **dan/engine:** adds single state storage interface ([#4368](https://github.com/tari-project/tari/issues/4368)) ([954efea](https://github.com/tari-project/tari/commit/954efea1e14f52183020d9467d0917f4997e12c4))
+* **dan/wasm:** implement basic wasm module engine calls ([#4350](https://github.com/tari-project/tari/issues/4350)) ([ad89150](https://github.com/tari-project/tari/commit/ad891509d56dbb359713217ab5d02c85fb9d976d))
+* **dan:** add WASM template invocation from user instruction ([#4331](https://github.com/tari-project/tari/issues/4331)) ([d265c6f](https://github.com/tari-project/tari/commit/d265c6f61c4f68098129b72f5907108e527868a3))
+* **dan:** basic template macro ([#4358](https://github.com/tari-project/tari/issues/4358)) ([594ca0e](https://github.com/tari-project/tari/commit/594ca0e8f0df133b54647ac4f9b3a0ea774ffa2b))
+* **dan:** invocation of functions in templates ([#4343](https://github.com/tari-project/tari/issues/4343)) ([3d92eb0](https://github.com/tari-project/tari/commit/3d92eb0901391e3b73e4008a930c37c27bedb913))
+* **dan:** template macro handles component state ([#4380](https://github.com/tari-project/tari/issues/4380)) ([696d909](https://github.com/tari-project/tari/commit/696d9098235d1e8df6e7e2f374718001d6dc80c9))
+* fix kernel mutability ([#4377](https://github.com/tari-project/tari/issues/4377)) ([d25d726](https://github.com/tari-project/tari/commit/d25d726ed7e04a066135b80b1de9c019d928a75c))
+* **mempool:** remove transaction for locally mined blocks that fail validation ([#4306](https://github.com/tari-project/tari/issues/4306)) ([15f41b3](https://github.com/tari-project/tari/commit/15f41b328eadaf2d68ac6f6bab0033905c5372ae))
+* multi-threaded vanity id generator ([#4345](https://github.com/tari-project/tari/issues/4345)) ([32569da](https://github.com/tari-project/tari/commit/32569da37eb6bbb10c53633deb7045fbf334eacc))
+* new esmeralda network ([#4391](https://github.com/tari-project/tari/issues/4391)) ([622763a](https://github.com/tari-project/tari/commit/622763a5df31f41aab6a213a788a91d860ea58ba))
+* proposal acceptance signatures are submitted and validated ([#4288](https://github.com/tari-project/tari/issues/4288)) ([2bf7efe](https://github.com/tari-project/tari/commit/2bf7efe2cbf004f12325a5ce6d11408a317fa275))
+* read tor cookies from a file ([#4317](https://github.com/tari-project/tari/issues/4317)) ([c75d224](https://github.com/tari-project/tari/commit/c75d2242ab5de5301c4340a97f96648a056cf208))
+* remove hash_digest type ([#4376](https://github.com/tari-project/tari/issues/4376)) ([7b2750a](https://github.com/tari-project/tari/commit/7b2750abe46237594a57865e7f403b74526d6cf3))
+* remove hashing domain and update key manager ([#4367](https://github.com/tari-project/tari/issues/4367)) ([e805f1f](https://github.com/tari-project/tari/commit/e805f1f0ba0121747da2e00843979881d750f731))
+* remove recovery byte ([#4301](https://github.com/tari-project/tari/issues/4301)) ([a2778f0](https://github.com/tari-project/tari/commit/a2778f0a162e77bca31431561b11ea0b85036fac))
+* show tari script properly in tari_explorer ([#4321](https://github.com/tari-project/tari/issues/4321)) ([4a1b50e](https://github.com/tari-project/tari/commit/4a1b50e4cd48b770d3b8dc8c3925ac8df012d69c))
+* support for stealth addresses in one-sided transactions ([#4310](https://github.com/tari-project/tari/issues/4310)) ([c73de62](https://github.com/tari-project/tari/commit/c73de62fae2436278f8c0541286c188b5338d28e))
+* tari launchpad downstream merge ([#4322](https://github.com/tari-project/tari/issues/4322)) ([222052f](https://github.com/tari-project/tari/commit/222052f71a56b8b68176a6afd41d2c19353351bc))
+* **vn:** recognize abandoned state ([#4272](https://github.com/tari-project/tari/issues/4272)) ([e42085a](https://github.com/tari-project/tari/commit/e42085a5f8b14135fdae87953bea848668be0f6b))
+
+
+### Bug Fixes
+
+* add divide by zero check ([#4287](https://github.com/tari-project/tari/issues/4287)) ([75a8f59](https://github.com/tari-project/tari/commit/75a8f59528adb8c623a2ad8b83cdd0233d14d5be))
+* add hashing api on comms repo (see issue [#4393](https://github.com/tari-project/tari/issues/4393)) ([#4429](https://github.com/tari-project/tari/issues/4429)) ([9f32c31](https://github.com/tari-project/tari/commit/9f32c3149b9364e7688fddfb1c35d986289a66ac))
+* add more recent zero point for wallet birthday (see issue [#4176](https://github.com/tari-project/tari/issues/4176)) ([#4275](https://github.com/tari-project/tari/issues/4275)) ([815c478](https://github.com/tari-project/tari/commit/815c478985e34384f97a998658fce1d0d462758c))
+* addmissing assets for contribution guide ([#4434](https://github.com/tari-project/tari/issues/4434)) ([4c68408](https://github.com/tari-project/tari/commit/4c684087deee524d0f7f376b4e363f91c3569d37))
+* address points in issue [#4138](https://github.com/tari-project/tari/issues/4138) and companions ([#4336](https://github.com/tari-project/tari/issues/4336)) ([2ca0672](https://github.com/tari-project/tari/commit/2ca06724f0ab7c63eb0b6caab563372f353f4348)), closes [#4333](https://github.com/tari-project/tari/issues/4333) [#4170](https://github.com/tari-project/tari/issues/4170)
+* apply network config overrides from cli or else file ([#4407](https://github.com/tari-project/tari/issues/4407)) ([222ef15](https://github.com/tari-project/tari/commit/222ef15665cf9417dc16c2abd88523f8e97f65e9))
+* better coinbase handling (see issue [#4353](https://github.com/tari-project/tari/issues/4353)) ([#4386](https://github.com/tari-project/tari/issues/4386)) ([5581044](https://github.com/tari-project/tari/commit/558104441c02c13de481c743c1e7e19ebaff3620))
+* burned output check ([#4374](https://github.com/tari-project/tari/issues/4374)) ([3b30fdb](https://github.com/tari-project/tari/commit/3b30fdb99af14a43eb0e9762861f5fabc2481cca))
+* cap unlimited rpc connection ([#4442](https://github.com/tari-project/tari/issues/4442)) ([4f1a4fe](https://github.com/tari-project/tari/commit/4f1a4feb3e3125ae1b2ff1682fb9fa4218f6e4e2))
+* clippy ([#4437](https://github.com/tari-project/tari/issues/4437)) ([7078784](https://github.com/tari-project/tari/commit/70787843bebf6b4569c6746c764028f71aeac433))
+* **clippy:** allow unused_mut for not(feature = "libtor") ([#4425](https://github.com/tari-project/tari/issues/4425)) ([36ed59a](https://github.com/tari-project/tari/commit/36ed59a1bdfc94dcde3829e289d7ac512b28447e))
+* **comms/tor:** re-establish tor control port connection for any failure ([#4446](https://github.com/tari-project/tari/issues/4446)) ([6d9ca81](https://github.com/tari-project/tari/commit/6d9ca815b0284da132eeff4f6d8f2acaf375a6b7))
+* **comms:** use domain hasher for noise DH key derivation ([#4432](https://github.com/tari-project/tari/issues/4432)) ([c93182c](https://github.com/tari-project/tari/commit/c93182c8fe7db8f557a80edbc83a59e7d42e4e9f))
+* consolidate sql migrations (see issue [#4356](https://github.com/tari-project/tari/issues/4356)) ([#4415](https://github.com/tari-project/tari/issues/4415)) ([91cd76f](https://github.com/tari-project/tari/commit/91cd76f468c902cf9c6de8954f821618e2d86d20))
+* **core:** consensus hashing without extraneous length prefixes for each write ([#4420](https://github.com/tari-project/tari/issues/4420)) ([16ddc4e](https://github.com/tari-project/tari/commit/16ddc4e1bfff98fc76bbdccc4d869d734c080186))
+* **core:** edge case fix for chunked iterator ([#4315](https://github.com/tari-project/tari/issues/4315)) ([8854ca1](https://github.com/tari-project/tari/commit/8854ca1bbde16cf0e50f56054eef717f8c02f10e))
+* **core:** use domain-separated kdf for encrypted value ([#4421](https://github.com/tari-project/tari/issues/4421)) ([c5a0aef](https://github.com/tari-project/tari/commit/c5a0aef0639a5fa06a1aded0493200cb67a2a83d))
+* default to esme ([#4398](https://github.com/tari-project/tari/issues/4398)) ([8d9a448](https://github.com/tari-project/tari/commit/8d9a4482bccdcf3668ba9575e725de40f974feec))
+* **dht:** add message padding for message decryption, to reduce message length leaks (fixes [#4140](https://github.com/tari-project/tari/issues/4140)) ([#4362](https://github.com/tari-project/tari/issues/4362)) ([b56c63a](https://github.com/tari-project/tari/commit/b56c63a01085d373a60db3b22b52821417c97c75))
+* fix flaky port number assignments in cucumber  ([#4305](https://github.com/tari-project/tari/issues/4305)) ([e8d4a00](https://github.com/tari-project/tari/commit/e8d4a00d7a52de42847cc6406322f7ff14519d80))
+* fix new block handling of non-tip blocks ([#4431](https://github.com/tari-project/tari/issues/4431)) ([ee757df](https://github.com/tari-project/tari/commit/ee757df369c4ee56f1ed242020f790b3869ff955))
+* fix OSX GHA build fix by bumping OSX release ([#4300](https://github.com/tari-project/tari/issues/4300)) ([fe5954d](https://github.com/tari-project/tari/commit/fe5954d43fb3b7626b06f4b9e66c1933270bb2a4))
+* force peer identity signature ([#4387](https://github.com/tari-project/tari/issues/4387)) ([c901dbc](https://github.com/tari-project/tari/commit/c901dbca626f163acf715107d512f5aed796a558))
+* implement hashing api for dan layer (see issue [#4392](https://github.com/tari-project/tari/issues/4392)) ([#4427](https://github.com/tari-project/tari/issues/4427)) ([f7c5e77](https://github.com/tari-project/tari/commit/f7c5e771dec4fe1c5c816a0d4c71272541d2e7c3))
+* improve wallet key derivation by use of proper domain separation (see issue  [#4170](https://github.com/tari-project/tari/issues/4170)) ([#4316](https://github.com/tari-project/tari/issues/4316)) ([7a25028](https://github.com/tari-project/tari/commit/7a2502885eaf6d15fb4ad9f6566d2ddaadbbe1c0))
+* **key_manager:** remove trailing '.' from hashing domains, fix WASM tests ([#4378](https://github.com/tari-project/tari/issues/4378)) ([214a986](https://github.com/tari-project/tari/commit/214a986fce22a69c4bac4eae7e689e653a63987c))
+* low entropy mac passphrase in cipher seed (see issue [#4182](https://github.com/tari-project/tari/issues/4182))  ([#4296](https://github.com/tari-project/tari/issues/4296)) ([1c5ec0d](https://github.com/tari-project/tari/commit/1c5ec0d9dc6d9f9f1f256332be5b9e9b0b022315))
+* possible overflow in difficulty calculation (fixes [#3923](https://github.com/tari-project/tari/issues/3923)) companion ([#4097](https://github.com/tari-project/tari/issues/4097)) ([ddb8453](https://github.com/tari-project/tari/commit/ddb8453b85cca4b6e5ba615a1afb49630f7da5c0))
+* prevent code injection ([#4327](https://github.com/tari-project/tari/issues/4327)) ([5391938](https://github.com/tari-project/tari/commit/5391938c41e5d39cfb57993961a98882887e62bd))
+* recover all known scripts ([#4397](https://github.com/tari-project/tari/issues/4397)) ([7502fd6](https://github.com/tari-project/tari/commit/7502fd6538eb96bf566527c90d7bec8a158dee1f))
+* remove tari_common dep from keymanager ([#4335](https://github.com/tari-project/tari/issues/4335)) ([5e3797f](https://github.com/tari-project/tari/commit/5e3797f310562369601846f04d347003badf4e1d))
+* remove winapi compile warning ([#4440](https://github.com/tari-project/tari/issues/4440)) ([7611468](https://github.com/tari-project/tari/commit/761146850ba723dd55f566a614d054eda309453f))
+* solve breaking changes introduced by new tari-crypto tag ([#4347](https://github.com/tari-project/tari/issues/4347)) ([3c74064](https://github.com/tari-project/tari/commit/3c74064397ee0821c98c8a93bf6ef343e152be7a))
+* transaction validation excess signature check ([#4314](https://github.com/tari-project/tari/issues/4314)) ([f6342a5](https://github.com/tari-project/tari/commit/f6342a5279b707e3860c2d5674de7523ffe38f68))
+* use HashError for value encryption parts ([#4302](https://github.com/tari-project/tari/issues/4302)) ([a0da287](https://github.com/tari-project/tari/commit/a0da287b0d3197ab30aefd1d256af8e070d37002))
+* use SafePassword struct instead of String for passwords ([#4320](https://github.com/tari-project/tari/issues/4320)) ([a059b99](https://github.com/tari-project/tari/commit/a059b9988ed5fd9228c2110978c9af0f405c19c5))
+* **validator-node:** only submit checkpoint if the leader ([#4294](https://github.com/tari-project/tari/issues/4294)) ([fd55107](https://github.com/tari-project/tari/commit/fd55107568fb829d478a66b46d366051a44fb7e6))
+* wallet database encryption does not bind to field keys [#4137](https://github.com/tari-project/tari/issues/4137) ([#4340](https://github.com/tari-project/tari/issues/4340)) ([32184b5](https://github.com/tari-project/tari/commit/32184b515bfe428d7da1dbe14c79e8691ea815ae))
+* wallet seed_words command is broken (see issue [#4363](https://github.com/tari-project/tari/issues/4363)) ([#4370](https://github.com/tari-project/tari/issues/4370)) ([1cabd70](https://github.com/tari-project/tari/commit/1cabd70f2a945fb15466cb1d2a2ed183fb021b1f))
+* **wallet:** implement `check_for_updates` in wallet grpc ([#4359](https://github.com/tari-project/tari/issues/4359)) ([6eae661](https://github.com/tari-project/tari/commit/6eae6615e12287b60f9695fba7773ae76a1fc5e6))
+* **wallet:** update seed words for output manager tests ([#4379](https://github.com/tari-project/tari/issues/4379)) ([bfcb95c](https://github.com/tari-project/tari/commit/bfcb95c177a7cc61f122eddf803b637dde19163f))
+
+## [0.34.0](https://github.com/tari-project/tari/compare/v0.32.10...v0.34.0) (2022-07-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** include issuer public key in contract id hash (#4239)
+* **dan_layer:** generate and add checkpoint signatures (#4261)
+* add checkpoint_number to checkpoint with basic base layer validations (#4258)
+
+### Features
+
+* add checkpoint_number to checkpoint with basic base layer validations ([#4258](https://github.com/tari-project/tari/issues/4258)) ([7b76141](https://github.com/tari-project/tari/commit/7b761410cd1dde2c47fd209d4b5e2a77f51aed96))
+* add encryption service ([#4225](https://github.com/tari-project/tari/issues/4225)) ([6ce6b89](https://github.com/tari-project/tari/commit/6ce6b893df46d69a4177ef0130f841994e492a09))
+* add range proof batch verification to validators ([#4260](https://github.com/tari-project/tari/issues/4260)) ([02d3121](https://github.com/tari-project/tari/commit/02d31212731d4a0643dac1f26afe241b4f5b9204))
+* add tari engine for flow and wasm functions ([#4237](https://github.com/tari-project/tari/issues/4237)) ([a997934](https://github.com/tari-project/tari/commit/a99793424815e5b43eb67f7422cb42459636d7af))
+* **base_layer:** basic checkpoint validation ([#4293](https://github.com/tari-project/tari/issues/4293)) ([045997a](https://github.com/tari-project/tari/commit/045997a0a141c4391efc98aeabfbe6d6e550367f))
+* **comms:** add or_optional trait extension for RpcStatus ([#4246](https://github.com/tari-project/tari/issues/4246)) ([11fddf6](https://github.com/tari-project/tari/commit/11fddf6199af670fb4ccb34a99b89c49a42b336e))
+* contract acceptance signatures are submitted and validated ([#4269](https://github.com/tari-project/tari/issues/4269)) ([414be33](https://github.com/tari-project/tari/commit/414be33351781c07358d3850e4e67b750c1fcb8a))
+* **core:** validates non-contract utxos have no sidechain features ([#4259](https://github.com/tari-project/tari/issues/4259)) ([a8ba89f](https://github.com/tari-project/tari/commit/a8ba89fe2195232e7e860342617ddf5f6c6244c2))
+* **dan_layer/core:** track checkpoint number for each checkpoint submitted ([#4268](https://github.com/tari-project/tari/issues/4268)) ([16e07a0](https://github.com/tari-project/tari/commit/16e07a0b4ab9079f84645d8796a4fc6bb27f0303))
+* **dan_layer:** generate and add checkpoint signatures ([#4261](https://github.com/tari-project/tari/issues/4261)) ([0f581ca](https://github.com/tari-project/tari/commit/0f581cafe8bd4f922462757504c772c82d0697c7))
+* **wallet:** uses tip height to calc abs acceptance period ([#4271](https://github.com/tari-project/tari/issues/4271)) ([480d55d](https://github.com/tari-project/tari/commit/480d55dade62339dafc457c98681efcb66304beb))
+
+
+### Bug Fixes
+
+* add saturating sub to prevent potential underflow ([#4286](https://github.com/tari-project/tari/issues/4286)) ([56d184a](https://github.com/tari-project/tari/commit/56d184a7c3c405028e38ef4640804ff3bcb37b1a))
+* **base-node:** minor fixups for hex/type parsing and long running commands ([#4281](https://github.com/tari-project/tari/issues/4281)) ([f910cce](https://github.com/tari-project/tari/commit/f910cce13aa6ba3af021253bd922baddd43e885f))
+* **core:** include issuer public key in contract id hash ([#4239](https://github.com/tari-project/tari/issues/4239)) ([ef62c00](https://github.com/tari-project/tari/commit/ef62c00b10cdf6dafe9e2b24acecfd2006c48125))
+* **dan_layer/core:** include state root in checkpoint signature ([#4285](https://github.com/tari-project/tari/issues/4285)) ([bcaabf0](https://github.com/tari-project/tari/commit/bcaabf04f5cef05d7707293236fb29b1020fa3de))
+* **vn:** scan and save contracts without autoaccept ([#4265](https://github.com/tari-project/tari/issues/4265)) ([a137f53](https://github.com/tari-project/tari/commit/a137f53f35db70031155f9c79a04fd11d8e1996f))
+* **wallet:** handle not found rpc error in utxo scanning ([#4249](https://github.com/tari-project/tari/issues/4249)) ([bcd14c7](https://github.com/tari-project/tari/commit/bcd14c7dcbfc9c2bd63ec896c80d45785cf04714))
+
+## [0.33.0](https://github.com/tari-project/tari/compare/v0.32.7...v0.33.0) (2022-06-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** add contract index to blockchain database (#4184)
+* **core:** replace OutputFlags with OutputType (#4174)
+* **core:** add side-chain features and constitution to UTXOs (#4134)
+* **comms:** commit to public key and nonce in identity sig (#3928)
+* **dht:** fixes MAC related key vuln for propagated cleartext msgs (#3907)
+* **core:** define OutputFlags for side-chain contracts (#4088)
+
+### Features
+
+* add an encrypted value to the TransactionOutput ([#4148](https://github.com/tari-project/tari/issues/4148)) ([01b600a](https://github.com/tari-project/tari/commit/01b600ae3756b02ad99ffad8c4d16e09e31ffa77))
+* add encrypted_value to the UnblindedOutput ([#4142](https://github.com/tari-project/tari/issues/4142)) ([f79d383](https://github.com/tari-project/tari/commit/f79d383533c2e9c4db95d4a13973992c9a8739ef))
+* add FeePerGramStats to ffi library ([#4114](https://github.com/tari-project/tari/issues/4114)) ([234d32f](https://github.com/tari-project/tari/commit/234d32f446d5f75c2af78b8e30bc818a628b1dfb))
+* add sender to instructions ([#4234](https://github.com/tari-project/tari/issues/4234)) ([6c116ac](https://github.com/tari-project/tari/commit/6c116acae93eff0869cc82fa18b9342624da6914))
+* add validator node checkpointing ([#4217](https://github.com/tari-project/tari/issues/4217)) ([8b0add0](https://github.com/tari-project/tari/commit/8b0add0b53011de30253337a6830f3b9c66251b8))
+* **base_layer:** basic contract constitution validation ([#4232](https://github.com/tari-project/tari/issues/4232)) ([c2efd5e](https://github.com/tari-project/tari/commit/c2efd5e161176d7c66a6669fef2625bf77d2eb82))
+* **base_layer:** basic validations for proposals, proposal acceptances and amendments ([#4238](https://github.com/tari-project/tari/issues/4238)) ([64f8972](https://github.com/tari-project/tari/commit/64f89724896c6ddd7b21efc8c8ff605cbc373f70))
+* **base_layer:** validate acceptance window expiration on dan layer ([#4251](https://github.com/tari-project/tari/issues/4251)) ([25e316b](https://github.com/tari-project/tari/commit/25e316b68d270abf917cad660d031a9feb168ae4))
+* **base_layer:** validate duplicated acceptances ([#4233](https://github.com/tari-project/tari/issues/4233)) ([3d8a3b2](https://github.com/tari-project/tari/commit/3d8a3b2c09b375b7af59d52f1462a93801beff07))
+* **base_layer:** validate that contract definitions are not duplicated ([#4230](https://github.com/tari-project/tari/issues/4230)) ([0a2812c](https://github.com/tari-project/tari/commit/0a2812c165be76fd177f0563c802c3afb43d0215))
+* **base_layer:** validation of committee membership in contract acceptances ([#4221](https://github.com/tari-project/tari/issues/4221)) ([641844a](https://github.com/tari-project/tari/commit/641844a749e043ad708debeaebc25b8c4c8adaa6))
+* **base-node:** improve contract utxo scanning ([#4208](https://github.com/tari-project/tari/issues/4208)) ([0fcde31](https://github.com/tari-project/tari/commit/0fcde31bdf81e27b92bf3d44dc563c4cf23fd38f))
+* change tari explorer block view ([#4226](https://github.com/tari-project/tari/issues/4226)) ([652cba3](https://github.com/tari-project/tari/commit/652cba36a584f208b1782c95057d3839a6317d04))
+* **console-wallet:** add contract-definition init command ([#4164](https://github.com/tari-project/tari/issues/4164)) ([8685e2f](https://github.com/tari-project/tari/commit/8685e2fe3b174a00047d049acca998df3c85975c))
+* **console-wallet:** generate issuer key for contract init-definition ([#4202](https://github.com/tari-project/tari/issues/4202)) ([7317d6b](https://github.com/tari-project/tari/commit/7317d6ba858dd0b54fb0a39cf5c0c1999042cb7b))
+* constitution publishing ([#4150](https://github.com/tari-project/tari/issues/4150)) ([ba83b8f](https://github.com/tari-project/tari/commit/ba83b8f0aaa833dafe2e89c82ab802e35eb190a2))
+* contract acceptance publication ([#4151](https://github.com/tari-project/tari/issues/4151)) ([d3d3e91](https://github.com/tari-project/tari/commit/d3d3e91c80b0bc2a6adeb796c2500aa88f1f49cb))
+* contract auto acceptance ([#4177](https://github.com/tari-project/tari/issues/4177)) ([87f9969](https://github.com/tari-project/tari/commit/87f996923f138f953198a2f16c11a180cca5134d))
+* **core:** add contract acceptance utxo features ([#4145](https://github.com/tari-project/tari/issues/4145)) ([2636cb5](https://github.com/tari-project/tari/commit/2636cb56ddf1b67ed7bf4c4aea8c05f9369b11d0))
+* **core:** add contract index to blockchain database ([#4184](https://github.com/tari-project/tari/issues/4184)) ([b7e97f4](https://github.com/tari-project/tari/commit/b7e97f45d3b3b7407058d6bb8da89f6f14f98984))
+* **core:** add side-chain features and constitution to UTXOs ([#4134](https://github.com/tari-project/tari/issues/4134)) ([ada3143](https://github.com/tari-project/tari/commit/ada31432ea2e0ac1591153580b0e2b86475b30e7))
+* **core:** adds constitution UTXO features ([#4121](https://github.com/tari-project/tari/issues/4121)) ([da5696a](https://github.com/tari-project/tari/commit/da5696a69a7568e744681d5139dbc4fe81031644))
+* **core:** define OutputFlags for side-chain contracts ([#4088](https://github.com/tari-project/tari/issues/4088)) ([50993a3](https://github.com/tari-project/tari/commit/50993a3dc0aaf8506ef21a90c45a2a56d801716a))
+* **core:** impl consensus encoding for bool ([#4120](https://github.com/tari-project/tari/issues/4120)) ([682aa5d](https://github.com/tari-project/tari/commit/682aa5d0ec108074ffed68aead83a757ee5c9490))
+* **core:** new output features for changes in contracts ([#4169](https://github.com/tari-project/tari/issues/4169)) ([41570f6](https://github.com/tari-project/tari/commit/41570f6f159776aaf99a504715ee4af31919f1b7))
+* **miner:** friendlier miner output ([#4219](https://github.com/tari-project/tari/issues/4219)) ([4245838](https://github.com/tari-project/tari/commit/42458381105df4ca2b54b3e6510423dc775bde9e))
+* publication of contract update proposal acceptances ([#4199](https://github.com/tari-project/tari/issues/4199)) ([e3b2b9b](https://github.com/tari-project/tari/commit/e3b2b9b5bbbc8bced1228832202f4932012f6a6e))
+* scan base node for constitutions ([#4144](https://github.com/tari-project/tari/issues/4144)) ([310a2d2](https://github.com/tari-project/tari/commit/310a2d20267f0c0226a76c9ba0b56864569621cb))
+* swap dalek bulletproofs for bulletproofs-plus ([#4213](https://github.com/tari-project/tari/issues/4213)) ([46f9bb8](https://github.com/tari-project/tari/commit/46f9bb8359295a2c0432c304ec20c2a4498fa31d))
+* use tari_crypto's updated "extended pedersen commitment factory" ([#4206](https://github.com/tari-project/tari/issues/4206)) ([50ce20a](https://github.com/tari-project/tari/commit/50ce20a3b13647a841e4cbfac44837a78a623dcd))
+* **validator_node:** add global db ([#4210](https://github.com/tari-project/tari/issues/4210)) ([3965267](https://github.com/tari-project/tari/commit/3965267c53b60e26d8f8effc852107fec4ab3111))
+* **validator-node:** add logging ([#4189](https://github.com/tari-project/tari/issues/4189)) ([2ed859f](https://github.com/tari-project/tari/commit/2ed859f22e0436a4e27d6508560c9122746c0e85))
+* **validator-node:** allow network to be configured via cli ([#4190](https://github.com/tari-project/tari/issues/4190)) ([6a4c1a4](https://github.com/tari-project/tari/commit/6a4c1a4a3b3014f988d8a1cb31e926bc4d743a68))
+* **vn:** record contract states ([#4241](https://github.com/tari-project/tari/issues/4241)) ([92ae4ab](https://github.com/tari-project/tari/commit/92ae4abf2d59e675f2f6c48df053e3273076fbd8))
+* wallet selects previous checkpoint for spending ([#4236](https://github.com/tari-project/tari/issues/4236)) ([90a5ec3](https://github.com/tari-project/tari/commit/90a5ec32bd4f746b29f06d70bc9737a9cacf4538))
+* **wallet_ffi:** new ffi method to create covenant ([#4115](https://github.com/tari-project/tari/issues/4115)) ([dd65b4b](https://github.com/tari-project/tari/commit/dd65b4bd8b168b9423cd953f5e089b5723dbb747))
+* **wallet_ffi:** new ffi method to create output features ([#4109](https://github.com/tari-project/tari/issues/4109)) ([f8fa3ec](https://github.com/tari-project/tari/commit/f8fa3ecb5700e80adf63cc3e61f0b8367217f1bc))
+* **wallet:** add help for wallet cli commands ([#4162](https://github.com/tari-project/tari/issues/4162)) ([859b7d3](https://github.com/tari-project/tari/commit/859b7d3022dab60732f5e638b52f8c1237a2a8f4))
+* **wallet:** adds contract_id to outputs db ([#4222](https://github.com/tari-project/tari/issues/4222)) ([6f331f8](https://github.com/tari-project/tari/commit/6f331f877b0c41336f73c42440facb32953fa59b))
+* **wallet:** new cli commands to initialise proposals and amendments ([#4205](https://github.com/tari-project/tari/issues/4205)) ([40cbd50](https://github.com/tari-project/tari/commit/40cbd50e319e77b037931b8cc33f6b87cf174488))
+* **wallet:** new command to publish a contract definition transaction ([#4133](https://github.com/tari-project/tari/issues/4133)) ([b4991a4](https://github.com/tari-project/tari/commit/b4991a471cb3a6db2a54b623c0afc09f71ae3dc4))
+* **wallet:** new command to publish a contract update proposal ([#4188](https://github.com/tari-project/tari/issues/4188)) ([0e3bee0](https://github.com/tari-project/tari/commit/0e3bee06a08760b3fb61c2896a52b53a86d7e4a9))
+* **wallet:** publish contract amendment ([#4200](https://github.com/tari-project/tari/issues/4200)) ([edcce4a](https://github.com/tari-project/tari/commit/edcce4a816102929284285d0f8cdb04fe7006c76))
+
+
+### Bug Fixes
+
+* add prettierignore for partials ([#4229](https://github.com/tari-project/tari/issues/4229)) ([923cf07](https://github.com/tari-project/tari/commit/923cf0765581c9e0c471cfff00886015a2e827bb))
+* **ci:** sort .license.ignore locally before diff ([#4106](https://github.com/tari-project/tari/issues/4106)) ([8594754](https://github.com/tari-project/tari/commit/859475438219b6ace16e6b2437522788d0c7d737))
+* **comms:** commit to public key and nonce in identity sig ([#3928](https://github.com/tari-project/tari/issues/3928)) ([5ac6133](https://github.com/tari-project/tari/commit/5ac6133a8ab0707dfd97cf1647d709256bb9c05b))
+* **contract-index:** adds support for ContractAmendment to contract index ([#4214](https://github.com/tari-project/tari/issues/4214)) ([a41d0c9](https://github.com/tari-project/tari/commit/a41d0c92cffa734406dad50820ef1367f24ae133))
+* **core:** cleanup duplicate maturity check ([#4181](https://github.com/tari-project/tari/issues/4181)) ([5e55bf2](https://github.com/tari-project/tari/commit/5e55bf22110ac40ffc0dea88d88ba836982591eb))
+* **core:** don't allow coinbase transactions in mempool ([#4103](https://github.com/tari-project/tari/issues/4103)) ([46450d5](https://github.com/tari-project/tari/commit/46450d5a475fa8b57107f6806962a4c9a1338ac5))
+* **dht:** fixes MAC related key vuln for propagated cleartext msgs ([#3907](https://github.com/tari-project/tari/issues/3907)) ([1e96d45](https://github.com/tari-project/tari/commit/1e96d45535f4af967a761fd71521eb68bbb1b371))
+* hash in cucumber ([#4124](https://github.com/tari-project/tari/issues/4124)) ([5d7d55d](https://github.com/tari-project/tari/commit/5d7d55d97f1251619911e4555a925cc03b50c7ed))
+* **hotstuff:** fix bug where decide state was listening for wrong message ([#4160](https://github.com/tari-project/tari/issues/4160)) ([fe7b304](https://github.com/tari-project/tari/commit/fe7b304e936dc567ca106c86dfeb7ed403807b04))
+* **integration_test:** fix wallet-cli integration tests ([#4132](https://github.com/tari-project/tari/issues/4132)) ([4464064](https://github.com/tari-project/tari/commit/446406491698e97983143036c2ea9dd0ac10b365))
+* move peer dbs into sub folders ([#4147](https://github.com/tari-project/tari/issues/4147)) ([2b1a69a](https://github.com/tari-project/tari/commit/2b1a69a9219f29472d6fa26b1b2350be7880b11a))
+* **test:** integration test for validator node is broken ([#4192](https://github.com/tari-project/tari/issues/4192)) ([16d6ba5](https://github.com/tari-project/tari/commit/16d6ba5403e4a0e62e676e56c8ab755a69e6e1f0))
+* **test:** unifying dan layer integration tests ([#4175](https://github.com/tari-project/tari/issues/4175)) ([f3495ee](https://github.com/tari-project/tari/commit/f3495ee71fbb83edef9b295b42a34b6dfae87acf))
+* **validator-node:** return error if contract_id empty for publish_contract_acceptance grpc ([#4191](https://github.com/tari-project/tari/issues/4191)) ([8874114](https://github.com/tari-project/tari/commit/8874114bb25232e62e539e600fe082443a476fec))
+* **validator:** set tor_identity base path ([#4187](https://github.com/tari-project/tari/issues/4187)) ([e324b80](https://github.com/tari-project/tari/commit/e324b803f748e862796210226ca31906613bde28))
+* **vn scanning:** only scan since last scan and restart accepted contracts ([#4252](https://github.com/tari-project/tari/issues/4252)) ([43b4a53](https://github.com/tari-project/tari/commit/43b4a534609059e4a717ec7d1c69650b7fe2a5d3))
+* **wallet:** select only basic utxos when building a transaction ([#4178](https://github.com/tari-project/tari/issues/4178)) ([42269ae](https://github.com/tari-project/tari/commit/42269ae48e9a8eb1ebc479a22813bf2f8cf0c22b))
+* **wallet:** use correct type for contract_id in the contract constitution file format ([#4179](https://github.com/tari-project/tari/issues/4179)) ([669a1bd](https://github.com/tari-project/tari/commit/669a1bd45fd68615da037886379e96b89b9f4f76))
+
+
+* **core:** replace OutputFlags with OutputType ([#4174](https://github.com/tari-project/tari/issues/4174)) ([d779f43](https://github.com/tari-project/tari/commit/d779f4311a0415b3ecd98e806bfbf27fc2486412))
+
 ## [0.34.0](https://github.com/tari-project/tari/compare/v0.33.0...v0.34.0) (2022-07-08)
 
 
