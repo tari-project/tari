@@ -1264,8 +1264,33 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
 
     for output in body.outputs().iter() {
-        output_mmr.push(output.hash())?;
+        let output_hash = output.hash();
+        output_mmr.push(output_hash.clone())?;
         witness_mmr.push(output.witness_hash())?;
+        if output.is_burned() {
+            let index = output_mmr
+                .find_leaf_index(&output_hash)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "UTXO",
+                    field: "hash",
+                    value: output_hash.to_hex(),
+                })?;
+            if !output_mmr.delete(index) {
+                let num_leaves = u32::try_from(output_mmr.get_leaf_count())
+                    .map_err(|_| ChainStorageError::CriticalError("UTXO MMR leaf count overflows u32".to_string()))?;
+                if index < num_leaves && output_mmr.deleted().contains(index) {
+                    return Err(ChainStorageError::InvalidOperation(format!(
+                        "UTXO {} was already marked as deleted.",
+                        output_hash.to_hex()
+                    )));
+                }
+
+                return Err(ChainStorageError::InvalidOperation(format!(
+                    "Could not delete index {} from the output MMR ({} leaves)",
+                    index, num_leaves
+                )));
+            }
+        }
     }
 
     for input in body.inputs().iter() {
