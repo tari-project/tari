@@ -244,40 +244,23 @@ const encodeOption = function (value) {
 };
 
 const getTransactionOutputHash = function (output) {
-  const KEY = null; // optional key
-  const OUTPUT_LENGTH = 32; // bytes
-  const context = blake2bInit(OUTPUT_LENGTH, KEY);
-  let encodedBytesLength = 0;
   // version
   const version = Buffer.from([0]);
-  encodedBytesLength += version.length;
-  blake2bUpdate(context, version);
   // features
   let features = Buffer.concat([
     // features.version
     Buffer.from([0]),
     // features.maturity
-    Buffer.from([parseInt(output.features.maturity)]),
+    Buffer.from(varint.encode(output.features.maturity)),
     // features.output_type
     Buffer.from([output.features.output_type]),
-  ]);
-  // features.parent_public_key
-  features = Buffer.concat([
-    Buffer.from(features),
+    // features.parent_public_key
     encodeOption(output.features.parent_public_key),
-  ]);
-  // features.unique_id
-  features = Buffer.concat([
-    Buffer.from(features),
+    // features.unique_id
     encodeOption(output.features.unique_id),
-  ]);
-  // features.sidechain_features
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.sidechain_features),
-  ]); // features.asset
-  features = Buffer.concat([
-    Buffer.from(features),
+    // features.sidechain_features
+    Buffer.from(encodeOption(null)),
+    // features.asset
     encodeOption(output.features.asset),
   ]);
   // features.mint_non_fungible
@@ -296,38 +279,10 @@ const getTransactionOutputHash = function (output) {
     Buffer.from([output.features.metadata.length]),
     Buffer.from(output.features.metadata),
   ]);
-  encodedBytesLength += features.length;
-  blake2bUpdate(context, features);
-  // commitment
-  encodedBytesLength += output.commitment.length;
-  blake2bUpdate(context, output.commitment);
-  // script
-  const script = Buffer.concat([
-    Buffer.from([output.script.length]),
-    Buffer.from(output.script),
-  ]);
-  encodedBytesLength += script.length;
-  blake2bUpdate(context, script);
-  // covenant
-  const covenant = Buffer.concat([
-    Buffer.from([output.covenant.length]),
-    Buffer.from(output.covenant),
-  ]);
-  encodedBytesLength += covenant.length;
-  blake2bUpdate(context, covenant);
-  // encrypted_value
-  encodedBytesLength += output.encrypted_value.length;
-  blake2bUpdate(context, output.encrypted_value);
 
-  expect(context.c).to.equal(encodedBytesLength);
-  const hash = blake2bFinal(context);
-  const hashBuffer = Buffer.from(hash);
-  // console.log(
-  //   "\ngetTransactionOutputHash - hash",
-  //   hashBuffer.toString("hex"),
-  //   "\n"
-  // );
-  return hashBuffer;
+  return new Blake256()
+      .chain(version)
+      .chain(features)
 };
 
 function consoleLogTransactionDetails(txnDetails) {

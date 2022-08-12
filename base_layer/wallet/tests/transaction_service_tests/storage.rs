@@ -104,7 +104,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    let stp = builder.build(&factories, None, u64::MAX).unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];

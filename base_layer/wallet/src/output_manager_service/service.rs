@@ -926,7 +926,7 @@ where
         }
 
         let stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1138,7 +1138,7 @@ where
         // }
 
         let mut stp = builder
-            .build::<Blake256>(&self.resources.factories, None, u64::MAX)
+            .build(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // if let Some((spending_key, script_private_key)) = change_keys {
         //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
@@ -1298,7 +1298,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1795,8 +1795,8 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<Blake256>(
-                &self.resources.factories,
+            .build(
+                &self.resource/snap/code/103/usr/share/code/resources/app/out/vs/code/electron-sandbox/workbench/workbench.htmls.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
             )
@@ -2027,7 +2027,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2215,7 +2215,7 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2350,7 +2350,7 @@ where
 
                 let factories = CryptoFactories::default();
                 let mut stp = builder
-                    .build::<Blake256>(
+                    .build(
                         &self.resources.factories,
                         None,
                         self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2437,7 +2437,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),

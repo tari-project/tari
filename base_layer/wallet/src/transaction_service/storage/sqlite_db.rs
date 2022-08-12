@@ -2289,7 +2289,7 @@ mod test {
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-        let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),
