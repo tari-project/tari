@@ -31,7 +31,7 @@ pub use backend::OutputManagerBackend;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput, PublicKey},
+    types::{BlindingFactor, Commitment, HashOutput},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -245,13 +245,6 @@ where T: OutputManagerBackend + 'static
         feature: OutputType,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         self.db.fetch_with_features(feature)
-    }
-
-    pub fn fetch_by_features_asset_public_key(
-        &self,
-        public_key: PublicKey,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        self.db.fetch_by_features_asset_public_key(public_key)
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.

@@ -88,14 +88,6 @@ service BaseNode {
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
 
-    rpc GetTokens(GetTokensRequest) returns (stream GetTokensResponse);
-    rpc ListAssetRegistrations(ListAssetRegistrationsRequest) returns (stream ListAssetRegistrationsResponse);
-    rpc GetAssetMetadata(GetAssetMetadataRequest) returns (GetAssetMetadataResponse);
-
-    // Get all constitutions where the public key is in the committee
-    rpc GetConstitutions(GetConstitutionsRequest) returns (stream GetConstitutionsResponse);
-    // Get the current contract outputs matching the given contract id and type
-    rpc GetCurrentContractOutputs(GetCurrentContractOutputsRequest) returns (GetCurrentContractOutputsResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -447,32 +439,3 @@ message MempoolStatsResponse {
     uint64 total_weight = 4;
 }
 
-message GetConstitutionsRequest {
-    bytes start_block_hash = 1;
-    bytes dan_node_public_key = 2;
-}
-
-message GetConstitutionsResponse {
-    TransactionOutput output = 1;
-    uint32 mmr_position = 2;
-    uint64 mined_height = 3;
-    bytes header_hash = 4;
-    uint64 mined_timestamp = 5;
-}
-
-message GetCurrentContractOutputsRequest {
-    bytes contract_id = 1;
-    uint32 output_type = 2;
-}
-
-message GetCurrentContractOutputsResponse {
-    repeated UtxoMinedInfo outputs = 1;
-}
-
-message UtxoMinedInfo {
-    TransactionOutput output = 1;
-    uint32 mmr_position = 2;
-    uint64 mined_height = 3;
-    bytes header_hash = 4;
-    uint64 mined_timestamp = 5;
-}

@@ -72,7 +72,6 @@ use tari_shutdown::ShutdownSignal;
 use tari_utilities::SafePassword;
 
 use crate::{
-    assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
@@ -94,7 +93,6 @@ use crate::{
         OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
-    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
@@ -123,8 +121,6 @@ pub struct Wallet<T, U, V, W, X> {
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
-    pub asset_manager: AssetManagerHandle,
-    pub token_manager: TokenManagerHandle,
     pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
     pub output_db: OutputManagerDatabase<V>,
@@ -223,9 +219,7 @@ where
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
-            ))
-            .add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
-            .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
+            ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
         let stack = if auto_update.is_update_enabled() {
@@ -257,8 +251,6 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
-        let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
-        let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
         let updater_handle = if auto_update.is_update_enabled() {
             Some(handles.expect_handle::<SoftwareUpdaterHandle>())
@@ -302,8 +294,6 @@ where
             db: wallet_database,
             output_db: output_manager_database,
             factories,
-            asset_manager: asset_manager_handle,
-            token_manager: token_manager_handle,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
             _u: PhantomData,

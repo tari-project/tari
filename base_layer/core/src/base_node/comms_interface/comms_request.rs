@@ -26,15 +26,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{Commitment, HashOutput, PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
-use crate::{
-    blocks::NewBlockTemplate,
-    chain_storage::MmrTree,
-    proof_of_work::PowAlgorithm,
-    transactions::transaction_components::OutputType,
-};
+use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
 
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,27 +57,7 @@ pub enum NodeCommsRequest {
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
-    FetchTokens {
-        asset_public_key: PublicKey,
-        unique_ids: Vec<Vec<u8>>,
-    },
-    FetchAssetRegistrations {
-        range: RangeInclusive<usize>,
-    },
-    FetchAssetMetadata {
-        asset_public_key: PublicKey,
-    },
-    FetchMempoolTransactionsByExcessSigs {
-        excess_sigs: Vec<PrivateKey>,
-    },
-    FetchContractOutputsForBlock {
-        block_hash: HashOutput,
-        output_type: OutputType,
-    },
-    FetchContractOutputsByContractId {
-        contract_id: FixedHash,
-        output_type: OutputType,
-    },
+    FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -120,22 +95,9 @@ impl Display for NodeCommsRequest {
                 s.get_public_nonce().to_hex(),
                 s.get_signature().to_hex()
             ),
-            FetchTokens { .. } => {
-                write!(f, "FetchTokens")
-            },
-            FetchAssetRegistrations { .. } => {
-                write!(f, "FetchAllNonFungibleTokens")
-            },
-            FetchAssetMetadata { .. } => {
-                write!(f, "FetchAssetMetadata")
-            },
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
             },
-            FetchContractOutputsForBlock { .. } => {
-                write!(f, "FetchConstitutions")
-            },
-            FetchContractOutputsByContractId { .. } => write!(f, "FetchContractOutputsByContractId"),
         }
     }
 }

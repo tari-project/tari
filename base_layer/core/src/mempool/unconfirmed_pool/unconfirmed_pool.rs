@@ -26,12 +26,10 @@ use std::{
     sync::Arc,
 };
 
-use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashOutput, PrivateKey, PublicKey, Signature};
-use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_common_types::types::{HashOutput, PrivateKey, Signature};
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::Block,
@@ -40,11 +38,7 @@ use crate::{
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
     },
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{Transaction, TransactionOutput},
-        weight::TransactionWeight,
-    },
+    transactions::{tari_amount::MicroTari, transaction_components::Transaction, weight::TransactionWeight},
 };
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
@@ -139,10 +133,6 @@ impl UnconfirmedPool {
         self.tx_by_priority.insert(prioritized_tx.priority.clone(), new_key);
         for output in prioritized_tx.transaction.body.outputs() {
             self.txs_by_output.entry(output.hash()).or_default().push(new_key);
-
-            if let Some(hash) = get_output_token_id(output) {
-                self.txs_by_unique_id.entry(hash).or_default().push(new_key);
-            }
         }
         for kernel in prioritized_tx.transaction.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
@@ -308,19 +298,6 @@ impl UnconfirmedPool {
                     transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
                     break;
                 },
-            }
-        }
-
-        for output in transaction.transaction.body.outputs() {
-            match get_output_token_id(output) {
-                Some(hash) => {
-                    if !unique_ids.insert(hash) {
-                        // This transaction has a unique id of another transaction that has already been selected,
-                        // Skip adding it.
-                        return Ok(());
-                    }
-                },
-                None => continue,
             }
         }
 
@@ -492,17 +469,6 @@ impl UnconfirmedPool {
                     self.txs_by_output.remove(&output_hash);
                 }
             }
-
-            if let Some(hash) = get_output_token_id(output) {
-                if let Some(keys) = self.txs_by_unique_id.get_mut(&hash) {
-                    if let Some(pos) = keys.iter().position(|k| *k == tx_key) {
-                        keys.remove(pos);
-                    }
-                    if keys.is_empty() {
-                        self.txs_by_unique_id.remove(&hash);
-                    }
-                }
-            }
         }
 
         trace!(
@@ -648,24 +614,6 @@ impl UnconfirmedPool {
             );
         }
     }
-}
-
-fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
-    output.features.unique_id.as_ref().map(|unique_id| {
-        // "root" token public key
-        let root_pk = PublicKey::default();
-        let parent_pk_bytes = output
-            .features
-            .parent_public_key
-            .as_ref()
-            .map(|pk| pk.as_bytes())
-            .unwrap_or_else(|| root_pk.as_bytes());
-        Blake256::new()
-            .chain(parent_pk_bytes)
-            .chain(unique_id)
-            .finalize()
-            .into()
-    })
 }
 
 #[cfg(test)]

@@ -44,30 +44,6 @@ pub enum OutputType {
     Coinbase = 1,
     /// Output is a burned output and can not be spent ever.
     Burn = 2,
-    /// Output defines a side-chain contract.
-    ContractDefinition = 3,
-    /// Output defines the constitution for a side-chain contract.
-    ContractConstitution = 4,
-    /// Output indicates validator node acceptance to run a contract.
-    ContractValidatorAcceptance = 5,
-    /// Output is a contract checkpoint.
-    ContractCheckpoint = 6,
-    /// Output that defines a contract constitution proposal.
-    ContractConstitutionProposal = 7,
-    /// Output that indicates acceptance of an existing contract constitution amendment proposal.
-    ContractConstitutionChangeAcceptance = 8,
-    /// Output that defines an amendment of a contract constitution.
-    ContractAmendment = 9,
-
-    // TODO: Remove these deprecated flags
-    NonFungible = 10,
-    AssetRegistration = 11,
-    MintNonFungible = 12,
-    BurnNonFungible = 13,
-    SidechainInitialCheckpoint = 14,
-    SidechainCheckpoint = 15,
-    CommitteeInitialDefinition = 16,
-    CommitteeDefinition = 17,
 }
 
 impl OutputType {
@@ -80,21 +56,6 @@ impl OutputType {
     /// None is returned.
     pub fn from_byte(value: u8) -> Option<Self> {
         FromPrimitive::from_u8(value)
-    }
-
-    pub fn is_contract_utxo(self) -> bool {
-        #[allow(clippy::enum_glob_use)]
-        use OutputType::*;
-        matches!(
-            self,
-            ContractDefinition |
-                ContractConstitution |
-                ContractValidatorAcceptance |
-                ContractCheckpoint |
-                ContractConstitutionProposal |
-                ContractConstitutionChangeAcceptance |
-                ContractAmendment
-        )
     }
 }
 
@@ -146,8 +107,5 @@ mod tests {
     fn it_converts_from_byte_to_output_type() {
         assert_eq!(OutputType::from_byte(0), Some(OutputType::Standard));
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
-        assert_eq!(OutputType::from_byte(16), Some(OutputType::CommitteeInitialDefinition));
-        assert_eq!(OutputType::from_byte(17), Some(OutputType::CommitteeDefinition));
-        assert_eq!(OutputType::from_byte(18), None);
     }
 }
