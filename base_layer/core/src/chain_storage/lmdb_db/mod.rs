@@ -20,15 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
-use tari_crypto::{
-    hash::blake2::Blake256,
-    hash_domain,
-    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
-};
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
