@@ -4,7 +4,7 @@
 const net = require("net");
 const varint = require("varint");
 
-const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+const { Blake256 } = require("blakejs");
 const { expect } = require("chai");
 const { encode } = require("punycode");
 
@@ -245,10 +245,8 @@ const encodeOption = function (value) {
 };
 
 const getTransactionOutputHash = function (output) {
-  let encodeBytesLength = 0;
   // version
   const version = Buffer.from([0]);
-  encodeBytesLength += version.length;
   // features
   let features = Buffer.concat([
     // features.version
@@ -282,15 +280,28 @@ const getTransactionOutputHash = function (output) {
     Buffer.from([output.features.metadata.length]),
     Buffer.from(output.features.metadata),
   ]);
-
-  encodeBytesLength += features.length;
-
   // commitment
-  encodeBytesLength += output.commitment.length;
-
+  const commitment = Buffer.from([output.commitments]);
+  // script
+  const script = Buffer.concat([
+    Buffer.from([output.script.length]),
+    Buffer.from(output.script),
+  ]);
+  // covenant
+  const covenant = Buffer.concat([
+    Buffer.from([output.covenant.length]),
+    Buffer.from([output.covenant]),
+  ]);
+  // encrypted value
+  const encryptedValue = Buffer.from([output.encrypted_value]);
+  
   return new Blake256()
       .chain(version)
       .chain(features)
+      .chain(commitment)
+      .chain(script)
+      .chain(covenant)
+      .chain(encryptedValue);
 };
 
 function consoleLogTransactionDetails(txnDetails) {
