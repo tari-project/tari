@@ -102,6 +102,17 @@ impl OutboundMessaging {
                         "Outbound messaging protocol was unable to dial peer {}: {}", peer_node_id, err
                     );
                 },
+                Err(MessagingProtocolError::ConnectionClosed(err)) => {
+                    // Not sure about the metrics, but feels safer to keep on registering the error in metrics for now
+                    metrics::error_count(&peer_node_id).inc();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Connection closed {}: {} {}",
+                        peer_node_id,
+                        err.kind(),
+                        err
+                    );
+                },
                 Err(err) => {
                     metrics::error_count(&peer_node_id).inc();
                     error!(
