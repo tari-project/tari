@@ -29,10 +29,9 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{HashOutput, PrivateKey, PublicKey, Signature};
-use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
-use super::{base_layer_core_mempool_hash_domain, UNCONFIRMED_POOL_HASH_DOMAIN_LABEL};
+use super::UnconfirmedPoolOutputHasherBlake256;
 use crate::{
     blocks::Block,
     mempool::{
@@ -659,7 +658,7 @@ fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
             .as_ref()
             .map(|pk| pk.as_bytes())
             .unwrap_or_else(|| root_pk.as_bytes());
-        let hash = base_layer_core_mempool_hash_domain::<Blake256>(UNCONFIRMED_POOL_HASH_DOMAIN_LABEL)
+        let hash = UnconfirmedPoolOutputHasherBlake256::new()
             .chain(parent_pk_bytes)
             .chain(unique_id)
             .finalize();
@@ -1030,7 +1029,7 @@ mod test {
             .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
             .unwrap();
 
-        let domain_separated_hash = base_layer_core_mempool_hash_domain::<Blake256>(UNCONFIRMED_POOL_HASH_DOMAIN_LABEL)
+        let domain_separated_hash = UnconfirmedPoolOutputHasherBlake256::new()
             .chain(parent_pk.as_bytes())
             .chain(&unique_id)
             .finalize();

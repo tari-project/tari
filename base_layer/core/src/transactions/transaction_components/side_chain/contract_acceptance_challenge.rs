@@ -23,13 +23,13 @@
 use tari_common_types::types::{Commitment, FixedHash};
 use tari_utilities::ByteArray;
 
-use super::{base_layer_core_transactions_side_chain_domain, CONTRACT_ACCEPTANCE_CHALLENGE_LABEL};
+use super::ContractAcceptanceHasherBlake256;
 #[derive(Debug, Clone, Copy)]
 pub struct ContractAcceptanceChallenge(FixedHash);
 
 impl ContractAcceptanceChallenge {
     pub fn new(constiution_commitment: &Commitment, contract_id: &FixedHash) -> Self {
-        let hash = base_layer_core_transactions_side_chain_domain(CONTRACT_ACCEPTANCE_CHALLENGE_LABEL)
+        let hash = ContractAcceptanceHasherBlake256::new()
             .chain(constiution_commitment.as_bytes())
             .chain(contract_id.as_slice())
             .finalize();

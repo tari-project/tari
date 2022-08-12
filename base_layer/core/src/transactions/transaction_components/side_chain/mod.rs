@@ -81,16 +81,17 @@ pub fn bytes_into_fixed_string<T: AsRef<[u8]>>(value: T) -> FixedString {
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 
 hash_domain!(
-    BaseLayerCoreTransactionsSideChainDomain,
-    "com.tari.tari-project.base_layer.core.transactions.side_chain",
+    ContractAcceptanceHashDomain,
+    "com.tari.tari-project.base_layer.core.transactions.side_chain.contract_acceptance_challenge",
     1
 );
 
-pub(crate) const CONTRACT_ACCEPTANCE_CHALLENGE_LABEL: &str = "contract_acceptance_challenge";
-pub(crate) const SIGNER_SIGNATURE_LABEL: &str = "signer_signature";
+pub type ContractAcceptanceHasherBlake256 = DomainSeparatedHasher<Blake256, ContractAcceptanceHashDomain>;
 
-pub(crate) fn base_layer_core_transactions_side_chain_domain(
-    label: &'static str,
-) -> DomainSeparatedHasher<Blake256, BaseLayerCoreTransactionsSideChainDomain> {
-    DomainSeparatedHasher::<Blake256, BaseLayerCoreTransactionsSideChainDomain>::new_with_label(label)
-}
+hash_domain!(
+    SignerSignatureHashDomain,
+    "com.tari.tari-project.base_layer.core.transactions.side_chain.signer_signature",
+    1
+);
+
+pub type SignerSignatureHasherBlake256 = DomainSeparatedHasher<Blake256, SignerSignatureHashDomain>;

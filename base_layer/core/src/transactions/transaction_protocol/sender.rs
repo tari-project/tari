@@ -45,7 +45,7 @@ use tari_crypto::{
 };
 use tari_script::TariScript;
 
-use super::{base_layer_core_transaction_protocol_domain, CALCULATE_TX_ID_LABEL};
+use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
@@ -703,7 +703,7 @@ impl fmt::Display for SenderTransactionProtocol {
 }
 
 pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> TxId {
-    let hash = base_layer_core_transaction_protocol_domain::<D>(CALCULATE_TX_ID_LABEL)
+    let hash = CalculateTxIdTransactionProtocolHasherBlake256::new()
         .chain(pub_nonce.as_bytes())
         .chain(index.to_le_bytes())
         .finalize();

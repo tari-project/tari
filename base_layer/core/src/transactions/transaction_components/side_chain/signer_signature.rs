@@ -28,7 +28,7 @@ use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHash, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
-use super::{base_layer_core_transactions_side_chain_domain, SIGNER_SIGNATURE_LABEL};
+use super::SignerSignatureHasherBlake256;
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, Default)]
@@ -63,7 +63,7 @@ impl SignerSignature {
         challenge: C,
         public_nonce: &PublicKey,
     ) -> DomainSeparatedHash<Blake256> {
-        base_layer_core_transactions_side_chain_domain(SIGNER_SIGNATURE_LABEL)
+        SignerSignatureHasherBlake256::new()
             .chain(signer.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(challenge)

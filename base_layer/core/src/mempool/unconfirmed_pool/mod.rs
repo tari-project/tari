@@ -25,24 +25,14 @@ mod error;
 mod unconfirmed_pool;
 
 // Public re-exports
-use digest::Digest;
 pub use error::UnconfirmedPoolError;
-use tari_crypto::{
-    hash_domain,
-    hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
-};
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 pub use unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig};
 
 hash_domain!(
-    BaseLayerCoreMemPoolDomain,
-    "com.tari.tari-project.base_layer.core.mempool",
+    UnconfirmedPoolOutputTokenIdHashDomain,
+    "com.tari.tari-project.base_layer.core.mempool.unconfirmed_pool_output_token_id",
     1
 );
 
-pub(crate) const UNCONFIRMED_POOL_HASH_DOMAIN_LABEL: &str = "uncorfimed_pool_output_token_id";
-
-pub(crate) fn base_layer_core_mempool_hash_domain<D: Digest + LengthExtensionAttackResistant>(
-    label: &'static str,
-) -> DomainSeparatedHasher<D, BaseLayerCoreMemPoolDomain> {
-    DomainSeparatedHasher::<D, BaseLayerCoreMemPoolDomain>::new_with_label(label)
-}
+pub type UnconfirmedPoolOutputHasherBlake256 = DomainSeparatedHasher<Blake256, UnconfirmedPoolOutputTokenIdHashDomain>;
