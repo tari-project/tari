@@ -710,7 +710,7 @@ impl SenderTransactionInitializer {
 mod test {
     use rand::rngs::OsRng;
     use tari_common_types::types::PrivateKey;
-    use tari_crypto::{hash::blake2::Blake256, keys::SecretKey};
+    use tari_crypto::keys::SecretKey;
     use tari_script::{script, ExecutionStack, TariScript};
 
     use crate::{

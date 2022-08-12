@@ -6,6 +6,7 @@ const varint = require("varint");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
 const { expect } = require("chai");
+const { encode } = require("punycode");
 
 const NO_CONNECTION = 14;
 
@@ -244,8 +245,10 @@ const encodeOption = function (value) {
 };
 
 const getTransactionOutputHash = function (output) {
+  let encodeBytesLength = 0;
   // version
   const version = Buffer.from([0]);
+  encodeBytesLength += version.length;
   // features
   let features = Buffer.concat([
     // features.version
@@ -279,6 +282,11 @@ const getTransactionOutputHash = function (output) {
     Buffer.from([output.features.metadata.length]),
     Buffer.from(output.features.metadata),
   ]);
+
+  encodeBytesLength += features.length;
+
+  // commitment
+  encodeBytesLength += output.commitment.length;
 
   return new Blake256()
       .chain(version)
