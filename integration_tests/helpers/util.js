@@ -5,8 +5,6 @@ const net = require("net");
 const varint = require("varint");
 
 const { Blake256 } = require("blakejs");
-const { expect } = require("chai");
-const { encode } = require("punycode");
 
 const NO_CONNECTION = 14;
 
@@ -294,14 +292,14 @@ const getTransactionOutputHash = function (output) {
   ]);
   // encrypted value
   const encryptedValue = Buffer.from([output.encrypted_value]);
-  
+
   return new Blake256()
-      .chain(version)
-      .chain(features)
-      .chain(commitment)
-      .chain(script)
-      .chain(covenant)
-      .chain(encryptedValue);
+    .chain(version)
+    .chain(features)
+    .chain(commitment)
+    .chain(script)
+    .chain(covenant)
+    .chain(encryptedValue);
 };
 
 function consoleLogTransactionDetails(txnDetails) {
