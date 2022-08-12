@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 use tari_crypto::{
     hash_domain,
+    hash::blake2::Blake256,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
 
