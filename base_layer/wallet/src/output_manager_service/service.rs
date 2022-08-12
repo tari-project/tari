@@ -1796,7 +1796,8 @@ where
 
         let mut stp = tx_builder
             .build(
-                &self.resource/snap/code/103/usr/share/code/resources/app/out/vs/code/electron-sandbox/workbench/workbench.htmls.factories,
+                &self.resource / snap / code / 103 / usr / share / code / resources / app / out / vs / code / electron -
+                    sandbox / workbench / workbench.htmls.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
             )
