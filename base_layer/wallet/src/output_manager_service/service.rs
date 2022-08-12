@@ -62,7 +62,6 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
@@ -1796,7 +1795,7 @@ where
 
         let mut stp = tx_builder
             .build(
-                &self.resource.factories,
+                &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
             )

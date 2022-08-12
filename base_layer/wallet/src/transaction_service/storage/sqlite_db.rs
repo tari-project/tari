@@ -2214,7 +2214,6 @@ mod test {
         },
     };
     use tari_crypto::{
-        hash::blake2::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     };
     use tari_script::{script, ExecutionStack, TariScript};
