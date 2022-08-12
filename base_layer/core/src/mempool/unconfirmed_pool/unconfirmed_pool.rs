@@ -673,7 +673,7 @@ fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
 mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_crypto::{keys::PublicKey as PublicKeyTrait};
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;
     use crate::{
