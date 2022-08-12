@@ -25,8 +25,8 @@ pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatab
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 use tari_crypto::{
-    hash_domain,
     hash::blake2::Blake256,
+    hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
 
