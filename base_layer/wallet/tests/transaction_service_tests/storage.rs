@@ -42,10 +42,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    hash::blake2::Blake256,
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
