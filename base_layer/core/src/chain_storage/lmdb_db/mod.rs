@@ -80,10 +80,9 @@ pub(crate) struct TransactionKernelRowData {
 
 hash_domain!(BaseLayerCoreDomain, "com.tari.tari-project.base_layer.core");
 
-pub(crate) const LMDB_STORAGE_HASH_LABEL: &str = "lmdb_db";
-
-pub(crate) fn base_layer_core_chain_storage_lmdb_hasher<D: Digest + LengthExtensionAttackResistant>(
-    label: &'static str,
-) -> DomainSeparatedHasher<D, BaseLayerCoreDomain> {
-    DomainSeparatedHasher::<D, BaseLayerCoreDomain>::new_with_label(label)
-}
+hash_domain!(
+    CoreChainStorageHashDomain,
+    "com.tari.tari-project.base_layer.core.lmdb_db",
+    1
+);
+pub type CoreChainStorageHasherBlake256 = DomainSeparatedHasher<Blake256, CoreChainStorageHashDomain>;

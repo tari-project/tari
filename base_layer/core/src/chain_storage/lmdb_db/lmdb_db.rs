@@ -56,7 +56,7 @@ use tari_utilities::{
     ByteArray,
 };
 
-use super::{base_layer_core_chain_storage_lmdb_hasher, LMDB_STORAGE_HASH_LABEL};
+use super::CoreChainStorageHasherBlake256;
 use crate::{
     blocks::{
         Block,
@@ -2736,7 +2736,7 @@ impl UniqueIdIndexKey {
     /// `parent_public_key` - the parent asset public key to which the token is assigned
     /// `unique_id` - a series of bytes representing the token uniquely for the asset
     pub fn new(parent_public_key: Option<&PublicKey>, unique_id: &[u8]) -> Self {
-        let unique_id_hash = base_layer_core_chain_storage_lmdb_hasher::<Blake256>(LMDB_STORAGE_HASH_LABEL)
+        let unique_id_hash = CoreChainStorageHasherBlake256::new()
             .chain(unique_id)
             .finalize();
         Self::from_raw_parts(

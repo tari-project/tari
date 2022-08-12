@@ -81,15 +81,9 @@ pub type RangeProof = BulletRangeProof;
 
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
-pub(crate) const BULLET_RANGEPROOFS_HASHER_LABEL: &str = "bullet_rangeproofs.hasher";
-
 hash_domain!(
-    BaseLayerCommonTypesDomain,
-    "com.tari.tari-project.base_layer.common_types"
+    BulletRangeProofHashDomain,
+    "com.tari.tari-project.base_layer.common_types.bullet_rangeproofs"
 );
 
-pub(crate) fn base_layer_common_types_domain_hasher(
-    label: &'static str,
-) -> DomainSeparatedHasher<Blake256, BaseLayerCommonTypesDomain> {
-    DomainSeparatedHasher::<Blake256, BaseLayerCommonTypesDomain>::new_with_label(label)
-}
+pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake256, BulletRangeProofHashDomain>;
