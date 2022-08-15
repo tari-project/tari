@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use super::OutputFeaturesVersion;
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    transactions::transaction_components::{side_chain::SideChainFeatures, OutputType},
+    transactions::transaction_components::{side_chain::SideChainFeatures, CodeTemplateRegistration, OutputType},
 };
 
 /// Options for UTXO's
@@ -94,6 +94,19 @@ impl OutputFeatures {
     pub fn create_burn_output() -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::Burn,
+            ..Default::default()
+        }
+    }
+
+    /// Creates template registration output features
+    pub fn for_template_registration(template_registration: CodeTemplateRegistration) -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::CodeTemplateRegistration,
+            sidechain_features: Some(Box::new(
+                SideChainFeatures::builder(Default::default())
+                    .with_template_registration(template_registration)
+                    .finish(),
+            )),
             ..Default::default()
         }
     }
@@ -167,8 +180,15 @@ impl Display for OutputFeatures {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryInto;
+
+    use tari_utilities::hex::from_hex;
+
     use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
+    use crate::{
+        consensus::{check_consensus_encoding_correctness, MaxSizeString},
+        transactions::transaction_components::{BuildInfo, TemplateType},
+    };
 
     #[allow(clippy::too_many_lines)]
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
@@ -177,7 +197,29 @@ mod test {
             output_type: OutputType::Standard,
             maturity: u64::MAX,
             metadata: vec![1; 1024],
-            sidechain_features: Some(Box::new(SideChainFeatures {})),
+            sidechain_features: Some(Box::new(SideChainFeatures {
+                template_registration: Some(CodeTemplateRegistration {
+                    author_public_key: Default::default(),
+                    author_signature: Default::default(),
+                    template_name: MaxSizeString::from_str_checked("🚀🚀🚀🚀🚀🚀🚀🚀").unwrap(),
+                    template_version: 1,
+                    template_type: TemplateType::Wasm { abi_version: 123 },
+                    build_info: BuildInfo {
+                        repo_url: "/dns/github.com/https/tari_project/wasm_examples".try_into().unwrap(),
+                        commit_hash: from_hex("ea29c9f92973fb7eda913902ff6173c62cb1e5df")
+                            .unwrap()
+                            .try_into()
+                            .unwrap(),
+                    },
+                    binary_sha: from_hex("c93747637517e3de90839637f0ce1ab7c8a3800b")
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                    binary_url: "/dns4/github.com/https/tari_project/wasm_examples/releases/download/v0.0.6/coin.zip"
+                        .try_into()
+                        .unwrap(),
+                }),
+            })),
         }
     }
 

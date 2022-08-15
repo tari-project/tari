@@ -22,20 +22,27 @@
 
 use std::convert::TryFrom;
 
-use tari_core::transactions::transaction_components::SideChainFeatures;
+use tari_core::transactions::transaction_components::{CodeTemplateRegistration, SideChainFeatures};
 
 use crate::tari_rpc as grpc;
 
 impl From<SideChainFeatures> for grpc::SideChainFeatures {
-    fn from(_value: SideChainFeatures) -> Self {
-        Self {}
+    fn from(value: SideChainFeatures) -> Self {
+        Self {
+            template_registration: value.template_registration.map(Into::into),
+        }
     }
 }
 
 impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
-    fn try_from(_features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
-        Ok(Self {})
+    fn try_from(features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
+        let template_registration = features
+            .template_registration
+            .map(CodeTemplateRegistration::try_from)
+            .transpose()?;
+
+        Ok(Self { template_registration })
     }
 }

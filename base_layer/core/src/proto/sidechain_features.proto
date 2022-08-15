@@ -1,0 +1,175 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "types.proto";
+
+package tari.types;
+
+message SideChainFeatures {
+    bytes contract_id = 1;
+    ContractDefinition definition = 2;
+    TemplateRegistration template_registration = 3;
+    ContractConstitution constitution = 4;
+    ContractAcceptance acceptance = 5;
+    ContractUpdateProposal update_proposal = 6;
+    ContractUpdateProposalAcceptance update_proposal_acceptance = 7;
+    ContractAmendment amendment = 8;
+    ContractCheckpoint checkpoint = 9;
+}
+
+message TemplateRegistration {
+    bytes author_public_key = 1;
+    Signature author_signature = 2;
+    string template_name = 3;
+    uint32 template_version = 4;
+    TemplateType template_type = 5;
+    BuildInfo build_info = 6;
+    bytes binary_sha = 7;
+    string binary_url = 8;
+}
+
+message TemplateType {
+    oneof template_type {
+        WasmInfo wasm = 1;
+    }
+}
+ message WasmInfo {
+     uint32 abi_version = 1;
+ }
+
+ message BuildInfo {
+     string repo_url = 1;
+     bytes commit_hash = 2;
+}
+
+message ContractCheckpoint {
+    uint64 checkpoint_number = 1;
+    bytes merkle_root = 2;
+    CommitteeSignatures signatures = 3;
+}
+
+message ContractConstitution {
+    CommitteeMembers validator_committee = 1;
+    ContractAcceptanceRequirements acceptance_requirements = 2;
+    SideChainConsensus consensus = 3;
+    CheckpointParameters checkpoint_params = 4;
+    ConstitutionChangeRules constitution_change_rules = 5;
+}
+
+message ContractAcceptanceRequirements {
+    uint64 acceptance_period_expiry = 1;
+    uint32 minimum_quorum_required = 2;
+}
+
+message CommitteeMembers {
+    repeated bytes members = 1;
+}
+
+message CheckpointParameters {
+    uint64 abandoned_interval = 1;
+    uint32 minimum_quorum_required = 2;
+    uint64 quarantine_interval = 3;
+}
+
+message ConstitutionChangeRules {
+    uint32 change_flags = 1;
+    RequirementsForConstitutionChange requirements_for_constitution_change = 2;
+}
+
+message RequirementsForConstitutionChange {
+    // The minimum required constitution committee signatures required for a constitution change proposal to pass.
+    uint32 minimum_constitution_committee_signatures = 1;
+    // An allowlist of keys that are able to accept and ratify the initial constitution and its amendments. If this is
+    // None, the constitution cannot be amended.
+    CommitteeMembers constitution_committee = 2;
+    // An allowlist of keys that can be used in case of checkpoint abandonment. These keys can quarantine the the constitution
+    // and if the quarantine period is exceeded, the backup keys can take over.
+    CommitteeMembers backup_keys = 3;
+}
+
+enum SideChainConsensus {
+    UNSPECIFIED = 0;
+    BFT = 1;
+    PROOF_OF_WORK = 2;
+    MERKLE_ROOT = 3;
+}
+
+// TODO: deprecated
+message AssetOutputFeatures {
+    bytes public_key = 1;
+    repeated uint32 template_ids_implemented = 2;
+    repeated TemplateParameter template_parameters = 3;
+}
+
+message TemplateParameter {
+    uint32 template_id = 1;
+    uint32 template_data_version = 2;
+    bytes template_data = 3;
+}
+
+message MintNonFungibleFeatures {
+    bytes asset_public_key = 1;
+    Commitment asset_owner_commitment  = 2;
+}
+
+message SideChainCheckpointFeatures {
+    bytes merkle_root = 1;
+    repeated bytes committee = 2;
+}
+
+message CommitteeDefinitionFeatures {
+    repeated bytes committee = 1;
+    uint64 effective_sidechain_height = 2;
+}
+
+message ContractDefinition {
+    bytes contract_name = 1;
+    bytes contract_issuer = 2;
+    ContractSpecification contract_spec = 3;
+}
+
+message ContractSpecification {
+    bytes runtime = 1;
+    repeated PublicFunction public_functions = 2;
+}
+
+message PublicFunction {
+    bytes name = 1;
+    FunctionRef function = 2;
+}
+
+message FunctionRef {
+    bytes template_id = 1;
+    uint32 function_id = 2;
+}
+
+message ContractAcceptance {
+    bytes validator_node_public_key = 1;
+    Signature signature = 2;
+}
+
+message ContractUpdateProposal {
+    uint64 proposal_id = 1;
+    Signature signature = 2;
+    ContractConstitution updated_constitution = 3;
+}
+
+message ContractUpdateProposalAcceptance {
+    uint64 proposal_id = 1;
+    bytes validator_node_public_key = 2;
+    Signature signature = 3;
+}
+
+message ContractAmendment {
+    uint64 proposal_id = 1;
+    CommitteeMembers validator_committee = 2;
+    CommitteeSignatures validator_signatures = 3;
+    ContractConstitution updated_constitution = 4;
+    uint64 activation_window = 5;
+}
+
+message CommitteeSignatures {
+    repeated SignerSignature signatures = 1;
+}

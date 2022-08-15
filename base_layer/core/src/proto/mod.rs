@@ -52,4 +52,6 @@ mod block;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 mod block_header;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+mod sidechain_features;
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 mod utils;

@@ -328,21 +328,6 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
     }
 }
 
-//---------------------------------- SideChainFeatures --------------------------------------------//
-impl From<SideChainFeatures> for proto::types::SideChainFeatures {
-    fn from(_value: SideChainFeatures) -> Self {
-        Self {}
-    }
-}
-
-impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
-    type Error = String;
-
-    fn try_from(_features: proto::types::SideChainFeatures) -> Result<Self, Self::Error> {
-        Ok(Self {})
-    }
-}
-
 //---------------------------------- AggregateBody --------------------------------------------//
 
 impl TryFrom<proto::types::AggregateBody> for AggregateBody {
@@ -428,3 +413,13 @@ impl TryFrom<Arc<Transaction>> for proto::types::Transaction {
         }
     }
 }
+
+// impl TryFrom<proto::types::Signature> for Signature {
+//     type Error = String;
+//
+//     fn try_from(value: proto::types::Signature) -> Result<Self, Self::Error> {
+//         let public_nonce = PublicKey::from_bytes(&value.public_nonce).map_err(|_| "Invalid signature public_nonce")?;
+//         let signature = PrivateKey::from_bytes(&value.signature).map_err(|_| "Invalid signature")?;
+//         Ok(Signature::new(public_nonce, signature))
+//     }
+// }
