@@ -42,25 +42,24 @@ impl Filter for OrFilter {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::FixedHash;
-
     use super::*;
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
         transactions::transaction_components::SideChainFeatures,
     };
+    use tari_script::script;
 
     #[test]
     fn it_filters_outputset_using_union() {
-        let hash = FixedHash::hash_bytes("A");
-        let covenant = covenant!(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::features_contract_id, @hash(hash))));
+        let script = script!(CheckHeight(100));
+        let covenant = covenant!(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script))));
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features.maturity = 42;
-            outputs[5].features.sidechain_features = Some(Box::new(SideChainFeatures::new(hash)));
+            outputs[5].features.sidechain_features = Some(Box::new(SideChainFeatures{}));
             outputs[7].features.maturity = 42;
-            outputs[8].features.sidechain_features = Some(Box::new(SideChainFeatures::new(hash)));
+            outputs[8].features.sidechain_features = Some(Box::new(SideChainFeatures{}));
         });
         let mut output_set = OutputSet::new(&outputs);
         OrFilter.filter(&mut context, &mut output_set).unwrap();

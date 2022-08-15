@@ -426,6 +426,10 @@ impl<B: Backend> Component<B> for SendTab {
         self.balance.draw(f, areas[0], app_state);
         self.draw_send_form(f, areas[1], app_state);
 
+        if self.show_contacts {
+            self.draw_contacts(f, areas[2], app_state);
+        };
+
         let rx_option = self.send_result_watch.take();
         if let Some(rx) = rx_option {
             trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());

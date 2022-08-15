@@ -333,9 +333,7 @@ impl FromIterator<OutputField> for OutputFields {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_common_types::types::{Commitment, FixedHash, PublicKey};
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+    use tari_common_types::types::{Commitment, PublicKey};
     use tari_script::script;
 
     use super::*;
@@ -360,8 +358,8 @@ mod test {
             fn it_returns_true_if_eq() {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        parent_public_key: Some(Default::default()),
-                        sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::zero()))),
+                        sidechain_features: Some(Box::new(SideChainFeatures {
+                        })),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -380,16 +378,13 @@ mod test {
                     .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, &SideChainFeatures::new(FixedHash::zero()))
+                    .is_eq(&output, &SideChainFeatures{})
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
                     .unwrap());
                 assert!(OutputField::FeaturesMetadata
                     .is_eq(&output, &output.features.metadata)
-                    .unwrap());
-                assert!(OutputField::FeaturesSideChainFeaturesContractId
-                    .is_eq(&output, &output.features.contract_id().unwrap())
                     .unwrap());
                 assert!(OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &output.sender_offset_public_key)
@@ -398,11 +393,9 @@ mod test {
 
             #[test]
             fn it_returns_false_if_not_eq() {
-                let (_, parent_pk) = PublicKey::random_keypair(&mut OsRng);
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        parent_public_key: Some(parent_pk),
-                        sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::hash_bytes(b"A")))),
+                        sidechain_features: Some(Box::new(SideChainFeatures { })),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -422,14 +415,7 @@ mod test {
                 assert!(!OutputField::FeaturesFlags
                     .is_eq(&output, &OutputType::Coinbase)
                     .unwrap());
-                assert!(!OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, &SideChainFeatures::new(FixedHash::hash_bytes(b"B")))
-                    .unwrap());
-                assert!(!OutputField::FeaturesSideChainFeaturesContractId
-                    .is_eq(&output, &FixedHash::hash_bytes(b"B"))
-                    .unwrap());
                 assert!(!OutputField::FeaturesMetadata.is_eq(&output, &vec![123u8]).unwrap());
-                assert!(!OutputField::FeaturesUniqueId.is_eq(&output, &vec![123u8]).unwrap());
                 assert!(!OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
@@ -473,11 +459,8 @@ mod test {
                 assert!(OutputField::Covenant.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesFlags.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesParentPublicKey.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesSideChainFeatures.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesSideChainFeaturesContractId.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMetadata.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesUniqueId.is_eq_input(&input, &output));
                 assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
             }
         }
@@ -488,12 +471,9 @@ mod test {
                 OutputField::Commitment,
                 OutputField::Features,
                 OutputField::FeaturesFlags,
-                OutputField::FeaturesUniqueId,
                 OutputField::FeaturesSideChainFeatures,
-                OutputField::FeaturesSideChainFeaturesContractId,
                 OutputField::FeaturesMetadata,
                 OutputField::FeaturesMaturity,
-                OutputField::FeaturesParentPublicKey,
                 OutputField::SenderOffsetPublicKey,
                 OutputField::Script,
                 OutputField::Covenant,

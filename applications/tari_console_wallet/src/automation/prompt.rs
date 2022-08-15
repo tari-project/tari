@@ -25,14 +25,12 @@ use std::{io, io::Write, str::FromStr};
 use tari_utilities::hex::{Hex, HexError};
 
 use crate::automation::error::CommandError;
-#[allow(dead_code)]
 pub struct Prompt {
     label: String,
     skip_if_some: Option<String>,
     default: Option<String>,
 }
 
-#[allow(dead_code)]
 impl Prompt {
     pub fn new<T: Into<String>>(label: T) -> Self {
         Self {
@@ -131,7 +129,6 @@ impl Prompt {
 pub struct HexArg<T>(T);
 
 impl<T> HexArg<T> {
-    #[allow(dead_code)]
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -148,7 +145,6 @@ impl<T: Hex> FromStr for HexArg<T> {
 pub struct Optional<T>(Option<T>);
 
 impl<T> Optional<T> {
-    #[allow(dead_code)]
     pub fn into_inner(self) -> Option<T> {
         self.0
     }
@@ -170,7 +166,6 @@ impl<T: FromStr> FromStr for Optional<T> {
 pub struct YesNo(bool);
 
 impl YesNo {
-    #[allow(dead_code)]
     pub fn as_bool(self) -> bool {
         self.0
     }

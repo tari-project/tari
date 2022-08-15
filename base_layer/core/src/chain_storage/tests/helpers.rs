@@ -22,32 +22,9 @@
 
 use std::sync::Arc;
 
-use tari_common_types::types::{FixedHash, PublicKey};
-
 use crate::{
     chain_storage::Validators,
     test_helpers::blockchain::TestBlockchain,
-    transactions::{
-        tari_amount::{MicroTari, T},
-        test_helpers::schema_to_transaction,
-        transaction_components::{
-            CheckpointParameters,
-            CommitteeMembers,
-            ConstitutionChangeFlags,
-            ConstitutionChangeRules,
-            ContractAcceptanceRequirements,
-            ContractConstitution,
-            ContractDefinition,
-            ContractSpecification,
-            OutputFeatures,
-            OutputType,
-            SideChainConsensus,
-            SideChainFeatures,
-            Transaction,
-            UnblindedOutput,
-        },
-    },
-    txn_schema,
     validation::mocks::MockValidator,
 };
 
@@ -57,68 +34,4 @@ pub fn create_blockchain_without_validation() -> TestBlockchain {
         header: Arc::new(MockValidator::new(true)),
         orphan: Arc::new(MockValidator::new(true)),
     })
-}
-
-pub fn create_contract_definition_features(contract_id: FixedHash) -> OutputFeatures {
-    OutputFeatures {
-        output_type: OutputType::ContractDefinition,
-        sidechain_features: Some(Box::new(
-            SideChainFeatures::builder(contract_id)
-                .with_contract_definition(ContractDefinition {
-                    contract_name: [1u8; 32],
-                    contract_issuer: PublicKey::default(),
-                    contract_spec: ContractSpecification {
-                        runtime: [2u8; 32],
-                        public_functions: vec![],
-                    },
-                })
-                .finish(),
-        )),
-        ..Default::default()
-    }
-}
-
-pub fn create_contract_definition_transaction(
-    inputs: Vec<UnblindedOutput>,
-    outputs: Vec<MicroTari>,
-    contract_id: FixedHash,
-) -> (Transaction, Vec<UnblindedOutput>) {
-    let features = create_contract_definition_features(contract_id);
-    let (transactions, outputs) =
-        schema_to_transaction(&[txn_schema!(from: inputs, to: outputs, fee: 5.into(), lock: 0, features: features)]);
-    ((*transactions[0]).clone(), outputs)
-}
-
-pub fn create_contract_constitution_transaction(
-    inputs: Vec<UnblindedOutput>,
-    contract_id: FixedHash,
-) -> (Transaction, Vec<UnblindedOutput>) {
-    let features = OutputFeatures {
-        output_type: OutputType::ContractConstitution,
-        sidechain_features: Some(Box::new(
-            SideChainFeatures::builder(contract_id)
-                .with_contract_constitution(ContractConstitution {
-                    validator_committee: CommitteeMembers::default(),
-                    acceptance_requirements: ContractAcceptanceRequirements {
-                        acceptance_period_expiry: 0,
-                        minimum_quorum_required: 0,
-                    },
-                    consensus: SideChainConsensus::Bft,
-                    checkpoint_params: CheckpointParameters {
-                        minimum_quorum_required: 1,
-                        abandoned_interval: 20,
-                        quarantine_interval: 20,
-                    },
-                    constitution_change_rules: ConstitutionChangeRules {
-                        change_flags: ConstitutionChangeFlags::empty(),
-                        requirements_for_constitution_change: None,
-                    },
-                })
-                .finish(),
-        )),
-        ..Default::default()
-    };
-    let (transactions, outputs) =
-        schema_to_transaction(&[txn_schema!(from: inputs, to: vec![T], fee: 5.into(), lock: 0, features: features)]);
-    ((*transactions[0]).clone(), outputs)
 }

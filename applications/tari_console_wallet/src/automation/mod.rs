@@ -22,4 +22,5 @@
 
 pub mod commands;
 pub mod error;
-mod prompt;
+// removed temporarily add back in when used.
+//mod prompt;

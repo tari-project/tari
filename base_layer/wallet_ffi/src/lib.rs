@@ -8293,16 +8293,12 @@ mod test {
             let output_type: c_ushort = 0;
             let maturity: c_ulonglong = 20;
             let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
-            let unique_id = ptr::null_mut();
-            let parent_public_key = ptr::null_mut();
 
             let output_features = output_features_create_from_bytes(
                 version,
                 output_type,
                 maturity,
                 metadata,
-                unique_id,
-                parent_public_key,
                 error_ptr,
             );
             assert_eq!(error, 0);
@@ -8313,14 +8309,7 @@ mod test {
             );
             assert_eq!((*output_features).maturity, maturity);
             assert!((*output_features).metadata.is_empty());
-            assert!((*output_features).unique_id.is_none());
-            assert!((*output_features).parent_public_key.is_none());
 
-            // These are DAN layer fields, we omit them
-            assert!((*output_features).asset.is_none());
-            assert!((*output_features).mint_non_fungible.is_none());
-            assert!((*output_features).sidechain_checkpoint.is_none());
-            assert!((*output_features).committee_definition.is_none());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -8351,8 +8340,6 @@ mod test {
                 c_ushort::from(output_type),
                 maturity,
                 metadata,
-                unique_id,
-                parent_public_key,
                 error_ptr,
             );
             assert_eq!(error, 0);
@@ -8363,14 +8350,6 @@ mod test {
             );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).metadata, expected_metadata);
-            assert_eq!((*output_features).unique_id, Some(expected_unique_id));
-            assert_eq!((*output_features).parent_public_key, Some(public_key));
-
-            // These are DAN layer fields, we omit them
-            assert!((*output_features).asset.is_none());
-            assert!((*output_features).mint_non_fungible.is_none());
-            assert!((*output_features).sidechain_checkpoint.is_none());
-            assert!((*output_features).committee_definition.is_none());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
