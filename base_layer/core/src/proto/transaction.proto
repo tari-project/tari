@@ -4,6 +4,7 @@
 syntax = "proto3";
 
 import "types.proto";
+import "sidechain_features.proto";
 
 package tari.types;
 
@@ -97,26 +98,7 @@ message OutputFeatures {
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 3;
     bytes metadata = 4;
-    SideChainFeatures sidechain_features = 6;
-}
-
-message SideChainFeatures {}
-
-
-message TemplateParameter {
-    uint32 template_id = 1;
-    uint32 template_data_version = 2;
-    bytes template_data = 3;
-}
-
-message PublicFunction {
-    bytes name = 1;
-    FunctionRef function = 2;
-}
-
-message FunctionRef {
-    bytes template_id = 1;
-    uint32 function_id = 2;
+    SideChainFeatures sidechain_features = 5;
 }
 
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
