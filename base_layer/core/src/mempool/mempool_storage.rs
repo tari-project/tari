@@ -285,19 +285,13 @@ impl MempoolStorage {
             .ok_or(MempoolError::TransactionNoKernels)
     }
 
-    // Returns the total number of transactions in the Mempool.
-    fn len(&self) -> usize {
-        self.unconfirmed_pool.len() + self.reorg_pool.len()
-    }
-
     /// Gathers and returns the stats of the Mempool.
     pub fn stats(&self) -> StatsResponse {
         let weighting = self.get_transaction_weighting(0);
         StatsResponse {
-            total_txs: self.len() as u64,
             unconfirmed_txs: self.unconfirmed_pool.len() as u64,
             reorg_txs: self.reorg_pool.len() as u64,
-            total_weight: self.unconfirmed_pool.calculate_weight(&weighting),
+            unconfirmed_weight: self.unconfirmed_pool.calculate_weight(&weighting),
         }
     }
 
