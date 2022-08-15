@@ -36,6 +36,12 @@ on:
         # linux/arm64, linux/amd64
         default: linux/amd64
 
+env:
+  LAUNCHPAD_REPO: leet4tari/tari-launchpad
+  # launchpad_repo: tari-project/tari-launchpad
+  LAUNCHPAD_BRANCH: build-leet-tari-docker-cache
+  # launchpad_branch: main
+
 jobs:
   envs_setup:
     runs-on: ubuntu-latest
@@ -46,9 +52,8 @@ jobs:
       - name: checkout tari-launchpad
         uses: actions/checkout@v3
         with:
-          # repository: tari-project/tari-launchpad
-          repository: leet4tari/tari-launchpad
-          ref: build-leet-tari-docker-cache
+          repository: ${{ env.LAUNCHPAD_REPO }}
+          ref: ${{ env.LAUNCHPAD_BRANCH }}
           path: tari-launchpad
 
       - name: Set Matrix
@@ -106,9 +111,8 @@ jobs:
       - name: checkout tari-launchpad
         uses: actions/checkout@v3
         with:
-          # repository: tari-project/tari-launchpad
-          repository: leet4tari/tari-launchpad
-          ref: build-leet-tari-test-cache
+          repository: ${{ env.LAUNCHPAD_REPO }}
+          ref: ${{ env.LAUNCHPAD_BRANCH }}
           path: tari-launchpad
 
       - name: environment setup
