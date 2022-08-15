@@ -50,7 +50,7 @@ pub enum OutputField {
     SenderOffsetPublicKey = byte_codes::FIELD_SENDER_OFFSET_PUBLIC_KEY,
     Covenant = byte_codes::FIELD_COVENANT,
     Features = byte_codes::FIELD_FEATURES,
-    FeaturesFlags = byte_codes::FIELD_FEATURES_FLAGS,
+    FeaturesOutputType = byte_codes::FIELD_FEATURES_OUTPUT_TYPE,
     FeaturesMaturity = byte_codes::FIELD_FEATURES_MATURITY,
     FeaturesUniqueId = byte_codes::FIELD_FEATURES_UNIQUE_ID,
     FeaturesParentPublicKey = byte_codes::FIELD_FEATURES_PARENT_PUBLIC_KEY,
@@ -70,7 +70,7 @@ impl OutputField {
             FIELD_SENDER_OFFSET_PUBLIC_KEY => Ok(SenderOffsetPublicKey),
             FIELD_COVENANT => Ok(Covenant),
             FIELD_FEATURES => Ok(Features),
-            FIELD_FEATURES_FLAGS => Ok(FeaturesFlags),
+            FIELD_FEATURES_OUTPUT_TYPE => Ok(FeaturesOutputType),
             FIELD_FEATURES_MATURITY => Ok(FeaturesMaturity),
             FIELD_FEATURES_UNIQUE_ID => Ok(FeaturesUniqueId),
             FIELD_FEATURES_PARENT_PUBLIC_KEY => Ok(FeaturesParentPublicKey),
@@ -95,7 +95,7 @@ impl OutputField {
             SenderOffsetPublicKey => &output.sender_offset_public_key as &dyn Any,
             Covenant => &output.covenant as &dyn Any,
             Features => &output.features as &dyn Any,
-            FeaturesFlags => &output.features.output_type as &dyn Any,
+            FeaturesOutputType => &output.features.output_type as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
             FeaturesUniqueId => &output.features.unique_id as &dyn Any,
             FeaturesParentPublicKey => &output.features.parent_public_key as &dyn Any,
@@ -123,7 +123,7 @@ impl OutputField {
             SenderOffsetPublicKey => output.sender_offset_public_key.to_consensus_bytes(),
             Covenant => output.covenant.to_consensus_bytes(),
             Features => output.features.to_consensus_bytes(),
-            FeaturesFlags => output.features.output_type.to_consensus_bytes(),
+            FeaturesOutputType => output.features.output_type.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
             FeaturesUniqueId => output.features.unique_id.to_consensus_bytes(),
             FeaturesParentPublicKey => output.features.parent_public_key.to_consensus_bytes(),
@@ -154,7 +154,7 @@ impl OutputField {
                 .features()
                 .map(|features| *features == output.features)
                 .unwrap_or(false),
-            FeaturesFlags => input
+            FeaturesOutputType => input
                 .features()
                 .map(|features| features.output_type == output.features.output_type)
                 .unwrap_or(false),
@@ -261,8 +261,8 @@ impl OutputField {
     }
 
     #[allow(dead_code)]
-    pub fn features_flags() -> Self {
-        OutputField::FeaturesFlags
+    pub fn features_output_type() -> Self {
+        OutputField::FeaturesOutputType
     }
 
     #[allow(dead_code)]
@@ -306,7 +306,7 @@ impl Display for OutputField {
             Script => write!(f, "field::script"),
             Covenant => write!(f, "field::covenant"),
             Features => write!(f, "field::features"),
-            FeaturesFlags => write!(f, "field::features_flags"),
+            FeaturesOutputType => write!(f, "field::features_flags"),
             FeaturesUniqueId => write!(f, "field::features_unique_id"),
             FeaturesSideChainFeatures => write!(f, "field::features_sidechain_features"),
             FeaturesSideChainFeaturesContractId => write!(f, "field::features_contract_id"),
@@ -438,7 +438,7 @@ mod test {
                 assert!(OutputField::FeaturesMaturity
                     .is_eq(&output, &output.features.maturity)
                     .unwrap());
-                assert!(OutputField::FeaturesFlags
+                assert!(OutputField::FeaturesOutputType
                     .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
@@ -481,7 +481,7 @@ mod test {
                     .is_eq(&output, &covenant!(and(identity(), identity())))
                     .unwrap());
                 assert!(!OutputField::FeaturesMaturity.is_eq(&output, &123u64).unwrap());
-                assert!(!OutputField::FeaturesFlags
+                assert!(!OutputField::FeaturesOutputType
                     .is_eq(&output, &OutputType::Coinbase)
                     .unwrap());
                 assert!(!OutputField::FeaturesSideChainFeatures
@@ -534,7 +534,7 @@ mod test {
                 assert!(OutputField::Script.is_eq_input(&input, &output));
                 assert!(OutputField::Covenant.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesFlags.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesOutputType.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesParentPublicKey.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesSideChainFeatures.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesSideChainFeaturesContractId.is_eq_input(&input, &output));
@@ -549,7 +549,7 @@ mod test {
             let output_fields = [
                 OutputField::Commitment,
                 OutputField::Features,
-                OutputField::FeaturesFlags,
+                OutputField::FeaturesOutputType,
                 OutputField::FeaturesUniqueId,
                 OutputField::FeaturesSideChainFeatures,
                 OutputField::FeaturesSideChainFeaturesContractId,

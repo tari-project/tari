@@ -48,7 +48,7 @@ mod test {
     #[test]
     fn it_filters_outputs_that_match_input_fields() {
         let hash = FixedHash::hash_bytes("A");
-        let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_contract_id, @field::features_flags)));
+        let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_contract_id, @field::features_output_type)));
         let mut input = create_input();
         input.set_maturity(42).unwrap();
         input.features_mut().unwrap().sidechain_features = Some(Box::new(SideChainFeatures::new(hash)));
