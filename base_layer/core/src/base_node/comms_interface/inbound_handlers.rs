@@ -54,7 +54,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
-const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
 const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
@@ -151,68 +150,6 @@ where B: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
             },
-            NodeCommsRequest::FetchHeadersAfter(header_hashes, stopping_hash) => {
-                let mut starting_block = None;
-                // Find first header that matches
-                for header_hash in header_hashes {
-                    match self
-                        .blockchain_db
-                        .fetch_header_by_block_hash(header_hash.clone())
-                        .await?
-                    {
-                        Some(from_block) => {
-                            starting_block = Some(from_block);
-                            break;
-                        },
-                        None => {
-                            // Not an error. The header requested is simply not in our chain.
-                            // Logging it as debug because it may not just be not found.
-                            debug!(
-                                target: LOG_TARGET,
-                                "Skipping header {} when searching for matching headers in our chain.",
-                                header_hash.to_hex(),
-                            );
-                        },
-                    }
-                }
-                let starting_block = match starting_block {
-                    Some(b) => b,
-                    // Send from genesis block if no hashes match
-                    None => self
-                        .blockchain_db
-                        .fetch_header(0)
-                        .await?
-                        .ok_or(CommsInterfaceError::BlockHeaderNotFound(0))?,
-                };
-                let mut headers = Vec::with_capacity(MAX_HEADERS_PER_RESPONSE as usize);
-                for i in 1..MAX_HEADERS_PER_RESPONSE {
-                    match self
-                        .blockchain_db
-                        .fetch_header(starting_block.height + u64::from(i))
-                        .await
-                    {
-                        Ok(Some(header)) => {
-                            let hash = header.hash();
-                            headers.push(header);
-                            if hash == stopping_hash {
-                                break;
-                            }
-                        },
-                        Err(err) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "Could not fetch header at {}:{}",
-                                starting_block.height + u64::from(i),
-                                err.to_string()
-                            );
-                            return Err(err.into());
-                        },
-                        _ => error!(target: LOG_TARGET, "Could not fetch header: None"),
-                    }
-                }
-
-                Ok(NodeCommsResponse::FetchHeadersAfterResponse(headers))
-            },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
                 for (pruned_output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
@@ -225,19 +162,6 @@ where B: BlockchainBackend + 'static
                         }
                     }
                 }
-                Ok(NodeCommsResponse::TransactionOutputs(res))
-            },
-            NodeCommsRequest::FetchMatchingTxos(hashes) => {
-                let res = self
-                    .blockchain_db
-                    .fetch_utxos(hashes)
-                    .await?
-                    .into_iter()
-                    .filter_map(|opt| match opt {
-                        Some((PrunedOutput::NotPruned { output }, _)) => Some(output),
-                        _ => None,
-                    })
-                    .collect();
                 Ok(NodeCommsResponse::TransactionOutputs(res))
             },
             NodeCommsRequest::FetchMatchingBlocks(range) => {
