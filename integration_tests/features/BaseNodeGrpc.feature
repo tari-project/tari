@@ -20,12 +20,6 @@ Feature: Base Node GRPC
     And I get the header by hash HASH1 on BN1
     Then header is returned with height 2
 
-  Scenario: Base node lists blocks
-    Given I have 1 seed nodes
-    And I have a base node N1 connected to all seed nodes
-    When I mine 5 blocks on N1
-    Then node N1 lists blocks for heights 1 to 5
-
 
   Scenario: Base node GRPC - get header by height
     Given I have 1 seed nodes
@@ -33,3 +27,10 @@ Feature: Base Node GRPC
     When I mine 5 blocks on BN1
     When I get header by height 1 on BN1
     Then header is returned with height 1
+
+  Scenario: Base node get blocks
+    Given I have 1 seed nodes
+    And I have a base node N1 connected to all seed nodes
+    When I mine 5 blocks on N1
+    Then node N1 lists blocks for heights 1 to 5
+
