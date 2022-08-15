@@ -82,15 +82,11 @@ service BaseNode {
     rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
     // List currently connected peers
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
-    //------ GOT HERE ------
-
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
-
     rpc GetTokens(GetTokensRequest) returns (stream GetTokensResponse);
     rpc ListAssetRegistrations(ListAssetRegistrationsRequest) returns (stream ListAssetRegistrationsResponse);
     rpc GetAssetMetadata(GetAssetMetadataRequest) returns (GetAssetMetadataResponse);
-
     // Get all constitutions where the public key is in the committee
     rpc GetConstitutions(GetConstitutionsRequest) returns (stream GetConstitutionsResponse);
     // Get the current contract outputs matching the given contract id and type
