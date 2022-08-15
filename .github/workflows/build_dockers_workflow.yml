@@ -37,10 +37,8 @@ on:
         default: linux/amd64
 
 env:
-  LAUNCHPAD_REPO: leet4tari/tari-launchpad
-  # launchpad_repo: tari-project/tari-launchpad
-  LAUNCHPAD_BRANCH: build-leet-tari-docker-cache
-  # launchpad_branch: main
+  LAUNCHPAD_REPO: tari-project/tari-launchpad
+  LAUNCHPAD_BRANCH: main
 
 jobs:
   envs_setup:
