@@ -6,24 +6,23 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     branches:
-      - "build-leet-*"
+      - "build-*"
   schedule:
     - cron: "05 00 * * *"
   workflow_dispatch:
     inputs:
-      toolchain:
-        type: string
-        description: 'Rust toolchain'
+#      toolchain:
+#        type: string
+#        description: 'Rust toolchain'
       version:
         type: string
-        description: 'build tag/version'
+        description: 'override image tag/version'
       tag_alias:
         type: string
-        description: 'build tag alias'
+        description: 'image tag alias'
       platforms:
         default: linux/amd64
-        required: true
-        description: 'Docker build platform(s)'
+        description: 'docker platform(s)'
         type: choice
         options:
         - linux/amd64
@@ -31,7 +30,7 @@ on:
         - linux/arm64, linux/amd64
       build_items:
         default: tari_all
-        description: 'build images'
+        description: 'image(s) to build'
         type: choice
         options:
         - all
@@ -49,7 +48,7 @@ env:
   toolchain_default: nightly-2022-05-01
 
 jobs:
-  test_envs_setup:
+  builds_envs_setup:
     runs-on: ubuntu-latest
     outputs:
       toolchain: ${{ steps.set_toolchain.outputs.toolchain }}
@@ -69,11 +68,11 @@ jobs:
           echo "toolchain=${btoolchain}" >> $GITHUB_ENV
 
   builds_run:
-    needs: test_envs_setup
+    needs: builds_envs_setup
     uses: ./.github/workflows/build_dockers_workflow.yml
     secrets: inherit
     with:
-      toolchain: ${{ needs.test_envs_setup.outputs.toolchain }}
+      toolchain: ${{ needs.builds_envs_setup.outputs.toolchain }}
       platforms: ${{ inputs.platforms }}
       version: ${{ inputs.version }}
       tag_alias: ${{ inputs.tag_alias }}
