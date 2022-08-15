@@ -22,6 +22,9 @@
 syntax = "proto3";
 
 import "types.proto";
+import "network.proto";
+import "transaction.proto";
+
 package tari.rpc;
 
 service ValidatorNode {
