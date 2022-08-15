@@ -38,6 +38,7 @@ use crate::{
         transaction_components::{
             OutputFeatures,
             OutputFeaturesVersion,
+            OutputType,
             TransactionInputVersion,
             TransactionKernelVersion,
             TransactionOutputVersion,
@@ -85,11 +86,13 @@ pub struct ConsensusConstants {
     /// Maximum byte size of TariScript
     max_script_byte_size: usize,
     /// Range of valid transaction input versions
-    pub(crate) input_version_range: RangeInclusive<TransactionInputVersion>,
+    input_version_range: RangeInclusive<TransactionInputVersion>,
     /// Range of valid transaction output (and features) versions
-    pub(crate) output_version_range: OutputVersionRange,
+    output_version_range: OutputVersionRange,
     /// Range of valid transaction kernel versions
-    pub(crate) kernel_version_range: RangeInclusive<TransactionKernelVersion>,
+    kernel_version_range: RangeInclusive<TransactionKernelVersion>,
+    /// An allowlist of output types
+    permitted_output_types: &'static [OutputType],
 }
 
 // todo: remove this once OutputFeaturesVersion is removed in favor of just TransactionOutputVersion
@@ -277,6 +280,11 @@ impl ConsensusConstants {
         &self.kernel_version_range
     }
 
+    /// Returns the permitted OutputTypes
+    pub fn permitted_output_types(&self) -> &[OutputType] {
+        self.permitted_output_types
+    }
+
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -313,6 +321,7 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
+            permitted_output_types: OutputType::all(),
         }]
     }
 
@@ -352,6 +361,7 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
+            permitted_output_types: Self::current_permitted_output_types(),
         }]
     }
 
@@ -394,6 +404,7 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
+            permitted_output_types: Self::current_permitted_output_types(),
         }]
     }
 
@@ -443,6 +454,7 @@ impl ConsensusConstants {
                 input_version_range: input_version_range.clone(),
                 output_version_range: output_version_range.clone(),
                 kernel_version_range: kernel_version_range.clone(),
+                permitted_output_types: Self::current_permitted_output_types(),
             },
             ConsensusConstants {
                 effective_from_height: 23000,
@@ -465,6 +477,7 @@ impl ConsensusConstants {
                 input_version_range,
                 output_version_range,
                 kernel_version_range,
+                permitted_output_types: Self::current_permitted_output_types(),
             },
         ]
     }
@@ -512,6 +525,7 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
+            permitted_output_types: Self::current_permitted_output_types(),
         }]
     }
 
@@ -552,7 +566,12 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
+            permitted_output_types: Self::current_permitted_output_types(),
         }]
+    }
+
+    const fn current_permitted_output_types() -> &'static [OutputType] {
+        &[OutputType::Coinbase, OutputType::Standard, OutputType::Burn]
     }
 }
 
@@ -625,6 +644,11 @@ impl ConsensusConstantsBuilder {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
         self.consensus.emission_tail = tail_amount;
+        self
+    }
+
+    pub fn with_permitted_output_types(mut self, permitted_output_types: &'static [OutputType]) -> Self {
+        self.consensus.permitted_output_types = permitted_output_types;
         self
     }
 
