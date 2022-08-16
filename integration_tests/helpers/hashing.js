@@ -82,7 +82,7 @@ module.exports = {
   domainHashers: {
     transactionKdf(label) {
       return new DomainHashing(
-        `com.tari.base_layer.core.transactions.v0.kdf.${label}`
+        `com.tari.base_layer.core.transactions.kdf.v0.${label}`
       );
     },
   },

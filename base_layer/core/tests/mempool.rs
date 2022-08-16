@@ -178,7 +178,6 @@ async fn test_insert_and_process_published_block() {
     assert!(snapshot_txs.contains(&tx2));
 
     let stats = mempool.stats().await.unwrap();
-    assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
     let expected_weight = consensus_manager.consensus_constants(0).transaction_weight().calculate(
@@ -187,7 +186,7 @@ async fn test_insert_and_process_published_block() {
         2,
         TestParams::new().get_size_for_default_metadata(2),
     );
-    assert_eq!(stats.total_weight, expected_weight);
+    assert_eq!(stats.unconfirmed_weight, expected_weight);
 
     // Spend tx2, so it goes in Reorg pool
     generate_block(&store, &mut blocks, vec![tx2.deref().clone()], &consensus_manager).unwrap();
@@ -233,10 +232,9 @@ async fn test_insert_and_process_published_block() {
     assert_eq!(snapshot_txs.len(), 0);
 
     let stats = mempool.stats().await.unwrap();
-    assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.reorg_txs, 1);
-    assert_eq!(stats.total_weight, 0);
+    assert_eq!(stats.unconfirmed_weight, 0);
 }
 
 #[tokio::test]
@@ -607,7 +605,7 @@ async fn test_zero_conf() {
 
     // Try to retrieve all transactions in the mempool (a couple of our transactions should be missing from retrieved)
     let retrieved_txs = mempool
-        .retrieve(mempool.stats().await.unwrap().total_weight)
+        .retrieve(mempool.stats().await.unwrap().unconfirmed_weight)
         .await
         .unwrap();
     assert_eq!(retrieved_txs.len(), 10);
@@ -659,7 +657,7 @@ async fn test_zero_conf() {
 
     // Try to retrieve all transactions in the mempool (all transactions should be retrieved)
     let retrieved_txs = mempool
-        .retrieve(mempool.stats().await.unwrap().total_weight)
+        .retrieve(mempool.stats().await.unwrap().unconfirmed_weight)
         .await
         .unwrap();
     assert_eq!(retrieved_txs.len(), 16);
@@ -682,7 +680,7 @@ async fn test_zero_conf() {
 
     // Verify that a higher priority transaction is not retrieved due to its zero-conf dependency instead of the lowest
     // priority transaction
-    let weight = mempool.stats().await.unwrap().total_weight - 1;
+    let weight = mempool.stats().await.unwrap().unconfirmed_weight - 1;
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 15);
     assert!(retrieved_txs.contains(&Arc::new(tx01)));

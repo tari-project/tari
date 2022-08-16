@@ -4,8 +4,6 @@
 const net = require("net");
 const varint = require("varint");
 
-const { Blake256 } = require("blakejs");
-
 const NO_CONNECTION = 14;
 
 function getRandomInt(min, max) {
@@ -232,74 +230,17 @@ const getFreePort = function () {
   });
 };
 
-const encodeOption = function (value) {
+const encodeOption = function (value, encoding = "hex") {
   let buffer;
   if (value) {
-    buffer = Buffer.concat([Buffer.from([1]), Buffer.from(value, "utf8")]);
+    buffer = Buffer.concat([
+      Buffer.from([0x01]),
+      encoding ? Buffer.from(value, encoding) : value,
+    ]);
   } else {
-    buffer = Buffer.from([0]);
+    buffer = Buffer.from([0x00]);
   }
   return buffer;
-};
-
-const getTransactionOutputHash = function (output) {
-  // version
-  const version = Buffer.from([0]);
-  // features
-  let features = Buffer.concat([
-    // features.version
-    Buffer.from([0]),
-    // features.maturity
-    Buffer.from(varint.encode(output.features.maturity)),
-    // features.output_type
-    Buffer.from([output.features.output_type]),
-    // features.parent_public_key
-    encodeOption(output.features.parent_public_key),
-    // features.unique_id
-    encodeOption(output.features.unique_id),
-    // features.sidechain_features
-    Buffer.from(encodeOption(null)),
-    // features.asset
-    encodeOption(output.features.asset),
-  ]);
-  // features.mint_non_fungible
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.mint_non_fungible),
-  ]);
-  // features.sidechain_checkpoint
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.sidechain_checkpoint),
-  ]);
-  // features.metadata
-  features = Buffer.concat([
-    Buffer.from(features),
-    Buffer.from([output.features.metadata.length]),
-    Buffer.from(output.features.metadata),
-  ]);
-  // commitment
-  const commitment = Buffer.from([output.commitments]);
-  // script
-  const script = Buffer.concat([
-    Buffer.from([output.script.length]),
-    Buffer.from(output.script),
-  ]);
-  // covenant
-  const covenant = Buffer.concat([
-    Buffer.from([output.covenant.length]),
-    Buffer.from([output.covenant]),
-  ]);
-  // encrypted value
-  const encryptedValue = Buffer.from([output.encrypted_value]);
-
-  return new Blake256()
-    .chain(version)
-    .chain(features)
-    .chain(commitment)
-    .chain(script)
-    .chain(covenant)
-    .chain(encryptedValue);
 };
 
 function consoleLogTransactionDetails(txnDetails) {
@@ -417,6 +358,10 @@ function varintEncode(num) {
   return Buffer.from(varint.encode(num));
 }
 
+function toLengthEncoded(buf) {
+  return Buffer.concat([varintEncode(buf.length), buf]);
+}
+
 module.exports = {
   assertBufferType,
   varintEncode,
@@ -427,7 +372,6 @@ module.exports = {
   littleEndianHexStringToBigEndianHexString,
   // portInUse,
   getFreePort,
-  getTransactionOutputHash,
   hexSwitchEndianness,
   consoleLogTransactionDetails,
   tryConnect,
@@ -442,4 +386,6 @@ module.exports = {
   NO_CONNECTION,
   multiAddrToSocket,
   findUtxoWithOutputMessage,
+  encodeOption,
+  toLengthEncoded,
 };

@@ -50,9 +50,7 @@ pub enum NodeCommsRequest {
     GetChainMetadata,
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
-    FetchHeadersAfter(Vec<HashOutput>, HashOutput),
     FetchMatchingUtxos(Vec<HashOutput>),
-    FetchMatchingTxos(Vec<HashOutput>),
     FetchMatchingBlocks(RangeInclusive<u64>),
     FetchBlocksByHash(Vec<HashOutput>),
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
@@ -101,9 +99,7 @@ impl Display for NodeCommsRequest {
                 write!(f, "FetchHeaders ({:?})", range)
             },
             FetchHeadersByHashes(v) => write!(f, "FetchHeadersByHashes (n={})", v.len()),
-            FetchHeadersAfter(v, _hash) => write!(f, "FetchHeadersAfter (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
-            FetchMatchingTxos(v) => write!(f, "FetchMatchingTxos (n={})", v.len()),
             FetchMatchingBlocks(range) => {
                 write!(f, "FetchMatchingBlocks ({:?})", range)
             },

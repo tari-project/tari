@@ -31,7 +31,7 @@ use tari_common_types::{
 };
 
 use crate::{
-    blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::UtxoMinedInfo,
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
@@ -54,7 +54,6 @@ pub enum NodeCommsResponse {
         block: Option<Block>,
     },
     TargetDifficulty(Difficulty),
-    FetchHeadersAfterResponse(Vec<BlockHeader>),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchTokensResponse {
         outputs: Vec<(TransactionOutput, u64)>,
@@ -98,7 +97,6 @@ impl Display for NodeCommsResponse {
                 error.as_ref().unwrap_or(&"Unspecified".to_string())
             ),
             TargetDifficulty(_) => write!(f, "TargetDifficulty"),
-            FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
             MmrNodes(_, _) => write!(f, "MmrNodes"),
             FetchTokensResponse { .. } => write!(f, "FetchTokensResponse"),
             FetchAssetRegistrationsResponse { .. } => write!(f, "FetchAssetRegistrationsResponse"),
