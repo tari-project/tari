@@ -78,4 +78,3 @@ hash_domain!(
     "com.tari.tari-project.base_layer.core.lmdb_db",
     1
 );
-pub type CoreChainStorageHasherBlake256 = DomainSeparatedHasher<Blake256, CoreChainStorageHashDomain>;

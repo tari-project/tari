@@ -31,7 +31,6 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{HashOutput, PrivateKey, Signature};
 use tari_utilities::{hex::Hex, Hashable};
 
-use super::UnconfirmedPoolOutputHasherBlake256;
 use crate::{
     blocks::Block,
     mempool::{
@@ -619,7 +618,6 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_crypto::hash::blake2::Blake256;
 
     use super::*;
     use crate::{

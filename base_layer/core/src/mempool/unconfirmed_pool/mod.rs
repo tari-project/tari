@@ -34,5 +34,3 @@ hash_domain!(
     "com.tari.tari-project.base_layer.core.mempool.unconfirmed_pool_output_token_id",
     1
 );
-
-pub type UnconfirmedPoolOutputHasherBlake256 = DomainSeparatedHasher<Blake256, UnconfirmedPoolOutputTokenIdHashDomain>;

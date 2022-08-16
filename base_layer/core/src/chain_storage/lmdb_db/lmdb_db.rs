@@ -45,7 +45,6 @@ use tari_utilities::{
     ByteArray,
 };
 
-use super::CoreChainStorageHasherBlake256;
 use crate::{
     blocks::{
         Block,
