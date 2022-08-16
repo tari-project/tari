@@ -58,10 +58,9 @@ impl Default for MempoolMockState {
     fn default() -> Self {
         Self {
             get_stats: Arc::new(Mutex::new(StatsResponse {
-                total_txs: 0,
                 unconfirmed_txs: 0,
                 reorg_txs: 0,
-                total_weight: 0,
+                unconfirmed_weight: 0,
             })),
             get_state: Arc::new(Mutex::new(StateResponse {
                 unconfirmed_pool: vec![],
