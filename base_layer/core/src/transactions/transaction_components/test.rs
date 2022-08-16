@@ -537,15 +537,11 @@ mod output_features {
 
 mod validate_internal_consistency {
 
-    use tari_common_types::types::FixedHash;
+    use digest::Digest;
     use tari_comms::types::CommsChallenge;
-    use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
-    use crate::{
-        consensus::ToConsensusBytes,
-        covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
-    };
+    use crate::consensus::ToConsensusBytes;
 
     fn test_case(
         input_params: &UtxoTestParams,
