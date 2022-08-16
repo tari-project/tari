@@ -36,7 +36,6 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, Signature, BLOCK_HASH_LENGTH},
 };
-use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::Hash;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 use tari_utilities::{
