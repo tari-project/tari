@@ -63,6 +63,7 @@ pub struct NewOutputSql {
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
     pub minimum_value_promise: i64,
+    pub source: i32,
 }
 
 impl NewOutputSql {
@@ -99,6 +100,7 @@ impl NewOutputSql {
             covenant: output.unblinded_output.covenant.to_bytes(),
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
             minimum_value_promise: output.unblinded_output.minimum_value_promise.as_u64() as i64,
+            source: output.source as i32,
         })
     }
 
@@ -168,6 +170,7 @@ impl From<OutputSql> for NewOutputSql {
             covenant: o.covenant,
             encrypted_value: o.encrypted_value,
             minimum_value_promise: o.minimum_value_promise,
+            source: 0,
         }
     }
 }

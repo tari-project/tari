@@ -63,8 +63,10 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     let connection = pool.get_pooled_connection()?;
 
     embed_migrations!("./migrations");
-    embedded_migrations::run(&connection)
-        .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
+    embedded_migrations::run(&connection).map_err(|err| {
+        eprintln!("err = {:?}", err);
+        WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err))
+    })?;
 
     Ok(WalletDbConnection::new(pool, Some(file_lock)))
 }

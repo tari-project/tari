@@ -110,12 +110,16 @@ CREATE TABLE outputs (
     spent_in_tx_id             BIGINT              NULL,
     coinbase_block_height      UNSIGNED BIGINT     NULL,
     metadata                   BLOB                NULL,
+    features_parent_public_key BLOB                NULL,
+    features_unique_id         BLOB                NULL,
     features_json              TEXT                NOT NULL DEFAULT '{}',
     spending_priority          UNSIGNED INTEGER    NOT NULL DEFAULT 500,
     covenant                   BLOB                NOT NULL,
     mined_timestamp            DATETIME            NULL,
     encrypted_value            BLOB                NOT NULL,
-    minimum_value_promise    BIGINT              NOT NULL,
+    contract_id                BLOB                NULL,
+    minimum_value_promise      BIGINT              NOT NULL,
+    source                     INTEGER             NOT NULL DEFAULT 0,
     CONSTRAINT unique_commitment UNIQUE (commitment)
 );
 

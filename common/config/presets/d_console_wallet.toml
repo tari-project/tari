@@ -61,6 +61,13 @@
 #command_send_wait_timeout = 300
 #command_send_wait_stage = "Broadcast"
 
+# Wallets currently will choose the best outputs as inputs when spending, however since a lurking base node can
+# generate a transaction graph of inputs to outputs with relative ease, a wallet may reveal its transaction
+# history by including a (non-stealth address) one-sided payment.
+# If set to `true`, then outputs received via simple one-sided transactions, won't be automatically selected as
+# further transactions, but can still be selected individually as specific outputs.
+#autoignore_onesided_utxos = true
+
 # Set to true to enable grpc. (default = false)
 #grpc_enabled = false
 # The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18143")
