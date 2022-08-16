@@ -26,7 +26,7 @@ mod unconfirmed_pool;
 
 // Public re-exports
 pub use error::UnconfirmedPoolError;
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+use tari_crypto::hash_domain;
 pub use unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig};
 
 hash_domain!(

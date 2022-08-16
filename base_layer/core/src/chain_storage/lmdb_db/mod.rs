@@ -23,7 +23,7 @@
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+use tari_crypto::hash_domain;
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
