@@ -319,9 +319,7 @@ fn check_timelocks() {
 
 #[test]
 fn test_validate_internal_consistency() {
-    let features = OutputFeatures {
-        ..Default::default()
-    };
+    let features = OutputFeatures { ..Default::default() };
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features);
 
     let factories = CryptoFactories::default();
@@ -574,9 +572,7 @@ mod validate_internal_consistency {
     fn it_validates_that_the_covenant_is_honoured() {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant)));
-        let  features = OutputFeatures {
-            ..Default::default()
-        };
+        let features = OutputFeatures { ..Default::default() };
         test_case(
             &UtxoTestParams {
                 features: features.clone(),
@@ -635,7 +631,7 @@ mod validate_internal_consistency {
             },
             &UtxoTestParams {
                 features: OutputFeatures {
-                    maturity : 42,
+                    maturity: 42,
                     ..Default::default()
                 },
                 ..Default::default()

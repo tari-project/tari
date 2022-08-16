@@ -1193,7 +1193,6 @@ async fn consensus_validation_unique_excess_sig() {
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
 }
 
-
 #[tokio::test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]

@@ -168,9 +168,7 @@ impl Display for OutputFeatures {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        consensus::check_consensus_encoding_correctness,
-    };
+    use crate::consensus::check_consensus_encoding_correctness;
 
     #[allow(clippy::too_many_lines)]
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
@@ -198,7 +196,4 @@ mod test {
         subject.sidechain_features = None;
         check_consensus_encoding_correctness(subject).unwrap();
     }
-
 }
-
-

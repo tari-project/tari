@@ -8294,13 +8294,8 @@ mod test {
             let maturity: c_ulonglong = 20;
             let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
 
-            let output_features = output_features_create_from_bytes(
-                version,
-                output_type,
-                maturity,
-                metadata,
-                error_ptr,
-            );
+            let output_features =
+                output_features_create_from_bytes(version, output_type, maturity, metadata, error_ptr);
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V0);
             assert_eq!(
@@ -8309,7 +8304,6 @@ mod test {
             );
             assert_eq!((*output_features).maturity, maturity);
             assert!((*output_features).metadata.is_empty());
-
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -8329,19 +8323,8 @@ mod test {
             let expected_metadata = vec![1; 1024];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
 
-            let expected_unique_id = vec![0u8; 256];
-            let unique_id = Box::into_raw(Box::new(ByteVector(expected_unique_id.clone())));
-
-            let (_, public_key) = PublicKey::random_keypair(&mut OsRng);
-            let parent_public_key = Box::into_raw(Box::new(ByteVector(public_key.to_vec())));
-
-            let output_features = output_features_create_from_bytes(
-                version,
-                c_ushort::from(output_type),
-                maturity,
-                metadata,
-                error_ptr,
-            );
+            let output_features =
+                output_features_create_from_bytes(version, c_ushort::from(output_type), maturity, metadata, error_ptr);
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
             assert_eq!(
@@ -8353,8 +8336,6 @@ mod test {
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
-            byte_vector_destroy(unique_id);
-            byte_vector_destroy(parent_public_key);
         }
     }
 

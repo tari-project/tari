@@ -43,12 +43,13 @@ impl Filter for XorFilter {
 #[cfg(test)]
 mod test {
 
+    use tari_script::script;
+
     use super::*;
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
     };
-    use tari_script::script;
 
     #[test]
     fn it_filters_outputset_using_symmetric_difference() {

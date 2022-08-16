@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::sync::Arc;
+
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -36,7 +37,6 @@ use crate::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
         transaction_components::{OutputFeatures, Transaction, UnblindedOutput},
-
     },
     txn_schema,
 };

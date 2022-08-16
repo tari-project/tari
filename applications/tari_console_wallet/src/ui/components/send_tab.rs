@@ -194,6 +194,7 @@ impl SendTab {
             ),
         }
     }
+
     #[allow(dead_code)]
     fn draw_contacts<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {

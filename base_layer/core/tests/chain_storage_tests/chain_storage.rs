@@ -22,7 +22,7 @@
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{BlockHash};
+use tari_common_types::types::BlockHash;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -1047,7 +1047,6 @@ fn store_and_retrieve_blocks() {
     assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
     assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
 }
-
 
 #[test]
 #[allow(clippy::identity_op)]

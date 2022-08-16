@@ -55,10 +55,7 @@ use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
-    output_manager_service::{
-        handle::OutputManagerEventReceiver,
-        service::Balance,
-    },
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
