@@ -5446,21 +5446,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test_faucet"
-version = "0.34.0"
-dependencies = [
- "rand 0.8.5",
- "serde",
- "serde_json",
- "tari_common_types",
- "tari_core",
- "tari_crypto",
- "tari_script",
- "tari_utilities",
- "tokio",
-]
-
-[[package]]
 name = "textwrap"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
