@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, NewAead};
+use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
