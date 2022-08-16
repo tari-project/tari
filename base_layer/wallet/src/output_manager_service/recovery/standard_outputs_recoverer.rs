@@ -158,10 +158,6 @@ where
             if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Recoverer attempted to import a duplicate output (Commitment: {})", output_hex
-                        );
                         continue;
                     },
                     _ => return Err(OutputManagerError::from(e)),
