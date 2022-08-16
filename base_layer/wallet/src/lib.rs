@@ -9,7 +9,6 @@
 
 #[macro_use]
 mod macros;
-pub mod assets;
 pub mod base_node_service;
 pub mod connectivity_service;
 pub mod contacts_service;
@@ -18,7 +17,6 @@ mod operation_id;
 pub mod output_manager_service;
 pub mod storage;
 pub mod test_utils;
-pub mod tokens;
 pub mod transaction_service;
 pub mod types;
 pub mod util;

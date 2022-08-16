@@ -27,10 +27,12 @@ const expect = require("chai").expect;
 const {
   waitFor,
   waitForPredicate,
-  getTransactionOutputHash,
   sleep,
   withTimeout,
 } = require("../../helpers/util");
+const {
+  getTransactionOutputHash,
+} = require("../../helpers/transactionOutputHashing");
 const { ConnectivityStatus } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 

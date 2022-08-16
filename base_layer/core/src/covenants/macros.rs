@@ -207,10 +207,10 @@ mod test {
     #[test]
     fn covenant() {
         let hash = FixedHash::zero();
-        let covenant = covenant!(field_eq(@field::covenant, @covenant_lit(and(field_eq(@field::features_contract_id, @hash(hash), identity())))));
+        let covenant = covenant!(field_eq(@field::covenant, @covenant_lit(and(field_eq( @hash(hash), identity())))));
         assert_eq!(
             covenant.to_bytes().to_hex(),
-            "33070305262133070901000000000000000000000000000000000000000000000000000000000000000020"
+            "3307030524213301000000000000000000000000000000000000000000000000000000000000000020"
         );
     }
 
