@@ -1562,10 +1562,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let response = tari_rpc::MempoolStatsResponse {
-            total_txs: mempool_stats.total_txs as u64,
             unconfirmed_txs: mempool_stats.unconfirmed_txs as u64,
             reorg_txs: mempool_stats.reorg_txs as u64,
-            total_weight: mempool_stats.total_weight,
+            unconfirmed_weight: mempool_stats.unconfirmed_weight,
         };
 
         Ok(Response::new(response))

@@ -81,18 +81,17 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatsResponse {
-    pub total_txs: u64,
     pub unconfirmed_txs: u64,
     pub reorg_txs: u64,
-    pub total_weight: u64,
+    pub unconfirmed_weight: u64,
 }
 
 impl Display for StatsResponse {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             fmt,
-            "Mempool stats: Total transactions: {}, Unconfirmed: {}, Published: {}, Total Weight: {}g",
-            self.total_txs, self.unconfirmed_txs, self.reorg_txs, self.total_weight
+            "Mempool stats: Unconfirmed: {}, In Reorg Pool: {}, Total Weight: {}g",
+            self.unconfirmed_txs, self.reorg_txs, self.unconfirmed_weight
         )
     }
 }
