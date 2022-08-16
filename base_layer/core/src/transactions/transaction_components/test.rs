@@ -538,10 +538,14 @@ mod output_features {
 mod validate_internal_consistency {
 
     use digest::Digest;
-    use tari_comms::types::CommsChallenge;
+    use tari_common_types::types::FixedHash;
+    use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
     use super::*;
-    use crate::consensus::ToConsensusBytes;
+    use crate::{
+        consensus::ToConsensusBytes,
+        covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
+    };
 
     fn test_case(
         input_params: &UtxoTestParams,
@@ -590,7 +594,17 @@ mod validate_internal_consistency {
         .unwrap();
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
-        let hash = CommsChallenge::new().chain(features.to_consensus_bytes()).finalize();
+        let mut hasher = Blake256::new();
+        BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
+
+        let hash = hasher
+            .chain(features.to_consensus_bytes())
+            .finalize()
+            .to_vec();
+
+        let mut slice = [0u8; FixedHash::byte_size()];
+        slice.copy_from_slice(hash.as_ref());
+        let hash = FixedHash::from(slice);
 
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
 
