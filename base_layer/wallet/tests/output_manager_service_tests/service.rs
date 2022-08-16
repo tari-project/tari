@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, FixedHash, PrivateKey, PublicKey},
+    types::{ComSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -41,15 +41,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{
-            CommitteeSignatures,
-            ContractCheckpoint,
-            EncryptedValue,
-            OutputFeatures,
-            OutputType,
-            TransactionOutput,
-            UnblindedOutput,
-        },
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
@@ -718,83 +710,6 @@ async fn test_utxo_selection_with_tx_priority() {
     assert_eq!(utxos.len(), 1);
 
     assert_ne!(utxos[0].features.output_type, OutputType::Coinbase);
-}
-
-#[tokio::test]
-async fn utxo_selection_for_contract_checkpoint() {
-    let factories = CryptoFactories::default();
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let contract_id = FixedHash::hash_bytes(b"test_utxo_selection_for_contract_checkpoint");
-
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
-        OutputManagerSqliteDatabase::new(connection, None),
-        Some(6),
-        server_node_identity,
-    )
-    .await;
-
-    let amount = MicroTari::from(2000);
-    let fee_per_gram = MicroTari::from(2);
-
-    // we create two outputs, one as coinbase-high priority one as normal so we can track them
-    let (_, uo) = make_input_with_features(
-        &mut OsRng.clone(),
-        amount,
-        &factories.commitment,
-        Some(OutputFeatures::for_contract_checkpoint(
-            contract_id,
-            ContractCheckpoint {
-                checkpoint_number: 0,
-                merkle_root: FixedHash::zero(),
-                signatures: CommitteeSignatures::empty(),
-            },
-        )),
-    )
-    .await;
-    oms.add_rewindable_output(uo, None, None).await.unwrap();
-    let (_, uo) = make_input_with_features(
-        &mut OsRng.clone(),
-        amount,
-        &factories.commitment,
-        Some(OutputFeatures {
-            maturity: 1,
-            ..Default::default()
-        }),
-    )
-    .await;
-    oms.add_rewindable_output(uo, None, None).await.unwrap();
-
-    let utxos = oms.get_unspent_outputs().await.unwrap();
-    assert_eq!(utxos.len(), 2);
-
-    // test transactions
-    let stp = oms
-        .prepare_transaction_to_send(
-            TxId::new_random(),
-            // Spend more than the selected contract output, this will cause the other UTXO to be included
-            MicroTari::from(2500),
-            UtxoSelectionCriteria::for_contract(contract_id, OutputType::ContractCheckpoint),
-            OutputFeatures::for_contract_checkpoint(contract_id, ContractCheckpoint {
-                checkpoint_number: 0,
-                merkle_root: FixedHash::zero(),
-                signatures: CommitteeSignatures::empty(),
-            }),
-            fee_per_gram,
-            TransactionMetadata::default(),
-            String::new(),
-            script!(Nop),
-            Covenant::default(),
-            MicroTari::zero(),
-        )
-        .await
-        .unwrap();
-    assert!(stp.get_tx_id().is_ok());
-
-    // test that the utxo with the lowest priority was left
-    let utxos = oms.get_unspent_outputs().await.unwrap();
-    assert_eq!(utxos.len(), 0);
 }
 
 #[tokio::test]

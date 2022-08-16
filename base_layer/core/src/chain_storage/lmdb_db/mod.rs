@@ -27,8 +27,7 @@ use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedH
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
-mod composite_key;
-mod contract_index;
+// mod composite_key;
 pub(crate) mod helpers;
 pub(crate) mod key_prefix_cursor;
 mod lmdb;

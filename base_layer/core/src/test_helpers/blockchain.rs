@@ -23,7 +23,7 @@
 use std::{
     collections::HashMap,
     fs,
-    ops::{Deref, Range},
+    ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -32,7 +32,7 @@ use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{Commitment, HashOutput, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -74,7 +74,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction_components::{OutputType, TransactionInput, TransactionKernel, UnblindedOutput},
+        transaction_components::{TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
     },
     validation::{
@@ -303,40 +303,6 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
-    fn fetch_utxo_by_unique_id(
-        &self,
-        parent_public_key: Option<&PublicKey>,
-        unique_id: &[u8],
-        deleted_at: Option<u64>,
-    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_utxo_by_unique_id(parent_public_key, unique_id, deleted_at)
-    }
-
-    fn fetch_all_unspent_by_parent_public_key(
-        &self,
-        parent_public_key: &PublicKey,
-        range: Range<usize>,
-    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_all_unspent_by_parent_public_key(parent_public_key, range)
-    }
-
-    fn fetch_contract_outputs_for_block(
-        &self,
-        block_hash: &BlockHash,
-        output_type: OutputType,
-    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_contract_outputs_for_block(block_hash, output_type)
-    }
-
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_outputs_in_block(header_hash)
     }
@@ -444,17 +410,6 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_all_reorgs()
-    }
-
-    fn fetch_contract_outputs_by_contract_id_and_type(
-        &self,
-        contract_id: FixedHash,
-        output_type: OutputType,
-    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
     }
 }
 

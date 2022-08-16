@@ -31,7 +31,6 @@ use tari_crypto::{
 };
 use tari_script::{script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
-use tari_utilities::ByteArray;
 
 use super::*;
 use crate::{
@@ -318,10 +317,7 @@ fn check_timelocks() {
 
 #[test]
 fn test_validate_internal_consistency() {
-    let features = OutputFeatures {
-        unique_id: Some(b"abc".to_vec()),
-        ..Default::default()
-    };
+    let features = OutputFeatures { ..Default::default() };
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features);
 
     let factories = CryptoFactories::default();
@@ -478,15 +474,15 @@ mod output_features {
 
         let mut buf = Vec::new();
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 11);
-        assert_eq!(features.consensus_encode_exact_size(), 11);
+        assert_eq!(buf.len(), 5);
+        assert_eq!(features.consensus_encode_exact_size(), 5);
 
         let mut features = OutputFeatures::default();
         features.version = OutputFeaturesVersion::V1;
         let mut buf = Vec::new();
         features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 11);
-        assert_eq!(features.consensus_encode_exact_size(), 11);
+        assert_eq!(buf.len(), 5);
+        assert_eq!(features.consensus_encode_exact_size(), 5);
     }
 
     #[test]
@@ -496,20 +492,20 @@ mod output_features {
         features_u64_max.version = OutputFeaturesVersion::V0;
         let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size_u8_max);
-        assert_eq!(known_size_u8_max, 20);
+        assert_eq!(known_size_u8_max, 14);
         features_u64_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 20);
-        assert_eq!(features_u64_max.consensus_encode_exact_size(), 20);
+        assert_eq!(buf.len(), 14);
+        assert_eq!(features_u64_max.consensus_encode_exact_size(), 14);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features_u64_max, decoded_features);
 
         features_u64_max.version = OutputFeaturesVersion::V1;
         let known_size_u8_max = features_u64_max.consensus_encode_exact_size();
-        assert_eq!(known_size_u8_max, 20);
+        assert_eq!(known_size_u8_max, 14);
         let mut buf = Vec::with_capacity(known_size_u8_max);
         features_u64_max.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 20);
-        assert_eq!(features_u64_max.consensus_encode_exact_size(), 20);
+        assert_eq!(buf.len(), 14);
+        assert_eq!(features_u64_max.consensus_encode_exact_size(), 14);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features_u64_max, decoded_features);
     }
@@ -580,12 +576,8 @@ mod validate_internal_consistency {
     #[test]
     fn it_validates_that_the_covenant_is_honoured() {
         //---------------------------------- Case1 - PASS --------------------------------------------//
-        let covenant = covenant!(fields_preserved(@fields(@field::features_unique_id, @field::covenant)));
-        let unique_id = b"dank-meme-nft".to_vec();
-        let mut features = OutputFeatures {
-            unique_id: Some(unique_id.clone()),
-            ..Default::default()
-        };
+        let covenant = covenant!(fields_preserved(@fields( @field::covenant)));
+        let features = OutputFeatures { ..Default::default() };
         test_case(
             &UtxoTestParams {
                 features: features.clone(),
@@ -603,7 +595,7 @@ mod validate_internal_consistency {
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
         features.parent_public_key = Some(PublicKey::default());
-        let mut hasher = Blake256::new();
+        let mut hasher = CommsChallenge::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
 
         let hash = hasher
@@ -632,7 +624,7 @@ mod validate_internal_consistency {
         .unwrap();
 
         //---------------------------------- Case3 - FAIL --------------------------------------------//
-        let covenant = covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_unique_id, @bytes(unique_id.clone()))));
+        let covenant = covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_maturity, @uint(42))));
 
         let err = test_case(
             &UtxoTestParams {
@@ -648,7 +640,7 @@ mod validate_internal_consistency {
         unpack_enum!(TransactionError::CovenantError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
-        // Pass because unique_id is set
+        // Pass because maturity is set
         test_case(
             &UtxoTestParams {
                 covenant: covenant.clone(),
@@ -656,7 +648,7 @@ mod validate_internal_consistency {
             },
             &UtxoTestParams {
                 features: OutputFeatures {
-                    unique_id: Some(unique_id),
+                    maturity: 42,
                     ..Default::default()
                 },
                 ..Default::default()

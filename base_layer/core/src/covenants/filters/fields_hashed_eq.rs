@@ -42,7 +42,9 @@ impl Filter for FieldsHashedEqFilter {
 #[cfg(test)]
 mod test {
     use tari_common_types::types::FixedHash;
-    use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
+    use tari_crypto::hashing::DomainSeparation;
+
+    use tari_common_types::types::Challenge;
 
     use super::*;
     use crate::{
@@ -61,10 +63,10 @@ mod test {
     fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
         let features = OutputFeatures {
             maturity: 42,
-            sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::hash_bytes("A")))),
+            sidechain_features: Some(Box::new(SideChainFeatures {})),
             ..Default::default()
         };
-        let mut hasher = Blake256::new();
+        let mut hasher = Challenge::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
         let hash = hasher.chain(&features.to_consensus_bytes()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
