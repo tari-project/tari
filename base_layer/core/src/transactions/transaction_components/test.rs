@@ -603,7 +603,7 @@ mod validate_internal_consistency {
         slice.copy_from_slice(hash.as_ref());
         let hash = FixedHash::from(slice);
 
-        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
+        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash)));
 
         test_case(
             &UtxoTestParams {

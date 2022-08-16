@@ -3,9 +3,7 @@
 
 const { Blake256 } = require("./hashing");
 const {
-  toLittleEndian,
   encodeOption,
-  toLengthEncoded,
   assertBufferType,
 } = require("./util");
 
@@ -37,14 +35,21 @@ const getTransactionOutputHash = function (output) {
   // TODO: Keep this number in sync with 'get_current_version()' in 'transaction_output_version.rs'
   const OUTPUT_FEATURES_VERSION = 0x00;
 
-  let hasher = new Blake256();
-  assertBufferType(output.commitment, 32);
-  assertBufferType(output.script);
-  assertBufferType(output.covenant);
-  assertBufferType(output.encrypted_value, 24);
   const hash = hasher
+    // version
+    .chain(Buffer.from([OUTPUT_FEATURES_VERSION]))
     // features
     .chain(featuresToConsensusBytes(output.features))
+    // commitment
+    .chain(output.commitment)
+    // script
+    .chain(toLengthEncoded(output.script))
+    // covenant
+    .chain(toLengthEncoded(output.covenant))
+    // encrypted_value
+    .chain(output.encrypted_value)
+    // minimum_value_promise
+    .chain(toLittleEndian(output.minimum_value_promise, 64))
     .finalize();
 
   const hashBuffer = Buffer.from(hash);
