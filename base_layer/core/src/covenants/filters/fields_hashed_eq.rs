@@ -41,9 +41,8 @@ impl Filter for FieldsHashedEqFilter {
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::hashing::DomainSeparation;
-
     use tari_common_types::types::Challenge;
+    use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
     use crate::{
