@@ -74,8 +74,6 @@ pub(crate) struct TransactionKernelRowData {
     pub hash: HashOutput,
 }
 
-hash_domain!(BaseLayerCoreDomain, "com.tari.tari-project.base_layer.core");
-
 hash_domain!(
     CoreChainStorageHashDomain,
     "com.tari.tari-project.base_layer.core.lmdb_db",
