@@ -25,8 +25,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
-use tari_core::transactions::transaction_components::OutputType;
+use tari_common_types::types::Commitment;
 
 #[derive(Debug, Clone, Default)]
 pub struct UtxoSelectionCriteria {
@@ -48,26 +47,6 @@ impl UtxoSelectionCriteria {
         Self {
             filter: UtxoSelectionFilter::Standard,
             ordering: UtxoSelectionOrdering::LargestFirst,
-            ..Default::default()
-        }
-    }
-
-    pub fn for_token(unique_id: Vec<u8>, parent_public_key: Option<PublicKey>) -> Self {
-        Self {
-            filter: UtxoSelectionFilter::TokenOutput {
-                unique_id,
-                parent_public_key,
-            },
-            ..Default::default()
-        }
-    }
-
-    pub fn for_contract(contract_id: FixedHash, output_type: OutputType) -> Self {
-        Self {
-            filter: UtxoSelectionFilter::ContractOutput {
-                contract_id,
-                output_type,
-            },
             ..Default::default()
         }
     }
@@ -121,28 +100,12 @@ impl Display for UtxoSelectionOrdering {
 pub enum UtxoSelectionFilter {
     /// Select OutputType::Standard or OutputType::Coinbase outputs only
     Standard,
-    /// Select matching token outputs. This will be deprecated in future.
-    TokenOutput {
-        unique_id: Vec<u8>,
-        parent_public_key: Option<PublicKey>,
-    },
-    /// Select matching contract outputs. Additional Standard outputs may be included if necessary.
-    ContractOutput {
-        /// Contract ID to select
-        contract_id: FixedHash,
-        /// Type of contract output to select.
-        output_type: OutputType,
-    },
     /// Selects specific outputs. All outputs must be exist and be spendable.
     SpecificOutputs { commitments: Vec<Commitment> },
 }
 impl UtxoSelectionFilter {
     pub fn is_standard(&self) -> bool {
         matches!(self, UtxoSelectionFilter::Standard)
-    }
-
-    pub fn is_contract_output(&self) -> bool {
-        matches!(self, UtxoSelectionFilter::ContractOutput { .. })
     }
 }
 
@@ -158,14 +121,8 @@ impl Display for UtxoSelectionFilter {
             UtxoSelectionFilter::Standard => {
                 write!(f, "Standard")
             },
-            UtxoSelectionFilter::TokenOutput { .. } => {
-                write!(f, "TokenOutput{{..}}")
-            },
             UtxoSelectionFilter::SpecificOutputs { commitments: outputs } => {
                 write!(f, "Specific({} output(s))", outputs.len())
-            },
-            UtxoSelectionFilter::ContractOutput { contract_id, .. } => {
-                write!(f, "ContractOutput({})", contract_id)
             },
         }
     }

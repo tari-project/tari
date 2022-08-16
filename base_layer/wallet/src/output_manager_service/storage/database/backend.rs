@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use aes_gcm::Aes256Gcm;
-use tari_common_types::{
-    transaction::TxId,
-    types::{Commitment, PublicKey},
-};
+use tari_common_types::{transaction::TxId, types::Commitment};
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 
 use crate::output_manager_service::{
@@ -27,11 +24,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// Fetch outputs with specific features
     fn fetch_with_features(&self, features: OutputType) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-    /// Fetch outputs with specific features for a given asset public key
-    fn fetch_by_features_asset_public_key(
-        &self,
-        public_key: PublicKey,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
     /// Retrieve unspent outputs.
     fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have been mined but not spent yet (have not been deleted)
