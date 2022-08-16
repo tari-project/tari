@@ -93,7 +93,6 @@ where
 
         let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = Vec::new();
         for output in outputs {
-            // TODO: Only outputs with scripts `== script!(Nop)` is recover-able - can this be improved?
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop) && known_script_index.is_none() {
                 continue;

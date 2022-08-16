@@ -879,8 +879,6 @@ TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
                                                       unsigned short output_type,
                                                       unsigned long long maturity,
                                                       const struct ByteVector *metadata,
-                                                      const struct ByteVector *unique_id,
-                                                      const struct ByteVector *parent_public_key,
                                                       int *error_out);
 
 /**
