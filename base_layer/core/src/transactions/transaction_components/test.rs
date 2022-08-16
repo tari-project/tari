@@ -597,10 +597,7 @@ mod validate_internal_consistency {
         let mut hasher = Blake256::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
 
-        let hash = hasher
-            .chain(features.to_consensus_bytes())
-            .finalize()
-            .to_vec();
+        let hash = hasher.chain(features.to_consensus_bytes()).finalize().to_vec();
 
         let mut slice = [0u8; FixedHash::byte_size()];
         slice.copy_from_slice(hash.as_ref());
