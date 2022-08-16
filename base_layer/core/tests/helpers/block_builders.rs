@@ -113,7 +113,7 @@ fn genesis_template(
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-fn print_new_genesis_block_esme() {
+fn print_new_genesis_block_esmeralda() {
     print_new_genesis_block(Network::Esmeralda);
 }
 

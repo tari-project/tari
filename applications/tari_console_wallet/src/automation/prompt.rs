@@ -25,7 +25,6 @@ use std::{io, io::Write, str::FromStr};
 use tari_utilities::hex::{Hex, HexError};
 
 use crate::automation::error::CommandError;
-
 pub struct Prompt {
     label: String,
     skip_if_some: Option<String>,

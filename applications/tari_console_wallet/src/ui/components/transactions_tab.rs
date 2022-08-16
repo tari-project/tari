@@ -114,11 +114,7 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                let amount = if t.unique_id.is_empty() {
-                    format!("{}", t.amount)
-                } else {
-                    format!("Token: {}", t.unique_id)
-                };
+                let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
@@ -130,11 +126,7 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Green)
                 };
-                let amount = if t.unique_id.is_empty() {
-                    format!("{}", t.amount)
-                } else {
-                    format!("Token: {}", t.unique_id)
-                };
+                let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
             let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
@@ -216,11 +208,7 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                let amount = if t.unique_id.is_empty() {
-                    format!("{}", t.amount)
-                } else {
-                    format!("Token: {}", t.unique_id)
-                };
+                let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
@@ -236,11 +224,7 @@ impl TransactionsTab {
                     _ => Color::Green,
                 };
                 let amount_style = Style::default().fg(color);
-                let amount = if t.unique_id.is_empty() {
-                    format!("{}", t.amount)
-                } else {
-                    format!("Token: {}", t.unique_id)
-                };
+                let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
             let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
@@ -295,19 +279,7 @@ impl TransactionsTab {
         let source_public_key = Span::styled("Source Public Key:", Style::default().fg(Color::Magenta));
         let destination_public_key = Span::styled("Destination Public Key:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
-        let amount = Span::styled(
-            match self.detailed_transaction.as_ref() {
-                Some(tx) => {
-                    if tx.unique_id.is_empty() {
-                        "Amount:"
-                    } else {
-                        "Token:"
-                    }
-                },
-                None => "Amount/Token:",
-            },
-            Style::default().fg(Color::Magenta),
-        );
+        let amount = Span::styled("Amount:", Style::default().fg(Color::Magenta));
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
@@ -369,11 +341,7 @@ impl TransactionsTab {
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = tx.amount.to_string();
-            let content = if tx.unique_id.is_empty() {
-                &amount
-            } else {
-                &tx.unique_id
-            };
+            let content = &amount;
             let amount = Span::styled(content, Style::default().fg(Color::White));
             let fee_details = if tx.is_coinbase {
                 Span::raw("")

@@ -9,6 +9,7 @@ const {
   assertBufferType,
   varintEncode,
 } = require("../helpers/util");
+const { featuresToConsensusBytes } = require("./transactionOutputHashing");
 const { consensusHashers } = require("./hashing");
 const { OutputType } = require("./types");
 
@@ -41,47 +42,6 @@ class TransactionBuilder {
     return Buffer.from(hash).toString("hex");
   }
 
-  featuresToConsensusBytes(features) {
-    // base_layer\core\src\transactions\transaction\output_features.rs
-
-    // TODO: Keep this number in sync with 'get_current_version()' in 'output_features_version.rs'
-    const OUTPUT_FEATURES_VERSION = 0x00;
-
-    const bufFromOpt = (opt, encoding = "hex") =>
-      opt
-        ? Buffer.concat([
-            Buffer.from([0x01]),
-            encoding ? Buffer.from(opt, encoding) : opt,
-          ])
-        : Buffer.from([0x00]);
-
-    // Add length byte to unique id - note this only works until 127 bytes (TODO: varint encoding)
-    let unique_id = features.unique_id
-      ? this.toLengthEncoded(features.unique_id)
-      : null;
-
-    return Buffer.concat([
-      // version
-      Buffer.from([OUTPUT_FEATURES_VERSION]),
-      Buffer.from([parseInt(features.maturity || 0)]),
-      Buffer.from([features.output_type]),
-      bufFromOpt(features.parent_public_key, "hex"),
-      bufFromOpt(unique_id, false),
-      // TODO: SideChainFeatures
-      bufFromOpt(null),
-      // TODO: AssetOutputFeatures
-      bufFromOpt(null),
-      // TODO: MintNonFungibleFeatures
-      bufFromOpt(null),
-      // TODO: SideChainCheckpointFeatures
-      bufFromOpt(null),
-      // TODO: metadata (len is 0)
-      Buffer.from([0x00]),
-      // TODO: committee_definition (len is 0)
-      bufFromOpt(null),
-    ]);
-  }
-
   toLengthEncoded(buf) {
     return Buffer.concat([varintEncode(buf.length), buf]);
   }
@@ -97,18 +57,19 @@ class TransactionBuilder {
     encryptedValue,
     minimumValuePromise
   ) {
+    assertBufferType(publicNonce, 32);
     assertBufferType(script);
     assertBufferType(scriptOffsetPublicKey, 32);
-    assertBufferType(publicNonce, 32);
     assertBufferType(commitment, 32);
     assertBufferType(covenant);
     assertBufferType(encryptedValue);
+
     // base_layer/core/src/transactions/transaction/transaction_output.rs
     let hash = consensusHashers
       .transactionHasher("metadata_signature")
       .chain(publicNonce)
       .chain(this.toLengthEncoded(script))
-      .chain(this.featuresToConsensusBytes(features))
+      .chain(featuresToConsensusBytes(features))
       .chain(scriptOffsetPublicKey)
       .chain(commitment)
       .chain(this.toLengthEncoded(covenant))
@@ -203,6 +164,7 @@ class TransactionBuilder {
         sender_offset_public_key: input.output.sender_offset_public_key,
         covenant: Buffer.from([]),
         encrypted_value: input.output.encrypted_value,
+        minimum_value_promise: input.output.minimum_value_promise,
       },
       amount: input.amount,
       privateKey: input.privateKey,
@@ -267,6 +229,7 @@ class TransactionBuilder {
       asset: null,
       mint_non_fungible: null,
       sidechain_checkpoint: null,
+      committee_definition: null,
     });
     let minimumValuePromise = 0;
     let meta_challenge = this.buildMetaChallenge(
@@ -308,6 +271,7 @@ class TransactionBuilder {
         },
         covenant: covenantBytes,
         encrypted_value: encryptedValue,
+        minimum_value_promise: minimumValuePromise,
       },
     };
     this.outputs.push(output);
@@ -481,6 +445,7 @@ class TransactionBuilder {
       asset: null,
       mint_non_fungible: null,
       sidechain_checkpoint: null,
+      committee_definition: null,
     };
     let minimumValuePromise = 0;
     let meta_challenge = this.buildMetaChallenge(
@@ -520,6 +485,7 @@ class TransactionBuilder {
           },
           covenant: covenantBytes,
           encrypted_value: encryptedValue,
+          minimum_value_promise: minimumValuePromise,
         },
       ],
       kernels: [

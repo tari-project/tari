@@ -34,7 +34,7 @@ pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PrivateKey, PublicKey},
+    types::{Commitment, PrivateKey},
 };
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
@@ -52,7 +52,7 @@ use crate::{
         },
         UtxoSelectionCriteria,
     },
-    schema::{known_one_sided_payment_scripts, outputs, outputs::columns},
+    schema::{known_one_sided_payment_scripts, outputs},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::{
         diesel_ext::ExpectedRowsExtension,
@@ -312,20 +312,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .iter()
             .map(|o| DbUnblindedOutput::try_from(o.clone()))
             .collect::<Result<Vec<_>, _>>()
-    }
-
-    fn fetch_by_features_asset_public_key(
-        &self,
-        public_key: PublicKey,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let conn = self.database_connection.get_pooled_connection()?;
-        let mut o: OutputSql = outputs::table
-            .filter(columns::features_unique_id.eq(public_key.to_vec()))
-            .filter(columns::features_parent_public_key.is_null())
-            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
-            .first(&*conn)?;
-        self.decrypt_if_necessary(&mut o)?;
-        o.try_into()
     }
 
     fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {

@@ -19,19 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{
-    mem,
-    ops::{Range, RangeBounds},
-    sync::Arc,
-    time::Instant,
-};
+use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 
 use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -66,7 +61,7 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -168,17 +163,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Option<Arc<Bitmap>>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
 
-    make_async_fn!(fetch_utxo_by_unique_id(parent_public_key: Option<PublicKey>,unique_id: HashOutput, deleted_at: Option<u64>) -> Option<UtxoMinedInfo>, "fetch_utxo_by_unique_id");
-
-    make_async_fn!(fetch_all_unspent_by_parent_public_key(
-        parent_public_key: PublicKey,
-        range: Range<usize>) -> Vec<UtxoMinedInfo>, "fetch_all_unspent_by_parent_public_key");
-
     make_async_fn!(utxo_count() -> usize, "utxo_count");
-
-    make_async_fn!(fetch_contract_outputs_for_block(block_hash: BlockHash, output_type: OutputType) -> Vec<UtxoMinedInfo>, "fetch_contract_outputs_for_block");
-
-    make_async_fn!(fetch_contract_outputs_by_contract_id_and_type(contract_id: FixedHash, output_type: OutputType) -> Vec<UtxoMinedInfo>, "fetch_contract_outputs_by_contract_id_and_type");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");

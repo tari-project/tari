@@ -48,11 +48,10 @@ mod get_stats {
     async fn it_returns_the_stats() {
         let (service, mempool, req_mock, _tmpdir) = setup();
         let expected_stats = StatsResponse {
-            total_txs: 1,
             unconfirmed_txs: 2,
 
             reorg_txs: 5,
-            total_weight: 6,
+            unconfirmed_weight: 6,
         };
         mempool.set_get_stats_response(expected_stats.clone()).await;
 

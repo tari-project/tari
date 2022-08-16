@@ -6,8 +6,7 @@ syntax = "proto3";
 package tari.mempool;
 
 message StatsResponse {
-    uint64 total_txs = 1;
     uint64 unconfirmed_txs = 2;
     uint64 reorg_txs = 5;
-    uint64 total_weight = 6;
+    uint64 unconfirmed_weight = 6;
 }

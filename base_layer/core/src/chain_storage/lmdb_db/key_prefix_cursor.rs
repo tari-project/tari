@@ -63,6 +63,7 @@ where V: DeserializeOwned
     }
 
     /// Returns the item on or before the given seek key, progressing backwards until the key prefix no longer matches
+    #[allow(dead_code)]
     pub fn prev(&mut self) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
         if !self.has_seeked {
             let prefix_key = self.prefix_key;
