@@ -77,28 +77,6 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPub
     Ok(public_keys)
 }
 
-/// Convert a slice of little endian bytes into a u64.
-///
-/// # Panics
-///
-/// The function does not check slice for length at all.  You need to check this / guarantee it yourself.
-fn slice_to_u64(slice: &[u8]) -> u64 {
-    let mut num = [0u8; 8];
-    num.copy_from_slice(slice);
-    u64::from_le_bytes(num)
-}
-
-/// Convert a slice of little endian bytes into an i64.
-///
-/// # Panics
-///
-/// The function does not check slice for length at all.  You need to check this / guarantee it yourself.
-fn slice_to_i64(slice: &[u8]) -> i64 {
-    let mut num = [0u8; 8];
-    num.copy_from_slice(slice);
-    i64::from_le_bytes(num)
-}
-
 // Opcode constants: Block Height Checks
 pub const OP_CHECK_HEIGHT_VERIFY: u8 = 0x66;
 pub const OP_CHECK_HEIGHT: u8 = 0x67;
@@ -407,13 +385,13 @@ impl Opcode {
         match self {
             CheckHeightVerify(height) => {
                 array.push(OP_CHECK_HEIGHT_VERIFY);
-                let mut buf = [0 as u8; 10];
+                let mut buf = [0u8; 10];
                 let used = height.encode_var(&mut buf[..]);
                 array.extend_from_slice(&buf[0..used]);
             },
             CheckHeight(height) => {
                 array.push(OP_CHECK_HEIGHT);
-                let mut buf = [0 as u8; 10];
+                let mut buf = [0u8; 10];
                 let used = height.encode_var(&mut buf[..]);
                 array.extend_from_slice(&buf[0..used]);
             },
@@ -428,7 +406,7 @@ impl Opcode {
             },
             PushInt(n) => {
                 array.push(OP_PUSH_INT);
-                let mut buf = [0 as u8; 10];
+                let mut buf = [0u8; 10];
                 let used = n.encode_var(&mut buf[..]);
                 array.extend_from_slice(&buf[0..used]);
             },
@@ -587,34 +565,6 @@ mod test {
         let (code, b) = Opcode::read_next(b"\x7a/thirty-two~character~hash~val./").unwrap();
         assert!(matches!(code, PushHash(v) if &*v == b"/thirty-two~character~hash~val./"));
         assert!(b.is_empty());
-    }
-
-    #[test]
-    fn slice_to_u64_tests() {
-        // Zero
-        let val = slice_to_u64(&[0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 0);
-        // Little-endian one-byte
-        let val = slice_to_u64(&[63, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 63);
-        // A large number
-        let val = slice_to_u64(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F]);
-        assert_eq!(val, 9_223_372_036_854_775_807);
-    }
-
-    #[test]
-    fn slice_to_i64_tests() {
-        // Zero
-        let val = slice_to_i64(&[0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 0);
-        // Little-endian one-byte
-        let val = slice_to_i64(&[63, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 63);
-        let val = slice_to_i64(&[63, 0, 0, 0, 0, 0, 0, 128]);
-        assert_eq!(val, -9_223_372_036_854_775_745);
-        // A large negative number
-        let val = slice_to_i64(&[0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x80]);
-        assert_eq!(val, -9_151_314_442_816_848_128);
     }
 
     #[test]
