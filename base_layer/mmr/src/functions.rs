@@ -30,6 +30,7 @@ use crate::{
 };
 use digest::Digest;
 use std::{convert::TryFrom, marker::PhantomData};
+use tari_common::DomainDigest;
 
 pub type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
 pub type PrunedMutableMmr<D> = MutableMmr<D, PrunedHashSet>;
@@ -41,7 +42,7 @@ pub type PrunedMutableMmr<D> = MutableMmr<D, PrunedHashSet>;
 /// `validate` will throw an error.
 pub fn prune_mmr<D, B>(mmr: &MerkleMountainRange<D, B>) -> Result<PrunedMmr<D>, MerkleMountainRangeError>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     B: ArrayLike<Value = Hash>,
 {
     let backend = PrunedHashSet::try_from(mmr)?;
@@ -54,7 +55,7 @@ where
 /// A convenience function in the same vein as [prune_mmr], but applied to `MutableMmr` instances.
 pub fn prune_mutable_mmr<D, B>(mmr: &MutableMmr<D, B>) -> Result<PrunedMutableMmr<D>, MerkleMountainRangeError>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     B: ArrayLike<Value = Hash>,
 {
     let backend = PrunedHashSet::try_from(&mmr.mmr)?;
@@ -84,7 +85,7 @@ pub fn calculate_pruned_mmr_root<D, B>(
     deletions: Vec<u32>,
 ) -> Result<Hash, MerkleMountainRangeError>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     B: ArrayLike<Value = Hash>,
 {
     let mut pruned_mmr = prune_mutable_mmr(src)?;
@@ -103,7 +104,7 @@ pub fn calculate_mmr_root<D, B>(
     additions: Vec<Hash>,
 ) -> Result<Hash, MerkleMountainRangeError>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     B: ArrayLike<Value = Hash>,
 {
     let mut mmr = prune_mmr(src)?;

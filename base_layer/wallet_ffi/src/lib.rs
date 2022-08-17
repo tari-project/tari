@@ -100,15 +100,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{
-        AssetOutputFeatures,
-        CommitteeDefinitionFeatures,
-        MintNonFungibleFeatures,
-        OutputFeatures,
-        OutputFeaturesVersion,
-        OutputType,
-        SideChainCheckpointFeatures,
-    },
+    transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType},
     CryptoFactories,
 };
 use tari_crypto::{
@@ -1505,8 +1497,6 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     output_type: c_ushort,
     maturity: c_ulonglong,
     metadata: *const ByteVector,
-    unique_id: *const ByteVector,
-    parent_public_key: *const ByteVector,
     error_out: *mut c_int,
 ) -> *mut TariOutputFeatures {
     let mut error = 0;
@@ -1542,47 +1532,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 
     let decoded_metadata = (*metadata).0.clone();
 
-    let mut decoded_unique_id = None;
-    if !unique_id.is_null() {
-        decoded_unique_id = Some((*unique_id).0.clone());
-    }
-
-    let mut decoded_parent_public_key: Option<PublicKey> = None;
-    if !parent_public_key.is_null() {
-        decoded_parent_public_key = match TariPublicKey::from_bytes(&(*parent_public_key).0.clone()) {
-            Ok(k) => Some(k),
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Error creating a Private Key (u) from bytes: {:?}", e
-                );
-                error = LibWalletError::from(e).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        };
-    }
-
-    // DAN layer features are still a work in progress
-    // so, for now, we do not expose any of those fields
-    let asset: Option<AssetOutputFeatures> = None;
-    let mint_non_fungible: Option<MintNonFungibleFeatures> = None;
-    let sidechain_checkpoint: Option<SideChainCheckpointFeatures> = None;
-    let committee_definition: Option<CommitteeDefinitionFeatures> = None;
-
-    let output_features = TariOutputFeatures::new(
-        decoded_version,
-        output_type,
-        maturity,
-        decoded_metadata,
-        decoded_unique_id,
-        None,
-        decoded_parent_public_key,
-        asset,
-        mint_non_fungible,
-        sidechain_checkpoint,
-        committee_definition,
-    );
+    let output_features = TariOutputFeatures::new(decoded_version, output_type, maturity, decoded_metadata, None);
     Box::into_raw(Box::new(output_features))
 }
 
@@ -8343,18 +8293,9 @@ mod test {
             let output_type: c_ushort = 0;
             let maturity: c_ulonglong = 20;
             let metadata = Box::into_raw(Box::new(ByteVector(Vec::new())));
-            let unique_id = ptr::null_mut();
-            let parent_public_key = ptr::null_mut();
 
-            let output_features = output_features_create_from_bytes(
-                version,
-                output_type,
-                maturity,
-                metadata,
-                unique_id,
-                parent_public_key,
-                error_ptr,
-            );
+            let output_features =
+                output_features_create_from_bytes(version, output_type, maturity, metadata, error_ptr);
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V0);
             assert_eq!(
@@ -8363,14 +8304,6 @@ mod test {
             );
             assert_eq!((*output_features).maturity, maturity);
             assert!((*output_features).metadata.is_empty());
-            assert!((*output_features).unique_id.is_none());
-            assert!((*output_features).parent_public_key.is_none());
-
-            // These are DAN layer fields, we omit them
-            assert!((*output_features).asset.is_none());
-            assert!((*output_features).mint_non_fungible.is_none());
-            assert!((*output_features).sidechain_checkpoint.is_none());
-            assert!((*output_features).committee_definition.is_none());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
@@ -8390,21 +8323,8 @@ mod test {
             let expected_metadata = vec![1; 1024];
             let metadata = Box::into_raw(Box::new(ByteVector(expected_metadata.clone())));
 
-            let expected_unique_id = vec![0u8; 256];
-            let unique_id = Box::into_raw(Box::new(ByteVector(expected_unique_id.clone())));
-
-            let (_, public_key) = PublicKey::random_keypair(&mut OsRng);
-            let parent_public_key = Box::into_raw(Box::new(ByteVector(public_key.to_vec())));
-
-            let output_features = output_features_create_from_bytes(
-                version,
-                c_ushort::from(output_type),
-                maturity,
-                metadata,
-                unique_id,
-                parent_public_key,
-                error_ptr,
-            );
+            let output_features =
+                output_features_create_from_bytes(version, c_ushort::from(output_type), maturity, metadata, error_ptr);
             assert_eq!(error, 0);
             assert_eq!((*output_features).version, OutputFeaturesVersion::V1);
             assert_eq!(
@@ -8413,19 +8333,9 @@ mod test {
             );
             assert_eq!((*output_features).maturity, maturity);
             assert_eq!((*output_features).metadata, expected_metadata);
-            assert_eq!((*output_features).unique_id, Some(expected_unique_id));
-            assert_eq!((*output_features).parent_public_key, Some(public_key));
-
-            // These are DAN layer fields, we omit them
-            assert!((*output_features).asset.is_none());
-            assert!((*output_features).mint_non_fungible.is_none());
-            assert!((*output_features).sidechain_checkpoint.is_none());
-            assert!((*output_features).committee_definition.is_none());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);
-            byte_vector_destroy(unique_id);
-            byte_vector_destroy(parent_public_key);
         }
     }
 

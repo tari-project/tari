@@ -23,22 +23,17 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-pub use asset_output_features::AssetOutputFeatures;
-pub use committee_definition_features::CommitteeDefinitionFeatures;
 pub use encrypted_value::{EncryptedValue, EncryptionError};
 pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
-pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
 pub use side_chain::*;
-pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::Commitment;
 use tari_script::TariScript;
-pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
 pub use transaction_input::{SpentOutput, TransactionInput};
@@ -50,20 +45,16 @@ pub use transaction_output_version::TransactionOutputVersion;
 pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
 
-mod asset_output_features;
-mod committee_definition_features;
 mod encrypted_value;
 mod error;
 mod kernel_builder;
 mod kernel_features;
 mod kernel_sum;
-mod mint_non_fungible_features;
 mod output_features;
 mod output_features_version;
 mod output_type;
 mod side_chain;
-mod side_chain_checkpoint_features;
-mod template_parameter;
+
 mod transaction;
 mod transaction_builder;
 mod transaction_input;

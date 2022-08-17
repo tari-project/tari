@@ -35,10 +35,8 @@ use tari_common_types::types::{Commitment, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_crypto::{
     commitment::HomomorphicCommitment,
-    hash::blake2::Blake256,
     tari_utilities::{hex::Hex, Hashable},
 };
-use tari_mmr::{MerkleMountainRange, MutableMmr};
 use tokio::task;
 
 use super::error::HorizonSyncError;
@@ -75,6 +73,10 @@ use crate::{
         TransactionOutput,
     },
     validation::{helpers, FinalHorizonStateValidation},
+    MutablePrunedOutputMmr,
+    PrunedKernelMmr,
+    PrunedOutputMmr,
+    PrunedWitnessMmr,
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
@@ -326,7 +328,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     .fetch_block_accumulated_data(current_header.header().prev_hash.clone())
                     .await?;
                 let kernel_pruned_set = block_data.dissolve().0;
-                let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(kernel_pruned_set);
+                let mut kernel_mmr = PrunedKernelMmr::new(kernel_pruned_set);
 
                 for hash in kernel_hashes.drain(..) {
                     kernel_mmr.push(hash)?;
@@ -487,8 +489,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .await?;
         let (_, output_pruned_set, witness_pruned_set, _) = block_data.dissolve();
 
-        let mut output_mmr = MerkleMountainRange::<Blake256, _>::new(output_pruned_set);
-        let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(witness_pruned_set);
+        let mut output_mmr = PrunedOutputMmr::new(output_pruned_set);
+        let mut witness_mmr = PrunedWitnessMmr::new(witness_pruned_set);
         let mut constants = self.rules.consensus_constants(current_header.height()).clone();
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
@@ -596,7 +598,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     bitmap.run_optimize();
 
                     let pruned_output_set = output_mmr.get_pruned_hash_set()?;
-                    let output_mmr = MutableMmr::<Blake256, _>::new(pruned_output_set.clone(), bitmap.clone())?;
+                    let output_mmr = MutablePrunedOutputMmr::new(pruned_output_set.clone(), bitmap.clone())?;
 
                     let mmr_root = output_mmr.get_merkle_root()?;
                     if mmr_root != current_header.header().output_mr {

@@ -1,0 +1,79 @@
+---
+name: Build docker images
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+    branches:
+      - "build-*"
+  schedule:
+    - cron: "05 00 * * *"
+  workflow_dispatch:
+    inputs:
+#      toolchain:
+#        type: string
+#        description: 'Rust toolchain'
+      version:
+        type: string
+        description: 'override image tag/version'
+      tag_alias:
+        type: string
+        description: 'image tag alias'
+      platforms:
+        default: linux/amd64
+        description: 'docker platform(s)'
+        type: choice
+        options:
+        - linux/amd64
+        - linux/arm64
+        - linux/arm64, linux/amd64
+      build_items:
+        default: tari_all
+        description: 'image(s) to build'
+        type: choice
+        options:
+        - all
+        - tari_all
+        - tari_base_node
+        - tari_wallet
+        - tari_mm_proxy
+        - tari_sha3_miner
+        - 3rdparty_all
+        - tor
+        - monerod
+        - xmrig
+
+env:
+  toolchain_default: nightly-2022-05-01
+
+jobs:
+  builds_envs_setup:
+    runs-on: ubuntu-latest
+    outputs:
+      toolchain: ${{ steps.set_toolchain.outputs.toolchain }}
+
+    steps:
+      - name: Set toolchain
+        id: set_toolchain
+        run: |
+          if [ -z "${{ inputs.toolchain }}" ]; then
+            echo "Using default"
+            btoolchain=${{ env.toolchain_default }}
+          else
+            echo "Using provided input"
+            btoolchain=${{ inputs.toolchain }}
+          fi
+          echo "Rust toolchain - ${btoolchain} ."
+          echo "toolchain=${btoolchain}" >> $GITHUB_ENV
+
+  builds_run:
+    needs: builds_envs_setup
+    uses: ./.github/workflows/build_dockers_workflow.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ needs.builds_envs_setup.outputs.toolchain }}
+      platforms: ${{ inputs.platforms }}
+      version: ${{ inputs.version }}
+      tag_alias: ${{ inputs.tag_alias }}
+      build_items: ${{ inputs.build_items }}

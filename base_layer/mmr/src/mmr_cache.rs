@@ -24,6 +24,7 @@ use std::ops::Deref;
 
 use croaring::Bitmap;
 use digest::Digest;
+use tari_common::DomainDigest;
 
 use crate::{
     backend::ArrayLike,
@@ -54,7 +55,7 @@ impl Default for MmrCacheConfig {
 #[derive(Debug)]
 pub struct MmrCache<D, BaseBackend, CpBackend>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     BaseBackend: ArrayLike<Value = Hash>,
 {
     // The last checkpoint index applied to the base MMR.
@@ -75,7 +76,7 @@ where
 
 impl<D, BaseBackend, CpBackend> MmrCache<D, BaseBackend, CpBackend>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     BaseBackend: ArrayLike<Value = Hash>,
     CpBackend: ArrayLike<Value = MerkleCheckPoint>,
 {
@@ -229,7 +230,7 @@ where
 
 impl<D, BaseBackend, CpBackend> Deref for MmrCache<D, BaseBackend, CpBackend>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     BaseBackend: ArrayLike<Value = Hash>,
 {
     type Target = PrunedMutableMmr<D>;

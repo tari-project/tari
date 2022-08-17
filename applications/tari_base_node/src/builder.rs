@@ -38,7 +38,6 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        dan_validators::TxDanLayerValidator,
         header_validator::HeaderValidator,
         transaction_validators::{
             MempoolValidator,
@@ -247,7 +246,6 @@ async fn build_node_context(
         )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
-        Box::new(TxDanLayerValidator::new(blockchain_db.clone())),
     ]);
     let mempool = Mempool::new(
         app_config.base_node.mempool.clone(),

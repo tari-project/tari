@@ -24,6 +24,7 @@ use std::convert::TryFrom;
 
 use croaring::Bitmap;
 use digest::Digest;
+use tari_common::DomainDigest;
 
 use crate::{
     backend::ArrayLike,
@@ -44,7 +45,7 @@ use crate::{
 #[derive(Debug)]
 pub struct MutableMmr<D, B>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     B: ArrayLike<Value = Hash>,
 {
     pub(crate) mmr: MerkleMountainRange<D, B>,
@@ -57,7 +58,7 @@ where
 
 impl<D, B> MutableMmr<D, B>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     B: ArrayLike<Value = Hash>,
 {
     /// Create a new mutable MMR using the backend provided
@@ -255,7 +256,7 @@ where
 
 impl<D, B, B2> PartialEq<MutableMmr<D, B2>> for MutableMmr<D, B>
 where
-    D: Digest,
+    D: Digest + DomainDigest,
     B: ArrayLike<Value = Hash>,
     B2: ArrayLike<Value = Hash>,
 {
