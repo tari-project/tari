@@ -97,14 +97,11 @@ pub struct OutputSql {
     pub spent_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
     pub metadata: Option<Vec<u8>>,
-    pub features_parent_public_key: Option<Vec<u8>>,
-    pub features_unique_id: Option<Vec<u8>>,
     pub features_json: String,
     pub spending_priority: i32,
     pub covenant: Vec<u8>,
     pub mined_timestamp: Option<NaiveDateTime>,
     pub encrypted_value: Vec<u8>,
-    pub contract_id: Option<Vec<u8>>,
     pub minimum_value_promise: i64,
 }
 
@@ -132,9 +129,7 @@ impl OutputSql {
         let mut query = outputs::table
             .into_boxed()
             .filter(outputs::script_lock_height.le(q.tip_height))
-            .filter(outputs::maturity.le(q.tip_height))
-            .filter(outputs::features_unique_id.is_null())
-            .filter(outputs::features_parent_public_key.is_null());
+            .filter(outputs::maturity.le(q.tip_height));
 
         if let Some((offset, limit)) = q.pagination {
             query = query.offset(offset).limit(limit);
@@ -214,14 +209,6 @@ impl OutputSql {
                         .or(outputs::output_type.eq(i32::from(OutputType::Coinbase.as_byte()))),
                 )
             },
-            UtxoSelectionFilter::TokenOutput {
-                parent_public_key,
-                unique_id,
-            } => {
-                query = query
-                    .filter(outputs::features_unique_id.eq(unique_id))
-                    .filter(outputs::features_parent_public_key.eq(parent_public_key.as_ref().map(|pk| pk.to_vec())));
-            },
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
                 query = match commitments.len() {
                     0 => query,
@@ -230,14 +217,6 @@ impl OutputSql {
                         outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
                     ),
                 };
-            },
-            UtxoSelectionFilter::ContractOutput {
-                contract_id,
-                output_type,
-            } => {
-                query = query
-                    .filter(outputs::contract_id.eq(contract_id.as_slice()))
-                    .filter(outputs::output_type.eq(i32::from(output_type.as_byte())));
             },
         }
 
@@ -259,8 +238,6 @@ impl OutputSql {
                     .filter(outputs::status.eq(OutputStatus::Unspent as i32))
                     .filter(outputs::script_lock_height.le(i64_tip_height))
                     .filter(outputs::maturity.le(i64_tip_height))
-                    .filter(outputs::features_unique_id.is_null())
-                    .filter(outputs::features_parent_public_key.is_null())
                     .order(outputs::value.desc())
                     .select(outputs::value)
                     .first(conn)

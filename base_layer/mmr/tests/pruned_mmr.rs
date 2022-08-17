@@ -34,6 +34,7 @@ use tari_mmr::{
     functions::{calculate_mmr_root, calculate_pruned_mmr_root, prune_mmr},
     Hash,
 };
+
 #[test]
 fn pruned_mmr_empty() {
     let mmr = create_mmr(0);

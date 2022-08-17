@@ -22,14 +22,16 @@
 //
 
 use croaring::Bitmap;
-use digest::Digest;
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr};
 
-pub type Hasher = Blake256;
+hash_domain!(MmrTestHashDomain, "com.tari.tari_project.base_layer.core.kernel_mmr", 1);
+pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrTestHashDomain>;
+pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
+pub type MutableTestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;
 
-pub fn create_mmr(size: usize) -> MerkleMountainRange<Hasher, Vec<Hash>> {
-    let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
+pub fn create_mmr(size: usize) -> TestMmr {
+    let mut mmr = TestMmr::new(Vec::default());
     for i in 0..size {
         let hash = int_to_hash(i);
         assert!(mmr.push(hash).is_ok());
@@ -37,8 +39,8 @@ pub fn create_mmr(size: usize) -> MerkleMountainRange<Hasher, Vec<Hash>> {
     mmr
 }
 
-pub fn create_mutable_mmr(size: usize) -> MutableMmr<Hasher, Vec<Hash>> {
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
+pub fn create_mutable_mmr(size: usize) -> MutableTestMmr {
+    let mut mmr = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..size {
         let hash = int_to_hash(i);
         assert!(mmr.push(hash).is_ok());
@@ -47,14 +49,15 @@ pub fn create_mutable_mmr(size: usize) -> MutableMmr<Hasher, Vec<Hash>> {
 }
 
 pub fn int_to_hash(n: usize) -> Vec<u8> {
-    Hasher::digest(&n.to_le_bytes()).to_vec()
+    MmrTestHasherBlake256::new().digest(&n.to_le_bytes()).as_ref().to_vec()
 }
 
 pub fn combine_hashes(hashe_slices: &[&HashSlice]) -> Hash {
-    let hasher = Hasher::new();
+    let hasher = MmrTestHasherBlake256::new();
     hashe_slices
         .iter()
         .fold(hasher, |hasher, h| hasher.chain(*h))
         .finalize()
+        .as_ref()
         .to_vec()
 }

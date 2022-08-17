@@ -149,14 +149,11 @@ table! {
         spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
         metadata -> Nullable<Binary>,
-        features_parent_public_key -> Nullable<Binary>,
-        features_unique_id -> Nullable<Binary>,
         features_json -> Text,
         spending_priority -> Integer,
         covenant -> Binary,
         mined_timestamp -> Nullable<Timestamp>,
         encrypted_value -> Binary,
-        contract_id -> Nullable<Binary>,
         minimum_value_promise -> BigInt,
     }
 }

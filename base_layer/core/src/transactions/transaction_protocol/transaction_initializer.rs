@@ -639,10 +639,7 @@ impl SenderTransactionInitializer {
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
         // Don't care about the fees when we are sending token.
-        if self.amounts.size() > 0 &&
-            total_fee > self.calculate_amount_to_others() &&
-            recipient_output_features[0].unique_asset_id().is_none()
-        {
+        if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
             warn!(
                 target: LOG_TARGET,
                 "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
