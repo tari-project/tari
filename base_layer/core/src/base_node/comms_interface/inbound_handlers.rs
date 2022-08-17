@@ -28,9 +28,9 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
+use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
-use tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
+use tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::Semaphore;
 
 use crate::{
@@ -54,7 +54,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
-const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
 const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
@@ -151,68 +150,6 @@ where B: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
             },
-            NodeCommsRequest::FetchHeadersAfter(header_hashes, stopping_hash) => {
-                let mut starting_block = None;
-                // Find first header that matches
-                for header_hash in header_hashes {
-                    match self
-                        .blockchain_db
-                        .fetch_header_by_block_hash(header_hash.clone())
-                        .await?
-                    {
-                        Some(from_block) => {
-                            starting_block = Some(from_block);
-                            break;
-                        },
-                        None => {
-                            // Not an error. The header requested is simply not in our chain.
-                            // Logging it as debug because it may not just be not found.
-                            debug!(
-                                target: LOG_TARGET,
-                                "Skipping header {} when searching for matching headers in our chain.",
-                                header_hash.to_hex(),
-                            );
-                        },
-                    }
-                }
-                let starting_block = match starting_block {
-                    Some(b) => b,
-                    // Send from genesis block if no hashes match
-                    None => self
-                        .blockchain_db
-                        .fetch_header(0)
-                        .await?
-                        .ok_or(CommsInterfaceError::BlockHeaderNotFound(0))?,
-                };
-                let mut headers = Vec::with_capacity(MAX_HEADERS_PER_RESPONSE as usize);
-                for i in 1..MAX_HEADERS_PER_RESPONSE {
-                    match self
-                        .blockchain_db
-                        .fetch_header(starting_block.height + u64::from(i))
-                        .await
-                    {
-                        Ok(Some(header)) => {
-                            let hash = header.hash();
-                            headers.push(header);
-                            if hash == stopping_hash {
-                                break;
-                            }
-                        },
-                        Err(err) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "Could not fetch header at {}:{}",
-                                starting_block.height + u64::from(i),
-                                err.to_string()
-                            );
-                            return Err(err.into());
-                        },
-                        _ => error!(target: LOG_TARGET, "Could not fetch header: None"),
-                    }
-                }
-
-                Ok(NodeCommsResponse::FetchHeadersAfterResponse(headers))
-            },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
                 for (pruned_output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
@@ -225,19 +162,6 @@ where B: BlockchainBackend + 'static
                         }
                     }
                 }
-                Ok(NodeCommsResponse::TransactionOutputs(res))
-            },
-            NodeCommsRequest::FetchMatchingTxos(hashes) => {
-                let res = self
-                    .blockchain_db
-                    .fetch_utxos(hashes)
-                    .await?
-                    .into_iter()
-                    .filter_map(|opt| match opt {
-                        Some((PrunedOutput::NotPruned { output }, _)) => Some(output),
-                        _ => None,
-                    })
-                    .collect();
                 Ok(NodeCommsResponse::TransactionOutputs(res))
             },
             NodeCommsRequest::FetchMatchingBlocks(range) => {
@@ -430,86 +354,6 @@ where B: BlockchainBackend + 'static
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
-            NodeCommsRequest::FetchTokens {
-                asset_public_key,
-                unique_ids,
-            } => {
-                debug!(target: LOG_TARGET, "Starting fetch tokens");
-                let mut outputs = vec![];
-                if unique_ids.is_empty() {
-                    // TODO: replace [0..1000] with parameters to allow paging
-                    for output in self
-                        .blockchain_db
-                        .fetch_all_unspent_by_parent_public_key(asset_public_key.clone(), 0..1000)
-                        .await?
-                    {
-                        let mined_height = output.mined_height;
-                        match output.output {
-                            PrunedOutput::Pruned { .. } => {
-                                // TODO: should we return this?
-                            },
-                            PrunedOutput::NotPruned { output } => outputs.push((output, mined_height)),
-                        }
-                    }
-                } else {
-                    for id in unique_ids {
-                        let output = self
-                            .blockchain_db
-                            .fetch_utxo_by_unique_id(Some(asset_public_key.clone()), id, None)
-                            .await?;
-                        if let Some(out) = output {
-                            match out.output {
-                                PrunedOutput::Pruned { .. } => {
-                                    // TODO: should we return this?
-                                },
-                                PrunedOutput::NotPruned { output } => outputs.push((output, out.mined_height)),
-                            }
-                        }
-                    }
-                }
-                Ok(NodeCommsResponse::FetchTokensResponse { outputs })
-            },
-            NodeCommsRequest::FetchContractOutputsForBlock {
-                block_hash,
-                output_type,
-            } => Ok(NodeCommsResponse::FetchOutputsForBlockResponse {
-                outputs: self
-                    .blockchain_db
-                    .fetch_contract_outputs_for_block(block_hash, output_type)
-                    .await?,
-            }),
-            NodeCommsRequest::FetchContractOutputsByContractId {
-                contract_id,
-                output_type,
-            } => Ok(NodeCommsResponse::FetchOutputsByContractIdResponse {
-                outputs: self
-                    .blockchain_db
-                    .fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
-                    .await?,
-            }),
-            NodeCommsRequest::FetchAssetRegistrations { range } => {
-                let top_level_pubkey = PublicKey::default();
-                #[allow(clippy::range_plus_one)]
-                let exclusive_range = (*range.start())..(*range.end() + 1);
-                let outputs = self
-                    .blockchain_db
-                    .fetch_all_unspent_by_parent_public_key(top_level_pubkey, exclusive_range)
-                    .await?
-                    .into_iter()
-                    // TODO: should we return this?
-                    .filter(|o|!o.output.is_pruned())
-                    .collect();
-                Ok(NodeCommsResponse::FetchAssetRegistrationsResponse { outputs })
-            },
-            NodeCommsRequest::FetchAssetMetadata { asset_public_key } => {
-                let output = self
-                    .blockchain_db
-                    .fetch_utxo_by_unique_id(None, Vec::from(asset_public_key.as_bytes()), None)
-                    .await?;
-                Ok(NodeCommsResponse::FetchAssetMetadataResponse {
-                    output: Box::new(output),
-                })
-            },
             NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } => {
                 let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
                 Ok(NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
@@ -573,6 +417,7 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn reconcile_block(
         &mut self,
         source_peer: NodeId,
@@ -584,7 +429,36 @@ where B: BlockchainBackend + 'static
             coinbase_output,
             kernel_excess_sigs: excess_sigs,
         } = new_block;
+        // If the block is empty, we dont have to check ask for the block, as we already have the full block available
+        // to us.
+        if excess_sigs.is_empty() {
+            let block = BlockBuilder::new(header.version)
+                .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+                .with_header(header)
+                .build();
+            return Ok(Arc::new(block));
+        }
 
+        let block_hash = header.hash();
+        // We check the current tip and orphan status of the block because we cannot guarantee that mempool state is
+        // correct and the mmr root calculation is only valid if the block is building on the tip.
+        let current_meta = self.blockchain_db.get_chain_metadata().await?;
+        if header.prev_hash != *current_meta.best_block() {
+            debug!(
+                target: LOG_TARGET,
+                "Orphaned block #{}: ({}), current tip is: #{} ({}). We need to fetch the complete block from peer: \
+                 ({})",
+                header.height,
+                block_hash.to_hex(),
+                current_meta.height_of_longest_chain(),
+                current_meta.best_block().to_hex(),
+                source_peer,
+            );
+            let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
+            return Ok(block);
+        }
+
+        // We know that the block is neither and orphan or a coinbase, so lets ask our mempool for the transactions
         let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
@@ -599,7 +473,7 @@ where B: BlockchainBackend + 'static
                 target: LOG_TARGET,
                 "All transactions for block #{} ({}) found in mempool",
                 header.height,
-                header.hash().to_hex()
+                block_hash.to_hex()
             );
         } else {
             debug!(
@@ -623,7 +497,6 @@ where B: BlockchainBackend + 'static
             }
 
             if !not_found.is_empty() {
-                let block_hash = header.hash();
                 warn!(
                     target: LOG_TARGET,
                     "Peer {} was not able to return all transactions for block #{} ({}). {} transaction(s) not found. \
@@ -655,9 +528,14 @@ where B: BlockchainBackend + 'static
         // Perform a sanity check on the reconstructed block, if the MMR roots don't match then it's possible one or
         // more transactions in our mempool had the same excess/signature for a *different* transaction.
         // This is extremely unlikely, but still possible. In case of a mismatch, request the full block from the peer.
-        let (block, mmr_roots) = self.blockchain_db.calculate_mmr_roots(block).await?;
+        let (block, mmr_roots) = match self.blockchain_db.calculate_mmr_roots(block).await {
+            Err(_) => {
+                let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
+                return Ok(block);
+            },
+            Ok(v) => v,
+        };
         if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots) {
-            let block_hash = block.hash();
             warn!(
                 target: LOG_TARGET,
                 "Reconstructed block #{} ({}) failed MMR check validation!. Requesting full block. Error: {}",
@@ -781,7 +659,7 @@ where B: BlockchainBackend + 'static
                 metrics::rejected_blocks(block.header.height, &block_hash).inc();
                 warn!(
                     target: LOG_TARGET,
-                    "Peer {} sent an invalid header: {}",
+                    "Peer {} sent an invalid block: {}",
                     source_peer
                         .as_ref()
                         .map(ToString::to_string)

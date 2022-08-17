@@ -34,7 +34,16 @@ mod benches {
     use blake2::Blake2b;
     use criterion::{criterion_group, BatchSize, Criterion};
     use digest::Digest;
-    use tari_mmr::MerkleMountainRange;
+    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+    use tari_mmr::{Hash, MerkleMountainRange};
+
+    hash_domain!(
+        MmrBenchTestHashDomain,
+        "com.tari.tari_project.base_layer.mmr.benches",
+        1
+    );
+    pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
+    pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
 
     fn get_hashes(n: usize) -> Vec<Vec<u8>> {
         (0..n).map(|i| Blake2b::digest(&i.to_le_bytes()).to_vec()).collect()
@@ -43,7 +52,7 @@ mod benches {
     fn build_mmr(c: &mut Criterion) {
         c.bench_function("Build MMR", move |b| {
             let hashes = get_hashes(1000);
-            let mut mmr = MerkleMountainRange::<Blake2b, _>::new(Vec::default());
+            let mut mmr = TestMmr::new(Vec::default());
             b.iter_batched(
                 || hashes.clone(),
                 |hashes| {

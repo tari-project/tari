@@ -39,12 +39,6 @@ message Commitments{
     repeated tari.types.Commitment commitments = 1;
 }
 
-message FetchHeadersAfter {
-    repeated bytes hashes = 1;
-    bytes stopping_hash = 2;
-}
-
-
 message NewBlockTemplateRequest{
     uint64 algo = 1;
     uint64 max_weight = 2;

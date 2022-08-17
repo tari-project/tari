@@ -4,20 +4,19 @@
 use log::*;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::hex::Hex;
-use tari_wallet::tokens::Token;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, Paragraph, Row, Table, TableState, Wrap},
+    widgets::{Block, Borders, Paragraph, TableState, Wrap},
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{
-    components::{balance::Balance, contacts_tab::ContactsTab, styles, Component, KeyHandled},
+    components::{balance::Balance, contacts_tab::ContactsTab, Component, KeyHandled},
     state::{AppState, UiTransactionSendStatus},
     widgets::{draw_dialog, WindowedListState},
 };
@@ -196,6 +195,7 @@ impl SendTab {
         }
     }
 
+    #[allow(dead_code)]
     fn draw_contacts<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
@@ -226,50 +226,6 @@ impl SendTab {
 
         let column_list = ContactsTab::create_column_view(windowed_view);
         column_list.render(f, list_areas[1], &mut list_state);
-    }
-
-    fn draw_tokens<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
-        let tokens = app_state.get_owned_tokens();
-
-        let tokens: Vec<_> = tokens
-            .iter()
-            .filter(|&token| token.output_status() == "Unspent")
-            .map(|r| {
-                (
-                    r.name().to_string(),
-                    r.output_status().to_string(),
-                    r.asset_public_key().to_hex(),
-                    Vec::from(r.unique_id()).to_hex(),
-                    r.owner_commitment().to_hex(),
-                )
-            })
-            .collect();
-        let rows: Vec<_> = tokens
-            .iter()
-            .map(|v| {
-                Row::new(vec![
-                    v.0.as_str(),
-                    v.1.as_str(),
-                    v.2.as_str(),
-                    v.3.as_str(),
-                    v.4.as_str(),
-                ])
-            })
-            .collect();
-        let table = Table::new(rows)
-            .header(Row::new(vec!["Name", "Status", "Asset Pub Key", "Unique ID", "Owner"]).style(styles::header_row()))
-            .block(Block::default().title("Tokens").borders(Borders::ALL))
-            .widths(&[
-                Constraint::Length(30),
-                Constraint::Length(20),
-                Constraint::Length(32),
-                Constraint::Length(32),
-                Constraint::Length(64),
-            ])
-            .highlight_style(styles::highlight())
-            .highlight_symbol(">>");
-        f.render_stateful_widget(table, area, &mut self.table_state)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -312,8 +268,6 @@ impl SendTab {
                                     match Handle::current().block_on(app_state.send_one_sided_transaction(
                                         self.to_field.clone(),
                                         amount.into(),
-                                        self.selected_unique_id.clone(),
-                                        None,
                                         fee_per_gram,
                                         self.message_field.clone(),
                                         tx,
@@ -332,8 +286,6 @@ impl SendTab {
                                         app_state.send_one_sided_to_stealth_address_transaction(
                                             self.to_field.clone(),
                                             amount.into(),
-                                            self.selected_unique_id.clone(),
-                                            None,
                                             fee_per_gram,
                                             self.message_field.clone(),
                                             tx,
@@ -353,8 +305,6 @@ impl SendTab {
                                     match Handle::current().block_on(app_state.send_transaction(
                                         self.to_field.clone(),
                                         amount.into(),
-                                        self.selected_unique_id.clone(),
-                                        None,
                                         fee_per_gram,
                                         self.message_field.clone(),
                                         tx,
@@ -480,10 +430,6 @@ impl<B: Backend> Component<B> for SendTab {
         if self.show_contacts {
             self.draw_contacts(f, areas[2], app_state);
         };
-
-        if self.send_input_mode == SendInputMode::Amount {
-            self.draw_tokens(f, areas[2], app_state);
-        }
 
         let rx_option = self.send_result_watch.take();
         if let Some(rx) = rx_option {
@@ -658,15 +604,6 @@ impl<B: Backend> Component<B> for SendTab {
             let index = self.table_state.selected().unwrap_or_default();
             if index == 0 {
                 self.table_state.select(None);
-                self.selected_unique_id = None;
-            } else {
-                let tokens: Vec<&Token> = app_state
-                    .get_owned_tokens()
-                    .iter()
-                    .filter(|&token| token.output_status() == "Unspent")
-                    .collect();
-                self.selected_unique_id = Some(Vec::from(tokens[index - 1].unique_id()));
-                self.table_state.select(Some(index - 1));
             }
         } else {
         }
@@ -677,19 +614,7 @@ impl<B: Backend> Component<B> for SendTab {
             self.contacts_list_state.set_num_items(app_state.get_contacts().len());
             self.contacts_list_state.next();
         } else if self.send_input_mode == SendInputMode::Amount {
-            let index = self.table_state.selected().map(|s| s + 1).unwrap_or_default();
-            let tokens: Vec<&Token> = app_state
-                .get_owned_tokens()
-                .iter()
-                .filter(|&token| token.output_status() == "Unspent")
-                .collect();
-            if index > tokens.len().saturating_sub(1) {
-                self.table_state.select(None);
-                self.selected_unique_id = None;
-            } else {
-                self.selected_unique_id = Some(Vec::from(tokens[index].unique_id()));
-                self.table_state.select(Some(index));
-            }
+            self.table_state.select(None);
         } else {
         }
     }

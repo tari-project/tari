@@ -55,13 +55,17 @@ use tari_core::{
         },
         CryptoFactories,
     },
+    KernelMmr,
+    KernelMmrHasherBlake256,
+    MutableOutputMmr,
+    WitnessMmr,
+    WitnessMmrHasherBlake256,
 };
 use tari_crypto::{
-    hash::blake2::Blake256,
     keys::PublicKey as PublicKeyTrait,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
-use tari_mmr::MutableMmr;
+use tari_mmr::{Hash, MutableMmr};
 use tari_script::script;
 
 pub fn create_coinbase(
@@ -151,11 +155,25 @@ fn print_new_genesis_block(network: Network) {
         .build()
         .unwrap();
 
-    header.kernel_mr = kernel.hash();
+    let mut kernel_mmr = KernelMmr::new(Vec::new());
+    kernel_mmr.push(kernel.hash()).unwrap();
+
+    let mut witness_mmr = WitnessMmr::new(Vec::new());
+    witness_mmr.push(utxo.witness_hash()).unwrap();
+    let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
+    output_mmr.push(utxo.hash()).unwrap();
+
+    header.kernel_mr = kernel_mmr.get_merkle_root().unwrap();
     header.kernel_mmr_size += 1;
-    header.output_mr = utxo.hash();
-    header.witness_mr = utxo.witness_hash();
+    header.output_mr = output_mmr.get_merkle_root().unwrap();
+    header.witness_mr = witness_mmr.get_merkle_root().unwrap();
     header.output_mmr_size += 1;
+
+    // header.kernel_mr = kernel.hash();
+    // header.kernel_mmr_size += 1;
+    // header.output_mr = utxo.hash();
+    // header.witness_mr = utxo.witness_hash();
+    // header.output_mmr_size += 1;
 
     let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
 
@@ -170,19 +188,22 @@ fn print_new_genesis_block(network: Network) {
 
     // Note: This is printed in the same order as needed for 'fn get_dibbler_genesis_block_raw()'
     println!();
+    println!("{} genesis block", network);
+    println!();
     println!(
-        "kernel excess_sig: public_nonce {}, signature {}",
+        "kernel excess_sig: public_nonce {} signature {}",
         block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
         block.body.kernels()[0].excess_sig.get_signature().to_hex()
     );
     println!();
     println!(
-        "Coinbase metasig: public_nonce {}, signature_u {}, signature_v {}",
+        "Coinbase metasig: public_nonce {} signature_u {} signature_v {}",
         block.body.outputs()[0].metadata_signature.public_nonce().to_hex(),
         block.body.outputs()[0].metadata_signature.u().to_hex(),
         block.body.outputs()[0].metadata_signature.v().to_hex(),
     );
     println!();
+    println!("Genesis coinbase maturity: {}", lock_height);
     println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
     println!("UTXO range_proof: {}", block.body.outputs()[0].proof.to_hex());
     println!(
@@ -218,6 +239,9 @@ pub fn create_genesis_block(
 
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
+    type BaseLayerKernelMutableMmr = MutableMmr<KernelMmrHasherBlake256, Vec<Hash>>;
+    type BaseLayerWitnessMutableMmr = MutableMmr<WitnessMmrHasherBlake256, Vec<Hash>>;
+
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
     body.sort();
@@ -226,13 +250,13 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = MutableMmr::<Blake256, _>::new(kernel_hashes, Bitmap::create())
+    header.kernel_mr = BaseLayerKernelMutableMmr::new(kernel_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.output_mr = MutableMmr::<Blake256, _>::new(out_hashes, Bitmap::create())
+    header.output_mr = MutableOutputMmr::new(out_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
-    header.witness_mr = MutableMmr::<Blake256, _>::new(rp_hashes, Bitmap::create())
+    header.witness_mr = BaseLayerWitnessMutableMmr::new(rp_hashes, Bitmap::create())
         .unwrap()
         .get_merkle_root()?;
     Ok(Block { header, body })

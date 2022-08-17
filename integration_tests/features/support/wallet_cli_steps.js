@@ -244,26 +244,6 @@ When(
 );
 
 Then(
-  "I register asset {word} on wallet {word} via command line",
-  { timeout: 20 * 1000 },
-  async function (asset_name, wallet_name) {
-    let wallet = this.getWallet(wallet_name);
-    let output = await wallet_run_command(
-      wallet,
-      `register-asset ${asset_name}`
-    );
-    console.log("output buffer:", output.buffer);
-    expect(output.buffer).to.have.string("Registering asset");
-    expect(output.buffer).to.have.string("with public key:");
-    // hack out the public key
-    let split = output.buffer.split("with public key: ");
-    split = split[1].split("\n");
-    this.asset_public_key = split[0];
-    expect(this.asset_public_key.length).to.equal(64);
-  }
-);
-
-Then(
   "I publish a contract definition {word} from file {string} on wallet {word} via command line",
   { timeout: 120 * 1000 },
   async function (definition_name, relative_file_path, wallet_name) {

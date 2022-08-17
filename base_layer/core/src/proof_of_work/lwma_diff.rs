@@ -1,3 +1,8 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+// Portions of the code:
+
 // LWMA-1 for BTC & Zcash clones
 // Copyright (c) 2017-2019 The Bitcoin Gold developers, Zawy, iamstenman (Microbitcoin)
 // MIT License

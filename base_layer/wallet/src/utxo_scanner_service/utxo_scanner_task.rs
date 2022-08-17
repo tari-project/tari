@@ -517,25 +517,24 @@ where TBackend: WalletBackend + 'static
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(UnblindedOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
         let mut found_outputs: Vec<(UnblindedOutput, String, ImportStatus, TxId)> = Vec::new();
-        if self.mode == UtxoScannerMode::Recovery {
-            found_outputs.append(
-                &mut self
-                    .resources
-                    .output_manager_service
-                    .scan_for_recoverable_outputs(outputs.clone())
-                    .await?
-                    .into_iter()
-                    .map(|ro| {
-                        (
-                            ro.output,
-                            self.resources.recovery_message.clone(),
-                            ImportStatus::Imported,
-                            ro.tx_id,
-                        )
-                    })
-                    .collect(),
-            );
-        };
+        found_outputs.append(
+            &mut self
+                .resources
+                .output_manager_service
+                .scan_for_recoverable_outputs(outputs.clone())
+                .await?
+                .into_iter()
+                .map(|ro| {
+                    (
+                        ro.output,
+                        self.resources.recovery_message.clone(),
+                        ImportStatus::Imported,
+                        ro.tx_id,
+                    )
+                })
+                .collect(),
+        );
+
         found_outputs.append(
             &mut self
                 .resources

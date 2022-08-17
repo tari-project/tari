@@ -22,7 +22,7 @@
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{BlockHash, PublicKey};
+use tari_common_types::types::BlockHash;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -33,6 +33,7 @@ use tari_core::{
         BlockchainDatabaseConfig,
         ChainStorageError,
         DbTransaction,
+        MmrTree,
         Validators,
     },
     consensus::{emission::Emission, ConsensusConstantsBuilder, ConsensusManagerBuilder},
@@ -47,14 +48,12 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::spend_utxos,
-        transaction_components::{OutputFeatures, OutputType},
         CryptoFactories,
     },
     tx,
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 use tari_utilities::Hashable;
@@ -238,6 +237,44 @@ fn rewind_to_height() {
     assert_eq!(db.get_height().unwrap(), 3);
     db.rewind_to_height(1).unwrap();
     assert_eq!(db.get_height().unwrap(), 1);
+}
+
+#[test]
+fn test_coverage_chain_storage() {
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let network = Network::LocalNet;
+    let rules = ConsensusManagerBuilder::new(network).build();
+    let db = create_test_db();
+    assert_eq!(db.kernel_count().unwrap(), 0);
+    let store = BlockchainDatabase::new(
+        db,
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+        DifficultyCalculator::new(rules.clone(), Default::default()),
+    )
+    .unwrap();
+
+    let block0 = store.fetch_block(0).unwrap();
+    append_block(
+        &store,
+        &block0.clone().try_into_chain_block().unwrap(),
+        vec![],
+        &rules,
+        1.into(),
+    )
+    .unwrap();
+    assert_eq!(store.fetch_all_reorgs().unwrap(), vec![]);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Kernel).unwrap(), 3);
+    assert_eq!(store.fetch_mmr_size(MmrTree::Utxo).unwrap(), 4002);
+
+    let mut txn = DbTransaction::new();
+    txn.insert_bad_block(block0.hash().clone(), 0);
+    store.commit(txn).unwrap();
 }
 
 #[test]
@@ -1009,132 +1046,6 @@ fn store_and_retrieve_blocks() {
     assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
     assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
     assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
-}
-
-#[test]
-#[allow(clippy::erasing_op)]
-#[allow(clippy::too_many_lines)]
-fn asset_unique_id() {
-    let mut rng = rand::thread_rng();
-    let network = Network::LocalNet;
-    let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let tx = txn_schema!(
-        from: vec![outputs[0][0].clone()],
-        to: vec![10 * T, 10 * T, 10 * T, 10 * T, 10 * T]
-    );
-
-    generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    let unique_id1 = vec![1u8; 3];
-
-    // create a new NFT
-    let (_, asset) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset.clone()),
-        unique_id: Some(unique_id1.clone()),
-        ..Default::default()
-    };
-
-    // check the output is not stored in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
-        .unwrap();
-    assert!(output_info.is_none());
-
-    // mint it to the chain
-    let tx = txn_schema!(
-        from: vec![outputs[1][0].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
-    );
-
-    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    assert!(result.is_added());
-
-    // check it is in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
-        .unwrap()
-        .unwrap();
-    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
-
-    // attempt to mint the same unique id for the same asset
-    let tx = txn_schema!(
-        from: vec![outputs[1][1].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
-    );
-
-    let err = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap_err();
-    assert!(matches!(err, ChainStorageError::ValidationError {
-        source: ValidationError::ContainsDuplicateUtxoUniqueID
-    }));
-
-    // new unique id, does not exist yet
-    let unique_id2 = vec![2u8; 3];
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset.clone()),
-        unique_id: Some(unique_id2.clone()),
-        ..Default::default()
-    };
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
-        .unwrap();
-    assert!(output_info.is_none());
-
-    // mint unique_id2
-    let tx = txn_schema!(
-        from: vec![outputs[1][2].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
-    );
-    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    assert!(result.is_added());
-
-    // check it is in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
-        .unwrap()
-        .unwrap();
-    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
-
-    // same id for a different asset is fine
-    let (_, asset2) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset2.clone()),
-        unique_id: Some(unique_id1.clone()),
-        ..Default::default()
-    };
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
-        .unwrap();
-    assert!(output_info.is_none());
-
-    // mint
-    let tx = txn_schema!(
-        from: vec![outputs[1][3].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
-    );
-    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    assert!(result.is_added());
-
-    // check it is in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
-        .unwrap()
-        .unwrap();
-    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 }
 
 #[test]

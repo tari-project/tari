@@ -75,26 +75,27 @@ pub fn get_igor_genesis_block() -> ChainBlock {
     // lets get the block
     let block = get_igor_genesis_block_raw();
 
-    // user this code to generate the correct header mr fields for igor if the gen block changes.
+    // Use this code to generate the correct header mr fields for igor if the gen block changes.
+
     // use croaring::Bitmap;
-    // use tari_mmr::{MerkleMountainRange, MutableMmr};
-    // use tari_crypto::hash::blake2::Blake256;
     //
-    // let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+    // use crate::{KernelMmr, MutableOutputMmr, WitnessMmr};
+    //
+    // let mut kernel_mmr = KernelMmr::new(Vec::new());
     // for k in block.body.kernels() {
     //     println!("k: {}", k);
     //     kernel_mmr.push(k.hash()).unwrap();
     // }
     //
-    // let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
-    // let mut output_mmr = MutableMmr::<Blake256, _>::new(Vec::new(), Bitmap::create()).unwrap();
+    // let mut witness_mmr = WitnessMmr::new(Vec::new());
+    // let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     //
     // for o in block.body.outputs() {
     //     witness_mmr.push(o.witness_hash()).unwrap();
     //     output_mmr.push(o.hash()).unwrap();
     // }
     //
-    // println!("kernel mr: {}",kernel_mmr.get_merkle_root().unwrap().to_hex());
+    // println!("kernel mr: {}", kernel_mmr.get_merkle_root().unwrap().to_hex());
     // println!("witness mr: {}", witness_mmr.get_merkle_root().unwrap().to_hex());
     // println!("output mr: {}", output_mmr.get_merkle_root().unwrap().to_hex());
 
@@ -111,32 +112,34 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 }
 
 fn get_igor_genesis_block_raw() -> Block {
+    // Note: Use print_new_genesis_block_igor in core/tests/helpers/block_builders.rs to generate the required fields
+    // below
     let sig = Signature::new(
-        PublicKey::from_hex("12f32084748379badbd3dd52426b329b6363fb7423b111bf7f7ae2295c0a5803").unwrap(),
-        PrivateKey::from_hex("ebd416ca6022826c4765339aef656e6d0b31d07d63364fd9a4acddc7ebf3a700").unwrap(),
+        PublicKey::from_hex("46f23560fb880900d03552e98ee511bceb03692635b3a50fe42be43e9fe80507").unwrap(),
+        PrivateKey::from_hex("8c781c1af074126539a950ca171b343d51659fb996b69d6f17e412cb952a610a").unwrap(),
     );
     let coinbase_meta_sig = CommitmentSignature::new(
-        Commitment::from_hex("464de7d3e6ac0e67c2cb3959a886ef62b676bd95713daa4fa8b1f1b605700a5e").unwrap(),
-        PrivateKey::from_hex("ec90eb6a67481ada4f123b1bb7952608d7e796ba4914fb8f372aa39dac5ad20a").unwrap(),
-        PrivateKey::from_hex("5b0493bec6d74c43fa82bc36afa94f9d47edead04b1112a5ac63cfd98eaeb501").unwrap(),
+        Commitment::from_hex("5231d399cbc20df114953b04ee48987dc10b4508d936cd047a5e9764e587517c").unwrap(),
+        PrivateKey::from_hex("ae6c37d88b6df65295d30a09c0a92db27ee92b58f83379de5952b68af6040a09").unwrap(),
+        PrivateKey::from_hex("a6d7fab484d934127905925bf5cb6c163cbf91db14af3809cfd8ca83453e0803").unwrap(),
     );
     let mut body = AggregateBody::new(
         vec![],
         vec![TransactionOutput::new_current_version(
             OutputFeatures {
                 output_type: OutputType::Coinbase,
-                maturity: 3,
+                maturity: 6,
                 .. Default::default()
             },
             Commitment::from_hex(
-                "d0bfb79757abaf8cf3ba1824af5f9e8acaadb69192a6e6c5dd2ec47f9b3f2809",
+                "166e79a49c2ab50d2ef3c8246418c6e9897071dcdeaf3b6aba1ae600ebbc8202",
             )
                 .unwrap(),
-            BulletRangeProof::from_hex("0144941a0046c02bc3c874379f3fef45965679e0e204628484a6348138106dbc5d1e17287d9a5c00b821c77658aafb34ed1a6774a56740850e68c9301fba290a555c14d6614d29273b4d0826647fb587c2441d96e852ce3b1ee2807095e4e18922caf103730a0307dee152b322e656881e03640dc6b938a071b34a5813c2d7400874f0abcfa572fe13bf45608161b3dfb058eaef9c2d833b407f3ed4c5da9f37562a68e798f3e927e4d7d9ab470dd56dc5ddb1857d275898f0e3687a832a51e33892e9c5afb3730dd923b09cb8801d0b10761c7a3dffe70f44857d6665ff6b127814fc438484e3a19189c26e9d2daf8dbec132086c36d282e1e62f515d85af130a9e347d897c25fd49996468e014e9c3b80fe9592e229ad0bd71938b4e1398683c26a232f027418b0f1edffbc17f3ec9caf7862a1648625056c9dd510a4b8fc632862e74cc8d4378a1c0cc9aef6013bedd73db79c469a3ef9a45aa724f123bd04abe50f76f0d6b65676998d0759338838cd00e36c8961da94b790cbb55801b8e395a5c8f20a1528c0e57ef8d1004037f309713a819b79fa819fab0cdcdac924b474a3bf7c8925cbcc519b286dedd3e10825d8b7580d0ee5c5acc0f3a4a0629fe21a246cfe07a3719cd4db2c3fd8bab50bc19934b7a935664741a5a3be190111546a9706c99114cdca067bfa24d831fe43b7910e6cf8fdf1395949386a603e27401719b8315b68aec3a2f889a036b62595b02f5094780afcfa3643dd755a6b64e0069b4fe5b96108e7c48c57836717bae0dec6f63c0585f10aec90a3d97551c6702").unwrap(),
+            BulletRangeProof::from_hex("01007308cceb1c168fcf65174e3d5fccd466e84f36e541a6254a5677b48c186b02547b65e98f3319e83ec240485b7f5448912d8b9e656a6bf471e1a98e435f2978ba32a1e375cefc17e3f42f28b6b86bc2fa07126c15c9812ecfa5f7eebaaa5308169366cea3c6a1524ddbb9d1804193cc7a1fb149ddc70eee72c4792c0039206132a2f13dfe823a815d92337d35656f1983a31d440ad9e5fa7b47aaa2b682ba7ed29cf3ae681b730f49555d830025a50eaadaae7f62b5ce1107598130b904747292419e1520c1645547b1d046f5c1f71978eafb8edc485b7ff40e9633f1fed5446081bfe51c54cf6567cc6c14fa0715ddc285548acb256d0d52c3646cdb9b797dbceb2843d3b26d264a130da2a413b78b1e3b026a0f32ccd080cc7876b4fe0a702a92484dbafeea9470103ea380e0906bc26a43ea6215e0570a968530c1c9724d3ac5a7912f468adb6d82d1f5e34fdd43668f3b41ade8bf6c3b2148d1ac3f957c5883e60367fe906a74338837d0e98ad29db37e38c708c6c978d0e75ea656d26b2a8b38169f207c0f57f97f6169bda0427bc31430cf51671d6bb566315e19a6522ef61fb41842374285e509925a0966b66733fe2dc8bd190ba7d77c55f0b8401d78e08432d2950ff6a166ade9476a5165c7ccedaab4520b617530c9dbf83efe0a7f9a75b23e34e3ca548336cbbf696817ccbfc6467c5c9cec989050d8e7a2300ad5d65f90ba7b3fad98056114461cf1f06466a25a911c07467aad936eae99e001bc67377f450b60ef6f649e77ff495d382c39449c24d617ca54502209c1129e06").unwrap(),
             // For genesis block: A default script can never be spent, intentionally
             script!(Nop),
             // Script offset never checked for coinbase, thus can use default
-            PublicKey::from_hex("c41fd076155e15035e26109c3d5a674d640ca778da9f88c05205c6db76b0a35e").unwrap(),
+            PublicKey::from_hex("5c498523022af6acf2bc940122a3fbe82b90ae98a16707e1d942bb6ced94ba11").unwrap(),
             // For genesis block: Metadata signature will never be checked
             coinbase_meta_sig,
             Covenant::default(),
@@ -149,7 +152,7 @@ fn get_igor_genesis_block_raw() -> Block {
             MicroTari(0),
             0,
             Commitment::from_hex(
-                "705a54b17c56e7a48d97b1fe1cc1fb7c0cf0da2e2cf24059e11989c533520f49",
+                "6454fc05c089122a833bb86311dd43a5f984730d110ba6d11a354ff90c240625",
             )
                 .unwrap(),
             sig,None
@@ -158,7 +161,7 @@ fn get_igor_genesis_block_raw() -> Block {
     );
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("3 Aug 2022 10:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("08 Aug 2022 10:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -167,10 +170,10 @@ fn get_igor_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
-            output_mr: from_hex("25dc765bab606150c6fe006d973535dfa895893df37d24d1b88f903c58a939ce").unwrap(),
-            witness_mr: from_hex("3d7b50fa362a1dd010b5f7f58389adf12d11255ac453b18fb8b91cf4a78c565f").unwrap(),
+            output_mr: from_hex("3674e705fec6f4fd46357bb7fe56920febde9fc6d29633bc9b1e63320163a7fb").unwrap(),
+            witness_mr: from_hex("883eb8d91e4d7454ca9b8f1ede38117c6a1ea990d521902e9035e68bc6ed9b8b").unwrap(),
             output_mmr_size: 1,
-            kernel_mr: from_hex("17fff18a59f38188fe7a8e2c2f69c14c13838e2166eddc01f741b95999c4d7b5").unwrap(),
+            kernel_mr: from_hex("43aa6360a31d12460a4c6ba238394a5b7e838b4c8706c6773c1378096b15e44c").unwrap(),
             kernel_mmr_size: 1,
             input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: PrivateKey::from_hex(
@@ -216,17 +219,17 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // NB: `esmerlada_genesis_sanity_check` must pass
 
     // use croaring::Bitmap;
-    // use tari_mmr::{MerkleMountainRange, MutableMmr};
-    // use tari_crypto::hash::blake2::Blake256;
     //
-    // let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+    // use crate::{KernelMmr, MutableOutputMmr, WitnessMmr};
+    //
+    // let mut kernel_mmr = KernelMmr::new(Vec::new());
     // for k in block.body.kernels() {
     //     println!("k: {}", k);
     //     kernel_mmr.push(k.hash()).unwrap();
     // }
     //
-    // let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
-    // let mut output_mmr = MutableMmr::<Blake256, _>::new(Vec::new(), Bitmap::create()).unwrap();
+    // let mut witness_mmr = WitnessMmr::new(Vec::new());
+    // let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     //
     // for o in block.body.outputs() {
     //     witness_mmr.push(o.witness_hash()).unwrap();
@@ -241,9 +244,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // println!("output mr: {}", block.header.output_mr.to_hex());
 
     // Hardcode the Merkle roots once they've been computed above
-    block.header.kernel_mr = from_hex("06beaa77e5ccc73ed92aa7945988d0cf72a351f580f6501732c982a12b7b14ac").unwrap();
-    block.header.witness_mr = from_hex("aea6634a08c7637135a9ff099532de9cdd2ae6a7f9969e59047c6f18cf79d945").unwrap();
-    block.header.output_mr = from_hex("b44dfaf83390bfd52c9dfad18855d4eca294ed2c36213a2e11ab66448d1e10ba").unwrap();
+    block.header.kernel_mr = from_hex("e28cf2883b0d98eaf3b92ca3bbf273cb03ea076b93d72418d24e76b38fc064c1").unwrap();
+    block.header.witness_mr = from_hex("f217c83135a1813d63302be7332c0916e428597332f567a78554303ddcf94dc0").unwrap();
+    block.header.output_mr = from_hex("a316bac1be66adebc279b25f4095cadceffc7769550c8074c094ab49e19b57b0").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
@@ -258,15 +261,16 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 }
 
 fn get_esmeralda_genesis_block_raw() -> Block {
-    // Note: Use print_new_genesis_block in core/tests/helpers/block_builders.rs to generate the required fields below
+    // Note: Use print_new_genesis_block_esmeralda in core/tests/helpers/block_builders.rs to generate the required
+    // fields below
     let excess_sig = Signature::new(
-        PublicKey::from_hex("fc33235905e81e76708c7420a1a885be6411c76132a07462a9f0ca8dd714d108").unwrap(),
-        PrivateKey::from_hex("dc503f7f28d56f9f4e71196c1c977c47581aebf17a5b3aa3c96edeee17df360d").unwrap(),
+        PublicKey::from_hex("2e6e1612ecc4e73408ec49e182807e1e0d1cc19a27044de7c835cada1b4a8a34").unwrap(),
+        PrivateKey::from_hex("8c75a382785751d8a9b9e82c6ea1163781064faf70289aaebba69cd798134403").unwrap(),
     );
     let coinbase_meta_sig = CommitmentSignature::new(
-        Commitment::from_hex("70e5d9c282bb5aa9c4984a5dc23fd7aa5f5eca7b9d43bae84a484a4ab6495046").unwrap(),
-        PrivateKey::from_hex("da5942187deaa76738d393a27c75d9c28c747899b21720d261f671f459801307").unwrap(),
-        PrivateKey::from_hex("66d427c1e1266f969a3fb0bb001dad021684c39e4b65a4ceda2d2e1382a53300").unwrap(),
+        Commitment::from_hex("74524345a8c1c7525c96a8580b3b847cdffde203e181825a233b6a98bd9eae18").unwrap(),
+        PrivateKey::from_hex("b99987bf957730cd5f4986a1d8d793f88ed5af4d50eb942d58a97b05bd97aa0a").unwrap(),
+        PrivateKey::from_hex("2c036580f0f60bf44f0b9a4a5045f5ab437fa87b136f47b548e56b9eb4ce1b00").unwrap(),
     );
     let coinbase = TransactionOutput::new(
         TransactionOutputVersion::get_current_version(),
@@ -275,20 +279,14 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             output_type: OutputType::Coinbase,
             maturity: 3,
             metadata: Vec::new(),
-            unique_id: None,
             sidechain_features: None,
-            parent_public_key: None,
-            asset: None,
-            mint_non_fungible: None,
-            sidechain_checkpoint: None,
-            committee_definition: None,
         },
-        Commitment::from_hex("2ee8be354f52193678ed5edc86cb2ec2382598f68bad1038d858a4823d83f120").unwrap(),
-        BulletRangeProof::from_hex("01743b0b7bb056f75921533681cd9f7292e618fc02cf156e3732cd6f58863fe829480a2c0c36f222eb59dbdc06d8d62c231163cf80a30d9fba9d230bf96e8d5946e05fe995852ec0034c2dfae2c9ccd21a10c24a7268ed8a24fa440aac5abc4e0c1a0947c658456a7ac432ffd44cbe202a8f6c93dabb7a3754caeefd8e6e03ad6d3c58c1d86d36d9d33aa8ddfcbdbe6bb50472e421b43861f3e0520b6c0cec9a3e2410f74b5628d20516a61fb44544d409768febb37499eb5f8c307daa87187c569ca61a6440c36163f8d81dc0ac47564215c6547501c1d3b2114784abf1a4137ce64bd611d2df58838e0dc6f53de037b4d01b3b8f6cb316574af870767b8a9867c49f5080ed291380c268c47dae34705e25dbe52070b7f3a61c242010d967465cc058f7b9f938040dfd485639a7378a3fa6e8be1d86e1bed81dab46e58c82d5040057fd622b1e552248a184f12e9620c85607a3236e738b50916aa13427268f5202af4973f98e55621a936981baee4cb8bcb0b885c4694d643d95ec0545f46d6858c00937475382bf0a49b2471caad9a7424b5775599218ea51db3b56bebd9f7d882873eadf26d93533d810547fb23f5468f152f80aa8eb92e649d1e7818f726de8e2e334b12f14d0537c015c3df6fc0cd96429c11a83e5685fc754855a6d420f7e7b5b5893d906ab29bc96ca70d639231d91cf5df3d60623c693337adecaa905b2be74aee2eeeb4933116a4c1f1f62f43063858c82aa1e59d72ade21767df10a607a72835b640adc3de7d178bc302596cef8d6c80dfc18a55809c6f02399a20f").unwrap(),
+        Commitment::from_hex("b2e78ac05e16f84187421842fbd12ff572cc9f1b37ddc639b06faac8f8e5270c").unwrap(),
+        BulletRangeProof::from_hex("0102804f62b404756c4e6ac0ca4c6b80de8cb9e587f906297dfdfb2868ceb89b4c38025068e435a54202efc8ea8eb62c1a9ba9397b60c32e6a15de70ab48fe154f987719c1e75b2c2c4059262150a8f2b6af6a9dc3296ce3fa9113fb348a3f5c7dea60432c369a61e425bbcd81b32ebfe075e97a69e4425a0992d587042788cc608af5a3b6e7f4e331e868b63f53b62a6d4379bfdbc34f300c64b59d53a943a8269cf9d92da950a78187536454bea76e2b1664345775b9b991ba63d3f463be06360e642394fc002435c7e200a51899909e2d06efb7859bbe590bd3b6a5ac662e6ee672e17b7f699efa62ac4cc0bb6c19da97b4dc93c421083e9d69e12aeeb49529e4d252b09dc4f1307f85d911a0b11e2cea120d7fed400c7d3e064ce4a36af04316f2f13ecfbf4e2dbdc9f5acfb7de61fb533e5a24499715be52ade128706fd2f0a33f6666631e3adb7e131f60e0e1a8d37f46df590031da629f78a984f5fe048f04cfa588461acd4fafe0b66599cac91066845fe02c7c55655db41797056dc0d2cd5bb27f9bec6ea7b276268c4f1e1fcb529a015cf12caecc6ae38ae3dddd35c42a0d0d131e5c7e468de63c6ecd47949c6b11c97bd35f0d77a92319bb0df6e1ae016626bf9b32f61b6ac92cc269f301f208cb3268f8f11e10c0b156e0e2b5d5ef6f2dfa4a3b55a7e9a9a6291f04349c19db9cdb3a63768afcecbb58057996d004480f075784c889b832f9a9438f22d98f6f1e44cb59b6bdc490e600c54be710785eaf8e7d4b1a9bee6c82581df3ab928180653e30f1340c01e752a0035f94f0b").unwrap(),
         // A default script can never be spent, intentionally
         script!(Nop),
         // The Sender offset public key is not checked for coinbase outputs
-        PublicKey::from_hex("4e173863c5845030a4e210d586043d5bda166d2b83bb221547a5f83a0ea29637").unwrap(),
+        PublicKey::from_hex("34b2aacea9871635fd0fb7d7b091b71a768d11dc63a2061769b30fb591452722").unwrap(),
         // For genesis block: Metadata signature will never be checked
         coinbase_meta_sig,
         // Covenant
@@ -302,14 +300,14 @@ fn get_esmeralda_genesis_block_raw() -> Block {
         KernelFeatures::COINBASE_KERNEL,
         MicroTari(0),
         0,
-        Commitment::from_hex("ac127a73fe2b93d5daf250bcebbfc04bae24118bf024868d7802ff36bfc74d6a").unwrap(),
+        Commitment::from_hex("4ecf63f2c345b1231664abb0e6afea4fc050275d5945eeed454a10fa4e641936").unwrap(),
         excess_sig,
         None,
     );
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("03 Aug 2022 10:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("08 Aug 2022 10:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -318,10 +316,10 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
-            output_mr: from_hex("5797a5c7db67010b9e3e515c62e7f812397013705f90e65d71e16c25b04f3746").unwrap(),
-            witness_mr: from_hex("b124bc9cea40c57fd97e2ab85c405c006c546c758d75dee5d8fd7630655ef330").unwrap(),
+            output_mr: from_hex("56309c4116b41b3135f6622dcecfeb257cd8ef4ba7b3d3c71da31427d5394750").unwrap(),
+            witness_mr: from_hex("863a50383a7a1e2cf12aab38ecb6701ed94875751cb69b7ecd0618d738112c20").unwrap(),
             output_mmr_size: 1,
-            kernel_mr: from_hex("8fa8517a3ee0f1cfc82e460a3a9ff441ed2c194f4a3c990ae2488ce6af783ebe").unwrap(),
+            kernel_mr: from_hex("3295997cf718a0ed4cfcbf768d535abe8f40d1444703b196c833056828c65f98").unwrap(),
             kernel_mmr_size: 1,
             input_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: PrivateKey::from_hex(
@@ -344,10 +342,9 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 
 #[cfg(test)]
 mod test {
+
     use croaring::Bitmap;
     use tari_common_types::types::Commitment;
-    use tari_crypto::hash::blake2::Blake256;
-    use tari_mmr::{MerkleMountainRange, MutableMmr};
 
     use super::*;
     use crate::{
@@ -355,6 +352,9 @@ mod test {
         test_helpers::blockchain::create_new_blockchain_with_network,
         transactions::{transaction_components::transaction_output::batch_verify_range_proofs, CryptoFactories},
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
+        KernelMmr,
+        MutableOutputMmr,
+        WitnessMmr,
     };
 
     #[test]
@@ -389,13 +389,13 @@ mod test {
             .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL)));
 
         // Check MMR
-        let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+        let mut kernel_mmr = KernelMmr::new(Vec::new());
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash()).unwrap();
         }
 
-        let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
-        let mut output_mmr = MutableMmr::<Blake256, _>::new(Vec::new(), Bitmap::create()).unwrap();
+        let mut witness_mmr = WitnessMmr::new(Vec::new());
+        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
 
         for o in block.block().body.outputs() {
             o.verify_metadata_signature().unwrap();
@@ -455,14 +455,15 @@ mod test {
             .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL)));
 
         // Check MMR
-        let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
+        let mut kernel_mmr = KernelMmr::new(Vec::new());
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash()).unwrap();
         }
 
-        let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(Vec::new());
-        let mut output_mmr = MutableMmr::<Blake256, _>::new(Vec::new(), Bitmap::create()).unwrap();
-
+        let mut witness_mmr = WitnessMmr::new(Vec::new());
+        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
+        assert_eq!(block.block().body.kernels().len(), 1);
+        assert_eq!(block.block().body.outputs().len(), 1);
         for o in block.block().body.outputs() {
             witness_mmr.push(o.witness_hash()).unwrap();
             output_mmr.push(o.hash()).unwrap();
