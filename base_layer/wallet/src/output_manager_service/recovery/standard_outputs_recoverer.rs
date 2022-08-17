@@ -93,7 +93,6 @@ where
 
         let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = Vec::new();
         for output in outputs {
-            // TODO: Only outputs with scripts `== script!(Nop)` is recover-able - can this be improved?
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop) && known_script_index.is_none() {
                 continue;
@@ -158,10 +157,6 @@ where
             if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Recoverer attempted to import a duplicate output (Commitment: {})", output_hex
-                        );
                         continue;
                     },
                     _ => return Err(OutputManagerError::from(e)),

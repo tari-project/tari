@@ -88,11 +88,11 @@ impl CommandContext {
             format!(
                 "{}tx ({}g, +/- {}blks)",
                 mempool_stats.unconfirmed_txs,
-                mempool_stats.total_weight,
-                if mempool_stats.total_weight == 0 {
+                mempool_stats.unconfirmed_weight,
+                if mempool_stats.unconfirmed_weight == 0 {
                     0
                 } else {
-                    1 + mempool_stats.total_weight / constants.get_max_block_transaction_weight()
+                    1 + mempool_stats.unconfirmed_weight / constants.get_max_block_transaction_weight()
                 },
             ),
         );

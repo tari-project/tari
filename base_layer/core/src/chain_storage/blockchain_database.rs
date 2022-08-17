@@ -26,7 +26,7 @@ use std::{
     collections::VecDeque,
     convert::TryFrom,
     mem,
-    ops::{Bound, Range, RangeBounds},
+    ops::{Bound, RangeBounds},
     sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
@@ -36,10 +36,9 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, HashOutput, Signature},
 };
-use tari_crypto::hash::blake2::Blake256;
-use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 use crate::{
@@ -80,7 +79,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel},
+    transactions::transaction_components::{TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -88,6 +87,10 @@ use crate::{
         OrphanValidation,
         PostOrphanBodyValidation,
     },
+    MutablePrunedOutputMmr,
+    PrunedInputMmr,
+    PrunedKernelMmr,
+    PrunedWitnessMmr,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -375,25 +378,6 @@ where B: BlockchainBackend
         db.fetch_unspent_output_hash_by_commitment(commitment)
     }
 
-    pub fn fetch_utxo_by_unique_id(
-        &self,
-        parent_public_key: Option<PublicKey>,
-        unique_id: HashOutput,
-        deleted_at: Option<u64>,
-    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_utxo_by_unique_id(parent_public_key.as_ref(), &unique_id, deleted_at)
-    }
-
-    pub fn fetch_all_unspent_by_parent_public_key(
-        &self,
-        parent_public_key: PublicKey,
-        range: Range<usize>,
-    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_all_unspent_by_parent_public_key(&parent_public_key, range)
-    }
-
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
     /// output, and a boolean indicating if the UTXO was spent as of the block hash specified or the tip if not
     /// specified.
@@ -422,15 +406,6 @@ where B: BlockchainBackend
             result.push(output);
         }
         Ok(result)
-    }
-
-    pub fn fetch_contract_outputs_for_block(
-        &self,
-        block_hash: BlockHash,
-        output_type: OutputType,
-    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_contract_outputs_for_block(&block_hash, output_type)
     }
 
     pub fn fetch_kernel_by_excess(
@@ -892,7 +867,7 @@ where B: BlockchainBackend
         if self.is_add_block_disabled() {
             warn!(
                 target: LOG_TARGET,
-                "add_block is disabled. Ignoring candidate block #{} ({})",
+                "add_block is disabled, node busy syncing. Ignoring candidate block #{} ({})",
                 block.header.height,
                 block.hash().to_hex()
             );
@@ -1173,15 +1148,6 @@ where B: BlockchainBackend
         db.fetch_all_reorgs()
     }
 
-    pub fn fetch_contract_outputs_by_contract_id_and_type(
-        &self,
-        contract_id: FixedHash,
-        output_type: OutputType,
-    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_contract_outputs_by_contract_id_and_type(contract_id, output_type)
-    }
-
     pub fn clear_all_reorgs(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         let mut txn = DbTransaction::new();
@@ -1230,16 +1196,14 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let metadata = db.fetch_chain_metadata()?;
     if header.prev_hash != *metadata.best_block() {
         return Err(ChainStorageError::CannotCalculateNonTipMmr(format!(
-            "Block (#{}) previous hash is {} but the current tip is #{} {}",
+            "Block (#{}) is not building on tip, previous hash is {} but the current tip is #{} {}",
             header.height,
             header.prev_hash.to_hex(),
             metadata.height_of_longest_chain(),
             metadata.best_block().to_hex()
         )));
     }
-
-    let deleted = db.fetch_deleted_bitmap()?;
-    let deleted = deleted.into_bitmap();
+    let deleted = db.fetch_deleted_bitmap()?.into_bitmap();
 
     let BlockAccumulatedData {
         kernels,
@@ -1254,18 +1218,30 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
             value: header.prev_hash.to_hex(),
         })?;
 
-    let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(kernels);
-    let mut output_mmr = MutableMmr::<Blake256, _>::new(outputs, deleted)?;
-    let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(range_proofs);
-    let mut input_mmr = MerkleMountainRange::<Blake256, _>::new(PrunedHashSet::default());
+    let mut kernel_mmr = PrunedKernelMmr::new(kernels);
+    let mut output_mmr = MutablePrunedOutputMmr::new(outputs, deleted)?;
+    let mut witness_mmr = PrunedWitnessMmr::new(range_proofs);
+    let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+    let mut deleted_outputs = Vec::new();
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash())?;
     }
 
     for output in body.outputs().iter() {
-        output_mmr.push(output.hash())?;
+        let output_hash = output.hash();
+        output_mmr.push(output_hash.clone())?;
         witness_mmr.push(output.witness_hash())?;
+        if output.is_burned() {
+            let index = output_mmr
+                .find_leaf_index(&output_hash)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "UTXO",
+                    field: "hash",
+                    value: output_hash.to_hex(),
+                })?;
+            deleted_outputs.push((index, output_hash));
+        }
     }
 
     for input in body.inputs().iter() {
@@ -1294,7 +1270,9 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
                 index
             },
         };
-
+        deleted_outputs.push((index, output_hash));
+    }
+    for (index, output_hash) in deleted_outputs {
         if !output_mmr.delete(index) {
             let num_leaves = u32::try_from(output_mmr.get_leaf_count())
                 .map_err(|_| ChainStorageError::CriticalError("UTXO MMR leaf count overflows u32".to_string()))?;
@@ -1304,7 +1282,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
                     output_hash.to_hex()
                 )));
             }
-
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Could not delete index {} from the output MMR ({} leaves)",
                 index, num_leaves

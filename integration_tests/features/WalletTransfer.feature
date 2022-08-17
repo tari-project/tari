@@ -6,7 +6,7 @@ Feature: Wallet Transfer
 
   # This is probably the most important base layer test
   # BROKEN: Runs fine when run by itself, but not with other tests - or maybe is flaky
-  @critical @broken
+  @critical
   Scenario: As a wallet send to a wallet connected to a different base node
     Given I have a seed node SEED_A
     And I have a seed node SEED_B

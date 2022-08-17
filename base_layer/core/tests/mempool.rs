@@ -178,7 +178,6 @@ async fn test_insert_and_process_published_block() {
     assert!(snapshot_txs.contains(&tx2));
 
     let stats = mempool.stats().await.unwrap();
-    assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
     let expected_weight = consensus_manager.consensus_constants(0).transaction_weight().calculate(
@@ -187,7 +186,7 @@ async fn test_insert_and_process_published_block() {
         2,
         TestParams::new().get_size_for_default_metadata(2),
     );
-    assert_eq!(stats.total_weight, expected_weight);
+    assert_eq!(stats.unconfirmed_weight, expected_weight);
 
     // Spend tx2, so it goes in Reorg pool
     generate_block(&store, &mut blocks, vec![tx2.deref().clone()], &consensus_manager).unwrap();
@@ -233,10 +232,9 @@ async fn test_insert_and_process_published_block() {
     assert_eq!(snapshot_txs.len(), 0);
 
     let stats = mempool.stats().await.unwrap();
-    assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.reorg_txs, 1);
-    assert_eq!(stats.total_weight, 0);
+    assert_eq!(stats.unconfirmed_weight, 0);
 }
 
 #[tokio::test]
@@ -607,7 +605,7 @@ async fn test_zero_conf() {
 
     // Try to retrieve all transactions in the mempool (a couple of our transactions should be missing from retrieved)
     let retrieved_txs = mempool
-        .retrieve(mempool.stats().await.unwrap().total_weight)
+        .retrieve(mempool.stats().await.unwrap().unconfirmed_weight)
         .await
         .unwrap();
     assert_eq!(retrieved_txs.len(), 10);
@@ -659,7 +657,7 @@ async fn test_zero_conf() {
 
     // Try to retrieve all transactions in the mempool (all transactions should be retrieved)
     let retrieved_txs = mempool
-        .retrieve(mempool.stats().await.unwrap().total_weight)
+        .retrieve(mempool.stats().await.unwrap().unconfirmed_weight)
         .await
         .unwrap();
     assert_eq!(retrieved_txs.len(), 16);
@@ -682,7 +680,7 @@ async fn test_zero_conf() {
 
     // Verify that a higher priority transaction is not retrieved due to its zero-conf dependency instead of the lowest
     // priority transaction
-    let weight = mempool.stats().await.unwrap().total_weight - 1;
+    let weight = mempool.stats().await.unwrap().unconfirmed_weight - 1;
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 15);
     assert!(retrieved_txs.contains(&Arc::new(tx01)));
@@ -1077,12 +1075,6 @@ async fn consensus_validation_versions() {
         0,
         Default::default(),
         None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
     );
 
     let test_params = TestParams::new();
@@ -1195,116 +1187,6 @@ async fn consensus_validation_unique_excess_sig() {
 
     // trying to submit a transaction with an existing excess signature already in the chain is an error
     let tx = Arc::new(tx1);
-    let response = mempool.insert(tx).await.unwrap();
-    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
-}
-
-#[tokio::test]
-#[allow(clippy::erasing_op)]
-#[allow(clippy::identity_op)]
-async fn consensus_validation_unique_id() {
-    let mut rng = rand::thread_rng();
-    let network = Network::LocalNet;
-    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-
-    let mempool_validator = TxConsensusValidator::new(store.clone());
-
-    let mempool = Mempool::new(
-        MempoolConfig::default(),
-        consensus_manager.clone(),
-        Box::new(mempool_validator),
-    );
-
-    // Create a block with 5 outputs
-    let txs = vec![txn_schema!(
-        from: vec![outputs[0][0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T], fee: 25.into(), lock: 0, features: OutputFeatures::default()
-    )];
-    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-
-    // mint new NFT
-    let (_, asset) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset.clone()),
-        unique_id: Some(vec![1, 2, 3]),
-        ..Default::default()
-    };
-    let txs = vec![txn_schema!(
-        from: vec![outputs[1][0].clone()],
-        to: vec![1 * T], fee: 100.into(), lock: 0, features: features
-    )];
-    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-
-    // trying to publish a transaction with the same unique id should fail
-    let tx = txn_schema!(
-        from: vec![outputs[1][1].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
-    );
-    let (tx, _) = spend_utxos(tx);
-    let tx = Arc::new(tx);
-    let response = mempool.insert(tx).await.unwrap();
-    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
-
-    // publishing a transaction that spends a unique id to a new output should succeed
-    let nft = outputs[2][0].clone();
-    let features = nft.features.clone();
-    let tx = txn_schema!(
-        from: vec![nft],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
-    );
-    let (tx, _) = spend_utxos(tx);
-    let tx = Arc::new(tx);
-    let response = mempool.insert(tx).await.unwrap();
-    assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
-
-    // a different unique_id should be fine
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset),
-        unique_id: Some(vec![4, 5, 6]),
-        ..Default::default()
-    };
-    let tx = txn_schema!(
-        from: vec![outputs[1][1].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
-    );
-    let (tx, _) = spend_utxos(tx);
-    let tx = Arc::new(tx);
-    let response = mempool.insert(tx).await.unwrap();
-    assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
-
-    // a different asset should also be fine
-    let (_, asset) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset),
-        unique_id: Some(vec![4, 5, 6]),
-        ..Default::default()
-    };
-    let tx = txn_schema!(
-        from: vec![outputs[1][2].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
-    );
-    let (tx, _) = spend_utxos(tx);
-    let tx = Arc::new(tx);
-    let response = mempool.insert(tx).await.unwrap();
-    assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
-
-    // a transaction containing duplicates should be rejected
-    let (_, asset) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset),
-        unique_id: Some(vec![7, 8, 9]),
-        ..Default::default()
-    };
-    let tx = txn_schema!(
-        from: vec![outputs[1][3].clone(), outputs[1][4].clone()],
-        to: vec![0 * T, 0 * T], fee: 100.into(), lock: 0, features: features
-    );
-    let (tx, _) = spend_utxos(tx);
-    let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
 }

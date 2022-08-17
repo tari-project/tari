@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 const net = require("net");
-
-const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
-const { expect } = require("chai");
+const varint = require("varint");
 
 const NO_CONNECTION = 14;
 
@@ -232,101 +230,17 @@ const getFreePort = function () {
   });
 };
 
-const encodeOption = function (value) {
+const encodeOption = function (value, encoding = "hex") {
   let buffer;
   if (value) {
-    buffer = Buffer.concat([Buffer.from([1]), Buffer.from(value, "utf8")]);
+    buffer = Buffer.concat([
+      Buffer.from([0x01]),
+      encoding ? Buffer.from(value, encoding) : value,
+    ]);
   } else {
-    buffer = Buffer.from([0]);
+    buffer = Buffer.from([0x00]);
   }
   return buffer;
-};
-
-const getTransactionOutputHash = function (output) {
-  const KEY = null; // optional key
-  const OUTPUT_LENGTH = 32; // bytes
-  const context = blake2bInit(OUTPUT_LENGTH, KEY);
-  let encodedBytesLength = 0;
-  // version
-  const version = Buffer.from([0]);
-  encodedBytesLength += version.length;
-  blake2bUpdate(context, version);
-  // features
-  let features = Buffer.concat([
-    // features.version
-    Buffer.from([0]),
-    // features.maturity
-    Buffer.from([parseInt(output.features.maturity)]),
-    // features.output_type
-    Buffer.from([output.features.output_type]),
-  ]);
-  // features.parent_public_key
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.parent_public_key),
-  ]);
-  // features.unique_id
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.unique_id),
-  ]);
-  // features.sidechain_features
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.sidechain_features),
-  ]); // features.asset
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.asset),
-  ]);
-  // features.mint_non_fungible
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.mint_non_fungible),
-  ]);
-  // features.sidechain_checkpoint
-  features = Buffer.concat([
-    Buffer.from(features),
-    encodeOption(output.features.sidechain_checkpoint),
-  ]);
-  // features.metadata
-  features = Buffer.concat([
-    Buffer.from(features),
-    Buffer.from([output.features.metadata.length]),
-    Buffer.from(output.features.metadata),
-  ]);
-  encodedBytesLength += features.length;
-  blake2bUpdate(context, features);
-  // commitment
-  encodedBytesLength += output.commitment.length;
-  blake2bUpdate(context, output.commitment);
-  // script
-  const script = Buffer.concat([
-    Buffer.from([output.script.length]),
-    Buffer.from(output.script),
-  ]);
-  encodedBytesLength += script.length;
-  blake2bUpdate(context, script);
-  // covenant
-  const covenant = Buffer.concat([
-    Buffer.from([output.covenant.length]),
-    Buffer.from(output.covenant),
-  ]);
-  encodedBytesLength += covenant.length;
-  blake2bUpdate(context, covenant);
-  // encrypted_value
-  encodedBytesLength += output.encrypted_value.length;
-  blake2bUpdate(context, output.encrypted_value);
-
-  expect(context.c).to.equal(encodedBytesLength);
-  const hash = blake2bFinal(context);
-  const hashBuffer = Buffer.from(hash);
-  // console.log(
-  //   "\ngetTransactionOutputHash - hash",
-  //   hashBuffer.toString("hex"),
-  //   "\n"
-  // );
-  return hashBuffer;
 };
 
 function consoleLogTransactionDetails(txnDetails) {
@@ -429,7 +343,28 @@ const findUtxoWithOutputMessage = async (wallet, message) => {
   return accepted;
 };
 
+function assertBufferType(buf, len = null) {
+  if (!Buffer.isBuffer(buf)) {
+    throw new Error("Expected buffer");
+  }
+  if (len !== null) {
+    if (buf.length !== len) {
+      throw new Error("Expected buffer of length " + len);
+    }
+  }
+}
+
+function varintEncode(num) {
+  return Buffer.from(varint.encode(num));
+}
+
+function toLengthEncoded(buf) {
+  return Buffer.concat([varintEncode(buf.length), buf]);
+}
+
 module.exports = {
+  assertBufferType,
+  varintEncode,
   getRandomInt,
   sleep,
   waitFor,
@@ -437,7 +372,6 @@ module.exports = {
   littleEndianHexStringToBigEndianHexString,
   // portInUse,
   getFreePort,
-  getTransactionOutputHash,
   hexSwitchEndianness,
   consoleLogTransactionDetails,
   tryConnect,
@@ -452,4 +386,6 @@ module.exports = {
   NO_CONNECTION,
   multiAddrToSocket,
   findUtxoWithOutputMessage,
+  encodeOption,
+  toLengthEncoded,
 };

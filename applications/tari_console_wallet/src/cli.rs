@@ -114,7 +114,6 @@ pub enum CliCommands {
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
-    Contract(ContractCommand),
 }
 
 #[derive(Debug, Args, Clone)]

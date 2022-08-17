@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    borrow::Borrow,
-    convert::{TryFrom, TryInto},
-};
+use std::{borrow::Borrow, convert::TryFrom};
 
 use tari_common_types::types::{
     BlindingFactor,
@@ -37,7 +34,6 @@ use tari_common_types::types::{
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
-use crate::transactions::transaction_components::SignerSignature;
 
 //---------------------------------- Commitment --------------------------------------------//
 
@@ -75,30 +71,6 @@ impl<T: Borrow<Signature>> From<T> for proto::Signature {
             public_nonce: sig.borrow().get_public_nonce().to_vec(),
             signature: sig.borrow().get_signature().to_vec(),
         }
-    }
-}
-
-//---------------------------------- SignerSignature --------------------------------------------//
-impl<B: Borrow<SignerSignature>> From<B> for proto::SignerSignature {
-    fn from(value: B) -> Self {
-        Self {
-            signer: value.borrow().signer().to_vec(),
-            signature: Some(proto::Signature::from(value.borrow().signature())),
-        }
-    }
-}
-
-impl TryFrom<proto::SignerSignature> for SignerSignature {
-    type Error = String;
-
-    fn try_from(value: proto::SignerSignature) -> Result<Self, Self::Error> {
-        Ok(Self::new(
-            PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
-            value
-                .signature
-                .map(TryInto::try_into)
-                .ok_or("signature not provided")??,
-        ))
     }
 }
 
