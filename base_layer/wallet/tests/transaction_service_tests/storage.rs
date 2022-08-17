@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
+use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 use chrono::{NaiveDateTime, Utc};
 use rand::rngs::OsRng;
 use tari_common_types::{

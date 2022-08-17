@@ -18,16 +18,16 @@ const featuresToConsensusBytes = function (features) {
   return Buffer.concat([
     // version
     Buffer.from([OUTPUT_FEATURES_VERSION]),
-    // output_type
-    Buffer.from([features.output_type]),
     // maturity
     Buffer.from([parseInt(features.maturity || 0)]),
-    // metadata
-    // TODO: Vec<u8> (len is 0)
-    Buffer.from([0x00]),
+    // output_type
+    Buffer.from([features.output_type]),
     // sidechain_features
     // TODO: SideChainFeatures
     encodeOption(null),
+    // metadata
+    // TODO: Vec<u8> (len is 0)
+    Buffer.from([0x00]),
   ]);
 };
 
