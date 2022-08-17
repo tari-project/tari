@@ -17,6 +17,7 @@
 
 use std::{fmt, ops::Deref};
 
+use integer_encoding::VarInt;
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 
@@ -74,28 +75,6 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPub
         .collect::<Result<Vec<RistrettoPublicKey>, ByteArrayError>>()?;
 
     Ok(public_keys)
-}
-
-/// Convert a slice of little endian bytes into a u64.
-///
-/// # Panics
-///
-/// The function does not check slice for length at all.  You need to check this / guarantee it yourself.
-fn slice_to_u64(slice: &[u8]) -> u64 {
-    let mut num = [0u8; 8];
-    num.copy_from_slice(slice);
-    u64::from_le_bytes(num)
-}
-
-/// Convert a slice of little endian bytes into an i64.
-///
-/// # Panics
-///
-/// The function does not check slice for length at all.  You need to check this / guarantee it yourself.
-fn slice_to_i64(slice: &[u8]) -> i64 {
-    let mut num = [0u8; 8];
-    num.copy_from_slice(slice);
-    i64::from_le_bytes(num)
 }
 
 // Opcode constants: Block Height Checks
@@ -291,18 +270,12 @@ impl Opcode {
         use Opcode::*;
         match *code {
             OP_CHECK_HEIGHT_VERIFY => {
-                if bytes.len() < 9 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let height = slice_to_u64(&bytes[1..9]);
-                Ok((CheckHeightVerify(height), &bytes[9..]))
+                let (height, size) = u64::decode_var(&bytes[1..]).ok_or(ScriptError::InvalidData)?;
+                Ok((CheckHeightVerify(height), &bytes[size + 1..]))
             },
             OP_CHECK_HEIGHT => {
-                if bytes.len() < 9 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let height = slice_to_u64(&bytes[1..9]);
-                Ok((CheckHeight(height), &bytes[9..]))
+                let (height, size) = u64::decode_var(&bytes[1..]).ok_or(ScriptError::InvalidData)?;
+                Ok((CheckHeight(height), &bytes[size + 1..]))
             },
             OP_COMPARE_HEIGHT_VERIFY => Ok((CompareHeightVerify, &bytes[1..])),
             OP_COMPARE_HEIGHT => Ok((CompareHeight, &bytes[1..])),
@@ -317,11 +290,8 @@ impl Opcode {
                 Ok((PushHash(hash), &bytes[33..]))
             },
             OP_PUSH_INT => {
-                if bytes.len() < 9 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let n = slice_to_i64(&bytes[1..9]);
-                Ok((PushInt(n), &bytes[9..]))
+                let (n, size) = i64::decode_var(&bytes[1..]).ok_or(ScriptError::InvalidData)?;
+                Ok((PushInt(n), &bytes[size + 1..]))
             },
             OP_PUSH_PUBKEY => {
                 if bytes.len() < 33 {
@@ -415,11 +385,15 @@ impl Opcode {
         match self {
             CheckHeightVerify(height) => {
                 array.push(OP_CHECK_HEIGHT_VERIFY);
-                array.extend_from_slice(&height.to_le_bytes());
+                let mut buf = [0u8; 10];
+                let used = height.encode_var(&mut buf[..]);
+                array.extend_from_slice(&buf[0..used]);
             },
             CheckHeight(height) => {
                 array.push(OP_CHECK_HEIGHT);
-                array.extend_from_slice(&height.to_le_bytes());
+                let mut buf = [0u8; 10];
+                let used = height.encode_var(&mut buf[..]);
+                array.extend_from_slice(&buf[0..used]);
             },
             CompareHeightVerify => array.push(OP_COMPARE_HEIGHT_VERIFY),
             CompareHeight => array.push(OP_COMPARE_HEIGHT),
@@ -432,7 +406,9 @@ impl Opcode {
             },
             PushInt(n) => {
                 array.push(OP_PUSH_INT);
-                array.extend_from_slice(&n.to_le_bytes());
+                let mut buf = [0u8; 10];
+                let used = n.encode_var(&mut buf[..]);
+                array.extend_from_slice(&buf[0..used]);
             },
             PushPubKey(p) => {
                 array.push(OP_PUSH_PUBKEY);
@@ -592,49 +568,18 @@ mod test {
     }
 
     #[test]
-    fn slice_to_u64_tests() {
-        // Zero
-        let val = slice_to_u64(&[0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 0);
-        // Little-endian one-byte
-        let val = slice_to_u64(&[63, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 63);
-        // A large number
-        let val = slice_to_u64(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F]);
-        assert_eq!(val, 9_223_372_036_854_775_807);
-    }
-
-    #[test]
-    fn slice_to_i64_tests() {
-        // Zero
-        let val = slice_to_i64(&[0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 0);
-        // Little-endian one-byte
-        let val = slice_to_i64(&[63, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(val, 63);
-        let val = slice_to_i64(&[63, 0, 0, 0, 0, 0, 0, 128]);
-        assert_eq!(val, -9_223_372_036_854_775_745);
-        // A large negative number
-        let val = slice_to_i64(&[0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x80]);
-        assert_eq!(val, -9_151_314_442_816_848_128);
-    }
-
-    #[test]
     fn check_height() {
         fn test_check_height(op: &Opcode, val: u8, display: &str) {
             // Serialize
-            assert!(matches!(
-                Opcode::read_next(&[val, 1, 2, 3]),
-                Err(ScriptError::InvalidData)
-            ));
-            let s = &[val, 63, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3];
+            assert!(matches!(Opcode::read_next(&[val, 255]), Err(ScriptError::InvalidData)));
+            let s = &[val, 63, 1, 2, 3];
             let (opcode, rem) = Opcode::read_next(s).unwrap();
             assert_eq!(opcode, *op);
             assert_eq!(rem, &[1, 2, 3]);
             // Deserialise
             let mut arr = vec![1, 2, 3];
             op.to_bytes(&mut arr);
-            assert_eq!(&arr, &[1, 2, 3, val, 63, 0, 0, 0, 0, 0, 0, 0]);
+            assert_eq!(&arr, &[1, 2, 3, val, 63]);
             // Format
             assert_eq!(format!("{}", op).as_str(), display);
         }
@@ -645,16 +590,18 @@ mod test {
     #[test]
     fn push_int() {
         // Serialise
-        assert!(matches!(Opcode::read_next(b"\x7dshort"), Err(ScriptError::InvalidData)));
-        let s = &[OP_PUSH_INT, 1, 1, 0, 0, 0, 0, 0, 0];
+        assert!(matches!(Opcode::read_next(&[0x7d, 255]), Err(ScriptError::InvalidData)));
+        let s = &[OP_PUSH_INT, 130, 4];
         let (opcode, rem) = Opcode::read_next(s).unwrap();
+        let mut arr = vec![];
+        Opcode::PushInt(257).to_bytes(&mut arr);
         assert!(matches!(opcode, Opcode::PushInt(257)));
         assert!(rem.is_empty());
         // Deserialise
         let op = Opcode::PushInt(257);
         let mut arr = vec![];
         op.to_bytes(&mut arr);
-        assert_eq!(&arr, &[OP_PUSH_INT, 1, 1, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(&arr, &[OP_PUSH_INT, 130, 4]);
         // Format
         assert_eq!(format!("{}", op).as_str(), "PushInt(257)");
     }
