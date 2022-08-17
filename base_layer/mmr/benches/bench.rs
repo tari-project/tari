@@ -39,7 +39,7 @@ mod benches {
 
     hash_domain!(
         MmrBenchTestHashDomain,
-        "com.tari.tari_project.base_layer.mmr.bemches",
+        "com.tari.tari_project.base_layer.mmr.benches",
         1
     );
     pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;

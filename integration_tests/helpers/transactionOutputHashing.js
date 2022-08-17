@@ -15,11 +15,6 @@ const featuresToConsensusBytes = function (features) {
   // TODO: Keep this number in sync with 'get_current_version()' in 'output_features_version.rs'
   const OUTPUT_FEATURES_VERSION = 0x00;
 
-  // Add length byte to unique id - note this only works until 127 bytes (TODO: varint encoding)
-  let unique_id = features.unique_id
-    ? toLengthEncoded(features.unique_id)
-    : null;
-
   return Buffer.concat([
     // version
     Buffer.from([OUTPUT_FEATURES_VERSION]),
@@ -27,28 +22,12 @@ const featuresToConsensusBytes = function (features) {
     Buffer.from([parseInt(features.maturity || 0)]),
     // output_type
     Buffer.from([features.output_type]),
-    // parent_public_key
-    encodeOption(features.parent_public_key, "hex"),
-    // unique_id
-    encodeOption(unique_id, false),
     // sidechain_features
     // TODO: SideChainFeatures
-    encodeOption(null),
-    // asset
-    // TODO: AssetOutputFeatures
-    encodeOption(null),
-    // mint_non_fungible
-    // TODO: MintNonFungibleFeatures
-    encodeOption(null),
-    // sidechain_checkpoint
-    // TODO: SideChainCheckpointFeatures
     encodeOption(null),
     // metadata
     // TODO: Vec<u8> (len is 0)
     Buffer.from([0x00]),
-    // committee_definition
-    // TODO: CommitteeDefinitionFeatures (len is 0)
-    encodeOption(null),
   ]);
 };
 
