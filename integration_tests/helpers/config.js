@@ -173,8 +173,8 @@ function createEnv(opts) {
     [`${network}.merge_mining_proxy.console_wallet_grpc_address`]:
       walletGrpcAddress,
 
-    [`miner.base_node_addr`]: baseNodeGrpcAddress,
-    [`miner.wallet_addr`]: walletGrpcAddress,
+    [`miner.base_node_grpc_address`]: baseNodeGrpcAddress,
+    [`miner.wallet_grpc_address`]: walletGrpcAddress,
 
     [`validator_node.base_node_grpc_address`]: baseNodeGrpcAddress,
     [`validator_node.wallet_grpc_address`]: walletGrpcAddress,
