@@ -107,10 +107,7 @@ pub fn encrypt_bytes_integral_nonce(
 
 #[cfg(test)]
 mod test {
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, NewAead},
-        Aes256Gcm,
-    };
+    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 
     use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 

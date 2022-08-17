@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io;
+use std::io::{self, ErrorKind};
 
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -54,7 +54,22 @@ pub enum MessagingProtocolError {
     #[error("Failed to dial peer: {0}")]
     PeerDialFailed(ConnectivityError),
     #[error("IO Error: {0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
     #[error("Sender error: {0}")]
     SenderError(#[from] mpsc::error::SendError<OutboundMessage>),
+    #[error("Connection closed")]
+    ConnectionClosed(io::Error),
+}
+
+impl From<io::Error> for MessagingProtocolError {
+    fn from(err: io::Error) -> Self {
+        match err.kind() {
+            ErrorKind::ConnectionRefused |
+            ErrorKind::ConnectionReset |
+            ErrorKind::ConnectionAborted |
+            ErrorKind::BrokenPipe |
+            ErrorKind::UnexpectedEof => MessagingProtocolError::ConnectionClosed(err),
+            _ => MessagingProtocolError::Io(err),
+        }
+    }
 }

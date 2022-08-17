@@ -38,8 +38,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, Signature},
 };
-use tari_crypto::hash::blake2::Blake256;
-use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 use crate::{
@@ -88,6 +87,10 @@ use crate::{
         OrphanValidation,
         PostOrphanBodyValidation,
     },
+    MutablePrunedOutputMmr,
+    PrunedInputMmr,
+    PrunedKernelMmr,
+    PrunedWitnessMmr,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -1215,10 +1218,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
             value: header.prev_hash.to_hex(),
         })?;
 
-    let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(kernels);
-    let mut output_mmr = MutableMmr::<Blake256, _>::new(outputs, deleted)?;
-    let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(range_proofs);
-    let mut input_mmr = MerkleMountainRange::<Blake256, _>::new(PrunedHashSet::default());
+    let mut kernel_mmr = PrunedKernelMmr::new(kernels);
+    let mut output_mmr = MutablePrunedOutputMmr::new(outputs, deleted)?;
+    let mut witness_mmr = PrunedWitnessMmr::new(range_proofs);
+    let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
     let mut deleted_outputs = Vec::new();
 
     for kernel in body.kernels().iter() {

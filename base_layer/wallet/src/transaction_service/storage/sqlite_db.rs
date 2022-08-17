@@ -2189,10 +2189,7 @@ impl UnconfirmedTransactionInfoSql {
 mod test {
     use std::{convert::TryFrom, time::Duration};
 
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, NewAead},
-        Aes256Gcm,
-    };
+    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
