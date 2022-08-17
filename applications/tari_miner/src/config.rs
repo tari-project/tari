@@ -127,7 +127,7 @@ mod test {
         const CONFIG: &str = r#"
 [miner]
 num_mining_threads=2
-base_node_addr = "/dns4/my_base_node/tcp/1234"
+base_node_grpc_address = "/dns4/my_base_node/tcp/1234"
 mine_on_tip_only = false
 "#;
         let mut cfg: config::Config = config::Config::default();
