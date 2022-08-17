@@ -41,7 +41,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
-const DURATION_SYNC_PEERS: u64 = 60 * 60;
 const NUM_FETCH_PEERS: u32 = 1000;
 
 #[derive(Debug)]
@@ -91,7 +90,7 @@ impl OnConnect {
                                 .connectivity
                                 .ban_peer_until(
                                     conn.peer_node_id().clone(),
-                                    Duration::from_secs(DURATION_SYNC_PEERS),
+                                    self.config().ban_duration,
                                     err.to_string(),
                                 )
                                 .await
