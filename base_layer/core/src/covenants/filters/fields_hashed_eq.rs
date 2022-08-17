@@ -32,8 +32,7 @@ impl Filter for FieldsHashedEqFilter {
         let hash = context.next_arg()?.require_hash()?;
         output_set.retain(|output| {
             let challenge = fields.construct_challenge_from(output).finalize();
-            let challenge = challenge.to_vec();
-            Ok(challenge[..] == *hash)
+            Ok(challenge.finalize()[..] == *hash)
         })?;
         Ok(())
     }
