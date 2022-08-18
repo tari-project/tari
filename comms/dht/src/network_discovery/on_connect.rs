@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, time::Duration};
+use std::convert::TryInto;
 
 use futures::StreamExt;
 use log::*;
@@ -41,7 +41,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
-
 const NUM_FETCH_PEERS: u32 = 1000;
 
 #[derive(Debug)]
@@ -91,7 +90,7 @@ impl OnConnect {
                                 .connectivity
                                 .ban_peer_until(
                                     conn.peer_node_id().clone(),
-                                    Duration::from_secs(60 * 60),
+                                    self.config().ban_duration,
                                     err.to_string(),
                                 )
                                 .await
