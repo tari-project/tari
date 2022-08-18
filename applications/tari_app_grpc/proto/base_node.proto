@@ -22,6 +22,9 @@
 syntax = "proto3";
 
 import "types.proto";
+import "transaction.proto";
+import "block.proto";
+import "network.proto";
 
 package tari.rpc;
 
