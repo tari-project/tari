@@ -359,7 +359,7 @@ mod test {
             fn it_returns_true_if_eq() {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        sidechain_features: Some(Box::new(SideChainFeatures {})),
+                        sidechain_features: Some(Box::new(SideChainFeatures::default())),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -378,7 +378,7 @@ mod test {
                     .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, &SideChainFeatures {})
+                    .is_eq(&output, &SideChainFeatures::default())
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
@@ -395,7 +395,7 @@ mod test {
             fn it_returns_false_if_not_eq() {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        sidechain_features: Some(Box::new(SideChainFeatures {})),
+                        sidechain_features: Some(Box::new(SideChainFeatures::default())),
                         ..Default::default()
                     },
                     script: script![Drop Nop],

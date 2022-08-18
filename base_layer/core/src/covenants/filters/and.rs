@@ -56,12 +56,12 @@ mod test {
         let input = create_input();
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features.maturity = 42;
-            outputs[5].features.sidechain_features = Some(Box::new(SideChainFeatures {}));
+            outputs[5].features.sidechain_features = Some(Box::new(SideChainFeatures::default()));
             outputs[7].features.maturity = 42;
-            outputs[7].features.sidechain_features = Some(Box::new(SideChainFeatures {}));
+            outputs[7].features.sidechain_features = Some(Box::new(SideChainFeatures::default()));
             // Does not have maturity = 42
             outputs[8].features.maturity = 123;
-            outputs[8].features.sidechain_features = Some(Box::new(SideChainFeatures {}));
+            outputs[8].features.sidechain_features = Some(Box::new(SideChainFeatures::default()));
         });
 
         let mut output_set = OutputSet::new(&outputs);

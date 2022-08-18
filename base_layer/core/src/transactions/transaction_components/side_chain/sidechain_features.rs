@@ -29,12 +29,10 @@ use crate::{
     transactions::transaction_components::CodeTemplateRegistration,
 };
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, Default)]
 pub struct SideChainFeatures {
     pub template_registration: Option<CodeTemplateRegistration>,
 }
-
-impl SideChainFeatures {}
 
 impl ConsensusEncoding for SideChainFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
@@ -57,13 +55,12 @@ impl ConsensusDecoding for SideChainFeatures {
 mod tests {
     use std::convert::TryInto;
 
-    use tari_common_types::types::{PublicKey, Signature};
     use tari_utilities::hex::from_hex;
 
     use super::*;
     use crate::{
         consensus::{check_consensus_encoding_correctness, MaxSizeString},
-        transactions::transaction_components::{bytes_into_fixed_string, BuildInfo, SignerSignature, TemplateType},
+        transactions::transaction_components::{BuildInfo, TemplateType},
     };
 
     #[allow(clippy::too_many_lines)]

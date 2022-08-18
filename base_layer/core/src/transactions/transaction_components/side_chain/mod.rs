@@ -24,13 +24,8 @@ mod sidechain_features;
 pub use sidechain_features::SideChainFeatures;
 
 mod template_registration;
-pub use template_registration::{BuildInfo, CodeTemplateRegistration, TemplateType};
-
-// Length of FixedString
-pub const FIXED_STR_LEN: usize = 32;
-pub type FixedString = [u8; FIXED_STR_LEN];
-
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+pub use template_registration::{BuildInfo, CodeTemplateRegistration, TemplateType};
 
 hash_domain!(
     ContractAcceptanceHashDomain,

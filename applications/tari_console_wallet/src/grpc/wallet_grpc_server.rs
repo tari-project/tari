@@ -91,13 +91,19 @@ use tari_common_types::{
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction_components::{CodeTemplateRegistration, OutputFeatures, UnblindedOutput},
+    tari_amount::{MicroTari, T},
+    transaction_components::{
+        CodeTemplateRegistration,
+        OutputFeatures,
+        OutputType,
+        SideChainFeatures,
+        UnblindedOutput,
+    },
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::models::{self, WalletTransaction},
@@ -922,7 +928,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateTemplateRegistrationRequest>,
     ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut output_manager = self.wallet.output_manager_service.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
@@ -932,11 +938,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .ok_or_else(|| Status::invalid_argument("template_registration is empty"))?,
         )
         .map_err(|e| Status::invalid_argument(format!("template_registration is invalid: {}", e)))?;
+        let fee_per_gram = message.fee_per_gram;
 
         let message = format!("Template registration {}", template_registration.template_name);
+        let output = output_manager
+            .create_output_with_features(1 * T, OutputFeatures {
+                output_type: OutputType::CodeTemplateRegistration,
+                sidechain_features: Some(Box::new(SideChainFeatures {
+                    template_registration: Some(template_registration),
+                })),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
-        let (tx_id, transaction) = asset_manager
-            .create_code_template_registration(template_registration)
+        let (tx_id, transaction) = output_manager
+            .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

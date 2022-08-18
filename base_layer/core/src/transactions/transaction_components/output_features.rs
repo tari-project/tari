@@ -102,11 +102,9 @@ impl OutputFeatures {
     pub fn for_template_registration(template_registration: CodeTemplateRegistration) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::CodeTemplateRegistration,
-            sidechain_features: Some(Box::new(
-                SideChainFeatures::builder(Default::default())
-                    .with_template_registration(template_registration)
-                    .finish(),
-            )),
+            sidechain_features: Some(Box::new(SideChainFeatures {
+                template_registration: Some(template_registration),
+            })),
             ..Default::default()
         }
     }
