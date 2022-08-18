@@ -40,6 +40,7 @@ use crate::{
         error::CovenantError,
         fields::{OutputField, OutputFields},
     },
+    transactions::transaction_components::OutputType,
 };
 
 const MAX_COVENANT_ARG_SIZE: usize = 4096;
@@ -52,6 +53,7 @@ pub enum CovenantArg {
     Commitment(Commitment),
     TariScript(TariScript),
     Covenant(Covenant),
+    OutputType(OutputType),
     Uint(u64),
     OutputField(OutputField),
     OutputFields(OutputFields),
@@ -88,6 +90,10 @@ impl CovenantArg {
                 let covenant = Covenant::from_bytes(&buf)?;
                 Ok(CovenantArg::Covenant(covenant))
             },
+            ARG_OUTPUT_TYPE => {
+                let output_type = OutputType::consensus_decode(reader)?;
+                Ok(CovenantArg::OutputType(output_type))
+            },
             ARG_UINT => {
                 let v = u64::consensus_decode(reader)?;
                 Ok(CovenantArg::Uint(v))
@@ -117,7 +123,8 @@ impl CovenantArg {
 
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         use byte_codes::*;
-        use CovenantArg::{Bytes, Commitment, Covenant, Hash, OutputField, OutputFields, PublicKey, TariScript, Uint};
+        #[allow(clippy::enum_glob_use)]
+        use CovenantArg::*;
 
         match self {
             Hash(hash) => {
@@ -141,6 +148,10 @@ impl CovenantArg {
                 let len = covenant.get_byte_length();
                 writer.write_varint(len)?;
                 covenant.write_to(writer)?;
+            },
+            OutputType(output_type) => {
+                writer.write_u8_fixed(ARG_OUTPUT_TYPE)?;
+                output_type.consensus_encode(writer)?;
             },
             Uint(int) => {
                 writer.write_u8_fixed(ARG_UINT)?;
@@ -193,6 +204,8 @@ impl CovenantArg {
 
     require_x_impl!(require_covenant, Covenant, "covenant");
 
+    require_x_impl!(require_output_type, OutputType, "output_type");
+
     require_x_impl!(require_outputfield, OutputField, "outputfield");
 
     require_x_impl!(require_outputfields, OutputFields, "outputfields");
@@ -220,7 +233,8 @@ impl CovenantArg {
 
 impl Display for CovenantArg {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        use CovenantArg::{Bytes, Commitment, Covenant, Hash, OutputField, OutputFields, PublicKey, TariScript, Uint};
+        #[allow(clippy::enum_glob_use)]
+        use CovenantArg::*;
         match self {
             Hash(hash) => write!(f, "Hash({})", to_hex(&hash[..])),
             PublicKey(public_key) => write!(f, "PublicKey({})", public_key.to_hex()),
@@ -231,6 +245,7 @@ impl Display for CovenantArg {
             OutputField(field) => write!(f, "OutputField({})", field.as_byte()),
             OutputFields(fields) => write!(f, "OutputFields({} field(s))", fields.len()),
             Bytes(bytes) => write!(f, "Bytes({} byte(s))", bytes.len()),
+            OutputType(output_type) => write!(f, "OutputType({})", output_type),
         }
     }
 }
