@@ -139,4 +139,3 @@ Feature: Wallet CLI
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
         Then I run whois BASE on wallet WALLET via command line
-    
