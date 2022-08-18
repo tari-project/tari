@@ -57,6 +57,10 @@ impl OutputType {
     pub fn from_byte(value: u8) -> Option<Self> {
         FromPrimitive::from_u8(value)
     }
+
+    pub const fn all() -> &'static [Self] {
+        &[OutputType::Standard, OutputType::Coinbase, OutputType::Burn]
+    }
 }
 
 impl Default for OutputType {
@@ -107,5 +111,7 @@ mod tests {
     fn it_converts_from_byte_to_output_type() {
         assert_eq!(OutputType::from_byte(0), Some(OutputType::Standard));
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
+        assert_eq!(OutputType::from_byte(2), Some(OutputType::Burn));
+        assert_eq!(OutputType::from_byte(255), None);
     }
 }
