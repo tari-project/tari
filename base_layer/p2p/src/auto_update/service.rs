@@ -95,9 +95,13 @@ impl SoftwareUpdaterService {
     ) {
         let mut interval_or_never = match self.config.check_interval {
             Some(interval) => {
-                let mut interval = time::interval(interval);
-                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-                Either::Left(wrappers::IntervalStream::new(interval))
+                if interval.is_zero() {
+                    Either::Right(stream::empty())
+                } else {
+                    let mut interval = time::interval(interval);
+                    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                    Either::Left(wrappers::IntervalStream::new(interval))
+                }
             },
             None => Either::Right(stream::empty()),
         };
