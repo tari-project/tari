@@ -140,12 +140,20 @@ pub struct MakeItRainArgs {
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]
     pub increase_amount: MicroTari,
-    #[clap(long)]
+    #[clap(long, parse(try_from_str=parse_start_time))]
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
     pub one_sided: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
+}
+
+fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    let mut start_time = Utc::now();
+    if !arg.is_empty() && arg.to_uppercase() != "NOW" {
+        start_time = arg.parse()?;
+    }
+    Ok(start_time)
 }
 
 fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
