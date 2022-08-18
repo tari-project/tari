@@ -28,7 +28,7 @@ use crate::{
     consensus::ConsensusConstants,
     transactions::{transaction_components::Transaction, CryptoFactories},
     validation::{
-        helpers::{check_inputs_are_utxos, check_outputs, check_total_burned},
+        helpers::{check_inputs_are_utxos, check_outputs, check_permitted_output_types, check_total_burned},
         MempoolTransactionValidation,
         ValidationError,
     },
@@ -105,7 +105,7 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
     ) -> Result<(), ValidationError> {
         // validate input version
         for input in tx.body().inputs() {
-            if !consensus_constants.input_version_range.contains(&input.version) {
+            if !consensus_constants.input_version_range().contains(&input.version) {
                 let msg = format!(
                     "Transaction input contains a version not allowed by consensus ({:?})",
                     input.version
@@ -117,12 +117,12 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
         // validate output version and output features version
         for output in tx.body().outputs() {
             let valid_output_version = consensus_constants
-                .output_version_range
+                .output_version_range()
                 .outputs
                 .contains(&output.version);
 
             let valid_features_version = consensus_constants
-                .output_version_range
+                .output_version_range()
                 .features
                 .contains(&output.features.version);
 
@@ -141,11 +141,13 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
                 );
                 return Err(ValidationError::ConsensusError(msg));
             }
+
+            check_permitted_output_types(consensus_constants, output)?;
         }
 
         // validate kernel version
         for kernel in tx.body().kernels() {
-            if !consensus_constants.kernel_version_range.contains(&kernel.version) {
+            if !consensus_constants.kernel_version_range().contains(&kernel.version) {
                 let msg = format!(
                     "Transaction kernel version is not allowed by consensus ({:?})",
                     kernel.version

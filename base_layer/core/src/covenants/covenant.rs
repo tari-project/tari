@@ -185,7 +185,7 @@ mod test {
         let mut input = create_input();
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
-            @field::features_flags,
+            @field::features_output_type,
             @field::features_maturity,
             @field::features_metadata))
         );

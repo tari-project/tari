@@ -460,8 +460,9 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 }
 
 /// This function checks:
-/// 1. the byte size of TariScript does not exceed the maximum
-/// 2. that the outputs do not already exist in the UTxO set.
+/// 1. that the output type is permitted
+/// 2. the byte size of TariScript does not exceed the maximum
+/// 3. that the outputs do not already exist in the UTxO set.
 pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
@@ -469,6 +470,7 @@ pub fn check_outputs<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.get_max_script_byte_size();
     for output in body.outputs() {
+        check_permitted_output_types(constants, output)?;
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
     }
@@ -739,6 +741,22 @@ pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) ->
     } else {
         Err(ValidationError::InvalidBlockchainVersion { version })
     }
+}
+
+pub fn check_permitted_output_types(
+    constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if !constants
+        .permitted_output_types()
+        .contains(&output.features.output_type)
+    {
+        return Err(ValidationError::OutputTypeNotPermitted {
+            output_type: output.features.output_type,
+        });
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
