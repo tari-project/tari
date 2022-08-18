@@ -154,7 +154,7 @@ class CustomWorld {
     const wallet = new WalletFFIClient(name);
     await wallet.startNew(seed_words, passphrase);
     this.walletsFFI[name] = wallet;
-    this.walletPubkeys[name] = wallet.identify();
+    this.walletPubkeys[name] = wallet.identify().public_key;
     return wallet;
   }
 
