@@ -65,9 +65,9 @@ jobs:
         working-directory: libwallets
         run: |
           ls -alhtR
-          find . -name "*.a.sha256sums" -print | xargs cat >> libwallets.txt.sha256sums
-          cat libwallets.txt.sha256sums
-          sha256sum -c libwallets.txt.sha256sums
+          find . -name "*.sha256sums" -print | xargs cat >> libwallets.txt.sha256sums-verify
+          cat libwallets.txt.sha256sums-verify
+          sha256sum -c libwallets.txt.sha256sums-verify
 
       - name: Sync to S3 on tag
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
