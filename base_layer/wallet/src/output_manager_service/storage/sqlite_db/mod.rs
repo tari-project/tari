@@ -1443,10 +1443,7 @@ impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
 mod test {
     use std::time::Duration;
 
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, NewAead},
-        Aes256Gcm,
-    };
+    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;

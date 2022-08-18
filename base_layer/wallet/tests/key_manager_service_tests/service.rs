@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
+use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::key_manager_service::{
     storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},

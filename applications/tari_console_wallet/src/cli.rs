@@ -140,12 +140,20 @@ pub struct MakeItRainArgs {
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]
     pub increase_amount: MicroTari,
-    #[clap(long)]
+    #[clap(long, parse(try_from_str=parse_start_time))]
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
     pub one_sided: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
+}
+
+fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    let mut start_time = Utc::now();
+    if !arg.is_empty() && arg.to_uppercase() != "NOW" {
+        start_time = arg.parse()?;
+    }
+    Ok(start_time)
 }
 
 fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
@@ -200,116 +208,4 @@ pub struct ClaimShaAtomicSwapRefundArgs {
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
     pub message: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct ContractCommand {
-    #[clap(subcommand)]
-    pub subcommand: ContractSubcommand,
-}
-
-#[derive(Debug, Subcommand, Clone)]
-pub enum ContractSubcommand {
-    /// Generates a new contract definition JSON spec file that can be edited and passed to other contract definition
-    /// commands.
-    InitDefinition(InitDefinitionArgs),
-
-    /// A generator for constitution files that can be edited and passed to other contract commands
-    InitConstitution(InitConstitutionArgs),
-
-    /// A generator for update proposal files that can be edited and passed to other contract commands
-    InitUpdateProposal(InitUpdateProposalArgs),
-
-    /// A generator for amendment files that can be edited and passed to other contract commands
-    InitAmendment(InitAmendmentArgs),
-
-    /// Creates and publishes a contract definition UTXO from the JSON spec file.
-    PublishDefinition(PublishFileArgs),
-
-    /// Creates and publishes a contract definition UTXO from the JSON spec file.
-    PublishConstitution(PublishFileArgs),
-
-    /// Creates and publishes a contract update proposal UTXO from the JSON spec file.
-    PublishUpdateProposal(PublishFileArgs),
-
-    /// Creates and publishes a contract amendment UTXO from the JSON spec file.
-    PublishAmendment(PublishFileArgs),
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitDefinitionArgs {
-    /// The destination path of the contract definition to create
-    pub dest_path: PathBuf,
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-    #[clap(long, alias = "name")]
-    pub contract_name: Option<String>,
-    #[clap(long, alias = "issuer")]
-    pub contract_issuer: Option<String>,
-    #[clap(long, alias = "runtime")]
-    pub runtime: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitConstitutionArgs {
-    /// The destination path of the contract definition to create
-    pub dest_path: PathBuf,
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-    #[clap(long, alias = "id")]
-    pub contract_id: Option<String>,
-    #[clap(long, alias = "committee")]
-    pub validator_committee: Option<Vec<String>>,
-    #[clap(long, alias = "acceptance_period")]
-    pub acceptance_period_expiry: Option<String>,
-    #[clap(long, alias = "quorum_required")]
-    pub minimum_quorum_required: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitUpdateProposalArgs {
-    /// The destination path of the contract definition to create
-    pub dest_path: PathBuf,
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-    #[clap(long, alias = "id")]
-    pub contract_id: Option<String>,
-    #[clap(long, alias = "proposal_id")]
-    pub proposal_id: Option<String>,
-    #[clap(long, alias = "committee")]
-    pub validator_committee: Option<Vec<String>>,
-    #[clap(long, alias = "acceptance_period")]
-    pub acceptance_period_expiry: Option<String>,
-    #[clap(long, alias = "quorum_required")]
-    pub minimum_quorum_required: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitAmendmentArgs {
-    /// The destination path of the contract amendment to create
-    pub dest_path: PathBuf,
-
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-
-    /// The source file path of the update proposal to amend
-    #[clap(short = 'p', long)]
-    pub proposal_file_path: PathBuf,
-
-    #[clap(long, alias = "activation_window")]
-    pub activation_window: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PublishFileArgs {
-    pub file_path: PathBuf,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PublishUpdateProposalArgs {
-    pub file_path: PathBuf,
 }

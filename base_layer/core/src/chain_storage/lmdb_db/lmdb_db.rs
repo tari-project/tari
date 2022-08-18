@@ -36,8 +36,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, Signature, BLOCK_HASH_LENGTH},
 };
-use tari_crypto::hash::blake2::Blake256;
-use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
+use tari_mmr::Hash;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 use tari_utilities::{
     hash::Hashable,
@@ -98,6 +97,9 @@ use crate::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     },
+    MutablePrunedOutputMmr,
+    PrunedKernelMmr,
+    PrunedWitnessMmr,
 };
 
 type DatabaseRef = Arc<Database<'static>>;
@@ -1155,7 +1157,7 @@ impl LMDBDatabase {
             ..
         } = data;
 
-        let mut kernel_mmr = MerkleMountainRange::<Blake256, _>::new(pruned_kernel_set);
+        let mut kernel_mmr = PrunedKernelMmr::new(pruned_kernel_set);
 
         for kernel in kernels {
             total_kernel_sum = &total_kernel_sum + &kernel.excess;
@@ -1170,8 +1172,8 @@ impl LMDBDatabase {
             })?;
             self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
-        let mut output_mmr = MutableMmr::<Blake256, _>::new(pruned_output_set, Bitmap::create())?;
-        let mut witness_mmr = MerkleMountainRange::<Blake256, _>::new(pruned_proof_set);
+        let mut output_mmr = MutablePrunedOutputMmr::new(pruned_output_set, Bitmap::create())?;
+        let mut witness_mmr = PrunedWitnessMmr::new(pruned_proof_set);
 
         let leaf_count = witness_mmr.get_leaf_count()?;
 
