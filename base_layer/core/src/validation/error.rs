@@ -128,6 +128,8 @@ pub enum ValidationError {
     },
     #[error("Contains Invalid Burn: {0}")]
     InvalidBurnError(String),
+    #[error("Output type '{output_type}' is not permitted")]
+    OutputTypeNotPermitted { output_type: OutputType },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
