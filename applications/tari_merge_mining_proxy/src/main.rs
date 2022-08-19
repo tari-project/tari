@@ -75,7 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let config = MergeMiningProxyConfig::load_from(&cfg)?;
 
-    error!(target: LOG_TARGET, "Configuration: {:?}", config);
+    info!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))

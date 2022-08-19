@@ -218,6 +218,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "base58-monero"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d079cdf47e1ca75554200bb2f30bff5a5af16964cac4a566b18de9a5d48db2b"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "base64"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2653,15 +2662,15 @@ dependencies = [
 
 [[package]]
 name = "monero"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a7038b6ba92588189248fbb4f8b2744d4918a9732f826e414814a50c168dca3"
+version = "0.17.2"
+source = "git+https://github.com/tari-project/monero-rs.git#7aebfd0aa037025cac6cbded3f72d73bf3c18123"
 dependencies = [
- "base58-monero",
+ "base58-monero 1.0.0",
  "curve25519-dalek",
  "fixed-hash",
  "hex",
  "hex-literal",
+ "sealed",
  "serde",
  "serde-big-array",
  "thiserror",
@@ -4145,6 +4154,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sealed"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b5e421024b5e5edfbaa8e60ecf90bda9dbffc602dbb230e6028763f85f0c68c"
+dependencies = [
+ "heck 0.3.3",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "security-framework"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4202,9 +4223,9 @@ dependencies = [
 
 [[package]]
 name = "serde-big-array"
-version = "0.3.3"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd31f59f6fe2b0c055371bb2f16d7f0aa7d8881676c04a55b1596d1a17cd10a4"
+checksum = "3323f09a748af288c3dc2474ea6803ee81f118321775bffa3ac8f7e65c5e90e7"
 dependencies = [
  "serde",
 ]
@@ -5312,7 +5333,7 @@ name = "tari_utilities"
 version = "0.4.5"
 source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.5#a9e059ba84f8d931aeaa2b88a52a1ce6503b2deb"
 dependencies = [
- "base58-monero",
+ "base58-monero 0.3.2",
  "base64 0.13.0",
  "bincode",
  "newtype-ops",

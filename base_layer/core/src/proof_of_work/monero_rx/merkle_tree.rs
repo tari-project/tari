@@ -24,18 +24,24 @@
 //!
 //! See <https://github.com/monero-project/monero/blob/master/src/crypto/tree-hash.c>
 
-use std::io;
+use std::{
+    io,
+    io::{Read, Write},
+};
 
 use monero::{
-    consensus::{encode, Decodable, Encodable},
+    consensus::{Decodable, Encodable},
     Hash,
 };
 
-use crate::proof_of_work::monero_rx::error::MergeMineError;
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding},
+    proof_of_work::monero_rx::error::MergeMineError,
+};
 
 /// Returns the Keccak 256 hash of the byte input
 fn cn_fast_hash(data: &[u8]) -> Hash {
-    Hash::hash(data)
+    Hash::new(data)
 }
 
 /// Returns the Keccak 256 hash of 2 hashes
@@ -85,7 +91,7 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
         2 => Ok(cn_fast_hash2(&hashes[0], &hashes[1])),
         n => {
             let mut cnt = tree_hash_count(n)?;
-            let mut buf = vec![Hash::null_hash(); cnt];
+            let mut buf = vec![Hash::null(); cnt];
 
             // c is the number of elements between the number of hashes and the next power of 2.
             let c = 2 * cnt - hashes.len();
@@ -165,29 +171,34 @@ impl MerkleProof {
 impl Default for MerkleProof {
     fn default() -> Self {
         Self {
-            branch: vec![Hash::null_hash()],
+            branch: vec![Hash::null()],
             depth: 0,
             path_bitmap: 0,
         }
     }
 }
 
-impl Decodable for MerkleProof {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, encode::Error> {
+impl ConsensusDecoding for MerkleProof {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         Ok(Self {
-            branch: Decodable::consensus_decode(d)?,
-            depth: Decodable::consensus_decode(d)?,
-            path_bitmap: Decodable::consensus_decode(d)?,
+            branch: Decodable::consensus_decode(reader).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Could not decode Monero branch {}", e),
+                )
+            })?,
+            depth: ConsensusDecoding::consensus_decode(reader)?,
+            path_bitmap: ConsensusDecoding::consensus_decode(reader)?,
         })
     }
 }
 
-impl Encodable for MerkleProof {
-    fn consensus_encode<E: io::Write>(&self, e: &mut E) -> Result<usize, io::Error> {
-        let mut len = self.branch.consensus_encode(e)?;
-        len += self.depth.consensus_encode(e)?;
-        len += self.path_bitmap.consensus_encode(e)?;
-        Ok(len)
+impl ConsensusEncoding for MerkleProof {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        let _ = self.branch.consensus_encode(writer)?;
+        ConsensusEncoding::consensus_encode(&self.depth, writer)?;
+        ConsensusEncoding::consensus_encode(&self.path_bitmap, writer)?;
+        Ok(())
     }
 }
 
@@ -215,7 +226,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
             let mut idx = hashes.iter().position(|node| node == hash)?;
             let mut count = tree_hash_count(len).ok()?;
 
-            let mut ints = vec![Hash::null_hash(); count];
+            let mut ints = vec![Hash::null(); count];
 
             let c = 2 * count - len;
             ints[..c].copy_from_slice(&hashes[..c]);
@@ -457,7 +468,7 @@ mod test {
 
         #[test]
         fn empty_hashset_has_no_proof() {
-            assert!(create_merkle_proof(&[], &Hash::null_hash()).is_none());
+            assert!(create_merkle_proof(&[], &Hash::null()).is_none());
         }
 
         #[test]
@@ -469,7 +480,7 @@ mod test {
             assert_eq!(proof.calculate_root(&tx_hashes[0]), tx_hashes[0]);
             assert_eq!(proof.branch(), tx_hashes);
 
-            assert!(create_merkle_proof(&tx_hashes[..], &Hash::null_hash()).is_none());
+            assert!(create_merkle_proof(&tx_hashes[..], &Hash::null()).is_none());
         }
 
         #[test]
@@ -491,7 +502,7 @@ mod test {
             assert_eq!(proof.branch()[0], tx_hashes[0]);
             assert_eq!(proof.calculate_root(&tx_hashes[1]), expected_root);
 
-            assert!(create_merkle_proof(tx_hashes, &Hash::null_hash()).is_none());
+            assert!(create_merkle_proof(tx_hashes, &Hash::null()).is_none());
         }
 
         #[test]
