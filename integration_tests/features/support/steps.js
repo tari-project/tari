@@ -520,7 +520,7 @@ Then(/(.*) is connected to (.*)/, async function (firstNode, secondNode) {
   let peers = await firstNodeClient.listConnectedPeers();
   expect(
     peers.some((p) => {
-      secondNodeIdentity.public_key.toString("hex") === p.public_key;
+      secondNodeIdentity.public_key === p.public_key;
     })
   ).to.be.true;
 });

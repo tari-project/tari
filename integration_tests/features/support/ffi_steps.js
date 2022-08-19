@@ -646,7 +646,7 @@ Then("I want to get public key of ffi wallet {word}", function (name) {
   let wallet = this.getWallet(name);
   let public_key = wallet.identify();
   expect(public_key.length).to.be.equal(
-    32,
+    64,
     `Public key has wrong length : ${public_key}`
   );
 });
