@@ -29,8 +29,9 @@ use std::{
 
 use digest::Digest;
 use integer_encoding::VarIntWriter;
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
+use super::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL};
 use crate::{
     consensus::ToConsensusBytes,
     covenants::{
@@ -307,8 +308,9 @@ impl OutputFields {
 
     pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake256 {
         let mut challenge = Blake256::new();
+        BaseLayerCovenantsDomain::add_domain_separation_tag(&mut challenge, COVENANTS_FIELD_HASHER_LABEL);
         for field in &self.fields {
-            challenge.update(field.get_field_value_bytes(output));
+            challenge.update(&field.get_field_value_bytes(output).as_slice());
         }
         challenge
     }
@@ -338,7 +340,6 @@ mod test {
 
     use super::*;
     use crate::{
-        consensus::ConsensusEncoding,
         covenant,
         covenants::test::{create_input, create_outputs},
         transactions::{
@@ -487,6 +488,9 @@ mod test {
         use super::*;
 
         mod construct_challenge_from {
+            use blake2::Digest;
+            use tari_crypto::hashing::DomainSeparation;
+
             use super::*;
 
             #[test]
@@ -508,12 +512,16 @@ mod test {
                 fields.push(OutputField::Commitment);
                 fields.push(OutputField::Script);
                 let hash = fields.construct_challenge_from(&output).finalize();
+                let hash = hash.to_vec();
 
-                let mut challenge = Vec::new();
-                output.features.consensus_encode(&mut challenge).unwrap();
-                output.commitment.consensus_encode(&mut challenge).unwrap();
-                output.script.consensus_encode(&mut challenge).unwrap();
-                let expected_hash = Blake256::new().chain(&challenge).finalize();
+                let mut hasher = Blake256::new();
+                BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
+                let expected_hash = hasher
+                    .chain(output.features.to_consensus_bytes())
+                    .chain(output.commitment.to_consensus_bytes())
+                    .chain(output.script.to_consensus_bytes())
+                    .finalize()
+                    .to_vec();
                 assert_eq!(hash, expected_hash);
             }
         }
