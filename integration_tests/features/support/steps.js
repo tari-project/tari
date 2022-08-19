@@ -519,9 +519,7 @@ Then(/(.*) is connected to (.*)/, async function (firstNode, secondNode) {
   const secondNodeIdentity = await secondNodeClient.identify();
   let peers = await firstNodeClient.listConnectedPeers();
   expect(
-    peers.some((p) => {
-      secondNodeIdentity.public_key === p.public_key;
-    })
+    peers.some((p) => secondNodeIdentity.public_key === p.public_key)
   ).to.be.true;
 });
 
