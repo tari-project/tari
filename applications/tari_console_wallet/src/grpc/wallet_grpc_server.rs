@@ -198,7 +198,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
-            public_key: identity.public_key().to_string(),
+            public_key: Vec::from(identity.public_key().as_bytes()),
             public_address: identity.public_address().to_string(),
             node_id: identity.node_id().to_vec(),
         }))
@@ -301,7 +301,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_inner()
             .recipient
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
-        let address = CommsPublicKey::from_hex(&message.address)
+        let address = CommsPublicKey::from_hex(&message.address.to_hex())
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
 
         let mut transaction_service = self.get_transaction_service();
@@ -461,7 +461,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(idx, dest)| -> Result<_, String> {
-                let pk = CommsPublicKey::from_hex(&dest.address)
+                let pk = CommsPublicKey::from_hex(&dest.address.to_hex())
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
                 Ok((
                     dest.address,
@@ -530,7 +530,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to send transaction for address `{}`: {}", address, err
+                        "Failed to send transaction for address `{}`: {}", address.to_hex(), err
                     );
                     TransferResult {
                         address,
