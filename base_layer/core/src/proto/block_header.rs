@@ -68,6 +68,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             total_script_offset,
             nonce: header.nonce,
             pow,
+            validator_node_merkle_root: header.validator_node_merkle_root,
         })
     }
 }
@@ -90,6 +91,7 @@ impl From<BlockHeader> for proto::BlockHeader {
             pow: Some(proto::ProofOfWork::from(header.pow)),
             kernel_mmr_size: header.kernel_mmr_size,
             output_mmr_size: header.output_mmr_size,
+            validator_node_merkle_root: header.validator_node_merkle_root,
         }
     }
 }

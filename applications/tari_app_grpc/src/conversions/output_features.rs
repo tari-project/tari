@@ -22,12 +22,14 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::{
     OutputFeatures,
     OutputFeaturesVersion,
     OutputType,
     SideChainFeatures,
 };
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -46,6 +48,9 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             .try_into()
             .map_err(|_| "Invalid output type: overflow")?;
 
+        let validator_node_public_key = PublicKey::from_vec(&features.validator_node_public_key).ok();
+        let validator_node_signature = features.validator_node_signature.map(|s| s.try_into()).transpose()?;
+
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -54,6 +59,8 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.metadata,
             sidechain_features,
+            validator_node_public_key,
+            validator_node_signature,
         ))
     }
 }
@@ -66,6 +73,14 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             sidechain_features: features.sidechain_features.map(Into::into),
+            validator_node_public_key: features
+                .validator_node_public_key
+                .map(|pk| pk.as_bytes().to_vec())
+                .unwrap_or_default(),
+            validator_node_signature: features.validator_node_signature.map(|s| grpc::Signature {
+                public_nonce: Vec::from(s.get_public_nonce().as_bytes()),
+                signature: Vec::from(s.get_signature().as_bytes()),
+            }),
         }
     }
 }

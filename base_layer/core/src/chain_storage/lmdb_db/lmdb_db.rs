@@ -34,7 +34,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 use tari_utilities::{
@@ -83,6 +83,7 @@ use crate::{
         },
         stats::DbTotalSizeStats,
         utxo_mined_info::UtxoMinedInfo,
+        ActiveValidatorNode,
         BlockchainBackend,
         DbBasicStats,
         DbSize,
@@ -91,9 +92,17 @@ use crate::{
         PrunedOutput,
         Reorg,
     },
+    consensus::{ConsensusManager, DomainSeparatedConsensusHasher},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_components::{
+            SpentOutput,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        TransactionHashDomain,
     },
     MutablePrunedOutputMmr,
     PrunedKernelMmr,
@@ -128,8 +137,14 @@ const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
 const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 const LMDB_DB_BAD_BLOCK_LIST: &str = "bad_blocks";
 const LMDB_DB_REORGS: &str = "reorgs";
+const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
+const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 
-pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBDatabase, ChainStorageError> {
+pub fn create_lmdb_database<P: AsRef<Path>>(
+    path: P,
+    config: LMDBConfig,
+    consensus_manager: ConsensusManager,
+) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
     std::fs::create_dir_all(&path)?;
@@ -166,10 +181,12 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
         .add_database(LMDB_DB_REORGS, flags | db::INTEGERKEY)
+        .add_database(LMDB_DB_VALIDATOR_NODES, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags | db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(&lmdb_store, file_lock)
+    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager)
 }
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
@@ -224,11 +241,20 @@ pub struct LMDBDatabase {
     bad_blocks: DatabaseRef,
     /// Stores reorgs by epochtime and Reorg
     reorgs: DatabaseRef,
+    /// Maps VN Public Key -> ActiveValidatorNode
+    validator_nodes: DatabaseRef,
+    /// Maps VN Shard Key -> VN Public Key
+    validator_nodes_mapping: DatabaseRef,
     _file_lock: Arc<File>,
+    consensus_manager: ConsensusManager,
 }
 
 impl LMDBDatabase {
-    pub fn new(store: &LMDBStore, file_lock: File) -> Result<Self, ChainStorageError> {
+    pub fn new(
+        store: &LMDBStore,
+        file_lock: File,
+        consensus_manager: ConsensusManager,
+    ) -> Result<Self, ChainStorageError> {
         let env = store.env();
 
         let db = Self {
@@ -259,9 +285,12 @@ impl LMDBDatabase {
             orphan_parent_map_index: get_database(store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
             bad_blocks: get_database(store, LMDB_DB_BAD_BLOCK_LIST)?,
             reorgs: get_database(store, LMDB_DB_REORGS)?,
+            validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
+            validator_nodes_mapping: get_database(store, LMDB_DB_VALIDATOR_NODES_MAPPING)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
+            consensus_manager,
         };
 
         Ok(db)
@@ -460,6 +489,14 @@ impl LMDBDatabase {
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
+                InsertValidatorNode { validator_node } => {
+                    self.insert_validator_node(&write_txn, validator_node)?;
+                },
+                DeleteValidatorNode { public_key } => {
+                    let txn = self.read_transaction()?;
+                    let shard_key = self.get_vn_mapping(&txn, public_key)?;
+                    self.delete_validator_node(&write_txn, public_key, &shard_key)?;
+                },
             }
         }
         write_txn.commit()?;
@@ -467,7 +504,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 24] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 26] {
         [
             ("metadata_db", &self.metadata_db),
             ("headers_db", &self.headers_db),
@@ -499,6 +536,8 @@ impl LMDBDatabase {
             ("orphan_parent_map_index", &self.orphan_parent_map_index),
             ("bad_blocks", &self.bad_blocks),
             ("reorgs", &self.reorgs),
+            ("validator_nodes", &self.validator_nodes),
+            ("validator_nodes_mapping", &self.validator_nodes_mapping),
         ]
     }
 
@@ -1228,6 +1267,16 @@ impl LMDBDatabase {
                     None => return Err(ChainStorageError::UnspendableInput),
                 },
             };
+            if let SpentOutput::OutputData {
+                version: _, features, ..
+            } = &input.spent_output
+            {
+                if let Some(validator_node_public_key) = &features.validator_node_public_key {
+                    let read_txn = self.read_transaction()?;
+                    let shard_key = self.get_vn_mapping(&read_txn, &validator_node_public_key)?;
+                    self.delete_validator_node(txn, validator_node_public_key, &shard_key)?;
+                }
+            }
             if !output_mmr.delete(index) {
                 return Err(ChainStorageError::InvalidOperation(format!(
                     "Could not delete index {} from the output MMR",
@@ -1246,6 +1295,24 @@ impl LMDBDatabase {
                     mmr_count
                 ))
             })?;
+            if let Some(validator_node_public_key) = &output.features.validator_node_public_key {
+                let shard_key = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_root")
+                    .chain(&validator_node_public_key.as_bytes())
+                    .chain(&block_hash)
+                    .finalize();
+
+                let validator_node = ActiveValidatorNode {
+                    shard_key,
+                    from_height: header.height + 1, // The node is active one block after it's mined
+                    to_height: header.height +
+                        1 +
+                        self.consensus_manager
+                            .consensus_constants(header.height)
+                            .get_validator_node_timeout(),
+                    public_key: validator_node_public_key.clone(),
+                };
+                self.insert_validator_node(txn, &validator_node)?;
+            }
             self.insert_output(
                 txn,
                 &block_hash,
@@ -1485,6 +1552,42 @@ impl LMDBDatabase {
         debug!(target: LOG_TARGET, "Cleaned out {} stale bad blocks", num_deleted);
 
         Ok(())
+    }
+
+    fn insert_validator_node(
+        &self,
+        txn: &WriteTransaction<'_>,
+        validator_node: &ActiveValidatorNode,
+    ) -> Result<(), ChainStorageError> {
+        lmdb_insert(
+            txn,
+            &self.validator_nodes,
+            &validator_node.public_key.to_vec(),
+            validator_node,
+            "validator_nodes",
+        )?;
+        lmdb_insert(
+            txn,
+            &self.validator_nodes_mapping,
+            &validator_node.shard_key,
+            &validator_node.public_key.to_vec(),
+            "validator_nodes_mapping",
+        )
+    }
+
+    fn get_vn_mapping(&self, txn: &ReadTransaction<'_>, public_key: &PublicKey) -> Result<[u8; 32], ChainStorageError> {
+        let x: ActiveValidatorNode = lmdb_get(&txn, &self.validator_nodes, &public_key.to_vec())?.unwrap();
+        Ok(x.shard_key.clone())
+    }
+
+    fn delete_validator_node(
+        &self,
+        txn: &WriteTransaction<'_>,
+        public_key: &PublicKey,
+        shard_key: &[u8; 32],
+    ) -> Result<(), ChainStorageError> {
+        lmdb_delete(txn, &self.validator_nodes, &public_key.to_vec(), "validator_nodes")?;
+        lmdb_delete(txn, &self.validator_nodes, shard_key, "validator_nodes_mapping")
     }
 
     fn fetch_output_in_txn(
@@ -2292,6 +2395,17 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
         let txn = self.read_transaction()?;
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
+    }
+
+    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.validator_nodes, |vn: ActiveValidatorNode| {
+            if vn.from_height <= height && vn.to_height >= height {
+                Some(vn)
+            } else {
+                None
+            }
+        })
     }
 }
 

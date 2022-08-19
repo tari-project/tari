@@ -45,6 +45,8 @@ pub struct NewBlockHeaderTemplate {
     pub total_script_offset: BlindingFactor,
     /// Proof of work summary
     pub pow: ProofOfWork,
+    // Merkle root of all active validator node.
+    pub validator_node_merkle_root: Vec<u8>,
 }
 
 impl NewBlockHeaderTemplate {
@@ -56,6 +58,7 @@ impl NewBlockHeaderTemplate {
             total_kernel_offset: header.total_kernel_offset,
             total_script_offset: header.total_script_offset,
             pow: header.pow,
+            validator_node_merkle_root: header.validator_node_merkle_root,
         }
     }
 }

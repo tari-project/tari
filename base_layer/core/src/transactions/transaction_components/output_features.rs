@@ -29,6 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{PublicKey, Signature};
 
 use super::OutputFeaturesVersion;
 use crate::{
@@ -47,6 +48,8 @@ pub struct OutputFeatures {
     pub maturity: u64,
     pub metadata: Vec<u8>,
     pub sidechain_features: Option<SideChainFeatures>,
+    pub validator_node_public_key: Option<PublicKey>,
+    pub validator_node_signature: Option<Signature>,
 }
 
 impl OutputFeatures {
@@ -56,6 +59,8 @@ impl OutputFeatures {
         maturity: u64,
         metadata: Vec<u8>,
         sidechain_features: Option<SideChainFeatures>,
+        validator_node_public_key: Option<PublicKey>,
+        validator_node_signature: Option<Signature>,
     ) -> OutputFeatures {
         OutputFeatures {
             version,
@@ -63,6 +68,8 @@ impl OutputFeatures {
             maturity,
             metadata,
             sidechain_features,
+            validator_node_public_key,
+            validator_node_signature,
         }
     }
 
@@ -71,6 +78,8 @@ impl OutputFeatures {
         maturity: u64,
         metadata: Vec<u8>,
         sidechain_features: Option<SideChainFeatures>,
+        validator_node_public_key: Option<PublicKey>,
+        validator_node_signature: Option<Signature>,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
@@ -78,6 +87,8 @@ impl OutputFeatures {
             maturity,
             metadata,
             sidechain_features,
+            validator_node_public_key,
+            validator_node_signature,
         )
     }
 
@@ -102,6 +113,17 @@ impl OutputFeatures {
         OutputFeatures {
             output_type: OutputType::CodeTemplateRegistration,
             sidechain_features: Some(SideChainFeatures::TemplateRegistration(template_registration)),
+            ..Default::default()
+        }
+    }
+
+    pub fn create_validator_node_registration(
+        validator_node_public_key: PublicKey,
+        validator_node_signature: Signature,
+    ) -> OutputFeatures {
+        OutputFeatures {
+            validator_node_public_key: Some(validator_node_public_key),
+            validator_node_signature: Some(validator_node_signature),
             ..Default::default()
         }
     }
@@ -135,19 +157,23 @@ impl ConsensusDecoding for OutputFeatures {
         let sidechain_features = ConsensusDecoding::consensus_decode(reader)?;
         const MAX_METADATA_SIZE: usize = 1024;
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
+        let validator_node_public_key = None;
+        let validator_node_signature = None;
         Ok(Self {
             version,
             output_type: flags,
             maturity,
             sidechain_features,
             metadata: metadata.into(),
+            validator_node_public_key,
+            validator_node_signature,
         })
     }
 }
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None)
+        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None, None, None)
     }
 }
 

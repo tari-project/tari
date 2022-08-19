@@ -132,6 +132,7 @@ pub enum CliCommands {
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
     HashGrpcPassword(HashPasswordArgs),
+    RegisterValidatorNode(RegisterValidatorNodeArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -259,4 +260,13 @@ pub struct ClaimShaAtomicSwapRefundArgs {
 pub struct HashPasswordArgs {
     /// If true, only output the hashed password and the salted password. Otherwise a usage explanation is output.
     pub short: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RegisterValidatorNodeArgs {
+    pub validator_node_public_key: UniPublicKey,
+    pub validator_node_public_nonce: UniPublicKey,
+    pub validator_node_signature: Vec<u8>,
+    #[clap(short, long, default_value = "Registering VN")]
+    pub message: String,
 }

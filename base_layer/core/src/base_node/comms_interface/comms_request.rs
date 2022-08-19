@@ -56,6 +56,7 @@ pub enum NodeCommsRequest {
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
     FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
+    FetchValidatorNodesKeys { height: u64 },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -93,6 +94,9 @@ impl Display for NodeCommsRequest {
             ),
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
+            },
+            FetchValidatorNodesKeys { height } => {
+                write!(f, "FetchValidatorNodesKeys ({})", height)
             },
         }
     }

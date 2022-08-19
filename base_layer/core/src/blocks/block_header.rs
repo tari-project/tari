@@ -110,6 +110,8 @@ pub struct BlockHeader {
     pub nonce: u64,
     /// Proof of work summary
     pub pow: ProofOfWork,
+    // Merkle root of all active validator node.
+    pub validator_node_merkle_root: Vec<u8>,
 }
 
 impl BlockHeader {
@@ -130,6 +132,7 @@ impl BlockHeader {
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_merkle_root: vec![0; 32],
         }
     }
 
@@ -145,7 +148,7 @@ impl BlockHeader {
     /// Create a new block header using relevant data from the previous block. The height is incremented by one, the
     /// previous block hash is set, the timestamp is set to the current time, and the kernel/output mmr sizes are set to
     /// the previous block. All other fields, including proof of work are set to defaults.
-    pub fn from_previous(prev: &BlockHeader) -> BlockHeader {
+    pub fn from_previous(prev: &BlockHeader, validator_node_merkle_root: Vec<u8>) -> BlockHeader {
         let prev_hash = prev.hash();
         BlockHeader {
             version: prev.version,
@@ -162,6 +165,7 @@ impl BlockHeader {
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
+            validator_node_merkle_root,
         }
     }
 
@@ -263,6 +267,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             total_script_offset: header_template.total_script_offset,
             nonce: 0,
             pow: header_template.pow,
+            validator_node_merkle_root: header_template.validator_node_merkle_root,
         }
     }
 }

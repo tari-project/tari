@@ -38,6 +38,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::ActiveValidatorNode,
     proof_of_work::PowAlgorithm,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
@@ -268,6 +269,20 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionKernels(kernels) => Ok(kernels),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_active_validator_nodes(
+        &mut self,
+        height: u64,
+    ) -> Result<Vec<ActiveValidatorNode>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchValidatorNodesKeys { height })
+            .await??
+        {
+            NodeCommsResponse::FetchValidatorNodesKeysResponse(active_validator_nodes) => Ok(active_validator_nodes),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

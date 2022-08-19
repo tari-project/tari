@@ -88,6 +88,8 @@ service BaseNode {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
+    // Get VNs
+    rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream ActiveValidatorNode);
 
 }
 
@@ -434,3 +436,13 @@ message MempoolStatsResponse {
     uint64 unconfirmed_weight = 4;
 }
 
+message GetActiveValidatorNodesRequest {
+    uint64 height = 1;
+}
+
+message ActiveValidatorNode {
+    bytes shard_key = 1;
+    uint64 from_height = 2;
+    uint64 to_height = 3;
+    bytes public_key = 4;
+}

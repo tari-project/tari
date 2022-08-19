@@ -41,6 +41,7 @@ use tari_common_types::{
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
+use super::ActiveValidatorNode;
 use crate::{
     blocks::{
         Block,
@@ -91,6 +92,7 @@ use crate::{
     PrunedInputMmr,
     PrunedKernelMmr,
     PrunedWitnessMmr,
+    ValidatorNodeMmr,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -838,6 +840,14 @@ where B: BlockchainBackend
         db.fetch_mmr_size(tree)
     }
 
+    pub fn get_validator_nodes_mr(&self) -> Result<Vec<u8>, ChainStorageError> {
+        let tip = self.get_height()?;
+        let validator_nodes = self.fetch_active_validator_nodes(tip + 1)?;
+        // Note: MMR is not balanced
+        let mmr = ValidatorNodeMmr::new(validator_nodes.iter().map(|vn| vn.shard_key.to_vec()).collect());
+        Ok(mmr.get_merkle_root().unwrap())
+    }
+
     /// Tries to add a block to the longest chain.
     ///
     /// The block is added to the longest chain if and only if
@@ -1153,6 +1163,11 @@ where B: BlockchainBackend
         let mut txn = DbTransaction::new();
         txn.clear_all_reorgs();
         db.write(txn)
+    }
+
+    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<ActiveValidatorNode>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_active_validator_nodes(height)
     }
 }
 

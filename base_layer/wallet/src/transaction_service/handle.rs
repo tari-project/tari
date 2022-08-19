@@ -31,7 +31,7 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
-    types::PublicKey,
+    types::{PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -82,6 +82,12 @@ pub enum TransactionServiceRequest {
     },
     BurnTari {
         amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
+    RegisterValidatorNode {
+        validator_node_public_key: CommsPublicKey,
+        validator_node_signature: Signature,
         fee_per_gram: MicroTari,
         message: String,
     },
@@ -151,6 +157,12 @@ impl fmt::Display for TransactionServiceRequest {
                 message
             )),
             Self::BurnTari { amount, message, .. } => f.write_str(&format!("Burning Tari ({}, {})", amount, message)),
+            Self::RegisterValidatorNode {
+                validator_node_public_key,
+                validator_node_signature: _,
+                fee_per_gram: _,
+                message,
+            } => f.write_str(&format!("Registering VN ({}, {})", validator_node_public_key, message)),
             Self::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
@@ -438,6 +450,28 @@ impl TransactionServiceHandle {
                 dest_pubkey,
                 amount,
                 output_features: Box::new(output_features),
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn register_validator_node(
+        &mut self,
+        validator_node_public_key: PublicKey,
+        validator_node_signature: Signature,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RegisterValidatorNode {
+                validator_node_public_key,
+                validator_node_signature,
                 fee_per_gram,
                 message,
             })

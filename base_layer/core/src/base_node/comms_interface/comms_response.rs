@@ -32,7 +32,7 @@ use tari_common_types::{
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::UtxoMinedInfo,
+    chain_storage::{ActiveValidatorNode, UtxoMinedInfo},
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
@@ -71,6 +71,7 @@ pub enum NodeCommsResponse {
     FetchOutputsByContractIdResponse {
         outputs: Vec<UtxoMinedInfo>,
     },
+    FetchValidatorNodesKeysResponse(Vec<ActiveValidatorNode>),
 }
 
 impl Display for NodeCommsResponse {
@@ -109,6 +110,7 @@ impl Display for NodeCommsResponse {
             ),
             FetchOutputsForBlockResponse { .. } => write!(f, "FetchConstitutionsResponse"),
             FetchOutputsByContractIdResponse { .. } => write!(f, "FetchOutputsByContractIdResponse"),
+            FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
         }
     }
 }

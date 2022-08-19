@@ -221,6 +221,7 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
             total_kernel_offset,
             total_script_offset,
             pow,
+            validator_node_merkle_root: header.validator_node_merkle_root,
         })
     }
 }
@@ -234,6 +235,7 @@ impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
             total_kernel_offset: header.total_kernel_offset.to_vec(),
             total_script_offset: header.total_script_offset.to_vec(),
             pow: Some(proto::ProofOfWork::from(header.pow)),
+            validator_node_merkle_root: header.validator_node_merkle_root,
         }
     }
 }

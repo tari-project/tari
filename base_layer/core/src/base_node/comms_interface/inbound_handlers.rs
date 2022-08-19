@@ -274,8 +274,8 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
-
-                let mut header = BlockHeader::from_previous(best_block_header.header());
+                let vns = self.blockchain_db.get_validator_nodes_mr().await?;
+                let mut header = BlockHeader::from_previous(best_block_header.header(), vns);
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
@@ -361,6 +361,12 @@ where B: BlockchainBackend + 'static
                         transactions,
                         not_found,
                     },
+                ))
+            },
+            NodeCommsRequest::FetchValidatorNodesKeys { height } => {
+                let active_validator_nodes = self.blockchain_db.fetch_active_validator_nodes(height).await?;
+                Ok(NodeCommsResponse::FetchValidatorNodesKeysResponse(
+                    active_validator_nodes,
                 ))
             },
         }

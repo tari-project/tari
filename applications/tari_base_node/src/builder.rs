@@ -173,9 +173,11 @@ pub async fn configure_and_initialize_node(
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
+            let rules = ConsensusManager::builder(app_config.base_node.network).build();
             let backend = create_lmdb_database(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
+                rules,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
             build_node_context(backend, app_config, node_identity, interrupt_signal).await?
