@@ -95,7 +95,7 @@ message SoftwareUpdate {
 message GetIdentityRequest { }
 
 message GetIdentityResponse {
-    bytes public_key = 1;
+    string public_key = 1;
     string public_address = 2;
     bytes node_id = 3;
 }
