@@ -38,6 +38,7 @@ pub use consensus_encoding::{
     ConsensusEncodingSized,
     ConsensusHasher,
     DomainSeparatedConsensusHasher,
+    FromConsensusBytes,
     MaxSizeBytes,
     MaxSizeVec,
     ToConsensusBytes,
