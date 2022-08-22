@@ -2189,10 +2189,7 @@ impl UnconfirmedTransactionInfoSql {
 mod test {
     use std::{convert::TryFrom, time::Duration};
 
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, NewAead},
-        Aes256Gcm,
-    };
+    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
@@ -2213,10 +2210,7 @@ mod test {
             SenderTransactionProtocol,
         },
     };
-    use tari_crypto::{
-        hash::blake2::Blake256,
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    };
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_script::{script, ExecutionStack, TariScript};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
@@ -2289,7 +2283,7 @@ mod test {
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-        let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),

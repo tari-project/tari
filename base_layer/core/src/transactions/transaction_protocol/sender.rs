@@ -23,7 +23,6 @@
 use std::fmt;
 
 use derivative::Derivative;
-use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
@@ -45,6 +44,7 @@ use tari_crypto::{
 };
 use tari_script::TariScript;
 
+use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
@@ -701,13 +701,13 @@ impl fmt::Display for SenderTransactionProtocol {
     }
 }
 
-pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> TxId {
-    let hash = D::new()
+pub fn calculate_tx_id(pub_nonce: &PublicKey, index: usize) -> TxId {
+    let hash = CalculateTxIdTransactionProtocolHasherBlake256::new()
         .chain(pub_nonce.as_bytes())
         .chain(index.to_le_bytes())
         .finalize();
     let mut bytes: [u8; 8] = [0u8; 8];
-    bytes.copy_from_slice(&hash[..8]);
+    bytes.copy_from_slice(&hash.as_ref()[..8]);
     u64::from_le_bytes(bytes).into()
 }
 
@@ -797,7 +797,6 @@ mod test {
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         errors::RangeProofError::ProofConstructionError,
-        hash::blake2::Blake256,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
         tari_utilities::{hex::Hex, ByteArray},
@@ -986,7 +985,7 @@ mod test {
                 p2.sender_offset_private_key.clone(),
             )
             .unwrap();
-        let mut sender = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut sender = builder.build(&factories, None, u64::MAX).unwrap();
         assert!(!sender.is_failed());
         assert!(sender.is_finalizing());
         match sender.finalize(&factories, None, u64::MAX) {
@@ -1019,7 +1018,7 @@ mod test {
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
-        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
@@ -1087,7 +1086,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, MicroTari(5000));
-        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         println!(
@@ -1167,7 +1166,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, (2u64.pow(32) + 1).into());
-        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
@@ -1214,7 +1213,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
-        match builder.build::<Blake256>(&factories, None, u64::MAX) {
+        match builder.build(&factories, None, u64::MAX) {
             Ok(_) => panic!("'BuildError(\"Fee is greater than amount\")' not caught"),
             Err(e) => assert_eq!(e.message, "Fee is greater than amount".to_string()),
         };
@@ -1249,7 +1248,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
-        match builder.build::<Blake256>(&factories, None, u64::MAX) {
+        match builder.build(&factories, None, u64::MAX) {
             Ok(_) => {},
             Err(e) => panic!("Unexpected error: {:?}", e),
         };
@@ -1287,7 +1286,7 @@ mod test {
                 MicroTari::zero(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
 

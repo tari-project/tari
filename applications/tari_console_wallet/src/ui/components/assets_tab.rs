@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_utilities::hex::Hex;
 use tui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},
@@ -48,7 +47,7 @@ impl AssetsTab {
 }
 
 impl<B: Backend> Component<B> for AssetsTab {
-    fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState) {
         let list_areas = Layout::default()
             .constraints([Constraint::Length(1), Constraint::Min(42)].as_ref())
             .split(area);
@@ -61,21 +60,8 @@ impl<B: Backend> Component<B> for AssetsTab {
         .wrap(Wrap { trim: true });
 
         f.render_widget(instructions, list_areas[0]);
-        let constitutions = app_state.get_owned_constitutions();
 
-        let constitutions: Vec<_> = constitutions
-            .iter()
-            .map(|r| {
-                (r.unblinded_output
-                    .features
-                    .sidechain_features
-                    .clone()
-                    .unwrap()
-                    .contract_id
-                    .to_hex(),)
-            })
-            .collect();
-        let rows: Vec<_> = constitutions.iter().map(|v| Row::new(vec![v.0.as_str()])).collect();
+        let rows: Vec<_> = Vec::new();
         let table = Table::new(rows)
             .header(Row::new(vec!["Name", "Status", "Pub Key", "Owner"]).style(styles::header_row()))
             .block(Block::default().title("Assets").borders(Borders::ALL))
@@ -85,22 +71,7 @@ impl<B: Backend> Component<B> for AssetsTab {
         f.render_stateful_widget(table, list_areas[1], &mut self.table_state);
     }
 
-    fn on_up(&mut self, _app_state: &mut AppState) {
-        let index = self.table_state.selected().unwrap_or_default();
-        if index == 0 {
-            self.table_state.select(None);
-        } else {
-            self.table_state.select(Some(index - 1));
-        }
-    }
+    fn on_up(&mut self, _app_state: &mut AppState) {}
 
-    fn on_down(&mut self, app_state: &mut AppState) {
-        let index = self.table_state.selected().map(|s| s + 1).unwrap_or_default();
-        let constitutions = app_state.get_owned_constitutions();
-        if index > constitutions.len().saturating_sub(1) {
-            self.table_state.select(None);
-        } else {
-            self.table_state.select(Some(index));
-        }
-    }
+    fn on_down(&mut self, _app_state: &mut AppState) {}
 }

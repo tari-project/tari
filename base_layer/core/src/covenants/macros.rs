@@ -89,6 +89,13 @@ macro_rules! __covenant_inner {
         $crate::__covenant_inner!(@ { $covenant } @covenant_lit($($inner)*),)
     };
 
+    // @output_type(expr1), ...
+    (@ { $covenant:ident } @output_type($arg:expr $(,)?), $($tail:tt)*) => {
+        use $crate::transactions::transaction_components::OutputType::*;
+        $covenant.push_token($crate::covenants::CovenantToken::output_type($arg));
+        $crate::__covenant_inner!(@ { $covenant } $($tail)*)
+    };
+
     // @arg(expr1, expr2, ...), ...
     (@ { $covenant:ident } @$arg:ident($($args:expr),* $(,)?), $($tail:tt)*) => {
         $covenant.push_token($crate::covenants::CovenantToken::$arg($($args),*));
@@ -200,10 +207,10 @@ mod test {
     #[test]
     fn covenant() {
         let hash = FixedHash::zero();
-        let covenant = covenant!(field_eq(@field::covenant, @covenant_lit(and(field_eq(@field::features_contract_id, @hash(hash), identity())))));
+        let covenant = covenant!(field_eq(@field::covenant, @covenant_lit(and(field_eq( @hash(hash), identity())))));
         assert_eq!(
             covenant.to_bytes().to_hex(),
-            "33070305262133070901000000000000000000000000000000000000000000000000000000000000000020"
+            "3307030524213301000000000000000000000000000000000000000000000000000000000000000020"
         );
     }
 

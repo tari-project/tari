@@ -29,8 +29,9 @@ use std::{
 
 use digest::Digest;
 use integer_encoding::VarIntWriter;
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
+use super::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL};
 use crate::{
     consensus::ToConsensusBytes,
     covenants::{
@@ -50,13 +51,10 @@ pub enum OutputField {
     SenderOffsetPublicKey = byte_codes::FIELD_SENDER_OFFSET_PUBLIC_KEY,
     Covenant = byte_codes::FIELD_COVENANT,
     Features = byte_codes::FIELD_FEATURES,
-    FeaturesFlags = byte_codes::FIELD_FEATURES_FLAGS,
+    FeaturesOutputType = byte_codes::FIELD_FEATURES_OUTPUT_TYPE,
     FeaturesMaturity = byte_codes::FIELD_FEATURES_MATURITY,
-    FeaturesUniqueId = byte_codes::FIELD_FEATURES_UNIQUE_ID,
-    FeaturesParentPublicKey = byte_codes::FIELD_FEATURES_PARENT_PUBLIC_KEY,
     FeaturesMetadata = byte_codes::FIELD_FEATURES_METADATA,
     FeaturesSideChainFeatures = byte_codes::FIELD_FEATURES_SIDE_CHAIN_FEATURES,
-    FeaturesSideChainFeaturesContractId = byte_codes::FIELD_FEATURES_SIDE_CHAIN_FEATURES_CONTRACT_ID,
 }
 
 impl OutputField {
@@ -70,12 +68,9 @@ impl OutputField {
             FIELD_SENDER_OFFSET_PUBLIC_KEY => Ok(SenderOffsetPublicKey),
             FIELD_COVENANT => Ok(Covenant),
             FIELD_FEATURES => Ok(Features),
-            FIELD_FEATURES_FLAGS => Ok(FeaturesFlags),
+            FIELD_FEATURES_OUTPUT_TYPE => Ok(FeaturesOutputType),
             FIELD_FEATURES_MATURITY => Ok(FeaturesMaturity),
-            FIELD_FEATURES_UNIQUE_ID => Ok(FeaturesUniqueId),
-            FIELD_FEATURES_PARENT_PUBLIC_KEY => Ok(FeaturesParentPublicKey),
             FIELD_FEATURES_SIDE_CHAIN_FEATURES => Ok(FeaturesSideChainFeatures),
-            FIELD_FEATURES_SIDE_CHAIN_FEATURES_CONTRACT_ID => Ok(FeaturesSideChainFeaturesContractId),
             FIELD_FEATURES_METADATA => Ok(FeaturesMetadata),
 
             _ => Err(CovenantDecodeError::UnknownByteCode { code: byte }),
@@ -95,20 +90,9 @@ impl OutputField {
             SenderOffsetPublicKey => &output.sender_offset_public_key as &dyn Any,
             Covenant => &output.covenant as &dyn Any,
             Features => &output.features as &dyn Any,
-            FeaturesFlags => &output.features.output_type as &dyn Any,
+            FeaturesOutputType => &output.features.output_type as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
-            FeaturesUniqueId => &output.features.unique_id as &dyn Any,
-            FeaturesParentPublicKey => &output.features.parent_public_key as &dyn Any,
             FeaturesSideChainFeatures => &output.features.sidechain_features as &dyn Any,
-            FeaturesSideChainFeaturesContractId => {
-                // This is tricky: in the Some case we return &FixedHash and None case we return ref to None from
-                // sidechain_features because there is no reference to Option<FixedHash> for
-                // sidechain_features.contract_id to return.
-                match &output.features.sidechain_features {
-                    Some(v) => &v.contract_id as &dyn Any,
-                    none => none as &dyn Any,
-                }
-            },
             FeaturesMetadata => &output.features.metadata as &dyn Any,
         };
         val.downcast_ref::<T>()
@@ -123,12 +107,9 @@ impl OutputField {
             SenderOffsetPublicKey => output.sender_offset_public_key.to_consensus_bytes(),
             Covenant => output.covenant.to_consensus_bytes(),
             Features => output.features.to_consensus_bytes(),
-            FeaturesFlags => output.features.output_type.to_consensus_bytes(),
+            FeaturesOutputType => output.features.output_type.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
-            FeaturesUniqueId => output.features.unique_id.to_consensus_bytes(),
-            FeaturesParentPublicKey => output.features.parent_public_key.to_consensus_bytes(),
             FeaturesSideChainFeatures => output.features.sidechain_features.to_consensus_bytes(),
-            FeaturesSideChainFeaturesContractId => output.features.unique_asset_id().to_consensus_bytes(),
             FeaturesMetadata => output.features.metadata.to_consensus_bytes(),
         }
     }
@@ -154,7 +135,7 @@ impl OutputField {
                 .features()
                 .map(|features| *features == output.features)
                 .unwrap_or(false),
-            FeaturesFlags => input
+            FeaturesOutputType => input
                 .features()
                 .map(|features| features.output_type == output.features.output_type)
                 .unwrap_or(false),
@@ -162,21 +143,9 @@ impl OutputField {
                 .features()
                 .map(|features| features.maturity == output.features.maturity)
                 .unwrap_or(false),
-            FeaturesUniqueId => input
-                .features()
-                .map(|features| features.unique_id == output.features.unique_id)
-                .unwrap_or(false),
-            FeaturesParentPublicKey => input
-                .features()
-                .map(|features| features.parent_public_key == output.features.parent_public_key)
-                .unwrap_or(false),
             FeaturesSideChainFeatures => input
                 .features()
                 .map(|features| features.sidechain_features == output.features.sidechain_features)
-                .unwrap_or(false),
-            FeaturesSideChainFeaturesContractId => input
-                .features()
-                .map(|features| features.contract_id() == output.features.contract_id())
                 .unwrap_or(false),
             FeaturesMetadata => input
                 .features()
@@ -193,15 +162,6 @@ impl OutputField {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
-            // Handle edge cases
-            FeaturesParentPublicKey | FeaturesUniqueId => match self.get_field_value_ref::<Option<T>>(output) {
-                Some(Some(field_val)) => Ok(field_val == val),
-                Some(None) => Ok(false),
-                None => Err(CovenantError::InvalidArgument {
-                    filter: "is_eq",
-                    details: format!("Invalid type for field {}", self),
-                }),
-            },
             FeaturesSideChainFeatures => {
                 match self.get_field_value_ref::<Option<Box<T>>>(output) {
                     Some(Some(field_val)) => Ok(**field_val == *val),
@@ -219,10 +179,6 @@ impl OutputField {
                         }
                     },
                 }
-            },
-            FeaturesSideChainFeaturesContractId => match self.get_field_value_ref::<T>(output) {
-                Some(field_val) => Ok(field_val == val),
-                None => Ok(false),
             },
             _ => match self.get_field_value_ref::<T>(output) {
                 Some(field_val) => Ok(field_val == val),
@@ -261,8 +217,8 @@ impl OutputField {
     }
 
     #[allow(dead_code)]
-    pub fn features_flags() -> Self {
-        OutputField::FeaturesFlags
+    pub fn features_output_type() -> Self {
+        OutputField::FeaturesOutputType
     }
 
     #[allow(dead_code)]
@@ -271,20 +227,6 @@ impl OutputField {
     }
 
     #[allow(dead_code)]
-    pub fn features_unique_id() -> Self {
-        OutputField::FeaturesUniqueId
-    }
-
-    #[allow(dead_code)]
-    pub fn features_parent_public_key() -> Self {
-        OutputField::FeaturesParentPublicKey
-    }
-
-    #[allow(dead_code)]
-    pub fn features_contract_id() -> Self {
-        OutputField::FeaturesSideChainFeaturesContractId
-    }
-
     #[allow(dead_code)]
     pub fn features_sidechain_features() -> Self {
         OutputField::FeaturesSideChainFeatures
@@ -306,12 +248,9 @@ impl Display for OutputField {
             Script => write!(f, "field::script"),
             Covenant => write!(f, "field::covenant"),
             Features => write!(f, "field::features"),
-            FeaturesFlags => write!(f, "field::features_flags"),
-            FeaturesUniqueId => write!(f, "field::features_unique_id"),
+            FeaturesOutputType => write!(f, "field::features_flags"),
             FeaturesSideChainFeatures => write!(f, "field::features_sidechain_features"),
-            FeaturesSideChainFeaturesContractId => write!(f, "field::features_contract_id"),
             FeaturesMetadata => write!(f, "field::features_metadata"),
-            FeaturesParentPublicKey => write!(f, "field::features_parent_public_key"),
             FeaturesMaturity => write!(f, "field::features_maturity"),
         }
     }
@@ -369,8 +308,9 @@ impl OutputFields {
 
     pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake256 {
         let mut challenge = Blake256::new();
+        BaseLayerCovenantsDomain::add_domain_separation_tag(&mut challenge, COVENANTS_FIELD_HASHER_LABEL);
         for field in &self.fields {
-            challenge.update(field.get_field_value_bytes(output));
+            challenge.update(&field.get_field_value_bytes(output).as_slice());
         }
         challenge
     }
@@ -395,14 +335,11 @@ impl FromIterator<OutputField> for OutputFields {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_common_types::types::{Commitment, FixedHash, PublicKey};
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+    use tari_common_types::types::{Commitment, PublicKey};
     use tari_script::script;
 
     use super::*;
     use crate::{
-        consensus::ConsensusEncoding,
         covenant,
         covenants::test::{create_input, create_outputs},
         transactions::{
@@ -422,8 +359,7 @@ mod test {
             fn it_returns_true_if_eq() {
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        parent_public_key: Some(Default::default()),
-                        sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::zero()))),
+                        sidechain_features: Some(Box::new(SideChainFeatures {})),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -438,20 +374,17 @@ mod test {
                 assert!(OutputField::FeaturesMaturity
                     .is_eq(&output, &output.features.maturity)
                     .unwrap());
-                assert!(OutputField::FeaturesFlags
+                assert!(OutputField::FeaturesOutputType
                     .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, &SideChainFeatures::new(FixedHash::zero()))
+                    .is_eq(&output, &SideChainFeatures {})
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
                     .unwrap());
                 assert!(OutputField::FeaturesMetadata
                     .is_eq(&output, &output.features.metadata)
-                    .unwrap());
-                assert!(OutputField::FeaturesSideChainFeaturesContractId
-                    .is_eq(&output, &output.features.contract_id().unwrap())
                     .unwrap());
                 assert!(OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &output.sender_offset_public_key)
@@ -460,11 +393,9 @@ mod test {
 
             #[test]
             fn it_returns_false_if_not_eq() {
-                let (_, parent_pk) = PublicKey::random_keypair(&mut OsRng);
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        parent_public_key: Some(parent_pk),
-                        sidechain_features: Some(Box::new(SideChainFeatures::new(FixedHash::hash_bytes(b"A")))),
+                        sidechain_features: Some(Box::new(SideChainFeatures {})),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -481,17 +412,10 @@ mod test {
                     .is_eq(&output, &covenant!(and(identity(), identity())))
                     .unwrap());
                 assert!(!OutputField::FeaturesMaturity.is_eq(&output, &123u64).unwrap());
-                assert!(!OutputField::FeaturesFlags
+                assert!(!OutputField::FeaturesOutputType
                     .is_eq(&output, &OutputType::Coinbase)
                     .unwrap());
-                assert!(!OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, &SideChainFeatures::new(FixedHash::hash_bytes(b"B")))
-                    .unwrap());
-                assert!(!OutputField::FeaturesSideChainFeaturesContractId
-                    .is_eq(&output, &FixedHash::hash_bytes(b"B"))
-                    .unwrap());
                 assert!(!OutputField::FeaturesMetadata.is_eq(&output, &vec![123u8]).unwrap());
-                assert!(!OutputField::FeaturesUniqueId.is_eq(&output, &vec![123u8]).unwrap());
                 assert!(!OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
@@ -534,12 +458,9 @@ mod test {
                 assert!(OutputField::Script.is_eq_input(&input, &output));
                 assert!(OutputField::Covenant.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesFlags.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesParentPublicKey.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesOutputType.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesSideChainFeatures.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesSideChainFeaturesContractId.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMetadata.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesUniqueId.is_eq_input(&input, &output));
                 assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
             }
         }
@@ -549,13 +470,10 @@ mod test {
             let output_fields = [
                 OutputField::Commitment,
                 OutputField::Features,
-                OutputField::FeaturesFlags,
-                OutputField::FeaturesUniqueId,
+                OutputField::FeaturesOutputType,
                 OutputField::FeaturesSideChainFeatures,
-                OutputField::FeaturesSideChainFeaturesContractId,
                 OutputField::FeaturesMetadata,
                 OutputField::FeaturesMaturity,
-                OutputField::FeaturesParentPublicKey,
                 OutputField::SenderOffsetPublicKey,
                 OutputField::Script,
                 OutputField::Covenant,
@@ -570,6 +488,9 @@ mod test {
         use super::*;
 
         mod construct_challenge_from {
+            use blake2::Digest;
+            use tari_crypto::hashing::DomainSeparation;
+
             use super::*;
 
             #[test]
@@ -591,12 +512,16 @@ mod test {
                 fields.push(OutputField::Commitment);
                 fields.push(OutputField::Script);
                 let hash = fields.construct_challenge_from(&output).finalize();
+                let hash = hash.to_vec();
 
-                let mut challenge = Vec::new();
-                output.features.consensus_encode(&mut challenge).unwrap();
-                output.commitment.consensus_encode(&mut challenge).unwrap();
-                output.script.consensus_encode(&mut challenge).unwrap();
-                let expected_hash = Blake256::new().chain(&challenge).finalize();
+                let mut hasher = Blake256::new();
+                BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
+                let expected_hash = hasher
+                    .chain(output.features.to_consensus_bytes())
+                    .chain(output.commitment.to_consensus_bytes())
+                    .chain(output.script.to_consensus_bytes())
+                    .finalize()
+                    .to_vec();
                 assert_eq!(hash, expected_hash);
             }
         }

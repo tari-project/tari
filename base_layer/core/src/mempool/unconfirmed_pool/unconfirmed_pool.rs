@@ -26,12 +26,10 @@ use std::{
     sync::Arc,
 };
 
-use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashOutput, PrivateKey, PublicKey, Signature};
-use tari_crypto::hash::blake2::Blake256;
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_common_types::types::{HashOutput, PrivateKey, Signature};
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::Block,
@@ -40,13 +38,8 @@ use crate::{
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
     },
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{Transaction, TransactionOutput},
-        weight::TransactionWeight,
-    },
+    transactions::{tari_amount::MicroTari, transaction_components::Transaction, weight::TransactionWeight},
 };
-
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 type TransactionKey = usize;
@@ -139,10 +132,6 @@ impl UnconfirmedPool {
         self.tx_by_priority.insert(prioritized_tx.priority.clone(), new_key);
         for output in prioritized_tx.transaction.body.outputs() {
             self.txs_by_output.entry(output.hash()).or_default().push(new_key);
-
-            if let Some(hash) = get_output_token_id(output) {
-                self.txs_by_unique_id.entry(hash).or_default().push(new_key);
-            }
         }
         for kernel in prioritized_tx.transaction.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
@@ -308,19 +297,6 @@ impl UnconfirmedPool {
                     transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
                     break;
                 },
-            }
-        }
-
-        for output in transaction.transaction.body.outputs() {
-            match get_output_token_id(output) {
-                Some(hash) => {
-                    if !unique_ids.insert(hash) {
-                        // This transaction has a unique id of another transaction that has already been selected,
-                        // Skip adding it.
-                        return Ok(());
-                    }
-                },
-                None => continue,
             }
         }
 
@@ -492,17 +468,6 @@ impl UnconfirmedPool {
                     self.txs_by_output.remove(&output_hash);
                 }
             }
-
-            if let Some(hash) = get_output_token_id(output) {
-                if let Some(keys) = self.txs_by_unique_id.get_mut(&hash) {
-                    if let Some(pos) = keys.iter().position(|k| *k == tx_key) {
-                        keys.remove(pos);
-                    }
-                    if keys.is_empty() {
-                        self.txs_by_unique_id.remove(&hash);
-                    }
-                }
-            }
         }
 
         trace!(
@@ -650,29 +615,9 @@ impl UnconfirmedPool {
     }
 }
 
-fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
-    output.features.unique_id.as_ref().map(|unique_id| {
-        // "root" token public key
-        let root_pk = PublicKey::default();
-        let parent_pk_bytes = output
-            .features
-            .parent_public_key
-            .as_ref()
-            .map(|pk| pk.as_bytes())
-            .unwrap_or_else(|| root_pk.as_bytes());
-        Blake256::new()
-            .chain(parent_pk_bytes)
-            .chain(unique_id)
-            .finalize()
-            .into()
-    })
-}
-
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;
     use crate::{
@@ -682,7 +627,6 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_components::OutputFeatures,
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,
@@ -788,7 +732,7 @@ mod test {
             .unwrap();
 
         let factories = CryptoFactories::default();
-        let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut stx_protocol = stx_builder.build(&factories, None, u64::MAX).unwrap();
         stx_protocol.finalize(&factories, None, u64::MAX).unwrap();
 
         let tx3 = stx_protocol.get_transaction().unwrap().clone();
@@ -996,64 +940,6 @@ mod test {
                 );
             }
         }
-    }
-
-    #[test]
-    fn test_multiple_transactions_with_same_unique_id() {
-        let unique_id = vec![1, 2, 3];
-        let (_, parent_pk) = PublicKey::random_keypair(&mut OsRng);
-        let nft_features = OutputFeatures {
-            unique_id: Some(unique_id.clone()),
-            parent_public_key: Some(parent_pk.clone()),
-            ..Default::default()
-        };
-
-        let (tx1, _, _) =
-            tx!(MicroTari(150_000), fee: MicroTari(50), inputs:5, outputs:1, features: nft_features.clone());
-        let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(50), inputs:5, outputs:5);
-        let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(51), inputs:5, outputs:1, features: nft_features);
-        let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(50), inputs:5, outputs:5);
-
-        let tx_weight = TransactionWeight::latest();
-        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
-            storage_capacity: 10,
-            weight_tx_skip_count: 3,
-        });
-
-        let tx1 = Arc::new(tx1);
-        let tx2 = Arc::new(tx2);
-        let tx3 = Arc::new(tx3);
-        let tx4 = Arc::new(tx4);
-        unconfirmed_pool
-            .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
-            .unwrap();
-        let expected_hash: [u8; 32] = Blake256::new()
-            .chain(parent_pk.as_bytes())
-            .chain(&unique_id)
-            .finalize()
-            .into();
-        let entry = unconfirmed_pool.txs_by_unique_id.get(&expected_hash).unwrap();
-        let tx_id1 = unconfirmed_pool
-            .txs_by_signature
-            .get(tx1.first_kernel_excess_sig().unwrap().get_signature())
-            .unwrap()
-            .first()
-            .copied()
-            .unwrap();
-        let tx_id2 = unconfirmed_pool
-            .txs_by_signature
-            .get(tx3.first_kernel_excess_sig().unwrap().get_signature())
-            .unwrap()
-            .first()
-            .copied()
-            .unwrap();
-        assert_eq!(entry, &[tx_id1, tx_id2]);
-
-        let results = unconfirmed_pool.fetch_highest_priority_txs(100_000).unwrap();
-        assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx2));
-        assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx3));
-        assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx4));
-        assert_eq!(results.retrieved_transactions.len(), 3);
     }
 
     mod get_fee_per_gram_stats {

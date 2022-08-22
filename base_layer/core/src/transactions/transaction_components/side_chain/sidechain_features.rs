@@ -23,53 +23,16 @@
 use std::io::{Error, Read, Write};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::FixedHash;
 
-use super::{
-    ContractAcceptance,
-    ContractAmendment,
-    ContractDefinition,
-    ContractUpdateProposal,
-    ContractUpdateProposalAcceptance,
-};
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction_components::{side_chain::contract_checkpoint::ContractCheckpoint, ContractConstitution},
-};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct SideChainFeatures {
-    pub contract_id: FixedHash,
-    pub definition: Option<ContractDefinition>,
-    pub constitution: Option<ContractConstitution>,
-    pub acceptance: Option<ContractAcceptance>,
-    pub update_proposal: Option<ContractUpdateProposal>,
-    pub update_proposal_acceptance: Option<ContractUpdateProposalAcceptance>,
-    pub amendment: Option<ContractAmendment>,
-    pub checkpoint: Option<ContractCheckpoint>,
-}
+pub struct SideChainFeatures {}
 
-impl SideChainFeatures {
-    pub fn new(contract_id: FixedHash) -> Self {
-        Self::builder(contract_id).finish()
-    }
-
-    pub fn builder(contract_id: FixedHash) -> SideChainFeaturesBuilder {
-        SideChainFeaturesBuilder::new(contract_id)
-    }
-}
+impl SideChainFeatures {}
 
 impl ConsensusEncoding for SideChainFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        self.contract_id.consensus_encode(writer)?;
-        self.definition.consensus_encode(writer)?;
-        self.constitution.consensus_encode(writer)?;
-        self.acceptance.consensus_encode(writer)?;
-        self.update_proposal.consensus_encode(writer)?;
-        self.update_proposal_acceptance.consensus_encode(writer)?;
-        self.amendment.consensus_encode(writer)?;
-        self.checkpoint.consensus_encode(writer)?;
-
+    fn consensus_encode<W: Write>(&self, _writer: &mut W) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -77,201 +40,10 @@ impl ConsensusEncoding for SideChainFeatures {
 impl ConsensusEncodingSized for SideChainFeatures {}
 
 impl ConsensusDecoding for SideChainFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        Ok(Self {
-            contract_id: FixedHash::consensus_decode(reader)?,
-            definition: ConsensusDecoding::consensus_decode(reader)?,
-            constitution: ConsensusDecoding::consensus_decode(reader)?,
-            acceptance: ConsensusDecoding::consensus_decode(reader)?,
-            update_proposal: ConsensusDecoding::consensus_decode(reader)?,
-            update_proposal_acceptance: ConsensusDecoding::consensus_decode(reader)?,
-            amendment: ConsensusDecoding::consensus_decode(reader)?,
-            checkpoint: ConsensusDecoding::consensus_decode(reader)?,
-        })
-    }
-}
-
-pub struct SideChainFeaturesBuilder {
-    features: SideChainFeatures,
-}
-
-impl SideChainFeaturesBuilder {
-    pub fn new(contract_id: FixedHash) -> Self {
-        Self {
-            features: SideChainFeatures {
-                contract_id,
-                definition: None,
-                constitution: None,
-                acceptance: None,
-                update_proposal: None,
-                update_proposal_acceptance: None,
-                amendment: None,
-                checkpoint: None,
-            },
-        }
-    }
-
-    pub fn with_contract_definition(mut self, contract_definition: ContractDefinition) -> Self {
-        self.features.definition = Some(contract_definition);
-        self
-    }
-
-    pub fn with_contract_constitution(mut self, contract_constitution: ContractConstitution) -> Self {
-        self.features.constitution = Some(contract_constitution);
-        self
-    }
-
-    pub fn with_contract_acceptance(mut self, contract_acceptance: ContractAcceptance) -> Self {
-        self.features.acceptance = Some(contract_acceptance);
-        self
-    }
-
-    pub fn with_contract_update_proposal_acceptance(
-        mut self,
-        contract_update_proposal_acceptance: ContractUpdateProposalAcceptance,
-    ) -> Self {
-        self.features.update_proposal_acceptance = Some(contract_update_proposal_acceptance);
-        self
-    }
-
-    pub fn with_update_proposal(mut self, update_proposal: ContractUpdateProposal) -> Self {
-        self.features.update_proposal = Some(update_proposal);
-        self
-    }
-
-    pub fn with_contract_amendment(mut self, contract_amendment: ContractAmendment) -> Self {
-        self.features.amendment = Some(contract_amendment);
-        self
-    }
-
-    pub fn with_contract_checkpoint(mut self, checkpoint: ContractCheckpoint) -> Self {
-        self.features.checkpoint = Some(checkpoint);
-        self
-    }
-
-    pub fn finish(self) -> SideChainFeatures {
-        self.features
+    fn consensus_decode<R: Read>(_reader: &mut R) -> Result<Self, Error> {
+        Ok(Self {})
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::convert::TryInto;
-
-    use tari_common_types::types::{PublicKey, Signature};
-
-    use super::*;
-    use crate::{
-        consensus::check_consensus_encoding_correctness,
-        transactions::transaction_components::{
-            bytes_into_fixed_string,
-            CheckpointParameters,
-            CommitteeMembers,
-            CommitteeSignatures,
-            ConstitutionChangeFlags,
-            ConstitutionChangeRules,
-            ContractAcceptanceRequirements,
-            ContractSpecification,
-            FunctionRef,
-            PublicFunction,
-            RequirementsForConstitutionChange,
-            SideChainConsensus,
-            SignerSignature,
-        },
-    };
-
-    #[test]
-    fn it_encodes_and_decodes_correctly() {
-        let constitution = ContractConstitution {
-            validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                .try_into()
-                .unwrap(),
-            acceptance_requirements: ContractAcceptanceRequirements {
-                acceptance_period_expiry: 100,
-                minimum_quorum_required: 5,
-            },
-            consensus: SideChainConsensus::MerkleRoot,
-            checkpoint_params: CheckpointParameters {
-                minimum_quorum_required: 5,
-                abandoned_interval: 100,
-                quarantine_interval: 100,
-            },
-            constitution_change_rules: ConstitutionChangeRules {
-                change_flags: ConstitutionChangeFlags::all(),
-                requirements_for_constitution_change: Some(RequirementsForConstitutionChange {
-                    minimum_constitution_committee_signatures: 5,
-                    constitution_committee: Some(
-                        vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                            .try_into()
-                            .unwrap(),
-                    ),
-                    backup_keys: Some(
-                        vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                            .try_into()
-                            .unwrap(),
-                    ),
-                }),
-            },
-        };
-
-        let subject = SideChainFeatures {
-            contract_id: FixedHash::zero(),
-            constitution: Some(constitution.clone()),
-            definition: Some(ContractDefinition {
-                contract_name: bytes_into_fixed_string("name"),
-                contract_issuer: PublicKey::default(),
-                contract_spec: ContractSpecification {
-                    runtime: bytes_into_fixed_string("runtime"),
-                    public_functions: vec![
-                        PublicFunction {
-                            name: bytes_into_fixed_string("foo"),
-                            function: FunctionRef {
-                                template_id: FixedHash::zero(),
-                                function_id: 0_u16,
-                            },
-                        },
-                        PublicFunction {
-                            name: bytes_into_fixed_string("bar"),
-                            function: FunctionRef {
-                                template_id: FixedHash::zero(),
-                                function_id: 1_u16,
-                            },
-                        },
-                    ],
-                },
-            }),
-            acceptance: Some(ContractAcceptance {
-                validator_node_public_key: PublicKey::default(),
-                signature: Signature::default(),
-            }),
-            update_proposal: Some(ContractUpdateProposal {
-                proposal_id: 0_u64,
-                signature: Signature::default(),
-                updated_constitution: constitution.clone(),
-            }),
-            update_proposal_acceptance: Some(ContractUpdateProposalAcceptance {
-                proposal_id: 0_u64,
-                validator_node_public_key: PublicKey::default(),
-                signature: Signature::default(),
-            }),
-            amendment: Some(ContractAmendment {
-                proposal_id: 0_u64,
-                validator_committee: vec![PublicKey::default(); CommitteeMembers::MAX_MEMBERS]
-                    .try_into()
-                    .unwrap(),
-                validator_signatures: vec![SignerSignature::default(); CommitteeSignatures::MAX_SIGNATURES]
-                    .try_into()
-                    .unwrap(),
-                updated_constitution: constitution,
-                activation_window: 0_u64,
-            }),
-            checkpoint: Some(ContractCheckpoint {
-                checkpoint_number: u64::MAX,
-                merkle_root: FixedHash::zero(),
-                signatures: vec![SignerSignature::default(); 512].try_into().unwrap(),
-            }),
-        };
-
-        check_consensus_encoding_correctness(subject).unwrap();
-    }
-}
+mod tests {}

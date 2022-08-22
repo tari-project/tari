@@ -40,17 +40,3 @@ impl Display for MmrTree {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn coverage_mmr_tree() {
-        let items = vec![MmrTree::Utxo, MmrTree::Kernel, MmrTree::Witness];
-        for obj in items {
-            drop(obj.clone());
-            format!("{:?} | {}", obj, obj);
-        }
-    }
-}

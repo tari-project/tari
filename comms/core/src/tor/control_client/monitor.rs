@@ -105,10 +105,12 @@ where
 
                 // Error receiving a line from the control server
                 Either::Right(Some(Err(err))) => {
+                    cmd_rx.close();
                     error!(
                         target: LOG_TARGET,
                         "Line framing error when reading from tor control server: '{:?}'. Monitor is exiting.", err
                     );
+                    let _result = event_tx.send(TorControlEvent::TorControlDisconnected);
                     break;
                 },
                 // The control server disconnected

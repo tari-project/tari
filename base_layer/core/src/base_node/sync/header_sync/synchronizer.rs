@@ -174,7 +174,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 },
                 Err(ref err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { claimed, actual, local }) => {
                     warn!(target: LOG_TARGET, "{}", err);
-                    self.ban_peer_long(node_id, BanReason::PeerCouldNotProvideStrongerChain {
+                    self.ban_peer_long(node_id, BanReason::PeerSentInaccurateChainMetadata {
                         claimed,
                         actual: actual.unwrap_or(0),
                         local,
@@ -822,6 +822,11 @@ enum BanReason {
         actual: String,
         expected: String,
     },
+    #[error(
+        "Peer sent inaccurate chain metadata. Claimed {claimed} but validated difficulty was {actual}, while local \
+         was {local}"
+    )]
+    PeerSentInaccurateChainMetadata { claimed: u128, actual: u128, local: u128 },
 }
 
 struct ChainSplitInfo {

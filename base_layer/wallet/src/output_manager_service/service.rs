@@ -62,7 +62,6 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
@@ -926,7 +925,7 @@ where
         }
 
         let stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1138,7 +1137,7 @@ where
         // }
 
         let mut stp = builder
-            .build::<Blake256>(&self.resources.factories, None, u64::MAX)
+            .build(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // if let Some((spending_key, script_private_key)) = change_keys {
         //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
@@ -1298,7 +1297,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1396,7 +1395,7 @@ where
             "select_utxos selection criteria: {}", selection_criteria
         );
         let tip_height = chain_metadata.as_ref().map(|m| m.height_of_longest_chain());
-        let mut uo = self
+        let uo = self
             .resources
             .db
             .fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height)?;
@@ -1415,29 +1414,6 @@ where
                 Covenant::new().consensus_encode_exact_size() +
                 script![Nop].consensus_encode_exact_size(),
         );
-
-        if selection_criteria.filter.is_contract_output() {
-            let fee_with_change = fee_calc.calculate(
-                fee_per_gram,
-                1,
-                uo.len(),
-                num_outputs + 1,
-                total_output_metadata_byte_size + default_metadata_size,
-            );
-
-            // If the initial selection was not able to select enough UTXOs, fill in the difference with standard UTXOs
-            let total_utxo_value = uo.iter().map(|uo| uo.unblinded_output.value).sum::<MicroTari>();
-            if total_utxo_value < amount + fee_with_change {
-                let mut query = UtxoSelectionCriteria::smallest_first();
-                query.excluding = uo.iter().map(|o| o.commitment.clone()).collect();
-                let additional = self.resources.db.fetch_unspent_outputs_for_spending(
-                    &query,
-                    amount + fee_with_change - total_utxo_value,
-                    tip_height,
-                )?;
-                uo.extend(additional);
-            }
-        }
 
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
@@ -1795,7 +1771,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2027,7 +2003,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2215,7 +2191,7 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2350,7 +2326,7 @@ where
 
                 let factories = CryptoFactories::default();
                 let mut stp = builder
-                    .build::<Blake256>(
+                    .build(
                         &self.resources.factories,
                         None,
                         self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2437,7 +2413,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),

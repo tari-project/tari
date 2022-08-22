@@ -269,8 +269,6 @@ mod test {
     fn coverage_db_stat() {
         let obj = DbStat::sample();
         assert_eq!(obj.total_page_size(), 60);
-        drop(obj.clone());
-        format!("{:?} | {}", obj, obj);
     }
 
     #[test]
@@ -279,26 +277,15 @@ mod test {
         obj.root();
         obj.env_info();
         obj.db_stats();
-        drop(obj.clone());
-        format!("{:?} | {}", obj, obj);
     }
 
     #[test]
     fn coverage_db_size() {
         let mut obj = DbSize::sample();
-        drop(obj.clone());
         assert_eq!(obj.total(), u64::MAX);
         assert_eq!(obj.avg_bytes_per_entry(), 0);
         obj.num_entries = obj.total();
         assert_eq!(obj.avg_bytes_per_entry(), 1);
-        format!("{:?}", obj);
-    }
-
-    #[test]
-    fn coverage_env_info() {
-        let obj = EnvInfo::sample();
-        drop(obj.clone());
-        format!("{:?} | {}", obj, obj);
     }
 
     #[test]
@@ -307,7 +294,5 @@ mod test {
         let obj = DbTotalSizeStats::from(vec);
         let obj = obj.sizes.into_iter().collect::<DbTotalSizeStats>();
         obj.sizes();
-        drop(obj.clone());
-        format!("{:?}", obj);
     }
 }

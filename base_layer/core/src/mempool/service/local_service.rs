@@ -118,10 +118,9 @@ mod test {
 
     fn request_stats() -> StatsResponse {
         StatsResponse {
-            total_txs: 10,
             unconfirmed_txs: 3,
             reorg_txs: 4,
-            total_weight: 1000,
+            unconfirmed_weight: 1000,
         }
     }
 

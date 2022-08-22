@@ -24,24 +24,29 @@
 mod support;
 
 use croaring::Bitmap;
-use digest::Digest;
-use support::{create_mmr, int_to_hash, Hasher};
-use tari_mmr::{Hash, HashSlice, MutableMmr};
+use tari_mmr::{Hash, HashSlice};
 use tari_utilities::hex::Hex;
+
+use crate::support::{create_mmr, int_to_hash, MmrTestHasherBlake256, MutableTestMmr};
 
 fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();
-    let hasher = Hasher::new();
-    hasher.chain(hash).chain(&bitmap.serialize()).finalize().to_vec()
+    let hasher = MmrTestHasherBlake256::new();
+    hasher
+        .chain(hash)
+        .chain(&bitmap.serialize())
+        .finalize()
+        .as_ref()
+        .to_vec()
 }
 
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]
 fn zero_length_mmr() {
-    let mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mmr = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
     assert_eq!(mmr.len(), 0);
     assert_eq!(mmr.is_empty(), Ok(true));
-    let empty_hash = Hasher::digest(b"").to_vec();
+    let empty_hash = MmrTestHasherBlake256::new().digest(b"").as_ref().to_vec();
     assert_eq!(
         mmr.get_merkle_root(),
         Ok(hash_with_bitmap(&empty_hash, &mut Bitmap::create()))
@@ -49,9 +54,9 @@ fn zero_length_mmr() {
 }
 
 #[test]
-// Note the hardcoded hashes are only valid when using Blake256 as the Hasher
+// Note the hardcoded hashes are only valid when using MutableTestMmr
 fn delete() {
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mmr = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
     assert_eq!(mmr.is_empty(), Ok(true));
     for i in 0..5 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
@@ -60,7 +65,7 @@ fn delete() {
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
-        "7b7ddec2af4f3d0b9b165750cf2ff15813e965d29ecd5318e0c8fea901ceaef4"
+        "fb69b1e6e6785cfadc3291d7b5c54c050890c731339eecb66add1dde54f483c1"
     );
     // Can't delete past bounds
     assert!(!mmr.delete(5));
@@ -75,7 +80,7 @@ fn delete() {
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
-        "69e69ba0c6222f2d9caa68282de0ba7f1259a0fa2b8d84af68f907ef4ec05054"
+        "d203c17776d7dc78fd3e7f8d08885019c5229bc6a4f452d7ffba02467e502b37"
     );
     assert_eq!(mmr.len(), 3);
     assert_eq!(mmr.is_empty(), Ok(false));
@@ -98,7 +103,7 @@ fn delete() {
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
-        "2a540797d919e63cff8051e54ae13197315000bcfde53efd3f711bb3d24995bc"
+        "aa2dfb2d9c270142da57e79f3129fce0f53bd89b86c2d0dd3f201e180777f383"
     );
 }
 
@@ -110,7 +115,7 @@ fn build_mmr() {
     assert_eq!(mmr_check.len(), Ok(8));
     let mut bitmap = Bitmap::create();
     // Create a small mutable MMR
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mmr = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..5 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }
@@ -128,8 +133,8 @@ fn build_mmr() {
 
 #[test]
 fn equality_check() {
-    let mut ma = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
-    let mut mb = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut ma = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mb = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
     assert!(ma == mb);
     assert!(ma.push(int_to_hash(1)).is_ok());
     assert!(ma != mb);
@@ -150,7 +155,7 @@ fn equality_check() {
 
 #[test]
 fn restore_from_leaf_nodes() {
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mmr = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..12 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }

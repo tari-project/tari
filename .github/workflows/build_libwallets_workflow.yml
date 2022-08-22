@@ -1,0 +1,148 @@
+---
+name: Build libwallet - workflow_call/on-demand
+
+'on':
+  workflow_call:
+    inputs:
+      build_android:
+        type: string
+        default: 'true'
+      build_ios:
+        type: string
+        default: 'true'
+      toolchain:
+        type: string
+        description: 'Rust toolchain'
+        default: 'nightly-2022-05-01'
+
+jobs:
+  android_build:
+    name: Build Android
+    if: ${{ inputs.build_android == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [
+          x86_64-linux-android,
+          aarch64-linux-android,
+        ]
+        # armv7-linux-androideabi,
+          # todo: once determined if this 32bit arm build is still required
+          # then make necessary changes to tari comms (metrics fully optional)
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          components: rustfmt, clippy
+          toolchain: ${{ inputs.toolchain }}
+          target: ${{ matrix.build }}
+          override: true
+
+      - name: Cache cargo files and outputs
+        uses: Swatinem/rust-cache@v1
+
+      - name: Build libwallet libraries
+        uses: actions-rs/cargo@v1
+        env:
+          CFLAGS: "-DMDB_USE_ROBUST=0"
+        with:
+          use-cross: true
+          command: build
+          args: >
+            --release -p tari_wallet_ffi
+            --target=${{ matrix.build }}
+
+      - name: Prepare libwallet libraries
+        shell: bash
+        run: |
+          target_temp=${{ matrix.build }}
+          # Strip '-linux-android'
+          target_platform=$(echo "${target_temp/-linux-android*/}")
+          echo "target_platform=${target_platform}" >> $GITHUB_ENV
+          mkdir -p "${{ runner.temp }}/libwallet-android-${target_platform}"
+          cd "${{ runner.temp }}/libwallet-android-${target_platform}"
+          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libtari_wallet_ffi.a" "libtari_wallet_ffi.${target_platform}.a"
+          cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" .
+          cd ..
+          shasum -a 256 \
+            "libwallet-android-${target_platform}/libtari_wallet_ffi.${target_platform}.a" \
+            "libwallet-android-${target_platform}/wallet.h" \
+              > "libwallet-android-${target_platform}/libtari_wallet_ffi.${target_platform}.sha256sums"
+          ls -alht "${{ runner.temp }}/libwallet-android-${target_platform}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: libwallet-android-${{ env.target_platform }}
+          path: ${{ runner.temp }}/libwallet-android-${{ env.target_platform }}
+
+  ios_build:
+    name: Build iOS
+    if: ${{ inputs.build_ios == 'true' }}
+
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Setup Rust toolchain (x86_64)
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          components: rustfmt, clippy
+          toolchain: ${{ inputs.toolchain }}
+          target: x86_64-apple-ios
+          override: true
+
+      - name: Setup Rust toolchain (aarch64)
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          components: rustfmt, clippy
+          toolchain: ${{ inputs.toolchain }}
+          target: aarch64-apple-ios
+          override: true
+
+      - name: Install macOS dependencies
+        run: brew install cmake
+
+      - name: Cache cargo files and outputs
+        uses: Swatinem/rust-cache@v1
+
+      - name: Build libwallet libraries
+        run: |
+          mkdir -p MobileWallet/TariLib/
+          cd base_layer/wallet_ffi
+          mv ios.config build.config
+          ./mobile_build.sh || exit 1
+          mkdir -p "${{ runner.temp }}/libwallet-ios"
+          cd "${{ runner.temp }}/libwallet-ios"
+          cp -v "$GITHUB_WORKSPACE/MobileWallet/TariLib/libtari_wallet_ffi.a" .
+          cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" .
+          cd ..
+          shasum -a 256 \
+            "libwallet-ios/libtari_wallet_ffi.a" \
+            "libwallet-ios/wallet.h" \
+              > "libwallet-ios/libtari_wallet_ffi.sha256sums"
+          ls -alht "${{ runner.temp }}/libwallet-ios"
+
+      - name: Debugging - Upload logs if build failures
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: libwallet-ios-buildlogs
+          path: ${{ github.workspace }}/base_layer/wallet_ffi/logs/ios
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: libwallet-ios
+          path: ${{ runner.temp }}/libwallet-ios

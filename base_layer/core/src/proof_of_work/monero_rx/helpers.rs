@@ -199,7 +199,10 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
+    use crate::{
+        consensus::ConsensusEncoding,
+        proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork},
+    };
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -319,7 +322,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -379,7 +383,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -426,7 +431,9 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -459,7 +466,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let hash = Hash::null_hash();
+        let hash = Hash::null();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -480,7 +487,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -534,7 +542,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: Default::default(),
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -568,10 +577,11 @@ mod test {
             randomx_key: FixedByteArray::default(),
             transaction_count: 1,
             merkle_root: Default::default(),
-            coinbase_merkle_proof: create_merkle_proof(&[Hash::null_hash()], &Hash::null_hash()).unwrap(),
+            coinbase_merkle_proof: create_merkle_proof(&[Hash::null()], &Hash::null()).unwrap(),
             coinbase_tx: Default::default(),
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -621,11 +631,12 @@ mod test {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
-            merkle_root: Hash::null_hash(),
+            merkle_root: Hash::null(),
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,

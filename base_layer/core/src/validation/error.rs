@@ -31,7 +31,6 @@ use crate::{
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
     transactions::transaction_components::{OutputType, TransactionError},
-    validation::dan_validators::DanLayerValidationError,
 };
 
 #[derive(Debug, Error)]
@@ -120,8 +119,6 @@ pub enum ValidationError {
     InvalidBlockchainVersion { version: u16 },
     #[error("Standard transaction contains coinbase output")]
     ErroneousCoinbaseOutput,
-    #[error("Digital Asset Network Error: {0}")]
-    DanLayerError(#[from] DanLayerValidationError),
     #[error(
         "Output was flagged as a {output_type} but contained sidechain feature data with contract_id {contract_id}"
     )]
@@ -131,6 +128,8 @@ pub enum ValidationError {
     },
     #[error("Contains Invalid Burn: {0}")]
     InvalidBurnError(String),
+    #[error("Output type '{output_type}' is not permitted")]
+    OutputTypeNotPermitted { output_type: OutputType },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

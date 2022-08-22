@@ -185,9 +185,8 @@ mod test {
         let mut input = create_input();
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
-            @field::features_flags,
+            @field::features_output_type,
             @field::features_maturity,
-            @field::features_contract_id,
             @field::features_metadata))
         );
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();

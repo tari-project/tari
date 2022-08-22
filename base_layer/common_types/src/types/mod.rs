@@ -78,3 +78,12 @@ pub type RangeProofService = BulletproofsPlusService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
+
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+
+hash_domain!(
+    BulletRangeProofHashDomain,
+    "com.tari.tari-project.base_layer.common_types.bullet_rangeproofs"
+);
+
+pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake256, BulletRangeProofHashDomain>;
