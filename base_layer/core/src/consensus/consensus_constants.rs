@@ -75,6 +75,7 @@ pub struct ConsensusConstants {
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
     /// This is the maximum age a monero merge mined seed can be reused
+    /// Monero forces a change every height mod 2048 blocks
     max_randomx_seed_height: u64,
     /// This keeps track of the block split targets and which algo is accepted
     /// Ideally this should count up to 100. If this does not you will reduce your target time.
@@ -506,8 +507,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            // todo put proper lock height after testing
-            coinbase_lock_height: 3,
+            coinbase_lock_height: 360,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -517,7 +517,7 @@ impl ConsensusConstants {
             emission_initial: 18_462_816_327 * uT,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
             emission_tail: 800 * T,
-            max_randomx_seed_height: u64::MAX,
+            max_randomx_seed_height: 3000,
             proof_of_work: algos,
             faucet_value: (10 * 4000) * T,
             transaction_weight: TransactionWeight::v1(),
