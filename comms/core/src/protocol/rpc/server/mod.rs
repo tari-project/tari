@@ -73,7 +73,10 @@ use crate::{
     peer_manager::NodeId,
     proto,
     protocol::{
-        rpc::{body::BodyBytes, message::RpcResponse},
+        rpc::{
+            body::BodyBytes,
+            message::{RpcMethod, RpcResponse},
+        },
         ProtocolEvent,
         ProtocolId,
         ProtocolNotification,
@@ -509,7 +512,7 @@ where
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
-        let method = decoded_msg.method.into();
+        let method = RpcMethod::from(decoded_msg.method);
         let deadline = Duration::from_secs(decoded_msg.deadline);
 
         // The client side deadline MUST be greater or equal to the minimum_client_deadline
@@ -557,7 +560,10 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "({}) Request: {}", self.logging_context_string, decoded_msg
+            "({}) Request: {}, Method: {}",
+            self.logging_context_string,
+            decoded_msg,
+            method.id()
         );
 
         let req = Request::with_context(
