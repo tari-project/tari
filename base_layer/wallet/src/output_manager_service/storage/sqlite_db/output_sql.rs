@@ -51,7 +51,6 @@ use crate::{
             database::{OutputBackendQuery, SortDirection},
             models::DbUnblindedOutput,
             sqlite_db::{UpdateOutput, UpdateOutputSql},
-            OutputSource,
             OutputStatus,
         },
         UtxoSelectionFilter,
@@ -216,7 +215,7 @@ impl OutputSql {
                 );
 
                 if selection_criteria.excluding_onesided {
-                    query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
+                    query = query.filter(outputs::source.ne(OutputType::OneSided as i32));
                 }
             },
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
