@@ -39,10 +39,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    hash::blake2::Blake256,
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
@@ -101,7 +98,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    let stp = builder.build(&factories, None, u64::MAX).unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];

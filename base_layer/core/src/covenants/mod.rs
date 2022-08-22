@@ -51,3 +51,13 @@ mod macros;
 
 #[cfg(test)]
 mod test;
+
+use tari_crypto::hash_domain;
+
+hash_domain!(
+    BaseLayerCovenantsDomain,
+    "com.tari.tari-project.base_layer.covenants",
+    1
+);
+
+pub(crate) const COVENANTS_FIELD_HASHER_LABEL: &str = "fields";

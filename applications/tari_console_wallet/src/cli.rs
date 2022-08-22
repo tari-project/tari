@@ -20,7 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, time::Duration};
+use std::{
+    fmt::{Display, Formatter},
+    path::PathBuf,
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
@@ -144,8 +148,35 @@ pub struct MakeItRainArgs {
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
     pub one_sided: bool,
+    #[clap(long, alias = "stealth-one-sided")]
+    pub stealth: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
+}
+
+impl MakeItRainArgs {
+    pub fn transaction_type(&self) -> MakeItRainTransactionType {
+        if self.stealth {
+            MakeItRainTransactionType::StealthOneSided
+        } else if self.one_sided {
+            MakeItRainTransactionType::OneSided
+        } else {
+            MakeItRainTransactionType::Interactive
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MakeItRainTransactionType {
+    Interactive,
+    OneSided,
+    StealthOneSided,
+}
+
+impl Display for MakeItRainTransactionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {

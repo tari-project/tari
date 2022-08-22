@@ -40,7 +40,6 @@ use crate::{
     },
     transactions::{tari_amount::MicroTari, transaction_components::Transaction, weight::TransactionWeight},
 };
-
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 type TransactionKey = usize;
@@ -619,7 +618,6 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_crypto::hash::blake2::Blake256;
 
     use super::*;
     use crate::{
@@ -734,7 +732,7 @@ mod test {
             .unwrap();
 
         let factories = CryptoFactories::default();
-        let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+        let mut stx_protocol = stx_builder.build(&factories, None, u64::MAX).unwrap();
         stx_protocol.finalize(&factories, None, u64::MAX).unwrap();
 
         let tx3 = stx_protocol.get_transaction().unwrap().clone();
