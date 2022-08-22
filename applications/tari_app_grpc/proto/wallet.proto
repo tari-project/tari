@@ -41,10 +41,6 @@ service Wallet {
     rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
-
-    //  ---- GOT Here --- need to determine wallet gRPC auth
-
-
     // Send Tari to a number of recipients
     rpc Transfer (TransferRequest)  returns (TransferResponse);
     // Returns the transaction details for the given transaction IDs
@@ -104,6 +100,7 @@ message CreateBurnTransactionRequest{
 }
 
 message PaymentRecipient {
+    // TODO: Should this be bytes rather?
     string address = 1;
     uint64 amount = 2;
     uint64 fee_per_gram = 3;
@@ -135,6 +132,7 @@ message CreateBurnTransactionResponse{
 }
 
 message TransferResult {
+    // TODO: Change to bytes
     string address = 1;
     uint64 transaction_id = 2;
     bool is_success = 3;
