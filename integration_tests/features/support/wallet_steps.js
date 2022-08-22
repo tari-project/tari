@@ -95,7 +95,7 @@ Given(
     this.addWallet(walletName, wallet);
     let walletClient = await this.getWallet(walletName).connectClient();
     let walletInfo = await walletClient.identify();
-    this.addWalletPubkey(walletName, walletInfo.public_key.toString("hex"));
+    this.addWalletPubkey(walletName, walletInfo.public_key);
   }
 );
 
@@ -114,7 +114,7 @@ Given(
     this.addWallet(name, wallet);
     let walletClient = await this.getWallet(name).connectClient();
     let walletInfo = await walletClient.identify();
-    this.addWalletPubkey(name, walletInfo.public_key.toString("hex"));
+    this.addWalletPubkey(name, walletInfo.public_key);
   }
 );
 
@@ -197,7 +197,7 @@ Given(
     this.addWallet(name, wallet);
     let walletClient = await this.getWallet(name).connectClient();
     let walletInfo = await walletClient.identify();
-    this.addWalletPubkey(name, walletInfo.public_key.toString("hex"));
+    this.addWalletPubkey(name, walletInfo.public_key);
   }
 );
 
@@ -245,7 +245,7 @@ Given(
     this.addWallet(walletNameB, walletB);
     let walletClient = await this.getWallet(walletNameB).connectClient();
     let walletInfo = await walletClient.identify();
-    this.addWalletPubkey(walletNameB, walletInfo.public_key.toString("hex"));
+    this.addWalletPubkey(walletNameB, walletInfo.public_key);
   }
 );
 
@@ -280,10 +280,7 @@ Given(
         recoveredWalletName
       ).connectClient();
       let walletInfo = await walletClient.identify();
-      this.addWalletPubkey(
-        recoveredWalletName,
-        walletInfo.public_key.toString("hex")
-      );
+      this.addWalletPubkey(recoveredWalletName, walletInfo.public_key);
     }
   }
 );
@@ -315,7 +312,7 @@ Given(
       this.addWallet(i, wallet);
       let walletClient = await this.getWallet(i.toString()).connectClient();
       let walletInfo = await walletClient.identify();
-      this.addWalletPubkey(wallet, walletInfo.public_key.toString("hex"));
+      this.addWalletPubkey(wallet, walletInfo.public_key);
     }
   }
 );
@@ -531,7 +528,7 @@ When(
           try {
             this.lastResult = await sourceClient.sendHtlc({
               recipient: {
-                address: destInfo.public_key.toString("hex"),
+                address: destInfo.public_key,
                 amount: tariAmount,
                 fee_per_gram: feePerGram,
                 message: "msg",
@@ -569,13 +566,10 @@ When(
     }
     if (success) {
       this.addTransaction(
-        sourceInfo.public_key.toString("hex"),
+        sourceInfo.public_key,
         this.lastResult.transaction_id
       );
-      this.addTransaction(
-        destInfo.public_key.toString("hex"),
-        this.lastResult.transaction_id
-      );
+      this.addTransaction(destInfo.public_key, this.lastResult.transaction_id);
     }
     expect(success).to.equal(true);
     //lets now wait for this transaction to be at least broadcast before we continue.
@@ -649,7 +643,7 @@ When(
 
     if (success) {
       this.addTransaction(
-        sourceInfo.public_key.toString("hex"),
+        sourceInfo.public_key,
         this.lastResult.results.transaction_id
       );
     }
@@ -727,7 +721,7 @@ When(
 
     if (success) {
       this.addTransaction(
-        sourceInfo.public_key.toString("hex"),
+        sourceInfo.public_key,
         this.lastResult.results.transaction_id
       );
     }
@@ -760,7 +754,7 @@ When(
     const sourceClient = await sourceWallet.connectClient();
     const sourceInfo = await sourceClient.identify();
 
-    const destPublicKey = this.getWalletPubkey(dest).toString("hex");
+    const destPublicKey = this.getWalletPubkey(dest);
 
     this.lastResult = await this.send_tari(
       sourceWallet,
@@ -802,7 +796,7 @@ When(
       this.lastResult = await this.send_tari(
         this.getWallet(source),
         destInfo.name,
-        destInfo.public_key.toString("hex"),
+        destInfo.public_key,
         tariAmount,
         fee
       );
@@ -854,18 +848,18 @@ When(
       this.lastResult = await this.send_tari(
         this.getWallet(source),
         destInfo.name,
-        destInfo.public_key.toString("hex"),
+        destInfo.public_key,
         tariAmount,
         fee
       );
       expect(this.lastResult.results[0].is_success).to.equal(true);
       tx_ids.push(this.lastResult.results[0].transaction_id);
       this.addTransaction(
-        sourceInfo.public_key.toString("hex"),
+        sourceInfo.public_key,
         this.lastResult.results[0].transaction_id
       );
       this.addTransaction(
-        destInfo.public_key.toString("hex"),
+        destInfo.public_key,
         this.lastResult.results[0].transaction_id
       );
       // console.log("  Transaction '" + this.lastResult.results[0]["transaction_id"] + "' is_success(" +
@@ -920,13 +914,13 @@ When(
             lastResult = await sourceClient.transfer({
               recipients: [
                 {
-                  address: dest1Info.public_key.toString("hex"),
+                  address: dest1Info.public_key,
                   amount: tariAmount,
                   fee_per_gram: feePerGram,
                   message: "msg",
                 },
                 {
-                  address: dest2Info.public_key.toString("hex"),
+                  address: dest2Info.public_key,
                   amount: tariAmount,
                   fee_per_gram: feePerGram,
                   message: "msg",
@@ -966,19 +960,19 @@ When(
     }
     if (success) {
       this.addTransaction(
-        sourceInfo.public_key.toString("hex"),
+        sourceInfo.public_key,
         lastResult.results[0].transaction_id
       );
       this.addTransaction(
-        sourceInfo.public_key.toString("hex"),
+        sourceInfo.public_key,
         lastResult.results[1].transaction_id
       );
       this.addTransaction(
-        dest1Info.public_key.toString("hex"),
+        dest1Info.public_key,
         lastResult.results[0].transaction_id
       );
       this.addTransaction(
-        dest2Info.public_key.toString("hex"),
+        dest2Info.public_key,
         lastResult.results[1].transaction_id
       );
     }
@@ -995,14 +989,14 @@ When(
     this.lastResult = await this.send_tari(
       this.getWallet(source),
       sourceInfo.name,
-      sourceInfo.public_key.toString("hex"),
+      sourceInfo.public_key,
       tariAmount,
       feePerGram
     );
 
     expect(this.lastResult.results[0].is_success).to.equal(true);
     this.addTransaction(
-      sourceInfo.public_key.toString("hex"),
+      sourceInfo.public_key,
       this.lastResult.results[0].transaction_id
     );
     console.log(
@@ -1046,7 +1040,7 @@ When(
       async () => {
         try {
           const recipients = destWallets.map((w) => ({
-            address: w.public_key.toString("hex"),
+            address: w.public_key,
             amount: amount,
             fee_per_gram: feePerGram,
             message: "msg",
@@ -1082,7 +1076,7 @@ When(
     const lastResult = await this.send_tari(
       sourceWallet,
       dest,
-      destPublicKey.toString("hex"),
+      destPublicKey,
       amount,
       feePerGram,
       PaymentType.ONE_SIDED
@@ -1090,7 +1084,7 @@ When(
     expect(lastResult.results[0].is_success).to.equal(true);
 
     this.addTransaction(
-      sourceInfo.public_key.toString("hex"),
+      sourceInfo.public_key,
       lastResult.results[0].transaction_id
     );
     //lets now wait for this transaction to be at least broadcast before we continue.
@@ -1124,7 +1118,7 @@ When(
     const lastResult = await this.send_tari(
       sourceWallet,
       dest,
-      destPublicKey.toString("hex"),
+      destPublicKey,
       amount,
       feePerGram,
       PaymentType.ONE_SIDED_TO_STEALTH_ADDRESS
@@ -1132,7 +1126,7 @@ When(
     expect(lastResult.results[0].is_success).to.equal(true);
 
     this.addTransaction(
-      sourceInfo.public_key.toString("hex"),
+      sourceInfo.public_key,
       lastResult.results[0].transaction_id
     );
     //lets now wait for this transaction to be at least broadcast before we continue.
@@ -1164,10 +1158,7 @@ When(
     const lastResult = await this.burn_tari(sourceWallet, amount, feePerGram);
     expect(lastResult.is_success).to.equal(true);
 
-    this.addTransaction(
-      sourceInfo.public_key.toString("hex"),
-      lastResult.transaction_id
-    );
+    this.addTransaction(sourceInfo.public_key, lastResult.transaction_id);
     //lets now wait for this transaction to be at least broadcast before we continue.
     await waitFor(
       async () =>
@@ -1271,9 +1262,7 @@ Then(
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
-    const txIds = this.transactionsMap.get(
-      walletInfo.public_key.toString("hex")
-    );
+    const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       expect(false).to.equal(true);
@@ -1323,9 +1312,7 @@ Then(
       const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
-      const txIds = this.transactionsMap.get(
-        walletInfo.public_key.toString("hex")
-      );
+      const txIds = this.transactionsMap.get(walletInfo.public_key);
       if (txIds === undefined) {
         console.log("\nNo transactions for " + walletName + "!");
         expect(false).to.equal(true);
@@ -1433,9 +1420,7 @@ Then(
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
-    const txIds = this.transactionsMap.get(
-      walletInfo.public_key.toString("hex")
-    );
+    const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       expect(false).to.equal(true);
@@ -1484,9 +1469,7 @@ Then(
       const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
-      const txIds = this.transactionsMap.get(
-        walletInfo.public_key.toString("hex")
-      );
+      const txIds = this.transactionsMap.get(walletInfo.public_key);
       if (txIds === undefined) {
         console.log("\nNo transactions for " + walletName + "!");
         expect(false).to.equal(true);
@@ -1535,7 +1518,7 @@ Then(
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
-    let txIds = this.transactionsMap.get(walletInfo.public_key.toString("hex"));
+    let txIds = this.transactionsMap.get(walletInfo.public_key);
     console.log(walletName, txIds);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
@@ -1585,9 +1568,7 @@ Then(
       const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
-      const txIds = this.transactionsMap.get(
-        walletInfo.public_key.toString("hex")
-      );
+      const txIds = this.transactionsMap.get(walletInfo.public_key);
       if (txIds === undefined) {
         console.log("\nNo transactions for " + walletName + "!");
         expect(false).to.equal(true);
@@ -1636,9 +1617,7 @@ Then(
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
-    const txIds = this.transactionsMap.get(
-      walletInfo.public_key.toString("hex")
-    );
+    const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       expect(false).to.equal(true);
@@ -1686,9 +1665,7 @@ Then(
       const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
-      const txIds = this.transactionsMap.get(
-        walletInfo.public_key.toString("hex")
-      );
+      const txIds = this.transactionsMap.get(walletInfo.public_key);
       if (txIds === undefined) {
         console.log("\nNo transactions for " + walletName + "!");
         expect(false).to.equal(true);
@@ -1736,9 +1713,7 @@ Then(
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
-    const txIds = this.transactionsMap.get(
-      walletInfo.public_key.toString("hex")
-    );
+    const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       expect(false).to.equal(true);
@@ -1786,9 +1761,7 @@ Then(
       const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
-      const txIds = this.transactionsMap.get(
-        walletInfo.public_key.toString("hex")
-      );
+      const txIds = this.transactionsMap.get(walletInfo.public_key);
       if (txIds === undefined) {
         console.log("\nNo transactions for " + walletName + "!");
         expect(false).to.equal(true);
@@ -1836,9 +1809,7 @@ Then(
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
 
-    const txIds = this.transactionsMap.get(
-      walletInfo.public_key.toString("hex")
-    );
+    const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       expect(false).to.equal(true);
@@ -1884,9 +1855,7 @@ Then(
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
     const nodeClient = this.getClient(nodeName);
-    const txIds = this.transactionsMap.get(
-      walletInfo.public_key.toString("hex")
-    );
+    const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       throw new Error("No transactions for " + walletName + "!");
@@ -1947,9 +1916,7 @@ Then(
       const walletClient = await wallet.connectClient();
       const walletInfo = await walletClient.identify();
 
-      const txIds = this.transactionsMap.get(
-        walletInfo.public_key.toString("hex")
-      );
+      const txIds = this.transactionsMap.get(walletInfo.public_key);
       if (txIds === undefined) {
         console.log("\nNo transactions for " + walletName + "!");
         expect(false).to.equal(true);
@@ -2328,7 +2295,7 @@ When(
         " completed with TxId: ",
         result
       );
-      this.addTransaction(walletInfo.public_key.toString("hex"), result.tx_id);
+      this.addTransaction(walletInfo.public_key, result.tx_id);
       this.lastResult = result;
     }
   }
@@ -2351,6 +2318,7 @@ When(
     const sourceInfo = await sourceWalletClient.identify();
     const destWalletClient = await this.getWallet(destWallet).connectClient();
     const destInfo = await destWalletClient.identify();
+
     console.log(
       "Sending",
       numTransactions,
@@ -2362,12 +2330,11 @@ When(
 
     let batch = 1;
     let tx_ids = [];
-
     for (let i = 0; i < numTransactions; i++) {
       const result = await this.send_tari(
         this.getWallet(sourceWallet),
         destInfo.name,
-        destInfo.public_key.toString("hex"),
+        destInfo.public_key,
         amount,
         feePerGram,
         false,
@@ -2377,11 +2344,11 @@ When(
       expect(result.results[0].is_success).to.equal(true);
       tx_ids.push(result.results[0].transaction_id);
       this.addTransaction(
-        sourceInfo.public_key.toString("hex"),
+        sourceInfo.public_key,
         result.results[0].transaction_id
       );
       this.addTransaction(
-        destInfo.public_key.toString("hex"),
+        destInfo.public_key,
         result.results[0].transaction_id
       );
 

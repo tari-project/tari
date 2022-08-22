@@ -147,14 +147,14 @@ class CustomWorld {
     this.addWallet(name, wallet);
     let walletClient = await wallet.connectClient();
     let walletInfo = await walletClient.identify();
-    this.walletPubkeys[name] = walletInfo.public_key.toString("hex");
+    this.walletPubkeys[name] = walletInfo.public_key;
   }
 
   async createAndAddFFIWallet(name, seed_words = null, passphrase = null) {
     const wallet = new WalletFFIClient(name);
     await wallet.startNew(seed_words, passphrase);
     this.walletsFFI[name] = wallet;
-    this.walletPubkeys[name] = wallet.identify().public_key.toString("hex");
+    this.walletPubkeys[name] = wallet.identify();
     return wallet;
   }
 
