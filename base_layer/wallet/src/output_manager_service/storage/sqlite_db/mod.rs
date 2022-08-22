@@ -1474,6 +1474,7 @@ mod test {
                 OutputStatus,
                 UpdateOutput,
             },
+            OutputSource,
         },
         storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         util::encryption::Encryptable,
@@ -1511,7 +1512,7 @@ mod test {
 
         for _i in 0..2 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
@@ -1520,7 +1521,7 @@ mod test {
 
         for _i in 0..3 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
@@ -1621,7 +1622,7 @@ mod test {
         let factories = CryptoFactories::default();
 
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
@@ -1686,12 +1687,12 @@ mod test {
             let factories = CryptoFactories::default();
 
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
             output.commit(&conn).unwrap();
 
             let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories, None).unwrap();
+            let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories, None, OutputSource::Unknown).unwrap();
             let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None, None).unwrap();
             output2.commit(&conn).unwrap();
         }

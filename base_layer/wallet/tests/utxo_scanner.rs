@@ -74,8 +74,10 @@ use support::{
     transaction_service_mock::make_transaction_service_mock,
     utils::make_input,
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::types::CommsPublicKey;
 use tari_wallet::{
+    output_manager_service::storage::OutputSource,
     transaction_service::handle::TransactionServiceRequest,
     util::watch::Watch,
     utxo_scanner_service::handle::UtxoScannerHandle,
@@ -322,7 +324,8 @@ async fn test_utxo_scanner_recovery() {
     let mut total_amount_to_recover = MicroTari::from(0);
     for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
+            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None, OutputSource::Unknown)
+                .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
