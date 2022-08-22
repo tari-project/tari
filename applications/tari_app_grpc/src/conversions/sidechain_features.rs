@@ -60,27 +60,6 @@ impl TryFrom<grpc::side_chain_features::SideChainFeatures> for SideChainFeatures
     }
 }
 
-// impl From<SideChainFeatures> for grpc::SideChainFeatures {
-//     fn from(value: SideChainFeatures) -> Self {
-//         Self {
-//             template_registration: value.template_registration.map(Into::into),
-//         }
-//     }
-// }
-//
-// impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
-//     type Error = String;
-//
-//     fn try_from(features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
-//         let template_registration = features
-//             .template_registration
-//             .map(CodeTemplateRegistration::try_from)
-//             .transpose()?;
-//
-//         Ok(Self { template_registration })
-//     }
-// }
-
 // -------------------------------- TemplateRegistration -------------------------------- //
 impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
     type Error = String;
