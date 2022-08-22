@@ -100,7 +100,7 @@ message CreateBurnTransactionRequest{
 }
 
 message PaymentRecipient {
-    string address = 1;
+    bytes address = 1;
     uint64 amount = 2;
     uint64 fee_per_gram = 3;
     string message = 4;
@@ -131,7 +131,7 @@ message CreateBurnTransactionResponse{
 }
 
 message TransferResult {
-    string address = 1;
+    bytes address = 1;
     uint64 transaction_id = 2;
     bool is_success = 3;
     string failure_message = 4;
