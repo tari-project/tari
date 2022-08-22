@@ -78,32 +78,10 @@ class CustomWorld {
     return res;
   }
 
-  saveContractDefinition(contract_definition_name, contract_id) {
-    this.contract_definitions[contract_definition_name] = contract_id;
-  }
-
-  fetchContract(contract_name) {
-    return this.contract_definitions[contract_name];
-  }
-
-  saveContractConstitution(constitution_name, constitution_data) {
-    this.constitutions[constitution_name] = constitution_data;
-  }
-
-  fetchContractConstitution(constitution_name) {
-    return this.constitutions[constitution_name];
-  }
-
   getRandomSeedName() {
     let keys = Object.keys(this.seeds);
     let r = Math.random() * keys.length;
     return keys[r];
-  }
-
-  async parseContractId(output) {
-    let regex = /contract_id is (\w*) \(TxID/;
-    let matches = output.match(regex);
-    return matches[1];
   }
 
   currentBaseNodeName() {

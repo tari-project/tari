@@ -50,7 +50,6 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    hash::blake2::Blake256,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
@@ -331,7 +330,7 @@ async fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, Transa
             script_private_key,
         );
 
-    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
     let tx_id = stp.get_tx_id().unwrap();
     (
         tx_id,

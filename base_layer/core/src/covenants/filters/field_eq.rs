@@ -44,6 +44,7 @@ impl Filter for FieldEqFilter {
                 Commitment(commitment) => field.is_eq(output, commitment),
                 TariScript(script) => field.is_eq(output, script),
                 Covenant(covenant) => field.is_eq(output, covenant),
+                OutputType(output_type) => field.is_eq(output, output_type),
                 Uint(int) => {
                     let val = field
                         .get_field_value_ref::<u64>(output)
@@ -81,6 +82,7 @@ mod test {
     use crate::{
         covenant,
         covenants::test::{create_context, create_input, create_outputs},
+        transactions::transaction_components::OutputType,
     };
 
     #[test]
@@ -173,6 +175,23 @@ mod test {
         let mut outputs = create_outputs(10, Default::default());
         outputs[5].covenant = next_cov.clone();
         outputs[7].covenant = next_cov;
+        let mut output_set = OutputSet::new(&outputs);
+        FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
+
+        assert_eq!(output_set.len(), 2);
+        assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
+    }
+
+    #[test]
+    fn it_filters_output_type() {
+        let covenant = covenant!(field_eq(@field::features_output_type, @output_type(Coinbase)));
+        let input = create_input();
+        let mut context = create_context(&covenant, &input, 0);
+        // Remove `field_eq`
+        context.next_filter().unwrap();
+        let mut outputs = create_outputs(10, Default::default());
+        outputs[5].features.output_type = OutputType::Coinbase;
+        outputs[7].features.output_type = OutputType::Coinbase;
         let mut output_set = OutputSet::new(&outputs);
         FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
 

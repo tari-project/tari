@@ -25,7 +25,7 @@ pub(super) fn is_valid_arg_code(code: u8) -> bool {
     ALL_ARGS.contains(&code)
 }
 
-pub(super) const ALL_ARGS: [u8; 9] = [
+pub(super) const ALL_ARGS: [u8; 10] = [
     ARG_HASH,
     ARG_PUBLIC_KEY,
     ARG_COMMITMENT,
@@ -35,6 +35,7 @@ pub(super) const ALL_ARGS: [u8; 9] = [
     ARG_OUTPUT_FIELD,
     ARG_OUTPUT_FIELDS,
     ARG_BYTES,
+    ARG_OUTPUT_TYPE,
 ];
 
 pub const ARG_HASH: u8 = 0x01;
@@ -46,6 +47,7 @@ pub const ARG_UINT: u8 = 0x06;
 pub const ARG_OUTPUT_FIELD: u8 = 0x07;
 pub const ARG_OUTPUT_FIELDS: u8 = 0x08;
 pub const ARG_BYTES: u8 = 0x09;
+pub const ARG_OUTPUT_TYPE: u8 = 0x0a;
 
 //---------------------------------- FILTER byte codes --------------------------------------------//
 
@@ -84,7 +86,7 @@ pub const FIELD_SCRIPT: u8 = 0x01;
 pub const FIELD_SENDER_OFFSET_PUBLIC_KEY: u8 = 0x02;
 pub const FIELD_COVENANT: u8 = 0x03;
 pub const FIELD_FEATURES: u8 = 0x04;
-pub const FIELD_FEATURES_FLAGS: u8 = 0x05;
+pub const FIELD_FEATURES_OUTPUT_TYPE: u8 = 0x05;
 pub const FIELD_FEATURES_MATURITY: u8 = 0x06;
 pub const FIELD_FEATURES_METADATA: u8 = 0x07;
 pub const FIELD_FEATURES_SIDE_CHAIN_FEATURES: u8 = 0x08;

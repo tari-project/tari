@@ -25,24 +25,27 @@ use std::{collections::VecDeque, io, iter::FromIterator};
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
 
-use crate::covenants::{
-    arguments::CovenantArg,
-    decoder::{CovenantDecodeError, CovenantReadExt},
-    fields::OutputField,
-    filters::{
-        AbsoluteHeightFilter,
-        AndFilter,
-        CovenantFilter,
-        FieldEqFilter,
-        FieldsHashedEqFilter,
-        FieldsPreservedFilter,
-        IdentityFilter,
-        NotFilter,
-        OrFilter,
-        OutputHashEqFilter,
-        XorFilter,
+use crate::{
+    covenants::{
+        arguments::CovenantArg,
+        decoder::{CovenantDecodeError, CovenantReadExt},
+        fields::OutputField,
+        filters::{
+            AbsoluteHeightFilter,
+            AndFilter,
+            CovenantFilter,
+            FieldEqFilter,
+            FieldsHashedEqFilter,
+            FieldsPreservedFilter,
+            IdentityFilter,
+            NotFilter,
+            OrFilter,
+            OutputHashEqFilter,
+            XorFilter,
+        },
+        Covenant,
     },
-    Covenant,
+    transactions::transaction_components::OutputType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,6 +175,11 @@ impl CovenantToken {
     #[allow(dead_code)]
     pub fn uint(val: u64) -> Self {
         CovenantArg::Uint(val).into()
+    }
+
+    #[allow(dead_code)]
+    pub fn output_type(output_type: OutputType) -> Self {
+        CovenantArg::OutputType(output_type).into()
     }
 
     #[allow(dead_code)]

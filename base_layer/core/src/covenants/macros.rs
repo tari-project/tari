@@ -89,6 +89,13 @@ macro_rules! __covenant_inner {
         $crate::__covenant_inner!(@ { $covenant } @covenant_lit($($inner)*),)
     };
 
+    // @output_type(expr1), ...
+    (@ { $covenant:ident } @output_type($arg:expr $(,)?), $($tail:tt)*) => {
+        use $crate::transactions::transaction_components::OutputType::*;
+        $covenant.push_token($crate::covenants::CovenantToken::output_type($arg));
+        $crate::__covenant_inner!(@ { $covenant } $($tail)*)
+    };
+
     // @arg(expr1, expr2, ...), ...
     (@ { $covenant:ident } @$arg:ident($($args:expr),* $(,)?), $($tail:tt)*) => {
         $covenant.push_token($crate::covenants::CovenantToken::$arg($($args),*));
