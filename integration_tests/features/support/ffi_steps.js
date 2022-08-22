@@ -723,7 +723,8 @@ Then(
       () => {
         let publicKeys = wallet.listConnectedPublicKeys();
         return (
-          publicKeys && publicKeys.some((p) => p === nodeIdentity.public_key.toString("hex"))
+          publicKeys &&
+          publicKeys.some((p) => p === nodeIdentity.public_key.toString("hex"))
         );
       },
       true,
