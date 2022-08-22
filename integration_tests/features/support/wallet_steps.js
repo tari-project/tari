@@ -1088,7 +1088,7 @@ When(
       PaymentType.ONE_SIDED
     );
     expect(lastResult.results[0].is_success).to.equal(true);
-
+    
     this.addTransaction(
       sourceInfo.public_key.toString("hex"),
       lastResult.results[0].transaction_id
