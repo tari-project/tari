@@ -148,7 +148,7 @@ pub struct MakeItRainArgs {
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
     pub one_sided: bool,
-    #[clap(short, long, alias = "stealth-one-sided")]
+    #[clap(long, alias = "stealth-one-sided")]
     pub stealth: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
