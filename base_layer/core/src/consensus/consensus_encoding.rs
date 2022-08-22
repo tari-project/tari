@@ -76,6 +76,22 @@ impl<T: ConsensusEncoding + ConsensusEncodingSized + ?Sized> ToConsensusBytes fo
     }
 }
 
+pub trait FromConsensusBytes<T>
+where T: ConsensusDecoding + ?Sized
+{
+    fn from_consensus_bytes(bytes: &[u8]) -> io::Result<T>;
+}
+
+impl<T: ConsensusDecoding + ?Sized> FromConsensusBytes<T> for T {
+    fn from_consensus_bytes(mut bytes: &[u8]) -> io::Result<T> {
+        let decoded = Self::consensus_decode(&mut bytes)?;
+        if !bytes.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Extra bytes at end of data"));
+        }
+        Ok(decoded)
+    }
+}
+
 #[cfg(test)]
 pub mod test {
     use super::*;

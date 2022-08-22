@@ -57,7 +57,7 @@ impl CommandContext {
                     if let LivenessEvent::ReceivedPong(pong) = &*event {
                         if pong.node_id == dest_node_id {
                             println!(
-                                "🏓️ Pong received, latency in is {:.2?}!",
+                                "🏓️ Pong received, round-trip-time is {:.2?}!",
                                 pong.latency.unwrap_or_default()
                             );
                             break;

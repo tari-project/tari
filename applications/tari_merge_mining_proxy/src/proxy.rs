@@ -41,11 +41,9 @@ use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_core::proof_of_work::{
-    monero_difficulty,
-    monero_rx,
-    monero_rx::FixedByteArray,
-    randomx_factory::RandomXFactory,
+use tari_core::{
+    consensus::ConsensusEncoding,
+    proof_of_work::{monero_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
 };
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -269,8 +267,7 @@ impl InnerService {
 
             let header_mut = block_data.tari_block.header.as_mut().unwrap();
             let height = header_mut.height;
-            header_mut.pow.as_mut().unwrap().pow_data = monero_rx::serialize(&monero_data);
-
+            monero_data.consensus_encode(&mut header_mut.pow.as_mut().unwrap().pow_data)?;
             let tari_header = header_mut.clone().try_into().map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
