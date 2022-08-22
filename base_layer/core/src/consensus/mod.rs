@@ -34,6 +34,7 @@ mod consensus_encoding;
 pub(crate) use consensus_encoding::test::check_consensus_encoding_correctness;
 pub use consensus_encoding::{
     read_byte,
+    write_byte,
     ConsensusDecoding,
     ConsensusEncoding,
     ConsensusEncodingSized,

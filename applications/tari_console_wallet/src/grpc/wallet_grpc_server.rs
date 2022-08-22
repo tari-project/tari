@@ -944,9 +944,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let output = output_manager
             .create_output_with_features(1 * T, OutputFeatures {
                 output_type: OutputType::CodeTemplateRegistration,
-                sidechain_features: Some(Box::new(SideChainFeatures {
-                    template_registration: Some(template_registration),
-                })),
+                sidechain_features: Some(SideChainFeatures::TemplateRegistration(template_registration)),
                 ..Default::default()
             })
             .await

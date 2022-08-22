@@ -296,6 +296,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
     fn try_from(features: proto::types::OutputFeatures) -> Result<Self, Self::Error> {
         let sidechain_features = features
             .sidechain_features
+            .and_then(|features| features.side_chain_features)
             .map(SideChainFeatures::try_from)
             .transpose()?;
 
@@ -323,7 +324,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             version: features.version as u32,
-            sidechain_features: features.sidechain_features.map(|v| *v).map(Into::into),
+            sidechain_features: features.sidechain_features.map(Into::into),
         }
     }
 }
@@ -413,13 +414,3 @@ impl TryFrom<Arc<Transaction>> for proto::types::Transaction {
         }
     }
 }
-
-// impl TryFrom<proto::types::Signature> for Signature {
-//     type Error = String;
-//
-//     fn try_from(value: proto::types::Signature) -> Result<Self, Self::Error> {
-//         let public_nonce = PublicKey::from_bytes(&value.public_nonce).map_err(|_| "Invalid signature public_nonce")?;
-//         let signature = PrivateKey::from_bytes(&value.signature).map_err(|_| "Invalid signature")?;
-//         Ok(Signature::new(public_nonce, signature))
-//     }
-// }

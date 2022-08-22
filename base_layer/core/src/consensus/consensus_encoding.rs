@@ -102,6 +102,10 @@ pub fn read_byte<R: io::Read>(reader: &mut R) -> Result<u8, io::Error> {
     Ok(buf[0])
 }
 
+pub fn write_byte<W: io::Write>(writer: &mut W, byte: u8) -> Result<(), io::Error> {
+    writer.write_all(&[byte])
+}
+
 #[cfg(test)]
 pub mod test {
     use super::*;

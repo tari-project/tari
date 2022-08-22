@@ -36,22 +36,29 @@ use crate::{
 //---------------------------------- SideChainFeatures --------------------------------------------//
 impl From<SideChainFeatures> for proto::types::SideChainFeatures {
     fn from(value: SideChainFeatures) -> Self {
-        Self {
-            template_registration: value.template_registration.map(Into::into),
+        value.into()
+    }
+}
+
+impl From<SideChainFeatures> for proto::types::side_chain_features::SideChainFeatures {
+    fn from(value: SideChainFeatures) -> Self {
+        match value {
+            SideChainFeatures::TemplateRegistration(template_reg) => {
+                proto::types::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg.into())
+            },
         }
     }
 }
 
-impl TryFrom<proto::types::SideChainFeatures> for SideChainFeatures {
+impl TryFrom<proto::types::side_chain_features::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
-    fn try_from(features: proto::types::SideChainFeatures) -> Result<Self, Self::Error> {
-        let template_registration = features
-            .template_registration
-            .map(CodeTemplateRegistration::try_from)
-            .transpose()?;
-
-        Ok(Self { template_registration })
+    fn try_from(features: proto::types::side_chain_features::SideChainFeatures) -> Result<Self, Self::Error> {
+        match features {
+            proto::types::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg) => {
+                Ok(SideChainFeatures::TemplateRegistration(template_reg.try_into()?))
+            },
+        }
     }
 }
 

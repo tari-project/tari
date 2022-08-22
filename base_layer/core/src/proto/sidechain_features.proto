@@ -8,7 +8,9 @@ import "types.proto";
 package tari.types;
 
 message SideChainFeatures {
-    TemplateRegistration template_registration = 3;
+    oneof side_chain_features {
+        TemplateRegistration template_registration = 1;
+    }
 }
 
 message TemplateRegistration {

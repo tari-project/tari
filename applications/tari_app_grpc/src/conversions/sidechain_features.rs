@@ -31,26 +31,55 @@ use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
+//---------------------------------- SideChainFeatures --------------------------------------------//
 impl From<SideChainFeatures> for grpc::SideChainFeatures {
     fn from(value: SideChainFeatures) -> Self {
-        Self {
-            template_registration: value.template_registration.map(Into::into),
+        value.into()
+    }
+}
+
+impl From<SideChainFeatures> for grpc::side_chain_features::SideChainFeatures {
+    fn from(value: SideChainFeatures) -> Self {
+        match value {
+            SideChainFeatures::TemplateRegistration(template_reg) => {
+                grpc::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg.into())
+            },
         }
     }
 }
 
-impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
+impl TryFrom<grpc::side_chain_features::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
-    fn try_from(features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
-        let template_registration = features
-            .template_registration
-            .map(CodeTemplateRegistration::try_from)
-            .transpose()?;
-
-        Ok(Self { template_registration })
+    fn try_from(features: grpc::side_chain_features::SideChainFeatures) -> Result<Self, Self::Error> {
+        match features {
+            grpc::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg) => {
+                Ok(SideChainFeatures::TemplateRegistration(template_reg.try_into()?))
+            },
+        }
     }
 }
+
+// impl From<SideChainFeatures> for grpc::SideChainFeatures {
+//     fn from(value: SideChainFeatures) -> Self {
+//         Self {
+//             template_registration: value.template_registration.map(Into::into),
+//         }
+//     }
+// }
+//
+// impl TryFrom<grpc::SideChainFeatures> for SideChainFeatures {
+//     type Error = String;
+//
+//     fn try_from(features: grpc::SideChainFeatures) -> Result<Self, Self::Error> {
+//         let template_registration = features
+//             .template_registration
+//             .map(CodeTemplateRegistration::try_from)
+//             .transpose()?;
+//
+//         Ok(Self { template_registration })
+//     }
+// }
 
 // -------------------------------- TemplateRegistration -------------------------------- //
 impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {

@@ -335,13 +335,14 @@ impl FromIterator<OutputField> for OutputFields {
 
 #[cfg(test)]
 mod test {
+
     use tari_common_types::types::{Commitment, PublicKey};
     use tari_script::script;
 
     use super::*;
     use crate::{
         covenant,
-        covenants::test::{create_input, create_outputs},
+        covenants::test::{create_input, create_outputs, make_sample_sidechain_features},
         transactions::{
             test_helpers::UtxoTestParams,
             transaction_components::{OutputFeatures, OutputType, SpentOutput},
@@ -352,14 +353,15 @@ mod test {
         use super::*;
 
         mod is_eq {
+
             use super::*;
-            use crate::transactions::transaction_components::SideChainFeatures;
 
             #[test]
             fn it_returns_true_if_eq() {
+                let side_chain_features = make_sample_sidechain_features();
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        sidechain_features: Some(Box::new(SideChainFeatures::default())),
+                        sidechain_features: Some(side_chain_features),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
@@ -378,9 +380,6 @@ mod test {
                     .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
-                    .is_eq(&output, &SideChainFeatures::default())
-                    .unwrap());
-                assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_features.as_ref().unwrap())
                     .unwrap());
                 assert!(OutputField::FeaturesMetadata
@@ -393,9 +392,10 @@ mod test {
 
             #[test]
             fn it_returns_false_if_not_eq() {
+                let side_chain_features = make_sample_sidechain_features();
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        sidechain_features: Some(Box::new(SideChainFeatures::default())),
+                        sidechain_features: Some(side_chain_features),
                         ..Default::default()
                     },
                     script: script![Drop Nop],
