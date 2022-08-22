@@ -436,7 +436,7 @@ Then(
     const walletInfo = await walletClient.identify();
     const miningNode = this.getMiningNode(miner);
 
-    const txIds = this.transactionsMap.get(walletInfo.public_key);
+    const txIds = this.transactionsMap.get(walletInfo);
     if (txIds === undefined) {
       console.log("\nNo transactions for " + walletName + "!");
       expect(false).to.equal(true);
@@ -508,7 +508,7 @@ When(
 
     await waitForPredicate(async () => {
       let peers = await firstNodeClient.listConnectedPeers();
-      return peers.some((p) => secondNodeIdentity.public_key === p.public_key);
+      return peers.some((p) => secondNodeIdentity.public_key.toString("hex") === p.public_key);
     }, 50 * 1000);
   }
 );
@@ -519,7 +519,7 @@ Then(/(.*) is connected to (.*)/, async function (firstNode, secondNode) {
   const secondNodeIdentity = await secondNodeClient.identify();
   let peers = await firstNodeClient.listConnectedPeers();
   expect(
-    peers.some((p) => secondNodeIdentity.public_key === p.public_key)
+    peers.some((p) => secondNodeIdentity.public_key.toString("hex") === p.public_key)
   ).to.be.true;
 });
 

@@ -646,7 +646,7 @@ Then("I want to get public key of ffi wallet {word}", function (name) {
   let wallet = this.getWallet(name);
   let public_key = wallet.identify();
   expect(public_key.length).to.be.equal(
-    64,
+    32,
     `Public key has wrong length : ${public_key}`
   );
 });
@@ -723,7 +723,7 @@ Then(
       () => {
         let publicKeys = wallet.listConnectedPublicKeys();
         return (
-          publicKeys && publicKeys.some((p) => p === nodeIdentity.public_key)
+          publicKeys && publicKeys.some((p) => p === nodeIdentity.public_key.toString("hex"))
         );
       },
       true,

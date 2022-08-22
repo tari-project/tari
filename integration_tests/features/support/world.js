@@ -17,7 +17,7 @@ const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
-const { waitFor, sleep, consoleLogBalance } = require("../../helpers/util");
+const { waitFor, sleep, encodeOption, consoleLogBalance } = require("../../helpers/util");
 const { PaymentType } = require("../../helpers/types");
 const { expect } = require("chai");
 const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
@@ -147,14 +147,14 @@ class CustomWorld {
     this.addWallet(name, wallet);
     let walletClient = await wallet.connectClient();
     let walletInfo = await walletClient.identify();
-    this.walletPubkeys[name] = walletInfo.public_key;
+    this.walletPubkeys[name] = walletInfo.public_key.toString("hex");
   }
 
   async createAndAddFFIWallet(name, seed_words = null, passphrase = null) {
     const wallet = new WalletFFIClient(name);
     await wallet.startNew(seed_words, passphrase);
     this.walletsFFI[name] = wallet;
-    this.walletPubkeys[name] = wallet.identify();
+    this.walletPubkeys[name] = wallet.identify().public_key.toString("hex");
     return wallet;
   }
 
@@ -608,7 +608,7 @@ class CustomWorld {
     const sourceClient = await sourceWallet.connectClient();
     const sourceInfo = await sourceClient.identify();
 
-    const destPublicKey = this.getWalletPubkey(dest);
+    const destPublicKey = this.getWalletPubkey(dest).toString("hex");
 
     this.lastResult = await this.send_tari(
       sourceWallet,
