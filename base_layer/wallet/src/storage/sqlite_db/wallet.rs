@@ -58,7 +58,6 @@ use crate::{
         decrypt_bytes_integral_nonce,
         encrypt_bytes_integral_nonce,
         Encryptable,
-        AES_MAC_BYTES,
         AES_NONCE_BYTES,
     },
     utxo_scanner_service::service::ScannedBlock,
@@ -650,7 +649,7 @@ fn check_db_encryption_status(
                 if let Some(cipher_inner) = cipher.clone() {
                     let sk_bytes: Vec<u8> = from_hex(sk.as_str())?;
 
-                    if sk_bytes.len() < AES_NONCE_BYTES + AES_MAC_BYTES {
+                    if sk_bytes.len() < AES_NONCE_BYTES {
                         return Err(WalletStorageError::MissingNonce);
                     }
 
