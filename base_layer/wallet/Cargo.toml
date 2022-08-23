@@ -7,6 +7,7 @@ version = "0.36.0"
 edition = "2018"
 
 [dependencies]
+tari_core = {path = "../../base_layer/core", version = "^0.36", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto"]}
 tari_common = { path = "../../common" }
 tari_common_types = { version = "^0.36", path = "../../base_layer/common_types" }
 tari_comms = { version = "^0.36", path = "../../comms/core" }
@@ -57,16 +58,12 @@ tower = "0.4"
 prost = "0.9"
 itertools = "0.10.3"
 
-[dependencies.tari_core]
-path = "../../base_layer/core"
-version = "^0.36"
-default-features = false
-features = ["transactions", "mempool_proto", "base_node_proto", ]
 
 [dev-dependencies]
 tari_p2p = { version = "^0.36", path = "../p2p", features = ["test-mocks"] }
 tari_comms_dht = { version = "^0.36", path = "../../comms/dht", features = ["test-mocks"] }
 tari_test_utils = { version = "^0.36", path = "../../infrastructure/test_utils" }
+tari_core = {path = "../../base_layer/core", version = "^0.36", default-features = false, features = ["transactions", "mempool_proto", "base_node_proto", "base_node"]}
 env_logger = "0.7.1"
 prost = "0.9.0"
 
