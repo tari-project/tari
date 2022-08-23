@@ -2624,6 +2624,8 @@ void balance_destroy(TariBalance *balance);
  * `wallet` - The TariWallet pointer
  * `dest_public_key` - The TariPublicKey pointer of the peer
  * `amount` - The amount
+ * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+ *   (see `Commitment::to_hex()`)
  * `fee_per_gram` - The transaction fee
  * `message` - The pointer to a char array
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -2638,6 +2640,7 @@ void balance_destroy(TariBalance *balance);
 unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            TariPublicKey *dest_public_key,
                                            unsigned long long amount,
+                                           struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
                                            const char *message,
                                            bool one_sided,
@@ -2649,6 +2652,8 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `amount` - The amount
+ * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+ *   (see `Commitment::to_hex()`)
  * `fee_per_gram` - The fee per gram
  * `num_kernels` - The number of transaction kernels
  * `num_outputs` - The number of outputs
@@ -2663,6 +2668,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  */
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet,
                                            unsigned long long amount,
+                                           struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
                                            unsigned long long num_kernels,
                                            unsigned long long num_outputs,

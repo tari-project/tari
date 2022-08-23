@@ -481,6 +481,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cast"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
+
+[[package]]
 name = "cast5"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -901,7 +907,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0363053954f3e679645fc443321ca128b7b950a6fe288cf5f9335cc22ee58394"
 dependencies = [
  "atty",
- "cast",
+ "cast 0.2.7",
  "clap 2.34.0",
  "criterion-plot 0.3.1",
  "csv",
@@ -923,12 +929,12 @@ dependencies = [
 
 [[package]]
 name = "criterion"
-version = "0.3.5"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1604dafd25fba2fe2d5895a9da139f8dc9b319a5fe5354ca137cbbce4e178d10"
+checksum = "b01d6de93b2b6c65e17c634a26653a29d107b3c98c607c765bf38d041531cd8f"
 dependencies = [
  "atty",
- "cast",
+ "cast 0.3.0",
  "clap 2.34.0",
  "criterion-plot 0.4.4",
  "csv",
@@ -954,7 +960,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76f9212ddf2f4a9eb2d401635190600656a1f88a932ef53d06e7fa4c7e02fb8e"
 dependencies = [
  "byteorder",
- "cast",
+ "cast 0.2.7",
  "itertools 0.8.2",
 ]
 
@@ -964,7 +970,7 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d00996de9f2f7559f7f4dc286073197f83e92256a59ed395f9aac01fe717da57"
 dependencies = [
- "cast",
+ "cast 0.2.7",
  "itertools 0.10.3",
 ]
 
@@ -4984,7 +4990,7 @@ dependencies = [
  "chacha20poly1305 0.9.1",
  "chrono",
  "config",
- "criterion 0.3.5",
+ "criterion 0.3.6",
  "croaring",
  "decimal-rs",
  "derivative",

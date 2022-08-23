@@ -135,6 +135,7 @@ use tari_wallet::{
             models::DbUnblindedOutput,
             OutputStatus,
         },
+        UtxoSelectionCriteria,
     },
     storage::{
         database::WalletDatabase,
@@ -2251,24 +2252,16 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
 pub unsafe extern "C" fn liveness_data_get_online_status(
     liveness_data: *mut TariContactsLivenessData,
     error_out: *mut c_int,
-) -> *const c_char {
+) -> c_int {
     let mut error = 0;
-    let mut result = CString::new("").expect("Blank CString will not fail.");
     ptr::swap(error_out, &mut error as *mut c_int);
     if liveness_data.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return result.into_raw();
+        return -1;
     }
     let status = (*liveness_data).online_status();
-    match CString::new(status.to_string()) {
-        Ok(v) => result = v,
-        _ => {
-            error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-        },
-    }
-    result.into_raw()
+    status as c_int
 }
 
 /// Frees memory for a TariContactsLivenessData
@@ -3917,7 +3910,6 @@ pub unsafe extern "C" fn comms_config_create(
                 listener_liveness_max_sessions: 0,
                 user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
-                rpc_max_sessions_per_peer: 0,
             };
 
             Box::into_raw(Box::new(config))
@@ -5397,6 +5389,8 @@ pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
 /// `wallet` - The TariWallet pointer
 /// `dest_public_key` - The TariPublicKey pointer of the peer
 /// `amount` - The amount
+/// `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+///   (see `Commitment::to_hex()`)
 /// `fee_per_gram` - The transaction fee
 /// `message` - The pointer to a char array
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -5412,6 +5406,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     wallet: *mut TariWallet,
     dest_public_key: *mut TariPublicKey,
     amount: c_ulonglong,
+    commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     one_sided: bool,
@@ -5430,6 +5425,18 @@ pub unsafe extern "C" fn wallet_send_transaction(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
+
+    let selection_criteria = match commitments.as_ref() {
+        None => UtxoSelectionCriteria::default(),
+        Some(cs) => match cs.to_commitment_vec() {
+            Ok(cs) => UtxoSelectionCriteria::specific(cs),
+            Err(e) => {
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                ptr::replace(error_out, LibWalletError::from(e).code as c_int);
+                return 0;
+            },
+        },
+    };
 
     let message_string;
     if message.is_null() {
@@ -5458,18 +5465,16 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     if one_sided {
-        match (*wallet).runtime.block_on(
-            (*wallet)
-                .wallet
-                .transaction_service
-                .send_one_sided_to_stealth_address_transaction(
-                    (*dest_public_key).clone(),
-                    MicroTari::from(amount),
-                    OutputFeatures::default(),
-                    MicroTari::from(fee_per_gram),
-                    message_string,
-                ),
-        ) {
+        match (*wallet)
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.send_one_sided_to_stealth_address_transaction(
+                (*dest_public_key).clone(),
+                MicroTari::from(amount),
+                selection_criteria,
+                OutputFeatures::default(),
+                MicroTari::from(fee_per_gram),
+                message_string,
+            )) {
             Ok(tx_id) => tx_id.as_u64(),
             Err(e) => {
                 error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -5483,6 +5488,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .block_on((*wallet).wallet.transaction_service.send_transaction(
                 (*dest_public_key).clone(),
                 MicroTari::from(amount),
+                selection_criteria,
                 OutputFeatures::default(),
                 MicroTari::from(fee_per_gram),
                 message_string,
@@ -5502,6 +5508,8 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `amount` - The amount
+/// `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+///   (see `Commitment::to_hex()`)
 /// `fee_per_gram` - The fee per gram
 /// `num_kernels` - The number of transaction kernels
 /// `num_outputs` - The number of outputs
@@ -5517,6 +5525,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
 pub unsafe extern "C" fn wallet_get_fee_estimate(
     wallet: *mut TariWallet,
     amount: c_ulonglong,
+    commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
     num_kernels: c_ulonglong,
     num_outputs: c_ulonglong,
@@ -5530,10 +5539,23 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
         return 0;
     }
 
+    let selection_criteria = match commitments.as_ref() {
+        None => UtxoSelectionCriteria::default(),
+        Some(cs) => match cs.to_commitment_vec() {
+            Ok(cs) => UtxoSelectionCriteria::specific(cs),
+            Err(e) => {
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                ptr::replace(error_out, LibWalletError::from(e).code as c_int);
+                return 0;
+            },
+        },
+    };
+
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.output_manager_service.fee_estimate(
             MicroTari::from(amount),
+            selection_criteria,
             MicroTari::from(fee_per_gram),
             num_kernels as usize,
             num_outputs as usize,
@@ -6287,8 +6309,6 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// `script_private_key` - Tari script private key, k_S, is used to create the script signature
 /// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
-/// `encrypted_value` - Encrypted value.
-/// `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///

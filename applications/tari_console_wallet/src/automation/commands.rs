@@ -58,7 +58,7 @@ use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     key_manager_service::NextKeyResult,
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
     WalletConfig,
@@ -118,6 +118,7 @@ pub async fn send_tari(
         .send_transaction(
             dest_pubkey,
             amount,
+            UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
@@ -131,11 +132,12 @@ pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     dest_pubkey: PublicKey,
     message: String,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
+        .send_sha_atomic_swap_transaction(dest_pubkey, amount, selection_criteria, fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -181,6 +183,7 @@ pub async fn send_one_sided(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     dest_pubkey: PublicKey,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -188,6 +191,7 @@ pub async fn send_one_sided(
         .send_one_sided_transaction(
             dest_pubkey,
             amount,
+            selection_criteria,
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
@@ -200,6 +204,7 @@ pub async fn send_one_sided_to_stealth_address(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
+    selection_criteria: UtxoSelectionCriteria,
     dest_pubkey: PublicKey,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -207,6 +212,7 @@ pub async fn send_one_sided_to_stealth_address(
         .send_one_sided_to_stealth_address_transaction(
             dest_pubkey,
             amount,
+            selection_criteria,
             OutputFeatures::default(),
             fee_per_gram * uT,
             message,
@@ -374,10 +380,26 @@ pub async fn make_it_rain(
                             send_tari(tx_service, fee, amount, pk.clone(), msg.clone()).await
                         },
                         MakeItRainTransactionType::OneSided => {
-                            send_one_sided(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                            send_one_sided(
+                                tx_service,
+                                fee,
+                                amount,
+                                UtxoSelectionCriteria::default(),
+                                pk.clone(),
+                                msg.clone(),
+                            )
+                            .await
                         },
                         MakeItRainTransactionType::StealthOneSided => {
-                            send_one_sided_to_stealth_address(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                            send_one_sided_to_stealth_address(
+                                tx_service,
+                                fee,
+                                amount,
+                                UtxoSelectionCriteria::default(),
+                                pk.clone(),
+                                msg.clone(),
+                            )
+                            .await
                         },
                     };
                     let submit_time = Instant::now();
@@ -594,6 +616,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
+                    UtxoSelectionCriteria::default(),
                     args.destination.into(),
                     args.message,
                 )
@@ -606,6 +629,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
+                    UtxoSelectionCriteria::default(),
                     args.destination.into(),
                     args.message,
                 )
@@ -728,6 +752,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
+                    UtxoSelectionCriteria::default(),
                     args.destination.into(),
                     args.message,
                 )
