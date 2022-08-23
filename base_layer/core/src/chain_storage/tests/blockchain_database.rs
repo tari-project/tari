@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 //  Copyright 2020, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
@@ -23,7 +22,6 @@ use std::convert::TryFrom;
 // DAMAGE.
 use std::sync::Arc;
 
-use tari_common_types::types::FixedHash;
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -67,11 +65,11 @@ fn create_next_block(
 
 fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
-    block.header.input_mr = FixedHash::try_from(mmr_roots.input_mr).expect("Array size 32 cannot fail");
-    block.header.witness_mr = FixedHash::try_from(mmr_roots.witness_mr).expect("Array size 32 cannot fail");
-    block.header.output_mr = FixedHash::try_from(mmr_roots.output_mr).expect("Array size 32 cannot fail");
+    block.header.input_mr = mmr_roots.input_mr;
+    block.header.witness_mr = mmr_roots.witness_mr;
+    block.header.output_mr = mmr_roots.output_mr;
     block.header.output_mmr_size = mmr_roots.output_mmr_size;
-    block.header.kernel_mr = FixedHash::try_from(mmr_roots.kernel_mr).expect("Array size 32 cannot fail");
+    block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block
 }

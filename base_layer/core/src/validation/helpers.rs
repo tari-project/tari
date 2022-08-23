@@ -516,7 +516,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 }
 
 pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(), ValidationError> {
-    if header.kernel_mr.as_slice() != mmr_roots.kernel_mr.as_slice() {
+    if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
             target: LOG_TARGET,
             "Block header kernel MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
@@ -544,7 +544,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             actual: header.kernel_mmr_size,
         }));
     }
-    if header.output_mr.as_slice() != mmr_roots.output_mr.as_slice() {
+    if header.output_mr != mmr_roots.output_mr {
         warn!(
             target: LOG_TARGET,
             "Block header output MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
@@ -557,7 +557,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Utxo",
         }));
     };
-    if header.witness_mr.as_slice() != mmr_roots.witness_mr.as_slice() {
+    if header.witness_mr != mmr_roots.witness_mr {
         warn!(
             target: LOG_TARGET,
             "Block header witness MMR roots in {} do not match calculated roots",
@@ -581,7 +581,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             actual: header.output_mmr_size,
         }));
     }
-    if header.input_mr.as_slice() != mmr_roots.input_mr.as_slice() {
+    if header.input_mr != mmr_roots.input_mr {
         warn!(
             target: LOG_TARGET,
             "Block header input merkle root in {} do not match calculated root. Header.input_mr: {}, Calculated: {}",

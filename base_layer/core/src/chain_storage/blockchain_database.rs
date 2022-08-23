@@ -809,11 +809,11 @@ where B: BlockchainBackend
         }
         let block = Block { header, body };
         let (mut block, roots) = self.calculate_mmr_roots(block)?;
-        block.header.kernel_mr = FixedHash::try_from(roots.kernel_mr).expect("Array size 32 cannot fail");
+        block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
-        block.header.input_mr = FixedHash::try_from(roots.input_mr).expect("Array size 32 cannot fail");
-        block.header.output_mr = FixedHash::try_from(roots.output_mr).expect("Array size 32 cannot fail");
-        block.header.witness_mr = FixedHash::try_from(roots.witness_mr).expect("Array size 32 cannot fail");
+        block.header.input_mr = roots.input_mr;
+        block.header.output_mr = roots.output_mr;
+        block.header.witness_mr = roots.witness_mr;
         block.header.output_mmr_size = roots.output_mmr_size;
         Ok(block)
     }
@@ -1168,11 +1168,11 @@ fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainSto
 /// Container struct for MMR roots
 #[derive(Debug, Clone)]
 pub struct MmrRoots {
-    pub kernel_mr: BlockHash,
+    pub kernel_mr: FixedHash,
     pub kernel_mmr_size: u64,
-    pub input_mr: BlockHash,
-    pub output_mr: BlockHash,
-    pub witness_mr: BlockHash,
+    pub input_mr: FixedHash,
+    pub output_mr: FixedHash,
+    pub witness_mr: FixedHash,
     pub output_mmr_size: u64,
 }
 
@@ -1291,15 +1291,13 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
-    let input_mr = input_mmr.get_merkle_root()?;
-
     let mmr_roots = MmrRoots {
-        kernel_mr: kernel_mmr.get_merkle_root()?,
+        kernel_mr: FixedHash::try_from(kernel_mmr.get_merkle_root()?)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
-        input_mr,
-        output_mr: output_mmr.get_merkle_root()?,
+        input_mr: FixedHash::try_from(input_mmr.get_merkle_root()?)?,
+        output_mr: FixedHash::try_from(output_mmr.get_merkle_root()?)?,
         output_mmr_size: output_mmr.get_leaf_count() as u64,
-        witness_mr: witness_mmr.get_merkle_root()?,
+        witness_mr: FixedHash::try_from(witness_mmr.get_merkle_root()?)?,
     };
     Ok(mmr_roots)
 }

@@ -55,7 +55,7 @@ use serde::{
     Serializer,
 };
 use tari_common_types::{
-    array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
+    array::copy_into_fixed_array_lossy,
     types::{BlindingFactor, BlockHash, FixedHash, BLOCK_HASH_LENGTH},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
@@ -97,6 +97,7 @@ pub struct BlockHeader {
     pub height: u64,
     /// Hash of the block previous to this in the chain.
     #[serde(with = "hash_serializer")]
+    // TODO: Change type to 'FixedHash'
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: EpochTime,
@@ -216,24 +217,22 @@ impl BlockHeader {
 
     /// Provides a hash of the header, used for the merge mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
-    pub fn merged_mining_hash(&self) -> Vec<u8> {
+    pub fn merged_mining_hash(&self) -> FixedHash {
         DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)
             .chain(&self.prev_hash)
             .chain(&self.timestamp)
-            .chain(&copy_into_fixed_array::<_, 32>(self.input_mr.as_slice()).expect("Fixed array size 32 cannot fail"))
-            .chain(&copy_into_fixed_array::<_, 32>(self.output_mr.as_slice()).expect("Fixed array size 32 cannot fail"))
+            .chain(&self.input_mr)
+            .chain(&self.output_mr)
             .chain(&self.output_mmr_size)
-            .chain(
-                &copy_into_fixed_array::<_, 32>(self.witness_mr.as_slice()).expect("Fixed array size 32 cannot fail"),
-            )
-            .chain(&copy_into_fixed_array::<_, 32>(self.kernel_mr.as_slice()).expect("Fixed array size 32 cannot fail"))
+            .chain(&self.witness_mr)
+            .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
             .chain(&self.total_script_offset)
             .finalize()
-            .to_vec()
+            .into()
     }
 
     #[inline]
@@ -278,9 +277,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
-            .chain(
-                &copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).expect("Fixed array size 32 cannot fail"),
-            )
+            .chain(&self.merged_mining_hash().as_slice())
             .chain(&self.pow)
             .chain(&self.nonce)
             .finalize()
@@ -415,20 +412,12 @@ impl ConsensusEncoding for BlockHeader {
         self.height.consensus_encode(writer)?;
         copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
         self.timestamp.consensus_encode(writer)?;
-        copy_into_fixed_array::<_, 32>(self.output_mr.as_slice())
-            .expect("Fixed array size 32 cannot fail")
-            .consensus_encode(writer)?;
-        copy_into_fixed_array::<_, 32>(self.witness_mr.as_slice())
-            .expect("Fixed array size 32 cannot fail")
-            .consensus_encode(writer)?;
+        self.output_mr.as_slice().consensus_encode(writer)?;
+        self.witness_mr.as_slice().consensus_encode(writer)?;
         self.output_mmr_size.consensus_encode(writer)?;
-        copy_into_fixed_array::<_, 32>(self.kernel_mr.as_slice())
-            .expect("Fixed array size 32 cannot fail")
-            .consensus_encode(writer)?;
+        self.kernel_mr.as_slice().consensus_encode(writer)?;
         self.kernel_mmr_size.consensus_encode(writer)?;
-        copy_into_fixed_array::<_, 32>(self.input_mr.as_slice())
-            .expect("Fixed array size 32 cannot fail")
-            .consensus_encode(writer)?;
+        self.input_mr.as_slice().consensus_encode(writer)?;
         self.total_kernel_offset.consensus_encode(writer)?;
         self.total_script_offset.consensus_encode(writer)?;
         self.nonce.consensus_encode(writer)?;
