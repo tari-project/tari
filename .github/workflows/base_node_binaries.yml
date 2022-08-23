@@ -108,7 +108,7 @@ jobs:
           override: true
 
       - name: Install Linux dependencies - Ubuntu
-        if: startsWith(runner.os,'Linux')
+        if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name != 'linux-arm64' }}
         run: |
           sudo apt-get update
           sudo apt-get -y install \
@@ -125,11 +125,7 @@ jobs:
             protobuf-compiler \
             libncurses5-dev \
             libncursesw5-dev \
-            zip \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
-          sudo apt-get -y --purge remove \
-            clang-9 clang-format-9 libclang-common-9-dev libclang-cpp9 libclang1-9
+            zip
 
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
@@ -182,25 +178,8 @@ jobs:
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v1
 
-        # Fix me soon!
-      - name: Build rust binaries - hardcoded (linux-arm64)
-        if: ${{ matrix.builds.name == 'linux-arm64' }}
-        shell: bash
-        run: |
-          export RUSTFLAGS="-C target_cpu=generic"
-          export ROARING_ARCH=generic
-          export BUILD_TARGET="aarch64-unknown-linux-gnu/"
-          export RUST_TARGET="--target=aarch64-unknown-linux-gnu"
-          export ARCH=generic
-          export FEATURES=safe
-          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-          export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
-          export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
-          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot /usr/aarch64-linux-gnu/include/"
-          cargo build --release --target ${{ matrix.builds.target }} --features ${{ matrix.builds.features }} ${{ matrix.builds.target_bins }}
-
       - name: Build rust binaries - Normal
-        if: ${{ matrix.builds.name != 'linux-arm64' }}
+        #if: ${{ matrix.builds.name != 'linux-arm64' }}
         uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.builds.target_cpu }}"
