@@ -229,7 +229,6 @@ jobs:
             "tari_console_wallet"
             "tari_miner"
             "tari_merge_mining_proxy"
-            "tari_validator_node"
           )
           for FILE in "${FILES[@]}"; do
             if [ -f "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" ]; then
@@ -274,7 +273,6 @@ jobs:
             "tari_console_wallet"
             "tari_miner"
             "tari_merge_mining_proxy"
-            "tari_validator_node"
           )
           for FILE in "${FILES[@]}"; do
             codesign --options runtime --force --verify --verbose --timestamp --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
