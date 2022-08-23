@@ -118,6 +118,7 @@ pub enum CliCommands {
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
+    HashGrpcPassword(HashPasswordArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -239,4 +240,10 @@ pub struct ClaimShaAtomicSwapRefundArgs {
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
     pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct HashPasswordArgs {
+    /// If true, only output the hashed password and the salted password. Otherwise a usage explanation is output.
+    pub short: bool,
 }

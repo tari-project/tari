@@ -32,6 +32,7 @@ use tari_common::{
     configuration::{serializers, Network, StringList},
     SubConfigPath,
 };
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
@@ -88,8 +89,10 @@ pub struct WalletConfig {
     /// transaction events are received by the console wallet .
     /// (see example at 'applications/tari_console_wallet/src/notifier/notify_example.sh')
     pub notify_file: Option<PathBuf>,
-    /// GRPC address of base node
+    /// GRPC bind address of the wallet
     pub grpc_address: Option<Multiaddr>,
+    /// GRPC authentication mode
+    pub grpc_authentication: GrpcAuthentication,
     /// A custom base node peer that will be used to obtain metadata from
     pub custom_base_node: Option<String>,
     /// A list of base node peers that the wallet should use for service requests and tracking chain state
@@ -132,6 +135,7 @@ impl Default for WalletConfig {
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
             grpc_address: Some("/ip4/127.0.0.1/tcp/18143".parse().unwrap()),
+            grpc_authentication: GrpcAuthentication::default(),
             custom_base_node: None,
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
