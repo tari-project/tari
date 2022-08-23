@@ -412,12 +412,12 @@ impl ConsensusEncoding for BlockHeader {
         self.height.consensus_encode(writer)?;
         copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
         self.timestamp.consensus_encode(writer)?;
-        self.output_mr.as_slice().consensus_encode(writer)?;
-        self.witness_mr.as_slice().consensus_encode(writer)?;
+        self.output_mr.as_fixed_slice().consensus_encode(writer)?;
+        self.witness_mr.as_fixed_slice().consensus_encode(writer)?;
         self.output_mmr_size.consensus_encode(writer)?;
-        self.kernel_mr.as_slice().consensus_encode(writer)?;
+        self.kernel_mr.as_fixed_slice().consensus_encode(writer)?;
         self.kernel_mmr_size.consensus_encode(writer)?;
-        self.input_mr.as_slice().consensus_encode(writer)?;
+        self.input_mr.as_fixed_slice().consensus_encode(writer)?;
         self.total_kernel_offset.consensus_encode(writer)?;
         self.total_script_offset.consensus_encode(writer)?;
         self.nonce.consensus_encode(writer)?;

@@ -51,6 +51,10 @@ impl FixedHash {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
+
+    pub fn as_fixed_slice(&self) -> &[u8; FixedHash::byte_size()] {
+        &self.0
+    }
 }
 
 impl From<[u8; FixedHash::byte_size()]> for FixedHash {
