@@ -97,7 +97,12 @@ pub fn encrypt_bytes_integral_nonce(
 mod test {
     use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 
-    use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, AES_NONCE_BYTES, AES_TAG_BYTES};
+    use crate::util::encryption::{
+        decrypt_bytes_integral_nonce,
+        encrypt_bytes_integral_nonce,
+        AES_NONCE_BYTES,
+        AES_TAG_BYTES
+    };
 
     #[test]
     fn test_encrypt_decrypt() {
@@ -116,15 +121,27 @@ mod test {
         assert!(decrypt_bytes_integral_nonce(&cipher, b"wrong_domain".to_vec(), ciphertext.clone()).is_err());
 
         // must fail with evil nonce
-        let ciphertext_with_evil_nonce = ciphertext.clone().splice(0..AES_NONCE_BYTES, [0u8; AES_NONCE_BYTES]).collect();
+        let ciphertext_with_evil_nonce = ciphertext
+            .clone()
+            .splice(0..AES_NONCE_BYTES, [0u8; AES_NONCE_BYTES])
+            .collect();
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_nonce).is_err());
 
         // must fail with evil ciphertext
-        let ciphertext_with_evil_nonce = ciphertext.clone().splice(AES_NONCE_BYTES..(AES_NONCE_BYTES + plaintext.len()), vec![0u8; plaintext.len()]).collect();
+        let ciphertext_with_evil_nonce = ciphertext
+            .clone()
+            .splice(AES_NONCE_BYTES..(AES_NONCE_BYTES + plaintext.len()), vec![
+                0u8;
+                plaintext.len()
+            ])
+        .collect();
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_nonce).is_err());
 
         // must fail with evil tag
-        let ciphertext_with_evil_tag = ciphertext.clone().splice((ciphertext.len() - AES_TAG_BYTES).., [0u8; AES_TAG_BYTES]).collect();
+        let ciphertext_with_evil_tag = ciphertext
+            .clone()
+            .splice((ciphertext.len() - AES_TAG_BYTES).., [0u8; AES_TAG_BYTES])
+            .collect();
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_tag).is_err());
 
         // must fail with truncation
