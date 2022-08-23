@@ -31,6 +31,7 @@ use tari_wallet::output_manager_service::{
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbUnblindedOutput,
         sqlite_db::OutputManagerSqliteDatabase,
+        OutputSource,
     },
 };
 use tokio::runtime::Runtime;
@@ -52,7 +53,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         ));
-        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
         uo.unblinded_output.features.maturity = i;
         db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
@@ -99,7 +100,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             ));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             db.add_unspent_output(uo.clone()).unwrap();
             pending_tx.outputs_to_be_spent.push(uo);
         }
@@ -109,7 +110,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
             ));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
             pending_tx.outputs_to_be_received.push(uo);
         }
         db.encumber_outputs(
@@ -244,7 +245,8 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
     ));
-    let output_to_be_received = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+    let output_to_be_received =
+        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
     db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), None)
         .unwrap();
     pending_incoming_balance += output_to_be_received.unblinded_output.value;
@@ -343,7 +345,7 @@ pub async fn test_short_term_encumberance() {
             &factories.commitment,
         )
         .await;
-        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
         uo.unblinded_output.features.maturity = i;
         db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
@@ -394,7 +396,7 @@ pub async fn test_no_duplicate_outputs() {
 
     // create an output
     let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment).await;
-    let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
+    let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap();
 
     // add it to the database
     let result = db.add_unspent_output(uo.clone());
