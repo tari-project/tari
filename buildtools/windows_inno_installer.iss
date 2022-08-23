@@ -105,7 +105,6 @@ Source: "{#TariSuitePath}\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: 
 Source: "{#TariSuitePath}\tari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "{#TariSuitePath}\tari_miner.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "{#TariSuitePath}\tari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "{#TariSuitePath}\tari_validator_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\source_base_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
