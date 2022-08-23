@@ -40,7 +40,7 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher, DomainSeparatedConsensusHasher, MaxSizeBytes},
+    consensus::{ConsensusDecoding, ConsensusEncoding, DomainSeparatedConsensusHasher, MaxSizeBytes},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -381,7 +381,7 @@ impl TransactionInput {
                 ref minimum_value_promise,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let writer = ConsensusHasher::default()
+                let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_input")
                     .chain(version)
                     .chain(features)
                     .chain(commitment)
