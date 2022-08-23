@@ -244,7 +244,7 @@ pub enum OutputManagerResponse {
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
-    PayToSelfTransaction((MicroTari, Transaction)),
+    PayToSelfTransaction { fee: MicroTari, transaction: Transaction },
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
     SpentOutputs(Vec<UnblindedOutput>),

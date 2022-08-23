@@ -124,6 +124,14 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
+// Type aliases for clarity
+type SendWaitList = FuturesUnordered<JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>>;
+type ReceiveWaitList = FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>;
+type BroadcastWaitList = FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>;
+
+type ValidationWaitList =
+    FuturesUnordered<JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>>;
+
 /// TransactionService allows for the management of multiple inbound and outbound transaction protocols
 /// which are uniquely identified by a tx_id. The TransactionService generates and accepts the various protocol
 /// messages and applies them to the appropriate protocol instances based on the tx_id.
@@ -312,23 +320,10 @@ where
         pin_mut!(transaction_cancelled_stream);
 
         let mut shutdown = self.resources.shutdown_signal.clone();
-
-        let mut send_transaction_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
-        > = FuturesUnordered::new();
-
-        let mut receive_transaction_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        > = FuturesUnordered::new();
-
-        let mut transaction_broadcast_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        > = FuturesUnordered::new();
-
-        let mut transaction_validation_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        > = FuturesUnordered::new();
-
+        let mut send_transaction_protocol_handles: SendWaitList = FuturesUnordered::new();
+        let mut receive_transaction_protocol_handles: ReceiveWaitList = FuturesUnordered::new();
+        let mut transaction_broadcast_protocol_handles: BroadcastWaitList = FuturesUnordered::new();
+        let mut transaction_validation_protocol_handles: ValidationWaitList = FuturesUnordered::new();
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
         let mut output_manager_event_stream = self.output_manager_service.get_event_stream();
 
@@ -350,26 +345,17 @@ where
                 },
                 //Incoming request
                 Some(request_context) = request_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only #LOGGED
-                    let start = Instant::now();
                     let (request, reply_tx) = request_context.split();
-                    let event = format!("Handling Service API Request ({})", request);
-                    trace!(target: LOG_TARGET, "{}", event);
-                    let _result = self.handle_request(request,
+                    let _ = self.handle_request(request,
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
                         &mut transaction_broadcast_protocol_handles,
                         &mut transaction_validation_protocol_handles,
                         reply_tx,
                     ).await.map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
+                        error!(target: LOG_TARGET, "Error handling request: {:?}", e);
                         e
                     });
-                    trace!(target: LOG_TARGET,
-                        "{}, processed in {}ms",
-                        event,
-                        start.elapsed().as_millis()
-                    );
                 },
                 // Incoming Transaction messages from the Comms layer
                 Some(msg) = transaction_stream.next() => {
@@ -552,18 +538,10 @@ where
     async fn handle_request(
         &mut self,
         request: TransactionServiceRequest,
-        send_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
-        >,
-        receive_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-        transaction_validation_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        >,
+        send_transaction_join_handles: &mut SendWaitList,
+        receive_transaction_join_handles: &mut ReceiveWaitList,
+        transaction_broadcast_join_handles: &mut BroadcastWaitList,
+        transaction_validation_join_handles: &mut ValidationWaitList,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let mut reply_channel = Some(reply_channel);
@@ -887,12 +865,8 @@ where
         fee_per_gram: MicroTari,
         message: String,
         tx_meta: TransactionMetadata,
-        join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
-        >,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
+        join_handles: &mut SendWaitList,
+        transaction_broadcast_join_handles: &mut BroadcastWaitList,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = TxId::new_random();
@@ -904,12 +878,13 @@ where
                 "Received transaction with spend-to-self transaction"
             );
 
+            /// ---- GOT TO HERE.
             let (fee, transaction) = self
                 .output_manager_service
                 .create_pay_to_self_transaction(
                     tx_id,
                     amount,
-                    // TODO: allow customization of selected inputs and outputs
+                    // TODO: allow customization of selected inputs and outputs https://github.com/tari-project/tari/issues/4514
                     UtxoSelectionCriteria::default(),
                     output_features,
                     fee_per_gram,

@@ -460,16 +460,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .recipients
             .into_iter()
             .enumerate()
-            .map(|(idx, dest)| -> Result<_, String> {
-                let pk = CommsPublicKey::from_hex(&dest.address)
+            .map(|(idx, msg)| -> Result<_, String> {
+                let pk = CommsPublicKey::from_hex(&msg.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
                 Ok((
-                    dest.address,
+                    msg.address,
                     pk,
-                    dest.amount,
-                    dest.fee_per_gram,
-                    dest.message,
-                    dest.payment_type,
+                    msg.amount,
+                    msg.fee_per_gram,
+                    msg.message,
+                    msg.payment_type,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()

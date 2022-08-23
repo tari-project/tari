@@ -43,6 +43,11 @@ service Wallet {
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
     // Send Tari to a number of recipients
     rpc Transfer (TransferRequest)  returns (TransferResponse);
+
+    // -- Got Here ---
+
+
+
     // Returns the transaction details for the given transaction IDs
     rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
     // Returns all transactions' details

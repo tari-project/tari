@@ -101,6 +101,11 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
+pub struct CreatePayToSelfTransactionResult {
+    pub fee: MicroTari,
+    pub transaction: Transaction,
+}
+
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
@@ -320,7 +325,11 @@ where
                     message,
                 )
                 .await
-                .map(OutputManagerResponse::PayToSelfTransaction),
+                .map(|res| OutputManagerResponse::PayToSelfTransaction {
+                    fee: res.fee,
+                    transaction: res.transaction,
+                }),
+
             OutputManagerRequest::FeeEstimate {
                 amount,
                 fee_per_gram,
@@ -1196,7 +1205,7 @@ where
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
-    ) -> Result<(MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<CreatePayToSelfTransactionResult, OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
         let metadata_byte_size = self
