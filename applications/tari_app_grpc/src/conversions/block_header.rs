@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::BlindingFactor;
+use tari_common_types::types::{BlindingFactor, FixedHash};
 use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
 use tari_utilities::{ByteArray, Hashable};
 
@@ -40,12 +40,12 @@ impl From<BlockHeader> for grpc::BlockHeader {
             height: h.height,
             prev_hash: h.prev_hash,
             timestamp: datetime_to_timestamp(h.timestamp),
-            input_mr: h.input_mr,
-            output_mr: h.output_mr,
+            input_mr: h.input_mr.to_vec(),
+            output_mr: h.output_mr.to_vec(),
             output_mmr_size: h.output_mmr_size,
-            kernel_mr: h.kernel_mr,
+            kernel_mr: h.kernel_mr.to_vec(),
             kernel_mmr_size: h.kernel_mmr_size,
-            witness_mr: h.witness_mr,
+            witness_mr: h.witness_mr.to_vec(),
             total_kernel_offset: h.total_kernel_offset.to_vec(),
             total_script_offset: h.total_script_offset.to_vec(),
             nonce: h.nonce,
@@ -81,11 +81,11 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             height: header.height,
             prev_hash: header.prev_hash,
             timestamp,
-            input_mr: header.input_mr,
-            output_mr: header.output_mr,
-            witness_mr: header.witness_mr,
+            input_mr: FixedHash::try_from(header.input_mr).expect("Array size 32 cannot fail"),
+            output_mr: FixedHash::try_from(header.output_mr).expect("Array size 32 cannot fail"),
+            witness_mr: FixedHash::try_from(header.witness_mr).expect("Array size 32 cannot fail"),
             output_mmr_size: header.output_mmr_size,
-            kernel_mr: header.kernel_mr,
+            kernel_mr: FixedHash::try_from(header.kernel_mr).expect("Array size 32 cannot fail"),
             kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
             total_script_offset,

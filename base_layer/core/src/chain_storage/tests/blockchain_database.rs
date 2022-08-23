@@ -1,10 +1,11 @@
+use std::convert::TryFrom;
 //  Copyright 2020, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+// the  following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+// following  disclaimer.
 //
 //  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
 //  following disclaimer in the documentation and/or other materials provided with the distribution.
@@ -12,15 +13,17 @@
 //  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
 //  products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES,  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL,  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+// DAMAGE.
 use std::sync::Arc;
 
+use tari_common_types::types::FixedHash;
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -64,11 +67,11 @@ fn create_next_block(
 
 fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
-    block.header.input_mr = mmr_roots.input_mr;
-    block.header.witness_mr = mmr_roots.witness_mr;
-    block.header.output_mr = mmr_roots.output_mr;
+    block.header.input_mr = FixedHash::try_from(mmr_roots.input_mr).expect("Array size 32 cannot fail");
+    block.header.witness_mr = FixedHash::try_from(mmr_roots.witness_mr).expect("Array size 32 cannot fail");
+    block.header.output_mr = FixedHash::try_from(mmr_roots.output_mr).expect("Array size 32 cannot fail");
     block.header.output_mmr_size = mmr_roots.output_mmr_size;
-    block.header.kernel_mr = mmr_roots.kernel_mr;
+    block.header.kernel_mr = FixedHash::try_from(mmr_roots.kernel_mr).expect("Array size 32 cannot fail");
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block
 }

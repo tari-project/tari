@@ -335,7 +335,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 }
 
                 let mmr_root = kernel_mmr.get_merkle_root()?;
-                if mmr_root != current_header.header().kernel_mr {
+                if mmr_root.as_slice() != current_header.header().kernel_mr.as_slice() {
                     return Err(HorizonSyncError::InvalidMmrRoot {
                         mmr_tree: MmrTree::Kernel,
                         at_height: current_header.height(),
@@ -601,7 +601,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     let output_mmr = MutablePrunedOutputMmr::new(pruned_output_set.clone(), bitmap.clone())?;
 
                     let mmr_root = output_mmr.get_merkle_root()?;
-                    if mmr_root != current_header.header().output_mr {
+                    if mmr_root.as_slice() != current_header.header().output_mr.as_slice() {
                         return Err(HorizonSyncError::InvalidMmrRoot {
                             mmr_tree: MmrTree::Utxo,
                             at_height: current_header.height(),
@@ -611,7 +611,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
 
                     let mmr_root = witness_mmr.get_merkle_root()?;
-                    if mmr_root != current_header.header().witness_mr {
+                    if mmr_root.as_slice() != current_header.header().witness_mr.as_slice() {
                         return Err(HorizonSyncError::InvalidMmrRoot {
                             mmr_tree: MmrTree::Witness,
                             at_height: current_header.height(),

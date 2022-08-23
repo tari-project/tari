@@ -166,10 +166,8 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
         // skip empty lines and 'comments' starting with #
         if !command.trim().is_empty() && !command.trim().starts_with('#') {
             let command_trimmed = cli_parse_prefix.to_owned() + " " + command.trim();
-            println!("\ncommand: {}", command_trimmed);
             let parse_vec: Vec<&str> = command_trimmed.split(' ').collect();
             let cli_parsed = Cli::try_parse_from(&parse_vec);
-            println!("cli_parsed: {:?}\n", cli_parsed);
             match cli_parsed {
                 Ok(result) => {
                     if let Some(sub_command) = result.command2 {

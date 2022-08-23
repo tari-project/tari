@@ -36,7 +36,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, Signature},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
@@ -809,11 +809,11 @@ where B: BlockchainBackend
         }
         let block = Block { header, body };
         let (mut block, roots) = self.calculate_mmr_roots(block)?;
-        block.header.kernel_mr = roots.kernel_mr;
+        block.header.kernel_mr = FixedHash::try_from(roots.kernel_mr).expect("Array size 32 cannot fail");
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
-        block.header.input_mr = roots.input_mr;
-        block.header.output_mr = roots.output_mr;
-        block.header.witness_mr = roots.witness_mr;
+        block.header.input_mr = FixedHash::try_from(roots.input_mr).expect("Array size 32 cannot fail");
+        block.header.output_mr = FixedHash::try_from(roots.output_mr).expect("Array size 32 cannot fail");
+        block.header.witness_mr = FixedHash::try_from(roots.witness_mr).expect("Array size 32 cannot fail");
         block.header.output_mmr_size = roots.output_mmr_size;
         Ok(block)
     }

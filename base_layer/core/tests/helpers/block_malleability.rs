@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
+use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::Block,
     transactions::{
@@ -101,20 +104,20 @@ fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_f
 
     match field {
         MerkleMountainRangeField::Input => {
-            assert_ne!(block.header().input_mr, modded_root.input_mr);
-            mod_block.header.input_mr = modded_root.input_mr;
+            assert_ne!(block.header().input_mr.as_slice(), modded_root.input_mr.as_slice());
+            mod_block.header.input_mr = FixedHash::try_from(modded_root.input_mr).unwrap();
         },
         MerkleMountainRangeField::Output => {
-            assert_ne!(block.header().output_mr, modded_root.output_mr);
-            mod_block.header.output_mr = modded_root.output_mr;
+            assert_ne!(block.header().output_mr.as_slice(), modded_root.output_mr.as_slice());
+            mod_block.header.output_mr = FixedHash::try_from(modded_root.output_mr).unwrap();
         },
         MerkleMountainRangeField::Witness => {
-            assert_ne!(block.header().witness_mr, modded_root.witness_mr);
-            mod_block.header.witness_mr = modded_root.witness_mr;
+            assert_ne!(block.header().witness_mr.as_slice(), modded_root.witness_mr.as_slice());
+            mod_block.header.witness_mr = FixedHash::try_from(modded_root.witness_mr).unwrap();
         },
         MerkleMountainRangeField::Kernel => {
-            assert_ne!(block.header().kernel_mr, modded_root.kernel_mr);
-            mod_block.header.kernel_mr = modded_root.kernel_mr;
+            assert_ne!(block.header().kernel_mr.as_slice(), modded_root.kernel_mr.as_slice());
+            mod_block.header.kernel_mr = FixedHash::try_from(modded_root.kernel_mr).unwrap();
         },
     }
 
