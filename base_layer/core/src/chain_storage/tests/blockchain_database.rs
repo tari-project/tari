@@ -277,7 +277,7 @@ mod find_headers_after_hash {
         let db = setup();
         let genesis_hash = db.fetch_block(0).unwrap().block().hash();
         add_many_chained_blocks(1, &db);
-        let hashes = vec![genesis_hash.clone()];
+        let hashes = vec![genesis_hash];
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
         assert_eq!(index, 0);
         assert_eq!(headers.len(), 1);

@@ -207,7 +207,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let best_height = local_metadata.height_of_longest_chain();
         let chain_header = self.db.fetch_chain_header(best_height).await?;
 
-        let best_full_block_hash = chain_header.accumulated_data().hash.clone();
+        let best_full_block_hash = chain_header.accumulated_data().hash;
         debug!(
             target: LOG_TARGET,
             "Starting block sync from peer `{}`. Current best block is #{} `{}`. Syncing to #{} ({}).",
@@ -245,7 +245,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 })?;
 
             let current_height = header.height();
-            let header_hash = header.hash().clone();
+            let header_hash = *header.hash();
             let timestamp = header.timestamp();
 
             if header.header().prev_hash != prev_hash {
@@ -255,7 +255,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 });
             }
 
-            prev_hash = header_hash.clone();
+            prev_hash = header_hash;
 
             let body = block
                 .body
@@ -317,7 +317,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     block.height(),
                     header_hash,
                     block.accumulated_data().total_accumulated_difficulty,
-                    block.header().prev_hash.clone(),
+                    block.header().prev_hash,
                     timestamp,
                 )
                 .commit()

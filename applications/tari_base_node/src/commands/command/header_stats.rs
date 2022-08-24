@@ -100,7 +100,7 @@ impl CommandContext {
 
             let target_diff = self
                 .blockchain_db
-                .fetch_target_difficulties_for_next_block(prev_header.hash().clone())
+                .fetch_target_difficulties_for_next_block(*prev_header.hash())
                 .await?;
             let pow_algo = header.header().pow_algo();
 

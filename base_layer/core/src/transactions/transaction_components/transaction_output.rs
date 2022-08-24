@@ -171,7 +171,6 @@ impl TransactionOutput {
             &self.encrypted_value,
             self.minimum_value_promise,
         )
-        .into()
     }
 
     /// Verify that range proof is valid

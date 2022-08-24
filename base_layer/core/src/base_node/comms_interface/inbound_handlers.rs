@@ -305,7 +305,7 @@ where B: BlockchainBackend + 'static
                     transactions.len(),
                 );
 
-                let prev_hash = header.prev_hash.clone();
+                let prev_hash = header.prev_hash;
                 let height = header.height;
 
                 let block_template = NewBlockTemplate::from_block(
@@ -394,7 +394,7 @@ where B: BlockchainBackend + 'static
         let semaphore = self.new_block_request_semaphore.clone();
         let _permit = semaphore.acquire().await.unwrap();
 
-        if self.blockchain_db.block_exists(block_hash.clone()).await? {
+        if self.blockchain_db.block_exists(block_hash).await? {
             debug!(
                 target: LOG_TARGET,
                 "Block with hash `{}` already stored",

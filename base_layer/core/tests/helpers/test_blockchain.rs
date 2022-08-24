@@ -62,7 +62,7 @@ impl TestBlockchain {
         let mut blocks = HashMap::new();
         let genesis_block = b.pop().unwrap();
         let mut hash_to_block = HashMap::new();
-        hash_to_block.insert(genesis_block.hash().clone(), name.clone());
+        hash_to_block.insert(*genesis_block.hash(), name.clone());
         blocks.insert(name.clone(), BlockProxy::new(name, genesis_block));
 
         Self {
@@ -111,7 +111,7 @@ impl TestBlockchain {
     pub fn add_raw_block(&mut self, block_name: &str, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         let res = self.store.add_block(Arc::new(block))?;
         if let BlockAddResult::Ok(ref b) = res {
-            self.hash_to_block.insert(b.hash().clone(), block_name.to_string());
+            self.hash_to_block.insert(*b.hash(), block_name.to_string());
             self.blocks.insert(
                 block_name.to_string(),
                 BlockProxy::new(block_name.to_string(), b.as_ref().clone()),

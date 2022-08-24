@@ -94,7 +94,7 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
             "Block validation: MMR roots are valid for {}",
             block_id
         );
-        helpers::check_not_bad_block(backend, block.hash().clone())?;
+        helpers::check_not_bad_block(backend, *block.hash())?;
         helpers::validate_covenants(block.block())?;
 
         debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);

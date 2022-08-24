@@ -432,7 +432,7 @@ mod test {
             node_id1.clone(),
             ChainMetadata::new(
                 network_tip_height,
-                block_hash1.clone(),
+                block_hash1,
                 0,
                 0,
                 accumulated_difficulty1,
@@ -446,7 +446,7 @@ mod test {
             node_id2,
             ChainMetadata::new(
                 network_tip_height,
-                block_hash1.clone(),
+                block_hash1,
                 500,
                 5000 - 500,
                 accumulated_difficulty1,
@@ -459,7 +459,7 @@ mod test {
             node_id3.clone(),
             ChainMetadata::new(
                 network_tip_height,
-                block_hash1.clone(),
+                block_hash1,
                 1440,
                 5000 - 1440,
                 accumulated_difficulty1,
@@ -484,7 +484,7 @@ mod test {
             node_id5.clone(),
             ChainMetadata::new(
                 network_tip_height,
-                block_hash1.clone(),
+                block_hash1,
                 2880,
                 5000 - 2880,
                 accumulated_difficulty1,

@@ -182,7 +182,7 @@ where
                         self.config.num_confirmations_required;
 
                     self.db
-                        .mark_output_as_spent(output.hash.clone(), deleted_height, deleted_block, confirmed)
+                        .mark_output_as_spent(output.hash, deleted_height, deleted_block, confirmed)
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,
@@ -204,7 +204,7 @@ where
                 ) && output.marked_deleted_at_height.is_some()
                 {
                     self.db
-                        .mark_output_as_unspent(output.hash.clone())
+                        .mark_output_as_unspent(output.hash)
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,
@@ -289,7 +289,6 @@ where
                 .for_protocol(self.operation_id)?;
             let mined_in_block_hash = last_spent_output
                 .marked_deleted_in_block
-                .clone()
                 .ok_or(OutputManagerError::InconsistentDataError(
                     "Spent output should have `marked_deleted_in_block`",
                 ))
@@ -309,7 +308,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .mark_output_as_unspent(last_spent_output.hash.clone())
+                    .mark_output_as_unspent(last_spent_output.hash)
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(
@@ -331,7 +330,7 @@ where
                 ));
             }
             let mined_height = last_mined_output.mined_height.unwrap();
-            let mined_in_block_hash = last_mined_output.mined_in_block.clone().unwrap();
+            let mined_in_block_hash = last_mined_output.mined_in_block.unwrap();
             let block_at_height = self
                 .get_base_node_block_at_height(mined_height, client)
                 .await
@@ -346,7 +345,7 @@ where
                     self.operation_id
                 );
                 self.db
-                    .set_output_to_unmined(last_mined_output.hash.clone())
+                    .set_output_to_unmined(last_mined_output.hash)
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(
@@ -471,9 +470,9 @@ where
 
         self.db
             .set_received_output_mined_height(
-                tx.hash.clone(),
+                tx.hash,
                 mined_height,
-                mined_in_block.clone(),
+                *mined_in_block,
                 mmr_position,
                 confirmed,
                 mined_timestamp,

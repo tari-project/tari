@@ -348,7 +348,6 @@ impl UnblindedOutput {
             &self.encrypted_value,
             self.minimum_value_promise,
         )
-        .into()
     }
 }
 

@@ -75,17 +75,17 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub async fn initialize_state(&mut self, start_hash: &HashOutput) -> Result<(), BlockHeaderSyncError> {
         let start_header = self
             .db
-            .fetch_header_by_block_hash(start_hash.clone())
+            .fetch_header_by_block_hash(*start_hash)
             .await?
             .ok_or_else(|| BlockHeaderSyncError::StartHashNotFound(start_hash.to_hex()))?;
-        let timestamps = self.db.fetch_block_timestamps(start_hash.clone()).await?;
+        let timestamps = self.db.fetch_block_timestamps(*start_hash).await?;
         let target_difficulties = self
             .db
-            .fetch_target_difficulties_for_next_block(start_hash.clone())
+            .fetch_target_difficulties_for_next_block(*start_hash)
             .await?;
         let previous_accum = self
             .db
-            .fetch_header_accumulated_data(start_hash.clone())
+            .fetch_header_accumulated_data(*start_hash)
             .await?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "BlockHeaderAccumulatedData",

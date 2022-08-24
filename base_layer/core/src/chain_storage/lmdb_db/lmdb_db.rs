@@ -421,7 +421,7 @@ impl LMDBDatabase {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::BestBlock,
-                        &MetadataValue::BestBlock(hash.clone()),
+                        &MetadataValue::BestBlock(*hash),
                     )?;
                     self.set_metadata(
                         &write_txn,
@@ -563,7 +563,7 @@ impl LMDBDatabase {
             output_key.as_bytes(),
             &TransactionOutputRowData {
                 output: Some(output.clone()),
-                header_hash: header_hash.clone(),
+                header_hash: *header_hash,
                 mmr_position,
                 hash: output_hash,
                 witness_hash,
@@ -606,10 +606,10 @@ impl LMDBDatabase {
             key.as_bytes(),
             &TransactionOutputRowData {
                 output: None,
-                header_hash: header_hash.clone(),
+                header_hash: *header_hash,
                 mmr_position,
-                hash: output_hash.clone(),
-                witness_hash: witness_hash.clone(),
+                hash: *output_hash,
+                witness_hash: *witness_hash,
                 mined_height: header_height,
                 mined_timestamp: timestamp,
             },
@@ -631,7 +631,7 @@ impl LMDBDatabase {
             txn,
             &*self.kernel_excess_index,
             kernel.excess.as_bytes(),
-            &(header_hash.clone(), mmr_position, hash.clone()),
+            &(*header_hash, mmr_position, hash),
             "kernel_excess_index",
         )?;
 
@@ -642,7 +642,7 @@ impl LMDBDatabase {
             txn,
             &*self.kernel_excess_sig_index,
             excess_sig_key.as_slice(),
-            &(header_hash.clone(), mmr_position, hash.clone()),
+            &(*header_hash, mmr_position, hash),
             "kernel_excess_sig_index",
         )?;
 
@@ -652,7 +652,7 @@ impl LMDBDatabase {
             key.as_bytes(),
             &TransactionKernelRowData {
                 kernel: kernel.clone(),
-                header_hash: header_hash.clone(),
+                header_hash: *header_hash,
                 mmr_position,
                 hash,
             },
@@ -1190,7 +1190,7 @@ impl LMDBDatabase {
                 witness_mmr.push(output.witness_hash().to_vec())?;
                 // lets check burn
                 if output.is_burned() {
-                    let index = match output_mmr.find_leaf_index(&output.hash().as_slice())? {
+                    let index = match output_mmr.find_leaf_index(output.hash().as_slice())? {
                         Some(index) => {
                             debug!(target: LOG_TARGET, "Output {} burned in current block", output);
                             burned_outputs.push(output.commitment.clone());
@@ -2217,7 +2217,7 @@ impl BlockchainBackend for LMDBDatabase {
                 height,
                 block_hash.to_hex()
             );
-            txn.delete_orphan(block_hash.clone());
+            txn.delete_orphan(block_hash);
         }
         self.write(txn)?;
 

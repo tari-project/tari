@@ -47,7 +47,7 @@ impl PrunedOutput {
             PrunedOutput::Pruned {
                 output_hash,
                 witness_hash: _,
-            } => output_hash.clone(),
+            } => *output_hash,
             PrunedOutput::NotPruned { output } => output.hash(),
         }
     }

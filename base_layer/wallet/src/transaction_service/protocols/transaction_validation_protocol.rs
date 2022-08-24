@@ -227,7 +227,6 @@ where
                 .for_protocol(op_id)?;
             let mined_in_block_hash = last_mined_transaction
                 .mined_in_block
-                .clone()
                 .ok_or_else(|| {
                     TransactionServiceError::ServiceError(
                         "fetch_last_mined_transaction() should return a transaction with a mined_in_block hash"
@@ -409,7 +408,7 @@ where
             .set_transaction_mined_height(
                 tx_id,
                 mined_height,
-                mined_in_block.clone(),
+                *mined_in_block,
                 mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
@@ -466,7 +465,7 @@ where
             .set_transaction_mined_height(
                 tx_id,
                 mined_height,
-                mined_in_block.clone(),
+                *mined_in_block,
                 mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,

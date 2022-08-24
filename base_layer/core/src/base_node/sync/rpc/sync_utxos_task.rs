@@ -101,7 +101,7 @@ where B: BlockchainBackend + 'static
         } else {
             let prev_header = self
                 .db
-                .fetch_header_by_block_hash(start_header.header().prev_hash.clone())
+                .fetch_header_by_block_hash(start_header.header().prev_hash)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| RpcStatus::not_found("Previous start header hash is was not found"))?;

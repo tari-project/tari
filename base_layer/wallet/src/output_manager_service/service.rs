@@ -483,7 +483,7 @@ where
                 if last_height < height {
                     last_height = height;
                     max_mined_height = uo.mined_height;
-                    block_hash = uo.mined_in_block.clone();
+                    block_hash = uo.mined_in_block;
                 }
             }
         }

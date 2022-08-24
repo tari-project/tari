@@ -405,9 +405,9 @@ async fn propagate_and_forward_invalid_block() {
     }
     assert!(has_banned);
 
-    assert!(!bob_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
-    assert!(!carol_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
-    assert!(!dan_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
+    assert!(!bob_node.blockchain_db.block_exists(*block1_hash).unwrap());
+    assert!(!carol_node.blockchain_db.block_exists(*block1_hash).unwrap());
+    assert!(!dan_node.blockchain_db.block_exists(*block1_hash).unwrap());
 
     alice_node.shutdown().await;
     bob_node.shutdown().await;

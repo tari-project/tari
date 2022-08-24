@@ -78,7 +78,7 @@ impl CommandContext {
             Format::Text => {
                 let block_data = self
                     .blockchain_db
-                    .fetch_block_accumulated_data(block.hash().clone())
+                    .fetch_block_accumulated_data(*block.hash())
                     .await?;
 
                 println!("{}", block);

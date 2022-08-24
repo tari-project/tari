@@ -527,7 +527,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             local_tip_header,
             remote_tip_height,
             reorg_steps_back: steps_back,
-            chain_split_hash: chain_split_hash.clone(),
+            chain_split_hash: *chain_split_hash,
         };
         Ok(SyncStatus::Lagging(Box::new(chain_split_info)))
     }
@@ -571,7 +571,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .map(|h| {
                 (
                     h.height(),
-                    h.hash().clone(),
+                    *h.hash(),
                     h.accumulated_data().total_accumulated_difficulty,
                 )
             })
@@ -773,7 +773,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 split_info.reorg_steps_back,
                 split_info.chain_split_hash.to_hex()
             );
-            let blocks = self.rewind_blockchain(split_info.chain_split_hash.clone()).await?;
+            let blocks = self.rewind_blockchain(split_info.chain_split_hash).await?;
             if !blocks.is_empty() {
                 self.hooks.call_on_rewind_hooks(blocks);
             }

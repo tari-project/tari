@@ -84,7 +84,7 @@ mod header_validators {
             let prev = acc.last().unwrap();
             let mut header = BlockHeader::new(0);
             header.height = i;
-            header.prev_hash = prev.hash().clone();
+            header.prev_hash = *prev.hash();
             // These have to be unique
             header.kernel_mmr_size = 2 + i;
             header.output_mmr_size = 4001 + i;
@@ -222,8 +222,8 @@ fn chain_balance_validation() {
     let mut mmr_position = 4;
     let mut mmr_leaf_index = 4;
 
-    txn.insert_kernel(kernel.clone(), header1.hash().clone(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index, 0);
+    txn.insert_kernel(kernel.clone(), *header1.hash(), mmr_position);
+    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, mmr_leaf_index, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -273,9 +273,9 @@ fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
     mmr_leaf_index += 1;
-    txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index, 0);
+    txn.insert_utxo(coinbase, *header2.hash(), 2, mmr_leaf_index, 0);
     mmr_position += 1;
-    txn.insert_kernel(kernel, header2.hash().clone(), mmr_position);
+    txn.insert_kernel(kernel, *header2.hash(), mmr_position);
 
     db.commit(txn).unwrap();
 
@@ -396,17 +396,17 @@ fn chain_balance_validation_burned() {
     let mut mmr_position = 4;
     let mut mmr_leaf_index = 4;
 
-    txn.insert_kernel(kernel.clone(), header1.hash().clone(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index, 0);
+    txn.insert_kernel(kernel.clone(), *header1.hash(), mmr_position);
+    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, mmr_leaf_index, 0);
 
     mmr_position = 5;
     mmr_leaf_index = 5;
 
-    txn.insert_kernel(kernel2.clone(), header1.hash().clone(), mmr_position);
+    txn.insert_kernel(kernel2.clone(), *header1.hash(), mmr_position);
     txn.insert_pruned_utxo(
         burned.hash(),
         burned.witness_hash(),
-        header1.hash().clone(),
+        *header1.hash(),
         header1.height(),
         mmr_leaf_index,
         0,

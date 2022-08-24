@@ -115,7 +115,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let db = self.db();
         let hash = match message.start_hash.try_into() {
             Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed starting hash"))),
+            Err(_) => return Err(RpcStatus::bad_request(&"Malformed starting hash".to_string())),
         };
         let start_header = db
             .fetch_header_by_block_hash(hash)
@@ -139,7 +139,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         }
         let hash = match message.end_hash.try_into() {
             Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed end hash"))),
+            Err(_) => return Err(RpcStatus::bad_request(&"Malformed end hash".to_string())),
         };
         let end_header = db
             .fetch_header_by_block_hash(hash)
@@ -277,7 +277,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let message = request.into_message();
         let hash = match message.start_hash.try_into() {
             Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed starting hash"))),
+            Err(_) => return Err(RpcStatus::bad_request(&"Malformed starting hash".to_string())),
         };
         let start_header = db
             .fetch_header_by_block_hash(hash)
@@ -416,7 +416,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .collect::<Result<_, _>>()
         {
             Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed block hash received"))),
+            Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
         };
         let maybe_headers = db
             .find_headers_after_hash(hashes, message.header_count)
@@ -476,7 +476,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .into_header();
         let hash = match req.end_header_hash.try_into() {
             Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed end hash"))),
+            Err(_) => return Err(RpcStatus::bad_request(&"Malformed end hash".to_string())),
         };
         let end_header = db
             .fetch_header_by_block_hash(hash)
@@ -502,7 +502,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     break;
                 }
                 let res = db
-                    .fetch_kernels_in_block(current_header_hash.clone())
+                    .fetch_kernels_in_block(current_header_hash)
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 

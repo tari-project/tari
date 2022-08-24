@@ -336,7 +336,7 @@ impl TransactionInput {
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> FixedHash {
         match &self.spent_output {
-            SpentOutput::OutputHash(ref h) => h.clone(),
+            SpentOutput::OutputHash(ref h) => *h,
             SpentOutput::OutputData {
                 version,
                 commitment,
@@ -419,7 +419,7 @@ impl TransactionInput {
         Self::new(
             self.version,
             match &self.spent_output {
-                SpentOutput::OutputHash(h) => SpentOutput::OutputHash(h.clone()),
+                SpentOutput::OutputHash(h) => SpentOutput::OutputHash(*h),
                 SpentOutput::OutputData { .. } => SpentOutput::OutputHash(self.output_hash()),
             },
             self.input_data.clone(),
@@ -556,7 +556,7 @@ impl ConsensusDecoding for SpentOutput {
         reader.read_exact(&mut buf)?;
         match buf[0] {
             0 => {
-                let hash = FixedHash::consensus_decode(reader)?.into();
+                let hash = FixedHash::consensus_decode(reader)?;
                 Ok(SpentOutput::OutputHash(hash))
             },
             1 => {

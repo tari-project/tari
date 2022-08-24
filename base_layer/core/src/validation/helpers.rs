@@ -243,7 +243,7 @@ pub fn check_accounting_balance(
             bypass_range_proof_verification,
             total_coinbase,
             factories,
-            Some(block.header.prev_hash.clone()),
+            Some(block.header.prev_hash),
             block.header.height,
         )
         .map_err(|err| {
@@ -358,7 +358,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                     target: LOG_TARGET,
                     "Validation failed due to input: {} which does not exist yet", input
                 );
-                not_found_inputs.push(output_hash.clone());
+                not_found_inputs.push(output_hash);
             },
             Err(err) => {
                 return Err(err);

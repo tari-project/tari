@@ -108,7 +108,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             None => (),
             Some((_, block_hash)) => {
                 match db
-                    .fetch_header_by_block_hash(block_hash.clone())
+                    .fetch_header_by_block_hash(block_hash)
                     .await
                     .rpc_status_internal_error(LOG_TARGET)?
                 {
@@ -330,7 +330,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .collect::<Result<_, _>>()
         {
             Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed block hash received"))),
+            Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
         };
         let utxos = db
             .fetch_utxos(hashes)
@@ -379,7 +379,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .collect::<Result<_, _>>()
         {
             Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed block hash received"))),
+            Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
         };
         let mined_info_resp = db
             .fetch_utxos_and_mined_info(hashes)
@@ -432,7 +432,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         if let Some(chain_must_include_header) = message.chain_must_include_header {
             let hash = match chain_must_include_header.try_into() {
                 Ok(v) => v,
-                Err(_) => return Err(RpcStatus::bad_request(&format!("Malformed block hash received"))),
+                Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
             };
             if self
                 .db
