@@ -542,7 +542,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         // construct response
         let block_hash = new_block.hash();
-        let mining_hash = new_block.header.merged_mining_hash().to_vec();
+        let mining_hash = new_block.header.mining_hash().to_vec();
         let block: Option<tari_rpc::Block> = Some(
             new_block
                 .try_into()
@@ -587,7 +587,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         // construct response
         let block_hash = new_block.hash();
-        let mining_hash = new_block.header.merged_mining_hash().to_vec();
+        let mining_hash = new_block.header.mining_hash().to_vec();
 
         let (header, block_body) = new_block.into_header_body();
         let mut header_bytes = Vec::new();

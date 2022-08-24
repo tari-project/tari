@@ -215,9 +215,9 @@ impl BlockHeader {
         }
     }
 
-    /// Provides a hash of the header, used for the merge mining.
+    /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
-    pub fn merged_mining_hash(&self) -> FixedHash {
+    pub fn mining_hash(&self) -> FixedHash {
         DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)
@@ -277,7 +277,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
-            .chain(&self.merged_mining_hash().as_slice())
+            .chain(&self.mining_hash().as_slice())
             .chain(&self.pow)
             .chain(&self.nonce)
             .finalize()
