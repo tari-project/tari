@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter::repeat_with, sync::Arc};
+use std::{convert::TryFrom, iter::repeat_with, sync::Arc};
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, HashOutput, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash, HashOutput, PublicKey};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -163,10 +163,10 @@ fn print_new_genesis_block(network: Network) {
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
     output_mmr.push(utxo.hash()).unwrap();
 
-    header.kernel_mr = kernel_mmr.get_merkle_root().unwrap();
+    header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     header.kernel_mmr_size += 1;
-    header.output_mr = output_mmr.get_merkle_root().unwrap();
-    header.witness_mr = witness_mmr.get_merkle_root().unwrap();
+    header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
+    header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
     header.output_mmr_size += 1;
 
     // header.kernel_mr = kernel.hash();
@@ -250,15 +250,24 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = BaseLayerKernelMutableMmr::new(kernel_hashes, Bitmap::create())
-        .unwrap()
-        .get_merkle_root()?;
-    header.output_mr = MutableOutputMmr::new(out_hashes, Bitmap::create())
-        .unwrap()
-        .get_merkle_root()?;
-    header.witness_mr = BaseLayerWitnessMutableMmr::new(rp_hashes, Bitmap::create())
-        .unwrap()
-        .get_merkle_root()?;
+    header.kernel_mr = FixedHash::try_from(
+        BaseLayerKernelMutableMmr::new(kernel_hashes, Bitmap::create())
+            .unwrap()
+            .get_merkle_root()?,
+    )
+    .unwrap();
+    header.output_mr = FixedHash::try_from(
+        MutableOutputMmr::new(out_hashes, Bitmap::create())
+            .unwrap()
+            .get_merkle_root()?,
+    )
+    .unwrap();
+    header.witness_mr = FixedHash::try_from(
+        BaseLayerWitnessMutableMmr::new(rp_hashes, Bitmap::create())
+            .unwrap()
+            .get_merkle_root()?,
+    )
+    .unwrap();
     Ok(Block { header, body })
 }
 

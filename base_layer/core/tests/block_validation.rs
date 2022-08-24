@@ -25,6 +25,7 @@ use std::sync::Arc;
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
+use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
@@ -539,7 +540,7 @@ OutputFeatures::default()),
 
     // check mmr roots
     let mut new_block = db.prepare_new_block(template).unwrap();
-    new_block.header.output_mr = Vec::new();
+    new_block.header.output_mr = FixedHash::zero();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -821,6 +822,6 @@ async fn test_block_sync_body_validator() {
     // lets the mmr root
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
     let mut new_block = db.prepare_new_block(template).unwrap();
-    new_block.header.output_mr = Vec::new();
+    new_block.header.output_mr = FixedHash::zero();
     validator.validate_body(new_block).await.unwrap_err();
 }

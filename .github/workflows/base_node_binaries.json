@@ -13,7 +13,8 @@
     "runs-on": "ubuntu-latest",
     "rust": "stable",
     "target": "aarch64-unknown-linux-gnu",
-    "cross": false,
+    "cross": true,
+    "target_bins": "--bin tari_base_node --bin tari_console_wallet --bin tari_merge_mining_proxy --bin tari_miner",
     "target_cpu": "generic",
     "features": "safe"
   },

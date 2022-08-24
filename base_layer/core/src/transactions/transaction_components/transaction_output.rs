@@ -55,13 +55,7 @@ use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
-    consensus::{
-        ConsensusDecoding,
-        ConsensusEncoding,
-        ConsensusEncodingSized,
-        ConsensusHasher,
-        DomainSeparatedConsensusHasher,
-    },
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -395,7 +389,7 @@ impl TransactionOutput {
     }
 
     pub fn witness_hash(&self) -> Vec<u8> {
-        ConsensusHasher::default()
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output_witness")
             .chain(&self.proof)
             .chain(&self.metadata_signature)
             .finalize()

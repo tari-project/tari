@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::BlindingFactor;
+use tari_common_types::types::{BlindingFactor, FixedHash};
 use tari_utilities::ByteArray;
 
 use super::core as proto;
@@ -58,12 +58,12 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             height: header.height,
             prev_hash: header.prev_hash,
             timestamp,
-            output_mr: header.output_mr,
-            witness_mr: header.witness_mr,
+            output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
+            witness_mr: FixedHash::try_from(header.witness_mr).map_err(|err| err.to_string())?,
             output_mmr_size: header.output_mmr_size,
-            kernel_mr: header.kernel_mr,
+            kernel_mr: FixedHash::try_from(header.kernel_mr).map_err(|err| err.to_string())?,
             kernel_mmr_size: header.kernel_mmr_size,
-            input_mr: header.input_mr,
+            input_mr: FixedHash::try_from(header.input_mr).map_err(|err| err.to_string())?,
             total_kernel_offset,
             total_script_offset,
             nonce: header.nonce,
@@ -80,10 +80,10 @@ impl From<BlockHeader> for proto::BlockHeader {
             height: header.height,
             prev_hash: header.prev_hash,
             timestamp: Some(timestamp),
-            output_mr: header.output_mr,
-            witness_mr: header.witness_mr,
-            kernel_mr: header.kernel_mr,
-            input_mr: header.input_mr,
+            output_mr: header.output_mr.to_vec(),
+            witness_mr: header.witness_mr.to_vec(),
+            kernel_mr: header.kernel_mr.to_vec(),
+            input_mr: header.input_mr.to_vec(),
             total_kernel_offset: header.total_kernel_offset.to_vec(),
             total_script_offset: header.total_script_offset.to_vec(),
             nonce: header.nonce,

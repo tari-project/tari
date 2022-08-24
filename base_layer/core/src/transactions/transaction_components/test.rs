@@ -231,7 +231,7 @@ fn kernel_hash() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "72158351bed5c9b3d9d626821ea1d775e31456f4d762d09cee21a9032d214e3c"
+        "a3443f6f77ad0546128559e1ea874e184ea4967c265a7b201a837218ed0298d7"
     );
 }
 
@@ -250,7 +250,7 @@ fn kernel_metadata() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "6bf18baef9296815dc9fa1a6ddee2e90a471c63ba86f8542311d2a73881ade18"
+        "7d245a06bd53031d9b24f6f5c4e94ff7782d83f51a1af9e93788f2c51f9dc4f1"
     )
 }
 
