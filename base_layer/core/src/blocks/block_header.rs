@@ -435,12 +435,12 @@ impl ConsensusDecoding for BlockHeader {
         header.height = u64::consensus_decode(reader)?;
         header.prev_hash = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
         header.timestamp = EpochTime::consensus_decode(reader)?;
-        header.output_mr = FixedHash::from(<[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?);
-        header.witness_mr = FixedHash::from(<[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?);
+        header.output_mr = FixedHash::consensus_decode(reader)?;
+        header.witness_mr = FixedHash::consensus_decode(reader)?;
         header.output_mmr_size = u64::consensus_decode(reader)?;
-        header.kernel_mr = FixedHash::from(<[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?);
+        header.kernel_mr = FixedHash::consensus_decode(reader)?;
         header.kernel_mmr_size = u64::consensus_decode(reader)?;
-        header.input_mr = FixedHash::from(<[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?);
+        header.input_mr = FixedHash::consensus_decode(reader)?;
         header.total_kernel_offset = BlindingFactor::consensus_decode(reader)?;
         header.total_script_offset = BlindingFactor::consensus_decode(reader)?;
         header.nonce = u64::consensus_decode(reader)?;
