@@ -29,11 +29,11 @@ use crate::authentication::BasicAuthCredentials;
 const LOG_TARGET: &str = "applications::tari_app_grpc::authentication";
 
 #[derive(Debug)]
-pub struct AuthenticationInterceptor {
+pub struct ServerAuthenticationInterceptor {
     auth: GrpcAuthentication,
 }
 
-impl AuthenticationInterceptor {
+impl ServerAuthenticationInterceptor {
     pub fn new(auth: GrpcAuthentication) -> Self {
         Self { auth }
     }
@@ -58,7 +58,7 @@ impl AuthenticationInterceptor {
     }
 }
 
-impl Interceptor for AuthenticationInterceptor {
+impl Interceptor for ServerAuthenticationInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
         match &self.auth {
             GrpcAuthentication::None => Ok(request),
@@ -70,7 +70,7 @@ impl Interceptor for AuthenticationInterceptor {
     }
 }
 
-impl Clone for AuthenticationInterceptor {
+impl Clone for ServerAuthenticationInterceptor {
     fn clone(&self) -> Self {
         Self {
             auth: self.auth.clone(),

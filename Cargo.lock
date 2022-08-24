@@ -5205,6 +5205,7 @@ dependencies = [
  "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",

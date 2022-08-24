@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::string::FromUtf8Error;
+use std::{borrow::Cow, string::FromUtf8Error};
 
 use argon2::{password_hash::Encoding, Argon2, PasswordHash, PasswordVerifier};
 use tari_utilities::SafePassword;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Implements [RFC 2617](https://www.ietf.org/rfc/rfc2617.txt#:~:text=The%20%22basic%22%20authentication%20scheme%20is,other%20realms%20on%20that%20server.)
 /// Represents the username and password contained within a Authenticate header.
@@ -35,7 +35,7 @@ pub struct BasicAuthCredentials {
 }
 
 impl BasicAuthCredentials {
-    fn new(user_name: String, password: SafePassword) -> Self {
+    pub fn new(user_name: String, password: SafePassword) -> Self {
         Self { user_name, password }
     }
 
@@ -91,6 +91,19 @@ impl BasicAuthCredentials {
             .map_err(|_| BasicAuthError::InvalidCredentials)?;
         Ok(())
     }
+
+    pub fn generate_header(username: &str, password: &[u8]) -> Result<String, BasicAuthError> {
+        let password_str = String::from_utf8_lossy(password);
+        let token_str = Zeroizing::new(format!("{}:{}", username, password_str));
+        let mut token = base64::encode(token_str);
+        let header = format!("Basic {}", token);
+        token.zeroize();
+        match password_str {
+            Cow::Borrowed(_) => {},
+            Cow::Owned(mut owned) => owned.zeroize(),
+        }
+        Ok(header)
+    }
 }
 
 /// Authorization Header Error
@@ -133,10 +146,12 @@ mod tests {
 
     mod validate {
         use super::*;
+        use crate::authentication::salted_password::create_salted_hashed_password;
 
         #[test]
         fn it_validates_for_matching_credentials() {
-            let credentials = BasicAuthCredentials::new("admin".to_string(), "secret".to_string().into());
+            let hashed = create_salted_hashed_password(b"secret").unwrap();
+            let credentials = BasicAuthCredentials::new("admin".to_string(), hashed.to_string().into());
             credentials.validate("admin", b"secret").unwrap();
         }
 
@@ -149,6 +164,18 @@ mod tests {
             let credentials = BasicAuthCredentials::new("bruteforce".to_string(), "secret".to_string().into());
             let err = credentials.validate("admin", b"secret").unwrap_err();
             assert_eq!(err, BasicAuthError::InvalidCredentials);
+        }
+    }
+
+    mod generate_header {
+        use super::*;
+
+        #[test]
+        fn it_generates_a_valid_header() {
+            let header = BasicAuthCredentials::generate_header("admin", b"secret").unwrap();
+            let cred = BasicAuthCredentials::from_header(&header).unwrap();
+            assert_eq!(cred.user_name, "admin");
+            assert_eq!(cred.password.reveal(), &b"secret"[..]);
         }
     }
 }

@@ -20,7 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+use tari_app_grpc::authentication::BasicAuthError;
 use thiserror::Error;
+use tonic::codegen::http::uri::InvalidUri;
 
 #[derive(Debug, Error)]
 pub enum MinerError {
@@ -42,6 +44,10 @@ pub enum MinerError {
     BlockHeader(String),
     #[error("Conversion error: {0}")]
     Conversion(String),
+    #[error("Invalid grpc credentials: {0}")]
+    BasicAuthError(#[from] BasicAuthError),
+    #[error("Invalid grpc url: {0}")]
+    InvalidUri(#[from] InvalidUri),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

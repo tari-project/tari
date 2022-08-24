@@ -20,13 +20,46 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod client_interceptor;
-pub use client_interceptor::ClientAuthenticationInterceptor;
+use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tonic::{
+    codegen::http::header::AUTHORIZATION,
+    metadata::{Ascii, MetadataValue},
+    service::Interceptor,
+    Request,
+    Status,
+};
 
-mod basic_auth;
-pub use basic_auth::{BasicAuthCredentials, BasicAuthError};
+use crate::authentication::{BasicAuthCredentials, BasicAuthError};
 
-pub mod salted_password;
+#[derive(Debug, Clone)]
+pub struct ClientAuthenticationInterceptor {
+    authorization_header: Option<MetadataValue<Ascii>>,
+}
 
-mod server_interceptor;
-pub use server_interceptor::ServerAuthenticationInterceptor;
+impl ClientAuthenticationInterceptor {
+    pub fn create(auth: &GrpcAuthentication) -> Result<Self, BasicAuthError> {
+        let authorization_header = match auth {
+            GrpcAuthentication::None => None,
+            GrpcAuthentication::Basic { username, password } => Some(
+                BasicAuthCredentials::generate_header(username, password.reveal())?
+                    .parse()
+                    .unwrap(),
+            ),
+        };
+        Ok(Self { authorization_header })
+    }
+}
+
+impl Interceptor for ClientAuthenticationInterceptor {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        match self.authorization_header.clone() {
+            Some(authorization_header) => {
+                request
+                    .metadata_mut()
+                    .insert(AUTHORIZATION.as_str(), authorization_header);
+                Ok(request)
+            },
+            None => Ok(request),
+        }
+    }
+}
