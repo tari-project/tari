@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::PrivateKey;
@@ -110,7 +110,7 @@ where TBackend: KeyManagerBackend + 'static
         Ok(key.k)
     }
 
-    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError> {
+    pub async fn apply_encryption(&self, cipher: ChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
         self.db.apply_encryption(cipher).await?;
         Ok(())
     }

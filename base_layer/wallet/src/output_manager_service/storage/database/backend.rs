@@ -1,7 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
 use tari_common_types::{transaction::TxId, types::Commitment};
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 
@@ -80,7 +80,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
     /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
+    fn apply_encryption(&self, cipher: ChaCha20Poly1305) -> Result<(), OutputManagerStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
 

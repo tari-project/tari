@@ -1,3 +1,4 @@
+use chacha20::ChaCha;
 // Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -19,7 +20,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
 
 use crate::key_manager_service::{error::KeyManagerStorageError, storage::database::KeyManagerState};
 
@@ -35,7 +36,7 @@ pub trait KeyManagerBackend: Send + Sync + Clone {
     /// This method will set the currently stored key index for the key manager.
     fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError>;
     /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerStorageError>;
+    fn apply_encryption(&self, cipher: ChaCha20Poly1305) -> Result<(), KeyManagerStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), KeyManagerStorageError>;
 }

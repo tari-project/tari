@@ -23,7 +23,7 @@
 mod backend;
 use std::sync::Arc;
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
 pub use backend::KeyManagerBackend;
 
 use crate::key_manager_service::error::KeyManagerStorageError;
@@ -95,7 +95,7 @@ where T: KeyManagerBackend + 'static
 
     /// Encrypts the entire key manager with all branches.
     /// This will only encrypt the index used, as the master seed phrase is not directly stored with the key manager.
-    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerStorageError> {
+    pub async fn apply_encryption(&self, cipher: ChaCha20Poly1305) -> Result<(), KeyManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
             .await

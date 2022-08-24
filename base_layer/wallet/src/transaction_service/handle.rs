@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use tari_common_types::{
     transaction::{ImportStatus, TxId},
@@ -114,7 +114,7 @@ pub enum TransactionServiceRequest {
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
-    ApplyEncryption(Box<Aes256Gcm>),
+    ApplyEncryption(Box<ChaCha20Poly1305>),
     RemoveEncryption,
     GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
     RestartTransactionProtocols,
@@ -713,7 +713,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn apply_encryption(&mut self, cipher: Aes256Gcm) -> Result<(), TransactionServiceError> {
+    pub async fn apply_encryption(&mut self, cipher: ChaCha20Poly1305) -> Result<(), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ApplyEncryption(Box::new(cipher)))

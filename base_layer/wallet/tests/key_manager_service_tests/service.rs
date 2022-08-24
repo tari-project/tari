@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+use chacha20poly1305::{aead::NewAead, Key, ChaCha20Poly1305};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::key_manager_service::{
     storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
@@ -73,8 +73,8 @@ async fn get_key_at_test_no_encryption() {
 async fn get_key_at_test_with_encryption() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
-    let key = GenericArray::from_slice(b"an example very very secret key.");
-    let db_cipher = Aes256Gcm::new(key);
+    let key = Key::from_slice(b"an example very very secret key.");
+    let db_cipher = ChaCha20Poly1305::new(key);
     let key_manager = KeyManagerHandle::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, Some(db_cipher)).unwrap()),

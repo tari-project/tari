@@ -20,16 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{
-    aead::{generic_array::GenericArray, Aead, Error as AeadError, Payload},
-    Aes256Gcm,
+use std::mem::size_of;
+
+use chacha20poly1305::{
+    self,
+    aead::{Aead, Payload, Error as AeadError},
+    ChaCha20Poly1305,
+    Nonce,
+    Tag
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_utilities::ByteArray;
-
-pub const AES_NONCE_BYTES: usize = 12;
-pub const AES_KEY_BYTES: usize = 32;
-pub const AES_TAG_BYTES: usize = 16;
 
 pub trait Encryptable<C> {
     const KEY_MANAGER: &'static [u8] = b"KEY_MANAGER";
@@ -48,16 +49,16 @@ pub trait Encryptable<C> {
 }
 
 pub fn decrypt_bytes_integral_nonce(
-    cipher: &Aes256Gcm,
+    cipher: &ChaCha20Poly1305,
     domain: Vec<u8>,
     ciphertext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
-    if ciphertext.len() < AES_NONCE_BYTES {
+    if ciphertext.len() < size_of::<Nonce>() + size_of::<Tag>() {
         return Err(AeadError.to_string());
     }
 
-    let (nonce, ciphertext) = ciphertext.split_at(AES_NONCE_BYTES);
-    let nonce_ga = GenericArray::from_slice(nonce);
+    let (nonce, ciphertext) = ciphertext.split_at(size_of::<Nonce>());
+    let nonce_ga = Nonce::from_slice(nonce);
 
     let payload = Payload {
         msg: ciphertext,
@@ -70,13 +71,13 @@ pub fn decrypt_bytes_integral_nonce(
 }
 
 pub fn encrypt_bytes_integral_nonce(
-    cipher: &Aes256Gcm,
+    cipher: &ChaCha20Poly1305,
     domain: Vec<u8>,
     plaintext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
-    let mut nonce = [0u8; AES_NONCE_BYTES];
+    let mut nonce = [0u8; size_of::<Nonce>()];
     OsRng.fill_bytes(&mut nonce);
-    let nonce_ga = GenericArray::from_slice(&nonce);
+    let nonce_ga = Nonce::from_slice(&nonce);
 
     let payload = Payload {
         msg: plaintext.as_bytes(),
@@ -95,20 +96,30 @@ pub fn encrypt_bytes_integral_nonce(
 
 #[cfg(test)]
 mod test {
-    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+    use std::mem::size_of;
+
+    use chacha20poly1305::{
+        self,
+        aead::NewAead,
+        ChaCha20Poly1305,
+        Key,
+        Nonce,
+        Tag
+    };
+    use rand::{rngs::OsRng, RngCore};
 
     use crate::util::encryption::{
         decrypt_bytes_integral_nonce,
-        encrypt_bytes_integral_nonce,
-        AES_NONCE_BYTES,
-        AES_TAG_BYTES
+        encrypt_bytes_integral_nonce
     };
 
     #[test]
     fn test_encrypt_decrypt() {
         let plaintext = b"The quick brown fox was annoying".to_vec();
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = ChaCha20Poly1305::new(key_ga);
 
         let ciphertext = encrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), plaintext.clone()).unwrap();
         let decrypted_text =
@@ -123,14 +134,14 @@ mod test {
         // must fail with evil nonce
         let ciphertext_with_evil_nonce = ciphertext
             .clone()
-            .splice(0..AES_NONCE_BYTES, [0u8; AES_NONCE_BYTES])
+            .splice(0..size_of::<Nonce>(), [0u8; size_of::<Nonce>()])
             .collect();
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_nonce).is_err());
 
         // must fail with evil ciphertext
         let ciphertext_with_evil_nonce = ciphertext
             .clone()
-            .splice(AES_NONCE_BYTES..(AES_NONCE_BYTES + plaintext.len()), vec![
+            .splice(size_of::<Nonce>()..(size_of::<Nonce>() + plaintext.len()), vec![
                 0u8;
                 plaintext.len()
             ])
@@ -140,7 +151,7 @@ mod test {
         // must fail with evil tag
         let ciphertext_with_evil_tag = ciphertext
             .clone()
-            .splice((ciphertext.len() - AES_TAG_BYTES).., [0u8; AES_TAG_BYTES])
+            .splice((ciphertext.len() - size_of::<Tag>()).., [0u8; size_of::<Tag>()])
             .collect();
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_tag).is_err());
 

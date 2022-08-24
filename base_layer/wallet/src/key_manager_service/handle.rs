@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
@@ -70,7 +70,7 @@ where TBackend: KeyManagerBackend + 'static
             .await
     }
 
-    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError> {
+    async fn apply_encryption(&self, cipher: ChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.apply_encryption(cipher).await
     }
 

@@ -28,7 +28,7 @@ use std::{
     sync::Arc,
 };
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use log::*;
 use tari_common_types::{
@@ -125,7 +125,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         amount: MicroTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
     /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError>;
+    fn apply_encryption(&self, cipher: ChaCha20Poly1305) -> Result<(), TransactionStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
@@ -827,7 +827,7 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError> {
+    pub async fn apply_encryption(&self, cipher: ChaCha20Poly1305) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
             .await
