@@ -568,13 +568,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let (start_header_height, start_header_hash, total_accumulated_difficulty) = self
             .header_validator
             .current_valid_chain_tip_header()
-            .map(|h| {
-                (
-                    h.height(),
-                    *h.hash(),
-                    h.accumulated_data().total_accumulated_difficulty,
-                )
-            })
+            .map(|h| (h.height(), *h.hash(), h.accumulated_data().total_accumulated_difficulty))
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
 
         // If we already have a stronger chain at this point, switch over to it.

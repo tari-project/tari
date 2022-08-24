@@ -1632,7 +1632,8 @@ async fn test_txo_validation() {
             .convert_to_rewindable_transaction_output(output3.clone())
             .await
             .unwrap()
-            .hash().to_vec()
+            .hash()
+            .to_vec()
     );
 
     // Now we will create responses that result in a reorg of block 5, keeping block4 the same.

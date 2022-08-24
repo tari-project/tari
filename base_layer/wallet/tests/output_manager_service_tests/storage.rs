@@ -22,7 +22,7 @@
 
 use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::transaction::TxId;
+use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
@@ -34,7 +34,6 @@ use tari_wallet::output_manager_service::{
     },
 };
 use tokio::runtime::Runtime;
-use tari_common_types::types::FixedHash;
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
@@ -272,8 +271,13 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(mined_unspent_outputs.len(), 4);
 
     // Spend a received and confirmed output
-    db.mark_output_as_spent(pending_txs[1].outputs_to_be_received[0].hash, 6, FixedHash::zero(), true)
-        .unwrap();
+    db.mark_output_as_spent(
+        pending_txs[1].outputs_to_be_received[0].hash,
+        6,
+        FixedHash::zero(),
+        true,
+    )
+    .unwrap();
 
     let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(mined_unspent_outputs.len(), 3);

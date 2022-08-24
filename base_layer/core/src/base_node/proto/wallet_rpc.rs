@@ -187,12 +187,11 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryResponse) -> Result<Self, Self::Error> {
-        let hash = match proto_response
-            .block_hash{
-            Some(v) => {match v.try_into(){
+        let hash = match proto_response.block_hash {
+            Some(v) => match v.try_into() {
                 Ok(v) => Some(v),
                 Err(e) => return Err(format!("Malformed block hash: {}", e)),
-            }}
+            },
             None => None,
         };
         Ok(Self {
@@ -226,12 +225,11 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryBatchResponse) -> Result<Self, Self::Error> {
-        let hash = match proto_response
-            .block_hash{
-            Some(v) => {match v.try_into(){
+        let hash = match proto_response.block_hash {
+            Some(v) => match v.try_into() {
                 Ok(v) => Some(v),
                 Err(e) => return Err(format!("Malformed block hash: {}", e)),
-            }}
+            },
             None => None,
         };
         Ok(Self {

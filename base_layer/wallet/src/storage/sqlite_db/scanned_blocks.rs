@@ -20,10 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use chrono::{NaiveDateTime, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
-use tari_utilities::ByteArray;
+use tari_common_types::types::FixedHash;
 use tari_core::transactions::tari_amount::MicroTari;
+use tari_utilities::ByteArray;
 
 use crate::{
     diesel::BoolExpressionMethods,
@@ -31,8 +34,6 @@ use crate::{
     schema::scanned_blocks,
     utxo_scanner_service::service::ScannedBlock,
 };
-use tari_common_types::types::FixedHash; use std::convert::TryFrom;
-
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
 #[table_name = "scanned_blocks"]
@@ -124,6 +125,7 @@ impl From<ScannedBlock> for ScannedBlockSql {
 
 impl TryFrom<ScannedBlockSql> for ScannedBlock {
     type Error = String;
+
     fn try_from(sb: ScannedBlockSql) -> Result<Self, Self::Error> {
         Ok(Self {
             header_hash: FixedHash::try_from(sb.header_hash).map_err(|err| err.to_string())?,

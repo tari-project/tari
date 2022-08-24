@@ -27,6 +27,7 @@ use std::{
 
 use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common_types::types::FixedHashSizeError;
 use tari_core::transactions::{tari_amount::MicroTariError, transaction_components::TransactionError};
 use tari_utilities::hex::HexError;
 use tari_wallet::{
@@ -37,7 +38,6 @@ use tari_wallet::{
 };
 use thiserror::Error;
 use tokio::task::JoinError;
-use tari_common_types::types::FixedHashSizeError;
 
 pub const LOG_TARGET: &str = "wallet::automation::error";
 

@@ -61,10 +61,7 @@ use tari_core::{
     WitnessMmr,
     WitnessMmrHasherBlake256,
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{ hex::Hex},
-};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
 use tari_mmr::{Hash, MutableMmr};
 use tari_script::script;
 

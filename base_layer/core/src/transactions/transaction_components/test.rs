@@ -27,7 +27,7 @@ use tari_crypto::{
     errors::RangeProofError,
     keys::SecretKey as SecretKeyTrait,
     range_proof::RangeProofService,
-    tari_utilities::{hex::Hex},
+    tari_utilities::hex::Hex,
 };
 use tari_script::{script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;

@@ -713,18 +713,18 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             Some(c) => Commitment::from_vec(&c)?,
         };
         let spending_priority = (o.spending_priority as u32).into();
-        let mined_in_block = match o.mined_in_block{
-            Some(v) => {match v.try_into(){
-            Ok(v) => Some(v),
-            Err(_) => None
-            }}
+        let mined_in_block = match o.mined_in_block {
+            Some(v) => match v.try_into() {
+                Ok(v) => Some(v),
+                Err(_) => None,
+            },
             None => None,
         };
-        let marked_deleted_in_block = match o.marked_deleted_in_block{
-            Some(v) => {match v.try_into(){
+        let marked_deleted_in_block = match o.marked_deleted_in_block {
+            Some(v) => match v.try_into() {
                 Ok(v) => Some(v),
-                Err(_) => None
-            }}
+                Err(_) => None,
+            },
             None => None,
         };
         Ok(Self {

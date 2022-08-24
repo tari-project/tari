@@ -76,6 +76,7 @@ impl From<TransactionWeight> for Fee {
 #[cfg(test)]
 mod test {
     use std::convert::TryInto;
+
     use tari_crypto::ristretto::RistrettoComSig;
     use tari_script::ExecutionStack;
 

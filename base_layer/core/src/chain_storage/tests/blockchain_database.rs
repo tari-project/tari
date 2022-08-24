@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use tari_test_utils::unpack_enum;
-use tari_utilities::{hex::Hex};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
@@ -263,6 +263,7 @@ mod fetch_headers {
 
 mod find_headers_after_hash {
     use tari_common_types::types::FixedHash;
+
     use super::*;
 
     #[test]
@@ -311,7 +312,6 @@ mod find_headers_after_hash {
         assert_eq!(headers.len(), 1);
         assert_eq!(&headers[0], db.fetch_block(5).unwrap().header());
     }
-
 }
 
 mod fetch_block_hashes_from_header_tip {

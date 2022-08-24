@@ -1520,18 +1520,9 @@ fn orphan_cleanup_on_reorg() {
     // cleanup.
     store.cleanup_orphans().unwrap();
     assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 3);
-    assert_eq!(
-        store.fetch_orphan(*blocks[2].hash()).unwrap(),
-        *blocks[2].block()
-    );
-    assert_eq!(
-        store.fetch_orphan(*blocks[3].hash()).unwrap(),
-        *blocks[3].block()
-    );
-    assert_eq!(
-        store.fetch_orphan(*blocks[4].hash()).unwrap(),
-        *blocks[4].block()
-    );
+    assert_eq!(store.fetch_orphan(*blocks[2].hash()).unwrap(), *blocks[2].block());
+    assert_eq!(store.fetch_orphan(*blocks[3].hash()).unwrap(), *blocks[3].block());
+    assert_eq!(store.fetch_orphan(*blocks[4].hash()).unwrap(), *blocks[4].block());
 }
 
 #[test]

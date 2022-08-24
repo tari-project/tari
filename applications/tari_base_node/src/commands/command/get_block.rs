@@ -76,10 +76,7 @@ impl CommandContext {
             .ok_or(ArgsError::NotFoundAt { height })?;
         match format {
             Format::Text => {
-                let block_data = self
-                    .blockchain_db
-                    .fetch_block_accumulated_data(*block.hash())
-                    .await?;
+                let block_data = self.blockchain_db.fetch_block_accumulated_data(*block.hash()).await?;
 
                 println!("{}", block);
                 println!("-- Accumulated data --");

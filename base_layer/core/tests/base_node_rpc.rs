@@ -57,7 +57,7 @@ use tari_core::{
 };
 use tari_service_framework::reply_channel;
 use tari_test_utils::streams::convert_mpsc_to_stream;
-use tari_utilities::{epoch_time::EpochTime};
+use tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 
@@ -414,7 +414,10 @@ async fn test_sync_utxos_by_block() {
     let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
 
     assert_eq!(
-        vec![(1, block1.header.hash().to_vec(), 10), (2, block2.header.hash().to_vec(), 6),],
+        vec![
+            (1, block1.header.hash().to_vec(), 10),
+            (2, block2.header.hash().to_vec(), 6),
+        ],
         responses
             .iter()
             .map(|r| {

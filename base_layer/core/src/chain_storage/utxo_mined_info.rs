@@ -36,8 +36,9 @@ pub struct UtxoMinedInfo {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use tari_common_types::types::FixedHash;
+
+    use super::*;
 
     impl UtxoMinedInfo {
         pub fn sample() -> Self {

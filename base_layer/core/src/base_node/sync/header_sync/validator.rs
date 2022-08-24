@@ -79,10 +79,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .await?
             .ok_or_else(|| BlockHeaderSyncError::StartHashNotFound(start_hash.to_hex()))?;
         let timestamps = self.db.fetch_block_timestamps(*start_hash).await?;
-        let target_difficulties = self
-            .db
-            .fetch_target_difficulties_for_next_block(*start_hash)
-            .await?;
+        let target_difficulties = self.db.fetch_target_difficulties_for_next_block(*start_hash).await?;
         let previous_accum = self
             .db
             .fetch_header_accumulated_data(*start_hash)
@@ -283,6 +280,7 @@ mod test {
 
     mod initialize_state {
         use std::convert::TryInto;
+
         use super::*;
 
         #[tokio::test]
@@ -301,7 +299,10 @@ mod test {
         async fn it_errors_if_hash_does_not_exist() {
             let (mut validator, _) = setup();
             let start_hash = vec![0; 32];
-            let err = validator.initialize_state(&start_hash.clone().try_into().unwrap()).await.unwrap_err();
+            let err = validator
+                .initialize_state(&start_hash.clone().try_into().unwrap())
+                .await
+                .unwrap_err();
             unpack_enum!(BlockHeaderSyncError::StartHashNotFound(hash) = err);
             assert_eq!(hash, start_hash.to_hex());
         }

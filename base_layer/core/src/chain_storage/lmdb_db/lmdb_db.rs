@@ -418,11 +418,7 @@ impl LMDBDatabase {
                         MetadataKey::ChainHeight,
                         &MetadataValue::ChainHeight(*height),
                     )?;
-                    self.set_metadata(
-                        &write_txn,
-                        MetadataKey::BestBlock,
-                        &MetadataValue::BestBlock(*hash),
-                    )?;
+                    self.set_metadata(&write_txn, MetadataKey::BestBlock, &MetadataValue::BestBlock(*hash))?;
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::AccumulatedWork,

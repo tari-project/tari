@@ -28,7 +28,7 @@ use tari_common::configuration::StringList;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::TransactionStatus,
-    types::{PrivateKey, PublicKey},
+    types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -61,7 +61,7 @@ use tari_p2p::{
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, random};
-use tari_utilities::{SafePassword};
+use tari_utilities::SafePassword;
 use tari_wallet::{
     contacts_service::{
         handle::ContactsLivenessEvent,
@@ -93,7 +93,6 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{sync::mpsc, time::sleep};
-use tari_common_types::types::FixedHash;
 
 pub mod support;
 use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;

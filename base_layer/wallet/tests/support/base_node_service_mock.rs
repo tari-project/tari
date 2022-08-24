@@ -21,8 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::StreamExt;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_common_types::types::FixedHash;
+use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;

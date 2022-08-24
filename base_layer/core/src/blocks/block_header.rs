@@ -150,7 +150,8 @@ impl BlockHeader {
             .chain(&self.mining_hash().as_slice())
             .chain(&self.pow)
             .chain(&self.nonce)
-            .finalize().into()
+            .finalize()
+            .into()
     }
 
     /// Create a new block header using relevant data from the previous block. The height is incremented by one, the
@@ -278,7 +279,6 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
     }
 }
 
-
 impl PartialEq for BlockHeader {
     fn eq(&self, other: &Self) -> bool {
         self.hash() == other.hash()
@@ -404,7 +404,6 @@ impl ConsensusDecoding for BlockHeader {
 
 #[cfg(test)]
 mod test {
-
 
     use crate::blocks::BlockHeader;
     #[test]

@@ -176,18 +176,20 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
-            DbKey::UnspentOutputHash(hash) => match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &(*conn)) {
-                Ok(mut o) => {
-                    self.decrypt_if_necessary(&mut o)?;
-                    Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
-                },
-                Err(e) => {
-                    match e {
-                        OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
-                        e => return Err(e),
-                    };
-                    None
-                },
+            DbKey::UnspentOutputHash(hash) => {
+                match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &(*conn)) {
+                    Ok(mut o) => {
+                        self.decrypt_if_necessary(&mut o)?;
+                        Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                    },
+                    Err(e) => {
+                        match e {
+                            OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                            e => return Err(e),
+                        };
+                        None
+                    },
+                }
             },
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &conn) {

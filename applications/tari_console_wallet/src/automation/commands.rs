@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryInto,
     fs,
     fs::File,
     io,
@@ -28,7 +29,6 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
-use std::convert::TryInto;
 
 use chrono::{DateTime, Utc};
 use digest::Digest;
@@ -40,7 +40,7 @@ use strum_macros::{Display, EnumIter, EnumString};
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -67,7 +67,6 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
-use tari_common_types::types::FixedHash;
 
 use super::error::CommandError;
 use crate::{
@@ -163,7 +162,7 @@ pub async fn finalise_sha_atomic_swap(
 pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    output_hash:FixedHash,
+    output_hash: FixedHash,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -754,7 +753,6 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             ClaimShaAtomicSwapRefund(args) => {
-
                 let hash = args.output_hash[0].clone().try_into()?;
                 let tx_id = claim_htlc_refund(
                     output_service.clone(),

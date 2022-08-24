@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryInto;
+
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::{emission::Emission, ConsensusManager},

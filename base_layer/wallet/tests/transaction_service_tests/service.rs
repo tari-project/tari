@@ -39,7 +39,7 @@ use rand::rngs::OsRng;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
     message::EnvelopeBody,
@@ -153,7 +153,6 @@ use crate::support::{
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, TestParams},
 };
-use tari_common_types::types::FixedHash;
 async fn setup_transaction_service<P: AsRef<Path>>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,

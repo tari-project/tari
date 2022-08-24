@@ -25,7 +25,7 @@ use chrono::{NaiveDateTime, Utc};
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_core::{
     covenants::Covenant,
@@ -59,7 +59,6 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
-use tari_common_types::types::FixedHash;
 
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let runtime = Runtime::new().unwrap();

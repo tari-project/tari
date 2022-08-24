@@ -48,7 +48,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};

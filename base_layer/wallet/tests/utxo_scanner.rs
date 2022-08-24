@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use std::convert::TryInto;
+use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{rngs::OsRng, RngCore};
@@ -43,7 +42,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_utilities::{ByteArray, epoch_time::EpochTime};
+use tari_utilities::{epoch_time::EpochTime, ByteArray};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityInterface, WalletConnectivityMock},
@@ -720,7 +719,14 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(800 + NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(800 + NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        best_block: Some(
+            block_headers
+                .get(&(800 + NUM_BLOCKS - 1))
+                .unwrap()
+                .clone()
+                .hash()
+                .to_vec(),
+        ),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),

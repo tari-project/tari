@@ -2065,11 +2065,11 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             },
             Err(_) => Signature::default(),
         };
-        let mined_in_block = match c.mined_in_block{
-            Some(v) => {match v.try_into(){
+        let mined_in_block = match c.mined_in_block {
+            Some(v) => match v.try_into() {
                 Ok(v) => Some(v),
-                Err(_) => None
-            }}
+                Err(_) => None,
+            },
             None => None,
         };
         Ok(Self {
