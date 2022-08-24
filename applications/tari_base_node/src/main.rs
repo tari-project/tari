@@ -246,7 +246,6 @@ async fn run_node(
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
     }
-    task::spawn(main_loop.cli_loop(config.base_node.resize_terminal_on_startup));
     if !config.base_node.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
@@ -254,7 +253,10 @@ async fn run_node(
         );
     }
 
-    ctx.run().await;
+    info!(target: LOG_TARGET, "Tari base node has STARTED");
+    main_loop.cli_loop(config.base_node.resize_terminal_on_startup).await;
+
+    ctx.wait_for_shutdown().await;
 
     println!("Goodbye!");
     Ok(())
