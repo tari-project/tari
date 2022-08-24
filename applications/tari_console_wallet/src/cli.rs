@@ -82,6 +82,10 @@ pub(crate) struct Cli {
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
     pub network: Option<String>,
+    #[clap(long, env = "TARI_WALLET_ENABLE_GRPC")]
+    pub enable_grpc: bool,
+    #[clap(long, env = "TARI_WALLET_GRPC_ADDRESS")]
+    pub grpc_address: Option<String>,
     #[clap(subcommand)]
     pub command2: Option<CliCommands>,
 }
@@ -93,6 +97,18 @@ impl ConfigOverrideProvider for Cli {
         overrides.push(("wallet.network".to_string(), network.clone()));
         overrides.push(("wallet.override_from".to_string(), network.clone()));
         overrides.push(("p2p.seeds.override_from".to_string(), network));
+        // Either of these configs enable grpc
+        if let Some(ref addr) = self.grpc_address {
+            overrides.push(("wallet.grpc_address".to_string(), addr.clone()));
+        } else if self.enable_grpc {
+            // Use default
+            overrides.push((
+                "wallet.grpc_address".to_string(),
+                "/ip4/127.0.0.1/tcp/18143".to_string(),
+            ));
+        } else {
+            // GRPC is disabled
+        }
         overrides
     }
 }

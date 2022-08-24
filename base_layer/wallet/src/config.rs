@@ -134,7 +134,7 @@ impl Default for WalletConfig {
             command_send_wait_stage: TransactionStage::Broadcast,
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
-            grpc_address: Some("/ip4/127.0.0.1/tcp/18143".parse().unwrap()),
+            grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
             custom_base_node: None,
             base_node_service_peers: StringList::default(),
