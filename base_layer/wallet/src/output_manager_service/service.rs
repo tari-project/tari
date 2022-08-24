@@ -2235,7 +2235,9 @@ where
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionOutput>, OutputManagerError> {
         // lets get the output from the blockchain
-        let req = FetchMatchingUtxos { output_hashes: hashes };
+        let req = FetchMatchingUtxos {
+            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
+        };
         let results: Vec<TransactionOutput> = self
             .resources
             .connectivity

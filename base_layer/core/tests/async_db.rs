@@ -43,7 +43,6 @@ use tari_core::{
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_test_utils::runtime::test_async;
-use tari_utilities::Hashable;
 
 #[allow(dead_code)]
 mod helpers;

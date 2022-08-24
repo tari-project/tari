@@ -29,7 +29,6 @@ use tari_core::{
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
-use tari_utilities::Hashable;
 
 use crate::helpers::database::create_orphan_block;
 

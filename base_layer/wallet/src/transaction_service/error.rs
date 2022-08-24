@@ -23,7 +23,10 @@
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
+use tari_common_types::{
+    transaction::{TransactionConversionError, TransactionDirectionError, TxId},
+    types::FixedHashSizeError,
+};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
@@ -166,6 +169,8 @@ pub enum TransactionServiceError {
     BaseNodeNotSynced,
     #[error("Value encryption error: `{0}`")]
     EncryptionError(#[from] EncryptionError),
+    #[error("FixedHash size error: `{0}`")]
+    FixedHashSizeError(#[from] FixedHashSizeError),
 }
 
 #[derive(Debug, Error)]

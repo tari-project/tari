@@ -1963,7 +1963,7 @@ impl CompletedTransactionSql {
                 confirmations: Some(Some(num_confirmations as i64)),
                 status: Some(status),
                 mined_height: Some(Some(mined_height as i64)),
-                mined_in_block: Some(Some(mined_in_block)),
+                mined_in_block: Some(Some(mined_in_block.to_vec())),
                 mined_timestamp: Some(NaiveDateTime::from_timestamp(mined_timestamp as i64, 0)),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
@@ -2034,7 +2034,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             last_send_timestamp: c.last_send_timestamp,
             confirmations: c.confirmations.map(|ic| ic as i64),
             mined_height: c.mined_height.map(|ic| ic as i64),
-            mined_in_block: c.mined_in_block,
+            mined_in_block: c.mined_in_block.map(|v| v.to_vec()),
             mined_timestamp: c.mined_timestamp,
             transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
@@ -2065,6 +2065,13 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             },
             Err(_) => Signature::default(),
         };
+        let mined_in_block = match c.mined_in_block{
+            Some(v) => {match v.try_into(){
+                Ok(v) => Some(v),
+                Err(_) => None
+            }}
+            None => None,
+        };
         Ok(Self {
             tx_id: (c.tx_id as u64).into(),
             source_public_key: PublicKey::from_vec(&c.source_public_key).map_err(TransactionKeyError::Source)?,
@@ -2086,7 +2093,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             transaction_signature,
             confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
-            mined_in_block: c.mined_in_block,
+            mined_in_block,
             mined_timestamp: c.mined_timestamp,
         })
     }

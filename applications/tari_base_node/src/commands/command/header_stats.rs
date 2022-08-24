@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
 use tari_core::proof_of_work::PowAlgorithm;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::{
     fs::File,
     io::{self, AsyncWriteExt},

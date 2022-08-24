@@ -26,7 +26,7 @@ use futures::stream::StreamExt;
 use log::*;
 use tari_app_grpc::tari_rpc::BlockHeader;
 use tari_core::consensus::ConsensusDecoding;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     display_report,

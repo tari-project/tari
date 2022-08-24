@@ -51,7 +51,7 @@ use tari_core::{
     transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};
 
@@ -541,7 +541,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             Err(e) => return Err(report_error(report_error_flag, Status::internal(e.to_string()))),
         };
         // construct response
-        let block_hash = new_block.hash();
+        let block_hash = new_block.hash().to_vec();
         let mining_hash = new_block.header.mining_hash().to_vec();
         let block: Option<tari_rpc::Block> = Some(
             new_block
@@ -586,7 +586,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             Err(e) => return Err(Status::internal(e.to_string())),
         };
         // construct response
-        let block_hash = new_block.hash();
+        let block_hash = new_block.hash().to_vec();
         let mining_hash = new_block.header.mining_hash().to_vec();
 
         let (header, block_body) = new_block.into_header_body();
@@ -628,7 +628,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = handler
             .submit_block(block)
             .await
-            .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?;
+            .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
+            .to_vec();
 
         debug!(
             target: LOG_TARGET,
@@ -664,7 +665,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = handler
             .submit_block(block)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| Status::internal(e.to_string()))?
+            .to_vec();
 
         debug!(
             target: LOG_TARGET,
@@ -1414,8 +1416,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
         let mut node_service = self.node_service.clone();
         let hash_hex = hash.to_hex();
+        let block_hash = hash
+            .try_into()
+            .map_err(|_| report_error(report_error_flag, Status::internal("Malformed block hash".to_string())))?;
         let block = node_service
-            .get_block_by_hash(hash)
+            .get_block_by_hash(block_hash)
             .await
             .map_err(|err| report_error(report_error_flag, Status::internal(err.to_string())))?;
 

@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
 use std::sync::Arc;
 
 use blake2::Digest;
@@ -72,7 +73,7 @@ impl MockChainMetadata {
 pub fn random_peer_metadata(height: u64, difficulty: u128) -> PeerChainMetadata {
     let key: Vec<u8> = (0..13).map(|_| rand::random::<u8>()).collect();
     let id = NodeId::from_key(&key);
-    let block_hash = Blake256::digest(id.as_bytes()).to_vec();
+    let block_hash = Blake256::digest(id.as_bytes()).to_vec().try_into().unwrap();
     let metadata = ChainMetadata::new(height, block_hash, 2800, 0, difficulty, 0);
     PeerChainMetadata::new(id, metadata, None)
 }

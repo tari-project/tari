@@ -40,7 +40,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -345,14 +345,16 @@ where
                 }
             }
         }
+        let tip = batch_response
+            .tip_hash
+            .ok_or_else(|| TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string()))?
+            .try_into()?;
         Ok((
             mined,
             unmined,
             Some((
                 batch_response.height_of_longest_chain,
-                batch_response.tip_hash.ok_or_else(|| {
-                    TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
-                })?,
+                tip,
                 batch_response.tip_mined_timestamp.ok_or_else(|| {
                     TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
                 })?,

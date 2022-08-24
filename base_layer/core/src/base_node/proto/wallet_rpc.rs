@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{Display, Error, Formatter},
 };
 
@@ -187,12 +187,20 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryResponse) -> Result<Self, Self::Error> {
+        let hash = match proto_response
+            .block_hash{
+            Some(v) => {match v.try_into(){
+                Ok(v) => Some(v),
+                Err(e) => return Err(format!("Malformed block hash: {}", e)),
+            }}
+            None => None,
+        };
         Ok(Self {
             location: TxLocation::try_from(
                 proto::TxLocation::from_i32(proto_response.location)
                     .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
             )?,
-            block_hash: proto_response.block_hash,
+            block_hash: hash,
             confirmations: proto_response.confirmations,
             is_synced: proto_response.is_synced,
             height_of_longest_chain: proto_response.height_of_longest_chain,
@@ -205,7 +213,7 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
     fn from(response: TxQueryResponse) -> Self {
         Self {
             location: proto::TxLocation::from(response.location) as i32,
-            block_hash: response.block_hash,
+            block_hash: response.block_hash.map(|v| v.to_vec()),
             confirmations: response.confirmations,
             is_synced: response.is_synced,
             height_of_longest_chain: response.height_of_longest_chain,
@@ -218,6 +226,14 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryBatchResponse) -> Result<Self, Self::Error> {
+        let hash = match proto_response
+            .block_hash{
+            Some(v) => {match v.try_into(){
+                Ok(v) => Some(v),
+                Err(e) => return Err(format!("Malformed block hash: {}", e)),
+            }}
+            None => None,
+        };
         Ok(Self {
             signature: Signature::try_from(
                 proto_response
@@ -228,7 +244,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
                 proto::TxLocation::from_i32(proto_response.location)
                     .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
             )?,
-            block_hash: proto_response.block_hash,
+            block_hash: hash,
             block_height: proto_response.block_height,
             confirmations: proto_response.confirmations,
             mined_timestamp: proto_response.mined_timestamp,

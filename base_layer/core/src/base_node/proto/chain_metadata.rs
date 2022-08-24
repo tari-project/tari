@@ -20,9 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, mem};
+use std::{
+    convert::{TryFrom, TryInto},
+    mem,
+};
 
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 
 use crate::proto::base_node as proto;
 
@@ -50,10 +53,17 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
         } else {
             height_of_longest_chain.saturating_sub(metadata.pruned_height)
         };
-
+        let hash: FixedHash = match metadata
+            .best_block
+            .ok_or_else(|| "Best block is missing".to_string())?
+            .try_into()
+        {
+            Ok(v) => v,
+            Err(e) => return Err(format!("Malformed best block: {}", e)),
+        };
         Ok(ChainMetadata::new(
             height_of_longest_chain,
-            metadata.best_block.ok_or_else(|| "Best block is missing".to_string())?,
+            hash,
             pruning_horizon,
             metadata.pruned_height,
             accumulated_difficulty,
@@ -67,7 +77,7 @@ impl From<ChainMetadata> for proto::ChainMetadata {
         let accumulated_difficulty = metadata.accumulated_difficulty().to_be_bytes().to_vec();
         Self {
             height_of_longest_chain: Some(metadata.height_of_longest_chain()),
-            best_block: Some(metadata.best_block().clone()),
+            best_block: Some(metadata.best_block().to_vec()),
             pruned_height: metadata.pruned_height(),
             accumulated_difficulty,
             timestamp: Some(metadata.timestamp()),

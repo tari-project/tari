@@ -70,8 +70,7 @@ use tari_core::{
     },
     transactions::transaction_components::{Transaction, TransactionOutput},
 };
-use tari_utilities::Hashable;
-use tokio::{sync::mpsc, time::sleep};
+use tokio::{sync::mpsc, time::sleep};use std::convert::TryInto;
 
 pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T
 where T: From<RpcClient> + NamedProtocolService {
@@ -780,7 +779,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         } = request.into_message();
 
         let mut sync_utxo_by_block_lock = acquire_lock!(self.state.sync_utxo_by_block_calls);
-        (*sync_utxo_by_block_lock).push((start_header_hash.clone(), end_header_hash.clone()));
+        (*sync_utxo_by_block_lock).push((start_header_hash.clone().try_into().unwrap(), end_header_hash.clone().try_into().unwrap()));
 
         let block_lock = acquire_lock!(self.state.utxos_by_block);
         let mut blocks = (*block_lock).clone();

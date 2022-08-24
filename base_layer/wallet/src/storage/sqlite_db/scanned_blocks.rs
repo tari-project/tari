@@ -22,6 +22,7 @@
 
 use chrono::{NaiveDateTime, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+use tari_utilities::ByteArray;
 use tari_core::transactions::tari_amount::MicroTari;
 
 use crate::{
@@ -30,6 +31,8 @@ use crate::{
     schema::scanned_blocks,
     utxo_scanner_service::service::ScannedBlock,
 };
+use tari_common_types::types::FixedHash; use std::convert::TryFrom;
+
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
 #[table_name = "scanned_blocks"]
@@ -110,7 +113,7 @@ impl ScannedBlockSql {
 impl From<ScannedBlock> for ScannedBlockSql {
     fn from(sb: ScannedBlock) -> Self {
         Self {
-            header_hash: sb.header_hash,
+            header_hash: sb.header_hash.to_vec(),
             height: sb.height as i64,
             num_outputs: sb.num_outputs.map(|n| n as i64),
             amount: sb.amount.map(|a| a.as_u64() as i64),
@@ -119,14 +122,15 @@ impl From<ScannedBlock> for ScannedBlockSql {
     }
 }
 
-impl From<ScannedBlockSql> for ScannedBlock {
-    fn from(sb: ScannedBlockSql) -> Self {
-        Self {
-            header_hash: sb.header_hash,
+impl TryFrom<ScannedBlockSql> for ScannedBlock {
+    type Error = String;
+    fn try_from(sb: ScannedBlockSql) -> Result<Self, Self::Error> {
+        Ok(Self {
+            header_hash: FixedHash::try_from(sb.header_hash).map_err(|err| err.to_string())?,
             height: sb.height as u64,
             num_outputs: sb.num_outputs.map(|n| n as u64),
             amount: sb.amount.map(|a| MicroTari::from(a as u64)),
             timestamp: sb.timestamp,
-        }
+        })
     }
 }

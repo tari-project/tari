@@ -59,6 +59,7 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
+use tari_common_types::types::FixedHash;
 
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let runtime = Runtime::new().unwrap();
@@ -325,7 +326,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
 
     runtime
-        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, [0u8; 16].to_vec(), 0, 5, true, false))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, FixedHash::zero(), 0, 5, true, false))
         .unwrap();
 
     assert_eq!(

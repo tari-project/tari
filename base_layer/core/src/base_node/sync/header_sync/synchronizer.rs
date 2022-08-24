@@ -34,7 +34,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
@@ -386,7 +386,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
 
             let request = FindChainSplitRequest {
-                block_hashes: block_hashes.clone(),
+                block_hashes: block_hashes.clone().iter().map(|v| v.to_vec()).collect(),
                 header_count,
             };
 
@@ -615,7 +615,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_peer.node_id()
         );
         let request = SyncHeadersRequest {
-            start_hash: start_header_hash,
+            start_hash: start_header_hash.to_vec(),
             // To the tip!
             count: 0,
         };

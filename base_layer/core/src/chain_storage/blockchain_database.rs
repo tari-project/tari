@@ -39,7 +39,7 @@ use tari_common_types::{
     types::{BlockHash, Commitment, FixedHash, HashOutput, Signature},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
-use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use crate::{
     blocks::{
@@ -1225,13 +1225,13 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let mut deleted_outputs = Vec::new();
 
     for kernel in body.kernels().iter() {
-        kernel_mmr.push(kernel.hash())?;
+        kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
     for output in body.outputs().iter() {
-        let output_hash = output.hash();
+        let output_hash = output.hash().to_vec();
         output_mmr.push(output_hash.clone())?;
-        witness_mmr.push(output.witness_hash())?;
+        witness_mmr.push(output.witness_hash().to_vec())?;
         if output.is_burned() {
             let index = output_mmr
                 .find_leaf_index(&output_hash)?
@@ -1245,7 +1245,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
 
     for input in body.inputs().iter() {
-        input_mmr.push(input.canonical_hash()?)?;
+        input_mmr.push(input.canonical_hash()?.to_vec())?;
 
         // Search the DB for the output leaf index so that it can be marked as spent/deleted.
         // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
@@ -1253,14 +1253,13 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         let index = match db.fetch_mmr_leaf_index(MmrTree::Utxo, &output_hash)? {
             Some(index) => index,
             None => {
-                let index =
-                    output_mmr
-                        .find_leaf_index(&output_hash)?
-                        .ok_or_else(|| ChainStorageError::ValueNotFound {
-                            entity: "UTXO",
-                            field: "hash",
-                            value: output_hash.to_hex(),
-                        })?;
+                let index = output_mmr.find_leaf_index(&output_hash.to_vec())?.ok_or_else(|| {
+                    ChainStorageError::ValueNotFound {
+                        entity: "UTXO",
+                        field: "hash",
+                        value: output_hash.to_hex(),
+                    }
+                })?;
                 debug!(
                     target: LOG_TARGET,
                     "0-conf spend detected when calculating MMR roots for UTXO index {} ({})",
@@ -1270,7 +1269,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
                 index
             },
         };
-        deleted_outputs.push((index, output_hash));
+        deleted_outputs.push((index, output_hash.to_vec()));
     }
     for (index, output_hash) in deleted_outputs {
         if !output_mmr.delete(index) {
@@ -2498,7 +2497,7 @@ mod test {
         fn it_errors_if_orphan_not_exist() {
             let db = create_new_blockchain();
             let access = db.db_read_access().unwrap();
-            let err = get_orphan_link_main_chain(&*access, &vec![1]).unwrap_err();
+            let err = get_orphan_link_main_chain(&*access, &FixedHash::zero()).unwrap_err();
             assert!(matches!(err, ChainStorageError::InvalidOperation(_)));
         }
     }

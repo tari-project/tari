@@ -38,6 +38,7 @@ use tari_common_types::types::{
     ComSignature,
     Commitment,
     CommitmentFactory,
+    FixedHash,
     PrivateKey,
     PublicKey,
     RangeProof,
@@ -49,7 +50,7 @@ use tari_crypto::{
     extended_range_proof::{ExtendedRangeProofService, Statement},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
+    tari_utilities::{hex::Hex, ByteArray},
 };
 use tari_script::TariScript;
 
@@ -158,6 +159,19 @@ impl TransactionOutput {
     /// Accessor method for the range proof contained in an output
     pub fn proof(&self) -> &RangeProof {
         &self.proof
+    }
+
+    pub fn hash(&self) -> FixedHash {
+        transaction_components::hash_output(
+            self.version,
+            &self.features,
+            &self.commitment,
+            &self.script,
+            &self.covenant,
+            &self.encrypted_value,
+            self.minimum_value_promise,
+        )
+        .into()
     }
 
     /// Verify that range proof is valid
@@ -388,34 +402,18 @@ impl TransactionOutput {
         )
     }
 
-    pub fn witness_hash(&self) -> Vec<u8> {
+    pub fn witness_hash(&self) -> FixedHash {
         DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output_witness")
             .chain(&self.proof)
             .chain(&self.metadata_signature)
             .finalize()
-            .to_vec()
+            .into()
     }
 
     pub fn get_metadata_size(&self) -> usize {
         self.features.consensus_encode_exact_size() +
             self.script.consensus_encode_exact_size() +
             self.covenant.consensus_encode_exact_size()
-    }
-}
-
-/// Implement the canonical hashing function for TransactionOutput for use in ordering.
-impl Hashable for TransactionOutput {
-    fn hash(&self) -> Vec<u8> {
-        transaction_components::hash_output(
-            self.version,
-            &self.features,
-            &self.commitment,
-            &self.script,
-            &self.covenant,
-            &self.encrypted_value,
-            self.minimum_value_promise,
-        )
-        .to_vec()
     }
 }
 

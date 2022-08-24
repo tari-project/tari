@@ -28,6 +28,7 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
+use std::convert::TryInto;
 
 use chrono::{DateTime, Utc};
 use digest::Digest;
@@ -51,7 +52,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
@@ -66,6 +67,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
+use tari_common_types::types::FixedHash;
 
 use super::error::CommandError;
 use crate::{
@@ -143,7 +145,7 @@ pub async fn init_sha_atomic_swap(
 pub async fn finalise_sha_atomic_swap(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    output_hash: Vec<u8>,
+    output_hash: FixedHash,
     pre_image: PublicKey,
     fee_per_gram: MicroTari,
     message: String,
@@ -161,7 +163,7 @@ pub async fn finalise_sha_atomic_swap(
 pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    output_hash: Vec<u8>,
+    output_hash:FixedHash,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -738,10 +740,11 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             FinaliseShaAtomicSwap(args) => {
+                let hash = args.output_hash[0].clone().try_into()?;
                 let tx_id = finalise_sha_atomic_swap(
                     output_service.clone(),
                     transaction_service.clone(),
-                    args.output_hash[0].clone(),
+                    hash,
                     args.pre_image.into(),
                     config.fee_per_gram.into(),
                     args.message,
@@ -751,10 +754,12 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             ClaimShaAtomicSwapRefund(args) => {
+
+                let hash = args.output_hash[0].clone().try_into()?;
                 let tx_id = claim_htlc_refund(
                     output_service.clone(),
                     transaction_service.clone(),
-                    args.output_hash[0].clone(),
+                    hash,
                     config.fee_per_gram.into(),
                     args.message,
                 )

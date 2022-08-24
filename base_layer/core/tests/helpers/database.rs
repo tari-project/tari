@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::{emission::Emission, ConsensusManager},
@@ -42,7 +43,7 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     let (coinbase_utxo, coinbase_kernel, _coinbase_output) =
         create_coinbase(&CryptoFactories::default(), coinbase_value, block_height + lock_height);
     let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
-    header.prev_hash = Vec::from([1u8; 32]); // Random
+    header.prev_hash = Vec::from([1u8; 32]).try_into().unwrap(); // Random
     header.height = block_height;
 
     let template = NewBlockTemplate::from_block(

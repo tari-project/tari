@@ -34,7 +34,7 @@ pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PrivateKey},
+    types::{Commitment, FixedHash, PrivateKey},
 };
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
@@ -59,10 +59,8 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
-
 mod new_output_sql;
 mod output_sql;
-
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -178,7 +176,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
-            DbKey::UnspentOutputHash(hash) => match OutputSql::find_by_hash(hash, OutputStatus::Unspent, &(*conn)) {
+            DbKey::UnspentOutputHash(hash) => match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &(*conn)) {
                 Ok(mut o) => {
                     self.decrypt_if_necessary(&mut o)?;
                     Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
@@ -463,9 +461,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
     fn set_received_output_mined_height(
         &self,
-        hash: Vec<u8>,
+        hash: FixedHash,
         mined_height: u64,
-        mined_in_block: Vec<u8>,
+        mined_in_block: FixedHash,
         mmr_position: u64,
         confirmed: bool,
         mined_timestamp: u64,
@@ -482,6 +480,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             target: LOG_TARGET,
             "`set_received_output_mined_height` status: {}", status
         );
+        let hash = hash.to_vec();
+        let mined_in_block = mined_in_block.to_vec();
         // Only allow updating of non-deleted utxos
         diesel::update(outputs::table.filter(outputs::hash.eq(hash).and(outputs::marked_deleted_at_height.is_null())))
             .set((
@@ -506,11 +506,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn set_output_to_unmined(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError> {
+    fn set_output_to_unmined(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         // Only allow updating of non-deleted utxos
+        let hash = hash.to_vec();
         diesel::update(outputs::table.filter(outputs::hash.eq(hash).and(outputs::marked_deleted_at_height.is_null())))
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
@@ -564,14 +565,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
     fn mark_output_as_spent(
         &self,
-        hash: Vec<u8>,
+        hash: FixedHash,
         mark_deleted_at_height: u64,
-        mark_deleted_in_block: Vec<u8>,
+        mark_deleted_in_block: FixedHash,
         confirmed: bool,
     ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+        let hash = hash.to_vec();
+        let mark_deleted_in_block = mark_deleted_in_block.to_vec();
         let status = if confirmed {
             OutputStatus::Spent as i32
         } else {
@@ -607,11 +610,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn mark_output_as_unspent(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError> {
+    fn mark_output_as_unspent(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-
+        let hash = hash.to_vec();
         debug!(target: LOG_TARGET, "mark_output_as_unspent({})", hash.to_hex());
         diesel::update(
             outputs::table.filter(

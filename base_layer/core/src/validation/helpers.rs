@@ -23,15 +23,11 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
+use tari_common_types::types::{Commitment, CommitmentFactory, FixedHash, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{
-        epoch_time::EpochTime,
-        hash::Hashable,
-        hex::{to_hex, Hex},
-    },
+    tari_utilities::{epoch_time::EpochTime, hex::Hex},
 };
 use tari_script::TariScript;
 
@@ -596,9 +592,9 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     Ok(())
 }
 
-pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<(), ValidationError> {
-    if db.bad_block_exists(hash.to_vec())? {
-        return Err(ValidationError::BadBlockFound { hash: to_hex(hash) });
+pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
+    if db.bad_block_exists(hash)? {
+        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
     }
     Ok(())
 }

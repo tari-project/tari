@@ -30,7 +30,7 @@ use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hex::Hex;
 use tokio::sync::Semaphore;
 
 use crate::{

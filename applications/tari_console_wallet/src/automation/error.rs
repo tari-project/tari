@@ -37,6 +37,7 @@ use tari_wallet::{
 };
 use thiserror::Error;
 use tokio::task::JoinError;
+use tari_common_types::types::FixedHashSizeError;
 
 pub const LOG_TARGET: &str = "wallet::automation::error";
 
@@ -79,6 +80,8 @@ pub enum CommandError {
     IoError(#[from] io::Error),
     #[error("General error: {0}")]
     General(String),
+    #[error("FixedHash size error `{0}`")]
+    FixedHashSizeError(#[from] FixedHashSizeError),
 }
 
 impl From<CommandError> for ExitError {

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -30,7 +30,7 @@ use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, PeerConnection};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tracing;
 
 use super::error::BlockSyncError;
@@ -218,9 +218,9 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             tip_hash.to_hex()
         );
         let request = SyncBlocksRequest {
-            start_hash: best_full_block_hash.clone(),
+            start_hash: best_full_block_hash.to_vec(),
             // To the tip!
-            end_hash: tip_hash.clone(),
+            end_hash: tip_hash.to_vec(),
         };
 
         let mut block_stream = client.sync_blocks(request).await?;
@@ -235,7 +235,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             let header = self
                 .db
-                .fetch_chain_header_by_block_hash(block.hash.clone())
+                .fetch_chain_header_by_block_hash(block.hash.clone().try_into()?)
                 .await?
                 .ok_or_else(|| {
                     BlockSyncError::ProtocolViolation(format!(

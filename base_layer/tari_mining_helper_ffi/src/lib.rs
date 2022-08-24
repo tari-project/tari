@@ -39,7 +39,6 @@ use tari_core::{
     proof_of_work::sha3_difficulty,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_utilities::Hashable;
 
 use crate::error::{InterfaceError, MiningHelperError};
 

@@ -63,6 +63,7 @@ use crate::{
     },
     utxo_scanner_service::service::ScannedBlock,
 };
+use std::convert::TryFrom;
 
 const LOG_TARGET: &str = "wallet::storage::wallet";
 
@@ -550,7 +551,8 @@ impl WalletBackend for WalletSqliteDatabase {
 
     fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
-        ScannedBlockSql::index(&conn).map(|sb| sb.into_iter().map(ScannedBlock::from).collect())
+        let sql_blocks = ScannedBlockSql::index(&conn)?;
+        sql_blocks.into_iter().map(ScannedBlock::try_from).collect::<Result<Vec<_>, _>>().map_err(WalletStorageError::ConversionError)
     }
 
     fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError> {

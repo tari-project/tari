@@ -33,10 +33,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
-use tari_crypto::{
-    commitment::HomomorphicCommitment,
-    tari_utilities::{hex::Hex, Hashable},
-};
+use tari_crypto::{commitment::HomomorphicCommitment, tari_utilities::hex::Hex};
 use tokio::task;
 
 use super::error::HorizonSyncError;
@@ -282,7 +279,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut current_header = self.db().fetch_header_containing_kernel_mmr(local_num_kernels).await?;
         let req = SyncKernelsRequest {
             start: local_num_kernels,
-            end_header_hash: to_header.hash(),
+            end_header_hash: to_header.hash().to_vec(),
         };
         let mut kernel_stream = client.sync_kernels(req).await?;
 
@@ -331,7 +328,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let mut kernel_mmr = PrunedKernelMmr::new(kernel_pruned_set);
 
                 for hash in kernel_hashes.drain(..) {
-                    kernel_mmr.push(hash)?;
+                    kernel_mmr.push(hash.to_vec())?;
                 }
 
                 let mmr_root = kernel_mmr.get_merkle_root()?;
@@ -459,7 +456,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let req = SyncUtxosRequest {
             start,
-            end_header_hash: end_hash,
+            end_header_hash: end_hash.to_vec(),
             include_deleted_bitmaps: true,
             include_pruned_utxos: true,
         };
@@ -526,8 +523,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     helpers::check_tari_script_byte_size(&output.script, constants.get_max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
-                    output_mmr.push(output.hash())?;
-                    witness_mmr.push(output.witness_hash())?;
+                    output_mmr.push(output.hash().to_vec())?;
+                    witness_mmr.push(output.witness_hash().to_vec())?;
 
                     txn.insert_output_via_horizon_sync(
                         output,
@@ -552,8 +549,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     witness_mmr.push(utxo.witness_hash.clone())?;
 
                     txn.insert_pruned_output_via_horizon_sync(
-                        utxo.hash,
-                        utxo.witness_hash,
+                        utxo.hash.try_into()?,
+                        utxo.witness_hash.try_into()?,
                         current_header.hash().clone(),
                         current_header.height(),
                         u32::try_from(mmr_position)?,

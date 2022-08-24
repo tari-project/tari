@@ -27,7 +27,6 @@ use tari_common_types::types::Commitment;
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_script::script;
 use tari_test_utils::unpack_enum;
-use tari_utilities::Hashable;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},

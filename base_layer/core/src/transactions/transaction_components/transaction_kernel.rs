@@ -31,8 +31,8 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey, Signature};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
 use super::TransactionKernelVersion;
 use crate::{
@@ -89,6 +89,14 @@ impl TransactionKernel {
             excess_sig,
             burn_commitment,
         }
+    }
+
+    /// Produce a canonical hash for a transaction kernel.
+    pub fn hash(&self) -> FixedHash {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_kernel")
+            .chain(self)
+            .finalize()
+            .into()
     }
 
     pub fn new_current_version(
@@ -187,16 +195,6 @@ impl TransactionKernel {
             .chain(features)
             .chain(burn_commitment)
             .finalize()
-    }
-}
-
-impl Hashable for TransactionKernel {
-    /// Produce a canonical hash for a transaction kernel.
-    fn hash(&self) -> Vec<u8> {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_kernel")
-            .chain(self)
-            .finalize()
-            .to_vec()
     }
 }
 

@@ -19,10 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 
 use log::*;
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, FixedHash};
 use tari_comms::protocol::rpc::RpcError::RequestFailed;
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
@@ -30,7 +34,7 @@ use tari_core::{
     proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -127,7 +131,7 @@ where
             // This assumes that the base node has not reorged since the last time we asked.
             let deleted_bitmap_response = wallet_client
                 .query_deleted(QueryDeletedRequest {
-                    chain_must_include_header: last_mined_header_hash.clone(),
+                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()),
                     mmr_positions: batch.iter().filter_map(|ub| ub.mined_mmr_position).collect(),
                     include_deleted_block_data: true,
                 })
@@ -166,7 +170,13 @@ where
                         .for_protocol(self.operation_id)?;
 
                     let deleted_height = deleted_bitmap_response.heights_deleted_at[position];
-                    let deleted_block = deleted_bitmap_response.blocks_deleted_in[position].clone();
+                    let deleted_block = match deleted_bitmap_response.blocks_deleted_in[position].clone().try_into() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            debug!(target: LOG_TARGET, "Received malformed deleted_block",);
+                            continue;
+                        },
+                    };
 
                     let confirmed = (deleted_bitmap_response.height_of_longest_chain - deleted_height) >=
                         self.config.num_confirmations_required;
@@ -396,7 +406,7 @@ where
         ),
         OutputManagerError,
     > {
-        let batch_hashes = batch.iter().map(|o| o.hash.clone()).collect();
+        let batch_hashes = batch.iter().map(|o| o.hash.to_vec()).collect();
 
         let batch_response = base_node_client
             .utxo_query(UtxoQueryRequest {
@@ -409,18 +419,36 @@ where
 
         let mut returned_outputs = HashMap::new();
         for output_proto in &batch_response.responses {
-            returned_outputs.insert(output_proto.output_hash.clone(), output_proto);
+            match FixedHash::try_from(output_proto.output_hash.clone()) {
+                Ok(v) => {
+                    returned_outputs.insert(v, output_proto);
+                },
+                Err(_) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Malformed utxo hash received from node: {:?}", output_proto
+                    )
+                },
+            };
         }
 
         for output in batch {
             if let Some(returned_output) = returned_outputs.get(&output.hash) {
-                mined.push((
-                    output.clone(),
-                    returned_output.mined_height,
-                    returned_output.mined_in_block.clone(),
-                    returned_output.mmr_position,
-                    returned_output.mined_timestamp,
-                ))
+                match returned_output.mined_in_block.clone().try_into() {
+                    Ok(block_hash) => mined.push((
+                        output.clone(),
+                        returned_output.mined_height,
+                        block_hash,
+                        returned_output.mmr_position,
+                        returned_output.mined_timestamp,
+                    )),
+                    Err(_) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Malformed block hash received from node: {:?}", returned_output
+                        )
+                    },
+                };
             } else {
                 unmined.push(output.clone());
             }

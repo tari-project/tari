@@ -27,7 +27,7 @@ use tari_common_types::types::{BlindingFactor, BlockHash};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::block_header::{hash_serializer, BlockHeader},
+    blocks::block_header::{fixed_hash_serializer, BlockHeader},
     proof_of_work::ProofOfWork,
 };
 
@@ -40,7 +40,7 @@ pub struct NewBlockHeaderTemplate {
     /// Height of this block since the genesis block (height 0)
     pub height: u64,
     /// Hash of the block previous to this in the chain.
-    #[serde(with = "hash_serializer")]
+    #[serde(with = "fixed_hash_serializer")]
     pub prev_hash: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.

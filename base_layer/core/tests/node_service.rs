@@ -53,7 +53,6 @@ use tari_core::{
     },
 };
 use tari_test_utils::unpack_enum;
-use tari_utilities::Hashable;
 use tempfile::tempdir;
 
 use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
