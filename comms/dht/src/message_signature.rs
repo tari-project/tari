@@ -68,7 +68,7 @@ impl MessageSignature {
         }
     }
 
-    /// Returns true if the provided message valid for this origin MAC, otherwise false.
+    /// Returns true if the provided message valid for this message signature, otherwise false.
     pub fn verify(&self, message: &[u8]) -> bool {
         let challenge =
             construct_message_signature_hash(&self.signer_public_key, self.signature.get_public_nonce(), message);
@@ -95,13 +95,13 @@ impl TryFrom<ProtoMessageSignature> for MessageSignature {
 
     fn try_from(message_signature: ProtoMessageSignature) -> Result<Self, Self::Error> {
         let signer_public_key = CommsPublicKey::from_bytes(&message_signature.signer_public_key)
-            .map_err(|_| MessageSignatureError::InvalidSignerPublicKey)?;
+            .map_err(|_| MessageSignatureError::InvalidSignerPublicKeyBytes)?;
 
         let public_nonce = CommsPublicKey::from_bytes(&message_signature.public_nonce)
-            .map_err(|_| MessageSignatureError::InvalidPublicNonce)?;
+            .map_err(|_| MessageSignatureError::InvalidPublicNonceBytes)?;
 
         let signature = CommsSecretKey::from_bytes(&message_signature.signature)
-            .map_err(|_| MessageSignatureError::InvalidSignature)?;
+            .map_err(|_| MessageSignatureError::InvalidSignatureBytes)?;
 
         Ok(Self {
             signer_public_key,
@@ -123,15 +123,13 @@ pub struct ProtoMessageSignature {
 
 #[derive(Debug, thiserror::Error)]
 pub enum MessageSignatureError {
-    #[error("Failed to decrypt origin MAC")]
-    DecryptedFailed,
-    #[error("Failed to validate origin MAC signature")]
-    InvalidSignature,
-    #[error("Origin MAC contained an invalid public nonce")]
-    InvalidPublicNonce,
-    #[error("Origin MAC contained an invalid signer public key")]
-    InvalidSignerPublicKey,
-    #[error("Origin MAC failed to verify")]
+    #[error("Failed to validate message signature")]
+    InvalidSignatureBytes,
+    #[error("Message signature contained an invalid public nonce")]
+    InvalidPublicNonceBytes,
+    #[error("Message signature contained an invalid signer public key")]
+    InvalidSignerPublicKeyBytes,
+    #[error("Message signature failed to verify")]
     VerificationFailed,
 }
 

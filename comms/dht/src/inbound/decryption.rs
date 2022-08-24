@@ -37,7 +37,7 @@ use tower::{layer::Layer, Service, ServiceExt};
 use crate::{
     crypt,
     envelope::DhtMessageHeader,
-    inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
+    inbound::message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
     message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
     DhtConfig,
 };
@@ -46,20 +46,24 @@ const LOG_TARGET: &str = "comms::middleware::decryption";
 
 #[derive(Error, Debug)]
 enum DecryptionError {
-    #[error("Failed to validate origin MAC signature")]
-    MessageSignatureInvalidSignature,
-    #[error("Origin MAC not provided for encrypted message")]
-    MessageSignatureNotProvided,
+    #[error("Failed to validate ENCRYPTED message signature")]
+    MessageSignatureInvalidEncryptedSignature,
+    #[error("Failed to validate CLEARTEXT message signature")]
+    MessageSignatureInvalidClearTextSignature,
+    #[error("Message signature not provided for encrypted message")]
+    MessageSignatureNotProvidedForEncryptedMessage,
     #[error("Failed to decrypt message signature")]
     MessageSignatureDecryptedFailed,
     #[error("Failed to deserialize message signature")]
     MessageSignatureDeserializedFailed,
-    #[error("Failed to decode clear-text origin MAC")]
+    #[error("Failed to decode clear-text message signature")]
     MessageSignatureClearTextDecodeFailed,
-    #[error("Origin MAC error: {0}")]
-    MessageSignatureError(#[from] MessageSignatureError),
+    #[error("Message signature error for cleartext message: {0}")]
+    MessageSignatureErrorClearText(MessageSignatureError),
+    #[error("Message signature error for encrypted message: {0}")]
+    MessageSignatureErrorEncrypted(MessageSignatureError),
     #[error("Ephemeral public key not provided for encrypted message")]
-    EphemeralKeyNotProvided,
+    EphemeralKeyNotProvidedForEncryptedMessage,
     #[error("Message rejected because this node could not decrypt a message that was addressed to it")]
     MessageRejectDecryptionFailed,
     #[error("Failed to decode envelope body")]
@@ -169,12 +173,27 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Passing onto next service (Trace: {})", msg.tag);
                 next_service.oneshot(msg).await
             },
+            // The peer received an invalid message signature however we cannot ban the source peer because they have no
+            // way to validate this
+            Err(err @ MessageSignatureInvalidEncryptedSignature) | Err(err @ MessageSignatureErrorEncrypted(_)) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "SECURITY: {} ({}, peer={}, trace={}). Message discarded", err, tag, source.node_id, trace_id
+                );
+                Err(err.into())
+            },
 
-            Err(err @ MessageSignatureNotProvided) |
-            Err(err @ EphemeralKeyNotProvided) |
+            // These are verifiable error cases that can be checked by every node
+            Err(err @ MessageSignatureNotProvidedForEncryptedMessage) |
+            Err(err @ EphemeralKeyNotProvidedForEncryptedMessage) |
+            Err(err @ MessageSignatureClearTextDecodeFailed) |
+            Err(err @ MessageSignatureInvalidClearTextSignature) |
             Err(err @ EncryptedMessageNoDestination) |
-            Err(err @ MessageSignatureInvalidSignature) |
-            Err(err @ MessageSignatureError(_)) => {
+            Err(err @ MessageSignatureErrorClearText(_)) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "SECURITY: {} ({}, peer={}, trace={}). Message discarded", err, tag, source.node_id, trace_id
+                );
                 // This message should not have been propagated, or has been manipulated in some way. Ban the source of
                 // this message.
                 connectivity
@@ -201,25 +220,30 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
-        let dht_header = &message.dht_header;
+        let validated_msg = Self::initial_validation(message)?;
 
-        if !dht_header.flags.is_encrypted() {
-            return Self::success_not_encrypted(message).await;
+        if !validated_msg.header().flags.is_encrypted() {
+            return Self::success_not_encrypted(validated_msg).await;
         }
+
         trace!(
             target: LOG_TARGET,
             "Decrypting message {} (Trace: {})",
-            message.tag,
-            message.dht_header.message_tag
+            validated_msg.message().tag,
+            validated_msg.message().dht_header.message_tag
         );
 
-        // Check if there is no destination specified and discard
-        if dht_header.destination.is_unknown() {
-            return Err(DecryptionError::EncryptedMessageNoDestination);
-        }
+        let dht_header = validated_msg.header();
 
-        if !message.dht_header.destination.is_unknown() &&
-            message
+        let e_pk = dht_header
+            .ephemeral_public_key
+            .as_ref()
+            // No ephemeral key with ENCRYPTED flag set
+            .ok_or( DecryptionError::EphemeralKeyNotProvidedForEncryptedMessage)?;
+
+        if !validated_msg.message().dht_header.destination.is_unknown() &&
+            validated_msg
+                .message()
                 .dht_header
                 .destination
                 .public_key()
@@ -229,20 +253,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             debug!(
                 target: LOG_TARGET,
                 "Encrypted message (source={}, {}) not destined for this peer. Passing to next service (Trace: {})",
-                message.source_peer.node_id,
-                message.dht_header.message_tag,
-                message.tag
+                validated_msg.message().source_peer.node_id,
+                validated_msg.message().dht_header.message_tag,
+                validated_msg.message().tag
             );
-            return Ok(DecryptedDhtMessage::failed(message));
+            return Ok(DecryptedDhtMessage::failed(validated_msg.into_message()));
         }
 
-        let e_pk = dht_header
-            .ephemeral_public_key
-            .as_ref()
-            // No ephemeral key with ENCRYPTED flag set
-            .ok_or( DecryptionError::EphemeralKeyNotProvided)?;
-
         let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
+        let message = validated_msg.message();
 
         // Decrypt and verify the origin
         let authenticated_origin = match Self::attempt_decrypt_message_signature(&shared_secret, dht_header) {
@@ -251,7 +270,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 // ECDH secret but the message could not be authenticated
                 let binding_message_representation =
                     crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
-                Self::authenticate_message_signature(&message_signature, &binding_message_representation)?;
+
+                if !message_signature.verify(&binding_message_representation) {
+                    return Err(DecryptionError::MessageSignatureInvalidEncryptedSignature);
+                }
                 message_signature.into_signer_public_key()
             },
             Err(err) => {
@@ -273,7 +295,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     );
                     return Err(DecryptionError::MessageSignatureDecryptedFailed);
                 }
-                return Ok(DecryptedDhtMessage::failed(message));
+                return Ok(DecryptedDhtMessage::failed(validated_msg.into_message()));
             },
         };
 
@@ -293,7 +315,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 Ok(DecryptedDhtMessage::succeeded(
                     message_body,
                     Some(authenticated_origin),
-                    message,
+                    validated_msg.into_message(),
                 ))
             },
             Err(err) => {
@@ -314,8 +336,45 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     return Err(DecryptionError::MessageRejectDecryptionFailed);
                 }
 
-                Ok(DecryptedDhtMessage::failed(message))
+                Ok(DecryptedDhtMessage::failed(validated_msg.into_message()))
             },
+        }
+    }
+
+    /// Performs message validation that should be performed by all nodes. If an error is encountered, the message is
+    /// invalid and should never have been sent.
+    fn initial_validation(message: DhtInboundMessage) -> Result<ValidatedDhtInboundMessage, DecryptionError> {
+        if message.dht_header.flags.is_encrypted() {
+            // Check if there is no destination specified and discard
+            if message.dht_header.destination.is_unknown() {
+                return Err(DecryptionError::EncryptedMessageNoDestination);
+            }
+
+            // No e_pk is invalid for encrypted messages
+            if message.dht_header.ephemeral_public_key.is_none() {
+                return Err(DecryptionError::EphemeralKeyNotProvidedForEncryptedMessage);
+            }
+
+            Ok(ValidatedDhtInboundMessage::new(message, None))
+        } else if message.dht_header.message_signature.is_empty() {
+            Ok(ValidatedDhtInboundMessage::new(message, None))
+        } else {
+            let message_signature: MessageSignature =
+                ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
+                    .map_err(|_| DecryptionError::MessageSignatureClearTextDecodeFailed)?
+                    .try_into()
+                    .map_err(DecryptionError::MessageSignatureErrorClearText)?;
+
+            let binding_message_representation =
+                crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
+
+            if !message_signature.verify(&binding_message_representation) {
+                return Err(DecryptionError::MessageSignatureInvalidClearTextSignature);
+            }
+            Ok(ValidatedDhtInboundMessage::new(
+                message,
+                Some(message_signature.into_signer_public_key()),
+            ))
         }
     }
 
@@ -326,7 +385,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let encrypted_message_signature = Some(&dht_header.message_signature)
             .filter(|b| !b.is_empty())
             // This should not have been sent/propagated
-            .ok_or( DecryptionError::MessageSignatureNotProvided)?;
+            .ok_or( DecryptionError::MessageSignatureNotProvidedForEncryptedMessage)?;
 
         // obtain key signature for authenticated decrypt signature
         let key_signature = crypt::generate_key_signature_for_authenticated_encryption(shared_secret);
@@ -335,19 +394,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let message_signature = ProtoMessageSignature::decode(decrypted_bytes.as_slice())
             .map_err(|_| DecryptionError::MessageSignatureDeserializedFailed)?;
 
-        let message_signature = message_signature.try_into()?;
+        let message_signature = message_signature
+            .try_into()
+            .map_err(DecryptionError::MessageSignatureErrorEncrypted)?;
         Ok(message_signature)
-    }
-
-    fn authenticate_message_signature(
-        message_signature: &MessageSignature,
-        message: &[u8],
-    ) -> Result<(), DecryptionError> {
-        if message_signature.verify(message) {
-            Ok(())
-        } else {
-            Err(DecryptionError::MessageSignatureInvalidSignature)
-        }
     }
 
     fn attempt_decrypt_message_body(
@@ -385,31 +435,24 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .map_err(|_| DecryptionError::MessageBodyDecryptionFailed)
     }
 
-    async fn success_not_encrypted(message: DhtInboundMessage) -> Result<DecryptedDhtMessage, DecryptionError> {
-        let authenticated_pk = if message.dht_header.message_signature.is_empty() {
-            None
-        } else {
-            let message_signature: MessageSignature =
-                ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
-                    .map_err(|_| DecryptionError::MessageSignatureClearTextDecodeFailed)?
-                    .try_into()?;
-
-            let binding_message_representation =
-                crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
-
-            Self::authenticate_message_signature(&message_signature, &binding_message_representation)?;
-            Some(message_signature.into_signer_public_key())
-        };
-
-        match EnvelopeBody::decode(message.body.as_slice()) {
+    async fn success_not_encrypted(
+        validated: ValidatedDhtInboundMessage,
+    ) -> Result<DecryptedDhtMessage, DecryptionError> {
+        let authenticated_pk = validated.authenticated_origin().cloned();
+        let msg = validated.message();
+        match EnvelopeBody::decode(msg.body.as_slice()) {
             Ok(deserialized) => {
                 trace!(
                     target: LOG_TARGET,
                     "Message {} is not encrypted. Passing onto next service (Trace: {})",
-                    message.tag,
-                    message.dht_header.message_tag
+                    msg.tag,
+                    msg.dht_header.message_tag
                 );
-                Ok(DecryptedDhtMessage::succeeded(deserialized, authenticated_pk, message))
+                Ok(DecryptedDhtMessage::succeeded(
+                    deserialized,
+                    authenticated_pk,
+                    validated.into_message(),
+                ))
             },
             Err(err) => {
                 // Message was not encrypted but failed to deserialize - immediately discard
@@ -417,9 +460,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 debug!(
                     target: LOG_TARGET,
                     "Unable to deserialize message {}: {}. Message will be discarded. (Trace: {})",
-                    message.tag,
+                    msg.tag,
                     err,
-                    message.dht_header.message_tag
+                    msg.dht_header.message_tag
                 );
                 Err(DecryptionError::EnvelopeBodyDecodeFailed)
             },
@@ -433,18 +476,25 @@ mod test {
 
     use futures::{executor::block_on, future};
     use tari_comms::{
-        message::MessageExt,
+        message::{MessageExt, MessageTag},
         runtime,
         test_utils::mocks::create_connectivity_mock,
         wrap_in_envelope_body,
     };
     use tari_test_utils::{counter_context, unpack_enum};
+    use tokio::time::sleep;
     use tower::service_fn;
 
     use super::*;
     use crate::{
-        envelope::DhtMessageFlags,
-        test_utils::{make_dht_inbound_message, make_node_identity},
+        envelope::{DhtEnvelope, DhtMessageFlags},
+        test_utils::{
+            make_dht_header,
+            make_dht_inbound_message,
+            make_keypair,
+            make_node_identity,
+            make_valid_message_signature,
+        },
     };
 
     #[test]
@@ -525,7 +575,6 @@ mod test {
 
     #[runtime::test]
     async fn decrypt_inbound_fail_destination() {
-        let _ = env_logger::try_init();
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
         let result = Arc::new(Mutex::new(None));
@@ -551,7 +600,6 @@ mod test {
 
     #[runtime::test]
     async fn decrypt_inbound_fail_no_destination() {
-        let _ = env_logger::try_init();
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
         let result = Arc::new(Mutex::new(None));
@@ -579,5 +627,120 @@ mod test {
         let err = err.downcast::<DecryptionError>().unwrap();
         unpack_enum!(DecryptionError::EncryptedMessageNoDestination = err);
         assert!(result.lock().unwrap().is_none());
+    }
+
+    #[runtime::test]
+    async fn decrypt_inbound_fail_invalid_signature_encrypted() {
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
+        });
+        let node_identity = make_node_identity();
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
+
+        let plain_text_msg = b"Secret message".to_vec();
+        let (e_secret_key, e_public_key) = make_keypair();
+        let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
+        let key_message = crypt::generate_key_message(&shared_secret);
+        let msg_tag = MessageTag::new();
+
+        let message = crypt::encrypt(&key_message, &plain_text_msg);
+        let header = make_dht_header(
+            &node_identity,
+            &e_public_key,
+            &e_secret_key,
+            &message,
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            msg_tag,
+            true,
+        )
+        .unwrap();
+        let envelope = DhtEnvelope::new(header.into(), &message.into());
+        let msg_tag = MessageTag::new();
+        let mut inbound_msg = DhtInboundMessage::new(
+            msg_tag,
+            envelope.header.unwrap().try_into().unwrap(),
+            Arc::new(node_identity.to_peer()),
+            envelope.body,
+        );
+
+        // Sign invalid data. Other peers cannot validate this while propagating, but this should not cause them to be
+        // banned.
+        let signature = make_valid_message_signature(&node_identity, b"sign invalid data");
+        let key_signature = crypt::generate_key_signature_for_authenticated_encryption(&shared_secret);
+
+        inbound_msg.dht_header.message_signature =
+            crypt::encrypt_with_chacha20_poly1305(&key_signature, &signature).unwrap();
+
+        let err = service.call(inbound_msg).await.unwrap_err();
+        let err = err.downcast::<DecryptionError>().unwrap();
+        unpack_enum!(DecryptionError::MessageSignatureInvalidEncryptedSignature = err);
+        assert!(result.lock().unwrap().is_none());
+
+        // Proving a negative i.e. ban is not called, we have no choice but to sleep to wait for any potential calls to
+        // be registered. This should ensure that if this bug re-occurs that this test is flaky.
+        sleep(Duration::from_secs(1)).await;
+        assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
+    }
+
+    #[runtime::test]
+    async fn decrypt_inbound_fail_invalid_signature_cleartext() {
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
+        });
+        let node_identity = make_node_identity();
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
+
+        let plain_text_msg = b"Public message".to_vec();
+        let (e_secret_key, e_public_key) = make_keypair();
+        let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
+        let key_message = crypt::generate_key_message(&shared_secret);
+        let msg_tag = MessageTag::new();
+
+        let message = crypt::encrypt(&key_message, &plain_text_msg);
+        let header = make_dht_header(
+            &node_identity,
+            &e_public_key,
+            &e_secret_key,
+            &message,
+            DhtMessageFlags::NONE,
+            true,
+            msg_tag,
+            true,
+        )
+        .unwrap();
+        let envelope = DhtEnvelope::new(header.into(), &message.into());
+        let msg_tag = MessageTag::new();
+        let mut inbound_msg = DhtInboundMessage::new(
+            msg_tag,
+            envelope.header.unwrap().try_into().unwrap(),
+            Arc::new(node_identity.to_peer()),
+            envelope.body,
+        );
+
+        inbound_msg.dht_header.ephemeral_public_key = Some(e_public_key.clone());
+        inbound_msg.dht_header.message_signature = make_valid_message_signature(&node_identity, b"sign invalid data");
+
+        let err = service.call(inbound_msg).await.unwrap_err();
+        let err = err.downcast::<DecryptionError>().unwrap();
+        unpack_enum!(DecryptionError::MessageSignatureInvalidClearTextSignature = err);
+        assert!(result.lock().unwrap().is_none());
+
+        mock_state.await_call_count(1).await;
+        assert_eq!(mock_state.count_calls_containing("BanPeer").await, 1);
     }
 }
