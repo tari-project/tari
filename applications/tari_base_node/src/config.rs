@@ -27,6 +27,7 @@ use std::{
 
 use config::Config;
 use serde::{Deserialize, Serialize};
+use tari_app_utilities::consts;
 use tari_common::{
     configuration::{serializers, CommonConfig, Network, StringList},
     ConfigurationError,
@@ -139,6 +140,7 @@ impl Default for BaseNodeConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             datastore_path: PathBuf::from("peer_db/base_node"),
+            user_agent: format!("tari/basenode/{}", consts::APP_VERSION_NUMBER),
             ..Default::default()
         };
         Self {

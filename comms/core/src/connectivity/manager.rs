@@ -556,6 +556,15 @@ impl ConnectivityManagerActor {
             PeerConnected(conn) => (conn.peer_node_id(), ConnectionStatus::Connected, Some(conn.clone())),
 
             PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
+                if let Some(conn) = self.pool.get_connection(node_id) {
+                    if conn.is_connected() && conn.direction().is_inbound() {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Ignoring DialCancelled({}) event because an inbound connection already exists", node_id
+                        );
+                        return Ok(());
+                    }
+                }
                 debug!(
                     target: LOG_TARGET,
                     "Dial was cancelled before connection completed to peer '{}'", node_id

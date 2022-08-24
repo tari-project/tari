@@ -20,47 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use sha3::{Digest, Sha3_256};
-use tari_app_grpc::tari_rpc::BlockHeader;
-use tari_core::large_ints::U256;
-use tari_utilities::ByteArray;
+use std::convert::TryInto;
 
-use crate::errors::{err_empty, MinerError};
+use sha3::{Digest, Sha3_256};
+use tari_app_grpc::tari_rpc::BlockHeader as grpc_header;
+use tari_core::{blocks::BlockHeader, large_ints::U256};
+use tari_utilities::epoch_time::EpochTime;
+
+use crate::errors::MinerError;
 
 pub type Difficulty = u64;
 
 #[derive(Clone)]
 pub struct BlockHeaderSha3 {
-    header: BlockHeader,
-    pow_bytes: Vec<u8>,
-    hash_before_timestamp: Sha3_256,
-    pub timestamp: u64,
-    pub nonce: u64,
+    pub header: BlockHeader,
+    hash_merge_mining: Sha3_256,
     pub hashes: u64,
 }
 
 impl BlockHeaderSha3 {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    pub fn new(header: BlockHeader) -> Result<Self, MinerError> {
-        use std::convert::TryFrom;
+    pub fn new(header: grpc_header) -> Result<Self, MinerError> {
+        let header: BlockHeader = header.try_into().map_err(MinerError::BlockHeader)?;
 
-        use tari_core::proof_of_work::ProofOfWork; // this is only dep left on tari_code
-
-        // Not stressing about efficiency here as it will change soon
-        let pow = ProofOfWork::try_from(header.pow.clone().ok_or_else(|| err_empty("header.pow"))?)
-            .map_err(MinerError::BlockHeader)?;
-        let timestamp = header.timestamp.as_ref().ok_or_else(|| err_empty("header.timestamp"))?;
-        let hash_before_timestamp = Sha3_256::new()
-            .chain((header.version as u16).to_le_bytes())
-            .chain(header.height.to_le_bytes())
-            .chain(header.prev_hash.as_bytes());
+        let hash_merge_mining = Sha3_256::new().chain(header.mining_hash());
 
         Ok(Self {
-            pow_bytes: pow.to_bytes(),
-            hash_before_timestamp,
-            timestamp: timestamp.seconds as u64,
-            nonce: header.nonce,
+            hash_merge_mining,
             header,
             hashes: 0,
         })
@@ -68,17 +55,7 @@ impl BlockHeaderSha3 {
 
     #[inline]
     fn get_hash_before_nonce(&self) -> Sha3_256 {
-        self.hash_before_timestamp
-            .clone()
-            .chain(self.timestamp.to_le_bytes())
-            .chain(self.header.input_mr.as_bytes())
-            .chain(self.header.output_mr.as_bytes())
-            .chain(self.header.output_mmr_size.to_le_bytes())
-            .chain(self.header.witness_mr.as_bytes())
-            .chain(self.header.kernel_mr.as_bytes())
-            .chain(self.header.kernel_mmr_size.to_le_bytes())
-            .chain(self.header.total_kernel_offset.as_bytes())
-            .chain(self.header.total_script_offset.as_bytes())
+        self.hash_merge_mining.clone()
     }
 
     /// This function will update the timestamp of the header, but only if the new timestamp is greater than the current
@@ -86,19 +63,20 @@ impl BlockHeaderSha3 {
     pub fn set_forward_timestamp(&mut self, timestamp: u64) {
         // if the timestamp has been advanced by the base_node due to the median time we should not reverse it but we
         // should only change the timestamp if we move it forward.
-        if timestamp > self.timestamp {
-            self.timestamp = timestamp;
+        if timestamp > self.header.timestamp.as_u64() {
+            self.header.timestamp = EpochTime::from(timestamp);
+            self.hash_merge_mining = Sha3_256::new().chain(self.header.mining_hash());
         }
     }
 
     pub fn random_nonce(&mut self) {
         use rand::{rngs::OsRng, RngCore};
-        self.nonce = OsRng.next_u64();
+        self.header.nonce = OsRng.next_u64();
     }
 
     #[inline]
     pub fn inc_nonce(&mut self) {
-        self.nonce = self.nonce.wrapping_add(1);
+        self.header.nonce = self.header.nonce.wrapping_add(1);
     }
 
     #[inline]
@@ -106,22 +84,16 @@ impl BlockHeaderSha3 {
         self.hashes = self.hashes.saturating_add(1);
         let hash = self
             .get_hash_before_nonce()
-            .chain(self.nonce.to_le_bytes())
-            .chain(&self.pow_bytes)
+            .chain(self.header.nonce.to_le_bytes())
+            .chain(self.header.pow.to_bytes())
             .finalize();
         let hash = Sha3_256::digest(&hash);
         big_endian_difficulty(&hash)
     }
 
     #[allow(clippy::cast_possible_wrap)]
-    pub fn create_header(&self) -> BlockHeader {
-        let mut header = self.header.clone();
-        header.timestamp = Some(prost_types::Timestamp {
-            seconds: self.timestamp as i64,
-            nanos: 0,
-        });
-        header.nonce = self.nonce;
-        header
+    pub fn create_header(&self) -> grpc_header {
+        self.header.clone().into()
     }
 
     #[inline]
@@ -140,13 +112,13 @@ fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
 #[cfg(test)]
 pub mod test {
     use chrono::{DateTime, NaiveDate, Utc};
-    use tari_core::{blocks::BlockHeader as CoreBlockHeader, proof_of_work::sha3_difficulty as core_sha3_difficulty};
+    use tari_core::proof_of_work::sha3_difficulty as core_sha3_difficulty;
 
     use super::*;
 
     #[allow(clippy::cast_sign_loss)]
-    pub fn get_header() -> (BlockHeader, CoreBlockHeader) {
-        let mut header = CoreBlockHeader::new(0);
+    pub fn get_header() -> (grpc_header, BlockHeader) {
+        let mut header = BlockHeader::new(0);
         header.timestamp =
             (DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).timestamp() as u64)
                 .into();
@@ -165,7 +137,7 @@ pub mod test {
                 hasher.difficulty(),
                 core_sha3_difficulty(&core_header).as_u64(),
                 "with nonces = {}:{}",
-                hasher.nonce,
+                hasher.header.nonce,
                 core_header.nonce
             );
             core_header.nonce += 1;
