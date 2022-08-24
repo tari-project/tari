@@ -67,6 +67,7 @@ pub enum ContactOnlineStatus {
     Online,
     Offline,
     NeverSeen,
+    Banned(String),
 }
 
 impl Display for ContactOnlineStatus {
@@ -75,6 +76,7 @@ impl Display for ContactOnlineStatus {
             ContactOnlineStatus::Online => write!(f, "Online"),
             ContactOnlineStatus::Offline => write!(f, "Offline"),
             ContactOnlineStatus::NeverSeen => write!(f, "NeverSeen"),
+            ContactOnlineStatus::Banned(reason) => write!(f, "Banned: {}", reason),
         }
     }
 }
@@ -226,8 +228,8 @@ where T: ContactsBackend + 'static
                 }
                 Ok(result.map(ContactsServiceResponse::Contacts)?)
             },
-            ContactsServiceRequest::GetContactOnlineStatus(last_seen) => {
-                let result = self.get_online_status(last_seen);
+            ContactsServiceRequest::GetContactOnlineStatus(contact) => {
+                let result = self.get_online_status(&contact).await;
                 Ok(result.map(ContactsServiceResponse::OnlineStatus)?)
             },
         }
@@ -277,7 +279,7 @@ where T: ContactsBackend + 'static
                 // Update offline status
                 if let Ok(contacts) = self.db.get_contacts().await {
                     for contact in contacts {
-                        let online_status = self.get_online_status(contact.last_seen)?;
+                        let online_status = self.get_online_status(&contact).await?;
                         if online_status == ContactOnlineStatus::Online {
                             continue;
                         }
@@ -302,9 +304,17 @@ where T: ContactsBackend + 'static
         Ok(())
     }
 
-    fn get_online_status(&self, last_seen: Option<NaiveDateTime>) -> Result<ContactOnlineStatus, ContactsServiceError> {
+    async fn get_online_status(&self, contact: &Contact) -> Result<ContactOnlineStatus, ContactsServiceError> {
         let mut online_status = ContactOnlineStatus::NeverSeen;
-        if let Some(time) = last_seen {
+        match self.connectivity.get_peer_info(contact.node_id.clone()).await? {
+            Some(peer_data) => {
+                if peer_data.banned_until().is_some() {
+                    return Ok(ContactOnlineStatus::Banned(peer_data.banned_reason));
+                }
+            },
+            None => return Ok(online_status),
+        };
+        if let Some(time) = contact.last_seen {
             if self.is_online(time) {
                 online_status = ContactOnlineStatus::Online;
             } else {

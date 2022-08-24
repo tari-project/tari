@@ -757,7 +757,7 @@ impl AppStateInner {
             let online_status = self
                 .wallet
                 .contacts_service
-                .get_contact_online_status(contact.last_seen)
+                .get_contact_online_status(contact.clone())
                 .await?;
             ui_contacts.push(UiContact::from(contact.clone()).with_online_status(format!("{}", online_status)));
         }

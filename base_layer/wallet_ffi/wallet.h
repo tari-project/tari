@@ -1235,8 +1235,8 @@ int liveness_data_get_message_type(TariContactsLivenessData *liveness_data,
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
  * memory leak
  */
-int liveness_data_get_online_status(TariContactsLivenessData *liveness_data,
-                                    int *error_out);
+const char *liveness_data_get_online_status(TariContactsLivenessData *liveness_data,
+                                            int *error_out);
 
 /**
  * Frees memory for a TariContactsLivenessData

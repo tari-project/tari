@@ -128,7 +128,7 @@ pub enum ContactsServiceRequest {
     UpsertContact(Contact),
     RemoveContact(CommsPublicKey),
     GetContacts,
-    GetContactOnlineStatus(Option<NaiveDateTime>),
+    GetContactOnlineStatus(Contact),
 }
 
 #[derive(Debug)]
@@ -212,11 +212,11 @@ impl ContactsServiceHandle {
     /// Determines the contact's online status based on their last seen time
     pub async fn get_contact_online_status(
         &mut self,
-        last_seen: Option<NaiveDateTime>,
+        contact: Contact,
     ) -> Result<ContactOnlineStatus, ContactsServiceError> {
         match self
             .request_response_service
-            .call(ContactsServiceRequest::GetContactOnlineStatus(last_seen))
+            .call(ContactsServiceRequest::GetContactOnlineStatus(contact))
             .await??
         {
             ContactsServiceResponse::OnlineStatus(status) => Ok(status),
