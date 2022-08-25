@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc, time::Instant};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Instant,
+};
 
 use log::*;
 use tari_comms::{
@@ -28,7 +32,7 @@ use tari_comms::{
     protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
     utils,
 };
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
@@ -71,10 +75,15 @@ where B: BlockchainBackend + 'static
                     RpcStatus::general("DB failure when fetching header containing start index")
                 }
             })?;
+        let hash = msg
+            .end_header_hash
+            .clone()
+            .try_into()
+            .rpc_status_bad_request("Invalid header hash")?;
 
         let end_header = self
             .db
-            .fetch_header_by_block_hash(msg.end_header_hash.clone())
+            .fetch_header_by_block_hash(hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
@@ -92,7 +101,7 @@ where B: BlockchainBackend + 'static
         } else {
             let prev_header = self
                 .db
-                .fetch_header_by_block_hash(start_header.header().prev_hash.clone())
+                .fetch_header_by_block_hash(start_header.header().prev_hash)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| RpcStatus::not_found("Previous start header hash is was not found"))?;

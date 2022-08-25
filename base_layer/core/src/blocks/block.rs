@@ -32,8 +32,8 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PrivateKey;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
@@ -156,6 +156,12 @@ impl Block {
             body: self.body.to_compact(),
         }
     }
+
+    /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
+    /// respective MMR roots in the header itself.
+    pub fn hash(&self) -> FixedHash {
+        self.header.hash()
+    }
 }
 
 impl Display for Block {
@@ -257,14 +263,6 @@ impl BlockBuilder {
         };
         block.body.sort();
         block
-    }
-}
-
-impl Hashable for Block {
-    /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
-    /// respective MMR roots in the header itself.
-    fn hash(&self) -> Vec<u8> {
-        self.header.hash()
     }
 }
 

@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
+
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
@@ -48,7 +50,10 @@ impl HandleCommand<Args> for CommandContext {
         let format = args.format;
         match args.value {
             TypeOrHex::Type(value) => self.get_block(value, format).await,
-            TypeOrHex::Hex(hex) => self.get_block_by_hash(hex.0, format).await,
+            TypeOrHex::Hex(hex) => {
+                let hash = hex.0.try_into()?;
+                self.get_block_by_hash(hash, format).await
+            },
         }
     }
 }
@@ -71,10 +76,7 @@ impl CommandContext {
             .ok_or(ArgsError::NotFoundAt { height })?;
         match format {
             Format::Text => {
-                let block_data = self
-                    .blockchain_db
-                    .fetch_block_accumulated_data(block.hash().clone())
-                    .await?;
+                let block_data = self.blockchain_db.fetch_block_accumulated_data(*block.hash()).await?;
 
                 println!("{}", block);
                 println!("-- Accumulated data --");

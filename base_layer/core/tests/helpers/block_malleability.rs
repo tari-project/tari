@@ -29,7 +29,6 @@ use tari_core::{
     },
     txn_schema,
 };
-use tari_utilities::Hashable;
 
 use super::test_blockchain::TestBlockchain;
 

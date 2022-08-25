@@ -56,7 +56,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
         Ok(Self {
             version: u16::try_from(header.version).unwrap(),
             height: header.height,
-            prev_hash: header.prev_hash,
+            prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
             timestamp,
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
             witness_mr: FixedHash::try_from(header.witness_mr).map_err(|err| err.to_string())?,
@@ -78,7 +78,7 @@ impl From<BlockHeader> for proto::BlockHeader {
         Self {
             version: u32::try_from(header.version).unwrap(),
             height: header.height,
-            prev_hash: header.prev_hash,
+            prev_hash: header.prev_hash.to_vec(),
             timestamp: Some(timestamp),
             output_mr: header.output_mr.to_vec(),
             witness_mr: header.witness_mr.to_vec(),

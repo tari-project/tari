@@ -53,7 +53,6 @@ use tari_core::{
     },
 };
 use tari_test_utils::unpack_enum;
-use tari_utilities::Hashable;
 use tempfile::tempdir;
 
 use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
@@ -406,9 +405,9 @@ async fn propagate_and_forward_invalid_block() {
     }
     assert!(has_banned);
 
-    assert!(!bob_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
-    assert!(!carol_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
-    assert!(!dan_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
+    assert!(!bob_node.blockchain_db.block_exists(*block1_hash).unwrap());
+    assert!(!carol_node.blockchain_db.block_exists(*block1_hash).unwrap());
+    assert!(!dan_node.blockchain_db.block_exists(*block1_hash).unwrap());
 
     alice_node.shutdown().await;
     bob_node.shutdown().await;

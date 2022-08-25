@@ -29,7 +29,6 @@ use tari_core::{
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
-use tari_utilities::Hashable;
 
 use crate::helpers::database::create_orphan_block;
 
@@ -44,21 +43,21 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     ];
     let orphan = create_orphan_block(10, txs, &consensus);
     let hash = orphan.hash();
-    assert!(!db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap());
+    assert!(!db.contains(&DbKey::OrphanBlock(hash)).unwrap());
 
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone().into());
     db.write(txn).unwrap();
 
-    assert!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap());
-    if let Some(DbValue::OrphanBlock(retrieved_orphan)) = db.fetch(&DbKey::OrphanBlock(hash.clone())).unwrap() {
+    assert!(db.contains(&DbKey::OrphanBlock(hash)).unwrap());
+    if let Some(DbValue::OrphanBlock(retrieved_orphan)) = db.fetch(&DbKey::OrphanBlock(hash)).unwrap() {
         assert_eq!(*retrieved_orphan, orphan);
     } else {
         panic!();
     }
 
     let mut txn = DbTransaction::new();
-    txn.delete_orphan(hash.clone());
+    txn.delete_orphan(hash);
     assert!(db.write(txn).is_ok());
     assert!(!db.contains(&DbKey::OrphanBlock(hash)).unwrap());
 }

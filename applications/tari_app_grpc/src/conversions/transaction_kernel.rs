@@ -27,7 +27,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_components::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
 };
-use tari_utilities::{ByteArray, Hashable};
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -71,7 +71,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
 
 impl From<TransactionKernel> for grpc::TransactionKernel {
     fn from(kernel: TransactionKernel) -> Self {
-        let hash = kernel.hash();
+        let hash = kernel.hash().to_vec();
         let commitment = match kernel.burn_commitment {
             Some(c) => c.as_bytes().to_vec(),
             None => vec![],

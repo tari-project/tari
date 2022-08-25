@@ -28,10 +28,7 @@ use std::{
 
 use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
-use tari_utilities::{
-    hex::{to_hex, Hex},
-    Hashable,
-};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
@@ -500,8 +497,8 @@ impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
-            DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
-            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", to_hex(v))),
+            DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", v.to_hex())),
+            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", v.to_hex())),
         }
     }
 }
