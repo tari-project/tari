@@ -78,17 +78,14 @@ impl BasicAuthCredentials {
 
     pub fn validate(&self, username: &str, password: &[u8]) -> Result<(), BasicAuthError> {
         if self.user_name.as_bytes() != username.as_bytes() {
-            return Err(BasicAuthError::InvalidCredentials);
+            return Err(BasicAuthError::InvalidUsername);
         }
         // These bytes can leak if the password is not utf-8, but since argon encoding is utf-8 the given
         // password must be incorrect if conversion to utf-8 fails.
         let bytes = self.password.reveal().to_vec();
         let str_password = Zeroizing::new(String::from_utf8(bytes)?);
-        let header_password =
-            PasswordHash::parse(&str_password, Encoding::B64).map_err(|_| BasicAuthError::InvalidCredentials)?;
-        Argon2::default()
-            .verify_password(password, &header_password)
-            .map_err(|_| BasicAuthError::InvalidCredentials)?;
+        let header_password = PasswordHash::parse(&str_password, Encoding::B64)?;
+        Argon2::default().verify_password(password, &header_password)?;
         Ok(())
     }
 
@@ -109,8 +106,8 @@ impl BasicAuthCredentials {
 /// Authorization Header Error
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum BasicAuthError {
-    #[error("Invalid username or password")]
-    InvalidCredentials,
+    #[error("Invalid username")]
+    InvalidUsername,
     #[error("The HTTP Authorization header value is invalid")]
     InvalidAuthorizationHeader,
     #[error("The HTTP Authorization header contains an invalid scheme {0} but only `Basic` is supported")]
@@ -119,6 +116,8 @@ pub enum BasicAuthError {
     InvalidBase64Value(#[from] base64::DecodeError),
     #[error("The provided binary is not a valid UTF-8 character: {0}")]
     InvalidUtf8Value(#[from] FromUtf8Error),
+    #[error("Invalid password: {0}")]
+    InvalidPassword(#[from] argon2::password_hash::Error),
 }
 
 #[cfg(test)]
@@ -159,11 +158,11 @@ mod tests {
         fn it_rejects_for_mismatching_credentials() {
             let credentials = BasicAuthCredentials::new("admin".to_string(), "bruteforce".to_string().into());
             let err = credentials.validate("admin", b"secret").unwrap_err();
-            assert_eq!(err, BasicAuthError::InvalidCredentials);
+            assert!(matches!(err, BasicAuthError::InvalidPassword(_)));
 
             let credentials = BasicAuthCredentials::new("bruteforce".to_string(), "secret".to_string().into());
             let err = credentials.validate("admin", b"secret").unwrap_err();
-            assert_eq!(err, BasicAuthError::InvalidCredentials);
+            assert_eq!(err, BasicAuthError::InvalidUsername);
         }
     }
 

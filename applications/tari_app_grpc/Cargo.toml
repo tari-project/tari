@@ -15,7 +15,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.5" }
 
-argon2 = "0.4.1"
+argon2 = { version = "0.4.1", features = ["std"] }
 base64 = "0.13.0"
 chrono = { version = "0.4.19", default-features = false }
 digest = "0.9"
