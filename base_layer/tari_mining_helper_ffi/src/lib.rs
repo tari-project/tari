@@ -371,8 +371,8 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 8105414459419666541;
-        const DIFFICULTY: Difficulty = Difficulty::from_u64(3640);
+        const NONCE: u64 = 5714152803266684615;
+        const DIFFICULTY: Difficulty = Difficulty::from_u64(1565);
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;

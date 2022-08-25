@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use config::Config;
+use tari_app_utilities::consts;
 use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_wallet::WalletConfig;
@@ -40,6 +41,8 @@ impl ApplicationConfig {
             wallet: WalletConfig::load_from(cfg)?,
             peer_seeds: PeerSeedsConfig::load_from(cfg)?,
         };
+
+        config.wallet.p2p.user_agent = format!("tari/wallet/{}", consts::APP_VERSION_NUMBER);
 
         config.wallet.set_base_path(config.common.base_path());
         Ok(config)

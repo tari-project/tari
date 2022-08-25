@@ -576,7 +576,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         // construct response
         let block_hash = new_block.hash();
-        let mining_hash = new_block.header.merged_mining_hash();
+        let mining_hash = new_block.header.mining_hash().to_vec();
         let block: Option<tari_rpc::Block> = Some(
             new_block
                 .try_into()
@@ -621,7 +621,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         // construct response
         let block_hash = new_block.hash();
-        let mining_hash = new_block.header.merged_mining_hash();
+        let mining_hash = new_block.header.mining_hash().to_vec();
 
         let (header, block_body) = new_block.into_header_body();
         let mut header_bytes = Vec::new();
@@ -633,7 +633,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             header: header_bytes,
             block_body: block_body_bytes,
             merge_mining_hash: mining_hash,
-            utxo_mr: header.output_mr,
+            utxo_mr: header.output_mr.to_vec(),
         };
         debug!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");
         Ok(Response::new(response))
