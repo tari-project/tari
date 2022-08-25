@@ -423,7 +423,7 @@ where
                     returned_outputs.insert(v, output_proto);
                 },
                 Err(_) => {
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Malformed utxo hash received from node: {:?}", output_proto
                     )
@@ -442,7 +442,7 @@ where
                         returned_output.mined_timestamp,
                     )),
                     Err(_) => {
-                        debug!(
+                        warn!(
                             target: LOG_TARGET,
                             "Malformed block hash received from node: {:?}", returned_output
                         )

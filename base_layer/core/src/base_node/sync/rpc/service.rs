@@ -113,10 +113,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let mut block_event_stream = self.base_node_service.get_block_event_stream();
 
         let db = self.db();
-        let hash = match message.start_hash.try_into() {
-            Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&"Malformed starting hash".to_string())),
-        };
+        let hash = message
+            .start_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed starting hash received".to_string()))?;
         let start_header = db
             .fetch_header_by_block_hash(hash)
             .await
@@ -137,10 +137,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         if start_height > metadata.height_of_longest_chain() {
             return Ok(Streaming::empty());
         }
-        let hash = match message.end_hash.try_into() {
-            Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&"Malformed end hash".to_string())),
-        };
+        let hash = message
+            .end_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
         let end_header = db
             .fetch_header_by_block_hash(hash)
             .await
@@ -275,10 +275,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let db = self.db();
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
-        let hash = match message.start_hash.try_into() {
-            Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&"Malformed starting hash".to_string())),
-        };
+        let hash = message
+            .start_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed starting hash received".to_string()))?;
         let start_header = db
             .fetch_header_by_block_hash(hash)
             .await
@@ -409,15 +409,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         }
 
         let db = self.db();
-        let hashes: Vec<FixedHash> = match message
+        let hashes: Vec<FixedHash> = message
             .block_hashes
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
-        {
-            Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
-        };
+            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
         let maybe_headers = db
             .find_headers_after_hash(hashes, message.header_count)
             .await
@@ -474,10 +471,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .into_header();
-        let hash = match req.end_header_hash.try_into() {
-            Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&"Malformed end hash".to_string())),
-        };
+        let hash = req
+            .end_header_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
         let end_header = db
             .fetch_header_by_block_hash(hash)
             .await

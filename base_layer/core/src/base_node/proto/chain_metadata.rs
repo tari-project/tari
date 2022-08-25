@@ -57,7 +57,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
             .best_block
             .ok_or_else(|| "Best block is missing".to_string())?
             .try_into()
-       .map_err(|e| format!("Malformed best block: {}", e))?;
+            .map_err(|e| format!("Malformed best block: {}", e))?;
         Ok(ChainMetadata::new(
             height_of_longest_chain,
             hash,

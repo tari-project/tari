@@ -79,7 +79,7 @@ where B: BlockchainBackend + 'static
             .end_header_hash
             .clone()
             .try_into()
-            .rpc_status_internal_error(LOG_TARGET)?;
+            .rpc_status_bad_request("Invalid header hash")?;
 
         let end_header = self
             .db

@@ -323,15 +323,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let db = self.db();
         let mut res = Vec::with_capacity(message.output_hashes.len());
-        let hashes: Vec<FixedHash> = match message
+        let hashes: Vec<FixedHash> = message
             .output_hashes
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
-        {
-            Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
-        };
+            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
         let utxos = db
             .fetch_utxos(hashes)
             .await
@@ -372,15 +369,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             "Querying {} UTXO(s) for mined state",
             message.output_hashes.len(),
         );
-        let hashes: Vec<FixedHash> = match message
+        let hashes: Vec<FixedHash> = message
             .output_hashes
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
-        {
-            Ok(v) => v,
-            Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
-        };
+            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
         let mined_info_resp = db
             .fetch_utxos_and_mined_info(hashes)
             .await
@@ -430,10 +424,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let message = request.into_message();
 
         if let Some(chain_must_include_header) = message.chain_must_include_header {
-            let hash = match chain_must_include_header.try_into() {
-                Ok(v) => v,
-                Err(_) => return Err(RpcStatus::bad_request(&"Malformed block hash received".to_string())),
-            };
+            let hash = chain_must_include_header
+                .try_into()
+                .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
             if self
                 .db
                 .fetch_header_by_block_hash(hash)

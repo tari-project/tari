@@ -40,22 +40,15 @@
 use std::{
     cmp::Ordering,
     convert::TryFrom,
-    fmt,
     fmt::{Display, Error, Formatter},
     io,
     io::{Read, Write},
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use serde::{
-    de::{self, Visitor},
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-};
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, BlockHash, FixedHash};
-use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
@@ -93,26 +86,21 @@ pub struct BlockHeader {
     /// Height of this block since the genesis block (height 0)
     pub height: u64,
     /// Hash of the block previous to this in the chain.
-    #[serde(with = "fixed_hash_serializer")]
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: EpochTime,
     /// This is the UTXO merkle root of the outputs
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
-    #[serde(with = "fixed_hash_serializer")]
     pub output_mr: FixedHash,
     /// This is the MMR root of the witness proofs
-    #[serde(with = "fixed_hash_serializer")]
     pub witness_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
     pub output_mmr_size: u64,
     /// This is the MMR root of the kernels
-    #[serde(with = "fixed_hash_serializer")]
     pub kernel_mr: FixedHash,
     /// The number of MMR leaves in the kernel MMR
     pub kernel_mmr_size: u64,
     /// This is the Merkle root of the inputs in this block
-    #[serde(with = "fixed_hash_serializer")]
     pub input_mr: FixedHash,
     /// Sum of kernel offsets for all kernels in this block.
     pub total_kernel_offset: BlindingFactor,
@@ -147,7 +135,7 @@ impl BlockHeader {
 
     pub fn hash(&self) -> FixedHash {
         DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
-            .chain(&self.mining_hash().as_slice())
+            .chain(&self.mining_hash())
             .chain(&self.pow)
             .chain(&self.nonce)
             .finalize()
@@ -318,47 +306,6 @@ impl Display for BlockHeader {
     }
 }
 
-pub(crate) mod fixed_hash_serializer {
-    use tari_utilities::hex::Hex;
-
-    use super::*;
-
-    #[allow(clippy::ptr_arg)]
-    pub fn serialize<S>(bytes: &FixedHash, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        if serializer.is_human_readable() {
-            bytes.to_hex().serialize(serializer)
-        } else {
-            serializer.serialize_bytes(bytes.as_bytes())
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<FixedHash, D::Error>
-    where D: Deserializer<'de> {
-        struct BlockHashVisitor;
-
-        impl<'de> Visitor<'de> for BlockHashVisitor {
-            type Value = FixedHash;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("A block header hash in binary format")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<FixedHash, E>
-            where E: de::Error {
-                FixedHash::try_from(v).map_err(E::custom)
-            }
-        }
-
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            FixedHash::from_hex(&s).map_err(de::Error::custom)
-        } else {
-            deserializer.deserialize_bytes(BlockHashVisitor)
-        }
-    }
-}
-
 impl ConsensusEncoding for BlockHeader {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         self.version.consensus_encode(writer)?;
@@ -409,7 +356,7 @@ mod test {
     use super::*;
     use crate::{
         blocks::genesis_block::get_genesis_block,
-        consensus::{ConsensusDecoding, ToConsensusBytes},
+        consensus::{check_consensus_encoding_correctness},
     };
 
     #[test]
@@ -512,8 +459,6 @@ mod test {
     #[test]
     fn block_header_encode_decode() {
         let header = get_genesis_block(Network::LocalNet).block().header.clone();
-        let header_bytes = header.to_consensus_bytes();
-        let decoded_header = BlockHeader::consensus_decode(&mut header_bytes.as_slice()).unwrap();
-        assert_eq!(header, decoded_header);
+        check_consensus_encoding_correctness(header).unwrap();
     }
 }
