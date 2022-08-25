@@ -354,10 +354,7 @@ mod test {
     use tari_common::configuration::Network;
 
     use super::*;
-    use crate::{
-        blocks::genesis_block::get_genesis_block,
-        consensus::{check_consensus_encoding_correctness},
-    };
+    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
 
     #[test]
     fn from_previous() {
