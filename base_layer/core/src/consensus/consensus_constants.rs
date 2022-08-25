@@ -507,7 +507,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            //Todo fix after test
+            // Todo fix after test
             coinbase_lock_height: 6,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
