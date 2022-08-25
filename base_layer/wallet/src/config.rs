@@ -89,8 +89,10 @@ pub struct WalletConfig {
     /// transaction events are received by the console wallet .
     /// (see example at 'applications/tari_console_wallet/src/notifier/notify_example.sh')
     pub notify_file: Option<PathBuf>,
+    /// If true, a GRPC server will bind to the configured address and listen for incoming GRPC requests.
+    pub grpc_enabled: bool,
     /// GRPC bind address of the wallet
-    pub grpc_address: Option<Multiaddr>,
+    pub grpc_address: Multiaddr,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
     /// A custom base node peer that will be used to obtain metadata from
@@ -134,7 +136,8 @@ impl Default for WalletConfig {
             command_send_wait_stage: TransactionStage::Broadcast,
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
-            grpc_address: None,
+            grpc_enabled: false,
+            grpc_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
             grpc_authentication: GrpcAuthentication::default(),
             custom_base_node: None,
             base_node_service_peers: StringList::default(),

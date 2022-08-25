@@ -263,9 +263,13 @@ pub fn tui_mode(
     mut wallet: WalletSqlite,
 ) -> Result<(), ExitError> {
     let (events_broadcaster, _events_listener) = broadcast::channel(100);
-    if let Some(ref grpc_address) = config.grpc_address {
+    if config.grpc_enabled {
         let grpc = WalletGrpcServer::new(wallet.clone());
-        handle.spawn(run_grpc(grpc, grpc_address.clone(), config.grpc_authentication.clone()));
+        handle.spawn(run_grpc(
+            grpc,
+            config.grpc_address.clone(),
+            config.grpc_authentication.clone(),
+        ));
     }
 
     let notifier = Notifier::new(
@@ -362,14 +366,14 @@ pub fn recovery_mode(
 
 pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting grpc server");
-    if let Some(grpc_address) = &config.grpc_address {
+    if config.grpc_enabled {
         let grpc = WalletGrpcServer::new(wallet);
         let auth = config.grpc_authentication.clone();
         handle
-            .block_on(run_grpc(grpc, grpc_address.clone(), auth))
+            .block_on(run_grpc(grpc, config.grpc_address.clone(), auth))
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
-        println!("No grpc address specified");
+        println!("GRPC server is disabled");
     }
     info!(target: LOG_TARGET, "Shutting down");
     Ok(())

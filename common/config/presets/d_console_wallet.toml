@@ -61,6 +61,8 @@
 #command_send_wait_timeout = 300
 #command_send_wait_stage = "Broadcast"
 
+# Set to true to enable grpc. (default = false)
+#grpc_enabled = false
 # The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18143")
 #grpc_address = "/ip4/127.0.0.1/tcp/18143"
 # gRPC authentication method (default = "none")
