@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
     proof_of_work::PowAlgorithm,
 };
 
@@ -95,6 +95,12 @@ impl ConsensusEncoding for ProofOfWork {
     }
 }
 
+impl ConsensusEncodingSized for ProofOfWork {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.pow_algo.as_u64().consensus_encode_exact_size() + self.pow_data.consensus_encode_exact_size()
+    }
+}
+
 impl ConsensusDecoding for ProofOfWork {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let pow_algo = PowAlgorithm::try_from(u64::consensus_decode(reader)?)
@@ -109,7 +115,10 @@ impl ConsensusDecoding for ProofOfWork {
 
 #[cfg(test)]
 mod test {
-    use crate::proof_of_work::proof_of_work::{PowAlgorithm, ProofOfWork};
+    use crate::{
+        consensus::check_consensus_encoding_correctness,
+        proof_of_work::proof_of_work::{PowAlgorithm, ProofOfWork},
+    };
 
     #[test]
     fn display() {
@@ -124,5 +133,12 @@ mod test {
             ..Default::default()
         };
         assert_eq!(pow.to_bytes(), vec![1]);
+    }
+
+    #[test]
+    fn consensus_encoding() {
+        let mut arr = ProofOfWork::new(PowAlgorithm::Monero);
+        arr.pow_data = vec![1, 2, 3];
+        check_consensus_encoding_correctness(arr).unwrap();
     }
 }

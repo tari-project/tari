@@ -46,4 +46,13 @@ impl ConsensusDecoding for SideChainFeatures {
 }
 
 #[cfg(test)]
-mod tests {}
+mod test {
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn consensus_encoding() {
+        let features = SideChainFeatures {};
+        check_consensus_encoding_correctness(features).unwrap();
+    }
+}
