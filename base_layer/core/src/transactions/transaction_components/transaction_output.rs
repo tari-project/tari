@@ -477,10 +477,12 @@ impl ConsensusEncoding for TransactionOutput {
         self.sender_offset_public_key.consensus_encode(writer)?;
         self.metadata_signature.consensus_encode(writer)?;
         self.covenant.consensus_encode(writer)?;
+        self.encrypted_value.consensus_encode(writer)?;
         self.minimum_value_promise.consensus_encode(writer)?;
         Ok(())
     }
 }
+impl ConsensusEncodingSized for TransactionOutput {}
 
 impl ConsensusDecoding for TransactionOutput {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
@@ -579,11 +581,14 @@ fn power_of_two_chunk_sizes(len: usize, max_power: u8) -> Vec<usize> {
 #[cfg(test)]
 mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
-    use crate::transactions::{
-        tari_amount::MicroTari,
-        test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::transaction_output::power_of_two_chunk_sizes,
-        CryptoFactories,
+    use crate::{
+        consensus::check_consensus_encoding_correctness,
+        transactions::{
+            tari_amount::MicroTari,
+            test_helpers::{TestParams, UtxoTestParams},
+            transaction_components::transaction_output::power_of_two_chunk_sizes,
+            CryptoFactories,
+        },
     };
 
     #[test]
@@ -693,5 +698,14 @@ mod test {
         output.minimum_value_promise = minimum_value_promise;
 
         output
+    }
+
+    #[test]
+    fn consensus_encoding() {
+        let factories = CryptoFactories::default();
+        let test_params = TestParams::new();
+
+        let output = create_valid_output(&test_params, &factories, 123.into(), MicroTari::zero());
+        check_consensus_encoding_correctness(output).unwrap();
     }
 }

@@ -38,7 +38,7 @@ use thiserror::Error;
 
 use crate::{
     blocks::BlockHeader,
-    consensus::{ConsensusConstants, ConsensusDecoding, ConsensusEncoding},
+    consensus::{ConsensusConstants, ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     proof_of_work::ProofOfWork,
     transactions::{
         aggregated_body::AggregateBody,
@@ -274,6 +274,12 @@ impl ConsensusEncoding for Block {
     }
 }
 
+impl ConsensusEncodingSized for Block {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.header.consensus_encode_exact_size() + self.body.consensus_encode_exact_size()
+    }
+}
+
 impl ConsensusDecoding for Block {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let header = BlockHeader::consensus_decode(reader)?;
@@ -323,5 +329,18 @@ impl From<&Block> for NewBlock {
                 .map(|kernel| kernel.excess_sig.get_signature().clone())
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common::configuration::Network;
+
+    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
+
+    #[test]
+    fn block_header_encode_decode() {
+        let block = get_genesis_block(Network::LocalNet).block().clone();
+        check_consensus_encoding_correctness(block).unwrap();
     }
 }

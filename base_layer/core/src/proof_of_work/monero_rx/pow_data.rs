@@ -121,12 +121,12 @@ impl ConsensusDecoding for MoneroPowData {
 
 impl ConsensusEncoding for MoneroPowData {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        let _ = self.header.consensus_encode(writer)?;
+        self.header.consensus_encode(writer)?;
         self.randomx_key.consensus_encode(writer)?;
         ConsensusEncoding::consensus_encode(&self.transaction_count, writer)?;
-        let _ = self.merkle_root.consensus_encode(writer)?;
+        self.merkle_root.consensus_encode(writer)?;
         self.coinbase_merkle_proof.consensus_encode(writer)?;
-        let _ = self.coinbase_tx.consensus_encode(writer)?;
+        self.coinbase_tx.consensus_encode(writer)?;
         Ok(())
     }
 }

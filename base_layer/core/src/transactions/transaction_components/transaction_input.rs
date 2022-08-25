@@ -37,7 +37,7 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, DomainSeparatedConsensusHasher},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -484,6 +484,8 @@ impl ConsensusEncoding for TransactionInput {
     }
 }
 
+impl ConsensusEncodingSized for TransactionInput {}
+
 impl ConsensusDecoding for TransactionInput {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let version = TransactionInputVersion::consensus_decode(reader)?;
@@ -581,5 +583,20 @@ impl ConsensusDecoding for SpentOutput {
             },
             _ => Err(io::Error::new(ErrorKind::InvalidInput, "Invalid SpentOutput type")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::{consensus::check_consensus_encoding_correctness, transactions::test_helpers::create_test_input};
+
+    #[test]
+    fn consensus_encoding() {
+        let factory = CommitmentFactory::default();
+
+        let (input, _) = create_test_input(123.into(), 321, &factory);
+        check_consensus_encoding_correctness(input).unwrap();
     }
 }
