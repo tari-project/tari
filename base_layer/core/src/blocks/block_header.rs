@@ -404,8 +404,14 @@ impl ConsensusDecoding for BlockHeader {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
 
-    use crate::blocks::BlockHeader;
+    use super::*;
+    use crate::{
+        blocks::genesis_block::get_genesis_block,
+        consensus::{ConsensusDecoding, ToConsensusBytes},
+    };
+
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::sha3_test::get_header();
@@ -501,5 +507,13 @@ mod test {
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn block_header_encode_decode() {
+        let header = get_genesis_block(Network::LocalNet).block().header.clone();
+        let header_bytes = header.to_consensus_bytes();
+        let decoded_header = BlockHeader::consensus_decode(&mut header_bytes.as_slice()).unwrap();
+        assert_eq!(header, decoded_header);
     }
 }
