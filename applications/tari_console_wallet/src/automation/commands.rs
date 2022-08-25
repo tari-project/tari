@@ -37,6 +37,7 @@ use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
@@ -774,6 +775,25 @@ pub async fn command_runner(
                     .revalidate_all_transactions()
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
+            },
+            HashGrpcPassword(args) => {
+                let (username, password) = config
+                    .grpc_authentication
+                    .username_password()
+                    .ok_or_else(|| CommandError::General("GRPC basic auth is not configured".to_string()))?;
+                let hashed_password = create_salted_hashed_password(password.reveal())
+                    .map_err(|e| CommandError::General(e.to_string()))?;
+                if args.short {
+                    println!("{}", *hashed_password);
+                } else {
+                    println!("Your hashed password is:");
+                    println!("{}", *hashed_password);
+                    println!();
+                    println!(
+                        "Use HTTP basic auth with username '{}' and the hashed password to make GRPC requests",
+                        username
+                    );
+                }
             },
         }
     }

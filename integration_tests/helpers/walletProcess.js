@@ -228,6 +228,7 @@ class WalletProcess {
       "--seed-words-file-name",
       this.seedWordsFile,
       "--non-interactive",
+      "--enable-grpc",
       "--network",
       opts.network || (this.options || {}).network || "localnet",
     ];
