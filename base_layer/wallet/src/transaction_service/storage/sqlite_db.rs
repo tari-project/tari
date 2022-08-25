@@ -900,7 +900,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
-        let _ = (*current_cipher).take();
+        *current_cipher = None;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
