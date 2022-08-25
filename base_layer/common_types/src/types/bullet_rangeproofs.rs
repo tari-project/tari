@@ -43,8 +43,6 @@ impl BulletRangeProof {
         BulletRangeProofHasherBlake256::new()
             .chain(&self.0)
             .finalize()
-            .as_fixed_bytes()
-            .expect("This should be 32 bytes for a Blake 256 hash")
             .into()
     }
 }
