@@ -26,16 +26,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use chacha20poly1305::{
-    aead::NewAead,
-    Key,
-    Nonce,
-    ChaCha20Poly1305
-};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use chacha20poly1305::{aead::NewAead, ChaCha20Poly1305, Key, Nonce};
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -60,11 +55,7 @@ use crate::{
         sqlite_db::scanned_blocks::ScannedBlockSql,
         sqlite_utilities::wallet_db_connection::WalletDbConnection,
     },
-    util::encryption::{
-        decrypt_bytes_integral_nonce,
-        encrypt_bytes_integral_nonce,
-        Encryptable,
-    },
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     utxo_scanner_service::service::ScannedBlock,
 };
 

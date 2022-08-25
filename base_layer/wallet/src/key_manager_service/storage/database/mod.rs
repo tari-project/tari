@@ -23,8 +23,8 @@
 mod backend;
 use std::sync::Arc;
 
-use chacha20poly1305::ChaCha20Poly1305;
 pub use backend::KeyManagerBackend;
+use chacha20poly1305::ChaCha20Poly1305;
 
 use crate::key_manager_service::error::KeyManagerStorageError;
 

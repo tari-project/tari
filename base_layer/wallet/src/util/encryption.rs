@@ -24,10 +24,10 @@ use std::mem::size_of;
 
 use chacha20poly1305::{
     self,
-    aead::{Aead, Payload, Error as AeadError},
+    aead::{Aead, Error as AeadError, Payload},
     ChaCha20Poly1305,
     Nonce,
-    Tag
+    Tag,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_utilities::ByteArray;
@@ -84,9 +84,7 @@ pub fn encrypt_bytes_integral_nonce(
         aad: domain.as_bytes(),
     };
 
-    let mut ciphertext = cipher
-        .encrypt(nonce_ga, payload)
-        .map_err(|e| e.to_string())?;
+    let mut ciphertext = cipher.encrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
 
     let mut ciphertext_integral_nonce = nonce.to_vec();
     ciphertext_integral_nonce.append(&mut ciphertext);
@@ -98,20 +96,10 @@ pub fn encrypt_bytes_integral_nonce(
 mod test {
     use std::mem::size_of;
 
-    use chacha20poly1305::{
-        self,
-        aead::NewAead,
-        ChaCha20Poly1305,
-        Key,
-        Nonce,
-        Tag
-    };
+    use chacha20poly1305::{self, aead::NewAead, ChaCha20Poly1305, Key, Nonce, Tag};
     use rand::{rngs::OsRng, RngCore};
 
-    use crate::util::encryption::{
-        decrypt_bytes_integral_nonce,
-        encrypt_bytes_integral_nonce
-    };
+    use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 
     #[test]
     fn test_encrypt_decrypt() {
@@ -145,7 +133,7 @@ mod test {
                 0u8;
                 plaintext.len()
             ])
-        .collect();
+            .collect();
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_nonce).is_err());
 
         // must fail with evil tag

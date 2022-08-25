@@ -80,7 +80,10 @@ impl OutputManagerSqliteDatabase {
         }
     }
 
-    fn decrypt_if_necessary<T: Encryptable<ChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), OutputManagerStorageError> {
+    fn decrypt_if_necessary<T: Encryptable<ChaCha20Poly1305>>(
+        &self,
+        o: &mut T,
+    ) -> Result<(), OutputManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.decrypt(cipher)
@@ -89,7 +92,10 @@ impl OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn encrypt_if_necessary<T: Encryptable<ChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), OutputManagerStorageError> {
+    fn encrypt_if_necessary<T: Encryptable<ChaCha20Poly1305>>(
+        &self,
+        o: &mut T,
+    ) -> Result<(), OutputManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.encrypt(cipher)
@@ -1443,7 +1449,7 @@ impl Encryptable<ChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
 mod test {
     use std::time::Duration;
 
-    use chacha20poly1305::{aead::NewAead,Key,ChaCha20Poly1305};
+    use chacha20poly1305::{aead::NewAead, ChaCha20Poly1305, Key};
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;

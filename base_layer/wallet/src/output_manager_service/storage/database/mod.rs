@@ -26,8 +26,8 @@ use std::{
     sync::Arc,
 };
 
-use chacha20poly1305::ChaCha20Poly1305;
 pub use backend::OutputManagerBackend;
+use chacha20poly1305::ChaCha20Poly1305;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
