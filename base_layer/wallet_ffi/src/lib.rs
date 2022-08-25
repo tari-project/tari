@@ -2251,16 +2251,24 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
 pub unsafe extern "C" fn liveness_data_get_online_status(
     liveness_data: *mut TariContactsLivenessData,
     error_out: *mut c_int,
-) -> c_int {
+) -> *const c_char {
     let mut error = 0;
+    let mut result = CString::new("").expect("Blank CString will not fail.");
     ptr::swap(error_out, &mut error as *mut c_int);
     if liveness_data.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return result.into_raw();
     }
     let status = (*liveness_data).online_status();
-    status as c_int
+    match CString::new(status.to_string()) {
+        Ok(v) => result = v,
+        _ => {
+            error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
+    }
+    result.into_raw()
 }
 
 /// Frees memory for a TariContactsLivenessData
@@ -5449,15 +5457,18 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     if one_sided {
-        match (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
-                (*dest_public_key).clone(),
-                MicroTari::from(amount),
-                OutputFeatures::default(),
-                MicroTari::from(fee_per_gram),
-                message_string,
-            )) {
+        match (*wallet).runtime.block_on(
+            (*wallet)
+                .wallet
+                .transaction_service
+                .send_one_sided_to_stealth_address_transaction(
+                    (*dest_public_key).clone(),
+                    MicroTari::from(amount),
+                    OutputFeatures::default(),
+                    MicroTari::from(fee_per_gram),
+                    message_string,
+                ),
+        ) {
             Ok(tx_id) => tx_id.as_u64(),
             Err(e) => {
                 error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -6275,6 +6286,8 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// `script_private_key` - Tari script private key, k_S, is used to create the script signature
 /// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
+/// `encrypted_value` - Encrypted value.
+/// `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
