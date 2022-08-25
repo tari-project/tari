@@ -248,6 +248,16 @@ impl ConnectivityManagerActor {
                         .cloned(),
                 );
             },
+            GetPeerStats(node_id, reply) => {
+                let peer = match self.peer_manager.find_by_node_id(&node_id).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "Error when retrieving peer: {:?}", e);
+                        None
+                    },
+                };
+                let _result = reply.send(peer);
+            },
             GetAllConnectionStates(reply) => {
                 let states = self.pool.all().into_iter().cloned().collect();
                 let _result = reply.send(states);
