@@ -190,6 +190,7 @@ Then(
         {
           contactsWithStatus = 0;
           wallet.getLivenessData().forEach(function (value, _key) {
+            console.error("STATUS: ", value);
             if (value.online_status === status) {
               contactsWithStatus++;
             }
