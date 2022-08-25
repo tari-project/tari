@@ -58,7 +58,7 @@ impl TryFrom<u8> for TransactionOutputVersion {
         match value {
             0 => Ok(TransactionOutputVersion::V0),
             1 => Ok(TransactionOutputVersion::V1),
-            _ => Err("Unknown version!".to_string()),
+            v => Err(format!("Unknown output version {}!", v)),
         }
     }
 }
@@ -82,7 +82,7 @@ impl ConsensusDecoding for TransactionOutputVersion {
         reader.read_exact(&mut buf)?;
         let version = buf[0]
             .try_into()
-            .map_err(|_| io::Error::new(ErrorKind::InvalidInput, format!("Unknown version {}", buf[0])))?;
+            .map_err(|_| io::Error::new(ErrorKind::InvalidInput, format!("Unknown output version {}", buf[0])))?;
         Ok(version)
     }
 }

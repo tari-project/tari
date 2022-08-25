@@ -29,11 +29,11 @@ use std::{
 
 use tari_utilities::{ByteArray, ByteArrayError};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 const MAX_ARR_SIZE: usize = 63;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FixedByteArray {
     elems: [u8; MAX_ARR_SIZE],
     len: u8,
@@ -134,6 +134,12 @@ impl ConsensusDecoding for FixedByteArray {
     }
 }
 
+impl ConsensusEncodingSized for FixedByteArray {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.len as usize + 1
+    }
+}
+
 impl ConsensusEncoding for FixedByteArray {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         writer.write_all(&[self.len][..])?;
@@ -147,6 +153,7 @@ mod test {
     use tari_utilities::hex::Hex;
 
     use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
 
     #[test]
     fn assert_size() {
@@ -174,16 +181,6 @@ mod test {
     }
 
     #[test]
-    fn serialize_deserialize() {
-        let arr = FixedByteArray::from_hex("ffffffffffffffffffffffffff").unwrap();
-        let mut data = Vec::new();
-        arr.consensus_encode(&mut data).unwrap();
-        assert_eq!(data.len(), 13 + 1);
-        let arr = FixedByteArray::consensus_decode(&mut data.as_slice()).unwrap();
-        assert!(arr.iter().all(|b| *b == 0xff));
-    }
-
-    #[test]
     fn length_check() {
         let mut buf = [0u8; MAX_ARR_SIZE + 1];
         buf[0] = 63;
@@ -203,5 +200,15 @@ mod test {
     fn capacity_overflow_does_not_panic() {
         let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
         let _result = FixedByteArray::consensus_decode(&mut data.as_slice()).unwrap_err();
+    }
+
+    #[test]
+    fn consensus_encoding() {
+        let arr = FixedByteArray::from_hex("ffffffffffffffffffffffffff").unwrap();
+        check_consensus_encoding_correctness(arr).unwrap();
+
+        let arr = FixedByteArray::from_hex("0ff1ceb4d455").unwrap();
+        assert_eq!(arr.len(), 6);
+        check_consensus_encoding_correctness(arr).unwrap();
     }
 }
