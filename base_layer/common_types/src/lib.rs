@@ -22,6 +22,7 @@
 
 pub mod chain_metadata;
 pub mod emoji;
+pub mod grpc_authentication;
 pub mod luhn;
 pub mod transaction;
 mod tx_id;
