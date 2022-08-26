@@ -530,7 +530,7 @@ impl WalletBackend for WalletSqliteDatabase {
         }
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
-        let _ = (*current_cipher).take();
+        std::mem::drop((*current_cipher).take());
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
