@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
@@ -67,18 +67,21 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 #[derive(Clone)]
 pub struct OutputManagerSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<Option<Aes256Gcm>>>,
+    cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
 }
 
 impl OutputManagerSqliteDatabase {
-    pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
+    pub fn new(database_connection: WalletDbConnection, cipher: Option<XChaCha20Poly1305>) -> Self {
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
         }
     }
 
-    fn decrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), OutputManagerStorageError> {
+    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(
+        &self,
+        o: &mut T,
+    ) -> Result<(), OutputManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.decrypt(cipher)
@@ -87,7 +90,10 @@ impl OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn encrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), OutputManagerStorageError> {
+    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(
+        &self,
+        o: &mut T,
+    ) -> Result<(), OutputManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.encrypt(cipher)
@@ -967,7 +973,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
+    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
 
         if (*current_cipher).is_some() {
@@ -1422,7 +1428,7 @@ impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
+impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [
             Self::KNOWN_ONESIDED_PAYMENT_SCRIPT,
@@ -1433,12 +1439,12 @@ impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
         .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.private_key = encrypt_bytes_integral_nonce(cipher, self.domain("private_key"), self.private_key.clone())?;
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.private_key = decrypt_bytes_integral_nonce(cipher, self.domain("private_key"), self.private_key.clone())?;
         Ok(())
     }
@@ -1448,7 +1454,7 @@ impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
 mod test {
     use std::time::Duration;
 
-    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+    use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
@@ -1624,8 +1630,8 @@ mod test {
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
 
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
+        let key = Key::from_slice(b"an example very very secret key.");
+        let cipher = XChaCha20Poly1305::new(key);
 
         output.commit(&conn).unwrap();
         let unencrypted_output = OutputSql::find(output.spending_key.as_slice(), &conn).unwrap();
@@ -1642,8 +1648,8 @@ mod test {
         decrypted_output.decrypt(&cipher).unwrap();
         assert_eq!(decrypted_output.spending_key, output.spending_key);
 
-        let wrong_key = GenericArray::from_slice(b"an example very very wrong key!!");
-        let wrong_cipher = Aes256Gcm::new(wrong_key);
+        let wrong_key = Key::from_slice(b"an example very very wrong key!!");
+        let wrong_cipher = XChaCha20Poly1305::new(wrong_key);
         assert!(outputs[0].clone().decrypt(&wrong_cipher).is_err());
 
         decrypted_output.update_encryption(&conn).unwrap();
@@ -1696,8 +1702,8 @@ mod test {
             output2.commit(&conn).unwrap();
         }
 
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
+        let key = Key::from_slice(b"an example very very secret key.");
+        let cipher = XChaCha20Poly1305::new(key);
 
         let connection = WalletDbConnection::new(pool, None);
 

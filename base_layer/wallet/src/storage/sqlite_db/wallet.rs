@@ -22,15 +22,16 @@
 
 use std::{
     convert::TryFrom,
+    mem::size_of,
     str::{from_utf8, FromStr},
     sync::{Arc, RwLock},
 };
 
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use chacha20poly1305::{Key, KeyInit, Tag, XChaCha20Poly1305, XNonce};
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -55,13 +56,7 @@ use crate::{
         sqlite_db::scanned_blocks::ScannedBlockSql,
         sqlite_utilities::wallet_db_connection::WalletDbConnection,
     },
-    util::encryption::{
-        decrypt_bytes_integral_nonce,
-        encrypt_bytes_integral_nonce,
-        Encryptable,
-        AES_MAC_BYTES,
-        AES_NONCE_BYTES,
-    },
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     utxo_scanner_service::service::ScannedBlock,
 };
 
@@ -71,7 +66,7 @@ const LOG_TARGET: &str = "wallet::storage::wallet";
 #[derive(Clone)]
 pub struct WalletSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<Option<Aes256Gcm>>>,
+    cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
 }
 impl WalletSqliteDatabase {
     pub fn new(
@@ -130,7 +125,7 @@ impl WalletSqliteDatabase {
         }
     }
 
-    fn decrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), WalletStorageError> {
+    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.decrypt(cipher)
@@ -139,7 +134,7 @@ impl WalletSqliteDatabase {
         Ok(())
     }
 
-    fn encrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), WalletStorageError> {
+    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.encrypt(cipher)
@@ -341,7 +336,7 @@ impl WalletSqliteDatabase {
         Ok(None)
     }
 
-    pub fn cipher(&self) -> Option<Aes256Gcm> {
+    pub fn cipher(&self) -> Option<XChaCha20Poly1305> {
         let cipher = acquire_read_lock!(self.cipher);
         (*cipher).clone()
     }
@@ -396,7 +391,7 @@ impl WalletBackend for WalletSqliteDatabase {
         }
     }
 
-    fn apply_encryption(&self, passphrase: SafePassword) -> Result<Aes256Gcm, WalletStorageError> {
+    fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
         if current_cipher.is_some() {
             return Err(WalletStorageError::AlreadyEncrypted);
@@ -428,8 +423,8 @@ impl WalletBackend for WalletSqliteDatabase {
             .hash
             .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
 
-        let key = GenericArray::from_slice(derived_encryption_key.as_bytes());
-        let cipher = Aes256Gcm::new(key);
+        let key = Key::from_slice(derived_encryption_key.as_bytes());
+        let cipher = XChaCha20Poly1305::new(key);
 
         WalletSettingSql::new(DbKey::PassphraseHash.to_string(), passphrase_hash).set(&conn)?;
         WalletSettingSql::new(DbKey::EncryptionSalt.to_string(), encryption_salt.as_str().to_string()).set(&conn)?;
@@ -592,7 +587,7 @@ impl WalletBackend for WalletSqliteDatabase {
 fn check_db_encryption_status(
     database_connection: &WalletDbConnection,
     passphrase: Option<SafePassword>,
-) -> Result<Option<Aes256Gcm>, WalletStorageError> {
+) -> Result<Option<XChaCha20Poly1305>, WalletStorageError> {
     let start = Instant::now();
     let conn = database_connection.get_pooled_connection()?;
     let acquire_lock = start.elapsed();
@@ -623,8 +618,8 @@ fn check_db_encryption_status(
                 .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
                 .hash
                 .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
-            let key = GenericArray::from_slice(derived_encryption_key.as_bytes());
-            Some(Aes256Gcm::new(key))
+            let key = Key::from_slice(derived_encryption_key.as_bytes());
+            Some(XChaCha20Poly1305::new(key))
         },
         _ => None,
     };
@@ -656,7 +651,7 @@ fn check_db_encryption_status(
                 if let Some(cipher_inner) = cipher.clone() {
                     let sk_bytes: Vec<u8> = from_hex(sk.as_str())?;
 
-                    if sk_bytes.len() < AES_NONCE_BYTES + AES_MAC_BYTES {
+                    if sk_bytes.len() < size_of::<XNonce>() + size_of::<Tag>() {
                         return Err(WalletStorageError::MissingNonce);
                     }
 
@@ -780,7 +775,7 @@ impl ClientKeyValueSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
+impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [Self::CLIENT_KEY_VALUE, self.key.as_bytes(), field_name.as_bytes()]
             .concat()
@@ -788,7 +783,7 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
     }
 
     #[allow(unused_assignments)]
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.value =
             encrypt_bytes_integral_nonce(cipher, self.domain("value"), self.value.as_bytes().to_vec())?.to_hex();
 
@@ -796,7 +791,7 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
     }
 
     #[allow(unused_assignments)]
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         let decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),

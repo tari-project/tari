@@ -20,18 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{
-    aead::{generic_array::GenericArray, Aead, Error as AeadError},
-    Aes256Gcm,
+use std::mem::size_of;
+
+use chacha20poly1305::{
+    aead::{Aead, Error as AeadError, Payload},
+    Tag,
+    XChaCha20Poly1305,
+    XNonce,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_utilities::ByteArray;
-
-use crate::types::WalletEncryptionHasher;
-
-pub const AES_NONCE_BYTES: usize = 12;
-pub const AES_KEY_BYTES: usize = 32;
-pub const AES_MAC_BYTES: usize = 32;
 
 pub trait Encryptable<C> {
     const KEY_MANAGER: &'static [u8] = b"KEY_MANAGER";
@@ -50,91 +48,118 @@ pub trait Encryptable<C> {
 }
 
 pub fn decrypt_bytes_integral_nonce(
-    cipher: &Aes256Gcm,
+    cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
     ciphertext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
-    if ciphertext.len() < AES_NONCE_BYTES + AES_MAC_BYTES {
+    if ciphertext.len() < size_of::<XNonce>() + size_of::<Tag>() {
         return Err(AeadError.to_string());
     }
 
-    let (nonce, ciphertext) = ciphertext.split_at(AES_NONCE_BYTES);
-    let (ciphertext, appended_mac) = ciphertext.split_at(ciphertext.len().saturating_sub(AES_MAC_BYTES));
-    let nonce = GenericArray::from_slice(nonce);
+    let (nonce, ciphertext) = ciphertext.split_at(size_of::<XNonce>());
+    let nonce_ga = XNonce::from_slice(nonce);
 
-    let expected_mac = WalletEncryptionHasher::new_with_label("storage_encryption_mac")
-        .chain(nonce.as_slice())
-        .chain(ciphertext)
-        .chain(domain)
-        .finalize();
+    let payload = Payload {
+        msg: ciphertext,
+        aad: domain.as_bytes(),
+    };
 
-    if appended_mac != expected_mac.as_ref() {
-        return Err(AeadError.to_string());
-    }
-
-    let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|e| e.to_string())?;
+    let plaintext = cipher.decrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
 
     Ok(plaintext)
 }
 
 pub fn encrypt_bytes_integral_nonce(
-    cipher: &Aes256Gcm,
+    cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
     plaintext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
-    let mut nonce = [0u8; AES_NONCE_BYTES];
+    let mut nonce = [0u8; size_of::<XNonce>()];
     OsRng.fill_bytes(&mut nonce);
-    let nonce_ga = GenericArray::from_slice(&nonce);
+    let nonce_ga = XNonce::from_slice(&nonce);
 
-    let mut ciphertext = cipher
-        .encrypt(nonce_ga, plaintext.as_bytes())
-        .map_err(|e| e.to_string())?;
+    let payload = Payload {
+        msg: plaintext.as_bytes(),
+        aad: domain.as_bytes(),
+    };
 
-    let mut mac = WalletEncryptionHasher::new_with_label("storage_encryption_mac")
-        .chain(nonce.as_slice())
-        .chain(ciphertext.clone())
-        .chain(domain.as_slice())
-        .finalize()
-        .as_ref()
-        .to_vec();
+    let mut ciphertext = cipher.encrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
 
     let mut ciphertext_integral_nonce = nonce.to_vec();
     ciphertext_integral_nonce.append(&mut ciphertext);
-    ciphertext_integral_nonce.append(&mut mac);
 
     Ok(ciphertext_integral_nonce)
 }
 
 #[cfg(test)]
 mod test {
-    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+    use std::mem::size_of;
+
+    use chacha20poly1305::{aead::generic_array::GenericArray, KeyInit, Tag, XChaCha20Poly1305, XNonce};
 
     use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 
     #[test]
     fn test_encrypt_decrypt() {
+        // Encrypt a message
         let plaintext = b"The quick brown fox was annoying".to_vec();
         let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
+        let cipher = XChaCha20Poly1305::new(key);
 
         let ciphertext = encrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), plaintext.clone()).unwrap();
+
+        // Check the ciphertext size, which we rely on for later tests
+        // It should extend the plaintext size by the nonce and tag sizes
+        assert_eq!(
+            ciphertext.len(),
+            size_of::<XNonce>() + plaintext.len() + size_of::<Tag>()
+        );
+
+        // Valid decryption must succeed and yield correct plaintext
         let decrypted_text =
             decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext.clone()).unwrap();
-
-        // decrypted text must be equal to the original plaintext
         assert_eq!(decrypted_text, plaintext);
 
-        // must fail with a wrong domain
+        // Must fail on an incorrect domain
         assert!(decrypt_bytes_integral_nonce(&cipher, b"wrong_domain".to_vec(), ciphertext.clone()).is_err());
 
-        // must fail without nonce
-        assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext[0..12].to_vec()).is_err());
+        // Must fail with an evil nonce
+        let ciphertext_with_evil_nonce = ciphertext
+            .clone()
+            .splice(0..size_of::<XNonce>(), [0u8; size_of::<XNonce>()])
+            .collect();
+        assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_nonce).is_err());
 
-        // must fail without mac
+        // Must fail with malleated ciphertext
+        let ciphertext_with_evil_ciphertext = ciphertext
+            .clone()
+            .splice(
+                size_of::<XNonce>()..(ciphertext.len() - size_of::<Tag>()),
+                vec![0u8; plaintext.len()],
+            )
+            .collect();
+        assert!(
+            decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_ciphertext).is_err()
+        );
+
+        // Must fail with malleated authentication tag
+        let ciphertext_with_evil_tag = ciphertext
+            .clone()
+            .splice((ciphertext.len() - size_of::<Tag>())..ciphertext.len(), vec![
+                0u8;
+                size_of::<
+                    Tag,
+                >(
+                )
+            ])
+            .collect();
+        assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_tag).is_err());
+
+        // Must fail if truncated too short
         assert!(decrypt_bytes_integral_nonce(
             &cipher,
-            b"correct_domain".to_vec(),
-            ciphertext[0..ciphertext.len().saturating_sub(32)].to_vec()
+            b"correct domain".to_vec(),
+            ciphertext[0..size_of::<XNonce>()].to_vec()
         )
         .is_err());
     }

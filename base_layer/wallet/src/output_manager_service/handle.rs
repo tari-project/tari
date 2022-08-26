@@ -22,7 +22,7 @@
 
 use std::{fmt, fmt::Formatter, sync::Arc};
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, HashOutput, PublicKey},
@@ -116,7 +116,7 @@ pub enum OutputManagerRequest {
         commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
     },
-    ApplyEncryption(Box<Aes256Gcm>),
+    ApplyEncryption(Box<XChaCha20Poly1305>),
     RemoveEncryption,
     FeeEstimate {
         amount: MicroTari,
@@ -769,7 +769,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn apply_encryption(&mut self, cipher: Aes256Gcm) -> Result<(), OutputManagerError> {
+    pub async fn apply_encryption(&mut self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ApplyEncryption(Box::new(cipher)))

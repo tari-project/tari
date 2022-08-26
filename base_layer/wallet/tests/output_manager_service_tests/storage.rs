@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
@@ -322,8 +322,8 @@ pub fn test_output_manager_sqlite_db() {
 pub fn test_output_manager_sqlite_db_encrypted() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    let key = GenericArray::from_slice(b"an example very very secret key.");
-    let cipher = Aes256Gcm::new(key);
+    let key = Key::from_slice(b"an example very very secret key.");
+    let cipher = XChaCha20Poly1305::new(key);
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection, Some(cipher)));
 }

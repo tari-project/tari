@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{NaiveDateTime, Utc};
 use rand::rngs::OsRng;
 use tari_common_types::{
@@ -579,8 +579,8 @@ pub fn test_transaction_service_sqlite_db_encrypted() {
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
-    let key = GenericArray::from_slice(b"an example very very secret key.");
-    let cipher = Aes256Gcm::new(key);
+    let key = Key::from_slice(b"an example very very secret key.");
+    let cipher = XChaCha20Poly1305::new(key);
 
     test_db_backend(TransactionServiceSqliteDatabase::new(connection, Some(cipher)));
 }
@@ -593,8 +593,8 @@ async fn import_tx_and_read_it_from_db() {
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
-    let key = GenericArray::from_slice(b"an example very very secret key.");
-    let cipher = Aes256Gcm::new(key);
+    let key = Key::from_slice(b"an example very very secret key.");
+    let cipher = XChaCha20Poly1305::new(key);
     let sqlite_db = TransactionServiceSqliteDatabase::new(connection, Some(cipher));
 
     let transaction = CompletedTransaction::new(
