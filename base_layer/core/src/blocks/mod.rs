@@ -33,6 +33,7 @@ pub use accumulated_data::{
     DeletedBitmap,
     UpdateBlockAccumulatedData,
 };
+use chrono::{DateTime, FixedOffset};
 use tari_crypto::hash_domain;
 
 mod error;
@@ -63,5 +64,35 @@ pub use new_block_template::NewBlockTemplate;
 mod new_blockheader_template;
 #[cfg(feature = "base_node")]
 pub use new_blockheader_template::NewBlockHeaderTemplate;
+use tari_common::configuration::Network;
 
 hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);
+
+/// Returns the network birth date for the selected network.
+pub fn network_birth_date(network: Network) -> DateTime<FixedOffset> {
+    const IGOR_BIRTH_DATE: &str = "08 Aug 2022 10:00:00 +0200";
+    const ESMERALDA_BIRTH_DATE: &str = "24 Aug 2022 10:00:00 +0200";
+    const LOCAL_NET_BIRTH_DATE: &str = ESMERALDA_BIRTH_DATE;
+
+    use tari_common::configuration::Network::{
+        Dibbler,
+        Esmeralda,
+        Igor,
+        LocalNet,
+        MainNet,
+        Ridcully,
+        Stibbons,
+        Weatherwax,
+    };
+    let birth_date = match network {
+        MainNet => unimplemented!(),
+        Igor => IGOR_BIRTH_DATE,
+        Esmeralda => ESMERALDA_BIRTH_DATE,
+        LocalNet => LOCAL_NET_BIRTH_DATE,
+        Dibbler => unimplemented!("Dibbler is longer supported"),
+        Ridcully => unimplemented!("Ridcully is longer supported"),
+        Stibbons => unimplemented!("Stibbons is longer supported"),
+        Weatherwax => unimplemented!("Weatherwax longer supported"),
+    };
+    DateTime::parse_from_rfc2822(birth_date).expect("'<NETWORK>_BIRTH_DATE' string error! This may not fail.")
+}

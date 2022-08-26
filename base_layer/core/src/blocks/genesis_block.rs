@@ -22,13 +22,13 @@
 
 use std::sync::Arc;
 
-use chrono::DateTime;
 use tari_common::configuration::Network;
 use tari_common_types::types::{BulletRangeProof, Commitment, FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::{signatures::CommitmentSignature, tari_utilities::hex::*};
 use tari_script::script;
 
 use crate::{
+    blocks,
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
     covenants::Covenant,
     proof_of_work::{PowAlgorithm, ProofOfWork},
@@ -158,7 +158,7 @@ fn get_igor_genesis_block_raw() -> Block {
     );
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("08 Aug 2022 10:00:00 +0200").unwrap();
+    let genesis = blocks::network_birth_date(Network::Igor);
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -308,7 +308,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("24 Aug 2022 22:00:00 +0200").unwrap();
+    let genesis = blocks::network_birth_date(Network::Esmeralda);
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {

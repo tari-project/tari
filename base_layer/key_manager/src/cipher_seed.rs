@@ -39,6 +39,8 @@ use chacha20::{
 use crc32fast::Hasher as CrcHasher;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::Network;
+use tari_core::blocks::network_birth_date;
 use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::ByteArray;
 
@@ -52,8 +54,6 @@ use crate::{
 };
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
-// seconds elapsed from unix epoch until '2022-01-01' == 60 * 60 * 24 * 365 * 52
-pub const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1639872000;
 pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED";
 const ARGON2_SALT_BYTES: usize = 16;
 pub const CIPHER_SEED_BIRTHDAY_BYTES: usize = 2;
@@ -120,9 +120,10 @@ impl CipherSeed {
     pub fn new() -> Self {
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-        let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
+        // TODO: Change for mainnet (i.e. to `Network::MainNet`)
+        let genesis_date = UNIX_EPOCH + Duration::from_secs(network_birth_date(Network::Esmeralda).timestamp() as u64);
         let days = SystemTime::now()
-            .duration_since(birthday_genesis_date)
+            .duration_since(genesis_date - Duration::from_secs(SECONDS_PER_DAY))
             .unwrap()
             .as_secs() /
             SECONDS_PER_DAY;
@@ -133,8 +134,10 @@ impl CipherSeed {
     #[cfg(target_arch = "wasm32")]
     pub fn new() -> Self {
         const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
-        let millis = js_sys::Date::now() as u64;
-        let days = millis / MILLISECONDS_PER_DAY;
+        let millis_since_unix_epoch = js_sys::Date::now() as u64;
+        // TODO: Change for mainnet (i.e. to `Network::MainNet`)
+        let millis_genesis_date = (network_birth_date(Network::Esmeralda).timestamp() * 1000) as u64;
+        let days = (millis_since_unix_epoch - (millis_genesis_date - MILLISECONDS_PER_DAY)) / MILLISECONDS_PER_DAY;
         let birthday = u16::try_from(days).unwrap_or(0u16);
         CipherSeed::new_with_birthday(birthday)
     }
