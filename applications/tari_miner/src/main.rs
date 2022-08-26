@@ -333,7 +333,7 @@ async fn display_report(report: &MiningReport, num_mining_threads: usize) {
     let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
     info!(
         target: LOG_TARGET,
-        "⛏ Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
+        "⛏ Miner {:0>2} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
         hashrate * num_mining_threads as f64,

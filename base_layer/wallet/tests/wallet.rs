@@ -145,6 +145,7 @@ async fn create_wallet(
         user_agent: "tari/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
+        rpc_max_sessions_per_peer: 0,
     };
 
     let sql_database_path = comms_config
@@ -642,6 +643,7 @@ async fn test_store_and_forward_send_tx() {
     assert!(tx_recv, "Must have received a tx from alice");
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_import_utxo() {
     let factories = CryptoFactories::default();
@@ -678,6 +680,7 @@ async fn test_import_utxo() {
         user_agent: "tari/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
+        rpc_max_sessions_per_peer: 0,
     };
     let config = WalletConfig {
         p2p: comms_config,
