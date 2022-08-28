@@ -2200,12 +2200,12 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, time::Duration};
+    use std::{convert::TryFrom, mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
-    use rand::rngs::OsRng;
+    use rand::{rngs::OsRng, RngCore};
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -2662,8 +2662,10 @@ mod test {
 
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
-        let key = Key::from_slice(b"an example very very secret key.");
-        let cipher = XChaCha20Poly1305::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let inbound_tx = InboundTransaction {
             tx_id: 1u64.into(),
@@ -2833,8 +2835,10 @@ mod test {
             completed_tx_sql.commit(&conn).unwrap();
         }
 
-        let key = Key::from_slice(b"an example very very secret key.");
-        let cipher = XChaCha20Poly1305::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let connection = WalletDbConnection::new(pool, None);
 

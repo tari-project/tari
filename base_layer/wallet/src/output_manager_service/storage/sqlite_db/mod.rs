@@ -1452,7 +1452,7 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use diesel::{Connection, SqliteConnection};
@@ -1630,8 +1630,10 @@ mod test {
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
 
-        let key = Key::from_slice(b"an example very very secret key.");
-        let cipher = XChaCha20Poly1305::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         output.commit(&conn).unwrap();
         let unencrypted_output = OutputSql::find(output.spending_key.as_slice(), &conn).unwrap();
@@ -1702,8 +1704,10 @@ mod test {
             output2.commit(&conn).unwrap();
         }
 
-        let key = Key::from_slice(b"an example very very secret key.");
-        let cipher = XChaCha20Poly1305::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let connection = WalletDbConnection::new(pool, None);
 

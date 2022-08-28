@@ -47,15 +47,18 @@ pub trait Encryptable<C> {
     fn decrypt(&mut self, cipher: &C) -> Result<(), String>;
 }
 
+// Decrypt data (with domain binding and authentication) using XChaCha20-Poly1305
 pub fn decrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
     ciphertext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
+    // We need at least a nonce and tag, or there's no point in attempting decryption
     if ciphertext.len() < size_of::<XNonce>() + size_of::<Tag>() {
         return Err(AeadError.to_string());
     }
 
+    // Extract the nonce
     let (nonce, ciphertext) = ciphertext.split_at(size_of::<XNonce>());
     let nonce_ga = XNonce::from_slice(nonce);
 
@@ -64,27 +67,33 @@ pub fn decrypt_bytes_integral_nonce(
         aad: domain.as_bytes(),
     };
 
+    // Attempt authentication and decryption
     let plaintext = cipher.decrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
 
     Ok(plaintext)
 }
 
+// Encrypt data (with domain binding and authentication) using XChaCha20-Poly1305
 pub fn encrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
     plaintext: Vec<u8>,
 ) -> Result<Vec<u8>, String> {
+    // Produce a secure random nonce
     let mut nonce = [0u8; size_of::<XNonce>()];
     OsRng.fill_bytes(&mut nonce);
     let nonce_ga = XNonce::from_slice(&nonce);
 
+    // Bind the domain as additional data
     let payload = Payload {
         msg: plaintext.as_bytes(),
         aad: domain.as_bytes(),
     };
 
+    // Attempt authenticated encryption
     let mut ciphertext = cipher.encrypt(nonce_ga, payload).map_err(|e| e.to_string())?;
 
+    // Concatenate the nonce and ciphertext (which already include the tag)
     let mut ciphertext_integral_nonce = nonce.to_vec();
     ciphertext_integral_nonce.append(&mut ciphertext);
 
@@ -95,7 +104,9 @@ pub fn encrypt_bytes_integral_nonce(
 mod test {
     use std::mem::size_of;
 
-    use chacha20poly1305::{aead::generic_array::GenericArray, KeyInit, Tag, XChaCha20Poly1305, XNonce};
+    use chacha20poly1305::{Key, KeyInit, Tag, XChaCha20Poly1305, XNonce};
+    use rand::{rngs::OsRng, RngCore};
+    use tari_utilities::ByteArray;
 
     use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 
@@ -103,8 +114,10 @@ mod test {
     fn test_encrypt_decrypt() {
         // Encrypt a message
         let plaintext = b"The quick brown fox was annoying".to_vec();
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = XChaCha20Poly1305::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let ciphertext = encrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), plaintext.clone()).unwrap();
 
@@ -155,11 +168,11 @@ mod test {
             .collect();
         assert!(decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), ciphertext_with_evil_tag).is_err());
 
-        // Must fail if truncated too short
+        // Must fail if truncated too short (if shorter than a nonce and tag, decryption is not even attempted)
         assert!(decrypt_bytes_integral_nonce(
             &cipher,
-            b"correct domain".to_vec(),
-            ciphertext[0..size_of::<XNonce>()].to_vec()
+            b"correct_domain".to_vec(),
+            ciphertext[0..(size_of::<XNonce>() + size_of::<Tag>() - 1)].to_vec()
         )
         .is_err());
     }

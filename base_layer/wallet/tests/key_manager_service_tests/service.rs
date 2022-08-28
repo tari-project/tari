@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::mem::size_of;
+
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use rand::{rngs::OsRng, RngCore};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::key_manager_service::{
     storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
@@ -73,8 +76,10 @@ async fn get_key_at_test_no_encryption() {
 async fn get_key_at_test_with_encryption() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let cipher = CipherSeed::new();
-    let key = Key::from_slice(b"an example very very secret key.");
-    let db_cipher = XChaCha20Poly1305::new(key);
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
     let key_manager = KeyManagerHandle::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, Some(db_cipher)).unwrap()),
