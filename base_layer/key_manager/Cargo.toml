@@ -13,7 +13,6 @@ crate-type = ["lib", "cdylib"]
 # NB: All dependencies must support or be gated for the WASM target.
 [dependencies]
 tari_common = { version = "^0.37", path = "../../common" }
-tari_common_types = { version = "^0.36", path = "../../base_layer/common_types" }
 tari_common_types = { version = "^0.37", path = "../../base_layer/common_types" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"]}
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.4" }
