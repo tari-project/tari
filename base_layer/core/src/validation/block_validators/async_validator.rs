@@ -27,7 +27,7 @@ use log::*;
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::task;
 
 use super::LOG_TARGET;
@@ -305,7 +305,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                                 target: LOG_TARGET,
                                 "Validation failed due to input: {} which does not exist yet", input
                             );
-                            not_found_inputs.push(output_hash.clone());
+                            not_found_inputs.push(output_hash);
                         }
                     },
                     Err(err) => return Err(err),

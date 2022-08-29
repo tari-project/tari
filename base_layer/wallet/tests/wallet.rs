@@ -28,7 +28,7 @@ use tari_common::configuration::StringList;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::TransactionStatus,
-    types::{PrivateKey, PublicKey},
+    types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -61,7 +61,7 @@ use tari_p2p::{
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, random};
-use tari_utilities::{Hashable, SafePassword};
+use tari_utilities::SafePassword;
 use tari_wallet::{
     contacts_service::{
         handle::ContactsLivenessEvent,
@@ -169,7 +169,7 @@ async fn create_wallet(
         ..Default::default()
     };
 
-    let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0, 0);
+    let metadata = ChainMetadata::new(i64::MAX as u64, FixedHash::zero(), 0, 0, 0, 0);
 
     let _db_value = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 

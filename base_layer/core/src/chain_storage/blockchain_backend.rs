@@ -6,7 +6,6 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{Commitment, HashOutput, Signature},
 };
-use tari_mmr::Hash;
 
 use crate::{
     blocks::{
@@ -131,7 +130,7 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches the leaf index of the provided leaf node hash in the given MMR tree.
     #[allow(clippy::ptr_arg)]
-    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError>;
+    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &HashOutput) -> Result<Option<u32>, ChainStorageError>;
     /// Returns the number of blocks in the block orphan pool.
     fn orphan_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.

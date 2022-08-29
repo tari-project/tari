@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use sha3::{Digest, Sha3_256};
-use tari_utilities::ByteArray;
 
 use crate::{
     blocks::BlockHeader,
@@ -39,18 +38,7 @@ pub fn sha3_difficulty(header: &BlockHeader) -> Difficulty {
 
 pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
     Sha3_256::new()
-        .chain(header.version.to_le_bytes())
-        .chain(header.height.to_le_bytes())
-        .chain(header.prev_hash.as_bytes())
-        .chain(header.timestamp.as_u64().to_le_bytes())
-        .chain(header.input_mr.as_bytes())
-        .chain(header.output_mr.as_bytes())
-        .chain(header.output_mmr_size.to_le_bytes())
-        .chain(header.witness_mr.as_bytes())
-        .chain(header.kernel_mr.as_bytes())
-        .chain(header.kernel_mmr_size.to_le_bytes())
-        .chain(header.total_kernel_offset.as_bytes())
-        .chain(header.total_script_offset.as_bytes())
+        .chain(header.mining_hash())
         .chain(header.nonce.to_le_bytes())
         .chain(header.pow.to_bytes())
         .finalize()
@@ -101,6 +89,6 @@ pub mod test {
     fn validate_max_target() {
         let mut header = get_header();
         header.nonce = 1;
-        assert_eq!(sha3_difficulty(&header), Difficulty::from(1));
+        assert_eq!(sha3_difficulty(&header), Difficulty::from(28));
     }
 }

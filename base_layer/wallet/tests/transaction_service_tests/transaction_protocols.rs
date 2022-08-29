@@ -58,7 +58,6 @@ use tari_core::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_utilities::Hashable;
 use tari_wallet::{
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
@@ -768,7 +767,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([1u8; 16].to_vec()),
+        block_hash: Some([1u8; 32].to_vec()),
         confirmations: 0,
         block_height: 1,
         mined_timestamp: Some(0),
@@ -777,7 +776,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let mut batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([1u8; 16].to_vec()),
+        tip_hash: Some([1u8; 32].to_vec()),
         height_of_longest_chain: 1,
         tip_mined_timestamp: Some(0),
     };
@@ -842,7 +841,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([5u8; 16].to_vec()),
+        block_hash: Some([5u8; 32].to_vec()),
         confirmations: 4,
         block_height: 5,
         mined_timestamp: Some(0),
@@ -851,7 +850,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([5u8; 16].to_vec()),
+        tip_hash: Some([5u8; 32].to_vec()),
         height_of_longest_chain: 5,
         tip_mined_timestamp: Some(0),
     };
@@ -925,7 +924,7 @@ async fn tx_revalidation() {
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([5u8; 16].to_vec()),
+        block_hash: Some([5u8; 32].to_vec()),
         confirmations: 4,
         block_height: 5,
         mined_timestamp: Some(0),
@@ -934,7 +933,7 @@ async fn tx_revalidation() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([5u8; 16].to_vec()),
+        tip_hash: Some([5u8; 32].to_vec()),
         height_of_longest_chain: 5,
         tip_mined_timestamp: Some(0),
     };
@@ -967,7 +966,7 @@ async fn tx_revalidation() {
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([5u8; 16].to_vec()),
+        block_hash: Some([5u8; 32].to_vec()),
         confirmations: 8,
         block_height: 10,
         mined_timestamp: Some(0),
@@ -976,7 +975,7 @@ async fn tx_revalidation() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([5u8; 16].to_vec()),
+        tip_hash: Some([5u8; 32].to_vec()),
         height_of_longest_chain: 10,
         tip_mined_timestamp: Some(0),
     };
@@ -1087,7 +1086,7 @@ async fn tx_validation_protocol_reorg() {
                 tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&5).unwrap().hash()),
+            block_hash: Some(block_headers.get(&5).unwrap().hash().to_vec()),
             confirmations: 5,
             block_height: 5,
             mined_timestamp: Some(0),
@@ -1097,7 +1096,7 @@ async fn tx_validation_protocol_reorg() {
                 tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&6).unwrap().hash()),
+            block_hash: Some(block_headers.get(&6).unwrap().hash().to_vec()),
             confirmations: 4,
             block_height: 6,
             mined_timestamp: Some(0),
@@ -1107,7 +1106,7 @@ async fn tx_validation_protocol_reorg() {
                 tx3.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&7).unwrap().hash()),
+            block_hash: Some(block_headers.get(&7).unwrap().hash().to_vec()),
             confirmations: 3,
             block_height: 7,
             mined_timestamp: Some(0),
@@ -1117,7 +1116,7 @@ async fn tx_validation_protocol_reorg() {
                 tx4.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&8).unwrap().hash()),
+            block_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
             confirmations: 2,
             block_height: 8,
             mined_timestamp: Some(0),
@@ -1127,7 +1126,7 @@ async fn tx_validation_protocol_reorg() {
                 coinbase_tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&8).unwrap().hash()),
+            block_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
             confirmations: 2,
             block_height: 8,
             mined_timestamp: Some(0),
@@ -1137,7 +1136,7 @@ async fn tx_validation_protocol_reorg() {
                 tx5.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&9).unwrap().hash()),
+            block_hash: Some(block_headers.get(&9).unwrap().hash().to_vec()),
             confirmations: 1,
             block_height: 9,
             mined_timestamp: Some(0),
@@ -1147,7 +1146,7 @@ async fn tx_validation_protocol_reorg() {
                 coinbase_tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&9).unwrap().hash()),
+            block_hash: Some(block_headers.get(&9).unwrap().hash().to_vec()),
             confirmations: 1,
             block_height: 9,
             mined_timestamp: Some(0),
@@ -1157,7 +1156,7 @@ async fn tx_validation_protocol_reorg() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some(block_headers.get(&10).unwrap().hash()),
+        tip_hash: Some(block_headers.get(&10).unwrap().hash().to_vec()),
         height_of_longest_chain: 10,
         tip_mined_timestamp: Some(0),
     };
@@ -1208,7 +1207,7 @@ async fn tx_validation_protocol_reorg() {
                 tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&5).unwrap().hash()),
+            block_hash: Some(block_headers.get(&5).unwrap().hash().to_vec()),
             confirmations: 4,
             block_height: 5,
             mined_timestamp: Some(0),
@@ -1218,7 +1217,7 @@ async fn tx_validation_protocol_reorg() {
                 tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&6).unwrap().hash()),
+            block_hash: Some(block_headers.get(&6).unwrap().hash().to_vec()),
             confirmations: 3,
             block_height: 6,
             mined_timestamp: Some(0),
@@ -1228,7 +1227,7 @@ async fn tx_validation_protocol_reorg() {
                 tx3.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&7).unwrap().hash()),
+            block_hash: Some(block_headers.get(&7).unwrap().hash().to_vec()),
             confirmations: 2,
             block_height: 7,
             mined_timestamp: Some(0),
@@ -1248,7 +1247,7 @@ async fn tx_validation_protocol_reorg() {
                 tx5.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&8).unwrap().hash()),
+            block_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
             confirmations: 1,
             block_height: 8,
             mined_timestamp: Some(0),
@@ -1268,7 +1267,7 @@ async fn tx_validation_protocol_reorg() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some(block_headers.get(&8).unwrap().hash()),
+        tip_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
         height_of_longest_chain: 8,
         tip_mined_timestamp: Some(0),
     };

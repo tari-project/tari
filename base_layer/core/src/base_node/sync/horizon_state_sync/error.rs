@@ -22,6 +22,7 @@
 
 use std::{num::TryFromIntError, time::Duration};
 
+use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -90,6 +91,8 @@ pub enum HorizonSyncError {
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
+    #[error("FixedHash size error: {0}")]
+    FixedHashSizeError(#[from] FixedHashSizeError),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

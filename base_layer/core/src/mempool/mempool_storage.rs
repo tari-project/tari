@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_common_types::types::{PrivateKey, Signature};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::Block,

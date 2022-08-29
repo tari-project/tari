@@ -25,7 +25,7 @@
 use std::{io, io::Write, marker::PhantomData};
 
 use digest::{consts::U32, Digest};
-use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparation};
 
 use crate::consensus::ConsensusEncoding;
 
@@ -74,8 +74,15 @@ where D: Digest<OutputSize = U32>
 }
 
 impl Default for ConsensusHasher<Blake256> {
+    /// This `default` implementation is provided for convenience, but should not be used as the de-facto consensus
+    /// hasher, rather create a new unique hash domain.
     fn default() -> Self {
-        ConsensusHasher::from_digest(Blake256::new())
+        hash_domain!(
+            DefaultConsensusHashDomain,
+            "com.tari.base_layer.core.consensus.consensus_encoding.hashing",
+            0
+        );
+        DomainSeparatedConsensusHasher::<DefaultConsensusHashDomain>::new("default")
     }
 }
 
@@ -130,5 +137,16 @@ mod tests {
             .finalize();
 
         assert_eq!(hash, expected_hash.as_ref());
+    }
+
+    #[test]
+    fn default_consensus_hash_is_not_blake256_default_hash() {
+        let blake256_hasher = Blake256::new();
+        let blake256_hash = blake256_hasher.chain(b"").finalize();
+
+        let default_consensus_hasher = ConsensusHasher::default();
+        let default_consensus_hash = default_consensus_hasher.chain(b"").finalize();
+
+        assert_ne!(blake256_hash.as_slice(), default_consensus_hash.as_slice());
     }
 }

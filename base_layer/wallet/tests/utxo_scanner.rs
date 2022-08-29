@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{rngs::OsRng, RngCore};
@@ -42,7 +42,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_utilities::{epoch_time::EpochTime, Hashable};
+use tari_utilities::{epoch_time::EpochTime, ByteArray};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityInterface, WalletConnectivityMock},
@@ -268,7 +268,7 @@ async fn generate_block_headers_and_utxos(
             .collect();
         let utxos = UtxosByBlock {
             height: i,
-            header_hash: block_header.hash(),
+            header_hash: block_header.hash().to_vec(),
             utxos: transaction_outputs,
         };
         utxos_by_block.push(utxos);
@@ -306,7 +306,7 @@ async fn test_utxo_scanner_recovery() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
+        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -396,7 +396,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
+        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -552,7 +552,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
+        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -615,7 +615,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     test_interface2.rpc_service_state.set_blocks(block_headers.clone());
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(9),
-        best_block: Some(block_headers.get(&9).unwrap().clone().hash()),
+        best_block: Some(block_headers.get(&9).unwrap().clone().hash().to_vec()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -682,6 +682,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
         let num_outputs = if h % 2 == 1 { Some(1) } else { None };
         let mut header_hash = h.to_le_bytes().to_vec();
         header_hash.extend([0u8; 24].to_vec());
+        let header_hash = header_hash.try_into().unwrap();
         test_interface
             .wallet_db
             .save_scanned_block(ScannedBlock {
@@ -718,7 +719,14 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(800 + NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(800 + NUM_BLOCKS - 1)).unwrap().clone().hash()),
+        best_block: Some(
+            block_headers
+                .get(&(800 + NUM_BLOCKS - 1))
+                .unwrap()
+                .clone()
+                .hash()
+                .to_vec(),
+        ),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -814,7 +822,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash()),
+        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -896,7 +904,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
-        header_hash: block_header11.hash(),
+        header_hash: block_header11.hash().to_vec(),
         utxos: vec![uo.as_transaction_output(&factories).unwrap()],
     };
 
@@ -917,7 +925,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash()),
+        best_block: Some(block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec()),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),

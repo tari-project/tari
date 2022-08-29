@@ -26,11 +26,9 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use digest::{consts::U32, generic_array, Digest};
+use digest::{consts::U32, generic_array};
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::{Hex, HexError};
-
-use crate::types::Blake256;
 
 const ZERO_HASH: [u8; FixedHash::byte_size()] = [0u8; FixedHash::byte_size()];
 
@@ -52,12 +50,6 @@ impl FixedHash {
 
     pub fn as_slice(&self) -> &[u8] {
         &self.0
-    }
-
-    /// Hashes the bytes and returns the resulting `FixedHash`. Generally only be used as a convenience function for
-    /// tests.
-    pub fn hash_bytes<T: AsRef<[u8]>>(bytes: T) -> Self {
-        Blake256::default().chain(bytes).finalize().into()
     }
 }
 

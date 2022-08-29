@@ -25,7 +25,7 @@ use std::{collections::HashMap, fmt};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{MessageHash, PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 
 use crate::transactions::{
@@ -78,7 +78,7 @@ impl Default for RecipientInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct MultiRecipientInfo {
-    pub commitment: MessageHash,
+    pub commitment: FixedHash,
     pub data: RecipientSignedMessage,
 }
 

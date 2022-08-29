@@ -40,7 +40,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -227,7 +227,6 @@ where
                 .for_protocol(op_id)?;
             let mined_in_block_hash = last_mined_transaction
                 .mined_in_block
-                .clone()
                 .ok_or_else(|| {
                     TransactionServiceError::ServiceError(
                         "fetch_last_mined_transaction() should return a transaction with a mined_in_block hash"
@@ -345,14 +344,16 @@ where
                 }
             }
         }
+        let tip = batch_response
+            .tip_hash
+            .ok_or_else(|| TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string()))?
+            .try_into()?;
         Ok((
             mined,
             unmined,
             Some((
                 batch_response.height_of_longest_chain,
-                batch_response.tip_hash.ok_or_else(|| {
-                    TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
-                })?,
+                tip,
                 batch_response.tip_mined_timestamp.ok_or_else(|| {
                     TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
                 })?,
@@ -407,7 +408,7 @@ where
             .set_transaction_mined_height(
                 tx_id,
                 mined_height,
-                mined_in_block.clone(),
+                *mined_in_block,
                 mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
@@ -464,7 +465,7 @@ where
             .set_transaction_mined_height(
                 tx_id,
                 mined_height,
-                mined_in_block.clone(),
+                *mined_in_block,
                 mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,

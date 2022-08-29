@@ -32,7 +32,7 @@ impl TryFrom<u8> for TransactionKernelVersion {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(TransactionKernelVersion::V0),
-            _ => Err("Unknown version!".to_string()),
+            v => Err(format!("Unknown kernel version {}!", v)),
         }
     }
 }
@@ -56,7 +56,7 @@ impl ConsensusDecoding for TransactionKernelVersion {
         reader.read_exact(&mut buf)?;
         let version = buf[0]
             .try_into()
-            .map_err(|_| io::Error::new(ErrorKind::InvalidInput, format!("Unknown version {}", buf[0])))?;
+            .map_err(|_| io::Error::new(ErrorKind::InvalidInput, format!("Unknown kernel version {}", buf[0])))?;
         Ok(version)
     }
 }

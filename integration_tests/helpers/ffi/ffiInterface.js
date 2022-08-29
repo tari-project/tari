@@ -332,7 +332,10 @@ class InterfaceFFI {
       liveness_data_get_latency: [this.int, [this.ptr, this.intPtr]],
       liveness_data_get_last_seen: [this.stringPtr, [this.ptr, this.intPtr]],
       liveness_data_get_message_type: [this.int, [this.ptr, this.intPtr]],
-      liveness_data_get_online_status: [this.int, [this.ptr, this.intPtr]],
+      liveness_data_get_online_status: [
+        this.stringPtr,
+        [this.ptr, this.intPtr],
+      ],
       wallet_get_fee_estimate: [
         this.ulonglong,
         [
@@ -1206,7 +1209,7 @@ class InterfaceFFI {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
   }
   static createCallbackContactsLivenessUpdated(fn) {
-    return ffi.Callback(this.void, [this.ptr], fn);
+    return ffi.Callback(this.stringPtr, [this.ptr, this.intPtr], fn);
   }
   static createCallbackBalanceUpdated(fn) {
     return ffi.Callback(this.void, [this.ptr], fn);

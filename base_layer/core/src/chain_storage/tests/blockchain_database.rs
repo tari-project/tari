@@ -1,10 +1,10 @@
 //  Copyright 2020, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+// the  following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+// following  disclaimer.
 //
 //  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
 //  following disclaimer in the documentation and/or other materials provided with the distribution.
@@ -12,17 +12,18 @@
 //  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
 //  products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES,  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL,  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+// DAMAGE.
 use std::sync::Arc;
 
 use tari_test_utils::unpack_enum;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
@@ -261,6 +262,8 @@ mod fetch_headers {
 }
 
 mod find_headers_after_hash {
+    use tari_common_types::types::FixedHash;
+
     use super::*;
 
     #[test]
@@ -275,7 +278,7 @@ mod find_headers_after_hash {
         let db = setup();
         let genesis_hash = db.fetch_block(0).unwrap().block().hash();
         add_many_chained_blocks(1, &db);
-        let hashes = vec![genesis_hash.clone()];
+        let hashes = vec![genesis_hash];
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
         assert_eq!(index, 0);
         assert_eq!(headers.len(), 1);
@@ -302,19 +305,12 @@ mod find_headers_after_hash {
         add_many_chained_blocks(5, &db);
         let hashes = (2..=4)
             .map(|i| db.fetch_block(i).unwrap().block().hash())
-            .chain(vec![vec![0; 32], vec![0; 32]])
+            .chain(vec![FixedHash::zero(), FixedHash::zero()])
             .rev();
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
         assert_eq!(index, 2);
         assert_eq!(headers.len(), 1);
         assert_eq!(&headers[0], db.fetch_block(5).unwrap().header());
-    }
-
-    #[test]
-    fn it_errors_for_hashes_with_an_invalid_length() {
-        let db = setup();
-        let err = db.find_headers_after_hash(vec![vec![]], 1).unwrap_err();
-        unpack_enum!(ChainStorageError::InvalidArguments { .. } = err);
     }
 }
 

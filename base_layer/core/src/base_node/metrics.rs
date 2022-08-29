@@ -21,8 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
+use tari_common_types::types::FixedHash;
 use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
-use tari_utilities::hex::to_hex;
+use tari_utilities::hex::Hex;
 
 pub fn tip_height() -> IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
@@ -126,7 +127,7 @@ pub fn orphaned_blocks() -> IntCounter {
     METER.clone()
 }
 
-pub fn rejected_blocks(height: u64, hash: &[u8]) -> IntCounter {
+pub fn rejected_blocks(height: u64, hash: &FixedHash) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "base_node::blockchain::rejected_blocks",
@@ -136,10 +137,10 @@ pub fn rejected_blocks(height: u64, hash: &[u8]) -> IntCounter {
         .unwrap()
     });
 
-    METER.with_label_values(&[&height.to_string(), &to_hex(hash)])
+    METER.with_label_values(&[&height.to_string(), &hash.to_hex()])
 }
 
-pub fn rejected_local_blocks(height: u64, hash: &[u8]) -> IntCounter {
+pub fn rejected_local_blocks(height: u64, hash: &FixedHash) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "base_node::blockchain::rejected_local_blocks",
@@ -149,7 +150,7 @@ pub fn rejected_local_blocks(height: u64, hash: &[u8]) -> IntCounter {
         .unwrap()
     });
 
-    METER.with_label_values(&[&height.to_string(), &to_hex(hash)])
+    METER.with_label_values(&[&height.to_string(), &hash.to_hex()])
 }
 
 pub fn active_sync_peers() -> IntGauge {

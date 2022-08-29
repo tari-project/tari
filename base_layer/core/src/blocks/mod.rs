@@ -22,6 +22,7 @@
 
 #[cfg(feature = "base_node")]
 mod accumulated_data;
+
 #[cfg(feature = "base_node")]
 pub use accumulated_data::{
     BlockAccumulatedData,
@@ -32,6 +33,7 @@ pub use accumulated_data::{
     DeletedBitmap,
     UpdateBlockAccumulatedData,
 };
+use tari_crypto::hash_domain;
 
 mod error;
 pub use error::BlockError;
@@ -61,3 +63,5 @@ pub use new_block_template::NewBlockTemplate;
 mod new_blockheader_template;
 #[cfg(feature = "base_node")]
 pub use new_blockheader_template::NewBlockHeaderTemplate;
+
+hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);

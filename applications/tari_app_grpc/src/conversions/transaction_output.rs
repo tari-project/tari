@@ -31,7 +31,7 @@ use tari_core::{
     },
 };
 use tari_script::TariScript;
-use tari_utilities::{ByteArray, Hashable};
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -79,7 +79,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
 
 impl From<TransactionOutput> for grpc::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
-        let hash = output.hash();
+        let hash = output.hash().to_vec();
         grpc::TransactionOutput {
             hash,
             features: Some(output.features.into()),

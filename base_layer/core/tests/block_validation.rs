@@ -25,6 +25,7 @@ use std::sync::Arc;
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
+use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
@@ -63,7 +64,7 @@ use tari_core::{
 };
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::helpers::{
     block_builders::{
@@ -178,7 +179,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 .to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
-    let hash = tblock.header.merged_mining_hash();
+    let hash = tblock.header.mining_hash();
     monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
@@ -539,7 +540,7 @@ OutputFeatures::default()),
 
     // check mmr roots
     let mut new_block = db.prepare_new_block(template).unwrap();
-    new_block.header.output_mr = Vec::new();
+    new_block.header.output_mr = FixedHash::zero();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -821,6 +822,6 @@ async fn test_block_sync_body_validator() {
     // lets the mmr root
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
     let mut new_block = db.prepare_new_block(template).unwrap();
-    new_block.header.output_mr = Vec::new();
+    new_block.header.output_mr = FixedHash::zero();
     validator.validate_body(new_block).await.unwrap_err();
 }

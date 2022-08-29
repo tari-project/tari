@@ -23,7 +23,10 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::{transaction::TransactionStatus, types::BlockHash};
+use tari_common_types::{
+    transaction::TransactionStatus,
+    types::{BlockHash, FixedHash},
+};
 
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, storage::OutputStatus},
@@ -114,7 +117,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
             let mined_in_block: BlockHash = if let Some(hash) = output_statuses_by_tx_id.block_hash {
                 hash
             } else {
-                vec![0u8; 32]
+                FixedHash::zero()
             };
             let is_valid = tip_height >= mined_height;
             let was_confirmed = tx.status == TransactionStatus::FauxConfirmed;

@@ -47,7 +47,7 @@ use tari_crypto::{
 use tari_script::ScriptContext;
 
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeVec},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec},
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::MicroTari,
@@ -578,6 +578,14 @@ impl ConsensusEncoding for AggregateBody {
     }
 }
 
+impl ConsensusEncodingSized for AggregateBody {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.inputs.consensus_encode_exact_size() +
+            self.outputs.consensus_encode_exact_size() +
+            self.kernels.consensus_encode_exact_size()
+    }
+}
+
 impl ConsensusDecoding for AggregateBody {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         const MAX_SIZE: usize = 50000;
@@ -586,5 +594,18 @@ impl ConsensusDecoding for AggregateBody {
         let kernels = MaxSizeVec::<TransactionKernel, MAX_SIZE>::consensus_decode(reader)?.into();
         let body = AggregateBody::new(inputs, outputs, kernels);
         Ok(body)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+
+    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
+
+    #[test]
+    fn consensus_encoding() {
+        let body = get_genesis_block(Network::Esmeralda).block().body.clone();
+        check_consensus_encoding_correctness(body).unwrap();
     }
 }

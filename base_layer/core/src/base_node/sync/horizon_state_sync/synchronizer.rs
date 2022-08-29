@@ -33,10 +33,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
-use tari_crypto::{
-    commitment::HomomorphicCommitment,
-    tari_utilities::{hex::Hex, Hashable},
-};
+use tari_crypto::{commitment::HomomorphicCommitment, tari_utilities::hex::Hex};
 use tokio::task;
 
 use super::error::HorizonSyncError;
@@ -282,7 +279,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut current_header = self.db().fetch_header_containing_kernel_mmr(local_num_kernels).await?;
         let req = SyncKernelsRequest {
             start: local_num_kernels,
-            end_header_hash: to_header.hash(),
+            end_header_hash: to_header.hash().to_vec(),
         };
         let mut kernel_stream = client.sync_kernels(req).await?;
 
@@ -313,7 +310,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             //       Suggest should use u64 externally (u64 is in the header) and error on the database calls if they
             //       are > u32::MAX. Remove the clippy exception once fixed.
             #[allow(clippy::cast_possible_truncation)]
-            txn.insert_kernel_via_horizon_sync(kernel, current_header.hash().clone(), mmr_position as u32);
+            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position as u32);
             if mmr_position == current_header.header().kernel_mmr_size - 1 {
                 let num_kernels = kernel_hashes.len();
                 debug!(
@@ -325,17 +322,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 );
                 // Validate root
                 let block_data = db
-                    .fetch_block_accumulated_data(current_header.header().prev_hash.clone())
+                    .fetch_block_accumulated_data(current_header.header().prev_hash)
                     .await?;
                 let kernel_pruned_set = block_data.dissolve().0;
                 let mut kernel_mmr = PrunedKernelMmr::new(kernel_pruned_set);
 
                 for hash in kernel_hashes.drain(..) {
-                    kernel_mmr.push(hash)?;
+                    kernel_mmr.push(hash.to_vec())?;
                 }
 
                 let mmr_root = kernel_mmr.get_merkle_root()?;
-                if mmr_root != current_header.header().kernel_mr {
+                if mmr_root.as_slice() != current_header.header().kernel_mr.as_slice() {
                     return Err(HorizonSyncError::InvalidMmrRoot {
                         mmr_tree: MmrTree::Kernel,
                         at_height: current_header.height(),
@@ -351,7 +348,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     current_header.height()
                 );
                 txn.update_block_accumulated_data_via_horizon_sync(
-                    current_header.hash().clone(),
+                    *current_header.hash(),
                     UpdateBlockAccumulatedData {
                         kernel_hash_set: Some(kernel_hash_set),
                         ..Default::default()
@@ -459,7 +456,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let req = SyncUtxosRequest {
             start,
-            end_header_hash: end_hash,
+            end_header_hash: end_hash.to_vec(),
             include_deleted_bitmaps: true,
             include_pruned_utxos: true,
         };
@@ -485,7 +482,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut timer = Instant::now();
 
         let block_data = db
-            .fetch_block_accumulated_data(current_header.header().prev_hash.clone())
+            .fetch_block_accumulated_data(current_header.header().prev_hash)
             .await?;
         let (_, output_pruned_set, witness_pruned_set, _) = block_data.dissolve();
 
@@ -526,12 +523,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     helpers::check_tari_script_byte_size(&output.script, constants.get_max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
-                    output_mmr.push(output.hash())?;
-                    witness_mmr.push(output.witness_hash())?;
+                    output_mmr.push(output.hash().to_vec())?;
+                    witness_mmr.push(output.witness_hash().to_vec())?;
 
                     txn.insert_output_via_horizon_sync(
                         output,
-                        current_header.hash().clone(),
+                        *current_header.hash(),
                         current_header.height(),
                         u32::try_from(mmr_position)?,
                         current_header.timestamp(),
@@ -552,9 +549,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     witness_mmr.push(utxo.witness_hash.clone())?;
 
                     txn.insert_pruned_output_via_horizon_sync(
-                        utxo.hash,
-                        utxo.witness_hash,
-                        current_header.hash().clone(),
+                        utxo.hash.try_into()?,
+                        utxo.witness_hash.try_into()?,
+                        *current_header.hash(),
                         current_header.height(),
                         u32::try_from(mmr_position)?,
                         current_header.timestamp(),
@@ -601,7 +598,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     let output_mmr = MutablePrunedOutputMmr::new(pruned_output_set.clone(), bitmap.clone())?;
 
                     let mmr_root = output_mmr.get_merkle_root()?;
-                    if mmr_root != current_header.header().output_mr {
+                    if mmr_root.as_slice() != current_header.header().output_mr.as_slice() {
                         return Err(HorizonSyncError::InvalidMmrRoot {
                             mmr_tree: MmrTree::Utxo,
                             at_height: current_header.height(),
@@ -611,7 +608,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
 
                     let mmr_root = witness_mmr.get_merkle_root()?;
-                    if mmr_root != current_header.header().witness_mr {
+                    if mmr_root.as_slice() != current_header.header().witness_mr.as_slice() {
                         return Err(HorizonSyncError::InvalidMmrRoot {
                             mmr_tree: MmrTree::Witness,
                             at_height: current_header.height(),
@@ -626,7 +623,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                     let witness_hash_set = witness_mmr.get_pruned_hash_set()?;
                     txn.update_block_accumulated_data_via_horizon_sync(
-                        current_header.hash().clone(),
+                        *current_header.hash(),
                         UpdateBlockAccumulatedData {
                             utxo_hash_set: Some(pruned_output_set),
                             witness_hash_set: Some(witness_hash_set),
@@ -767,9 +764,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .write_transaction()
             .set_best_block(
                 header.height(),
-                header.hash().clone(),
+                *header.hash(),
                 header.accumulated_data().total_accumulated_difficulty,
-                metadata.best_block().clone(),
+                *metadata.best_block(),
                 header.timestamp(),
             )
             .set_pruned_height(header.height())
@@ -823,7 +820,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     prev_mmr,
                     curr_header.header().output_mmr_size - 1
                 );
-                let (utxos, _) = db.fetch_utxos_in_block(curr_header.hash().clone(), None)?;
+                let (utxos, _) = db.fetch_utxos_in_block(*curr_header.hash(), None)?;
                 debug!(
                     target: LOG_TARGET,
                     "{} output(s) loaded for height {}",
@@ -866,7 +863,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 }
                 prev_mmr = curr_header.header().output_mmr_size;
 
-                let kernels = db.fetch_kernels_in_block(curr_header.hash().clone())?;
+                let kernels = db.fetch_kernels_in_block(*curr_header.hash())?;
                 trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
                 for k in kernels {
                     kernel_sum = &k.excess + &kernel_sum;

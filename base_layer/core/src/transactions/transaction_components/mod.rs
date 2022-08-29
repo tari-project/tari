@@ -32,7 +32,7 @@ pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
 pub use side_chain::*;
-use tari_common_types::types::Commitment;
+use tari_common_types::types::{Commitment, FixedHash};
 use tari_script::TariScript;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
@@ -77,7 +77,7 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
 use super::tari_amount::MicroTari;
-use crate::{consensus::ConsensusHasher, covenants::Covenant};
+use crate::{consensus::DomainSeparatedConsensusHasher, covenants::Covenant, transactions::TransactionHashDomain};
 
 /// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
 /// ordering as well as for the output hash calculation for TransactionInput.
@@ -93,8 +93,8 @@ pub(super) fn hash_output(
     covenant: &Covenant,
     encrypted_value: &EncryptedValue,
     minimum_value_promise: MicroTari,
-) -> [u8; 32] {
-    let common_hash = ConsensusHasher::default()
+) -> FixedHash {
+    let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
         .chain(&version)
         .chain(features)
         .chain(commitment)
@@ -104,6 +104,6 @@ pub(super) fn hash_output(
         .chain(&minimum_value_promise);
 
     match version {
-        TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common_hash.finalize(),
+        TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common_hash.finalize().into(),
     }
 }

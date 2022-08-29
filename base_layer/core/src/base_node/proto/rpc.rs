@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_utilities::Hashable;
+use tari_utilities::ByteArray;
 
 use crate::{blocks::Block, chain_storage::PrunedOutput, mempool::FeePerGramStat, proto::base_node as proto};
 
@@ -31,7 +31,7 @@ impl TryFrom<Block> for proto::BlockBodyResponse {
 
     fn try_from(block: Block) -> Result<Self, Self::Error> {
         Ok(Self {
-            hash: block.hash(),
+            hash: block.hash().to_vec(),
             body: Some(block.body.try_into()?),
         })
     }
@@ -45,8 +45,8 @@ impl From<PrunedOutput> for proto::SyncUtxo {
                 witness_hash,
             } => proto::SyncUtxo {
                 utxo: Some(proto::sync_utxo::Utxo::PrunedOutput(proto::PrunedOutput {
-                    hash: output_hash,
-                    witness_hash,
+                    hash: output_hash.to_vec(),
+                    witness_hash: witness_hash.to_vec(),
                 })),
             },
             PrunedOutput::NotPruned { output } => proto::SyncUtxo {

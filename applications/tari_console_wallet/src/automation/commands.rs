@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryInto,
     fs,
     fs::File,
     io,
@@ -36,10 +37,11 @@ use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -51,7 +53,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
@@ -143,7 +145,7 @@ pub async fn init_sha_atomic_swap(
 pub async fn finalise_sha_atomic_swap(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    output_hash: Vec<u8>,
+    output_hash: FixedHash,
     pre_image: PublicKey,
     fee_per_gram: MicroTari,
     message: String,
@@ -161,7 +163,7 @@ pub async fn finalise_sha_atomic_swap(
 pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    output_hash: Vec<u8>,
+    output_hash: FixedHash,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -738,10 +740,11 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             FinaliseShaAtomicSwap(args) => {
+                let hash = args.output_hash[0].clone().try_into()?;
                 let tx_id = finalise_sha_atomic_swap(
                     output_service.clone(),
                     transaction_service.clone(),
-                    args.output_hash[0].clone(),
+                    hash,
                     args.pre_image.into(),
                     config.fee_per_gram.into(),
                     args.message,
@@ -751,10 +754,11 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             ClaimShaAtomicSwapRefund(args) => {
+                let hash = args.output_hash[0].clone().try_into()?;
                 let tx_id = claim_htlc_refund(
                     output_service.clone(),
                     transaction_service.clone(),
-                    args.output_hash[0].clone(),
+                    hash,
                     config.fee_per_gram.into(),
                     args.message,
                 )
@@ -771,6 +775,25 @@ pub async fn command_runner(
                     .revalidate_all_transactions()
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
+            },
+            HashGrpcPassword(args) => {
+                let (username, password) = config
+                    .grpc_authentication
+                    .username_password()
+                    .ok_or_else(|| CommandError::General("GRPC basic auth is not configured".to_string()))?;
+                let hashed_password = create_salted_hashed_password(password.reveal())
+                    .map_err(|e| CommandError::General(e.to_string()))?;
+                if args.short {
+                    println!("{}", *hashed_password);
+                } else {
+                    println!("Your hashed password is:");
+                    println!("{}", *hashed_password);
+                    println!();
+                    println!(
+                        "Use HTTP basic auth with username '{}' and the hashed password to make GRPC requests",
+                        username
+                    );
+                }
             },
         }
     }

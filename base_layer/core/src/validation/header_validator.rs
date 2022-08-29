@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use log::*;
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::BlockHeader,
@@ -90,7 +90,7 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         );
         check_pow_data(header, &self.rules, backend)?;
         let achieved_target = difficulty_calculator.check_achieved_and_target_difficulty(backend, header)?;
-        check_not_bad_block(backend, &header.hash())?;
+        check_not_bad_block(backend, header.hash())?;
 
         trace!(
             target: LOG_TARGET,
