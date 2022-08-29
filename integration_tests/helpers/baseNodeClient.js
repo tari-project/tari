@@ -44,7 +44,7 @@ class BaseNodeClient {
 
   getHeaderAt(height) {
     return this.getHeaders(height, 1).then((header) =>
-      header && header.length ? header[0].header : null
+      header && header.length ? header[0] : null
     );
   }
 
@@ -66,7 +66,7 @@ class BaseNodeClient {
 
   getTipHeader() {
     return this.getHeaders(0, 1).then((headers) => {
-      const header = headers[0].header;
+      const header = headers[0];
       return Object.assign(header, {
         height: +header.height,
       });
