@@ -344,6 +344,7 @@ impl TransactionInput {
                 features,
                 covenant,
                 encrypted_value,
+                sender_offset_public_key,
                 minimum_value_promise,
                 ..
             } => transaction_components::hash_output(
@@ -353,6 +354,7 @@ impl TransactionInput {
                 script,
                 covenant,
                 encrypted_value,
+                sender_offset_public_key,
                 *minimum_value_promise,
             ),
         }
