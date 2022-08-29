@@ -25,7 +25,7 @@ use std::{convert::TryFrom, iter::repeat_with, sync::Arc};
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, FixedHash, HashOutput, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -61,10 +61,7 @@ use tari_core::{
     WitnessMmr,
     WitnessMmrHasherBlake256,
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
 use tari_mmr::{Hash, MutableMmr};
 use tari_script::script;
 
@@ -156,12 +153,12 @@ fn print_new_genesis_block(network: Network) {
         .unwrap();
 
     let mut kernel_mmr = KernelMmr::new(Vec::new());
-    kernel_mmr.push(kernel.hash()).unwrap();
+    kernel_mmr.push(kernel.hash().to_vec()).unwrap();
 
     let mut witness_mmr = WitnessMmr::new(Vec::new());
-    witness_mmr.push(utxo.witness_hash()).unwrap();
+    witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-    output_mmr.push(utxo.hash()).unwrap();
+    output_mmr.push(utxo.hash().to_vec()).unwrap();
 
     header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     header.kernel_mmr_size += 1;
@@ -245,9 +242,9 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
     body.sort();
-    let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
-    let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
-    let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
+    let kernel_hashes: Vec<Vec<u8>> = body.kernels().iter().map(|k| k.hash().to_vec()).collect();
+    let out_hashes: Vec<Vec<u8>> = body.outputs().iter().map(|out| out.hash().to_vec()).collect();
+    let rp_hashes: Vec<Vec<u8>> = body.outputs().iter().map(|out| out.witness_hash().to_vec()).collect();
 
     let mut header = BlockHeader::from(header);
     header.kernel_mr = FixedHash::try_from(

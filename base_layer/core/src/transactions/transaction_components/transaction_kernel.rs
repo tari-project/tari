@@ -31,12 +31,12 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey, Signature};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
 use super::TransactionKernelVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, DomainSeparatedConsensusHasher},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
@@ -89,6 +89,14 @@ impl TransactionKernel {
             excess_sig,
             burn_commitment,
         }
+    }
+
+    /// Produce a canonical hash for a transaction kernel.
+    pub fn hash(&self) -> FixedHash {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_kernel")
+            .chain(self)
+            .finalize()
+            .into()
     }
 
     pub fn new_current_version(
@@ -190,16 +198,6 @@ impl TransactionKernel {
     }
 }
 
-impl Hashable for TransactionKernel {
-    /// Produce a canonical hash for a transaction kernel.
-    fn hash(&self) -> Vec<u8> {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_kernel")
-            .chain(self)
-            .finalize()
-            .to_vec()
-    }
-}
-
 impl Display for TransactionKernel {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(
@@ -245,6 +243,8 @@ impl ConsensusEncoding for TransactionKernel {
     }
 }
 
+impl ConsensusEncodingSized for TransactionKernel {}
+
 impl ConsensusDecoding for TransactionKernel {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let version = TransactionKernelVersion::consensus_decode(reader)?;
@@ -256,5 +256,34 @@ impl ConsensusDecoding for TransactionKernel {
         let commitment = <Option<Commitment> as ConsensusDecoding>::consensus_decode(reader)?;
         let kernel = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig, commitment);
         Ok(kernel)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_utilities::ByteArray;
+
+    use super::*;
+    use crate::{consensus::check_consensus_encoding_correctness, transactions::test_helpers::TestParams};
+
+    #[test]
+    fn consensus_encoding() {
+        let test_params = TestParams::new();
+
+        let output = TransactionKernel::new(
+            TransactionKernelVersion::get_current_version(),
+            KernelFeatures::all(),
+            MicroTari::from(100),
+            123,
+            test_params.commit_value(321.into()),
+            Signature::sign(
+                test_params.spend_key.clone(),
+                test_params.nonce.clone(),
+                test_params.nonce.as_bytes(),
+            )
+            .unwrap(),
+            Some(test_params.commit_value(321.into())),
+        );
+        check_consensus_encoding_correctness(output).unwrap();
     }
 }

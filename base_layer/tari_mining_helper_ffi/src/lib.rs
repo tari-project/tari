@@ -39,7 +39,6 @@ use tari_core::{
     proof_of_work::sha3_difficulty,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_utilities::Hashable;
 
 use crate::error::{InterfaceError, MiningHelperError};
 
@@ -371,8 +370,8 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 17497411907229199779;
-        const DIFFICULTY: Difficulty = Difficulty::from_u64(1984);
+        const NONCE: u64 = 11718790012985321443;
+        const DIFFICULTY: Difficulty = Difficulty::from_u64(3755);
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;

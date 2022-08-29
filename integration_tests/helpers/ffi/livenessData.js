@@ -57,16 +57,9 @@ class LivenessData {
 
   getOnlineStatus() {
     let status = InterfaceFFI.livenessDataGetOnlineStatus(this.ptr);
-    switch (status) {
-      case 0:
-        return "Online";
-      case 1:
-        return "Offline";
-      case 2:
-        return "NeverSeen";
-      default:
-        expect(status).to.equal("please add this<< OnlineStatus");
-    }
+    const result = status.readCString();
+    InterfaceFFI.stringDestroy(status);
+    return result;
   }
 
   destroy() {

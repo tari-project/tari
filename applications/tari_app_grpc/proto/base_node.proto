@@ -31,11 +31,9 @@ package tari.rpc;
 // The gRPC interface for interacting with the base node.
 service BaseNode {
     // Lists headers in the current best chain
-    rpc ListHeaders(ListHeadersRequest) returns (stream BlockHeader);
+    rpc ListHeaders(ListHeadersRequest) returns (stream BlockHeaderResponse);
     // Get header by hash
     rpc GetHeaderByHash(GetHeaderByHashRequest) returns (BlockHeaderResponse);
-    // Get header by height
-    rpc GetHeaderByHeight(GetHeaderByHeightRequest) returns (BlockHeaderResponse);
     // Returns blocks in the current best chain. Currently only supports querying by height
     rpc GetBlocks(GetBlocksRequest) returns (stream HistoricalBlock);
     // Returns the block timing for the chain heights
@@ -256,11 +254,6 @@ message GetHeaderByHashRequest {
     bytes hash = 1;
 }
 
-// Request that returns a header based by height
-message GetHeaderByHeightRequest {
-    // The height of the block header
-    uint64 height = 1;
-}
 
 message BlockHeaderResponse {
     // The block header

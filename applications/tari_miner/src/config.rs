@@ -41,6 +41,7 @@ use std::{str::FromStr, time::Duration};
 use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use tari_common::SubConfigPath;
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -50,6 +51,8 @@ pub struct MinerConfig {
     pub base_node_grpc_address: Multiaddr,
     /// GRPC address of console wallet
     pub wallet_grpc_address: Multiaddr,
+    /// GRPC authentication for console wallet
+    pub wallet_grpc_authentication: GrpcAuthentication,
     /// Number of mining threads
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
@@ -85,6 +88,7 @@ impl Default for MinerConfig {
         Self {
             base_node_grpc_address: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18142").unwrap(),
             wallet_grpc_address: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18143").unwrap(),
+            wallet_grpc_authentication: GrpcAuthentication::default(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,

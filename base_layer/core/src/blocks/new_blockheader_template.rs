@@ -26,10 +26,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, BlockHash};
 use tari_utilities::hex::Hex;
 
-use crate::{
-    blocks::block_header::{hash_serializer, BlockHeader},
-    proof_of_work::ProofOfWork,
-};
+use crate::{blocks::block_header::BlockHeader, proof_of_work::ProofOfWork};
 
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.
@@ -40,7 +37,6 @@ pub struct NewBlockHeaderTemplate {
     /// Height of this block since the genesis block (height 0)
     pub height: u64,
     /// Hash of the block previous to this in the chain.
-    #[serde(with = "hash_serializer")]
     pub prev_hash: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.

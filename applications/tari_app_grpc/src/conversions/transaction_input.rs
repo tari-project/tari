@@ -47,8 +47,12 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             if input.output_hash.is_empty() {
                 return Err("Compact Transaction Input does not contain `output_hash`".to_string());
             }
+            let input_hash = input
+                .output_hash
+                .try_into()
+                .map_err(|_| "Malformed input hash".to_string())?;
             Ok(TransactionInput::new_with_output_hash(
-                input.output_hash,
+                input_hash,
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
             ))
@@ -93,7 +97,7 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
             signature_v: Vec::from(input.script_signature.v().as_bytes()),
         });
         if input.is_compact() {
-            let output_hash = input.output_hash();
+            let output_hash = input.output_hash().to_vec();
             Ok(Self {
                 script_signature,
                 output_hash,
@@ -112,7 +116,8 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .to_vec(),
                 hash: input
                     .canonical_hash()
-                    .map_err(|_| "Non-compact Transaction input should be able to be hashed".to_string())?,
+                    .map_err(|_| "Non-compact Transaction input should be able to be hashed".to_string())?
+                    .to_vec(),
 
                 script: input
                     .script()

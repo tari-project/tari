@@ -106,6 +106,7 @@ impl Display for OutputType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
 
     #[test]
     fn it_converts_from_byte_to_output_type() {
@@ -113,5 +114,11 @@ mod tests {
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
         assert_eq!(OutputType::from_byte(2), Some(OutputType::Burn));
         assert_eq!(OutputType::from_byte(255), None);
+    }
+
+    #[test]
+    fn consensus_encoding() {
+        let t = OutputType::Standard;
+        check_consensus_encoding_correctness(t).unwrap();
     }
 }

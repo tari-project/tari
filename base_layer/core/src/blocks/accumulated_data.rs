@@ -39,7 +39,7 @@ use serde::{
 };
 use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{error::BlockError, Block, BlockHeader},

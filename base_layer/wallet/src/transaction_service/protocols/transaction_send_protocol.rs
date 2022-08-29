@@ -559,7 +559,7 @@ where
             .sender_protocol
             .finalize(
                 &self.resources.factories,
-                self.prev_header.clone(),
+                self.prev_header,
                 self.height.unwrap_or(u64::MAX),
             )
             .map_err(|e| {

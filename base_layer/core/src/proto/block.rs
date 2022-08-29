@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{BlindingFactor, PrivateKey};
+use tari_common_types::types::{BlindingFactor, FixedHash, PrivateKey};
 use tari_utilities::ByteArray;
 
 use super::core as proto;
@@ -78,11 +78,17 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
             .map(TryInto::try_into)
             .ok_or_else(|| "accumulated_data in historical block not provided".to_string())??;
 
-        let pruned = historical_block
+        let output_hashes: Vec<FixedHash> = historical_block
             .pruned_output_hashes
             .into_iter()
-            .zip(historical_block.pruned_witness_hash)
-            .collect();
+            .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
+            .collect::<Result<_, _>>()?;
+        let witness_hashes: Vec<FixedHash> = historical_block
+            .pruned_witness_hash
+            .into_iter()
+            .map(|hash| hash.try_into().map_err(|_| "Malformed witness hash".to_string()))
+            .collect::<Result<_, _>>()?;
+        let pruned = output_hashes.into_iter().zip(witness_hashes).collect();
 
         Ok(HistoricalBlock::new(
             block,
@@ -98,8 +104,8 @@ impl TryFrom<HistoricalBlock> for proto::HistoricalBlock {
     type Error = String;
 
     fn try_from(block: HistoricalBlock) -> Result<Self, Self::Error> {
-        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.0.clone()).collect();
-        let pruned_witness_hash = block.pruned_outputs().iter().map(|x| x.1.clone()).collect();
+        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.0.to_vec()).collect();
+        let pruned_witness_hash = block.pruned_outputs().iter().map(|x| x.1.to_vec()).collect();
         let (block, accumulated_data, confirmations, pruned_input_count) = block.dissolve();
         Ok(Self {
             confirmations,
@@ -120,7 +126,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
             accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
             total_kernel_offset: source.total_kernel_offset.to_vec(),
-            hash: source.hash,
+            hash: source.hash.to_vec(),
             total_accumulated_difficulty: Vec::from(source.total_accumulated_difficulty.to_le_bytes()),
         }
     }
@@ -133,9 +139,12 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         let mut acc_diff = [0; 16];
         acc_diff.copy_from_slice(&source.total_accumulated_difficulty[0..16]);
         let accumulated_difficulty = u128::from_le_bytes(acc_diff);
-
+        let hash = source
+            .hash
+            .try_into()
+            .map_err(|_| "Malformed witness hash".to_string())?;
         Ok(Self {
-            hash: source.hash,
+            hash,
             achieved_difficulty: source.achieved_difficulty.into(),
             total_accumulated_difficulty: accumulated_difficulty,
             accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
@@ -201,10 +210,14 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
             Some(p) => ProofOfWork::try_from(p)?,
             None => return Err("No proof of work provided".into()),
         };
+        let prev_hash = header
+            .prev_hash
+            .try_into()
+            .map_err(|_| "Malformed prev block hash".to_string())?;
         Ok(Self {
             version: u16::try_from(header.version).unwrap(),
             height: header.height,
-            prev_hash: header.prev_hash,
+            prev_hash,
             total_kernel_offset,
             total_script_offset,
             pow,
@@ -217,7 +230,7 @@ impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
         Self {
             version: u32::try_from(header.version).unwrap(),
             height: header.height,
-            prev_hash: header.prev_hash,
+            prev_hash: header.prev_hash.to_vec(),
             total_kernel_offset: header.total_kernel_offset.to_vec(),
             total_script_offset: header.total_script_offset.to_vec(),
             pow: Some(proto::ProofOfWork::from(header.pow)),

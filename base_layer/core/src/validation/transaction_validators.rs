@@ -74,7 +74,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistenc
             self.bypass_range_proof_verification,
             &self.factories,
             None,
-            Some(tip.best_block().clone()),
+            Some(*tip.best_block()),
             tip.height_of_longest_chain(),
         )
         .map_err(ValidationError::TransactionError)?;

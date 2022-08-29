@@ -544,7 +544,7 @@ impl SenderTransactionProtocol {
             .build()?;
         tx_builder.with_kernel(kernel);
         tx_builder
-            .build(factories, info.prev_header.clone(), info.height)
+            .build(factories, info.prev_header, info.height)
             .map_err(TPE::from)
     }
 

@@ -92,7 +92,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_components::{OutputFeatures, UnblindedOutput},
 };
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,

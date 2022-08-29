@@ -36,7 +36,6 @@ use tari_common_types::{
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
-use tari_utilities::Hashable;
 
 use super::{create_block, mine_to_difficulty};
 use crate::{

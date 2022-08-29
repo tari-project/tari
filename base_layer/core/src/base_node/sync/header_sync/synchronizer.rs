@@ -34,7 +34,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
@@ -386,7 +386,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
 
             let request = FindChainSplitRequest {
-                block_hashes: block_hashes.clone(),
+                block_hashes: block_hashes.clone().iter().map(|v| v.to_vec()).collect(),
                 header_count,
             };
 
@@ -527,7 +527,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             local_tip_header,
             remote_tip_height,
             reorg_steps_back: steps_back,
-            chain_split_hash: chain_split_hash.clone(),
+            chain_split_hash: *chain_split_hash,
         };
         Ok(SyncStatus::Lagging(Box::new(chain_split_info)))
     }
@@ -568,13 +568,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let (start_header_height, start_header_hash, total_accumulated_difficulty) = self
             .header_validator
             .current_valid_chain_tip_header()
-            .map(|h| {
-                (
-                    h.height(),
-                    h.hash().clone(),
-                    h.accumulated_data().total_accumulated_difficulty,
-                )
-            })
+            .map(|h| (h.height(), *h.hash(), h.accumulated_data().total_accumulated_difficulty))
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
 
         // If we already have a stronger chain at this point, switch over to it.
@@ -615,7 +609,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_peer.node_id()
         );
         let request = SyncHeadersRequest {
-            start_hash: start_header_hash,
+            start_hash: start_header_hash.to_vec(),
             // To the tip!
             count: 0,
         };
@@ -773,7 +767,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 split_info.reorg_steps_back,
                 split_info.chain_split_hash.to_hex()
             );
-            let blocks = self.rewind_blockchain(split_info.chain_split_hash.clone()).await?;
+            let blocks = self.rewind_blockchain(split_info.chain_split_hash).await?;
             if !blocks.is_empty() {
                 self.hooks.call_on_rewind_hooks(blocks);
             }

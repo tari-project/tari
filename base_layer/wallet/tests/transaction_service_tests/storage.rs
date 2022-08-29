@@ -25,7 +25,7 @@ use chrono::{NaiveDateTime, Utc};
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_core::{
     covenants::Covenant,
@@ -325,7 +325,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
 
     runtime
-        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, [0u8; 16].to_vec(), 0, 5, true, false))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, FixedHash::zero(), 0, 5, true, false))
         .unwrap();
 
     assert_eq!(

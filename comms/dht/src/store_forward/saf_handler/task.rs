@@ -563,7 +563,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             trace!(
                 target: LOG_TARGET,
-                "Attempting to decrypt origin mac ({} byte(s))",
+                "Attempting to decrypt message signature ({} byte(s))",
                 header.message_signature.len()
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);

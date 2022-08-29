@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 
 use tari_common_types::types::{BlindingFactor, FixedHash};
 use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
-use tari_utilities::{ByteArray, Hashable};
+use tari_utilities::ByteArray;
 
 use crate::{
     conversions::{datetime_to_timestamp, timestamp_to_datetime},
@@ -35,10 +35,10 @@ impl From<BlockHeader> for grpc::BlockHeader {
     fn from(h: BlockHeader) -> Self {
         let pow_algo = h.pow_algo();
         Self {
-            hash: h.hash(),
+            hash: h.hash().to_vec(),
             version: u32::from(h.version),
             height: h.height,
-            prev_hash: h.prev_hash,
+            prev_hash: h.prev_hash.to_vec(),
             timestamp: datetime_to_timestamp(h.timestamp),
             input_mr: h.input_mr.to_vec(),
             output_mr: h.output_mr.to_vec(),
@@ -79,7 +79,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
         Ok(Self {
             version: u16::try_from(header.version).map_err(|_| "header version too large")?,
             height: header.height,
-            prev_hash: header.prev_hash,
+            prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
             timestamp,
             input_mr: FixedHash::try_from(header.input_mr).map_err(|err| err.to_string())?,
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,

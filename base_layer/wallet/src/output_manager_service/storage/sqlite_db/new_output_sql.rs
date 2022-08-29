@@ -81,7 +81,7 @@ impl NewOutputSql {
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
             received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
-            hash: Some(output.hash),
+            hash: Some(output.hash.to_vec()),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),

@@ -82,8 +82,8 @@ mod sync_blocks {
 
         let block = chain.get("A").unwrap();
         let msg = SyncBlocksRequest {
-            start_hash: block.hash().clone(),
-            end_hash: block.hash().clone(),
+            start_hash: block.hash().to_vec(),
+            end_hash: block.hash().to_vec(),
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
         let mut streaming = service.sync_blocks(req).await.unwrap();
@@ -100,8 +100,8 @@ mod sync_blocks {
         let last_block = chain.get("E").unwrap();
 
         let msg = SyncBlocksRequest {
-            start_hash: first_block.hash().clone(),
-            end_hash: last_block.hash().clone(),
+            start_hash: first_block.hash().to_vec(),
+            end_hash: last_block.hash().to_vec(),
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
         let mut streaming = service.sync_blocks(req).await.unwrap().into_inner();
@@ -141,7 +141,7 @@ mod sync_utxos {
         let gb = chain.get("GB").unwrap();
         let msg = SyncUtxosRequest {
             start: 100000000,
-            end_header_hash: gb.hash().clone(),
+            end_header_hash: gb.hash().to_vec(),
             include_pruned_utxos: true,
             include_deleted_bitmaps: false,
         };
@@ -161,7 +161,7 @@ mod sync_utxos {
         let start = total_outputs - 2;
         let msg = SyncUtxosRequest {
             start,
-            end_header_hash: block.hash().clone(),
+            end_header_hash: block.hash().to_vec(),
             include_pruned_utxos: true,
             include_deleted_bitmaps: false,
         };
