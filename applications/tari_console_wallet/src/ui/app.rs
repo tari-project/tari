@@ -34,7 +34,6 @@ use crate::{
     notifier::Notifier,
     ui::{
         components::{
-            assets_tab::AssetsTab,
             base_node::BaseNode,
             contacts_tab::ContactsTab,
             events_component::EventsComponent,
@@ -45,7 +44,6 @@ use crate::{
             receive_tab::ReceiveTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
-            tokens_component::TokensComponent,
             transactions_tab::TransactionsTab,
             Component,
         },
@@ -94,8 +92,6 @@ impl<B: Backend> App<B> {
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Contacts".into(), Box::new(ContactsTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
-            .add("Assets".into(), Box::new(AssetsTab::new()))
-            .add("Tokens".into(), Box::new(TokensComponent::new()))
             .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));

@@ -63,7 +63,7 @@ pub use body::{Body, ClientStreaming, IntoBody, Streaming};
 mod context;
 
 mod server;
-pub use server::{mock, NamedProtocolService, RpcServer, RpcServerError, RpcServerHandle};
+pub use server::{mock, NamedProtocolService, RpcServer, RpcServerBuilder, RpcServerError, RpcServerHandle};
 
 mod client;
 pub use client::{

@@ -27,7 +27,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use aes_gcm::{self, Aes256Gcm};
+use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
@@ -78,11 +78,11 @@ const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 #[derive(Clone)]
 pub struct TransactionServiceSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<Option<Aes256Gcm>>>,
+    cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
 }
 
 impl TransactionServiceSqliteDatabase {
-    pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
+    pub fn new(database_connection: WalletDbConnection, cipher: Option<XChaCha20Poly1305>) -> Self {
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
@@ -202,7 +202,10 @@ impl TransactionServiceSqliteDatabase {
         }
     }
 
-    fn decrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), TransactionStorageError> {
+    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(
+        &self,
+        o: &mut T,
+    ) -> Result<(), TransactionStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.decrypt(cipher)
@@ -211,7 +214,10 @@ impl TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn encrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), TransactionStorageError> {
+    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(
+        &self,
+        o: &mut T,
+    ) -> Result<(), TransactionStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.encrypt(cipher)
@@ -791,7 +797,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError> {
+    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), TransactionStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
 
         if (*current_cipher).is_some() {
@@ -900,7 +906,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
-        let _ = (*current_cipher).take();
+        std::mem::drop((*current_cipher).take());
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -1442,7 +1448,7 @@ impl InboundTransactionSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for InboundTransactionSql {
+impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [
             Self::INBOUND_TRANSACTION,
@@ -1453,7 +1459,7 @@ impl Encryptable<Aes256Gcm> for InboundTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.receiver_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
@@ -1464,7 +1470,7 @@ impl Encryptable<Aes256Gcm> for InboundTransactionSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
@@ -1630,7 +1636,7 @@ impl OutboundTransactionSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
+impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [
             Self::OUTBOUND_TRANSACTION,
@@ -1641,7 +1647,7 @@ impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.sender_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
@@ -1652,7 +1658,7 @@ impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
@@ -1976,7 +1982,7 @@ impl CompletedTransactionSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
+impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [
             Self::COMPLETED_TRANSACTION,
@@ -1987,7 +1993,7 @@ impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
         .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.transaction_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
@@ -1998,7 +2004,7 @@ impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
@@ -2194,12 +2200,12 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, time::Duration};
+    use std::{convert::TryFrom, mem::size_of, time::Duration};
 
-    use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+    use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
-    use rand::rngs::OsRng;
+    use rand::{rngs::OsRng, RngCore};
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -2656,8 +2662,10 @@ mod test {
 
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let inbound_tx = InboundTransaction {
             tx_id: 1u64.into(),
@@ -2827,8 +2835,10 @@ mod test {
             completed_tx_sql.commit(&conn).unwrap();
         }
 
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
+        let mut key = [0u8; size_of::<Key>()];
+        OsRng.fill_bytes(&mut key);
+        let key_ga = Key::from_slice(&key);
+        let cipher = XChaCha20Poly1305::new(key_ga);
 
         let connection = WalletDbConnection::new(pool, None);
 

@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_types::transaction::TxId;
@@ -111,7 +111,7 @@ impl NewOutputSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for NewOutputSql {
+impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
         [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()]
@@ -119,7 +119,7 @@ impl Encryptable<Aes256Gcm> for NewOutputSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 
@@ -132,7 +132,7 @@ impl Encryptable<Aes256Gcm> for NewOutputSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 

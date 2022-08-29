@@ -363,12 +363,13 @@ Then(
         5 * height /* 5 seconds per block */
       );
       const currTip = await client.getTipHeader();
+      let currTipHeaderHeight = parseInt(currTip.height);
       console.log(
-        `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
+        `${name} is at tip ${currTipHeaderHeight} (${currTip.hash.toString(
           "hex"
         )})`
       );
-      expect(currTip.height).to.equal(height);
+      expect(currTipHeaderHeight).to.equal(height);
       if (!tipHash) {
         tipHash = currTip.hash.toString("hex");
         console.log(`Node ${name} is at tip: ${tipHash}`);
@@ -504,7 +505,7 @@ Then(/node (.*) is at tip (.*)/, async function (node, name) {
   // console.log("headers:", this.headers);
   const existingHeader = this.headers[name];
   expect(existingHeader).to.not.be.null;
-  expect(existingHeader.hash.toString("hex")).to.equal(
+  expect(existingHeader.header.hash.toString("hex")).to.equal(
     header.hash.toString("hex")
   );
 });

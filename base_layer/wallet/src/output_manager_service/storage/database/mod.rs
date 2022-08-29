@@ -26,8 +26,8 @@ use std::{
     sync::Arc,
 };
 
-use aes_gcm::Aes256Gcm;
 pub use backend::OutputManagerBackend;
+use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
@@ -327,7 +327,7 @@ where T: OutputManagerBackend + 'static
         self.db.reinstate_cancelled_inbound_output(tx_id)
     }
 
-    pub fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
+    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError> {
         self.db.apply_encryption(cipher)
     }
 
