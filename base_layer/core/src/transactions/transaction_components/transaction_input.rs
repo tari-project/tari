@@ -367,7 +367,7 @@ impl TransactionInput {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
-                ref version,
+                version: _,
                 ref features,
                 ref commitment,
                 ref script,
@@ -378,7 +378,7 @@ impl TransactionInput {
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
                 let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_input")
-                    .chain(version)
+                    .chain(&self.version)
                     .chain(features)
                     .chain(commitment)
                     .chain(script)
