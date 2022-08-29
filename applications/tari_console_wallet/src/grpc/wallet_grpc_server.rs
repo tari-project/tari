@@ -880,41 +880,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             },
         }
     }
-
-    /// Returns the contents of a seed words file, provided via CLI
-    async fn seed_words(&self, _: Request<tari_rpc::Empty>) -> Result<Response<SeedWordsResponse>, Status> {
-        let cli = Cli::parse();
-
-        let filepath: PathBuf = match cli.seed_words_file_name {
-            Some(filepath) => filepath,
-            None => return Err(Status::not_found("file path is empty")),
-        };
-
-        let words = fs::read_to_string(filepath)?
-            .split(' ')
-            .collect::<Vec<&str>>()
-            .iter()
-            .map(|&x| x.into())
-            .collect::<Vec<String>>();
-
-        Ok(Response::new(SeedWordsResponse { words }))
-    }
-
-    /// Deletes the seed words file, provided via CLI
-    async fn delete_seed_words_file(
-        &self,
-        _: Request<tari_rpc::Empty>,
-    ) -> Result<Response<FileDeletedResponse>, Status> {
-        let cli = Cli::parse();
-
-        // WARNING: the filepath used is supplied as an argument
-        fs::remove_file(match cli.seed_words_file_name {
-            Some(filepath) => filepath,
-            None => return Err(Status::not_found("file path is empty")),
-        })?;
-
-        Ok(Response::new(FileDeletedResponse {}))
-    }
 }
 
 async fn handle_completed_tx(
