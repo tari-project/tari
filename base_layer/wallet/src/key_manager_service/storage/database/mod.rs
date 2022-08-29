@@ -52,63 +52,35 @@ where T: KeyManagerBackend + 'static
 
     /// Retrieves the key manager state of the provided branch
     /// Returns None if the request branch does not exist.
-    pub async fn get_key_manager_state(
-        &self,
-        branch: String,
-    ) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.get_key_manager(branch))
-            .await
-            .map_err(|err| KeyManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+    pub fn get_key_manager_state(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+        self.db.get_key_manager(branch)
     }
 
     /// Saves the specified key manager state to the backend database.
-    pub async fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), KeyManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.add_key_manager(state))
-            .await
-            .map_err(|err| KeyManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        Ok(())
+    pub fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), KeyManagerStorageError> {
+        self.db.add_key_manager(state)
     }
 
     /// Increment the key index of the provided branch of the key manager.
     /// Will error if the branch does not exist.
-    pub async fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.increment_key_index(branch))
-            .await
-            .map_err(|err| KeyManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(())
+    pub fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
+        self.db.increment_key_index(branch)
     }
 
     /// Sets the key index of the provided branch of the key manager.
     /// Will error if the branch does not exist.
-    pub async fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.set_key_index(branch, index))
-            .await
-            .map_err(|err| KeyManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(())
+    pub fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
+        self.db.set_key_index(branch, index)
     }
 
     /// Encrypts the entire key manager with all branches.
     /// This will only encrypt the index used, as the master seed phrase is not directly stored with the key manager.
-    pub async fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
-            .await
-            .map_err(|err| KeyManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerStorageError> {
+        self.db.apply_encryption(cipher)
     }
 
     /// Decrypts the entire key manager.
-    pub async fn remove_encryption(&self) -> Result<(), KeyManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.remove_encryption())
-            .await
-            .map_err(|err| KeyManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+    pub fn remove_encryption(&self) -> Result<(), KeyManagerStorageError> {
+        self.db.remove_encryption()
     }
 }
