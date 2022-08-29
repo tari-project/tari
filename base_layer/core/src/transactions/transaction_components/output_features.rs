@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use super::OutputFeaturesVersion;
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    transactions::transaction_components::{side_chain::SideChainFeatures, OutputType},
+    transactions::transaction_components::{side_chain::SideChainFeatures, CodeTemplateRegistration, OutputType},
 };
 
 /// Options for UTXO's
@@ -46,24 +46,23 @@ pub struct OutputFeatures {
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
     pub metadata: Vec<u8>,
-    pub sidechain_features: Option<Box<SideChainFeatures>>,
+    pub sidechain_features: Option<SideChainFeatures>,
 }
 
 impl OutputFeatures {
     pub fn new(
         version: OutputFeaturesVersion,
-        flags: OutputType,
+        output_type: OutputType,
         maturity: u64,
         metadata: Vec<u8>,
         sidechain_features: Option<SideChainFeatures>,
     ) -> OutputFeatures {
-        let boxed_sidechain_features = sidechain_features.map(Box::new);
         OutputFeatures {
             version,
-            output_type: flags,
+            output_type,
             maturity,
             metadata,
-            sidechain_features: boxed_sidechain_features,
+            sidechain_features,
         }
     }
 
@@ -98,6 +97,15 @@ impl OutputFeatures {
         }
     }
 
+    /// Creates template registration output features
+    pub fn for_template_registration(template_registration: CodeTemplateRegistration) -> OutputFeatures {
+        OutputFeatures {
+            output_type: OutputType::CodeTemplateRegistration,
+            sidechain_features: Some(SideChainFeatures::TemplateRegistration(template_registration)),
+            ..Default::default()
+        }
+    }
+
     pub fn is_coinbase(&self) -> bool {
         matches!(self.output_type, OutputType::Coinbase)
     }
@@ -124,7 +132,7 @@ impl ConsensusDecoding for OutputFeatures {
         let version = OutputFeaturesVersion::consensus_decode(reader)?;
         let maturity = u64::consensus_decode(reader)?;
         let flags = OutputType::consensus_decode(reader)?;
-        let sidechain_features = <Option<Box<SideChainFeatures>> as ConsensusDecoding>::consensus_decode(reader)?;
+        let sidechain_features = ConsensusDecoding::consensus_decode(reader)?;
         const MAX_METADATA_SIZE: usize = 1024;
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
         Ok(Self {
@@ -167,17 +175,43 @@ impl Display for OutputFeatures {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::consensus::check_consensus_encoding_correctness;
+    use std::convert::TryInto;
 
-    #[allow(clippy::too_many_lines)]
+    use tari_utilities::hex::from_hex;
+
+    use super::*;
+    use crate::{
+        consensus::{check_consensus_encoding_correctness, MaxSizeString},
+        transactions::transaction_components::{BuildInfo, TemplateType},
+    };
+
     fn make_fully_populated_output_features(version: OutputFeaturesVersion) -> OutputFeatures {
         OutputFeatures {
             version,
             output_type: OutputType::Standard,
             maturity: u64::MAX,
             metadata: vec![1; 1024],
-            sidechain_features: Some(Box::new(SideChainFeatures {})),
+            sidechain_features: Some(SideChainFeatures::TemplateRegistration(CodeTemplateRegistration {
+                author_public_key: Default::default(),
+                author_signature: Default::default(),
+                template_name: MaxSizeString::from_str_checked("🚀🚀🚀🚀🚀🚀🚀🚀").unwrap(),
+                template_version: 1,
+                template_type: TemplateType::Wasm { abi_version: 123 },
+                build_info: BuildInfo {
+                    repo_url: "/dns/github.com/https/tari_project/wasm_examples".try_into().unwrap(),
+                    commit_hash: from_hex("ea29c9f92973fb7eda913902ff6173c62cb1e5df")
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                },
+                binary_sha: from_hex("c93747637517e3de90839637f0ce1ab7c8a3800b")
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+                binary_url: "/dns4/github.com/https/tari_project/wasm_examples/releases/download/v0.0.6/coin.zip"
+                    .try_into()
+                    .unwrap(),
+            })),
         }
     }
 

@@ -1,59 +1,61 @@
-//  Copyright 2022. The Tari Project
+// Copyright 2019, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
 //
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+//! Impls for sidechain_features proto
 
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{PublicKey, Signature};
-use tari_core::{
-    consensus::MaxSizeString,
-    transactions::transaction_components::{BuildInfo, CodeTemplateRegistration, SideChainFeatures, TemplateType},
-};
 use tari_utilities::ByteArray;
 
-use crate::tari_rpc as grpc;
+use crate::{
+    consensus::MaxSizeString,
+    proto,
+    transactions::transaction_components::{BuildInfo, CodeTemplateRegistration, SideChainFeatures, TemplateType},
+};
 
 //---------------------------------- SideChainFeatures --------------------------------------------//
-impl From<SideChainFeatures> for grpc::SideChainFeatures {
+impl From<SideChainFeatures> for proto::types::SideChainFeatures {
     fn from(value: SideChainFeatures) -> Self {
         value.into()
     }
 }
 
-impl From<SideChainFeatures> for grpc::side_chain_features::SideChainFeatures {
+impl From<SideChainFeatures> for proto::types::side_chain_features::SideChainFeatures {
     fn from(value: SideChainFeatures) -> Self {
         match value {
             SideChainFeatures::TemplateRegistration(template_reg) => {
-                grpc::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg.into())
+                proto::types::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg.into())
             },
         }
     }
 }
 
-impl TryFrom<grpc::side_chain_features::SideChainFeatures> for SideChainFeatures {
+impl TryFrom<proto::types::side_chain_features::SideChainFeatures> for SideChainFeatures {
     type Error = String;
 
-    fn try_from(features: grpc::side_chain_features::SideChainFeatures) -> Result<Self, Self::Error> {
+    fn try_from(features: proto::types::side_chain_features::SideChainFeatures) -> Result<Self, Self::Error> {
         match features {
-            grpc::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg) => {
+            proto::types::side_chain_features::SideChainFeatures::TemplateRegistration(template_reg) => {
                 Ok(SideChainFeatures::TemplateRegistration(template_reg.try_into()?))
             },
         }
@@ -61,10 +63,10 @@ impl TryFrom<grpc::side_chain_features::SideChainFeatures> for SideChainFeatures
 }
 
 // -------------------------------- TemplateRegistration -------------------------------- //
-impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
+impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
     type Error = String;
 
-    fn try_from(value: grpc::TemplateRegistration) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
             author_public_key: PublicKey::from_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
             author_signature: value
@@ -90,7 +92,7 @@ impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
     }
 }
 
-impl From<CodeTemplateRegistration> for grpc::TemplateRegistration {
+impl From<CodeTemplateRegistration> for proto::types::TemplateRegistration {
     fn from(value: CodeTemplateRegistration) -> Self {
         Self {
             author_public_key: value.author_public_key.to_vec(),
@@ -106,26 +108,28 @@ impl From<CodeTemplateRegistration> for grpc::TemplateRegistration {
 }
 
 // -------------------------------- TemplateType -------------------------------- //
-impl TryFrom<grpc::TemplateType> for TemplateType {
+impl TryFrom<proto::types::TemplateType> for TemplateType {
     type Error = String;
 
-    fn try_from(value: grpc::TemplateType) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::TemplateType) -> Result<Self, Self::Error> {
         let template_type = value.template_type.ok_or("Template type not provided")?;
         match template_type {
-            grpc::template_type::TemplateType::Wasm(wasm) => Ok(TemplateType::Wasm {
+            proto::types::template_type::TemplateType::Wasm(wasm) => Ok(TemplateType::Wasm {
                 abi_version: wasm.abi_version.try_into().map_err(|_| "abi_version overflowed")?,
             }),
         }
     }
 }
 
-impl From<TemplateType> for grpc::TemplateType {
+impl From<TemplateType> for proto::types::TemplateType {
     fn from(value: TemplateType) -> Self {
         match value {
             TemplateType::Wasm { abi_version } => Self {
-                template_type: Some(grpc::template_type::TemplateType::Wasm(grpc::WasmInfo {
-                    abi_version: abi_version.into(),
-                })),
+                template_type: Some(proto::types::template_type::TemplateType::Wasm(
+                    proto::types::WasmInfo {
+                        abi_version: abi_version.into(),
+                    },
+                )),
             },
         }
     }
@@ -133,10 +137,10 @@ impl From<TemplateType> for grpc::TemplateType {
 
 // -------------------------------- BuildInfo -------------------------------- //
 
-impl TryFrom<grpc::BuildInfo> for BuildInfo {
+impl TryFrom<proto::types::BuildInfo> for BuildInfo {
     type Error = String;
 
-    fn try_from(value: grpc::BuildInfo) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::BuildInfo) -> Result<Self, Self::Error> {
         Ok(Self {
             repo_url: value.repo_url.try_into().map_err(|_| "Invalid repo url")?,
             commit_hash: value.commit_hash.try_into().map_err(|_| "Invalid commit hash")?,
@@ -144,7 +148,7 @@ impl TryFrom<grpc::BuildInfo> for BuildInfo {
     }
 }
 
-impl From<BuildInfo> for grpc::BuildInfo {
+impl From<BuildInfo> for proto::types::BuildInfo {
     fn from(value: BuildInfo) -> Self {
         Self {
             repo_url: value.repo_url.into_string(),

@@ -49,18 +49,18 @@ mod test {
         covenant,
         covenants::{
             filters::test::setup_filter_test,
-            test::create_input,
+            test::{create_input, make_sample_sidechain_features},
             BaseLayerCovenantsDomain,
             COVENANTS_FIELD_HASHER_LABEL,
         },
-        transactions::transaction_components::{OutputFeatures, SideChainFeatures},
+        transactions::transaction_components::OutputFeatures,
     };
 
     #[test]
     fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
         let features = OutputFeatures {
             maturity: 42,
-            sidechain_features: Some(Box::new(SideChainFeatures {})),
+            sidechain_features: Some(make_sample_sidechain_features()),
             ..Default::default()
         };
         let mut hasher = Challenge::new();

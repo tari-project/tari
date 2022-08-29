@@ -44,6 +44,8 @@ pub enum OutputType {
     Coinbase = 1,
     /// Output is a burned output and can not be spent ever.
     Burn = 2,
+    /// Output defines a new re-usable code template.
+    CodeTemplateRegistration = 3,
 }
 
 impl OutputType {
@@ -113,7 +115,8 @@ mod tests {
         assert_eq!(OutputType::from_byte(0), Some(OutputType::Standard));
         assert_eq!(OutputType::from_byte(1), Some(OutputType::Coinbase));
         assert_eq!(OutputType::from_byte(2), Some(OutputType::Burn));
-        assert_eq!(OutputType::from_byte(255), None);
+        assert_eq!(OutputType::from_byte(3), Some(OutputType::CodeTemplateRegistration));
+        assert_eq!(OutputType::from_byte(108), None);
     }
 
     #[test]

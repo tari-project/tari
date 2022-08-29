@@ -71,6 +71,8 @@ service Wallet {
     rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
     // This will claim a HTLC refund transaction
     rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
+    // Creates a transaction with a template registration output
+    rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 
     rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
@@ -98,6 +100,7 @@ message CreateBurnTransactionRequest{
     uint64 fee_per_gram = 2;
     string message = 3;
 }
+
 
 message PaymentRecipient {
     string address = 1;
@@ -258,6 +261,13 @@ message ImportUtxosRequest {
 message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
 }
+
+message CreateTemplateRegistrationRequest {
+    TemplateRegistration template_registration = 1;
+    uint64 fee_per_gram = 2;
+}
+
+message CreateTemplateRegistrationResponse { }
 
 message CancelTransactionRequest {
     uint64 tx_id = 1;

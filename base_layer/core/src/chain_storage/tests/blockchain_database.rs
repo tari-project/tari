@@ -41,7 +41,6 @@ use crate::{
     },
     txn_schema,
 };
-
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
 }

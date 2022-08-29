@@ -23,5 +23,36 @@ syntax = "proto3";
 
 package tari.rpc;
 
+import "types.proto";
+
 message SideChainFeatures {
+    oneof side_chain_features {
+        TemplateRegistration template_registration = 1;
+    }
+}
+
+message TemplateRegistration {
+    bytes author_public_key = 1;
+    Signature author_signature = 2;
+    string template_name = 3;
+    uint32 template_version = 4;
+    TemplateType template_type = 5;
+    BuildInfo build_info = 6;
+    bytes binary_sha = 7;
+    string binary_url = 8;
+}
+
+message TemplateType {
+    oneof template_type {
+        WasmInfo wasm = 1;
+    }
+}
+
+message WasmInfo {
+    uint32 abi_version = 1;
+}
+
+message BuildInfo {
+    string repo_url = 1;
+    bytes commit_hash = 2;
 }
