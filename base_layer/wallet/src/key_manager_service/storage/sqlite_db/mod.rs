@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
 use tokio::time::Instant;
@@ -47,7 +47,7 @@ const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 #[derive(Clone)]
 pub struct KeyManagerSqliteDatabase {
     database_connection: WalletDbConnection,
-    cipher: Arc<RwLock<Option<Aes256Gcm>>>,
+    cipher: Arc<RwLock<Option<XChaCha20Poly1305>>>,
 }
 
 impl KeyManagerSqliteDatabase {
@@ -56,7 +56,7 @@ impl KeyManagerSqliteDatabase {
     ///   not encrypt sensitive fields
     pub fn new(
         database_connection: WalletDbConnection,
-        cipher: Option<Aes256Gcm>,
+        cipher: Option<XChaCha20Poly1305>,
     ) -> Result<Self, KeyManagerStorageError> {
         let db = Self {
             database_connection,
@@ -65,7 +65,7 @@ impl KeyManagerSqliteDatabase {
         Ok(db)
     }
 
-    fn decrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
+    fn decrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.decrypt(cipher)
@@ -74,7 +74,7 @@ impl KeyManagerSqliteDatabase {
         Ok(())
     }
 
-    fn encrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
+    fn encrypt_if_necessary<T: Encryptable<XChaCha20Poly1305>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.encrypt(cipher)
@@ -178,7 +178,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         Ok(())
     }
 
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerStorageError> {
+    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
 
         if (*current_cipher).is_some() {
@@ -230,7 +230,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
             key_manager_state.set_state(&conn)?;
         }
         // Now that all the decryption has been completed we can safely remove the cipher fully
-        let _ = (*current_cipher).take();
+        std::mem::drop((*current_cipher).take());
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,

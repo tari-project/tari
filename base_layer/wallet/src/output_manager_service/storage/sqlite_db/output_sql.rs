@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
@@ -743,7 +743,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     }
 }
 
-impl Encryptable<Aes256Gcm> for OutputSql {
+impl Encryptable<XChaCha20Poly1305> for OutputSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
         [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()]
@@ -751,7 +751,7 @@ impl Encryptable<Aes256Gcm> for OutputSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 
@@ -764,7 +764,7 @@ impl Encryptable<Aes256Gcm> for OutputSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 

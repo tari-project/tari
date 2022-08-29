@@ -3917,6 +3917,7 @@ pub unsafe extern "C" fn comms_config_create(
                 listener_liveness_max_sessions: 0,
                 user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
+                rpc_max_sessions_per_peer: 0,
             };
 
             Box::into_raw(Box::new(config))

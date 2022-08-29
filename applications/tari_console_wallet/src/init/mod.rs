@@ -26,7 +26,10 @@ use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_app_utilities::identity_management::setup_node_identity;
-use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common::{
+    configuration::bootstrap::prompt,
+    exit_codes::{ExitCode, ExitError},
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
@@ -38,7 +41,7 @@ use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::SafePassword;
+use tari_utilities::{ByteArray, SafePassword};
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -54,7 +57,7 @@ use tari_wallet::{
 
 use crate::{
     cli::Cli,
-    utils::db::get_custom_base_node_peer_from_db,
+    utils::db::{get_custom_base_node_peer_from_db, set_custom_base_node_peer_in_db},
     wallet_modes::{PeerConfig, WalletMode},
     ApplicationConfig,
 };
@@ -141,27 +144,48 @@ pub async fn change_password(
 }
 
 /// Populates the PeerConfig struct from:
-/// 1. The custom peer in the wallet if it exists
-/// 2. The service peers defined in config they exist
-/// 3. The peer seeds defined in config
+/// 1. The custom peer in the wallet config if it exists
+/// 2. The custom peer in the wallet db if it exists
+/// 3. The detected local base node if any
+/// 4. The service peers defined in config they exist
+/// 5. The peer seeds defined in config
 pub async fn get_base_node_peer_config(
     config: &ApplicationConfig,
     wallet: &mut WalletSqlite,
+    non_interactive_mode: bool,
 ) -> Result<PeerConfig, ExitError> {
-    // custom
-    let mut base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
+    let mut selected_base_node = match config.wallet.custom_base_node {
+        Some(ref custom) => SeedPeer::from_str(custom)
+            .map(|node| Some(Peer::from(node)))
+            .map_err(|err| ExitError::new(ExitCode::ConfigError, &format!("Malformed custom base node: {}", err)))?,
+        None => get_custom_base_node_peer_from_db(wallet).await,
+    };
 
-    if let Some(custom) = config.wallet.custom_base_node.clone() {
-        match SeedPeer::from_str(&custom) {
-            Ok(node) => {
-                base_node_custom = Some(Peer::from(node));
-            },
-            Err(err) => {
-                return Err(ExitError::new(
-                    ExitCode::ConfigError,
-                    &format!("Malformed custom base node: {}", err),
-                ));
-            },
+    // If the user has not explicitly set a base node in the config, we try detect one
+    if !non_interactive_mode && config.wallet.custom_base_node.is_none() {
+        if let Some(detected_node) = detect_local_base_node().await {
+            match selected_base_node {
+                Some(ref base_node) if base_node.public_key == detected_node.public_key => {
+                    // Skip asking because it's already set
+                },
+                Some(_) | None => {
+                    println!(
+                        "Local Base Node detected with public key {} and address {}",
+                        detected_node.public_key,
+                        detected_node.addresses.first().unwrap()
+                    );
+                    if prompt(
+                        "Would you like to use this base node? IF YOU DID NOT START THIS BASE NODE YOU SHOULD SELECT \
+                         NO (Y/n)",
+                    ) {
+                        let address = detected_node.addresses.first().ok_or_else(|| {
+                            ExitError::new(ExitCode::ConfigError, "No address found for detected base node")
+                        })?;
+                        set_custom_base_node_peer_in_db(wallet, &detected_node.public_key, address).await?;
+                        selected_base_node = Some(detected_node.into());
+                    }
+                },
+            }
         }
     }
 
@@ -185,7 +209,7 @@ pub async fn get_base_node_peer_config(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed seed peer: {}", err)))?;
 
-    let peer_config = PeerConfig::new(base_node_custom, base_node_peers, peer_seeds);
+    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
     debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
 
     Ok(peer_config)
@@ -378,6 +402,18 @@ pub async fn init_wallet(
     };
 
     Ok(wallet)
+}
+
+async fn detect_local_base_node() -> Option<SeedPeer> {
+    use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, Empty};
+    const COMMON_BASE_NODE_GRPC_ADDRESS: &str = "http://127.0.0.1:18142";
+
+    let mut node_conn = BaseNodeClient::connect(COMMON_BASE_NODE_GRPC_ADDRESS).await.ok()?;
+    let resp = node_conn.identify(Empty {}).await.ok()?;
+    let identity = resp.get_ref();
+    let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
+    let address = Multiaddr::from_str(&identity.public_address).ok()?;
+    Some(SeedPeer::new(public_key, vec![address]))
 }
 
 async fn setup_identity_from_db<D: WalletBackend + 'static>(
