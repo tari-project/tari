@@ -25,9 +25,10 @@ use tari_common_types::types::PublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
-use tari_wallet::WalletSqlite;
+use tari_wallet::{error::WalletStorageError, WalletSqlite};
 
 pub const LOG_TARGET: &str = "wallet::utils::db";
 pub const CUSTOM_BASE_NODE_PUBLIC_KEY_KEY: &str = "console_wallet_custom_base_node_public_key";
@@ -87,4 +88,26 @@ pub async fn get_custom_base_node_peer_from_db(wallet: &mut WalletSqlite) -> Opt
         },
         (_, _) => None,
     }
+}
+
+/// Sets the base node peer in the database
+pub async fn set_custom_base_node_peer_in_db(
+    wallet: &mut WalletSqlite,
+    base_node_public_key: &CommsPublicKey,
+    base_node_address: &Multiaddr,
+) -> Result<(), WalletStorageError> {
+    wallet
+        .db
+        .set_client_key_value(
+            CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(),
+            base_node_public_key.to_hex(),
+        )
+        .await?;
+
+    wallet
+        .db
+        .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), base_node_address.to_string())
+        .await?;
+
+    Ok(())
 }

@@ -69,7 +69,7 @@ use tari_p2p::{
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::SafePassword;
+use tari_utilities::{ByteArray, SafePassword};
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -758,7 +758,7 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
 /// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
 /// using old node identities.
-pub async fn persist_one_sided_payment_script_for_node_identity(
+async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
     node_identity: Arc<NodeIdentity>,
 ) -> Result<(), WalletError> {
