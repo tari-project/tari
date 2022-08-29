@@ -94,8 +94,6 @@ impl<B: Backend> App<B> {
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Contacts".into(), Box::new(ContactsTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
-            .add("Assets".into(), Box::new(AssetsTab::new()))
-            .add("Tokens".into(), Box::new(TokensComponent::new()))
             .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));
