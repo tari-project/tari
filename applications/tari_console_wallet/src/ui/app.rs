@@ -34,7 +34,6 @@ use crate::{
     notifier::Notifier,
     ui::{
         components::{
-            assets_tab::AssetsTab,
             base_node::BaseNode,
             contacts_tab::ContactsTab,
             events_component::EventsComponent,
@@ -45,7 +44,6 @@ use crate::{
             receive_tab::ReceiveTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
-            tokens_component::TokensComponent,
             transactions_tab::TransactionsTab,
             Component,
         },
