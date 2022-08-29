@@ -43,13 +43,9 @@ class BaseNodeClient {
   }
 
   getHeaderAt(height) {
-    return this.client
-      .listHeaders()
-      .sendMessage({ from_height: height, num_headers: 1 })
-      .then((header) => {
-        console.log("Header:", header);
-        return header;
-      });
+    return this.getHeaders(height, 1).then((header) =>
+      header && header.length ? header[0].header : null
+    );
   }
 
   getNetworkDifficulties(tip, start, end) {
@@ -69,21 +65,19 @@ class BaseNodeClient {
   }
 
   getTipHeader() {
-    return this.client
-      .listHeaders()
-      .sendMessage({ from_height: 0, num_headers: 1 })
-      .then((headers) => {
-        const header = headers[0];
-        return Object.assign(header, {
-          height: +header.height,
-        });
+    return this.getHeaders(0, 1).then((headers) => {
+      const header = headers[0];
+      return Object.assign(header, {
+        height: +header.height,
       });
+    });
   }
 
   async getHeaders(from_height, num_headers, sorting = 0) {
     return await this.client
       .listHeaders()
-      .sendMessage({ from_height, num_headers, sorting });
+      .sendMessage({ from_height, num_headers, sorting })
+      .then((resp) => resp.map((r) => r.header));
   }
 
   getTipHeight() {
