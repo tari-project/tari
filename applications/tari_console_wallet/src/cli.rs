@@ -20,7 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, time::Duration};
+use std::{
+    fmt::{Display, Formatter},
+    path::PathBuf,
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
@@ -78,6 +82,10 @@ pub(crate) struct Cli {
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
     pub network: Option<String>,
+    #[clap(long, env = "TARI_WALLET_ENABLE_GRPC", alias = "enable-grpc")]
+    pub grpc_enabled: bool,
+    #[clap(long, env = "TARI_WALLET_GRPC_ADDRESS")]
+    pub grpc_address: Option<String>,
     #[clap(subcommand)]
     pub command2: Option<CliCommands>,
 }
@@ -89,6 +97,15 @@ impl ConfigOverrideProvider for Cli {
         overrides.push(("wallet.network".to_string(), network.clone()));
         overrides.push(("wallet.override_from".to_string(), network.clone()));
         overrides.push(("p2p.seeds.override_from".to_string(), network));
+        // Either of these configs enable grpc
+        if let Some(ref addr) = self.grpc_address {
+            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
+            overrides.push(("wallet.grpc_address".to_string(), addr.clone()));
+        } else if self.grpc_enabled {
+            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
+        } else {
+            // GRPC is disabled
+        }
         overrides
     }
 }
@@ -114,6 +131,7 @@ pub enum CliCommands {
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
+    HashGrpcPassword(HashPasswordArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -144,8 +162,35 @@ pub struct MakeItRainArgs {
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
     pub one_sided: bool,
+    #[clap(long, alias = "stealth-one-sided")]
+    pub stealth: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
+}
+
+impl MakeItRainArgs {
+    pub fn transaction_type(&self) -> MakeItRainTransactionType {
+        if self.stealth {
+            MakeItRainTransactionType::StealthOneSided
+        } else if self.one_sided {
+            MakeItRainTransactionType::OneSided
+        } else {
+            MakeItRainTransactionType::Interactive
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MakeItRainTransactionType {
+    Interactive,
+    OneSided,
+    StealthOneSided,
+}
+
+impl Display for MakeItRainTransactionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
@@ -208,4 +253,10 @@ pub struct ClaimShaAtomicSwapRefundArgs {
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
     pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct HashPasswordArgs {
+    /// If true, only output the hashed password and the salted password. Otherwise a usage explanation is output.
+    pub short: bool,
 }

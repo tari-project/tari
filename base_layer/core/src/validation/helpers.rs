@@ -23,15 +23,11 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
+use tari_common_types::types::{Commitment, CommitmentFactory, FixedHash, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{
-        epoch_time::EpochTime,
-        hash::Hashable,
-        hex::{to_hex, Hex},
-    },
+    tari_utilities::{epoch_time::EpochTime, hex::Hex},
 };
 use tari_script::TariScript;
 
@@ -247,7 +243,7 @@ pub fn check_accounting_balance(
             bypass_range_proof_verification,
             total_coinbase,
             factories,
-            Some(block.header.prev_hash.clone()),
+            Some(block.header.prev_hash),
             block.header.height,
         )
         .map_err(|err| {
@@ -362,7 +358,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                     target: LOG_TARGET,
                     "Validation failed due to input: {} which does not exist yet", input
                 );
-                not_found_inputs.push(output_hash.clone());
+                not_found_inputs.push(output_hash);
             },
             Err(err) => {
                 return Err(err);
@@ -460,8 +456,9 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 }
 
 /// This function checks:
-/// 1. the byte size of TariScript does not exceed the maximum
-/// 2. that the outputs do not already exist in the UTxO set.
+/// 1. that the output type is permitted
+/// 2. the byte size of TariScript does not exceed the maximum
+/// 3. that the outputs do not already exist in the UTxO set.
 pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
@@ -469,6 +466,7 @@ pub fn check_outputs<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.get_max_script_byte_size();
     for output in body.outputs() {
+        check_permitted_output_types(constants, output)?;
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
     }
@@ -594,9 +592,9 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     Ok(())
 }
 
-pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<(), ValidationError> {
-    if db.bad_block_exists(hash.to_vec())? {
-        return Err(ValidationError::BadBlockFound { hash: to_hex(hash) });
+pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
+    if db.bad_block_exists(hash)? {
+        return Err(ValidationError::BadBlockFound { hash: hash.to_hex() });
     }
     Ok(())
 }
@@ -739,6 +737,22 @@ pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) ->
     } else {
         Err(ValidationError::InvalidBlockchainVersion { version })
     }
+}
+
+pub fn check_permitted_output_types(
+    constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), ValidationError> {
+    if !constants
+        .permitted_output_types()
+        .contains(&output.features.output_type)
+    {
+        return Err(ValidationError::OutputTypeNotPermitted {
+            output_type: output.features.output_type,
+        });
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

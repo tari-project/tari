@@ -92,7 +92,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_components::{OutputFeatures, UnblindedOutput},
 };
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
@@ -198,9 +198,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
-            public_key: identity.public_key().to_string().into_bytes(),
+            public_key: identity.public_key().to_vec(),
             public_address: identity.public_address().to_string(),
-            node_id: identity.node_id().to_string().into_bytes(),
+            node_id: identity.node_id().to_vec(),
         }))
     }
 

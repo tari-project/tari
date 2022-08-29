@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Borrow, convert::TryFrom};
+use std::{
+    borrow::Borrow,
+    convert::{TryFrom, TryInto},
+};
 
 use tari_common_types::types::{
     BlindingFactor,
@@ -100,15 +103,20 @@ impl From<ComSignature> for proto::ComSignature {
 
 //---------------------------------- HashOutput --------------------------------------------//
 
-impl From<proto::HashOutput> for HashOutput {
-    fn from(output: proto::HashOutput) -> Self {
-        output.data
+impl TryFrom<proto::HashOutput> for HashOutput {
+    type Error = String;
+
+    fn try_from(output: proto::HashOutput) -> Result<Self, Self::Error> {
+        output
+            .data
+            .try_into()
+            .map_err(|_| "Invalid transaction hash".to_string())
     }
 }
 
 impl From<HashOutput> for proto::HashOutput {
     fn from(output: HashOutput) -> Self {
-        Self { data: output }
+        Self { data: output.to_vec() }
     }
 }
 

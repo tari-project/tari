@@ -180,9 +180,9 @@ class WalletClient {
   async identify() {
     const info = await this.client.identify();
     return {
-      public_key: info.public_key.toString("utf8"),
+      public_key: info.public_key,
       public_address: info.public_address,
-      node_id: info.node_id.toString("utf8"),
+      node_id: info.node_id,
     };
   }
 

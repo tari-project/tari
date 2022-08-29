@@ -35,9 +35,11 @@ mod metrics;
 pub mod mock;
 
 mod router;
+
 use std::{
     borrow::Cow,
     cmp,
+    collections::HashMap,
     convert::TryFrom,
     future::Future,
     io,
@@ -47,10 +49,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{future, stream, SinkExt, StreamExt};
+use futures::{future, stream, stream::FuturesUnordered, SinkExt, StreamExt};
 use prost::Message;
 use router::Router;
-use tokio::{sync::mpsc, time};
+use tokio::{sync::mpsc, task::JoinHandle, time};
 use tokio_stream::Stream;
 use tower::{make::MakeService, Service};
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
@@ -73,7 +75,10 @@ use crate::{
     peer_manager::NodeId,
     proto,
     protocol::{
-        rpc::{body::BodyBytes, message::RpcResponse},
+        rpc::{
+            body::BodyBytes,
+            message::{RpcMethod, RpcResponse},
+        },
         ProtocolEvent,
         ProtocolId,
         ProtocolNotification,
@@ -166,6 +171,7 @@ impl Default for RpcServer {
 #[derive(Clone)]
 pub struct RpcServerBuilder {
     maximum_simultaneous_sessions: Option<usize>,
+    maximum_sessions_per_client: Option<usize>,
     minimum_client_deadline: Duration,
     handshake_timeout: Duration,
 }
@@ -182,6 +188,16 @@ impl RpcServerBuilder {
 
     pub fn with_unlimited_simultaneous_sessions(mut self) -> Self {
         self.maximum_simultaneous_sessions = None;
+        self
+    }
+
+    pub fn with_maximum_sessions_per_client(mut self, limit: usize) -> Self {
+        self.maximum_sessions_per_client = Some(cmp::min(limit, BoundedExecutor::max_theoretical_tasks()));
+        self
+    }
+
+    pub fn with_unlimited_sessions_per_client(mut self) -> Self {
+        self.maximum_sessions_per_client = None;
         self
     }
 
@@ -203,7 +219,8 @@ impl RpcServerBuilder {
 impl Default for RpcServerBuilder {
     fn default() -> Self {
         Self {
-            maximum_simultaneous_sessions: Some(1000),
+            maximum_simultaneous_sessions: None,
+            maximum_sessions_per_client: None,
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
         }
@@ -217,6 +234,8 @@ pub(super) struct PeerRpcServer<TSvc, TCommsProvider> {
     protocol_notifications: Option<ProtocolNotificationRx<Substream>>,
     comms_provider: TCommsProvider,
     request_rx: mpsc::Receiver<RpcServerRequest>,
+    sessions: HashMap<NodeId, usize>,
+    tasks: FuturesUnordered<JoinHandle<NodeId>>,
 }
 
 impl<TSvc, TCommsProvider> PeerRpcServer<TSvc, TCommsProvider>
@@ -252,6 +271,8 @@ where
             protocol_notifications: Some(protocol_notifications),
             comms_provider,
             request_rx,
+            sessions: HashMap::new(),
+            tasks: FuturesUnordered::new(),
         }
     }
 
@@ -270,6 +291,10 @@ where
                         None => break,
                     }
                 }
+
+                Some(Ok(node_id)) = self.tasks.next() => {
+                    self.on_session_complete(&node_id);
+                },
 
                 Some(req) = self.request_rx.recv() => {
                      self.handle_request(req).await;
@@ -333,6 +358,32 @@ where
         Ok(())
     }
 
+    fn new_session_for(&mut self, node_id: NodeId) -> Result<usize, RpcServerError> {
+        match self.config.maximum_sessions_per_client {
+            Some(max) if max > 0 => {
+                let count = self.sessions.entry(node_id.clone()).or_insert(0);
+
+                debug_assert!(*count <= max);
+                if *count >= max {
+                    return Err(RpcServerError::MaxSessionsPerClientReached { node_id });
+                }
+                *count += 1;
+                Ok(*count)
+            },
+            Some(_) => Ok(0),
+            None => Ok(0),
+        }
+    }
+
+    fn on_session_complete(&mut self, node_id: &NodeId) {
+        if let Some(v) = self.sessions.get_mut(node_id) {
+            *v -= 1;
+            if *v == 0 {
+                self.sessions.remove(node_id);
+            }
+        }
+    }
+
     #[tracing::instrument(name = "rpc::server::try_initiate_service", skip(self, framed), err)]
     async fn try_initiate_service(
         &mut self,
@@ -371,6 +422,13 @@ where
             },
         };
 
+        if let Err(err) = self.new_session_for(node_id.clone()) {
+            handshake
+                .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+                .await?;
+            return Err(err);
+        }
+
         let version = handshake.perform_server_handshake().await?;
         debug!(
             target: LOG_TARGET,
@@ -387,14 +445,18 @@ where
         );
 
         let node_id = node_id.clone();
-        self.executor
+        let handle = self
+            .executor
             .try_spawn(async move {
                 let num_sessions = metrics::num_sessions(&node_id, &service.protocol);
                 num_sessions.inc();
                 service.start().await;
                 num_sessions.dec();
+                node_id
             })
             .map_err(|_| RpcServerError::MaximumSessionsReached)?;
+
+        self.tasks.push(handle);
 
         Ok(())
     }
@@ -509,7 +571,7 @@ where
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
-        let method = decoded_msg.method.into();
+        let method = RpcMethod::from(decoded_msg.method);
         let deadline = Duration::from_secs(decoded_msg.deadline);
 
         // The client side deadline MUST be greater or equal to the minimum_client_deadline
@@ -557,7 +619,10 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "({}) Request: {}", self.logging_context_string, decoded_msg
+            "({}) Request: {}, Method: {}",
+            self.logging_context_string,
+            decoded_msg,
+            method.id()
         );
 
         let req = Request::with_context(

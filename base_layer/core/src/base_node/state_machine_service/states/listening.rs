@@ -393,7 +393,10 @@ fn determine_sync_mode(
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryInto;
+
     use rand::rngs::OsRng;
+    use tari_common_types::types::FixedHash;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_crypto::keys::PublicKey;
 
@@ -407,8 +410,18 @@ mod test {
     #[test]
     fn sync_peer_selection() {
         let network_tip_height = 5000;
-        let block_hash1 = vec![0, 1, 2, 3];
-        let block_hash2 = vec![4, 5, 6, 7];
+        let block_hash1: FixedHash = vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+            29, 30, 31,
+        ]
+        .try_into()
+        .unwrap();
+        let block_hash2: FixedHash = vec![
+            1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+            29, 30, 31,
+        ]
+        .try_into()
+        .unwrap();
         let accumulated_difficulty1 = 200000;
         let accumulated_difficulty2 = 100000;
 
@@ -416,7 +429,10 @@ mod test {
         let best_network_metadata = best_claimed_metadata(&peer_metadata_list);
         assert!(best_network_metadata.is_none());
         let best_network_metadata = ChainMetadata::empty();
-        assert_eq!(best_network_metadata, ChainMetadata::new(0, Vec::new(), 0, 0, 0, 0));
+        assert_eq!(
+            best_network_metadata,
+            ChainMetadata::new(0, FixedHash::zero(), 0, 0, 0, 0)
+        );
         let sync_peers = select_sync_peers(&best_network_metadata, &peer_metadata_list);
         assert_eq!(sync_peers.len(), 0);
 
@@ -428,14 +444,7 @@ mod test {
         // Archival node
         let peer1 = PeerChainMetadata::new(
             node_id1.clone(),
-            ChainMetadata::new(
-                network_tip_height,
-                block_hash1.clone(),
-                0,
-                0,
-                accumulated_difficulty1,
-                0,
-            ),
+            ChainMetadata::new(network_tip_height, block_hash1, 0, 0, accumulated_difficulty1, 0),
             None,
         );
 
@@ -444,7 +453,7 @@ mod test {
             node_id2,
             ChainMetadata::new(
                 network_tip_height,
-                block_hash1.clone(),
+                block_hash1,
                 500,
                 5000 - 500,
                 accumulated_difficulty1,
@@ -457,7 +466,7 @@ mod test {
             node_id3.clone(),
             ChainMetadata::new(
                 network_tip_height,
-                block_hash1.clone(),
+                block_hash1,
                 1440,
                 5000 - 1440,
                 accumulated_difficulty1,
@@ -482,7 +491,7 @@ mod test {
             node_id5.clone(),
             ChainMetadata::new(
                 network_tip_height,
-                block_hash1.clone(),
+                block_hash1,
                 2880,
                 5000 - 2880,
                 accumulated_difficulty1,
@@ -509,40 +518,40 @@ mod test {
 
     #[test]
     fn sync_mode_selection() {
-        let local = ChainMetadata::new(0, Vec::new(), 0, 0, 500_000, 0);
+        let local = ChainMetadata::new(0, FixedHash::zero(), 0, 0, 500_000, 0);
         match determine_sync_mode(0, &local, &local, vec![]) {
             SyncStatus::UpToDate => {},
             _ => panic!(),
         }
 
-        let network = ChainMetadata::new(0, Vec::new(), 0, 0, 499_000, 0);
+        let network = ChainMetadata::new(0, FixedHash::zero(), 0, 0, 499_000, 0);
         match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::UpToDate => {},
             _ => panic!(),
         }
 
-        let network = ChainMetadata::new(0, Vec::new(), 0, 0, 500_001, 0);
+        let network = ChainMetadata::new(0, FixedHash::zero(), 0, 0, 500_001, 0);
         match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
-        let local = ChainMetadata::new(100, Vec::new(), 50, 50, 500_000, 0);
-        let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001, 0);
+        let local = ChainMetadata::new(100, FixedHash::zero(), 50, 50, 500_000, 0);
+        let network = ChainMetadata::new(150, FixedHash::zero(), 0, 0, 500_001, 0);
         match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
-        let local = ChainMetadata::new(0, Vec::new(), 50, 50, 500_000, 0);
-        let network = ChainMetadata::new(100, Vec::new(), 0, 0, 500_001, 0);
+        let local = ChainMetadata::new(0, FixedHash::zero(), 50, 50, 500_000, 0);
+        let network = ChainMetadata::new(100, FixedHash::zero(), 0, 0, 500_001, 0);
         match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
-        let local = ChainMetadata::new(99, Vec::new(), 50, 50, 500_000, 0);
-        let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001, 0);
+        let local = ChainMetadata::new(99, FixedHash::zero(), 50, 50, 500_000, 0);
+        let network = ChainMetadata::new(150, FixedHash::zero(), 0, 0, 500_001, 0);
         match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hex::Hex;
 
 use super::LOG_TARGET;
 use crate::{
@@ -34,6 +34,7 @@ use crate::{
             check_coinbase_output,
             check_kernel_lock_height,
             check_maturity,
+            check_permitted_output_types,
             check_sorting_and_duplicates,
             check_total_burned,
         },
@@ -86,7 +87,8 @@ impl OrphanValidation for OrphanBlockValidator {
         };
         trace!(target: LOG_TARGET, "Validating {}", block_id);
 
-        check_block_weight(block, self.rules.consensus_constants(height))?;
+        let constants = self.rules.consensus_constants(height);
+        check_block_weight(block, constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 
         trace!(
@@ -100,6 +102,10 @@ impl OrphanValidation for OrphanBlockValidator {
             "SV - No duplicate inputs / outputs for {} ",
             &block_id
         );
+        for output in block.body.outputs() {
+            check_permitted_output_types(constants, output)?;
+        }
+        trace!(target: LOG_TARGET, "SV - Permitted output type ok for {} ", &block_id);
         check_total_burned(&block.body)?;
         trace!(target: LOG_TARGET, "SV - Burned outputs ok for {} ", &block_id);
 

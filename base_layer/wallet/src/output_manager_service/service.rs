@@ -62,7 +62,6 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    hash::blake2::Blake256,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::RistrettoSecretKey,
 };
@@ -484,7 +483,7 @@ where
                 if last_height < height {
                     last_height = height;
                     max_mined_height = uo.mined_height;
-                    block_hash = uo.mined_in_block.clone();
+                    block_hash = uo.mined_in_block;
                 }
             }
         }
@@ -926,7 +925,7 @@ where
         }
 
         let stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1138,7 +1137,7 @@ where
         // }
 
         let mut stp = builder
-            .build::<Blake256>(&self.resources.factories, None, u64::MAX)
+            .build(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // if let Some((spending_key, script_private_key)) = change_keys {
         //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
@@ -1298,7 +1297,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -1772,7 +1771,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2004,7 +2003,7 @@ where
         }
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2192,7 +2191,7 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let mut stp = tx_builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2236,7 +2235,9 @@ where
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionOutput>, OutputManagerError> {
         // lets get the output from the blockchain
-        let req = FetchMatchingUtxos { output_hashes: hashes };
+        let req = FetchMatchingUtxos {
+            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
+        };
         let results: Vec<TransactionOutput> = self
             .resources
             .connectivity
@@ -2327,7 +2328,7 @@ where
 
                 let factories = CryptoFactories::default();
                 let mut stp = builder
-                    .build::<Blake256>(
+                    .build(
                         &self.resources.factories,
                         None,
                         self.last_seen_tip_height.unwrap_or(u64::MAX),
@@ -2414,7 +2415,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<Blake256>(
+            .build(
                 &self.resources.factories,
                 None,
                 self.last_seen_tip_height.unwrap_or(u64::MAX),

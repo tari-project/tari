@@ -259,6 +259,9 @@ impl ConnectivityManagerMock {
                     })
                     .await
             },
+            GetPeerStats(_, _) => {
+                unimplemented!()
+            },
             GetAllConnectionStates(_) => unimplemented!(),
             BanPeer(_, _, _) => {},
             AddPeerToAllowList(_) => {},

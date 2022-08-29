@@ -2,6 +2,82 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.37.0](https://github.com/tari-project/tari/compare/v0.36.0...v0.37.0) (2022-08-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* reset gen block for new faucets (#4534)
+* **core:** replace block and transaction hashes with FixedHash type (#4533)
+* change how sha3 difficulty is calculated (#4528)
+* header consensus (#4527)
+* add domain consensus hashing to all previous uses of default consensus hashing (#4522)
+
+### Features
+
+* add domain consensus hashing to all previous uses of default consensus hashing ([#4522](https://github.com/tari-project/tari/issues/4522)) ([1885509](https://github.com/tari-project/tari/commit/1885509846280d78004ac93fc9dfd0cd5b7aa957))
+* change how sha3 difficulty is calculated ([#4528](https://github.com/tari-project/tari/issues/4528)) ([1843998](https://github.com/tari-project/tari/commit/1843998370a515ff93bb570a6a89745ff584b654))
+* **console-wallet:** adds basic grpc authentication ([#4532](https://github.com/tari-project/tari/issues/4532)) ([2615c1b](https://github.com/tari-project/tari/commit/2615c1baa58f897f048d6a6f22149726983e22fd))
+* make stealth addresses the default for one sided in ffi [#4423](https://github.com/tari-project/tari/issues/4423) ([#4517](https://github.com/tari-project/tari/issues/4517)) ([e89ffac](https://github.com/tari-project/tari/commit/e89ffaca695bf79ceacab2313a89a9dc817f4134))
+* merge grpc list headers commands ([#4515](https://github.com/tari-project/tari/issues/4515)) ([18a88d7](https://github.com/tari-project/tari/commit/18a88d72e1f57cf0c4c876085fe6e026aae2e1fd))
+* show the banned reason if a peer was banned in the contacts ([#4525](https://github.com/tari-project/tari/issues/4525)) ([f970f81](https://github.com/tari-project/tari/commit/f970f81484d0103c0c294b82a8bb6c6fe8e98df9))
+
+
+### Bug Fixes
+
+* **base-node:** fix messy output in base node console ([#4509](https://github.com/tari-project/tari/issues/4509)) ([c2dfa23](https://github.com/tari-project/tari/commit/c2dfa23be082ae47b73310f6fb87d2a641f6fc04))
+* **build:** remove tari_validator_node from binary builds ([#4518](https://github.com/tari-project/tari/issues/4518)) ([6df9cc8](https://github.com/tari-project/tari/commit/6df9cc8d7939b55951d57234a8016afcbb588592))
+* **build:** switch linux-arm64 builds to cross-rs ([#4524](https://github.com/tari-project/tari/issues/4524)) ([69e8d0b](https://github.com/tari-project/tari/commit/69e8d0bb0ddeb9db3e3cb47d9a76dab2b0ff89cb))
+* **comms/dht:** fixes invalid peer ban on invalid encrypted msg signature ([#4519](https://github.com/tari-project/tari/issues/4519)) ([7a2c95e](https://github.com/tari-project/tari/commit/7a2c95e9897f57abfbe5410c9e62982d52bff291))
+* **comms:** ignore dial cancel event when inbound connection exists ([#4521](https://github.com/tari-project/tari/issues/4521)) ([a7040c5](https://github.com/tari-project/tari/commit/a7040c58c7fc7e507f074c02c1a601fce944469c))
+* **core:** fix block consensus encoding and add tests ([#4537](https://github.com/tari-project/tari/issues/4537)) ([0a9d5ef](https://github.com/tari-project/tari/commit/0a9d5ef27b8287a5a2772c8f13344f1a9f9edfa4))
+* **core:** replace block and transaction hashes with FixedHash type ([#4533](https://github.com/tari-project/tari/issues/4533)) ([501f550](https://github.com/tari-project/tari/commit/501f550e8ff07d20b4544f9af233d33ba7fb2fc8))
+* **cucumber:** update get_online_status function signature in cucumber ([#4536](https://github.com/tari-project/tari/issues/4536)) ([a57eb12](https://github.com/tari-project/tari/commit/a57eb1238a6ef9a483592c7f65a646cb7c217ba9))
+* grpc inconsistent serialization of keys (see issue [#4224](https://github.com/tari-project/tari/issues/4224)) ([#4491](https://github.com/tari-project/tari/issues/4491)) ([bdb262c](https://github.com/tari-project/tari/commit/bdb262cc08dc66b4a1297b4cc8dfdecbfd6afe8d))
+* header consensus ([#4527](https://github.com/tari-project/tari/issues/4527)) ([3f5fcf2](https://github.com/tari-project/tari/commit/3f5fcf285a0f2dd426de02b19b36978165f3c218))
+* re-add user agents to base node and console wallet ([#4520](https://github.com/tari-project/tari/issues/4520)) ([3f60c44](https://github.com/tari-project/tari/commit/3f60c4417e8a3bbd8b63a260a834364e0c41fde1))
+
+
+* reset gen block for new faucets ([#4534](https://github.com/tari-project/tari/issues/4534)) ([4fe5742](https://github.com/tari-project/tari/commit/4fe5742207e305275fe06b841c102e3ecd67760e))
+
+## [0.36.0](https://github.com/tari-project/tari/compare/v0.35.0...v0.36.0) (2022-08-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* add hashing API use to base layer (see issue #4394) (#4447)
+* change monero consensus encoding an update for hardfork v15 (#4492)
+* **core/covenants:** update covenants to support OutputType enum (#4472)
+* **core:** restrict output types to only those permitted by consensus (#4467)
+* **tariscript:** use varints in tari script (de)serialization (#4460)
+* apply hashing api to the mmr (#4445)
+* burned commitment mmr calculation and cucumber prune mode (#4453)
+
+### Features
+
+* add hashing API use to base layer (see issue [#4394](https://github.com/tari-project/tari/issues/4394)) ([#4447](https://github.com/tari-project/tari/issues/4447)) ([f9af875](https://github.com/tari-project/tari/commit/f9af875f292b4104c6a9114fce70e06e09012fc5))
+* apply hashing api to the mmr ([#4445](https://github.com/tari-project/tari/issues/4445)) ([d6bab2f](https://github.com/tari-project/tari/commit/d6bab2fb276125d9fcc1276f3525ac62a2ccb378))
+* **core:** restrict output types to only those permitted by consensus ([#4467](https://github.com/tari-project/tari/issues/4467)) ([a481a06](https://github.com/tari-project/tari/commit/a481a06f9521dcab1703ea061dab703e5d33cdc0))
+* move dan layer to new repo ([#4448](https://github.com/tari-project/tari/issues/4448)) ([52bc2be](https://github.com/tari-project/tari/commit/52bc2becec6738d6cfbb9349c42a2dbd46eb6398))
+* remove more dan layer code ([#4490](https://github.com/tari-project/tari/issues/4490)) ([073de55](https://github.com/tari-project/tari/commit/073de55c085907bca807381b9b01473afdc656ef))
+* remove total_txs and rename total_weight in mempool ([#4474](https://github.com/tari-project/tari/issues/4474)) ([02ed4d4](https://github.com/tari-project/tari/commit/02ed4d447761ed97d60037d0b586714efec0857d))
+* **tariscript:** use varints in tari script (de)serialization ([#4460](https://github.com/tari-project/tari/issues/4460)) ([a0403e5](https://github.com/tari-project/tari/commit/a0403e52cf4bff0dca6fe760e03e865f9e4926fa))
+* **wallet:** adds --stealth-one-sided flag to make-it-rain ([#4508](https://github.com/tari-project/tari/issues/4508)) ([30dd70e](https://github.com/tari-project/tari/commit/30dd70e0f32a5ed9b28ed67183177b7815d0c2b7))
+
+
+### Bug Fixes
+
+* **base_node_config:** check_interval is 0 made base node is panicked ([#4495](https://github.com/tari-project/tari/issues/4495)) ([ba4fbf7](https://github.com/tari-project/tari/commit/ba4fbf742d635d51109595516be1011c6ce3ca87)), closes [#4399](https://github.com/tari-project/tari/issues/4399)
+* burned commitment mmr calculation and cucumber prune mode ([#4453](https://github.com/tari-project/tari/issues/4453)) ([0c062f3](https://github.com/tari-project/tari/commit/0c062f3f424494c14689c334c77241b716dd04aa))
+* change monero consensus encoding an update for hardfork v15 ([#4492](https://github.com/tari-project/tari/issues/4492)) ([2a3af27](https://github.com/tari-project/tari/commit/2a3af27b4fed419a038bac69f5967317d84acc33))
+* **ci:** binary builds - remove tari_collectibles and lib deps for linux  ([#4454](https://github.com/tari-project/tari/issues/4454)) ([1f9968e](https://github.com/tari-project/tari/commit/1f9968eb33e18a4d1a54d0ebb1387b72396a2265))
+* **core/covenants:** update covenants to support OutputType enum ([#4472](https://github.com/tari-project/tari/issues/4472)) ([e21dfdb](https://github.com/tari-project/tari/commit/e21dfdbdf4e7c29731b2b3d7625c4a879f8a543c))
+* fix transaction output hashing ([#4483](https://github.com/tari-project/tari/issues/4483)) ([46d65fc](https://github.com/tari-project/tari/commit/46d65fcff4e5fa00b6eaf0328f77cf5f4646d35c))
+* remove old folders from ci ([#4455](https://github.com/tari-project/tari/issues/4455)) ([2c76031](https://github.com/tari-project/tari/commit/2c76031dbee8cdb82772a3516cd5e07a22dd023a))
+* remove use of hardcoded value (see issue [#4451](https://github.com/tari-project/tari/issues/4451)) ([#4485](https://github.com/tari-project/tari/issues/4485)) ([37d38d6](https://github.com/tari-project/tari/commit/37d38d6fa409701b01c11dfe8a7009e86bb474ea)), closes [/github.com/tari-project/tari/blob/development/comms/dht/src/network_discovery/on_connect.rs#L94](https://github.com/tari-project//github.com/tari-project/tari/blob/development/comms/dht/src/network_discovery/on_connect.rs/issues/L94)
+* wallet always scan interactive payments (see [#4452](https://github.com/tari-project/tari/issues/4452)) ([#4464](https://github.com/tari-project/tari/issues/4464)) ([0c595dd](https://github.com/tari-project/tari/commit/0c595ddd1f118f642299e97052310ce09d490b13))
+* wrong ban reason ([#4461](https://github.com/tari-project/tari/issues/4461)) ([4788789](https://github.com/tari-project/tari/commit/4788789a9d0b1ebc39756eabb737429b1411b9a0))
+
 ## [0.35.0](https://github.com/tari-project/tari/compare/v0.32.12...v0.35.0) (2022-08-11)
 
 

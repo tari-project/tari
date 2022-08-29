@@ -40,41 +40,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "aes"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfe0133578c0986e1fe3dfcd4af1cc5b2dd6c3dbf534d69916ce16a2701d40ba"
-dependencies = [
- "cfg-if 1.0.0",
- "cipher 0.4.3",
- "cpufeatures 0.2.2",
-]
-
-[[package]]
 name = "aes-gcm"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df5f85a83a7d8b0442b6aa7b504b8212c1733da07b98aae43d4bc21b2cb3cdf6"
 dependencies = [
  "aead 0.4.3",
- "aes 0.7.5",
+ "aes",
  "cipher 0.3.0",
- "ctr 0.8.0",
- "ghash 0.4.4",
- "subtle",
-]
-
-[[package]]
-name = "aes-gcm"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82e1366e0c69c9f927b1fa5ce2c7bf9eafc8f9268c0b9800729e8b267612447c"
-dependencies = [
- "aead 0.5.1",
- "aes 0.8.1",
- "cipher 0.4.3",
- "ctr 0.9.1",
- "ghash 0.5.0",
+ "ctr",
+ "ghash",
  "subtle",
 ]
 
@@ -126,7 +101,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca5162d1b961cb589a8ca08a2aa7cabc6341e05e0bf18d66a07697900b5d2ad0"
 dependencies = [
  "blake2 0.9.2",
- "password-hash",
+ "password-hash 0.2.3",
+]
+
+[[package]]
+name = "argon2"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db4ce4441f99dbd377ca8a8f57b698c44d0d6e712d8329b5040da5a64aa1ce73"
+dependencies = [
+ "base64ct",
+ "blake2 0.10.4",
+ "password-hash 0.4.2",
 ]
 
 [[package]]
@@ -213,6 +199,15 @@ name = "base58-monero"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "935c90240f9b7749c80746bf88ad9cb346f34b01ee30ad4d566dfdecd6e3cc6a"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "base58-monero"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d079cdf47e1ca75554200bb2f30bff5a5af16964cac4a566b18de9a5d48db2b"
 dependencies = [
  "thiserror",
 ]
@@ -595,6 +590,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chacha20"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7fc89c7c5b9e7a02dfe45cd2367bae382f9ed31c61ca8debe5f827c420a2f08"
+dependencies = [
+ "cfg-if 1.0.0",
+ "cipher 0.4.3",
+ "cpufeatures 0.2.2",
+]
+
+[[package]]
 name = "chacha20poly1305"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -603,7 +609,7 @@ dependencies = [
  "aead 0.4.3",
  "chacha20 0.7.1",
  "cipher 0.3.0",
- "poly1305",
+ "poly1305 0.7.2",
  "zeroize",
 ]
 
@@ -616,7 +622,20 @@ dependencies = [
  "aead 0.4.3",
  "chacha20 0.8.2",
  "cipher 0.3.0",
- "poly1305",
+ "poly1305 0.7.2",
+ "zeroize",
+]
+
+[[package]]
+name = "chacha20poly1305"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35"
+dependencies = [
+ "aead 0.5.1",
+ "chacha20 0.9.0",
+ "cipher 0.4.3",
+ "poly1305 0.8.0",
  "zeroize",
 ]
 
@@ -667,6 +686,7 @@ checksum = "d1873270f8f7942c191139cb8a40fd228da6c3fd2fc376d7e92d47aa14aeb59e"
 dependencies = [
  "crypto-common",
  "inout",
+ "zeroize",
 ]
 
 [[package]]
@@ -1181,15 +1201,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "049bb91fb4aaf0e3c7efa6cd5ef877dbbbd15b39dad06d9948de4ec8a75761ea"
 dependencies = [
  "cipher 0.3.0",
-]
-
-[[package]]
-name = "ctr"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d14f329cfbaf5d0e06b5e87fff7e265d2673c5ea7d2c27691a2c107db1442a0"
-dependencies = [
- "cipher 0.4.3",
 ]
 
 [[package]]
@@ -1860,17 +1871,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1583cc1656d7839fd3732b80cf4f38850336cdb9b8ded1cd399ca62958de3c99"
 dependencies = [
  "opaque-debug 0.3.0",
- "polyval 0.5.3",
-]
-
-[[package]]
-name = "ghash"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d930750de5717d2dd0b8c0d42c076c0e884c81a73e6cab859bbd2339c71e3e40"
-dependencies = [
- "opaque-debug 0.3.0",
- "polyval 0.6.0",
+ "polyval",
 ]
 
 [[package]]
@@ -2653,15 +2654,15 @@ dependencies = [
 
 [[package]]
 name = "monero"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a7038b6ba92588189248fbb4f8b2744d4918a9732f826e414814a50c168dca3"
+version = "0.17.2"
+source = "git+https://github.com/tari-project/monero-rs.git?branch=main#7aebfd0aa037025cac6cbded3f72d73bf3c18123"
 dependencies = [
- "base58-monero",
+ "base58-monero 1.0.0",
  "curve25519-dalek",
  "fixed-hash",
  "hex",
  "hex-literal",
+ "sealed",
  "serde",
  "serde-big-array",
  "thiserror",
@@ -3193,6 +3194,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "password-hash"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7676374caaee8a325c9e7a2ae557f216c5563a171d6997b0ef8a65af35147700"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.3",
+ "subtle",
+]
+
+[[package]]
 name = "path-clean"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3300,7 +3312,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0c63db779c3f090b540dfa0484f8adc2d380e3aa60cdb0f3a7a97454e22edc5"
 dependencies = [
- "aes 0.7.5",
+ "aes",
  "base64 0.13.0",
  "bitfield",
  "block-modes",
@@ -3463,6 +3475,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "poly1305"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8159bd90725d2df49889a078b54f4f79e87f1f8a8444194cdca81d38f5393abf"
+dependencies = [
+ "cpufeatures 0.2.2",
+ "opaque-debug 0.3.0",
+ "universal-hash 0.5.0",
+]
+
+[[package]]
 name = "polyval"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3472,18 +3495,6 @@ dependencies = [
  "cpufeatures 0.2.2",
  "opaque-debug 0.3.0",
  "universal-hash 0.4.1",
-]
-
-[[package]]
-name = "polyval"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ef234e08c11dfcb2e56f79fd70f6f2eb7f025c0ce2333e82f4f0518ecad30c6"
-dependencies = [
- "cfg-if 1.0.0",
- "cpufeatures 0.2.2",
- "opaque-debug 0.3.0",
- "universal-hash 0.5.0",
 ]
 
 [[package]]
@@ -4145,6 +4156,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sealed"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b5e421024b5e5edfbaa8e60ecf90bda9dbffc602dbb230e6028763f85f0c68c"
+dependencies = [
+ "heck 0.3.3",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "security-framework"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4202,9 +4225,9 @@ dependencies = [
 
 [[package]]
 name = "serde-big-array"
-version = "0.3.3"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd31f59f6fe2b0c055371bb2f16d7f0aa7d8881676c04a55b1596d1a17cd10a4"
+checksum = "3323f09a748af288c3dc2474ea6803ee81f118321775bffa3ac8f7e65c5e90e7"
 dependencies = [
  "serde",
 ]
@@ -4434,7 +4457,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6142f7c25e94f6fd25a32c3348ec230df9109b463f59c8c7acc4bd34936babb7"
 dependencies = [
- "aes-gcm 0.9.4",
+ "aes-gcm",
  "blake2 0.9.2",
  "chacha20poly1305 0.8.0",
  "rand 0.8.5",
@@ -4595,25 +4618,32 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
+ "argon2 0.4.1",
+ "base64 0.13.0",
  "chrono",
+ "digest 0.9.0",
+ "log",
  "num-traits",
  "prost",
  "prost-types",
+ "rand 0.8.5",
  "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",
  "tari_script",
  "tari_utilities",
+ "thiserror",
  "tonic",
  "tonic-build",
+ "zeroize",
 ]
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "clap 3.2.15",
  "config",
@@ -4636,7 +4666,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4728,7 +4758,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "blake2 0.9.2",
@@ -4757,7 +4787,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "diesel",
  "log",
@@ -4766,8 +4796,9 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
+ "base64 0.13.0",
  "digest 0.9.0",
  "lazy_static",
  "rand 0.8.5",
@@ -4776,11 +4807,12 @@ dependencies = [
  "tari_utilities",
  "thiserror",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
 name = "tari_comms"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4830,7 +4862,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -4877,7 +4909,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "futures 0.3.21",
  "proc-macro2",
@@ -4892,8 +4924,9 @@ dependencies = [
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
+ "base64 0.13.0",
  "bitflags 1.3.2",
  "chrono",
  "clap 3.2.15",
@@ -4941,7 +4974,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5029,9 +5062,9 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
- "argon2",
+ "argon2 0.2.4",
  "arrayvec 0.7.2",
  "blake2 0.9.2",
  "chacha20 0.7.1",
@@ -5076,7 +5109,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5128,7 +5161,7 @@ dependencies = [
 
 [[package]]
 name = "tari_miner"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "base64 0.13.0",
  "bufstream",
@@ -5152,6 +5185,7 @@ dependencies = [
  "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",
@@ -5163,7 +5197,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mining_helper_ffi"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "hex",
  "libc",
@@ -5180,7 +5214,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "bincode",
  "blake2 0.9.2",
@@ -5199,7 +5233,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "bytes 0.5.6",
@@ -5258,7 +5292,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5275,7 +5309,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "futures 0.3.21",
  "tokio",
@@ -5283,7 +5317,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -5297,7 +5331,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "futures 0.3.21",
  "futures-test",
@@ -5312,7 +5346,7 @@ name = "tari_utilities"
 version = "0.4.5"
 source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.4.5#a9e059ba84f8d931aeaa2b88a52a1ce6503b2deb"
 dependencies = [
- "base58-monero",
+ "base58-monero 0.3.2",
  "base64 0.13.0",
  "bincode",
  "newtype-ops",
@@ -5324,13 +5358,13 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
- "aes-gcm 0.10.1",
- "argon2",
+ "argon2 0.2.4",
  "async-trait",
  "bincode",
  "blake2 0.9.2",
+ "chacha20poly1305 0.10.1",
  "chrono",
  "clear_on_drop",
  "crossbeam-channel",
@@ -5376,7 +5410,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "cbindgen 0.24.3",
  "chrono",

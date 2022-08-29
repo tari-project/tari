@@ -39,7 +39,11 @@ use super::{
     manager::ConnectivityStatus,
     ConnectivitySelection,
 };
-use crate::{connection_manager::ConnectionManagerError, peer_manager::NodeId, PeerConnection};
+use crate::{
+    connection_manager::ConnectionManagerError,
+    peer_manager::{NodeId, Peer},
+    PeerConnection,
+};
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
@@ -100,6 +104,7 @@ pub enum ConnectivityRequest {
     BanPeer(NodeId, Duration, String),
     AddPeerToAllowList(NodeId),
     RemovePeerFromAllowList(NodeId),
+    GetPeerStats(NodeId, oneshot::Sender<Option<Peer>>),
 }
 
 /// Handle to make requests and read events from the ConnectivityManager actor.
@@ -199,6 +204,16 @@ impl ConnectivityRequester {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectivityRequest::GetConnection(node_id, reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
+    /// Get the peer information from the peer, will return none if the peer is not found
+    pub async fn get_peer_info(&self, node_id: NodeId) -> Result<Option<Peer>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::GetPeerStats(node_id, reply_tx))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)

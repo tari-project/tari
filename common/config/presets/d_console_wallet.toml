@@ -61,8 +61,12 @@
 #command_send_wait_timeout = 300
 #command_send_wait_stage = "Broadcast"
 
+# Set to true to enable grpc. (default = false)
+#grpc_enabled = false
 # The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18143")
 #grpc_address = "/ip4/127.0.0.1/tcp/18143"
+# gRPC authentication method (default = "none")
+#grpc_authentication = { username = "admin", password = "xxxx" }
 
 # A custom base node peer that will be used to obtain metadata from, example
 # "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189"

@@ -88,7 +88,7 @@
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
-use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
+use tari_crypto::{errors::RangeProofError, hash::blake2::Blake256, signatures::SchnorrSignatureError};
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
@@ -99,6 +99,7 @@ pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
 use tari_common_types::types::Commitment;
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
 use crate::transactions::transaction_components::KernelFeatures;
 
@@ -176,3 +177,13 @@ pub struct RewindData {
     pub rewind_blinding_key: PrivateKey,
     pub encryption_key: PrivateKey,
 }
+
+// hash domain
+hash_domain!(
+    CalculateTxIdTransactionProtocolHashDomain,
+    "com.tari.tari-project.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
+    1
+);
+
+pub type CalculateTxIdTransactionProtocolHasherBlake256 =
+    DomainSeparatedHasher<Blake256, CalculateTxIdTransactionProtocolHashDomain>;

@@ -57,7 +57,7 @@ use tari_core::{
 };
 use tari_service_framework::reply_channel;
 use tari_test_utils::streams::convert_mpsc_to_stream;
-use tari_utilities::{epoch_time::EpochTime, Hashable};
+use tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 
@@ -254,7 +254,7 @@ async fn test_base_node_wallet_rpc() {
     let msg = FetchMatchingUtxos {
         output_hashes: req_utxos
             .iter()
-            .map(|uo| uo.as_transaction_output(&factories).unwrap().hash())
+            .map(|uo| uo.as_transaction_output(&factories).unwrap().hash().to_vec())
             .collect(),
     };
 
@@ -377,8 +377,8 @@ async fn test_sync_utxos_by_block() {
 
     // All blocks
     let msg = SyncUtxosByBlockRequest {
-        start_header_hash: block0.header().hash(),
-        end_header_hash: block3.header.hash(),
+        start_header_hash: block0.header().hash().to_vec(),
+        end_header_hash: block3.header.hash().to_vec(),
     };
 
     let req = request_mock.request_with_context(Default::default(), msg);
@@ -388,10 +388,10 @@ async fn test_sync_utxos_by_block() {
 
     assert_eq!(
         vec![
-            (0, block0.header().hash(), 0),
-            (1, block1.header.hash(), 10),
-            (2, block2.header.hash(), 4),
-            (3, block3.header.hash(), 7)
+            (0, block0.header().hash().to_vec(), 0),
+            (1, block1.header.hash().to_vec(), 10),
+            (2, block2.header.hash().to_vec(), 4),
+            (3, block3.header.hash().to_vec(), 7)
         ],
         responses
             .iter()
@@ -404,8 +404,8 @@ async fn test_sync_utxos_by_block() {
 
     // Block 1 to 2
     let msg = SyncUtxosByBlockRequest {
-        start_header_hash: block1.header.hash(),
-        end_header_hash: block2.header.hash(),
+        start_header_hash: block1.header.hash().to_vec(),
+        end_header_hash: block2.header.hash().to_vec(),
     };
 
     let req = request_mock.request_with_context(Default::default(), msg);
@@ -414,7 +414,10 @@ async fn test_sync_utxos_by_block() {
     let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
 
     assert_eq!(
-        vec![(1, block1.header.hash(), 10), (2, block2.header.hash(), 6),],
+        vec![
+            (1, block1.header.hash().to_vec(), 10),
+            (2, block2.header.hash().to_vec(), 6),
+        ],
         responses
             .iter()
             .map(|r| {

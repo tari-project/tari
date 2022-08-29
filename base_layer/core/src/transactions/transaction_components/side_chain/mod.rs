@@ -26,6 +26,20 @@ pub use sidechain_features::SideChainFeatures;
 pub const FIXED_STR_LEN: usize = 32;
 pub type FixedString = [u8; FIXED_STR_LEN];
 
-pub fn bytes_into_fixed_string<T: AsRef<[u8]>>(value: T) -> FixedString {
-    tari_common_types::array::copy_into_fixed_array_lossy::<_, FIXED_STR_LEN>(value.as_ref())
-}
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+
+hash_domain!(
+    ContractAcceptanceHashDomain,
+    "com.tari.tari-project.base_layer.core.transactions.side_chain.contract_acceptance_challenge",
+    1
+);
+
+pub type ContractAcceptanceHasherBlake256 = DomainSeparatedHasher<Blake256, ContractAcceptanceHashDomain>;
+
+hash_domain!(
+    SignerSignatureHashDomain,
+    "com.tari.tari-project.base_layer.core.transactions.side_chain.signer_signature",
+    1
+);
+
+pub type SignerSignatureHasherBlake256 = DomainSeparatedHasher<Blake256, SignerSignatureHashDomain>;

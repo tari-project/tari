@@ -48,7 +48,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::hash::Hashable};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
@@ -313,7 +313,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.minimum_value_promise,
     );
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002, 0);
+    txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 4002, 0);
     assert!(store.commit(txn).is_ok());
 
     let txn = txn_schema!(

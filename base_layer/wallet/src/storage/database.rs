@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
@@ -47,7 +47,7 @@ pub trait WalletBackend: Send + Sync + Clone {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
     /// Apply encryption to the backend.
-    fn apply_encryption(&self, passphrase: SafePassword) -> Result<Aes256Gcm, WalletStorageError>;
+    fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), WalletStorageError>;
 
@@ -277,7 +277,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub async fn apply_encryption(&self, passphrase: SafePassword) -> Result<Aes256Gcm, WalletStorageError> {
+    pub async fn apply_encryption(&self, passphrase: SafePassword) -> Result<XChaCha20Poly1305, WalletStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.apply_encryption(passphrase))
             .await

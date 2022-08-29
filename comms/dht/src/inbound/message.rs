@@ -39,6 +39,37 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+pub struct ValidatedDhtInboundMessage {
+    message: DhtInboundMessage,
+    authenticated_origin: Option<CommsPublicKey>,
+}
+
+impl ValidatedDhtInboundMessage {
+    pub fn new(message: DhtInboundMessage, authenticated_origin: Option<CommsPublicKey>) -> Self {
+        Self {
+            message,
+            authenticated_origin,
+        }
+    }
+
+    pub fn into_message(self) -> DhtInboundMessage {
+        self.message
+    }
+
+    pub fn message(&self) -> &DhtInboundMessage {
+        &self.message
+    }
+
+    pub fn header(&self) -> &DhtMessageHeader {
+        &self.message.dht_header
+    }
+
+    pub fn authenticated_origin(&self) -> Option<&CommsPublicKey> {
+        self.authenticated_origin.as_ref()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
     pub tag: MessageTag,
     pub source_peer: Arc<Peer>,
@@ -48,6 +79,7 @@ pub struct DhtInboundMessage {
     pub dedup_hit_count: u32,
     pub body: Vec<u8>,
 }
+
 impl DhtInboundMessage {
     pub fn new(tag: MessageTag, dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
         Self {

@@ -129,11 +129,9 @@ impl CliLoop {
             } else {
                 let mut events = EventStream::new();
                 loop {
-                    terminal::enable_raw_mode().ok();
                     let interval = time::sleep(interval);
                     tokio::select! {
                         _ = interval => {
-                            terminal::disable_raw_mode().ok();
                             if let Err(err) = self.context.handle_command_str(line).await {
                                 println!("Watched command `{}` failed: {}", line, err);
                             }

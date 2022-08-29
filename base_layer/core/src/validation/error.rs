@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{FixedHash, HashOutput};
+use tari_common_types::types::{FixedHash, FixedHashSizeError, HashOutput};
 use tari_crypto::errors::RangeProofError;
 use thiserror::Error;
 use tokio::task;
@@ -128,6 +128,10 @@ pub enum ValidationError {
     },
     #[error("Contains Invalid Burn: {0}")]
     InvalidBurnError(String),
+    #[error("Output type '{output_type}' is not permitted")]
+    OutputTypeNotPermitted { output_type: OutputType },
+    #[error("FixedHash size error: {0}")]
+    FixedHashSizeError(#[from] FixedHashSizeError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

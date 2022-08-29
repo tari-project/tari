@@ -31,16 +31,13 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, HashOutput, PublicKey};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
-};
+use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::Hex};
 use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHasher, DomainSeparatedConsensusHasher, MaxSizeBytes},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -337,9 +334,9 @@ impl TransactionInput {
 
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
-    pub fn output_hash(&self) -> Vec<u8> {
+    pub fn output_hash(&self) -> FixedHash {
         match &self.spent_output {
-            SpentOutput::OutputHash(ref h) => h.clone(),
+            SpentOutput::OutputHash(ref h) => *h,
             SpentOutput::OutputData {
                 version,
                 commitment,
@@ -357,8 +354,7 @@ impl TransactionInput {
                 covenant,
                 encrypted_value,
                 *minimum_value_promise,
-            )
-            .to_vec(),
+            ),
         }
     }
 
@@ -367,7 +363,7 @@ impl TransactionInput {
     }
 
     /// Implement the canonical hashing function for TransactionInput for use in ordering
-    pub fn canonical_hash(&self) -> Result<Vec<u8>, TransactionError> {
+    pub fn canonical_hash(&self) -> Result<FixedHash, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
@@ -381,7 +377,7 @@ impl TransactionInput {
                 ref minimum_value_promise,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let writer = ConsensusHasher::default()
+                let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_input")
                     .chain(version)
                     .chain(features)
                     .chain(commitment)
@@ -393,7 +389,7 @@ impl TransactionInput {
                     .chain(encrypted_value)
                     .chain(minimum_value_promise);
 
-                Ok(writer.finalize().to_vec())
+                Ok(writer.finalize().into())
             },
         }
     }
@@ -423,7 +419,7 @@ impl TransactionInput {
         Self::new(
             self.version,
             match &self.spent_output {
-                SpentOutput::OutputHash(h) => SpentOutput::OutputHash(h.clone()),
+                SpentOutput::OutputHash(h) => SpentOutput::OutputHash(*h),
                 SpentOutput::OutputData { .. } => SpentOutput::OutputHash(self.output_hash()),
             },
             self.input_data.clone(),
@@ -487,6 +483,8 @@ impl ConsensusEncoding for TransactionInput {
         Ok(())
     }
 }
+
+impl ConsensusEncodingSized for TransactionInput {}
 
 impl ConsensusDecoding for TransactionInput {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
@@ -560,8 +558,7 @@ impl ConsensusDecoding for SpentOutput {
         reader.read_exact(&mut buf)?;
         match buf[0] {
             0 => {
-                const MAX_HASH_SIZE: usize = 32;
-                let hash = <MaxSizeBytes<MAX_HASH_SIZE> as ConsensusDecoding>::consensus_decode(reader)?.into();
+                let hash = FixedHash::consensus_decode(reader)?;
                 Ok(SpentOutput::OutputHash(hash))
             },
             1 => {
@@ -586,5 +583,20 @@ impl ConsensusDecoding for SpentOutput {
             },
             _ => Err(io::Error::new(ErrorKind::InvalidInput, "Invalid SpentOutput type")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::{consensus::check_consensus_encoding_correctness, transactions::test_helpers::create_test_input};
+
+    #[test]
+    fn consensus_encoding() {
+        let factory = CommitmentFactory::default();
+
+        let (input, _) = create_test_input(123.into(), 321, &factory);
+        check_consensus_encoding_correctness(input).unwrap();
     }
 }

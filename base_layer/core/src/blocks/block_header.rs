@@ -40,31 +40,22 @@
 use std::{
     cmp::Ordering,
     convert::TryFrom,
-    fmt,
     fmt::{Display, Error, Formatter},
     io,
     io::{Read, Write},
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use serde::{
-    de::{self, Visitor},
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-};
-use tari_common_types::{
-    array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
-    types::{BlindingFactor, BlockHash, BLOCK_HASH_LENGTH},
-};
-use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{BlindingFactor, BlockHash, FixedHash};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHasher},
+    blocks::BlocksHashDomain,
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, DomainSeparatedConsensusHasher},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 
@@ -95,27 +86,22 @@ pub struct BlockHeader {
     /// Height of this block since the genesis block (height 0)
     pub height: u64,
     /// Hash of the block previous to this in the chain.
-    #[serde(with = "hash_serializer")]
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: EpochTime,
     /// This is the UTXO merkle root of the outputs
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
-    #[serde(with = "hash_serializer")]
-    pub output_mr: BlockHash,
+    pub output_mr: FixedHash,
     /// This is the MMR root of the witness proofs
-    #[serde(with = "hash_serializer")]
-    pub witness_mr: BlockHash,
+    pub witness_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
     pub output_mmr_size: u64,
     /// This is the MMR root of the kernels
-    #[serde(with = "hash_serializer")]
-    pub kernel_mr: BlockHash,
+    pub kernel_mr: FixedHash,
     /// The number of MMR leaves in the kernel MMR
     pub kernel_mmr_size: u64,
     /// This is the Merkle root of the inputs in this block
-    #[serde(with = "hash_serializer")]
-    pub input_mr: BlockHash,
+    pub input_mr: FixedHash,
     /// Sum of kernel offsets for all kernels in this block.
     pub total_kernel_offset: BlindingFactor,
     /// Sum of script offsets for all kernels in this block.
@@ -132,19 +118,28 @@ impl BlockHeader {
         BlockHeader {
             version: blockchain_version,
             height: 0,
-            prev_hash: vec![0; BLOCK_HASH_LENGTH],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0; BLOCK_HASH_LENGTH],
-            witness_mr: vec![0; BLOCK_HASH_LENGTH],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0; BLOCK_HASH_LENGTH],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0; BLOCK_HASH_LENGTH],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: BlindingFactor::default(),
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         }
+    }
+
+    pub fn hash(&self) -> FixedHash {
+        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+            .chain(&self.mining_hash())
+            .chain(&self.pow)
+            .chain(&self.nonce)
+            .finalize()
+            .into()
     }
 
     /// Create a new block header using relevant data from the previous block. The height is incremented by one, the
@@ -157,12 +152,12 @@ impl BlockHeader {
             height: prev.height + 1,
             prev_hash,
             timestamp: EpochTime::now(),
-            output_mr: vec![0; BLOCK_HASH_LENGTH],
-            witness_mr: vec![0; BLOCK_HASH_LENGTH],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: prev.output_mmr_size,
-            kernel_mr: vec![0; BLOCK_HASH_LENGTH],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
-            input_mr: vec![0; BLOCK_HASH_LENGTH],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: BlindingFactor::default(),
             total_script_offset: BlindingFactor::default(),
             nonce: 0,
@@ -213,24 +208,24 @@ impl BlockHeader {
         }
     }
 
-    /// Provides a hash of the header, used for the merge mining.
+    /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
-    pub fn merged_mining_hash(&self) -> Vec<u8> {
-        ConsensusHasher::default()
-                .chain(&self.version)
-                .chain(&self.height)
-                .chain(&self.prev_hash)
-                .chain(&self.timestamp)
-                .chain(&self.input_mr)
-                // TODO: Cleanup if/when we migrate to fixed 32-byte array type for hashes
-                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.output_mr))
-                .chain(&self.output_mmr_size)
-                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr))
-                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr))
-                .chain(&self.kernel_mmr_size)
-                .chain(&self.total_kernel_offset)
-                .chain(&self.total_script_offset)
-                .finalize().to_vec()
+    pub fn mining_hash(&self) -> FixedHash {
+        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+            .chain(&self.version)
+            .chain(&self.height)
+            .chain(&self.prev_hash)
+            .chain(&self.timestamp)
+            .chain(&self.input_mr)
+            .chain(&self.output_mr)
+            .chain(&self.output_mmr_size)
+            .chain(&self.witness_mr)
+            .chain(&self.kernel_mr)
+            .chain(&self.kernel_mmr_size)
+            .chain(&self.total_kernel_offset)
+            .chain(&self.total_script_offset)
+            .finalize()
+            .into()
     }
 
     #[inline]
@@ -257,30 +252,18 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             height: header_template.height,
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
-            output_mr: vec![],
-            witness_mr: vec![],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             // TODO: put  mmr sizes in template
             output_mmr_size: 0,
-            kernel_mr: vec![],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: header_template.total_kernel_offset,
             total_script_offset: header_template.total_script_offset,
             nonce: 0,
             pow: header_template.pow,
         }
-    }
-}
-
-impl Hashable for BlockHeader {
-    fn hash(&self) -> Vec<u8> {
-        ConsensusHasher::default()
-            // TODO: this excludes extraneous length varint used for Vec<u8> since a hash is always 32-bytes. Clean this
-            //       up if we decide to migrate to a fixed 32-byte type
-            .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())
-            .chain(&self.pow)
-            .chain(&self.nonce)
-            .finalize().to_vec()
     }
 }
 
@@ -323,59 +306,18 @@ impl Display for BlockHeader {
     }
 }
 
-pub(crate) mod hash_serializer {
-    use tari_utilities::hex::Hex;
-
-    use super::*;
-
-    #[allow(clippy::ptr_arg)]
-    pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        if serializer.is_human_readable() {
-            bytes.to_hex().serialize(serializer)
-        } else {
-            serializer.serialize_bytes(bytes.as_bytes())
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<BlockHash, D::Error>
-    where D: Deserializer<'de> {
-        struct BlockHashVisitor;
-
-        impl<'de> Visitor<'de> for BlockHashVisitor {
-            type Value = BlockHash;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("A block header hash in binary format")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<BlockHash, E>
-            where E: de::Error {
-                BlockHash::from_bytes(v).map_err(E::custom)
-            }
-        }
-
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            BlockHash::from_hex(&s).map_err(de::Error::custom)
-        } else {
-            deserializer.deserialize_bytes(BlockHashVisitor)
-        }
-    }
-}
-
 impl ConsensusEncoding for BlockHeader {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         self.version.consensus_encode(writer)?;
         self.height.consensus_encode(writer)?;
-        copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
+        self.prev_hash.consensus_encode(writer)?;
         self.timestamp.consensus_encode(writer)?;
-        copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
-        copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
+        self.output_mr.consensus_encode(writer)?;
+        self.witness_mr.consensus_encode(writer)?;
         self.output_mmr_size.consensus_encode(writer)?;
-        copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
+        self.kernel_mr.consensus_encode(writer)?;
         self.kernel_mmr_size.consensus_encode(writer)?;
-        copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
+        self.input_mr.consensus_encode(writer)?;
         self.total_kernel_offset.consensus_encode(writer)?;
         self.total_script_offset.consensus_encode(writer)?;
         self.nonce.consensus_encode(writer)?;
@@ -391,14 +333,14 @@ impl ConsensusDecoding for BlockHeader {
         let version = u16::consensus_decode(reader)?;
         let mut header = BlockHeader::new(version);
         header.height = u64::consensus_decode(reader)?;
-        header.prev_hash = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.prev_hash = FixedHash::consensus_decode(reader)?;
         header.timestamp = EpochTime::consensus_decode(reader)?;
-        header.output_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
-        header.witness_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.output_mr = FixedHash::consensus_decode(reader)?;
+        header.witness_mr = FixedHash::consensus_decode(reader)?;
         header.output_mmr_size = u64::consensus_decode(reader)?;
-        header.kernel_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.kernel_mr = FixedHash::consensus_decode(reader)?;
         header.kernel_mmr_size = u64::consensus_decode(reader)?;
-        header.input_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.input_mr = FixedHash::consensus_decode(reader)?;
         header.total_kernel_offset = BlindingFactor::consensus_decode(reader)?;
         header.total_script_offset = BlindingFactor::consensus_decode(reader)?;
         header.nonce = u64::consensus_decode(reader)?;
@@ -409,10 +351,11 @@ impl ConsensusDecoding for BlockHeader {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
 
-    use tari_utilities::Hashable;
+    use super::*;
+    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
 
-    use crate::blocks::BlockHeader;
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::sha3_test::get_header();
@@ -508,5 +451,11 @@ mod test {
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn block_header_encode_decode() {
+        let header = get_genesis_block(Network::LocalNet).block().header.clone();
+        check_consensus_encoding_correctness(header).unwrap();
     }
 }

@@ -20,17 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io, ops::Deref};
-
-use monero::{
-    consensus::{encode, Decodable, Encodable},
-    VarInt,
+use std::{
+    convert::TryFrom,
+    io,
+    io::{Read, Write},
+    ops::Deref,
 };
+
 use tari_utilities::{ByteArray, ByteArrayError};
+
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 const MAX_ARR_SIZE: usize = 63;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FixedByteArray {
     elems: [u8; MAX_ARR_SIZE],
     len: u8,
@@ -109,36 +112,48 @@ impl ByteArray for FixedByteArray {
     }
 }
 
-impl Decodable for FixedByteArray {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, encode::Error> {
-        #[allow(clippy::cast_possible_truncation)]
-        let len = VarInt::consensus_decode(d)?.0 as usize;
+impl ConsensusDecoding for FixedByteArray {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf)?;
+        let len = buf[0] as usize;
         if len > MAX_ARR_SIZE {
-            return Err(encode::Error::ParseFailed(
-                "length exceeded maximum of 64-bytes for FixedByteArray",
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("length exceeded maximum of 64-bytes for FixedByteArray: {}", len),
             ));
         }
         let mut ret = FixedByteArray::new();
         for _ in 0..len {
             // PANIC: Cannot happen because len has been checked
-            ret.push(Decodable::consensus_decode(d)?);
+            let mut buf = [0u8; 1];
+            reader.read_exact(&mut buf)?;
+            ret.push(buf[0]);
         }
         Ok(ret)
     }
 }
 
-impl Encodable for FixedByteArray {
-    fn consensus_encode<E: io::Write>(&self, e: &mut E) -> Result<usize, io::Error> {
-        self.as_slice().consensus_encode(e)
+impl ConsensusEncodingSized for FixedByteArray {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.len as usize + 1
+    }
+}
+
+impl ConsensusEncoding for FixedByteArray {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        writer.write_all(&[self.len][..])?;
+        writer.write_all(&self.elems[0..self.len()])?;
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use monero::consensus;
     use tari_utilities::hex::Hex;
 
     use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
 
     #[test]
     fn assert_size() {
@@ -166,14 +181,6 @@ mod test {
     }
 
     #[test]
-    fn serialize_deserialize() {
-        let data = consensus::serialize(&FixedByteArray::from_hex("ffffffffffffffffffffffffff").unwrap());
-        assert_eq!(data.len(), 13 + 1);
-        let arr = consensus::deserialize::<FixedByteArray>(&data).unwrap();
-        assert!(arr.iter().all(|b| *b == 0xff));
-    }
-
-    #[test]
     fn length_check() {
         let mut buf = [0u8; MAX_ARR_SIZE + 1];
         buf[0] = 63;
@@ -181,19 +188,27 @@ mod test {
         assert_eq!(arr.len(), MAX_ARR_SIZE);
 
         buf[0] = 64;
-        let err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
-        assert!(matches!(err, encode::Error::ParseFailed(_)));
+        let _err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
 
         // VarInt encoding that doesnt terminate, but _would_ represent a number < MAX_ARR_SIZE
         buf[0] = 0b1000000;
         buf[1] = 0b1000000;
-        let err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
-        assert!(matches!(err, encode::Error::ParseFailed(_)));
+        let _err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
     }
 
     #[test]
     fn capacity_overflow_does_not_panic() {
         let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
-        let _result = consensus::deserialize::<FixedByteArray>(data);
+        let _result = FixedByteArray::consensus_decode(&mut data.as_slice()).unwrap_err();
+    }
+
+    #[test]
+    fn consensus_encoding() {
+        let arr = FixedByteArray::from_hex("ffffffffffffffffffffffffff").unwrap();
+        check_consensus_encoding_correctness(arr).unwrap();
+
+        let arr = FixedByteArray::from_hex("0ff1ceb4d455").unwrap();
+        assert_eq!(arr.len(), 6);
+        check_consensus_encoding_correctness(arr).unwrap();
     }
 }

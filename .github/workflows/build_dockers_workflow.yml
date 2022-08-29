@@ -1,7 +1,7 @@
 ---
 name: Build docker images - workflow_call/on-demand
 
-on:
+'on':
   workflow_call:
     secrets:
       DOCKER_PROVIDER:

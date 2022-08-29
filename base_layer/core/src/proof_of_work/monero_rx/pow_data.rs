@@ -24,16 +24,21 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
+    io::{Read, Write},
 };
 
 use monero::{
-    consensus::{encode, Decodable, Encodable},
+    consensus::{Decodable, Encodable},
     cryptonote::hash::Hashable,
 };
 use tari_utilities::hex::{to_hex, Hex};
 
-use super::{deserialize, error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
-use crate::{blocks::BlockHeader, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
+use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
+use crate::{
+    blocks::BlockHeader,
+    consensus::{ConsensusDecoding, ConsensusEncoding, FromConsensusBytes},
+    proof_of_work::monero_rx::helpers::create_block_hashing_blob,
+};
 
 /// This is a struct to deserialize the data from he pow field into data required for the randomX Monero merged mine
 /// pow.
@@ -56,7 +61,8 @@ pub struct MoneroPowData {
 
 impl MoneroPowData {
     pub fn from_header(tari_header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
-        deserialize(&tari_header.pow.pow_data).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))
+        MoneroPowData::from_consensus_bytes(tari_header.pow.pow_data.as_slice())
+            .map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))
     }
 
     /// Returns true if the coinbase merkle proof produces the `merkle_root` hash, otherwise false
@@ -85,49 +91,64 @@ impl Display for MoneroPowData {
     }
 }
 
-impl Decodable for MoneroPowData {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, encode::Error> {
+impl ConsensusDecoding for MoneroPowData {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         Ok(Self {
-            header: Decodable::consensus_decode(d)?,
-            randomx_key: Decodable::consensus_decode(d)?,
-            transaction_count: Decodable::consensus_decode(d)?,
-            merkle_root: Decodable::consensus_decode(d)?,
-            coinbase_merkle_proof: Decodable::consensus_decode(d)?,
-            coinbase_tx: Decodable::consensus_decode(d)?,
+            header: Decodable::consensus_decode(reader).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Could not decode Monero header {}", e),
+                )
+            })?,
+            randomx_key: ConsensusDecoding::consensus_decode(reader)?,
+            transaction_count: ConsensusDecoding::consensus_decode(reader)?,
+            merkle_root: Decodable::consensus_decode(reader).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Could not decode Monero merkle header {}", e),
+                )
+            })?,
+            coinbase_merkle_proof: ConsensusDecoding::consensus_decode(reader)?,
+            coinbase_tx: Decodable::consensus_decode(reader).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Could not decode Monero coinbase transaction {}", e),
+                )
+            })?,
         })
     }
 }
 
-impl Encodable for MoneroPowData {
-    fn consensus_encode<E: io::Write>(&self, e: &mut E) -> Result<usize, io::Error> {
-        let mut len = self.header.consensus_encode(e)?;
-        len += self.randomx_key.consensus_encode(e)?;
-        len += self.transaction_count.consensus_encode(e)?;
-
-        len += self.merkle_root.consensus_encode(e)?;
-        len += self.coinbase_merkle_proof.consensus_encode(e)?;
-        len += self.coinbase_tx.consensus_encode(e)?;
-        Ok(len)
+impl ConsensusEncoding for MoneroPowData {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        self.header.consensus_encode(writer)?;
+        self.randomx_key.consensus_encode(writer)?;
+        ConsensusEncoding::consensus_encode(&self.transaction_count, writer)?;
+        self.merkle_root.consensus_encode(writer)?;
+        self.coinbase_merkle_proof.consensus_encode(writer)?;
+        self.coinbase_tx.consensus_encode(writer)?;
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use monero::consensus;
     use tari_utilities::hex::from_hex;
 
     use super::*;
 
-    const POW_DATA_BLOB: &str = "0e0eff8a828606e62827cbb1c8f13eeddaae1d2c5dbb36c12a3d30d20d20b35a540bdba9d8e162604a0000202378cf4e85ef9a0629719e228c8c9807575469c3f45b3710c7960079a5dfdd661600b3cdc310a8f619ea2feadb178021ea0b853caa2f41749f7f039dcd4102d24f0504b4d72f22ca81245c538371a07331546cbd9935068637166d9cd627c521fb0e98d6161a7d971ee608b2b93719327d1cf5f95f9cc15beab7c6fb0894205c9218e4f9810873976eaf62d53ce631e8ad37bbaacc5da0267cd38342d66bdecce6541bb5c761b8ff66e7f6369cd3b0c2cb106a325c7342603516c77c9dcbb67388128a04000000000002fd873401ffc1873401c983eae58cd001026eb5be712030e2d49c9329f7f578325daa8ad7296a58985131544d8fe8a24c934d01ad27b94726423084ffc0f7eda31a8c9691836839c587664a036c3986b33f568f020861f4f1c2c37735680300916c27a920e462fbbfce5ac661ea9ef91fc78d620c61c43d5bb6a9644e3c17e000";
+    const POW_DATA_BLOB: &str = "1010989af89706d7fc36490967c52552f5f970b3e71857145426d55f19a0f291aad87fe3949ca7ab2b03002098a7ff37940ab2a8199192b6468d7704b1a46b37aa533298c8b020c2945f36485088afcd6c40c6d6b5fba15ffc256d7bdfdc7879e98287803d9602752df500e35b066d1cf333fcce964b72063915f082d730c708859a0e9288241bfdd9c3c6b471a432a8434282ada7df2675826e086c85b0085bef38b88f2984790553d4925e74f445cc42a810ed9ae296f7e105e5da77e8c58c51fe3e6f1b122c94ae2e27ecffff8511d9dc3554b49d41c9acdaccab04452126e4e2d897d09d49a794e192cd51b76b52628bed70ddb8a3f755035e4e6f23eda8e01e5af885f07c5e5ec742307c88f4446cf32225f52bf019ef198fa2f3957937b6ba96366c731ee47212be92ac5e06000292a9a40101ffd6a8a40101b9f998fcd81103502bb7087b807c5f4fec15891983ac05d05412e5900ca47e6bdf31d7e2c55082574d01ffb9bb5f384f2725a21e36b44fb100791f7259066d7982d616950981e9ce77010208e74c7cee8930e6800300020c4db762c76a89966cebe345f55f725a59c6cbba8630cc0b6bae388718dd1f00";
 
     #[test]
     fn consensus_serialization() {
         let bytes = from_hex(POW_DATA_BLOB).unwrap();
-        let data = consensus::deserialize::<MoneroPowData>(&bytes).expect("If this fails then consensus has changed");
-        assert_eq!(data.transaction_count, 22);
-        assert_eq!(data.coinbase_merkle_proof.branch().len(), 4);
-        assert_eq!(bytes.len(), 374);
-        let ser = consensus::serialize(&data);
+        let data =
+            MoneroPowData::from_consensus_bytes(bytes.as_slice()).expect("If this fails then consensus has changed");
+        assert_eq!(data.transaction_count, 80);
+        assert_eq!(data.coinbase_merkle_proof.branch().len(), 6);
+        assert_eq!(bytes.len(), 435);
+        let mut ser = Vec::new();
+        data.consensus_encode(&mut ser).unwrap();
         assert_eq!(ser, bytes);
     }
 
@@ -135,41 +156,11 @@ mod test {
     fn consensus_deserialize_reject_extra_bytes() {
         let mut bytes = from_hex(POW_DATA_BLOB).unwrap();
         bytes.extend(&[0u8; 10]);
-        let err = consensus::deserialize::<MoneroPowData>(&bytes).unwrap_err();
-        // ParseFailed("data not consumed entirely when explicitly deserializing")
-        assert!(matches!(err, encode::Error::ParseFailed(_)));
+
+        let _err = MoneroPowData::from_consensus_bytes(bytes.as_slice()).unwrap_err();
 
         let mut bytes = from_hex(POW_DATA_BLOB).unwrap();
         bytes.push(1);
-        let err = consensus::deserialize::<MoneroPowData>(&bytes).unwrap_err();
-        assert!(matches!(err, encode::Error::ParseFailed(_)));
-    }
-
-    mod fuzz {
-        use monero::TxIn;
-
-        use super::*;
-
-        #[test]
-        #[should_panic(expected = "capacity overflow")]
-        fn simple_capacity_overflow_panic() {
-            let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
-            let _result = deserialize::<Vec<TxIn>>(data);
-        }
-
-        #[test]
-        #[should_panic(expected = "capacity overflow")]
-        fn panic_alloc_capacity_overflow_moneroblock_deserialize() {
-            let data = [
-                0x0f, 0x9e, 0xa5, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
-                0x00, 0x08, 0x9e, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e,
-                0x9e, 0xe7, 0xaa, 0xfd, 0x8b, 0x47, 0x06, 0x8d, 0xed, 0xe3, 0x00, 0xed, 0x44, 0xfc, 0x77, 0xd6, 0x58,
-                0xf6, 0xf2, 0x69, 0x06, 0x8d, 0xed, 0xe3, 0x00, 0xed, 0x44, 0xfc, 0x77, 0xd6, 0x58, 0xf6, 0xf2, 0x69,
-                0x62, 0x38, 0xdb, 0x5e, 0x4d, 0x6d, 0x9c, 0x94, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00,
-                0x8f, 0x74, 0x3c, 0xb3, 0x1b, 0x6e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            ];
-            let _result = deserialize::<monero::Block>(&data);
-        }
+        let _err = MoneroPowData::from_consensus_bytes(bytes.as_slice()).unwrap_err();
     }
 }

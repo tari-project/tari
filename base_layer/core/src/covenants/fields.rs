@@ -29,8 +29,9 @@ use std::{
 
 use digest::Digest;
 use integer_encoding::VarIntWriter;
-use tari_crypto::hash::blake2::Blake256;
+use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
+use super::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL};
 use crate::{
     consensus::ToConsensusBytes,
     covenants::{
@@ -50,7 +51,7 @@ pub enum OutputField {
     SenderOffsetPublicKey = byte_codes::FIELD_SENDER_OFFSET_PUBLIC_KEY,
     Covenant = byte_codes::FIELD_COVENANT,
     Features = byte_codes::FIELD_FEATURES,
-    FeaturesFlags = byte_codes::FIELD_FEATURES_FLAGS,
+    FeaturesOutputType = byte_codes::FIELD_FEATURES_OUTPUT_TYPE,
     FeaturesMaturity = byte_codes::FIELD_FEATURES_MATURITY,
     FeaturesMetadata = byte_codes::FIELD_FEATURES_METADATA,
     FeaturesSideChainFeatures = byte_codes::FIELD_FEATURES_SIDE_CHAIN_FEATURES,
@@ -67,7 +68,7 @@ impl OutputField {
             FIELD_SENDER_OFFSET_PUBLIC_KEY => Ok(SenderOffsetPublicKey),
             FIELD_COVENANT => Ok(Covenant),
             FIELD_FEATURES => Ok(Features),
-            FIELD_FEATURES_FLAGS => Ok(FeaturesFlags),
+            FIELD_FEATURES_OUTPUT_TYPE => Ok(FeaturesOutputType),
             FIELD_FEATURES_MATURITY => Ok(FeaturesMaturity),
             FIELD_FEATURES_SIDE_CHAIN_FEATURES => Ok(FeaturesSideChainFeatures),
             FIELD_FEATURES_METADATA => Ok(FeaturesMetadata),
@@ -89,7 +90,7 @@ impl OutputField {
             SenderOffsetPublicKey => &output.sender_offset_public_key as &dyn Any,
             Covenant => &output.covenant as &dyn Any,
             Features => &output.features as &dyn Any,
-            FeaturesFlags => &output.features.output_type as &dyn Any,
+            FeaturesOutputType => &output.features.output_type as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
             FeaturesSideChainFeatures => &output.features.sidechain_features as &dyn Any,
             FeaturesMetadata => &output.features.metadata as &dyn Any,
@@ -106,7 +107,7 @@ impl OutputField {
             SenderOffsetPublicKey => output.sender_offset_public_key.to_consensus_bytes(),
             Covenant => output.covenant.to_consensus_bytes(),
             Features => output.features.to_consensus_bytes(),
-            FeaturesFlags => output.features.output_type.to_consensus_bytes(),
+            FeaturesOutputType => output.features.output_type.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
             FeaturesSideChainFeatures => output.features.sidechain_features.to_consensus_bytes(),
             FeaturesMetadata => output.features.metadata.to_consensus_bytes(),
@@ -134,7 +135,7 @@ impl OutputField {
                 .features()
                 .map(|features| *features == output.features)
                 .unwrap_or(false),
-            FeaturesFlags => input
+            FeaturesOutputType => input
                 .features()
                 .map(|features| features.output_type == output.features.output_type)
                 .unwrap_or(false),
@@ -216,8 +217,8 @@ impl OutputField {
     }
 
     #[allow(dead_code)]
-    pub fn features_flags() -> Self {
-        OutputField::FeaturesFlags
+    pub fn features_output_type() -> Self {
+        OutputField::FeaturesOutputType
     }
 
     #[allow(dead_code)]
@@ -247,7 +248,7 @@ impl Display for OutputField {
             Script => write!(f, "field::script"),
             Covenant => write!(f, "field::covenant"),
             Features => write!(f, "field::features"),
-            FeaturesFlags => write!(f, "field::features_flags"),
+            FeaturesOutputType => write!(f, "field::features_flags"),
             FeaturesSideChainFeatures => write!(f, "field::features_sidechain_features"),
             FeaturesMetadata => write!(f, "field::features_metadata"),
             FeaturesMaturity => write!(f, "field::features_maturity"),
@@ -307,8 +308,9 @@ impl OutputFields {
 
     pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake256 {
         let mut challenge = Blake256::new();
+        BaseLayerCovenantsDomain::add_domain_separation_tag(&mut challenge, COVENANTS_FIELD_HASHER_LABEL);
         for field in &self.fields {
-            challenge.update(field.get_field_value_bytes(output));
+            challenge.update(&field.get_field_value_bytes(output).as_slice());
         }
         challenge
     }
@@ -338,7 +340,6 @@ mod test {
 
     use super::*;
     use crate::{
-        consensus::ConsensusEncoding,
         covenant,
         covenants::test::{create_input, create_outputs},
         transactions::{
@@ -373,7 +374,7 @@ mod test {
                 assert!(OutputField::FeaturesMaturity
                     .is_eq(&output, &output.features.maturity)
                     .unwrap());
-                assert!(OutputField::FeaturesFlags
+                assert!(OutputField::FeaturesOutputType
                     .is_eq(&output, &output.features.output_type)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
@@ -411,7 +412,7 @@ mod test {
                     .is_eq(&output, &covenant!(and(identity(), identity())))
                     .unwrap());
                 assert!(!OutputField::FeaturesMaturity.is_eq(&output, &123u64).unwrap());
-                assert!(!OutputField::FeaturesFlags
+                assert!(!OutputField::FeaturesOutputType
                     .is_eq(&output, &OutputType::Coinbase)
                     .unwrap());
                 assert!(!OutputField::FeaturesMetadata.is_eq(&output, &vec![123u8]).unwrap());
@@ -457,7 +458,7 @@ mod test {
                 assert!(OutputField::Script.is_eq_input(&input, &output));
                 assert!(OutputField::Covenant.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
-                assert!(OutputField::FeaturesFlags.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesOutputType.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesSideChainFeatures.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMetadata.is_eq_input(&input, &output));
                 assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
@@ -469,7 +470,7 @@ mod test {
             let output_fields = [
                 OutputField::Commitment,
                 OutputField::Features,
-                OutputField::FeaturesFlags,
+                OutputField::FeaturesOutputType,
                 OutputField::FeaturesSideChainFeatures,
                 OutputField::FeaturesMetadata,
                 OutputField::FeaturesMaturity,
@@ -487,6 +488,9 @@ mod test {
         use super::*;
 
         mod construct_challenge_from {
+            use blake2::Digest;
+            use tari_crypto::hashing::DomainSeparation;
+
             use super::*;
 
             #[test]
@@ -508,12 +512,16 @@ mod test {
                 fields.push(OutputField::Commitment);
                 fields.push(OutputField::Script);
                 let hash = fields.construct_challenge_from(&output).finalize();
+                let hash = hash.to_vec();
 
-                let mut challenge = Vec::new();
-                output.features.consensus_encode(&mut challenge).unwrap();
-                output.commitment.consensus_encode(&mut challenge).unwrap();
-                output.script.consensus_encode(&mut challenge).unwrap();
-                let expected_hash = Blake256::new().chain(&challenge).finalize();
+                let mut hasher = Blake256::new();
+                BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
+                let expected_hash = hasher
+                    .chain(output.features.to_consensus_bytes())
+                    .chain(output.commitment.to_consensus_bytes())
+                    .chain(output.script.to_consensus_bytes())
+                    .finalize()
+                    .to_vec();
                 assert_eq!(hash, expected_hash);
             }
         }

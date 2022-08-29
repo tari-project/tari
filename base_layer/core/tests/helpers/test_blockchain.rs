@@ -26,6 +26,7 @@ use std::{collections::HashMap, sync::Arc};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
+use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
@@ -33,7 +34,6 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
     transactions::{transaction_components::UnblindedOutput, CryptoFactories},
 };
-use tari_utilities::Hashable;
 
 use crate::helpers::{
     block_builders::{chain_block_with_new_coinbase, find_header_with_achieved_difficulty},
@@ -47,7 +47,7 @@ const LOG_TARGET: &str = "tari_core::tests::helpers::test_blockchain";
 pub struct TestBlockchain {
     store: BlockchainDatabase<TempDatabase>,
     blocks: HashMap<String, BlockProxy>,
-    hash_to_block: HashMap<Vec<u8>, String>,
+    hash_to_block: HashMap<FixedHash, String>,
     consensus_manager: ConsensusManager,
     outputs: Vec<Vec<UnblindedOutput>>,
 }
@@ -62,7 +62,7 @@ impl TestBlockchain {
         let mut blocks = HashMap::new();
         let genesis_block = b.pop().unwrap();
         let mut hash_to_block = HashMap::new();
-        hash_to_block.insert(genesis_block.hash().clone(), name.clone());
+        hash_to_block.insert(*genesis_block.hash(), name.clone());
         blocks.insert(name.clone(), BlockProxy::new(name, genesis_block));
 
         Self {
@@ -111,7 +111,7 @@ impl TestBlockchain {
     pub fn add_raw_block(&mut self, block_name: &str, block: Block) -> Result<BlockAddResult, ChainStorageError> {
         let res = self.store.add_block(Arc::new(block))?;
         if let BlockAddResult::Ok(ref b) = res {
-            self.hash_to_block.insert(b.hash().clone(), block_name.to_string());
+            self.hash_to_block.insert(*b.hash(), block_name.to_string());
             self.blocks.insert(
                 block_name.to_string(),
                 BlockProxy::new(block_name.to_string(), b.as_ref().clone()),
@@ -143,7 +143,7 @@ impl TestBlockchain {
         self.blocks.get(name)
     }
 
-    pub fn get_block_by_hash(&self, hash: &[u8]) -> Option<&BlockProxy> {
+    pub fn get_block_by_hash(&self, hash: &FixedHash) -> Option<&BlockProxy> {
         let block_name = self.hash_to_block.get(hash);
         block_name.map(|bn| self.blocks.get(bn).unwrap())
     }

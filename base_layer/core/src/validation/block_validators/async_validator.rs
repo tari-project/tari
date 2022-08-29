@@ -27,7 +27,7 @@ use log::*;
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::task;
 
 use super::LOG_TARGET;
@@ -305,7 +305,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                                 target: LOG_TARGET,
                                 "Validation failed due to input: {} which does not exist yet", input
                             );
-                            not_found_inputs.push(output_hash.clone());
+                            not_found_inputs.push(output_hash);
                         }
                     },
                     Err(err) => return Err(err),
@@ -346,6 +346,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         .into()
     }
 
+    #[allow(clippy::too_many_lines)]
     fn start_output_validation(
         &self,
         header: &BlockHeader,
@@ -372,11 +373,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .map(|outputs| {
                 let range_proof_prover = self.factories.range_proof.clone();
                 let db = self.db.inner().clone();
-                let max_script_size = self.rules.consensus_constants(height).get_max_script_byte_size();
+                let constants = self.rules.consensus_constants(height).clone();
                 task::spawn_blocking(move || {
                     let db = db.db_read_access()?;
                     let mut aggregate_sender_offset = PublicKey::default();
                     let mut commitment_sum = Commitment::default();
+                    let max_script_size = constants.get_max_script_byte_size();
                     let mut coinbase_index = None;
                     debug!(
                         target: LOG_TARGET,
@@ -400,6 +402,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             aggregate_sender_offset = aggregate_sender_offset + &output.sender_offset_public_key;
                         }
 
+                        helpers::check_permitted_output_types(&constants, output)?;
                         helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
                         output.verify_metadata_signature()?;
                         helpers::check_not_duplicate_txo(&*db, output)?;

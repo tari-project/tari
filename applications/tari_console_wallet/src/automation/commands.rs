@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryInto,
     fs,
     fs::File,
+    io,
     io::{LineWriter, Write},
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -35,10 +37,11 @@ use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::TxId,
-    types::{CommitmentFactory, PublicKey},
+    types::{CommitmentFactory, FixedHash, PublicKey},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -50,7 +53,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
 };
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
@@ -68,7 +71,7 @@ use tokio::{
 
 use super::error::CommandError;
 use crate::{
-    cli::CliCommands,
+    cli::{CliCommands, MakeItRainTransactionType},
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
@@ -142,7 +145,7 @@ pub async fn init_sha_atomic_swap(
 pub async fn finalise_sha_atomic_swap(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    output_hash: Vec<u8>,
+    output_hash: FixedHash,
     pre_image: PublicKey,
     fee_per_gram: MicroTari,
     message: String,
@@ -160,7 +163,7 @@ pub async fn finalise_sha_atomic_swap(
 pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
-    output_hash: Vec<u8>,
+    output_hash: FixedHash,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -299,7 +302,7 @@ pub async fn make_it_rain(
     increase_amount: MicroTari,
     start_time: DateTime<Utc>,
     destination: PublicKey,
-    negotiated: bool,
+    transaction_type: MakeItRainTransactionType,
     message: String,
 ) -> Result<(), CommandError> {
     // We are spawning this command in parallel, thus not collecting transaction IDs
@@ -331,7 +334,6 @@ pub async fn make_it_rain(
             delayed_for: Duration,
             submit_time: Duration,
         }
-        let transaction_type = if negotiated { "negotiated" } else { "one-sided" };
         println!(
             "\n`make-it-rain` starting {} {} transactions \"{}\"\n",
             num_txs, transaction_type, message
@@ -367,15 +369,19 @@ pub async fn make_it_rain(
                 tokio::task::spawn(async move {
                     let spawn_start = Instant::now();
                     // Send transaction
-                    let tx_id = if negotiated {
-                        send_tari(tx_service, fee, amount, pk.clone(), msg.clone()).await
-                    } else {
-                        send_one_sided(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                    let tx_id = match transaction_type {
+                        MakeItRainTransactionType::Interactive => {
+                            send_tari(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                        },
+                        MakeItRainTransactionType::OneSided => {
+                            send_one_sided(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                        },
+                        MakeItRainTransactionType::StealthOneSided => {
+                            send_one_sided_to_stealth_address(tx_service, fee, amount, pk.clone(), msg.clone()).await
+                        },
                     };
                     let submit_time = Instant::now();
-                    tokio::task::spawn(async move {
-                        print!("{} ", i + 1);
-                    });
+
                     if let Err(e) = sender_clone
                         .send(TransactionSendStats {
                             i: i + 1,
@@ -397,6 +403,8 @@ pub async fn make_it_rain(
         while let Some(send_stats) = receiver.recv().await {
             match send_stats.tx_id {
                 Ok(tx_id) => {
+                    print!("{} ", send_stats.i);
+                    io::stdout().flush().unwrap();
                     debug!(
                         target: LOG_TARGET,
                         "make-it-rain transaction {} ({}) submitted to queue, tx_id: {}, delayed for ({}ms), submit \
@@ -606,6 +614,7 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             MakeItRain(args) => {
+                let transaction_type = args.transaction_type();
                 make_it_rain(
                     transaction_service.clone(),
                     config.fee_per_gram,
@@ -615,7 +624,7 @@ pub async fn command_runner(
                     args.increase_amount,
                     args.start_time.unwrap_or_else(Utc::now),
                     args.destination.into(),
-                    !args.one_sided,
+                    transaction_type,
                     args.message,
                 )
                 .await?;
@@ -731,10 +740,11 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             FinaliseShaAtomicSwap(args) => {
+                let hash = args.output_hash[0].clone().try_into()?;
                 let tx_id = finalise_sha_atomic_swap(
                     output_service.clone(),
                     transaction_service.clone(),
-                    args.output_hash[0].clone(),
+                    hash,
                     args.pre_image.into(),
                     config.fee_per_gram.into(),
                     args.message,
@@ -744,10 +754,11 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             ClaimShaAtomicSwapRefund(args) => {
+                let hash = args.output_hash[0].clone().try_into()?;
                 let tx_id = claim_htlc_refund(
                     output_service.clone(),
                     transaction_service.clone(),
-                    args.output_hash[0].clone(),
+                    hash,
                     config.fee_per_gram.into(),
                     args.message,
                 )
@@ -764,6 +775,25 @@ pub async fn command_runner(
                     .revalidate_all_transactions()
                     .await
                     .map_err(CommandError::TransactionServiceError)?;
+            },
+            HashGrpcPassword(args) => {
+                let (username, password) = config
+                    .grpc_authentication
+                    .username_password()
+                    .ok_or_else(|| CommandError::General("GRPC basic auth is not configured".to_string()))?;
+                let hashed_password = create_salted_hashed_password(password.reveal())
+                    .map_err(|e| CommandError::General(e.to_string()))?;
+                if args.short {
+                    println!("{}", *hashed_password);
+                } else {
+                    println!("Your hashed password is:");
+                    println!("{}", *hashed_password);
+                    println!();
+                    println!(
+                        "Use HTTP basic auth with username '{}' and the hashed password to make GRPC requests",
+                        username
+                    );
+                }
             },
         }
     }

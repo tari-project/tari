@@ -1,14 +1,16 @@
 ---
 name: Build docker images
 
-on:
+'on':
   push:
+    paths-ignore:
+      - '**/*.md'
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - 'v[0-9]+.[0-9]+.[0-9]*'
     branches:
-      - "build-*"
+      - 'build_dockers*'
   schedule:
-    - cron: "05 00 * * *"
+    - cron: '05 00 * * *'
   workflow_dispatch:
     inputs:
 #      toolchain:
@@ -25,24 +27,24 @@ on:
         description: 'docker platform(s)'
         type: choice
         options:
-        - linux/amd64
-        - linux/arm64
-        - linux/arm64, linux/amd64
+          - linux/amd64
+          - linux/arm64
+          - linux/arm64, linux/amd64
       build_items:
         default: tari_all
         description: 'image(s) to build'
         type: choice
         options:
-        - all
-        - tari_all
-        - tari_base_node
-        - tari_wallet
-        - tari_mm_proxy
-        - tari_sha3_miner
-        - 3rdparty_all
-        - tor
-        - monerod
-        - xmrig
+          - all
+          - tari_all
+          - tari_base_node
+          - tari_wallet
+          - tari_mm_proxy
+          - tari_sha3_miner
+          - 3rdparty_all
+          - tor
+          - monerod
+          - xmrig
 
 env:
   toolchain_default: nightly-2022-05-01
@@ -51,21 +53,46 @@ jobs:
   builds_envs_setup:
     runs-on: ubuntu-latest
     outputs:
-      toolchain: ${{ steps.set_toolchain.outputs.toolchain }}
+      toolchain: ${{ steps.envs_setup.outputs.toolchain }}
+      platforms: ${{ steps.envs_setup.outputs.platforms }}
+      version: ${{ steps.envs_setup.outputs.version }}
+      tag_alias: ${{ steps.envs_setup.outputs.tag_alias }}
+      build_items: ${{ steps.envs_setup.outputs.build_items }}
 
     steps:
-      - name: Set toolchain
-        id: set_toolchain
+      - name: envs setup
+        id: envs_setup
+        shell: bash
         run: |
-          if [ -z "${{ inputs.toolchain }}" ]; then
-            echo "Using default"
-            btoolchain=${{ env.toolchain_default }}
-          else
-            echo "Using provided input"
-            btoolchain=${{ inputs.toolchain }}
+          echo "Workflow triggered by ${{ github.actor }} for ${{ github.event_name }}"
+          echo "SHA - ${GITHUB_SHA}"
+          VSHA_SHORT=$(echo ${GITHUB_SHA::7})
+          echo "SHA short - ${VSHA_SHORT}"
+          echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
+          TOOLCHAIN=${{ github.event.inputs.toolchain }}
+          echo "::set-output name=toolchain::${TOOLCHAIN:-${{ env.toolchain_default }}}"
+          if [[ "${{ github.ref }}" =~ ^refs/tags/v* ]] && [ "${{ github.event_name }}" != "workflow_dispatch" ] ; then
+            echo "Tagged Build - Build everything"
+            VERSION="${{ github.ref_name }}_$(date -u '+%Y%m%d')_${VSHA_SHORT}"
+            echo "Version used - ${VERSION}"
+            echo "::set-output name=platforms::linux/arm64, linux/amd64"
+            echo "::set-output name=version::${VERSION}"
+            echo "::set-output name=tag_alias::latest"
+            echo "::set-output name=build_items::all"
           fi
-          echo "Rust toolchain - ${btoolchain} ."
-          echo "toolchain=${btoolchain}" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] ; then
+            echo "Manual Build - selective"
+            echo "::set-output name=platforms::${{ github.event.inputs.platforms }}"
+            echo "::set-output name=version::${{ github.event.inputs.version }}"
+            echo "::set-output name=tag_alias::${{ github.event.inputs.tag_alias }}"
+            echo "::set-output name=build_items::${{ github.event.inputs.build_items }}"
+          fi
+          if [ "${{ github.event_name }}" == "schedule" ] && [ "${{ github.event.schedule }}" == "05 00 * * *" ] ; then
+            echo "Daily Build - limited"
+            echo "::set-output name=platforms::linux/amd64"
+            echo "::set-output name=tag_alias::latest-daily"
+            echo "::set-output name=build_items::tari_all"
+          fi
 
   builds_run:
     needs: builds_envs_setup
@@ -73,7 +100,7 @@ jobs:
     secrets: inherit
     with:
       toolchain: ${{ needs.builds_envs_setup.outputs.toolchain }}
-      platforms: ${{ inputs.platforms }}
-      version: ${{ inputs.version }}
-      tag_alias: ${{ inputs.tag_alias }}
-      build_items: ${{ inputs.build_items }}
+      platforms: ${{ needs.builds_envs_setup.outputs.platforms }}
+      version: ${{ needs.builds_envs_setup.outputs.version }}
+      tag_alias: ${{ needs.builds_envs_setup.outputs.tag_alias }}
+      build_items: ${{ needs.builds_envs_setup.outputs.build_items }}

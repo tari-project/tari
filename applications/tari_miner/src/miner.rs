@@ -188,7 +188,7 @@ pub fn mining_task(
         if difficulty >= target_difficulty {
             debug!(
                 target: LOG_TARGET,
-                "Miner {} found nonce {} with matching difficulty {}", miner, hasher.nonce, difficulty
+                "Miner {} found nonce {} with matching difficulty {}", miner, hasher.header.nonce, difficulty
             );
             if let Err(err) = sender.try_send(MiningReport {
                 miner,
@@ -196,7 +196,7 @@ pub fn mining_task(
                 hashes: hasher.hashes,
                 elapsed: start.elapsed(),
                 height: hasher.height(),
-                last_nonce: hasher.nonce,
+                last_nonce: hasher.header.nonce,
                 header: Some(hasher.create_header()),
                 target_difficulty,
             }) {
@@ -212,14 +212,14 @@ pub fn mining_task(
                 return;
             }
         }
-        if hasher.nonce % REPORTING_FREQUENCY == 0 {
+        if hasher.header.nonce % REPORTING_FREQUENCY == 0 {
             let res = sender.try_send(MiningReport {
                 miner,
                 difficulty,
                 hashes: hasher.hashes,
                 elapsed: start.elapsed(),
                 header: None,
-                last_nonce: hasher.nonce,
+                last_nonce: hasher.header.nonce,
                 height: hasher.height(),
                 target_difficulty,
             });

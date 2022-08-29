@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
@@ -41,7 +41,6 @@ use tari_core::{
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::ByteArray};
 use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::hash::Hashable;
 
 use crate::{
     output_manager_service::{
@@ -694,7 +693,15 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 let factories = CryptoFactories::default();
                 unblinded_output.as_transaction_output(&factories)?.hash()
             },
-            Some(v) => v,
+            Some(v) => match v.try_into() {
+                Ok(v) => v,
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Malformed transaction hash: {}", e);
+                    return Err(OutputManagerStorageError::ConversionError {
+                        reason: "Malformed transaction hash".to_string(),
+                    });
+                },
+            },
         };
         let commitment = match o.commitment {
             None => {
@@ -706,23 +713,37 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             Some(c) => Commitment::from_vec(&c)?,
         };
         let spending_priority = (o.spending_priority as u32).into();
+        let mined_in_block = match o.mined_in_block {
+            Some(v) => match v.try_into() {
+                Ok(v) => Some(v),
+                Err(_) => None,
+            },
+            None => None,
+        };
+        let marked_deleted_in_block = match o.marked_deleted_in_block {
+            Some(v) => match v.try_into() {
+                Ok(v) => Some(v),
+                Err(_) => None,
+            },
+            None => None,
+        };
         Ok(Self {
             commitment,
             unblinded_output,
             hash,
             status: o.status.try_into()?,
             mined_height: o.mined_height.map(|mh| mh as u64),
-            mined_in_block: o.mined_in_block,
+            mined_in_block,
             mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
             mined_timestamp: o.mined_timestamp,
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
-            marked_deleted_in_block: o.marked_deleted_in_block,
+            marked_deleted_in_block,
             spending_priority,
         })
     }
 }
 
-impl Encryptable<Aes256Gcm> for OutputSql {
+impl Encryptable<XChaCha20Poly1305> for OutputSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
         [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()]
@@ -730,7 +751,7 @@ impl Encryptable<Aes256Gcm> for OutputSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 
@@ -743,7 +764,7 @@ impl Encryptable<Aes256Gcm> for OutputSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 

@@ -36,8 +36,7 @@ use tari_crypto::{
     },
 };
 
-pub const BLOCK_HASH_LENGTH: usize = 32;
-pub type BlockHash = Vec<u8>;
+pub type BlockHash = FixedHash;
 
 pub use fixed_hash::{FixedHash, FixedHashSizeError};
 
@@ -64,11 +63,8 @@ pub type SignatureHasher = Blake256;
 /// Specify the digest type for signature challenges
 pub type Challenge = Blake256;
 
-/// The type of output that `Challenge` produces
-pub type MessageHash = Vec<u8>;
-
 /// Define the data type that is used to store results of a hash output
-pub type HashOutput = Vec<u8>;
+pub type HashOutput = FixedHash;
 
 pub const RANGE_PROOF_BIT_LENGTH: usize = 64; // 2^64
 pub const RANGE_PROOF_AGGREGATION_FACTOR: usize = 1;
@@ -78,3 +74,12 @@ pub type RangeProofService = BulletproofsPlusService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
+
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+
+hash_domain!(
+    BulletRangeProofHashDomain,
+    "com.tari.tari-project.base_layer.common_types.bullet_rangeproofs"
+);
+
+pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake256, BulletRangeProofHashDomain>;

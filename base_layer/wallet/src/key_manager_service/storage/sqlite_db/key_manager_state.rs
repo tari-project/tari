@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
 
@@ -150,21 +150,21 @@ pub struct KeyManagerStateUpdateSql {
     primary_key_index: Option<Vec<u8>>,
 }
 
-impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
+impl Encryptable<XChaCha20Poly1305> for KeyManagerStateSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
             .concat()
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.primary_key_index =
             encrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), self.primary_key_index.clone())?;
 
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.primary_key_index =
             decrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), self.primary_key_index.clone())?;
 
@@ -172,21 +172,21 @@ impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
+impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         [Self::KEY_MANAGER, self.branch_seed.as_bytes(), field_name.as_bytes()]
             .concat()
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.primary_key_index =
             encrypt_bytes_integral_nonce(cipher, self.domain("primary_key_index"), self.primary_key_index.clone())?;
 
         Ok(())
     }
 
-    fn decrypt(&mut self, _cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, _cipher: &XChaCha20Poly1305) -> Result<(), String> {
         unimplemented!("Not supported")
     }
 }

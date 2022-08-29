@@ -25,7 +25,7 @@ use std::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::Hex;
 
-use crate::types::BlockHash;
+use crate::types::{BlockHash, FixedHash};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub struct ChainMetadata {
@@ -70,7 +70,7 @@ impl ChainMetadata {
     pub fn empty() -> ChainMetadata {
         ChainMetadata {
             height_of_longest_chain: 0,
-            best_block: Vec::new(),
+            best_block: FixedHash::zero(),
             pruning_horizon: 0,
             pruned_height: 0,
             accumulated_difficulty: 0,
