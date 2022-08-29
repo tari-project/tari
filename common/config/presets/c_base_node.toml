@@ -183,7 +183,7 @@ track_reorgs = true
 # sessions.
 #rpc_max_simultaneous_sessions = 100
 # The maximum comms RPC sessions allowed per peer (default value = 10).
-#rpc_max_sessions_per_peer = 11
+#rpc_max_sessions_per_peer = 10
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
