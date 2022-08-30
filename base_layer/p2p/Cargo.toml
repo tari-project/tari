@@ -35,8 +35,8 @@ semver = "1.0.1"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 thiserror = "1.0.26"
-tokio = { version = "1.11", features = ["macros"] }
-tokio-stream = { version = "0.1.7", default-features = false, features = ["time"] }
+tokio = { version = "1.20", features = ["macros"] }
+tokio-stream = { version = "0.1.9", default-features = false, features = ["time"] }
 tower = "0.4.11"
 tower-service = { version = "0.3.1" }
 trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"] }

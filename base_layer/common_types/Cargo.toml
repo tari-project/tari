@@ -16,5 +16,5 @@ lazy_static = "1.4.0"
 rand = "0.8"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.29"
-tokio = { version = "1.11", features = ["time", "sync"] }
+tokio = { version = "1.20", features = ["time", "sync"] }
 zeroize = "1"

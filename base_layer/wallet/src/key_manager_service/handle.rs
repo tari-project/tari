@@ -67,15 +67,14 @@ where TBackend: KeyManagerBackend + 'static
             .write()
             .await
             .add_key_manager_branch(branch.into())
-            .await
     }
 
     async fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), KeyManagerServiceError> {
-        (*self.key_manager_inner).write().await.apply_encryption(cipher).await
+        (*self.key_manager_inner).write().await.apply_encryption(cipher)
     }
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
-        (*self.key_manager_inner).write().await.remove_encryption().await
+        (*self.key_manager_inner).write().await.remove_encryption()
     }
 
     async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError> {
