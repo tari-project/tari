@@ -30,8 +30,6 @@ message DhtHeader {
         bool unknown = 3;
         // Destined for a particular public key
         bytes public_key = 4;
-        // Destined for a particular node id, or network region
-        bytes node_id = 5;
     }
 
     // Origin public key of the message. This can be the same peer that sent the message

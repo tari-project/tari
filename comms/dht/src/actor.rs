@@ -450,7 +450,7 @@ impl DhtActor {
             .send_message_no_header(
                 SendMessageParams::new()
                     .closest(node_identity.node_id().clone(), vec![])
-                    .with_destination(node_identity.node_id().clone().into())
+                    .with_destination(node_identity.public_key().clone().into())
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -549,10 +549,7 @@ impl DhtActor {
                 Ok(candidates)
             },
             Propagate(destination, exclude) => {
-                let dest_node_id = destination
-                    .node_id()
-                    .cloned()
-                    .or_else(|| destination.public_key().map(NodeId::from_public_key));
+                let dest_node_id = destination.to_derived_node_id();
 
                 let connections = match dest_node_id {
                     Some(node_id) => {
@@ -1171,7 +1168,7 @@ mod test {
 
         let peers = requester
             .select_peers(BroadcastStrategy::Propagate(
-                conn_out.peer_node_id().clone().into(),
+                node_identity.public_key().clone().into(),
                 Vec::new(),
             ))
             .await
