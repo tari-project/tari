@@ -148,7 +148,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
             .discovery_service_requester()
             .discover_peer(
                 wallet2.node_identity().public_key().clone(),
-                wallet2.node_identity().node_id().clone().into(),
+                wallet2.node_identity().public_key().clone().into(),
             )
             .await;
 
@@ -442,7 +442,7 @@ pub async fn do_store_and_forward_message_propagation(
             .dht
             .outbound_requester()
             .closest_broadcast(
-                node_identity.node_id().clone(),
+                node_identity.public_key().clone(),
                 OutboundEncryption::encrypt_for(node_identity.public_key().clone()),
                 vec![],
                 OutboundDomainMessage::new(&123i32, secret_message.clone()),

@@ -24,7 +24,7 @@ tari_common_types = { version = "^0.37", path = "../../base_layer/common_types" 
 tari_comms = { version = "^0.37", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.37", path = "../../comms/dht" }
 tari_comms_rpc_macros = { version = "^0.37", path = "../../comms/rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.4" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.5" }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = { version = "^0.37", path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = { version = "^0.37", path = "../../base_layer/p2p" }
@@ -70,7 +70,7 @@ serde_repr = "0.1.8"
 sha3 = "0.9"
 strum_macros = "0.22"
 thiserror = "1.0.26"
-tokio = { version = "1.11", features = ["time", "sync", "macros"] }
+tokio = { version = "1.20", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 tracing-attributes = "*"
 uint = { version = "0.9", default-features = false }

@@ -23,10 +23,7 @@
 use std::{sync::Arc, task::Poll};
 
 use futures::{future::BoxFuture, task::Context};
-use tari_comms::{
-    peer_manager::{NodeIdentity, PeerManager},
-    pipeline::PipelineError,
-};
+use tari_comms::{peer_manager::NodeIdentity, pipeline::PipelineError};
 use tokio::sync::mpsc;
 use tower::Service;
 
@@ -44,7 +41,6 @@ pub struct MessageHandlerMiddleware<S> {
     next_service: S,
     saf_requester: StoreAndForwardRequester,
     dht_requester: DhtRequester,
-    peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
     saf_response_signal_sender: mpsc::Sender<()>,
@@ -57,7 +53,6 @@ impl<S> MessageHandlerMiddleware<S> {
         saf_requester: StoreAndForwardRequester,
         dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
         saf_response_signal_sender: mpsc::Sender<()>,
     ) -> Self {
@@ -66,7 +61,6 @@ impl<S> MessageHandlerMiddleware<S> {
             next_service,
             saf_requester,
             dht_requester,
-            peer_manager,
             node_identity,
 
             outbound_service,
@@ -95,7 +89,6 @@ where
                 self.next_service.clone(),
                 self.saf_requester.clone(),
                 self.dht_requester.clone(),
-                Arc::clone(&self.peer_manager),
                 self.outbound_service.clone(),
                 Arc::clone(&self.node_identity),
                 message,

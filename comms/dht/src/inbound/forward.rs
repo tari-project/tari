@@ -212,7 +212,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .expect("previous check that decryption failed");
 
         let excluded_peers = vec![source_peer.node_id.clone()];
-        let dest_node_id = dht_header.destination.node_id();
+        let dest_node_id = dht_header.destination.to_derived_node_id();
 
         let mut send_params = SendMessageParams::new();
         match (dest_node_id, is_saf_stored) {
@@ -221,7 +221,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     target: LOG_TARGET,
                     "Forwarding SAF message directly to node: {}, {}", node_id, dht_header.message_tag
                 );
-                send_params.direct_or_closest_connected(node_id.clone(), excluded_peers);
+                send_params.direct_or_closest_connected(node_id, excluded_peers);
             },
             _ => {
                 debug!(
@@ -246,10 +246,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     fn destination_matches_source(&self, destination: &NodeDestination, source: &Peer) -> bool {
         if let Some(pk) = destination.public_key() {
             return pk == &source.public_key;
-        }
-
-        if let Some(node_id) = destination.node_id() {
-            return node_id == &source.node_id;
         }
 
         false

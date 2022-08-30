@@ -500,12 +500,14 @@ Then(
 );
 
 Then(/node (.*) is at tip (.*)/, async function (node, name) {
+  // console.log("\nheaders:", this.headers, "\n");
   const client = this.getClient(node);
   const header = await client.getTipHeader();
-  // console.log("headers:", this.headers);
+  // console.log("\nheader:", header, "\n");
   const existingHeader = this.headers[name];
+  // console.log("\nexistingHeader:", existingHeader, "\n");
   expect(existingHeader).to.not.be.null;
-  expect(existingHeader.header.hash.toString("hex")).to.equal(
+  expect(existingHeader.hash.toString("hex")).to.equal(
     header.hash.toString("hex")
   );
 });
