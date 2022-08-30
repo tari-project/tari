@@ -126,7 +126,7 @@ use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex, SafePassword};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
-    contacts_service::{service::ContactOnlineStatus, storage::database::Contact},
+    contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -2229,47 +2229,7 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
     status as c_int
 }
 
-/// Gets the banning reason based on `ContactOnlineStatus` (if the variant is `Banned`)
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `const c_char*` - Returns a string description of the banning reason or null
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_banning_reason(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> *const c_char {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if liveness_data.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null();
-    }
-
-    if let ContactOnlineStatus::Banned(reason) = (*liveness_data).online_status() {
-        match CString::new(reason) {
-            Ok(reason) => reason.into_raw() as *const c_char,
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("ban_reason".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                ptr::null()
-            },
-        }
-    } else {
-        ptr::null()
-    }
-}
-
-/// Gets the the banning reason from a TariContactsLivenessData's status
+/// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
 ///
 /// ## Arguments
 /// `liveness_data` - The pointer to a TariContactsLivenessData
@@ -2293,21 +2253,24 @@ pub unsafe extern "C" fn liveness_data_get_banning_reason(
 pub unsafe extern "C" fn liveness_data_get_online_status(
     liveness_data: *mut TariContactsLivenessData,
     error_out: *mut c_int,
-) -> c_int {
+) -> *const c_char {
     let mut error = 0;
+    let mut result = CString::new("").expect("Blank CString will not fail.");
     ptr::swap(error_out, &mut error as *mut c_int);
     if liveness_data.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return result.into_raw();
     }
-
-    match (*liveness_data).online_status() {
-        ContactOnlineStatus::Online => 0,
-        ContactOnlineStatus::Offline => 1,
-        ContactOnlineStatus::NeverSeen => 2,
-        ContactOnlineStatus::Banned(_) => 3,
+    let status = (*liveness_data).online_status();
+    match CString::new(status.to_string()) {
+        Ok(v) => result = v,
+        _ => {
+            error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+        },
     }
+    result.into_raw()
 }
 
 /// Frees memory for a TariContactsLivenessData
@@ -6359,6 +6322,8 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// `script_private_key` - Tari script private key, k_S, is used to create the script signature
 /// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
+/// `encrypted_value` - Encrypted value.
+/// `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///

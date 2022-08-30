@@ -1215,25 +1215,7 @@ int liveness_data_get_message_type(TariContactsLivenessData *liveness_data,
                                    int *error_out);
 
 /**
- * Gets the banning reason based on `ContactOnlineStatus` (if the variant is `Banned`)
- *
- * ## Arguments
- * `liveness_data` - The pointer to a TariContactsLivenessData
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `const c_char*` - Returns a string description of the banning reason or null
- *
- * # Safety
- * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
- * memory leak
- */
-const char *liveness_data_get_banning_reason(TariContactsLivenessData *liveness_data,
-                                             int *error_out);
-
-/**
- * Gets the the banning reason from a TariContactsLivenessData's status
+ * Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
  *
  * ## Arguments
  * `liveness_data` - The pointer to a TariContactsLivenessData
@@ -1254,8 +1236,8 @@ const char *liveness_data_get_banning_reason(TariContactsLivenessData *liveness_
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
  * memory leak
  */
-int liveness_data_get_online_status(TariContactsLivenessData *liveness_data,
-                                    int *error_out);
+const char *liveness_data_get_online_status(TariContactsLivenessData *liveness_data,
+                                            int *error_out);
 
 /**
  * Frees memory for a TariContactsLivenessData
@@ -2946,6 +2928,8 @@ TariPublicKey *wallet_get_public_key(struct TariWallet *wallet,
  * `script_private_key` - Tari script private key, k_S, is used to create the script signature
  * `covenant` - The covenant that will be executed when spending this output
  * `message` - The message that the transaction will have
+ * `encrypted_value` - Encrypted value.
+ * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
