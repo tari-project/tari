@@ -45,12 +45,6 @@ pub enum OutputSource {
     AtomicSwap,
 }
 
-impl Default for OutputSource {
-    fn default() -> Self {
-        Self::Standard
-    }
-}
-
 impl TryFrom<i32> for OutputSource {
     type Error = OutputManagerStorageError;
 

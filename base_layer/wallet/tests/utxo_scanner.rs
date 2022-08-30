@@ -74,7 +74,6 @@ use support::{
     transaction_service_mock::make_transaction_service_mock,
     utils::make_input,
 };
-use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::types::CommsPublicKey;
 use tari_wallet::{
     output_manager_service::storage::OutputSource,
