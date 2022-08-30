@@ -35,7 +35,12 @@ use super::{
     state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
     NetworkDiscoveryError,
 };
-use crate::{peer_validator::PeerValidator, proto::rpc::GetPeersRequest, rpc, DhtConfig};
+use crate::{
+    peer_validator::{PeerValidator, PeerValidatorError},
+    proto::rpc::GetPeersRequest,
+    rpc,
+    DhtConfig,
+};
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 
@@ -209,6 +214,7 @@ impl Discovering {
                 self.stats.num_duplicate_peers += 1;
                 Ok(())
             },
+            Err(err @ PeerValidatorError::PeerManagerError(_)) => Err(err.into()),
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
