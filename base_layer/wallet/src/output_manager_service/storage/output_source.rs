@@ -32,11 +32,12 @@ use strum_macros::Display;
 use crate::output_manager_service::error::OutputManagerStorageError;
 
 // The source of where the output came from
-#[derive(Copy, Clone, Debug, PartialEq, Display)]
+#[derive(Copy, Clone, Debug, PartialEq, Display, Default)]
 pub enum OutputSource {
     Unknown,
     Coinbase,
     Recovered,
+    #[default]
     Standard,
     OneSided,
     StealthOneSided,
