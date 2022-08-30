@@ -20,13 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    fs,
-    path::PathBuf,
-};
+use std::convert::{TryFrom, TryInto};
 
-use clap::Parser;
 use futures::{
     channel::mpsc::{self, Sender},
     future,
@@ -48,7 +43,6 @@ use tari_app_grpc::{
         CoinSplitResponse,
         CreateBurnTransactionRequest,
         CreateBurnTransactionResponse,
-        FileDeletedResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -67,7 +61,6 @@ use tari_app_grpc::{
         ImportUtxosResponse,
         RevalidateRequest,
         RevalidateResponse,
-        SeedWordsResponse,
         SendShaAtomicSwapRequest,
         SendShaAtomicSwapResponse,
         SetBaseNodeRequest,
@@ -106,7 +99,6 @@ use tokio::{sync::broadcast, task};
 use tonic::{Request, Response, Status};
 
 use crate::{
-    cli::Cli,
     grpc::{convert_to_transaction_event, TransactionWrapper},
     notifier::{CANCELLED, CONFIRMATION, MINED, NEW_BLOCK_MINED, QUEUED, RECEIVED, SENT},
 };

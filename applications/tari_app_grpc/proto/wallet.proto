@@ -307,11 +307,3 @@ message TransactionEvent {
 message TransactionEventResponse {
     TransactionEvent transaction  = 1;
 }
-
-message SeedWordsResponse {
-    repeated string words = 1;
-}
-
-message FileDeletedResponse {
-
-}
