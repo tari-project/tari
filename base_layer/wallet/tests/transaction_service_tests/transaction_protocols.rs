@@ -210,6 +210,7 @@ pub async fn oms_reply_channel_task(
         let (request, reply_tx) = request_context.split();
         let response = match request {
             OutputManagerRequest::CancelTransaction(_) => Ok(OutputManagerResponse::TransactionCancelled),
+            OutputManagerRequest::SetCoinbaseAbandoned(_, _) => Ok(OutputManagerResponse::CoinbaseAbandonedSet),
             _ => Err(OutputManagerError::InvalidResponseError(
                 "Unhandled request type".to_string(),
             )),

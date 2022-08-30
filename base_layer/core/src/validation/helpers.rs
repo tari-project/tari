@@ -380,46 +380,8 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
         // like output features match)
         if utxo_hash == output_hash {
-            // Check that the input found by commitment, matches the input given here
-            match db
-                .fetch_output(&utxo_hash)?
-                .and_then(|output| output.output.into_unpruned_output())
-            {
-                Some(output) => {
-                    let mut compact = input.to_compact();
-                    compact.add_output_data(
-                        output.version,
-                        output.features,
-                        output.commitment,
-                        output.script,
-                        output.sender_offset_public_key,
-                        output.covenant,
-                        output.encrypted_value,
-                        output.minimum_value_promise,
-                    );
-                    let input_hash = input.canonical_hash()?;
-                    if compact.canonical_hash()? != input_hash {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Input '{}' spends commitment '{}' found in the UTXO set but does not contain the \
-                             matching metadata fields.",
-                            input_hash.to_hex(),
-                            input.commitment()?.to_hex(),
-                        );
-                        return Err(ValidationError::UnknownInput);
-                    }
-                },
-                None => {
-                    error!(
-                        target: LOG_TARGET,
-                        "🚨 Output '{}' was in unspent but was pruned - this indicates a blockchain database \
-                         inconsistency!",
-                        output_hash.to_hex()
-                    );
-                    return Err(ValidationError::UnknownInput);
-                },
-            }
-
+            // Because the retrieved hash matches the new input.output_hash() we know all the fields match and are all
+            // still the same
             return Ok(());
         }
 
@@ -434,7 +396,8 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             input,
             output
         );
-        return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+
+        return Err(ValidationError::UnknownInput);
     }
 
     // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
