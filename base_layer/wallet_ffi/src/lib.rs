@@ -126,7 +126,7 @@ use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex, SafePassword};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
-    contacts_service::storage::database::Contact,
+    contacts_service::{service::ContactOnlineStatus, storage::database::Contact},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -2229,7 +2229,47 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
     status as c_int
 }
 
-/// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
+/// Gets the banning reason based on `ContactOnlineStatus` (if the variant is `Banned`)
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `const c_char*` - Returns a string description of the banning reason or null
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_banning_reason(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> *const c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null();
+    }
+
+    if let ContactOnlineStatus::Banned(reason) = (*liveness_data).online_status() {
+        match CString::new(reason) {
+            Ok(reason) => reason.into_raw() as *const c_char,
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("ban_reason".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                ptr::null()
+            },
+        }
+    } else {
+        ptr::null()
+    }
+}
+
+/// Gets the the banning reason from a TariContactsLivenessData's status
 ///
 /// ## Arguments
 /// `liveness_data` - The pointer to a TariContactsLivenessData
@@ -2244,6 +2284,7 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
 /// |   0 | Online           |
 /// |   1 | Offline          |
 /// |   2 | NeverSeen        |
+/// |   3 | Banned           |
 ///
 /// # Safety
 /// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
@@ -2260,8 +2301,13 @@ pub unsafe extern "C" fn liveness_data_get_online_status(
         ptr::swap(error_out, &mut error as *mut c_int);
         return -1;
     }
-    let status = (*liveness_data).online_status();
-    status as c_int
+
+    match (*liveness_data).online_status() {
+        ContactOnlineStatus::Online => 0,
+        ContactOnlineStatus::Offline => 1,
+        ContactOnlineStatus::NeverSeen => 2,
+        ContactOnlineStatus::Banned(_) => 3,
+    }
 }
 
 /// Frees memory for a TariContactsLivenessData
@@ -3910,6 +3956,7 @@ pub unsafe extern "C" fn comms_config_create(
                 listener_liveness_max_sessions: 0,
                 user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
+                rpc_max_sessions_per_peer: 0,
             };
 
             Box::into_raw(Box::new(config))
@@ -5465,16 +5512,19 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     if one_sided {
-        match (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.send_one_sided_to_stealth_address_transaction(
-                (*dest_public_key).clone(),
-                MicroTari::from(amount),
-                selection_criteria,
-                OutputFeatures::default(),
-                MicroTari::from(fee_per_gram),
-                message_string,
-            )) {
+        match (*wallet).runtime.block_on(
+            (*wallet)
+                .wallet
+                .transaction_service
+                .send_one_sided_to_stealth_address_transaction(
+                    (*dest_public_key).clone(),
+                    MicroTari::from(amount),
+                    selection_criteria,
+                    OutputFeatures::default(),
+                    MicroTari::from(fee_per_gram),
+                    message_string,
+                ),
+        ) {
             Ok(tx_id) => tx_id.as_u64(),
             Err(e) => {
                 error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
