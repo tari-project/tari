@@ -202,11 +202,6 @@ impl OutputSql {
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .order_by(outputs::spending_priority.desc());
 
-        eprintln!(
-            "selection_criteria.excluding_onesided = {:?}",
-            selection_criteria.excluding_onesided
-        );
-
         match &selection_criteria.filter {
             UtxoSelectionFilter::Standard => {
                 query = query.filter(
