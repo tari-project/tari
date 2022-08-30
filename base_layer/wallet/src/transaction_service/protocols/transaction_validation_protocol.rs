@@ -461,6 +461,23 @@ where
         mined_timestamp: u64,
         num_confirmations: u64,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
+        // This updates the OMS first before we update the TMS. If we update the TMS first and operation fail inside of
+        // the OMS, we have two databases that are out of sync, as the TMS would have been updated and OMS will be stuck
+        // forever as pending_incoming.
+        self.output_manager_handle
+            .set_coinbase_abandoned(tx_id, true)
+            .await
+            .map_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not mark coinbase output for TxId: {} as abandoned: {} (Operation ID: {})",
+                    tx_id,
+                    e,
+                    self.operation_id
+                );
+                e
+            })
+            .for_protocol(self.operation_id)?;
         self.db
             .set_transaction_mined_height(
                 tx_id,
@@ -479,15 +496,6 @@ where
             .await
             .for_protocol(self.operation_id)?;
 
-        if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, true).await {
-            warn!(
-                target: LOG_TARGET,
-                "Could not mark coinbase output for TxId: {} as abandoned: {} (Operation ID: {})",
-                tx_id,
-                e,
-                self.operation_id
-            );
-        };
         self.publish_event(TransactionEvent::TransactionCancelled(
             tx_id,
             TxCancellationReason::AbandonedCoinbase,
