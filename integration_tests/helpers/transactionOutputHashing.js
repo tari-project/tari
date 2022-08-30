@@ -41,6 +41,7 @@ const getTransactionOutputHash = function (output) {
   assertBufferType(output.script);
   assertBufferType(output.covenant);
   assertBufferType(output.encrypted_value, 24);
+  assertBufferType(output.sender_offset_public_key, 32);
   const hash = consensusHashers
     .transactionHasher("transaction_output")
     // version
@@ -55,6 +56,8 @@ const getTransactionOutputHash = function (output) {
     .chain(toLengthEncoded(output.covenant))
     // encrypted_value
     .chain(output.encrypted_value)
+    // sender offset public key
+    .chain(output.sender_offset_public_key)
     // minimum_value_promise
     .chain(toLittleEndian(output.minimum_value_promise, 64))
     .finalize();
