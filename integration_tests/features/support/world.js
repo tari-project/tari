@@ -9,7 +9,6 @@ const {
 } = require("@cucumber/cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
-const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
@@ -79,32 +78,10 @@ class CustomWorld {
     return res;
   }
 
-  saveContractDefinition(contract_definition_name, contract_id) {
-    this.contract_definitions[contract_definition_name] = contract_id;
-  }
-
-  fetchContract(contract_name) {
-    return this.contract_definitions[contract_name];
-  }
-
-  saveContractConstitution(constitution_name, constitution_data) {
-    this.constitutions[constitution_name] = constitution_data;
-  }
-
-  fetchContractConstitution(constitution_name) {
-    return this.constitutions[constitution_name];
-  }
-
   getRandomSeedName() {
     let keys = Object.keys(this.seeds);
     let r = Math.random() * keys.length;
     return keys[r];
-  }
-
-  async parseContractId(output) {
-    let regex = /contract_id is (\w*) \(TxID/;
-    let matches = output.match(regex);
-    return matches[1];
   }
 
   currentBaseNodeName() {
@@ -122,28 +99,6 @@ class CustomWorld {
   /// Create but don't add the node
   createNode(name, options) {
     return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
-  }
-
-  async createValidatorNode(vn_name, base_node_name, wallet_name) {
-    const baseNode = this.getNode(base_node_name);
-    const walletNode = this.getWallet(wallet_name);
-
-    const baseNodeGrpcAddress = `127.0.0.1:${baseNode.getGrpcPort()}`;
-    const walletGrpcAddress = `127.0.0.1:${walletNode.getGrpcPort()}`;
-
-    let vn = new ValidatorNodeProcess(
-      vn_name,
-      false,
-      [],
-      this.logFilePathBaseNode,
-      undefined,
-      baseNodeGrpcAddress,
-      walletGrpcAddress
-    );
-
-    await vn.startNew();
-
-    return vn;
   }
 
   async createAndAddNode(name, addresses) {
@@ -192,7 +147,7 @@ class CustomWorld {
     this.addWallet(name, wallet);
     let walletClient = await wallet.connectClient();
     let walletInfo = await walletClient.identify();
-    this.walletPubkeys[name] = walletInfo.public_key;
+    this.walletPubkeys[name] = walletInfo.public_key.toString("hex");
   }
 
   async createAndAddFFIWallet(name, seed_words = null, passphrase = null) {
@@ -653,7 +608,7 @@ class CustomWorld {
     const sourceClient = await sourceWallet.connectClient();
     const sourceInfo = await sourceClient.identify();
 
-    const destPublicKey = this.getWalletPubkey(dest);
+    const destPublicKey = this.getWalletPubkey(dest).toString("hex");
 
     this.lastResult = await this.send_tari(
       sourceWallet,
@@ -717,6 +672,7 @@ class CustomWorld {
     let result = true;
     await waitFor(
       async () => {
+        result = true;
         await this.forEachClientAsync(async (client, name) => {
           await waitFor(
             async () => await client.getTipHeight(),
@@ -751,10 +707,6 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await baseNode.init();
   await baseNode.compile();
 
-  const danNode = new ValidatorNodeProcess("compile");
-  console.log("Compiling validator node...");
-  await danNode.compile();
-
   const wallet = new WalletProcess("compile");
   console.log("Compiling wallet...");
   await wallet.init();
@@ -782,19 +734,6 @@ BeforeAll({ timeout: 2400000 }, async function () {
   console.log("Compiling miner...");
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
-
-  const vn = new ValidatorNodeProcess(
-    "compile",
-    false,
-    {},
-    null,
-    null,
-    "127.0.0.1:9999",
-    "127.0.0.1:9998"
-  );
-  console.log("Compiling validator node...");
-  await vn.compile();
-
   console.log("Compiling wallet FFI...");
   await InterfaceFFI.compile();
   console.log("Finished compilation.");

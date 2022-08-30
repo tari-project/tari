@@ -20,15 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
+use std::mem::size_of;
+
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{NaiveDateTime, Utc};
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey, Signature},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 use tari_core::{
     covenants::Covenant,
@@ -42,10 +41,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    hash::blake2::Blake256,
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
@@ -104,7 +100,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    let stp = builder.build(&factories, None, u64::MAX).unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];
@@ -331,7 +327,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
 
     runtime
-        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, [0u8; 16].to_vec(), 0, 5, true, false))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, FixedHash::zero(), 0, 5, true, false))
         .unwrap();
 
     assert_eq!(
@@ -585,8 +581,10 @@ pub fn test_transaction_service_sqlite_db_encrypted() {
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
-    let key = GenericArray::from_slice(b"an example very very secret key.");
-    let cipher = Aes256Gcm::new(key);
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
 
     test_db_backend(TransactionServiceSqliteDatabase::new(connection, Some(cipher)));
 }
@@ -599,8 +597,10 @@ async fn import_tx_and_read_it_from_db() {
     let db_path = format!("{}/{}", db_folder, db_name);
     let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
-    let key = GenericArray::from_slice(b"an example very very secret key.");
-    let cipher = Aes256Gcm::new(key);
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
     let sqlite_db = TransactionServiceSqliteDatabase::new(connection, Some(cipher));
 
     let transaction = CompletedTransaction::new(

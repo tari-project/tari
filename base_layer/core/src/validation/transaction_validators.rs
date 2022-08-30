@@ -24,14 +24,11 @@ use log::*;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase, PrunedOutput},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusConstants,
-    transactions::{
-        transaction_components::{SpentOutput, Transaction},
-        CryptoFactories,
-    },
+    transactions::{transaction_components::Transaction, CryptoFactories},
     validation::{
-        helpers::{check_inputs_are_utxos, check_outputs, check_total_burned},
+        helpers::{check_inputs_are_utxos, check_outputs, check_permitted_output_types, check_total_burned},
         MempoolTransactionValidation,
         ValidationError,
     },
@@ -77,7 +74,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistenc
             self.bypass_range_proof_verification,
             &self.factories,
             None,
-            Some(tip.best_block().clone()),
+            Some(*tip.best_block()),
             tip.height_of_longest_chain(),
         )
         .map_err(ValidationError::TransactionError)?;
@@ -108,7 +105,7 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
     ) -> Result<(), ValidationError> {
         // validate input version
         for input in tx.body().inputs() {
-            if !consensus_constants.input_version_range.contains(&input.version) {
+            if !consensus_constants.input_version_range().contains(&input.version) {
                 let msg = format!(
                     "Transaction input contains a version not allowed by consensus ({:?})",
                     input.version
@@ -120,12 +117,12 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
         // validate output version and output features version
         for output in tx.body().outputs() {
             let valid_output_version = consensus_constants
-                .output_version_range
+                .output_version_range()
                 .outputs
                 .contains(&output.version);
 
             let valid_features_version = consensus_constants
-                .output_version_range
+                .output_version_range()
                 .features
                 .contains(&output.features.version);
 
@@ -144,84 +141,18 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
                 );
                 return Err(ValidationError::ConsensusError(msg));
             }
+
+            check_permitted_output_types(consensus_constants, output)?;
         }
 
         // validate kernel version
         for kernel in tx.body().kernels() {
-            if !consensus_constants.kernel_version_range.contains(&kernel.version) {
+            if !consensus_constants.kernel_version_range().contains(&kernel.version) {
                 let msg = format!(
                     "Transaction kernel version is not allowed by consensus ({:?})",
                     kernel.version
                 );
                 return Err(ValidationError::ConsensusError(msg));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_unique_asset_rules(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let outputs = tx.body.outputs();
-
-        // outputs in transaction should have unique asset ids
-        let mut unique_asset_ids: Vec<_> = outputs.iter().filter_map(|o| o.features.unique_asset_id()).collect();
-
-        unique_asset_ids.sort();
-        let num_ids = unique_asset_ids.len();
-
-        unique_asset_ids.dedup();
-        let num_unique = unique_asset_ids.len();
-
-        if num_unique < num_ids {
-            return Err(ValidationError::ConsensusError(
-                "Transaction contains outputs with duplicate unique_asset_ids".into(),
-            ));
-        }
-
-        // the output's unique asset id should not already be in the chain
-        // unless it's being spent as an input as well
-        for output in outputs {
-            if let Some(ref unique_id) = output.features.unique_id {
-                let parent_public_key = output.features.parent_public_key.clone();
-                let parent_pubkey_hex = parent_public_key.as_ref().map(|p| p.to_hex());
-                let unique_id_hex = unique_id.to_hex();
-                debug!(
-                    target: LOG_TARGET,
-                    "Validating asset rules for output with parent public key {:?} and unique ID {}.",
-                    parent_pubkey_hex,
-                    unique_id_hex
-                );
-                debug!(target: LOG_TARGET, "Output features: {:?}", output.features);
-                if let Some(info) = self
-                    .db
-                    .fetch_utxo_by_unique_id(parent_public_key, unique_id.clone(), None)?
-                {
-                    // if it's already on chain then check it's being spent as an input
-                    debug!(
-                        target: LOG_TARGET,
-                        "Output found in chain with UtxoMinedInfo: {:?}", info
-                    );
-                    let output_hex = info.output.hash().to_hex();
-                    if let PrunedOutput::NotPruned { output } = info.output {
-                        let unique_asset_id = output.features.unique_asset_id();
-                        let spent_in_tx = tx.body.inputs().iter().any(|i| {
-                            if let SpentOutput::OutputData { ref features, .. } = i.spent_output {
-                                features.unique_asset_id() == unique_asset_id
-                            } else {
-                                false
-                            }
-                        });
-
-                        if !spent_in_tx {
-                            let msg = format!(
-                                "Output already exists in blockchain database. Output hash: {}. Parent public key: \
-                                 {:?}. Unique ID: {}",
-                                output_hex, parent_pubkey_hex, unique_id_hex,
-                            );
-                            return Err(ValidationError::ConsensusError(msg));
-                        }
-                    }
-                }
             }
         }
 
@@ -260,9 +191,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
 
         self.validate_excess_sig_not_in_db(tx)?;
 
-        self.validate_versions(tx, consensus_constants)?;
-
-        self.validate_unique_asset_rules(tx)
+        self.validate_versions(tx, consensus_constants)
     }
 }
 

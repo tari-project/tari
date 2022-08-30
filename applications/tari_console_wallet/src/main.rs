@@ -173,7 +173,11 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // get base node/s
-    let base_node_config = runtime.block_on(get_base_node_peer_config(&config, &mut wallet))?;
+    let base_node_config = runtime.block_on(get_base_node_peer_config(
+        &config,
+        &mut wallet,
+        cli.non_interactive_mode,
+    ))?;
     let base_node_selected = base_node_config.get_base_node_peer()?;
 
     let wallet_mode = wallet_mode(&cli, boot_mode);

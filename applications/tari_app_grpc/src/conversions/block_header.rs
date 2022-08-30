@@ -22,9 +22,9 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::BlindingFactor;
+use tari_common_types::types::{BlindingFactor, FixedHash};
 use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
-use tari_utilities::{ByteArray, Hashable};
+use tari_utilities::ByteArray;
 
 use crate::{
     conversions::{datetime_to_timestamp, timestamp_to_datetime},
@@ -35,17 +35,17 @@ impl From<BlockHeader> for grpc::BlockHeader {
     fn from(h: BlockHeader) -> Self {
         let pow_algo = h.pow_algo();
         Self {
-            hash: h.hash(),
+            hash: h.hash().to_vec(),
             version: u32::from(h.version),
             height: h.height,
-            prev_hash: h.prev_hash,
+            prev_hash: h.prev_hash.to_vec(),
             timestamp: datetime_to_timestamp(h.timestamp),
-            input_mr: h.input_mr,
-            output_mr: h.output_mr,
+            input_mr: h.input_mr.to_vec(),
+            output_mr: h.output_mr.to_vec(),
             output_mmr_size: h.output_mmr_size,
-            kernel_mr: h.kernel_mr,
+            kernel_mr: h.kernel_mr.to_vec(),
             kernel_mmr_size: h.kernel_mmr_size,
-            witness_mr: h.witness_mr,
+            witness_mr: h.witness_mr.to_vec(),
             total_kernel_offset: h.total_kernel_offset.to_vec(),
             total_script_offset: h.total_script_offset.to_vec(),
             nonce: h.nonce,
@@ -79,13 +79,13 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
         Ok(Self {
             version: u16::try_from(header.version).map_err(|_| "header version too large")?,
             height: header.height,
-            prev_hash: header.prev_hash,
+            prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
             timestamp,
-            input_mr: header.input_mr,
-            output_mr: header.output_mr,
-            witness_mr: header.witness_mr,
+            input_mr: FixedHash::try_from(header.input_mr).map_err(|err| err.to_string())?,
+            output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
+            witness_mr: FixedHash::try_from(header.witness_mr).map_err(|err| err.to_string())?,
             output_mmr_size: header.output_mmr_size,
-            kernel_mr: header.kernel_mr,
+            kernel_mr: FixedHash::try_from(header.kernel_mr).expect("Array size 32 cannot fail"),
             kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
             total_script_offset,

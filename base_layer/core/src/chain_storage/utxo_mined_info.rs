@@ -36,6 +36,8 @@ pub struct UtxoMinedInfo {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::FixedHash;
+
     use super::*;
 
     impl UtxoMinedInfo {
@@ -44,7 +46,7 @@ mod test {
                 output: PrunedOutput::sample(),
                 mmr_position: 0,
                 mined_height: 0,
-                header_hash: vec![],
+                header_hash: FixedHash::zero(),
                 mined_timestamp: 0,
             }
         }

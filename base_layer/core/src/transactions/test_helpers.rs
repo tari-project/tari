@@ -27,7 +27,6 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    hash::blake2::Blake256,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
 };
@@ -235,6 +234,10 @@ impl TestParams {
         self.fee().weighting().round_up_metadata_size(
             script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
         ) * num_outputs
+    }
+
+    pub fn commit_value(&self, value: MicroTari) -> Commitment {
+        self.commitment_factory.commit_value(&self.spend_key, value.as_u64())
     }
 }
 
@@ -613,7 +616,7 @@ pub fn create_sender_transaction_protocol_with(
         stx_builder.with_output(utxo, script_offset_pvt_key).unwrap();
     });
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    let mut stx_protocol = stx_builder.build(&factories, None, u64::MAX).unwrap();
     stx_protocol.finalize(&factories, None, u64::MAX)?;
 
     Ok(stx_protocol)
@@ -704,7 +707,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             .unwrap();
     }
 
-    let stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    let stx_protocol = stx_builder.build(&factories, None, u64::MAX).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
     // The change output is assigned its own random script offset private key
     let change_sender_offset_public_key = stx_protocol.get_change_sender_offset_public_key().unwrap().unwrap();

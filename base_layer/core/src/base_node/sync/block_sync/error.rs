@@ -22,6 +22,7 @@
 
 use std::time::Duration;
 
+use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -29,7 +30,6 @@ use tari_comms::{
 };
 
 use crate::{chain_storage::ChainStorageError, validation::ValidationError};
-
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {
     #[error("RPC error: {0}")]
@@ -58,4 +58,6 @@ pub enum BlockSyncError {
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
+    #[error("FixedHash size error: {0}")]
+    FixedHashSizeError(#[from] FixedHashSizeError),
 }

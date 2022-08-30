@@ -71,8 +71,25 @@ impl<T: ConsensusEncoding + ConsensusEncodingSized + ?Sized> ToConsensusBytes fo
     fn to_consensus_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.consensus_encode_exact_size());
         // Vec's write impl is infallible, as per the ConsensusEncoding contract, consensus_encode is infallible
-        self.consensus_encode(&mut buf).expect("unreachable panic");
+        self.consensus_encode(&mut buf)
+            .expect("invalid ConsensusEncoding implementation detected");
         buf
+    }
+}
+
+pub trait FromConsensusBytes<T>
+where T: ConsensusDecoding + ?Sized
+{
+    fn from_consensus_bytes(bytes: &[u8]) -> io::Result<T>;
+}
+
+impl<T: ConsensusDecoding + ?Sized> FromConsensusBytes<T> for T {
+    fn from_consensus_bytes(mut bytes: &[u8]) -> io::Result<T> {
+        let decoded = Self::consensus_decode(&mut bytes)?;
+        if !bytes.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Extra bytes at end of data"));
+        }
+        Ok(decoded)
     }
 }
 
@@ -84,8 +101,7 @@ pub mod test {
     /// ConsensusDecoding implementations
     pub fn check_consensus_encoding_correctness<T>(subject: T) -> Result<(), io::Error>
     where T: ConsensusEncoding + ConsensusEncodingSized + ConsensusDecoding + Eq + std::fmt::Debug {
-        let mut buf = Vec::new();
-        subject.consensus_encode(&mut buf)?;
+        let buf = subject.to_consensus_bytes();
         assert_eq!(buf.len(), subject.consensus_encode_exact_size());
         let mut reader = buf.as_slice();
         let decoded = T::consensus_decode(&mut reader)?;

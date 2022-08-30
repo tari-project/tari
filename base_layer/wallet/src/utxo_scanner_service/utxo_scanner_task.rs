@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     time::{Duration, Instant},
 };
 
@@ -43,7 +43,7 @@ use tari_core::{
     },
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -421,8 +421,8 @@ where TBackend: WalletBackend + 'static
         let mut total_scanned = 0;
 
         let request = SyncUtxosByBlockRequest {
-            start_header_hash: start_header_hash.clone(),
-            end_header_hash: end_header_hash.clone(),
+            start_header_hash: start_header_hash.to_vec(),
+            end_header_hash: end_header_hash.to_vec(),
         };
 
         let start = Instant::now();
@@ -465,11 +465,11 @@ where TBackend: WalletBackend + 'static
             let (count, amount) = self
                 .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
                 .await?;
-
+            let block_hash = current_header_hash.try_into()?;
             self.resources
                 .db
                 .save_scanned_block(ScannedBlock {
-                    header_hash: current_header_hash,
+                    header_hash: block_hash,
                     height: current_height,
                     num_outputs: Some(count),
                     amount: Some(amount),
@@ -517,25 +517,24 @@ where TBackend: WalletBackend + 'static
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(UnblindedOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
         let mut found_outputs: Vec<(UnblindedOutput, String, ImportStatus, TxId)> = Vec::new();
-        if self.mode == UtxoScannerMode::Recovery {
-            found_outputs.append(
-                &mut self
-                    .resources
-                    .output_manager_service
-                    .scan_for_recoverable_outputs(outputs.clone())
-                    .await?
-                    .into_iter()
-                    .map(|ro| {
-                        (
-                            ro.output,
-                            self.resources.recovery_message.clone(),
-                            ImportStatus::Imported,
-                            ro.tx_id,
-                        )
-                    })
-                    .collect(),
-            );
-        };
+        found_outputs.append(
+            &mut self
+                .resources
+                .output_manager_service
+                .scan_for_recoverable_outputs(outputs.clone())
+                .await?
+                .into_iter()
+                .map(|ro| {
+                    (
+                        ro.output,
+                        self.resources.recovery_message.clone(),
+                        ImportStatus::Imported,
+                        ro.tx_id,
+                    )
+                })
+                .collect(),
+        );
+
         found_outputs.append(
             &mut self
                 .resources

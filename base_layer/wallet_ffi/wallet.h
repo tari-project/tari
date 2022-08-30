@@ -879,8 +879,6 @@ TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
                                                       unsigned short output_type,
                                                       unsigned long long maturity,
                                                       const struct ByteVector *metadata,
-                                                      const struct ByteVector *unique_id,
-                                                      const struct ByteVector *parent_public_key,
                                                       int *error_out);
 
 /**
@@ -1237,8 +1235,8 @@ int liveness_data_get_message_type(TariContactsLivenessData *liveness_data,
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
  * memory leak
  */
-int liveness_data_get_online_status(TariContactsLivenessData *liveness_data,
-                                    int *error_out);
+const char *liveness_data_get_online_status(TariContactsLivenessData *liveness_data,
+                                            int *error_out);
 
 /**
  * Frees memory for a TariContactsLivenessData
@@ -2923,6 +2921,8 @@ TariPublicKey *wallet_get_public_key(struct TariWallet *wallet,
  * `script_private_key` - Tari script private key, k_S, is used to create the script signature
  * `covenant` - The covenant that will be executed when spending this output
  * `message` - The message that the transaction will have
+ * `encrypted_value` - Encrypted value.
+ * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *

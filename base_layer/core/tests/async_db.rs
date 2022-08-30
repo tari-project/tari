@@ -43,7 +43,6 @@ use tari_core::{
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_test_utils::runtime::test_async;
-use tari_utilities::Hashable;
 
 #[allow(dead_code)]
 mod helpers;
@@ -66,7 +65,7 @@ fn fetch_async_headers() {
         let db = AsyncBlockchainDb::new(db);
         for block in blocks {
             let height = block.height();
-            let hash = block.hash().clone();
+            let hash = *block.hash();
             let db = db.clone();
             rt.spawn(async move {
                 let header_height = db.fetch_header(height).await.unwrap().unwrap();

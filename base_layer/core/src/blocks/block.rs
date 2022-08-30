@@ -32,13 +32,13 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PrivateKey;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
     blocks::BlockHeader,
-    consensus::{ConsensusConstants, ConsensusDecoding, ConsensusEncoding},
+    consensus::{ConsensusConstants, ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     proof_of_work::ProofOfWork,
     transactions::{
         aggregated_body::AggregateBody,
@@ -156,6 +156,12 @@ impl Block {
             body: self.body.to_compact(),
         }
     }
+
+    /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
+    /// respective MMR roots in the header itself.
+    pub fn hash(&self) -> FixedHash {
+        self.header.hash()
+    }
 }
 
 impl Display for Block {
@@ -260,19 +266,17 @@ impl BlockBuilder {
     }
 }
 
-impl Hashable for Block {
-    /// The block hash is just the header hash, since the inputs, outputs and range proofs are captured by their
-    /// respective MMR roots in the header itself.
-    fn hash(&self) -> Vec<u8> {
-        self.header.hash()
-    }
-}
-
 impl ConsensusEncoding for Block {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         self.header.consensus_encode(writer)?;
         self.body.consensus_encode(writer)?;
         Ok(())
+    }
+}
+
+impl ConsensusEncodingSized for Block {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.header.consensus_encode_exact_size() + self.body.consensus_encode_exact_size()
     }
 }
 
@@ -325,5 +329,18 @@ impl From<&Block> for NewBlock {
                 .map(|kernel| kernel.excess_sig.get_signature().clone())
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common::configuration::Network;
+
+    use crate::{blocks::genesis_block::get_genesis_block, consensus::check_consensus_encoding_correctness};
+
+    #[test]
+    fn block_header_encode_decode() {
+        let block = get_genesis_block(Network::LocalNet).block().clone();
+        check_consensus_encoding_correctness(block).unwrap();
     }
 }

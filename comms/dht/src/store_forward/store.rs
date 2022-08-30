@@ -272,7 +272,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             Some(_) => {
                 // If the message doesnt have an origin we wont store it
                 if !message.has_message_signature() {
-                    log_not_eligible("it is a cleartext message and does not have an origin MAC");
+                    log_not_eligible("it is a cleartext message and does not have an message signature");
                     return Ok(None);
                 }
 
@@ -303,8 +303,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
                     // TODO: #banheuristic - the source peer should not have propagated this message
                     debug!(
                         target: LOG_TARGET,
-                        "Store task received an encrypted message with no origin MAC. This message {} is invalid and \
-                         should not be stored or propagated. Dropping message. Sent by node '{}' (Trace: {})",
+                        "Store task received an encrypted message with no message signature. This message {} is \
+                         invalid and should not be stored or propagated. Dropping message. Sent by node '{}' (Trace: \
+                         {})",
                         message.tag,
                         message.source_peer.node_id.short_str(),
                         message.dht_header.message_tag
@@ -371,9 +372,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
         let peer_manager = &self.peer_manager;
         let node_identity = &self.node_identity;
 
-        if message.dht_header.destination == node_identity.public_key() ||
-            message.dht_header.destination == node_identity.node_id()
-        {
+        if message.dht_header.destination == node_identity.public_key() {
             log_not_eligible("the message is destined for this node");
             return Ok(None);
         }

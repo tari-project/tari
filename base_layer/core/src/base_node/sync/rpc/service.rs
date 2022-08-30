@@ -22,17 +22,18 @@
 
 use std::{
     cmp,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     sync::{Arc, Weak},
 };
 
 use log::*;
+use tari_common_types::types::FixedHash;
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
     utils,
 };
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
@@ -112,8 +113,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let mut block_event_stream = self.base_node_service.get_block_event_stream();
 
         let db = self.db();
+        let hash = message
+            .start_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed starting hash received".to_string()))?;
         let start_header = db
-            .fetch_header_by_block_hash(message.start_hash)
+            .fetch_header_by_block_hash(hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
@@ -132,9 +137,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         if start_height > metadata.height_of_longest_chain() {
             return Ok(Streaming::empty());
         }
-
+        let hash = message
+            .end_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
         let end_header = db
-            .fetch_header_by_block_hash(message.end_hash)
+            .fetch_header_by_block_hash(hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Requested end block sync hash was not found"))?;
@@ -267,9 +275,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let db = self.db();
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
-
+        let hash = message
+            .start_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed starting hash received".to_string()))?;
         let start_header = db
-            .fetch_header_by_block_hash(message.start_hash)
+            .fetch_header_by_block_hash(hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
@@ -398,8 +409,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         }
 
         let db = self.db();
+        let hashes: Vec<FixedHash> = message
+            .block_hashes
+            .into_iter()
+            .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
+            .collect::<Result<_, _>>()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
         let maybe_headers = db
-            .find_headers_after_hash(message.block_hashes, message.header_count)
+            .find_headers_after_hash(hashes, message.header_count)
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
         match maybe_headers {
@@ -454,9 +471,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .into_header();
-
+        let hash = req
+            .end_header_hash
+            .try_into()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
         let end_header = db
-            .fetch_header_by_block_hash(req.end_header_hash.clone())
+            .fetch_header_by_block_hash(hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Unknown end header"))?;
@@ -479,7 +499,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     break;
                 }
                 let res = db
-                    .fetch_kernels_in_block(current_header_hash.clone())
+                    .fetch_kernels_in_block(current_header_hash)
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 

@@ -20,7 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, time::Duration};
+use std::{
+    fmt::{Display, Formatter},
+    path::PathBuf,
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
@@ -78,6 +82,10 @@ pub(crate) struct Cli {
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
     pub network: Option<String>,
+    #[clap(long, env = "TARI_WALLET_ENABLE_GRPC", alias = "enable-grpc")]
+    pub grpc_enabled: bool,
+    #[clap(long, env = "TARI_WALLET_GRPC_ADDRESS")]
+    pub grpc_address: Option<String>,
     #[clap(subcommand)]
     pub command2: Option<CliCommands>,
 }
@@ -89,6 +97,15 @@ impl ConfigOverrideProvider for Cli {
         overrides.push(("wallet.network".to_string(), network.clone()));
         overrides.push(("wallet.override_from".to_string(), network.clone()));
         overrides.push(("p2p.seeds.override_from".to_string(), network));
+        // Either of these configs enable grpc
+        if let Some(ref addr) = self.grpc_address {
+            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
+            overrides.push(("wallet.grpc_address".to_string(), addr.clone()));
+        } else if self.grpc_enabled {
+            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
+        } else {
+            // GRPC is disabled
+        }
         overrides
     }
 }
@@ -114,7 +131,7 @@ pub enum CliCommands {
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
-    Contract(ContractCommand),
+    HashGrpcPassword(HashPasswordArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -141,12 +158,47 @@ pub struct MakeItRainArgs {
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]
     pub increase_amount: MicroTari,
-    #[clap(long)]
+    #[clap(long, parse(try_from_str=parse_start_time))]
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
     pub one_sided: bool,
+    #[clap(long, alias = "stealth-one-sided")]
+    pub stealth: bool,
     #[clap(short, long, default_value = "Make it rain")]
     pub message: String,
+}
+
+impl MakeItRainArgs {
+    pub fn transaction_type(&self) -> MakeItRainTransactionType {
+        if self.stealth {
+            MakeItRainTransactionType::StealthOneSided
+        } else if self.one_sided {
+            MakeItRainTransactionType::OneSided
+        } else {
+            MakeItRainTransactionType::Interactive
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MakeItRainTransactionType {
+    Interactive,
+    OneSided,
+    StealthOneSided,
+}
+
+impl Display for MakeItRainTransactionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    let mut start_time = Utc::now();
+    if !arg.is_empty() && arg.to_uppercase() != "NOW" {
+        start_time = arg.parse()?;
+    }
+    Ok(start_time)
 }
 
 fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
@@ -204,113 +256,7 @@ pub struct ClaimShaAtomicSwapRefundArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct ContractCommand {
-    #[clap(subcommand)]
-    pub subcommand: ContractSubcommand,
-}
-
-#[derive(Debug, Subcommand, Clone)]
-pub enum ContractSubcommand {
-    /// Generates a new contract definition JSON spec file that can be edited and passed to other contract definition
-    /// commands.
-    InitDefinition(InitDefinitionArgs),
-
-    /// A generator for constitution files that can be edited and passed to other contract commands
-    InitConstitution(InitConstitutionArgs),
-
-    /// A generator for update proposal files that can be edited and passed to other contract commands
-    InitUpdateProposal(InitUpdateProposalArgs),
-
-    /// A generator for amendment files that can be edited and passed to other contract commands
-    InitAmendment(InitAmendmentArgs),
-
-    /// Creates and publishes a contract definition UTXO from the JSON spec file.
-    PublishDefinition(PublishFileArgs),
-
-    /// Creates and publishes a contract definition UTXO from the JSON spec file.
-    PublishConstitution(PublishFileArgs),
-
-    /// Creates and publishes a contract update proposal UTXO from the JSON spec file.
-    PublishUpdateProposal(PublishFileArgs),
-
-    /// Creates and publishes a contract amendment UTXO from the JSON spec file.
-    PublishAmendment(PublishFileArgs),
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitDefinitionArgs {
-    /// The destination path of the contract definition to create
-    pub dest_path: PathBuf,
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-    #[clap(long, alias = "name")]
-    pub contract_name: Option<String>,
-    #[clap(long, alias = "issuer")]
-    pub contract_issuer: Option<String>,
-    #[clap(long, alias = "runtime")]
-    pub runtime: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitConstitutionArgs {
-    /// The destination path of the contract definition to create
-    pub dest_path: PathBuf,
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-    #[clap(long, alias = "id")]
-    pub contract_id: Option<String>,
-    #[clap(long, alias = "committee")]
-    pub validator_committee: Option<Vec<String>>,
-    #[clap(long, alias = "acceptance_period")]
-    pub acceptance_period_expiry: Option<String>,
-    #[clap(long, alias = "quorum_required")]
-    pub minimum_quorum_required: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitUpdateProposalArgs {
-    /// The destination path of the contract definition to create
-    pub dest_path: PathBuf,
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-    #[clap(long, alias = "id")]
-    pub contract_id: Option<String>,
-    #[clap(long, alias = "proposal_id")]
-    pub proposal_id: Option<String>,
-    #[clap(long, alias = "committee")]
-    pub validator_committee: Option<Vec<String>>,
-    #[clap(long, alias = "acceptance_period")]
-    pub acceptance_period_expiry: Option<String>,
-    #[clap(long, alias = "quorum_required")]
-    pub minimum_quorum_required: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitAmendmentArgs {
-    /// The destination path of the contract amendment to create
-    pub dest_path: PathBuf,
-
-    /// Force overwrite the destination file if it already exists
-    #[clap(short = 'f', long)]
-    pub force: bool,
-
-    /// The source file path of the update proposal to amend
-    #[clap(short = 'p', long)]
-    pub proposal_file_path: PathBuf,
-
-    #[clap(long, alias = "activation_window")]
-    pub activation_window: Option<String>,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PublishFileArgs {
-    pub file_path: PathBuf,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PublishUpdateProposalArgs {
-    pub file_path: PathBuf,
+pub struct HashPasswordArgs {
+    /// If true, only output the hashed password and the salted password. Otherwise a usage explanation is output.
+    pub short: bool,
 }

@@ -31,7 +31,6 @@ use tari_core::transactions::{
     CryptoFactories,
 };
 use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::hash::Hashable;
 
 use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 

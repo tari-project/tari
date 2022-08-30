@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, FixedHash, PrivateKey, PublicKey},
+    types::{ComSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -41,15 +41,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{
-            CommitteeSignatures,
-            ContractCheckpoint,
-            EncryptedValue,
-            OutputFeatures,
-            OutputType,
-            TransactionOutput,
-            UnblindedOutput,
-        },
+        transaction_components::{EncryptedValue, OutputFeatures, OutputType, TransactionOutput, UnblindedOutput},
         transaction_protocol::{sender::TransactionSenderMessage, RewindData, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
@@ -58,14 +50,12 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    hash::blake2::Blake256,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
-use tari_utilities::Hashable;
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -339,7 +329,7 @@ async fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, Transa
             script_private_key,
         );
 
-    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
     let tx_id = stp.get_tx_id().unwrap();
     (
         tx_id,
@@ -719,83 +709,6 @@ async fn test_utxo_selection_with_tx_priority() {
     assert_eq!(utxos.len(), 1);
 
     assert_ne!(utxos[0].features.output_type, OutputType::Coinbase);
-}
-
-#[tokio::test]
-async fn utxo_selection_for_contract_checkpoint() {
-    let factories = CryptoFactories::default();
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let contract_id = FixedHash::hash_bytes(b"test_utxo_selection_for_contract_checkpoint");
-
-    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
-        OutputManagerSqliteDatabase::new(connection, None),
-        Some(6),
-        server_node_identity,
-    )
-    .await;
-
-    let amount = MicroTari::from(2000);
-    let fee_per_gram = MicroTari::from(2);
-
-    // we create two outputs, one as coinbase-high priority one as normal so we can track them
-    let (_, uo) = make_input_with_features(
-        &mut OsRng.clone(),
-        amount,
-        &factories.commitment,
-        Some(OutputFeatures::for_contract_checkpoint(
-            contract_id,
-            ContractCheckpoint {
-                checkpoint_number: 0,
-                merkle_root: FixedHash::zero(),
-                signatures: CommitteeSignatures::empty(),
-            },
-        )),
-    )
-    .await;
-    oms.add_rewindable_output(uo, None, None).await.unwrap();
-    let (_, uo) = make_input_with_features(
-        &mut OsRng.clone(),
-        amount,
-        &factories.commitment,
-        Some(OutputFeatures {
-            maturity: 1,
-            ..Default::default()
-        }),
-    )
-    .await;
-    oms.add_rewindable_output(uo, None, None).await.unwrap();
-
-    let utxos = oms.get_unspent_outputs().await.unwrap();
-    assert_eq!(utxos.len(), 2);
-
-    // test transactions
-    let stp = oms
-        .prepare_transaction_to_send(
-            TxId::new_random(),
-            // Spend more than the selected contract output, this will cause the other UTXO to be included
-            MicroTari::from(2500),
-            UtxoSelectionCriteria::for_contract(contract_id, OutputType::ContractCheckpoint),
-            OutputFeatures::for_contract_checkpoint(contract_id, ContractCheckpoint {
-                checkpoint_number: 0,
-                merkle_root: FixedHash::zero(),
-                signatures: CommitteeSignatures::empty(),
-            }),
-            fee_per_gram,
-            TransactionMetadata::default(),
-            String::new(),
-            script!(Nop),
-            Covenant::default(),
-            MicroTari::zero(),
-        )
-        .await
-        .unwrap();
-    assert!(stp.get_tx_id().is_ok());
-
-    // test that the utxo with the lowest priority was left
-    let utxos = oms.get_unspent_outputs().await.unwrap();
-    assert_eq!(utxos.len(), 0);
 }
 
 #[tokio::test]
@@ -1424,22 +1337,22 @@ async fn test_txo_validation() {
             output: Some(output1_tx_output.clone().into()),
             mmr_position: 1,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output1_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
             mmr_position: 2,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output2_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
     ];
 
     let utxo_query_responses = UtxoQueryResponses {
-        best_block: block4_header.hash(),
+        best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
         responses,
     };
@@ -1449,7 +1362,7 @@ async fn test_txo_validation() {
 
     // This response sets output1 as spent in the transaction that produced output4
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash(),
+        best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
         deleted_positions: vec![],
         not_deleted_positions: vec![1, 2],
@@ -1566,46 +1479,46 @@ async fn test_txo_validation() {
             output: Some(output1_tx_output.clone().into()),
             mmr_position: 1,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output1_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
             mmr_position: 2,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output2_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().into()),
             mmr_position: 4,
             mined_height: 5,
-            mined_in_block: block5_header.hash(),
-            output_hash: output4_tx_output.hash(),
+            mined_in_block: block5_header.hash().to_vec(),
+            output_hash: output4_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output5_tx_output.clone().into()),
             mmr_position: 5,
             mined_height: 5,
-            mined_in_block: block5_header.hash(),
-            output_hash: output5_tx_output.hash(),
+            mined_in_block: block5_header.hash().to_vec(),
+            output_hash: output5_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output6_tx_output.clone().into()),
             mmr_position: 6,
             mined_height: 5,
-            mined_in_block: block5_header.hash(),
-            output_hash: output6_tx_output.hash(),
+            mined_in_block: block5_header.hash().to_vec(),
+            output_hash: output6_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
     ];
 
     let mut utxo_query_responses = UtxoQueryResponses {
-        best_block: block5_header.hash(),
+        best_block: block5_header.hash().to_vec(),
         height_of_longest_chain: 5,
         responses,
     };
@@ -1615,12 +1528,12 @@ async fn test_txo_validation() {
 
     // This response sets output1 as spent in the transaction that produced output4
     let mut query_deleted_response = QueryDeletedResponse {
-        best_block: block5_header.hash(),
+        best_block: block5_header.hash().to_vec(),
         height_of_longest_chain: 5,
         deleted_positions: vec![1],
         not_deleted_positions: vec![2, 4, 5, 6],
         heights_deleted_at: vec![5],
-        blocks_deleted_in: vec![block5_header.hash()],
+        blocks_deleted_in: vec![block5_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1720,6 +1633,7 @@ async fn test_txo_validation() {
             .await
             .unwrap()
             .hash()
+            .to_vec()
     );
 
     // Now we will create responses that result in a reorg of block 5, keeping block4 the same.
@@ -1743,30 +1657,30 @@ async fn test_txo_validation() {
             output: Some(output1_tx_output.clone().into()),
             mmr_position: 1,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output1_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
             mmr_position: 2,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output2_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().into()),
             mmr_position: 4,
             mined_height: 5,
-            mined_in_block: block5_header_reorg.hash(),
-            output_hash: output4_tx_output.hash(),
+            mined_in_block: block5_header_reorg.hash().to_vec(),
+            output_hash: output4_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
     ];
 
     let mut utxo_query_responses = UtxoQueryResponses {
-        best_block: block5_header_reorg.hash(),
+        best_block: block5_header_reorg.hash().to_vec(),
         height_of_longest_chain: 5,
         responses,
     };
@@ -1776,12 +1690,12 @@ async fn test_txo_validation() {
 
     // This response sets output1 as spent in the transaction that produced output4
     let mut query_deleted_response = QueryDeletedResponse {
-        best_block: block5_header_reorg.hash(),
+        best_block: block5_header_reorg.hash().to_vec(),
         height_of_longest_chain: 5,
         deleted_positions: vec![1],
         not_deleted_positions: vec![2, 4, 5, 6],
         heights_deleted_at: vec![5],
-        blocks_deleted_in: vec![block5_header_reorg.hash()],
+        blocks_deleted_in: vec![block5_header_reorg.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1968,22 +1882,22 @@ async fn test_txo_revalidation() {
             output: Some(output1_tx_output.clone().into()),
             mmr_position: 1,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output1_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().into()),
             mmr_position: 2,
             mined_height: 1,
-            mined_in_block: block1_header.hash(),
-            output_hash: output2_tx_output.hash(),
+            mined_in_block: block1_header.hash().to_vec(),
+            output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
     ];
 
     let utxo_query_responses = UtxoQueryResponses {
-        best_block: block4_header.hash(),
+        best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
         responses,
     };
@@ -1993,7 +1907,7 @@ async fn test_txo_revalidation() {
 
     // This response sets output1 as spent
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash(),
+        best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
         deleted_positions: vec![],
         not_deleted_positions: vec![1, 2],
@@ -2020,12 +1934,12 @@ async fn test_txo_revalidation() {
 
     // This response sets output1 as spent
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash(),
+        best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
         deleted_positions: vec![1],
         not_deleted_positions: vec![2],
         heights_deleted_at: vec![4],
-        blocks_deleted_in: vec![block4_header.hash()],
+        blocks_deleted_in: vec![block4_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -2047,12 +1961,12 @@ async fn test_txo_revalidation() {
 
     // This response sets output1 and 2 as spent
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash(),
+        best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
         deleted_positions: vec![1, 2],
         not_deleted_positions: vec![],
         heights_deleted_at: vec![4, 4],
-        blocks_deleted_in: vec![block4_header.hash(), block4_header.hash()],
+        blocks_deleted_in: vec![block4_header.hash().to_vec(), block4_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state

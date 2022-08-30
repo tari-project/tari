@@ -55,6 +55,7 @@ use crate::{
             },
             RpcError,
             RpcServer,
+            RpcServerBuilder,
             RpcStatusCode,
         },
         ProtocolEvent,
@@ -67,25 +68,23 @@ use crate::{
     Substream,
 };
 
-pub(super) async fn setup_service<T: GreetingRpc>(
+pub(super) async fn setup_service_with_builder<T: GreetingRpc>(
     service_impl: T,
-    num_concurrent_sessions: usize,
+    builder: RpcServerBuilder,
 ) -> (
     mpsc::Sender<ProtocolNotification<Substream>>,
     task::JoinHandle<()>,
     RpcCommsBackend,
     Shutdown,
 ) {
-    let (notif_tx, notif_rx) = mpsc::channel(1);
+    let (notif_tx, notif_rx) = mpsc::channel(10);
     let shutdown = Shutdown::new();
     let (context, _) = create_mocked_rpc_context();
     let server_hnd = task::spawn({
         let context = context.clone();
         let shutdown_signal = shutdown.to_signal();
         async move {
-            let fut = RpcServer::builder()
-                .with_maximum_simultaneous_sessions(num_concurrent_sessions)
-                .with_minimum_client_deadline(Duration::from_secs(0))
+            let fut = builder
                 .finish()
                 .add_service(GreetingServer::new(service_impl))
                 .serve(notif_rx, context);
@@ -97,7 +96,23 @@ pub(super) async fn setup_service<T: GreetingRpc>(
             }
         }
     });
+
     (notif_tx, server_hnd, context, shutdown)
+}
+
+pub(super) async fn setup_service<T: GreetingRpc>(
+    service_impl: T,
+    num_concurrent_sessions: usize,
+) -> (
+    mpsc::Sender<ProtocolNotification<Substream>>,
+    task::JoinHandle<()>,
+    RpcCommsBackend,
+    Shutdown,
+) {
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(num_concurrent_sessions)
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    setup_service_with_builder(service_impl, builder).await
 }
 
 pub(super) async fn setup<T: GreetingRpc>(
@@ -451,5 +466,123 @@ async fn stream_interruption_handling() {
         .await
         .unwrap()
         .unwrap()
+        .unwrap();
+}
+
+#[runtime::test]
+async fn max_global_sessions() {
+    let builder = RpcServer::builder().with_maximum_simultaneous_sessions(1);
+    let (muxer, _outbound, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, mut inbound, outbound) = build_multiplexed_connections().await;
+
+    let node_identity = build_node_identity(Default::default());
+    // Notify that a peer wants to speak the greeting RPC protocol
+    context.peer_manager().add_peer(node_identity.to_peer()).await.unwrap();
+
+    for _ in 0..2 {
+        let substream = outbound.get_yamux_control().open_stream().await.unwrap();
+        muxer
+            .send(ProtocolNotification::new(
+                ProtocolId::from_static(b"/test/greeting/1.0"),
+                ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), substream),
+            ))
+            .await
+            .unwrap();
+    }
+
+    let socket = inbound.incoming_mut().next().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    let socket = inbound.incoming_mut().next().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let err = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap_err();
+
+    unpack_enum!(RpcError::HandshakeError(err) = err);
+    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable) = err);
+
+    client.close().await;
+    let substream = outbound.get_yamux_control().open_stream().await.unwrap();
+    muxer
+        .send(ProtocolNotification::new(
+            ProtocolId::from_static(b"/test/greeting/1.0"),
+            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), substream),
+        ))
+        .await
+        .unwrap();
+    let socket = inbound.incoming_mut().next().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let _client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+}
+
+#[runtime::test]
+async fn max_per_client_sessions() {
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(3)
+        .with_maximum_sessions_per_client(1);
+    let (muxer, _outbound, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, mut inbound, outbound) = build_multiplexed_connections().await;
+
+    let node_identity = build_node_identity(Default::default());
+    // Notify that a peer wants to speak the greeting RPC protocol
+    context.peer_manager().add_peer(node_identity.to_peer()).await.unwrap();
+    for _ in 0..2 {
+        let substream = outbound.get_yamux_control().open_stream().await.unwrap();
+        muxer
+            .send(ProtocolNotification::new(
+                ProtocolId::from_static(b"/test/greeting/1.0"),
+                ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), substream),
+            ))
+            .await
+            .unwrap();
+    }
+
+    let socket = inbound.incoming_mut().next().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    let socket = inbound.incoming_mut().next().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let err = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap_err();
+
+    unpack_enum!(RpcError::HandshakeError(err) = err);
+    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable) = err);
+
+    client.close().await;
+    drop(client);
+    let substream = outbound.get_yamux_control().open_stream().await.unwrap();
+    muxer
+        .send(ProtocolNotification::new(
+            ProtocolId::from_static(b"/test/greeting/1.0"),
+            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), substream),
+        ))
+        .await
+        .unwrap();
+    let socket = inbound.incoming_mut().next().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let _client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
         .unwrap();
 }

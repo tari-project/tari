@@ -24,13 +24,15 @@
 #[allow(dead_code)]
 mod support;
 
-use support::{create_mmr, int_to_hash, Hasher};
+use support::int_to_hash;
 use tari_mmr::{
     common::{is_leaf, node_index},
     MerkleProof,
     MerkleProofError,
 };
 use tari_utilities::hex::{self, Hex};
+
+use crate::support::{create_mmr, MmrTestHasherBlake256};
 
 #[test]
 fn zero_size_mmr() {
@@ -53,7 +55,7 @@ fn merkle_proof_small_mmrs() {
                 let hash = int_to_hash(hash_value);
                 hash_value += 1;
                 let proof = MerkleProof::for_node(&mmr, pos).unwrap();
-                assert!(proof.verify::<Hasher>(&root, &hash, pos).is_ok());
+                assert!(proof.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_ok());
             } else {
                 assert_eq!(MerkleProof::for_node(&mmr, pos), Err(MerkleProofError::NonLeafNode));
             }
@@ -70,7 +72,7 @@ fn med_mmr() {
     let pos = node_index(i);
     let hash = int_to_hash(i);
     let proof = MerkleProof::for_node(&mmr, pos).unwrap();
-    assert!(proof.verify::<Hasher>(&root, &hash, pos).is_ok());
+    assert!(proof.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_ok());
 }
 
 #[test]
@@ -81,7 +83,7 @@ fn a_big_proof() {
     let root = mmr.get_merkle_root().unwrap();
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_node(&mmr, mmr_index).unwrap();
-    assert!(proof.verify::<Hasher>(&root, &hash, mmr_index).is_ok())
+    assert!(proof.verify::<MmrTestHasherBlake256>(&root, &hash, mmr_index).is_ok())
 }
 
 #[test]
@@ -91,11 +93,13 @@ fn for_leaf_node() {
     let leaf_pos = 28;
     let hash = int_to_hash(leaf_pos);
     let proof = MerkleProof::for_leaf_node(&mmr, leaf_pos).unwrap();
-    assert!(proof.verify_leaf::<Hasher>(&root, &hash, leaf_pos).is_ok())
+    assert!(proof
+        .verify_leaf::<MmrTestHasherBlake256>(&root, &hash, leaf_pos)
+        .is_ok())
 }
 
-const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["e88b43fded6323ef02ffeffbd8c40846ee09bf316271bd22369659c959dd733a","8bdd601372fd4d8242591e4b42815bc35826b0209ce5b78eb06609110b002b9d"],"peaks":["e96760d274653a39b429a87ebaae9d3aa4fdf58b9096cf0bebc7c4e5a4c2ed8d"]}"#;
-const BINCODE_PROOF: &str = "080000000000000002000000000000002000000000000000e88b43fded6323ef02ffeffbd8c40846ee09bf316271bd22369659c959dd733a20000000000000008bdd601372fd4d8242591e4b42815bc35826b0209ce5b78eb06609110b002b9d01000000000000002000000000000000e96760d274653a39b429a87ebaae9d3aa4fdf58b9096cf0bebc7c4e5a4c2ed8d";
+const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["8343a0e3122b3a82cbfb0ff8c7aabd6ea48580d0aa14b9e9a0f4b78a4852efa9","f7010ddf7881e9fcd2c51a1f2bc66448dba431c1661fa4bb0de5f842bd30ef79"],"peaks":["f5e19d13dbd76ecb10544dd434620169a7d2cddf516aa8e1a15a2b66f0b5022e"]}"#;
+const BINCODE_PROOF: &str = "0800000000000000020000000000000020000000000000008343a0e3122b3a82cbfb0ff8c7aabd6ea48580d0aa14b9e9a0f4b78a4852efa92000000000000000f7010ddf7881e9fcd2c51a1f2bc66448dba431c1661fa4bb0de5f842bd30ef7901000000000000002000000000000000f5e19d13dbd76ecb10544dd434620169a7d2cddf516aa8e1a15a2b66f0b5022e";
 
 #[test]
 fn serialisation() {
@@ -110,15 +114,23 @@ fn serialisation() {
 
 #[test]
 fn deserialization() {
-    let root = hex::from_hex("167a34de2d13b7911093344cd2697b4c6311c5308a9f45476d094e3b3ef6e669").unwrap();
+    // Note: To create a new root, uncomment these two lines
+    let mmr = create_mmr(5);
+    println!("\nNew root: {}\n", mmr.get_merkle_root().unwrap().to_hex());
+
+    let root = hex::from_hex("3835a5f6c170d671c9306cca3bb035d701970d541c0365c15d51550e051bf57d").unwrap();
     // Verify JSON-derived proof
     let proof: MerkleProof = serde_json::from_str(JSON_PROOF).unwrap();
     println!("{}", proof);
-    assert!(proof.verify_leaf::<Hasher>(&root, &int_to_hash(3), 3).is_ok());
+    assert!(proof
+        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), 3)
+        .is_ok());
 
     // Verify bincode-derived proof
     let bin_proof = hex::from_hex(BINCODE_PROOF).unwrap();
     let proof: MerkleProof = bincode::deserialize(&bin_proof).unwrap();
     println!("{}", proof);
-    assert!(proof.verify_leaf::<Hasher>(&root, &int_to_hash(3), 3).is_ok());
+    assert!(proof
+        .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), 3)
+        .is_ok());
 }

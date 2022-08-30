@@ -31,7 +31,7 @@ use log::*;
 use prost::Message;
 use tari_comms::{
     message::{EnvelopeBody, MessageTag},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager, PeerManagerError},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline::PipelineError,
     types::CommsPublicKey,
 };
@@ -71,7 +71,6 @@ pub struct MessageHandlerTask<S> {
     config: SafConfig,
     next_service: S,
     dht_requester: DhtRequester,
-    peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
     node_identity: Arc<NodeIdentity>,
     message: Option<DecryptedDhtMessage>,
@@ -87,7 +86,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         next_service: S,
         saf_requester: StoreAndForwardRequester,
         dht_requester: DhtRequester,
-        peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
         node_identity: Arc<NodeIdentity>,
         message: DecryptedDhtMessage,
@@ -98,7 +96,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             saf_requester,
             dht_requester,
             next_service,
-            peer_manager,
             outbound_service,
             node_identity,
             message: Some(message),
@@ -426,8 +423,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         message: ProtoStoredMessage,
     ) -> Result<(DecryptedDhtMessage, DateTime<Utc>), StoreAndForwardError> {
         let node_identity = &self.node_identity;
-        let peer_manager = &self.peer_manager;
-        let config = &self.config;
         if message.dht_header.is_none() {
             return Err(StoreAndForwardError::DhtHeaderNotProvided);
         }
@@ -489,7 +484,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         // Check that the destination is either undisclosed, for us or for our network region
-        Self::check_destination(config, peer_manager, node_identity, &dht_header).await?;
+        Self::check_destination(node_identity, &dht_header).await?;
 
         // Attempt to decrypt the message (if applicable), and deserialize it
         let (authenticated_pk, decrypted_body) =
@@ -527,20 +522,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     async fn check_destination(
-        config: &SafConfig,
-        peer_manager: &PeerManager,
         node_identity: &NodeIdentity,
         dht_header: &DhtMessageHeader,
     ) -> Result<(), StoreAndForwardError> {
         let is_valid_destination = match &dht_header.destination {
             NodeDestination::Unknown => true,
             NodeDestination::PublicKey(pk) => node_identity.public_key() == &**pk,
-            // Pass this check if the node id equals ours or is in this node's region
-            NodeDestination::NodeId(node_id) if node_identity.node_id() == &**node_id => true,
-            NodeDestination::NodeId(node_id) => peer_manager
-                .in_network_region(node_identity.node_id(), node_id, config.num_neighbouring_nodes)
-                .await
-                .unwrap_or(false),
         };
 
         if is_valid_destination {
@@ -563,7 +550,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             trace!(
                 target: LOG_TARGET,
-                "Attempting to decrypt origin mac ({} byte(s))",
+                "Attempting to decrypt message signature ({} byte(s))",
                 header.message_signature.len()
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
@@ -691,7 +678,6 @@ mod test {
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();
 
-        let peer_manager = build_peer_manager();
         let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
         let oms_mock_state = outbound_mock.get_state();
         task::spawn(outbound_mock.run());
@@ -737,7 +723,6 @@ mod test {
             spy.to_service::<PipelineError>(),
             requester.clone(),
             dht_requester.clone(),
-            peer_manager.clone(),
             outbound_requester.clone(),
             node_identity.clone(),
             message.clone(),
@@ -795,7 +780,6 @@ mod test {
             spy.to_service::<PipelineError>(),
             requester,
             dht_requester,
-            peer_manager,
             outbound_requester.clone(),
             node_identity.clone(),
             message,
@@ -924,7 +908,6 @@ mod test {
             spy.to_service::<PipelineError>(),
             saf_requester,
             dht_requester.clone(),
-            peer_manager,
             OutboundMessageRequester::new(oms_tx),
             node_identity,
             message,
@@ -1011,7 +994,6 @@ mod test {
             spy.to_service::<PipelineError>(),
             requester,
             dht_requester.clone(),
-            peer_manager,
             OutboundMessageRequester::new(oms_tx),
             node_identity,
             message,
@@ -1085,7 +1067,6 @@ mod test {
             spy.to_service::<PipelineError>(),
             saf_requester.clone(),
             dht_requester.clone(),
-            peer_manager.clone(),
             OutboundMessageRequester::new(oms_tx.clone()),
             node_identity.clone(),
             message.clone(),
@@ -1106,7 +1087,6 @@ mod test {
             spy.to_service::<PipelineError>(),
             saf_requester,
             dht_requester,
-            peer_manager,
             OutboundMessageRequester::new(oms_tx),
             node_identity,
             message,

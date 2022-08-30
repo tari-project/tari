@@ -26,6 +26,7 @@
 use std::convert::TryInto;
 
 use digest::Digest;
+use tari_common::DomainDigest;
 
 use crate::{error::MerkleMountainRangeError, Hash};
 
@@ -171,7 +172,7 @@ pub fn is_left_sibling(pos: usize) -> bool {
     (peak_map & peak) == 0
 }
 
-pub fn hash_together<D: Digest>(left: &[u8], right: &[u8]) -> Hash {
+pub fn hash_together<D: Digest + DomainDigest>(left: &[u8], right: &[u8]) -> Hash {
     D::new().chain(left).chain(right).finalize().to_vec()
 }
 

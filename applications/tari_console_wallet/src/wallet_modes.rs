@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io::Stdout, path::PathBuf};
+use std::{fs, io::Stdout, path::PathBuf};
 
+use clap::Parser;
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
+use tari_app_grpc::authentication::ServerAuthenticationInterceptor;
 use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_wallet::{WalletConfig, WalletSqlite};
 use tokio::{runtime::Handle, sync::broadcast};
@@ -41,6 +44,7 @@ use crate::{
     ui::App,
     utils::db::get_custom_base_node_peer_from_db,
 };
+
 pub const LOG_TARGET: &str = "wallet::app::main";
 
 #[derive(Debug, Clone)]
@@ -156,49 +160,63 @@ pub(crate) fn command_mode(
     wallet_or_exit(handle, cli, config, base_node_config, wallet)
 }
 
+pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, ExitError> {
+    let mut commands: Vec<CliCommands> = Vec::new();
+    let cli_parse_prefix = "tari_console_wallet --command n/a".to_string();
+
+    for command in script.lines() {
+        // skip empty lines and 'comments' starting with #
+        if !command.trim().is_empty() && !command.trim().starts_with('#') {
+            let command_trimmed = cli_parse_prefix.to_owned() + " " + command.trim();
+            let parse_vec: Vec<&str> = command_trimmed.split(' ').collect();
+            let cli_parsed = Cli::try_parse_from(&parse_vec);
+            match cli_parsed {
+                Ok(result) => {
+                    if let Some(sub_command) = result.command2 {
+                        commands.push(sub_command);
+                    }
+                },
+                Err(e) => return Err(ExitError::new(ExitCode::CommandError, e.to_string())),
+            }
+        }
+    }
+    Ok(commands)
+}
+
 pub(crate) fn script_mode(
-    _handle: Handle,
-    _cli: &Cli,
-    _config: &WalletConfig,
-    _base_node_config: &PeerConfig,
-    _wallet: WalletSqlite,
-    _path: PathBuf,
+    handle: Handle,
+    cli: &Cli,
+    config: &WalletConfig,
+    base_node_config: &PeerConfig,
+    wallet: WalletSqlite,
+    path: PathBuf,
 ) -> Result<(), ExitError> {
-    todo!("To be removed")
-    // info!(target: LOG_TARGET, "Starting wallet script mode");
-    // println!("Starting wallet script mode");
-    // let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
-    //
-    // if script.is_empty() {
-    //     return Err(ExitError::new(ExitCode::InputError, "Input file is empty!"));
-    // };
-    //
-    // let mut commands = Vec::new();
-    //
-    // println!("Parsing commands...");
-    // for command in script.lines() {
-    //     // skip empty lines and 'comments' starting with #
-    //     if !command.is_empty() && !command.starts_with('#') {
-    //         // parse the command
-    //         commands.push(parse_command(command)?);
-    //     }
-    // }
-    // println!("{} commands parsed successfully.", commands.len());
-    //
-    // // Do not remove this println!
-    // const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Script mode started)";
-    // println!("{}", CUCUMBER_TEST_MARKER_A);
-    //
-    // println!("Starting the command runner!");
-    // handle.block_on(command_runner(config, commands, wallet.clone()))?;
-    //
-    // // Do not remove this println!
-    // const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Script mode completed)";
-    // println!("{}", CUCUMBER_TEST_MARKER_B);
-    //
-    // info!(target: LOG_TARGET, "Completed wallet script mode");
-    //
-    // wallet_or_exit(handle, cli, config, base_node_config, wallet)
+    info!(target: LOG_TARGET, "Starting wallet script mode");
+    println!("Starting wallet script mode");
+    let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
+
+    if script.is_empty() {
+        return Err(ExitError::new(ExitCode::InputError, "Input file is empty!"));
+    };
+
+    println!("Parsing commands...");
+    let commands = parse_command_file(script)?;
+    println!("{} commands parsed successfully.", commands.len());
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Script mode started)";
+    println!("{}", CUCUMBER_TEST_MARKER_A);
+
+    println!("Starting the command runner!");
+    handle.block_on(command_runner(config, commands, wallet.clone()))?;
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Script mode completed)";
+    println!("{}", CUCUMBER_TEST_MARKER_B);
+
+    info!(target: LOG_TARGET, "Completed wallet script mode");
+
+    wallet_or_exit(handle, cli, config, base_node_config, wallet)
 }
 
 /// Prompts the user to continue to the wallet, or exit.
@@ -245,9 +263,13 @@ pub fn tui_mode(
     mut wallet: WalletSqlite,
 ) -> Result<(), ExitError> {
     let (events_broadcaster, _events_listener) = broadcast::channel(100);
-    if let Some(ref grpc_address) = config.grpc_address {
+    if config.grpc_enabled {
         let grpc = WalletGrpcServer::new(wallet.clone());
-        handle.spawn(run_grpc(grpc, grpc_address.clone()));
+        handle.spawn(run_grpc(
+            grpc,
+            config.grpc_address.clone(),
+            config.grpc_authentication.clone(),
+        ));
     }
 
     let notifier = Notifier::new(
@@ -344,27 +366,35 @@ pub fn recovery_mode(
 
 pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting grpc server");
-    if let Some(grpc_address) = &config.grpc_address {
+    if config.grpc_enabled {
         let grpc = WalletGrpcServer::new(wallet);
+        let auth = config.grpc_authentication.clone();
         handle
-            .block_on(run_grpc(grpc, grpc_address.clone()))
+            .block_on(run_grpc(grpc, config.grpc_address.clone(), auth))
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
-        println!("No grpc address specified");
+        println!("GRPC server is disabled");
     }
     info!(target: LOG_TARGET, "Shutting down");
     Ok(())
 }
 
-async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: Multiaddr) -> Result<(), String> {
+async fn run_grpc(
+    grpc: WalletGrpcServer,
+    grpc_listener_addr: Multiaddr,
+    auth_config: GrpcAuthentication,
+) -> Result<(), String> {
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (gRPC mode started)";
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
-    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_console_wallet_address);
-    let address = multiaddr_to_socketaddr(&grpc_console_wallet_address).map_err(|e| e.to_string())?;
+    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_listener_addr);
+    let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
+    let auth = ServerAuthenticationInterceptor::new(auth_config);
+    let service = tari_app_grpc::tari_rpc::wallet_server::WalletServer::with_interceptor(grpc, auth);
+
     Server::builder()
-        .add_service(tari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc))
+        .add_service(service)
         .serve(address)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
@@ -375,4 +405,66 @@ async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: Multiaddr
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{cli::CliCommands, wallet_modes::parse_command_file};
+
+    #[test]
+    fn clap_parses_user_defined_commands_as_expected() {
+        let script = "
+            # Beginning of script file
+
+            get-balance
+
+            whois 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
+
+            discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
+
+            send-tari --message Our_secret! 125T 5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
+
+            coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
+
+            make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
+                      --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
+                      5c4f2a4b3f3f84e047333218a84fd24f581a9d7e4f23b78e3714e9d174427d61
+
+            # End of script file
+            "
+        .to_string();
+
+        let commands = parse_command_file(script).unwrap();
+
+        let mut get_balance = false;
+        let mut send_tari = false;
+        let mut make_it_rain = false;
+        let mut coin_split = false;
+        let mut discover_peer = false;
+        let mut whois = false;
+        for command in commands {
+            match command {
+                CliCommands::GetBalance => get_balance = true,
+                CliCommands::SendTari(_) => send_tari = true,
+                CliCommands::SendOneSided(_) => {},
+                CliCommands::SendOneSidedToStealthAddress(_) => {},
+                CliCommands::MakeItRain(_) => make_it_rain = true,
+                CliCommands::CoinSplit(_) => coin_split = true,
+                CliCommands::DiscoverPeer(_) => discover_peer = true,
+                CliCommands::Whois(_) => whois = true,
+                CliCommands::ExportUtxos(_) => {},
+                CliCommands::ExportSpentUtxos(_) => {},
+                CliCommands::CountUtxos => {},
+                CliCommands::SetBaseNode(_) => {},
+                CliCommands::SetCustomBaseNode(_) => {},
+                CliCommands::ClearCustomBaseNode => {},
+                CliCommands::InitShaAtomicSwap(_) => {},
+                CliCommands::FinaliseShaAtomicSwap(_) => {},
+                CliCommands::ClaimShaAtomicSwapRefund(_) => {},
+                CliCommands::RevalidateWalletDb => {},
+                CliCommands::HashGrpcPassword(_) => {},
+            }
+        }
+        assert!(get_balance && send_tari && make_it_rain && coin_split && discover_peer && whois);
+    }
 }

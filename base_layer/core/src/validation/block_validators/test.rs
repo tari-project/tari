@@ -27,7 +27,6 @@ use tari_test_utils::unpack_enum;
 
 use crate::{
     block_spec,
-    blocks::ChainBlock,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     test_helpers::{
         blockchain::{TempDatabase, TestBlockchain},
@@ -36,8 +35,8 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::T,
-        test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction_components::{OutputFeatures, OutputType, TransactionError, UnblindedOutput},
+        test_helpers::schema_to_transaction,
+        transaction_components::TransactionError,
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -261,155 +260,6 @@ async fn it_rejects_zero_conf_double_spends() {
     assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
 }
 
-mod unique_id {
-    use tari_common_types::types::PublicKey;
-
-    use super::*;
-
-    pub fn create_block(
-        blockchain: &TestBlockchain,
-        parent_name: &'static str,
-        schema: TransactionSchema,
-    ) -> (Arc<ChainBlock>, UnblindedOutput) {
-        let (txs, outputs) = schema_to_transaction(&[schema]);
-        let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
-        let (block, _) = blockchain.create_chained_block(block_spec!("", parent: parent_name, transactions: txs));
-        let asset_output = outputs
-            .into_iter()
-            .find(|o| o.features.unique_asset_id().is_some())
-            .unwrap();
-        (block, asset_output)
-    }
-
-    #[tokio::test]
-    async fn it_checks_for_duplicate_unique_id_in_block() {
-        let (mut blockchain, validator) = setup();
-
-        let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("1")).unwrap();
-        let unique_id = vec![1; 3];
-        let parent_pk = PublicKey::default();
-
-        let features = OutputFeatures {
-            output_type: OutputType::MintNonFungible,
-            parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
-            ..Default::default()
-        };
-
-        // Two outputs with same features
-        let schema =
-            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T, 12 * T], fee: 5.into(), lock: 0, features: features);
-
-        let (block, _) = create_block(&blockchain, "1", schema);
-
-        let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
-        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoUniqueID))
-    }
-
-    #[tokio::test]
-    async fn it_allows_spending_to_new_utxo() {
-        let (mut blockchain, validator) = setup();
-
-        let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("1")).unwrap();
-        let unique_id = vec![1; 3];
-        let parent_pk = PublicKey::default();
-
-        let features = OutputFeatures {
-            output_type: OutputType::MintNonFungible,
-            parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
-            ..Default::default()
-        };
-
-        let schema =
-            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T], fee: 5.into(), lock: 0, features: features);
-
-        let (block, asset_output) = create_block(&blockchain, "1", schema);
-        validator.validate_block_body(block.block().clone()).await.unwrap();
-        blockchain.append_block("2", block).unwrap();
-
-        let features = OutputFeatures {
-            parent_public_key: Some(parent_pk),
-            unique_id: Some(unique_id),
-            ..Default::default()
-        };
-
-        let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
-        let (block, _) = create_block(&blockchain, "2", schema);
-        validator.validate_block_body(block.block().clone()).await.unwrap();
-        blockchain.append_block("3", block).unwrap();
-    }
-
-    #[tokio::test]
-    async fn it_checks_for_duplicate_unique_id_in_blockchain() {
-        let (mut blockchain, validator) = setup();
-
-        let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("1")).unwrap();
-        let unique_id = vec![1; 3];
-        let parent_pk = PublicKey::default();
-
-        let features = OutputFeatures {
-            output_type: OutputType::MintNonFungible,
-            parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
-            ..Default::default()
-        };
-
-        let schema =
-            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T], fee: 5.into(), lock: 0, features: features);
-
-        let (block, asset_output) = create_block(&blockchain, "1", schema);
-        validator.validate_block_body(block.block().clone()).await.unwrap();
-        blockchain.append_block("2", block).unwrap();
-
-        let features = OutputFeatures {
-            output_type: OutputType::MintNonFungible,
-            parent_public_key: Some(parent_pk),
-            unique_id: Some(unique_id),
-            ..Default::default()
-        };
-
-        let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
-        let (block, _) = create_block(&blockchain, "2", schema);
-        let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
-        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoUniqueID))
-    }
-
-    #[tokio::test]
-    async fn it_allows_burn_flag() {
-        let (mut blockchain, validator) = setup();
-
-        let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("1")).unwrap();
-        let unique_id = vec![1; 3];
-        let parent_pk = PublicKey::default();
-
-        let features = OutputFeatures {
-            output_type: OutputType::MintNonFungible,
-            parent_public_key: Some(parent_pk.clone()),
-            unique_id: Some(unique_id.clone()),
-            ..Default::default()
-        };
-
-        let schema =
-            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T], fee: 5.into(), lock: 0, features: features);
-
-        let (block, asset_output) = create_block(&blockchain, "1", schema);
-        validator.validate_block_body(block.block().clone()).await.unwrap();
-        blockchain.append_block("2", block).unwrap();
-
-        let features = OutputFeatures {
-            output_type: OutputType::BurnNonFungible,
-            parent_public_key: Some(parent_pk),
-            unique_id: Some(unique_id),
-            ..Default::default()
-        };
-
-        let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
-        let (block, _) = create_block(&blockchain, "2", schema);
-        validator.validate_block_body(block.block().clone()).await.unwrap();
-    }
-}
-
 mod body_only {
     use super::*;
 
@@ -445,6 +295,7 @@ mod body_only {
 
 mod orphan_validator {
     use super::*;
+    use crate::{transactions::transaction_components::OutputType, txn_schema};
 
     #[test]
     fn it_rejects_zero_conf_double_spends() {
@@ -478,5 +329,30 @@ mod orphan_validator {
         let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
         let err = validator.validate(&unmined).unwrap_err();
         assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
+    }
+
+    #[test]
+    fn it_rejects_unpermitted_output_types() {
+        let rules = ConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_permitted_output_types(&[OutputType::Coinbase])
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let validator = OrphanBlockValidator::new(rules, false, CryptoFactories::default());
+        let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).unwrap();
+
+        let schema = txn_schema!(from: vec![coinbase], to: vec![201 * T]);
+        let (tx, _) = schema_to_transaction(&[schema]);
+
+        let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
+
+        let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
+        let err = validator.validate(&unmined).unwrap_err();
+        unpack_enum!(ValidationError::OutputTypeNotPermitted { output_type } = err);
+        assert_eq!(output_type, OutputType::Standard);
     }
 }

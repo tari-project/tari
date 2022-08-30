@@ -26,12 +26,12 @@ use std::{
     sync::Arc,
 };
 
-use aes_gcm::Aes256Gcm;
 pub use backend::OutputManagerBackend;
+use chacha20poly1305::XChaCha20Poly1305;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput, PublicKey},
+    types::{BlindingFactor, Commitment, HashOutput},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -247,13 +247,6 @@ where T: OutputManagerBackend + 'static
         self.db.fetch_with_features(feature)
     }
 
-    pub fn fetch_by_features_asset_public_key(
-        &self,
-        public_key: PublicKey,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        self.db.fetch_by_features_asset_public_key(public_key)
-    }
-
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
     pub fn fetch_unspent_outputs_for_spending(
         &self,
@@ -334,7 +327,7 @@ where T: OutputManagerBackend + 'static
         self.db.reinstate_cancelled_inbound_output(tx_id)
     }
 
-    pub fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
+    pub fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError> {
         self.db.apply_encryption(cipher)
     }
 
@@ -358,9 +351,9 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn get_unspent_output(&self, output: HashOutput) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let uo = match self.db.fetch(&DbKey::UnspentOutputHash(output.clone())) {
+        let uo = match self.db.fetch(&DbKey::UnspentOutputHash(output)) {
             Ok(None) => log_error(
-                DbKey::UnspentOutputHash(output.clone()),
+                DbKey::UnspentOutputHash(output),
                 OutputManagerStorageError::UnexpectedResult(
                     "Could not retrieve unspent output: ".to_string() + &output.to_hex(),
                 ),

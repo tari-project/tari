@@ -86,6 +86,10 @@ pub struct SeedPeer {
 }
 
 impl SeedPeer {
+    pub fn new(public_key: CommsPublicKey, addresses: Vec<Multiaddr>) -> Self {
+        Self { public_key, addresses }
+    }
+
     #[inline]
     pub fn derive_node_id(&self) -> NodeId {
         NodeId::from_public_key(&self.public_key)

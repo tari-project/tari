@@ -48,7 +48,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::hash::Hashable};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
@@ -209,85 +209,6 @@ async fn inbound_fetch_utxos() {
 }
 
 #[tokio::test]
-async fn inbound_fetch_txos() {
-    let factories = CryptoFactories::default();
-    let store = create_test_blockchain_db();
-    let mempool = new_mempool();
-    let (block_event_sender, _) = broadcast::channel(50);
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
-    let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded_channel();
-    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    let (connectivity, _) = create_connectivity_mock();
-    let inbound_nch = InboundNodeCommsHandlers::new(
-        block_event_sender,
-        store.clone().into(),
-        mempool,
-        consensus_manager,
-        outbound_nci,
-        connectivity,
-    );
-
-    let (utxo, _, _) = create_utxo(
-        MicroTari(10_000),
-        &factories,
-        &Default::default(),
-        &TariScript::default(),
-        &Covenant::default(),
-        MicroTari::zero(),
-    );
-    let (pruned_utxo, _, _) = create_utxo(
-        MicroTari(10_000),
-        &factories,
-        &Default::default(),
-        &TariScript::default(),
-        &Covenant::default(),
-        MicroTari::zero(),
-    );
-    let (stxo, _, _) = create_utxo(
-        MicroTari(10_000),
-        &factories,
-        &Default::default(),
-        &TariScript::default(),
-        &Covenant::default(),
-        MicroTari::zero(),
-    );
-    let utxo_hash = utxo.hash();
-    let stxo_hash = stxo.hash();
-    let pruned_utxo_hash = pruned_utxo.hash();
-    let block = store.fetch_block(0).unwrap().block().clone();
-    let header_hash = block.header.hash();
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), header_hash.clone(), block.header.height, 6000, 0);
-    txn.insert_utxo(stxo.clone(), header_hash.clone(), block.header.height, 6001, 0);
-    txn.insert_pruned_utxo(
-        pruned_utxo_hash.clone(),
-        pruned_utxo.witness_hash(),
-        header_hash.clone(),
-        5,
-        6002,
-        0,
-    );
-    assert!(store.commit(txn).is_ok());
-
-    if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingTxos(vec![
-            utxo_hash,
-            stxo_hash,
-            pruned_utxo_hash,
-        ]))
-        .await
-    {
-        assert_eq!(received_txos.len(), 2);
-        assert_eq!(received_txos[0], utxo);
-        assert_eq!(received_txos[1], stxo);
-    } else {
-        panic!();
-    }
-}
-
-#[tokio::test]
 async fn inbound_fetch_blocks() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
@@ -392,7 +313,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.minimum_value_promise,
     );
     let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002, 0);
+    txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 4002, 0);
     assert!(store.commit(txn).is_ok());
 
     let txn = txn_schema!(

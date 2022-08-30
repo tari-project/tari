@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -30,7 +30,7 @@ use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, PeerConnection};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::hex::Hex;
 use tracing;
 
 use super::error::BlockSyncError;
@@ -207,7 +207,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let best_height = local_metadata.height_of_longest_chain();
         let chain_header = self.db.fetch_chain_header(best_height).await?;
 
-        let best_full_block_hash = chain_header.accumulated_data().hash.clone();
+        let best_full_block_hash = chain_header.accumulated_data().hash;
         debug!(
             target: LOG_TARGET,
             "Starting block sync from peer `{}`. Current best block is #{} `{}`. Syncing to #{} ({}).",
@@ -218,9 +218,9 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             tip_hash.to_hex()
         );
         let request = SyncBlocksRequest {
-            start_hash: best_full_block_hash.clone(),
+            start_hash: best_full_block_hash.to_vec(),
             // To the tip!
-            end_hash: tip_hash.clone(),
+            end_hash: tip_hash.to_vec(),
         };
 
         let mut block_stream = client.sync_blocks(request).await?;
@@ -235,7 +235,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             let header = self
                 .db
-                .fetch_chain_header_by_block_hash(block.hash.clone())
+                .fetch_chain_header_by_block_hash(block.hash.clone().try_into()?)
                 .await?
                 .ok_or_else(|| {
                     BlockSyncError::ProtocolViolation(format!(
@@ -245,7 +245,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 })?;
 
             let current_height = header.height();
-            let header_hash = header.hash().clone();
+            let header_hash = *header.hash();
             let timestamp = header.timestamp();
 
             if header.header().prev_hash != prev_hash {
@@ -255,7 +255,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 });
             }
 
-            prev_hash = header_hash.clone();
+            prev_hash = header_hash;
 
             let body = block
                 .body
@@ -317,7 +317,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     block.height(),
                     header_hash,
                     block.accumulated_data().total_accumulated_difficulty,
-                    block.header().prev_hash.clone(),
+                    block.header().prev_hash,
                     timestamp,
                 )
                 .commit()

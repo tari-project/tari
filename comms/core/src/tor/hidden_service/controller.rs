@@ -211,6 +211,7 @@ impl HiddenServiceController {
             let either = future::select(connect_fut, signal.take().expect("signal was None")).await;
             match either {
                 Either::Left((Ok(client), _)) => {
+                    info!(target: LOG_TARGET, "Connection to tor control port re-established");
                     self.client = Some(client);
                     self.authenticate().await?;
                     self.set_events().await?;

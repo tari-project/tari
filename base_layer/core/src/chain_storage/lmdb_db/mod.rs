@@ -23,11 +23,11 @@
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
+use tari_crypto::hash_domain;
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
-mod composite_key;
-mod contract_index;
+// mod composite_key;
 pub(crate) mod helpers;
 pub(crate) mod key_prefix_cursor;
 mod lmdb;
@@ -72,3 +72,9 @@ pub(crate) struct TransactionKernelRowData {
     pub mmr_position: u32,
     pub hash: HashOutput,
 }
+
+hash_domain!(
+    CoreChainStorageHashDomain,
+    "com.tari.tari-project.base_layer.core.lmdb_db",
+    1
+);

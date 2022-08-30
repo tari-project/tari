@@ -66,7 +66,7 @@ fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Diff
 /// If these assertions pass, a valid `MoneroPowData` instance is returned
 fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header)?;
-    let expected_merge_mining_hash = header.merged_mining_hash();
+    let expected_merge_mining_hash = header.mining_hash();
 
     // Check that the Tari MM hash is found in the monero coinbase transaction
     let is_found = monero_data.coinbase_tx.prefix.extra.0.iter().any(|item| match item {
@@ -191,6 +191,7 @@ mod test {
         TxIn,
         TxOut,
     };
+    use tari_common_types::types::FixedHash;
     use tari_test_utils::unpack_enum;
     use tari_utilities::{
         epoch_time::EpochTime,
@@ -199,7 +200,10 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
+    use crate::{
+        consensus::ConsensusEncoding,
+        proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork},
+    };
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -291,20 +295,20 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0],
-            witness_mr: vec![0],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: Default::default(),
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let hash = block_header.merged_mining_hash();
+        let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let hashes = create_ordered_transaction_hashes_from_block(&block);
         assert_eq!(hashes.len(), block.tx_hashes.len() + 1);
@@ -319,7 +323,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -346,20 +351,20 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0],
-            witness_mr: vec![0],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: Default::default(),
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let hash = block_header.merged_mining_hash();
+        let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -379,7 +384,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -397,14 +403,14 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0],
-            witness_mr: vec![0],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: Default::default(),
             total_script_offset: Default::default(),
             nonce: 0,
@@ -426,7 +432,9 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -446,20 +454,20 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0],
-            witness_mr: vec![0],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: Default::default(),
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let hash = Hash::null_hash();
+        let hash = Hash::null();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -480,7 +488,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -500,20 +509,20 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0],
-            witness_mr: vec![0],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: Default::default(),
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let hash = block_header.merged_mining_hash();
+        let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -534,7 +543,8 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: Default::default(),
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -550,14 +560,14 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0],
-            witness_mr: vec![0],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: Default::default(),
             total_script_offset: Default::default(),
             nonce: 0,
@@ -568,10 +578,11 @@ mod test {
             randomx_key: FixedByteArray::default(),
             transaction_count: 1,
             merkle_root: Default::default(),
-            coinbase_merkle_proof: create_merkle_proof(&[Hash::null_hash()], &Hash::null_hash()).unwrap(),
+            coinbase_merkle_proof: create_merkle_proof(&[Hash::null()], &Hash::null()).unwrap(),
             coinbase_tx: Default::default(),
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -591,20 +602,20 @@ mod test {
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
-            prev_hash: vec![0],
+            prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: vec![0],
-            witness_mr: vec![0],
+            output_mr: FixedHash::zero(),
+            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
-            kernel_mr: vec![0],
+            kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
-            input_mr: vec![0],
+            input_mr: FixedHash::zero(),
             total_kernel_offset: Default::default(),
             total_script_offset: Default::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let hash = block_header.merged_mining_hash();
+        let hash = block_header.mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -621,11 +632,12 @@ mod test {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
-            merkle_root: Hash::null_hash(),
+            merkle_root: Hash::null(),
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let mut serialized = Vec::new();
+        monero_data.consensus_encode(&mut serialized).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,

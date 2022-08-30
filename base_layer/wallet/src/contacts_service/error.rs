@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
+use tari_comms::connectivity::ConnectivityError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -40,6 +41,8 @@ pub enum ContactsServiceError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Livenessl error: `{0}`")]
     LivenessError(#[from] LivenessError),
+    #[error("ConnectivityError error: `{0}`")]
+    ConnectivityError(#[from] ConnectivityError),
 }
 
 #[derive(Debug, Error)]

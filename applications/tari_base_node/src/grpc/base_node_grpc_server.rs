@@ -33,7 +33,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{Commitment, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -43,18 +43,15 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{ChainStorageError, PrunedOutput},
+    chain_storage::ChainStorageError,
     consensus::{emission::Emission, ConsensusDecoding, ConsensusEncoding, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{OutputType, Transaction},
-    },
+    transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};
 
@@ -132,24 +129,17 @@ pub async fn get_heights(
 ) -> Result<(u64, u64), Status> {
     block_heights(handler, request.start_height, request.end_height, request.from_tip).await
 }
-impl BaseNodeGrpcServer {
-    fn report_error(&self, status: Status) -> Status {
-        report_error(self.report_grpc_error, status)
-    }
-}
+impl BaseNodeGrpcServer {}
 
 #[tonic::async_trait]
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
-    type GetConstitutionsStream = mpsc::Receiver<Result<tari_rpc::GetConstitutionsResponse, Status>>;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
-    type GetTokensStream = mpsc::Receiver<Result<tari_rpc::GetTokensResponse, Status>>;
-    type ListAssetRegistrationsStream = mpsc::Receiver<Result<tari_rpc::ListAssetRegistrationsResponse, Status>>;
-    type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
+    type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
@@ -391,7 +381,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 },
             }
         };
-
+        let consensus_rules = self.consensus_rules.clone();
         task::spawn(async move {
             debug!(
                 target: LOG_TARGET,
@@ -412,25 +402,59 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             for (start, end) in page_iter {
                 debug!(target: LOG_TARGET, "Page: {}-{}", start, end);
                 // TODO: Better error handling
-                let result_headers = match handler.get_headers(start..=end).await {
+                let result_data = match handler.get_blocks(start..=end).await {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
                         return;
                     },
                     Ok(data) => {
                         if is_reversed {
-                            data.into_iter().rev().collect::<Vec<_>>()
+                            data.into_iter()
+                                .map(|chain_block| {
+                                    let (block, acc_data, confirmations, _) = chain_block.dissolve();
+                                    let total_block_reward = consensus_rules
+                                        .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+
+                                    tari_rpc::BlockHeaderResponse {
+                                        difficulty: acc_data.achieved_difficulty.into(),
+                                        num_transactions: block.body.kernels().len() as u32,
+                                        confirmations,
+                                        header: Some(block.header.into()),
+                                        reward: total_block_reward.into(),
+                                    }
+                                })
+                                .rev()
+                                .collect::<Vec<_>>()
                         } else {
-                            data
+                            data.into_iter()
+                                .map(|chain_block| {
+                                    let (block, acc_data, confirmations, _) = chain_block.dissolve();
+                                    let total_block_reward = consensus_rules
+                                        .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+
+                                    tari_rpc::BlockHeaderResponse {
+                                        difficulty: acc_data.achieved_difficulty.into(),
+                                        num_transactions: block.body.kernels().len() as u32,
+                                        confirmations,
+                                        header: Some(block.header.into()),
+                                        reward: total_block_reward.into(),
+                                    }
+                                })
+                                .collect()
                         }
                     },
                 };
-                let result_size = result_headers.len();
+                let result_size = result_data.len();
                 debug!(target: LOG_TARGET, "Result headers: {}", result_size);
 
-                for header in result_headers {
-                    debug!(target: LOG_TARGET, "Sending block header: {}", header.height());
-                    match tx.send(Ok(header.into_header().into())).await {
+                for response in result_data {
+                    // header wont be none here as we just filled it in above
+                    debug!(
+                        target: LOG_TARGET,
+                        "Sending block header: {}",
+                        response.header.as_ref().map(|h| h.height).unwrap_or(0)
+                    );
+                    match tx.send(Ok(response)).await {
                         Ok(_) => (),
                         Err(err) => {
                             warn!(target: LOG_TARGET, "Error sending block header via GRPC:  {}", err);
@@ -454,299 +478,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         });
 
         debug!(target: LOG_TARGET, "Sending ListHeaders response stream to client");
-        Ok(Response::new(rx))
-    }
-
-    async fn get_current_contract_outputs(
-        &self,
-        request: Request<tari_rpc::GetCurrentContractOutputsRequest>,
-    ) -> Result<Response<tari_rpc::GetCurrentContractOutputsResponse>, Status> {
-        let request = request.into_inner();
-
-        let contract_id = FixedHash::try_from(request.contract_id.as_slice())
-            .map_err(|err| Status::invalid_argument(format!("Contract ID is not a valid: {}", err)))?;
-        debug!(
-            target: LOG_TARGET,
-            "Incoming GRPC request for GetCurrentContractOutputs: contract_id: {}", contract_id
-        );
-
-        let output_type = u8::try_from(request.output_type)
-            .ok()
-            .and_then(OutputType::from_byte)
-            .ok_or_else(|| Status::invalid_argument("Invalid output_type"))?;
-
-        let mut node_service = self.node_service.clone();
-        let outputs = node_service
-            .get_outputs_for_contract(contract_id, output_type)
-            .await
-            .map_err(|err| self.report_error(Status::internal(err.to_string())))?;
-
-        let outputs = outputs
-            .into_iter()
-            .map(|output| {
-                let unpruned = output
-                    .output
-                    .as_transaction_output()
-                    .ok_or_else(|| Status::failed_precondition("Checkpoint output has been pruned"))?;
-
-                Ok(tari_rpc::UtxoMinedInfo {
-                    output: Some(unpruned.clone().into()),
-                    mmr_position: output.mmr_position,
-                    mined_height: output.mined_height,
-                    header_hash: output.header_hash,
-                    mined_timestamp: output.mined_timestamp,
-                })
-            })
-            .collect::<Result<_, Status>>()?;
-
-        Ok(Response::new(tari_rpc::GetCurrentContractOutputsResponse { outputs }))
-    }
-
-    async fn get_tokens(
-        &self,
-        request: Request<tari_rpc::GetTokensRequest>,
-    ) -> Result<Response<Self::GetTokensStream>, Status> {
-        let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-        debug!(
-            target: LOG_TARGET,
-            "Incoming GRPC request for GetTokens: asset_pub_key: {}",
-            request.asset_public_key.to_hex(),
-        );
-
-        let pub_key = PublicKey::from_bytes(&request.asset_public_key).map_err(|err| {
-            report_error(
-                report_error_flag,
-                Status::invalid_argument(format!("Asset public Key is not a valid public key:{}", err)),
-            )
-        })?;
-
-        let mut handler = self.node_service.clone();
-        let (mut tx, rx) = mpsc::channel(50);
-        task::spawn(async move {
-            let asset_pub_key_hex = request.asset_public_key.to_hex();
-            debug!(
-                target: LOG_TARGET,
-                "Starting thread to process GetTokens: asset_pub_key: {}", asset_pub_key_hex,
-            );
-            let tokens = match handler.get_tokens(pub_key, request.unique_ids).await {
-                Ok(tokens) => tokens,
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
-                    let _get_token_response =
-                        tx.send(Err(report_error(report_error_flag, Status::internal("Internal error"))));
-                    return;
-                },
-            };
-
-            debug!(
-                target: LOG_TARGET,
-                "Found {} tokens for {}",
-                tokens.len(),
-                asset_pub_key_hex
-            );
-
-            for (token, mined_height) in tokens {
-                let features = match token.features.clone().try_into() {
-                    Ok(f) => f,
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
-                        let _get_token_response = tx.send(Err(report_error(
-                            report_error_flag,
-                            Status::internal(format!("Could not convert features:{}", err)),
-                        )));
-                        break;
-                    },
-                };
-                match tx
-                    .send(Ok(tari_rpc::GetTokensResponse {
-                        asset_public_key: token
-                            .features
-                            .parent_public_key
-                            .map(|pk| pk.to_vec())
-                            .unwrap_or_default(),
-                        unique_id: token.features.unique_id.unwrap_or_default(),
-                        owner_commitment: token.commitment.to_vec(),
-                        mined_in_block: vec![],
-                        mined_height,
-                        script: token.script.as_bytes(),
-                        features: Some(features),
-                    }))
-                    .await
-                {
-                    Ok(_) => (),
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Error sending token via GRPC:  {}", err);
-                        match tx
-                            .send(Err(report_error(
-                                report_error_flag,
-                                Status::unknown("Error sending data"),
-                            )))
-                            .await
-                        {
-                            Ok(_) => (),
-                            Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                            },
-                        }
-                        return;
-                    },
-                }
-            }
-        });
-        Ok(Response::new(rx))
-    }
-
-    async fn get_asset_metadata(
-        &self,
-        request: Request<tari_rpc::GetAssetMetadataRequest>,
-    ) -> Result<Response<tari_rpc::GetAssetMetadataResponse>, Status> {
-        let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-
-        let mut handler = self.node_service.clone();
-        let metadata = handler
-            .get_asset_metadata(PublicKey::from_bytes(&request.asset_public_key).map_err(|_e| {
-                report_error(
-                    report_error_flag,
-                    Status::invalid_argument("Not a valid asset public key"),
-                )
-            })?)
-            .await
-            .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?;
-
-        if let Some(m) = metadata {
-            let mined_height = m.mined_height;
-            let mined_in_block = m.header_hash.clone();
-            match m.output {
-                PrunedOutput::Pruned {
-                    output_hash: _,
-                    witness_hash: _,
-                } => {
-                    return Err(report_error(
-                        report_error_flag,
-                        Status::not_found("Output has been pruned"),
-                    ))
-                },
-                PrunedOutput::NotPruned { output } => {
-                    if let Some(ref asset) = output.features.asset {
-                        const ASSET_METADATA_TEMPLATE_ID: u32 = 1;
-                        if asset.template_ids_implemented.contains(&ASSET_METADATA_TEMPLATE_ID) {
-                            // TODO: move to a better location, or better yet, have the grpc caller split the metadata
-                            let m = String::from_utf8(Vec::from(&output.features.metadata[1..])).unwrap();
-                            let mut m = m
-                                .as_str()
-                                .split('|')
-                                .map(|s| s.to_string())
-                                .collect::<Vec<String>>()
-                                .into_iter();
-                            let name = m.next();
-                            let description = m.next();
-                            let image = m.next();
-
-                            // TODO Perhaps this should just return metadata and have the client read the metadata in a
-                            // pattern described by the template
-                            return Ok(Response::new(tari_rpc::GetAssetMetadataResponse {
-                                name: name.unwrap_or_default(),
-                                description: description.unwrap_or_default(),
-                                image: image.unwrap_or_default(),
-                                owner_commitment: Vec::from(output.commitment.as_bytes()),
-                                features: Some(output.features.clone().into()),
-                                mined_height,
-                                mined_in_block,
-                            }));
-                        }
-                    }
-                    return Ok(Response::new(tari_rpc::GetAssetMetadataResponse {
-                        name: "".into(),
-                        description: "".into(),
-                        image: "".into(),
-                        owner_commitment: Vec::from(output.commitment.as_bytes()),
-                        features: Some(output.features.into()),
-                        mined_height,
-                        mined_in_block,
-                    }));
-                },
-            };
-            // Err(report_error(report_error_flag, Status::unknown("Could not find a matching arm")))
-        } else {
-            Err(report_error(
-                report_error_flag,
-                Status::not_found("Could not find any utxo"),
-            ))
-        }
-    }
-
-    async fn list_asset_registrations(
-        &self,
-        request: Request<tari_rpc::ListAssetRegistrationsRequest>,
-    ) -> Result<Response<Self::ListAssetRegistrationsStream>, Status> {
-        let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-
-        let mut handler = self.node_service.clone();
-        let (mut tx, rx) = mpsc::channel(50);
-        task::spawn(async move {
-            debug!(
-                target: LOG_TARGET,
-                "Starting thread to process ListAssetRegistrationsStream: {:?}", request,
-            );
-            let start = request.offset as usize;
-            let end = (request.offset + request.count) as usize;
-
-            let outputs = match handler.get_asset_registrations(start..=end).await {
-                Ok(outputs) => outputs,
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
-                    let _list_assest_registrations_response =
-                        tx.send(Err(report_error(report_error_flag, Status::internal("Internal error"))));
-                    return;
-                },
-            };
-
-            debug!(target: LOG_TARGET, "Found {} tokens", outputs.len(),);
-
-            for output in outputs {
-                let mined_height = output.mined_height;
-                let header_hash = output.header_hash;
-                let output = match output.output.into_unpruned_output() {
-                    Some(output) => output,
-                    None => {
-                        continue;
-                    },
-                };
-                let features = match output.features.clone().try_into() {
-                    Ok(f) => f,
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
-                        let _list_assest_registrations_response = tx.send(Err(report_error(
-                            report_error_flag,
-                            Status::internal(format!("Could not convert features:{}", err)),
-                        )));
-                        break;
-                    },
-                };
-                let response = tari_rpc::ListAssetRegistrationsResponse {
-                    asset_public_key: output
-                        .features
-                        .asset
-                        .map(|asset| asset.public_key.to_vec())
-                        .unwrap_or_default(),
-                    unique_id: output.features.unique_id.unwrap_or_default(),
-                    owner_commitment: output.commitment.to_vec(),
-                    mined_in_block: header_hash,
-                    mined_height,
-                    script: output.script.as_bytes(),
-                    features: Some(features),
-                };
-                if let Err(err) = tx.send(Ok(response)).await {
-                    // This error can only happen if the Receiver has dropped, meaning the request was
-                    // cancelled/disconnected
-                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", err);
-                    return;
-                }
-            }
-        });
         Ok(Response::new(rx))
     }
 
@@ -844,8 +575,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             Err(e) => return Err(report_error(report_error_flag, Status::internal(e.to_string()))),
         };
         // construct response
-        let block_hash = new_block.hash();
-        let mining_hash = new_block.header.merged_mining_hash();
+        let block_hash = new_block.hash().to_vec();
+        let mining_hash = new_block.header.mining_hash().to_vec();
         let block: Option<tari_rpc::Block> = Some(
             new_block
                 .try_into()
@@ -889,8 +620,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             Err(e) => return Err(Status::internal(e.to_string())),
         };
         // construct response
-        let block_hash = new_block.hash();
-        let mining_hash = new_block.header.merged_mining_hash();
+        let block_hash = new_block.hash().to_vec();
+        let mining_hash = new_block.header.mining_hash().to_vec();
 
         let (header, block_body) = new_block.into_header_body();
         let mut header_bytes = Vec::new();
@@ -902,7 +633,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             header: header_bytes,
             block_body: block_body_bytes,
             merge_mining_hash: mining_hash,
-            utxo_mr: header.output_mr,
+            utxo_mr: header.output_mr.to_vec(),
         };
         debug!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");
         Ok(Response::new(response))
@@ -931,7 +662,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = handler
             .submit_block(block)
             .await
-            .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?;
+            .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
+            .to_vec();
 
         debug!(
             target: LOG_TARGET,
@@ -967,7 +699,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = handler
             .submit_block(block)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| Status::internal(e.to_string()))?
+            .to_vec();
 
         debug!(
             target: LOG_TARGET,
@@ -1717,8 +1450,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
         let mut node_service = self.node_service.clone();
         let hash_hex = hash.to_hex();
+        let block_hash = hash
+            .try_into()
+            .map_err(|_| report_error(report_error_flag, Status::internal("Malformed block hash".to_string())))?;
         let block = node_service
-            .get_block_by_hash(hash)
+            .get_block_by_hash(block_hash)
             .await
             .map_err(|err| report_error(report_error_flag, Status::internal(err.to_string())))?;
 
@@ -1743,38 +1479,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 report_error_flag,
                 Status::not_found(format!("Header not found with hash `{}`", hash_hex)),
             )),
-        }
-    }
-
-    async fn get_header_by_height(
-        &self,
-        request: Request<tari_rpc::GetHeaderByHeightRequest>,
-    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
-        let tari_rpc::GetHeaderByHeightRequest { height } = request.into_inner();
-        let mut node_service = self.node_service.clone();
-        let block = node_service
-            .get_block(height)
-            .await
-            .map_err(|err| Status::internal(err.to_string()))?;
-
-        match block {
-            Some(block) => {
-                let (block, acc_data, confirmations, _) = block.dissolve();
-                let total_block_reward = self
-                    .consensus_rules
-                    .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
-
-                let resp = tari_rpc::BlockHeaderResponse {
-                    difficulty: acc_data.achieved_difficulty.into(),
-                    num_transactions: block.body.kernels().len() as u32,
-                    confirmations,
-                    header: Some(block.header.into()),
-                    reward: total_block_reward.into(),
-                };
-
-                Ok(Response::new(resp))
-            },
-            None => Err(Status::not_found(format!("Header not found with height `{}`", height))),
         }
     }
 
@@ -1865,140 +1569,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let response = tari_rpc::MempoolStatsResponse {
-            total_txs: mempool_stats.total_txs as u64,
             unconfirmed_txs: mempool_stats.unconfirmed_txs as u64,
             reorg_txs: mempool_stats.reorg_txs as u64,
-            total_weight: mempool_stats.total_weight,
+            unconfirmed_weight: mempool_stats.unconfirmed_weight,
         };
 
         Ok(Response::new(response))
-    }
-
-    #[allow(clippy::too_many_lines)]
-    async fn get_constitutions(
-        &self,
-        request: Request<tari_rpc::GetConstitutionsRequest>,
-    ) -> Result<Response<Self::GetConstitutionsStream>, Status> {
-        let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-        let dan_node_public_key = PublicKey::from_bytes(&request.dan_node_public_key)
-            .map_err(|_| Status::invalid_argument("Dan node public key is not a valid public key"))?;
-
-        let start_hash = Some(request.start_block_hash)
-            .filter(|h| !h.is_empty())
-            .map(FixedHash::try_from)
-            .transpose()
-            .map_err(|_| Status::invalid_argument("Block hash has an invalid length"))?;
-
-        let mut node_service = self.node_service.clone();
-        // Check the start_hash is correct, or if not provided, start from genesis
-        let start_header = match start_hash {
-            Some(hash) => node_service
-                .get_header_by_hash(hash.to_vec())
-                .await
-                .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
-                .ok_or_else(|| Status::not_found(format!("No block found with hash {}", hash)))?,
-            None => node_service
-                .get_header(0)
-                .await
-                .map_err(|e| report_error(report_error_flag, Status::internal(e.to_string())))?
-                .ok_or_else(|| Status::internal("Node does not have a genesis block!?"))?,
-        };
-        // The number of headers to load at once to query for UTXOs
-        const BATCH_SIZE: u64 = 50;
-        let (mut sender, receiver) = mpsc::channel(50);
-        task::spawn(async move {
-            let dan_node_public_key_hex = dan_node_public_key.to_hex();
-            debug!(
-                target: LOG_TARGET,
-                "Starting thread to process GetConstitutions: dan_node_public_key: {}", dan_node_public_key_hex,
-            );
-            let mut current_height = start_header.height();
-
-            loop {
-                let headers = match node_service
-                    .get_headers((current_height + 1)..=current_height + BATCH_SIZE)
-                    .await
-                {
-                    Ok(h) => h,
-                    Err(err) => {
-                        error!(target: LOG_TARGET, "Error fetching headers: {}", err);
-                        let _err = sender
-                            .send(Err(report_error(report_error_flag, Status::internal(err.to_string()))))
-                            .await;
-                        return;
-                    },
-                };
-
-                if headers.is_empty() {
-                    break;
-                }
-                let num_headers = headers.len();
-
-                for header in headers {
-                    let block_hash_hex = header.hash().to_hex();
-                    match node_service
-                        .get_contract_outputs_for_block(header.hash().clone(), OutputType::ContractConstitution)
-                        .await
-                    {
-                        Ok(constitutions) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Found {} constitutions in block {}",
-                                constitutions.len(),
-                                block_hash_hex
-                            );
-
-                            let constitutions = constitutions.into_iter().filter(|utxo| {
-                                // Filter for constitutions containing the dan_node_public_key
-                                utxo.output
-                                    .as_transaction_output()
-                                    .and_then(|output| output.features.sidechain_features.as_ref())
-                                    .and_then(|sidechain| sidechain.constitution.as_ref())
-                                    .filter(|constitution| {
-                                        constitution.validator_committee.contains(&dan_node_public_key)
-                                    })
-                                    .is_some()
-                            });
-
-                            for utxo in constitutions {
-                                if sender
-                                    .send(Ok(tari_rpc::GetConstitutionsResponse {
-                                        header_hash: utxo.header_hash,
-                                        mined_height: utxo.mined_height,
-                                        mmr_position: utxo.mmr_position,
-                                        mined_timestamp: utxo.mined_timestamp,
-                                        output: utxo.output.into_unpruned_output().map(Into::into),
-                                    }))
-                                    .await
-                                    .is_err()
-                                {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Client disconnected while sending constitution via GRPC"
-                                    );
-                                    break;
-                                }
-                            }
-                        },
-                        Err(err) => {
-                            warn!(target: LOG_TARGET, "Error fetching contract outputs for block: {}", err);
-                            let _err = sender
-                                .send(Err(report_error(report_error_flag, Status::internal("Internal error"))))
-                                .await;
-                            return;
-                        },
-                    }
-                }
-
-                if num_headers < BATCH_SIZE as usize {
-                    break;
-                }
-
-                current_height += BATCH_SIZE + 1;
-            }
-        });
-        Ok(Response::new(receiver))
     }
 }
 

@@ -214,23 +214,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        let origin_node_id = origin_peer.node_id;
+        let origin_public_key = origin_peer.public_key;
 
         // Only propagate a join that was not directly sent to this node
-        if dht_header.destination != self.node_identity.public_key() &&
-            dht_header.destination != self.node_identity.node_id()
-        {
+        if dht_header.destination != self.node_identity.public_key() {
             debug!(
                 target: LOG_TARGET,
                 "Propagating Join message from peer '{}'",
-                origin_node_id.short_str()
+                origin_peer.node_id.short_str()
             );
             // Propagate message to closer peers
             self.outbound_service
                 .send_raw(
                     SendMessageParams::new()
-                        .propagate(origin_node_id.clone().into(), vec![
-                            origin_node_id,
+                        .propagate(origin_public_key.clone().into(), vec![
+                            origin_peer.node_id,
                             source_peer.node_id.clone(),
                         ])
                         .with_dht_header(dht_header)

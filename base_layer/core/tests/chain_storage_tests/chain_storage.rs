@@ -22,7 +22,7 @@
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{BlockHash, PublicKey};
+use tari_common_types::types::BlockHash;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -48,17 +48,14 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::spend_utxos,
-        transaction_components::{OutputFeatures, OutputType},
         CryptoFactories,
     },
     tx,
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
-use tari_utilities::Hashable;
 
 // use crate::helpers::database::create_test_db;
 // use crate::helpers::database::create_store;
@@ -275,7 +272,7 @@ fn test_coverage_chain_storage() {
     assert_eq!(store.fetch_mmr_size(MmrTree::Utxo).unwrap(), 4002);
 
     let mut txn = DbTransaction::new();
-    txn.insert_bad_block(block0.hash().clone(), 0);
+    txn.insert_bad_block(*block0.hash(), 0);
     store.commit(txn).unwrap();
 }
 
@@ -384,8 +381,8 @@ fn handle_tip_reorg() {
     assert_eq!(store.fetch_tip_header().unwrap().header(), orphan_blocks[2].header());
 
     // Check that B2 was removed from the block orphans and A2 has been orphaned.
-    assert!(store.fetch_orphan(orphan_blocks[2].hash().clone()).is_err());
-    assert!(store.fetch_orphan(blocks[2].hash().clone()).is_ok());
+    assert!(store.fetch_orphan(*orphan_blocks[2].hash()).is_err());
+    assert!(store.fetch_orphan(*blocks[2].hash()).is_ok());
 }
 
 #[test]
@@ -553,13 +550,13 @@ fn handle_reorg() {
     assert_eq!(store.fetch_tip_header().unwrap().header(), orphan2_blocks[4].header());
 
     // Check that B2,B3 and C4 were removed from the block orphans and A2,A3,A4 and B4 has been orphaned.
-    assert!(store.fetch_orphan(orphan1_blocks[2].hash().clone()).is_err()); // B2
-    assert!(store.fetch_orphan(orphan1_blocks[3].hash().clone()).is_err()); // B3
-    assert!(store.fetch_orphan(orphan2_blocks[4].hash().clone()).is_err()); // C4
-    assert!(store.fetch_orphan(blocks[2].hash().clone()).is_ok()); // A2
-    assert!(store.fetch_orphan(blocks[3].hash().clone()).is_ok()); // A3
-    assert!(store.fetch_orphan(blocks[4].hash().clone()).is_ok()); // A4
-    assert!(store.fetch_orphan(blocks[4].hash().clone()).is_ok()); // B4
+    assert!(store.fetch_orphan(*orphan1_blocks[2].hash()).is_err()); // B2
+    assert!(store.fetch_orphan(*orphan1_blocks[3].hash()).is_err()); // B3
+    assert!(store.fetch_orphan(*orphan2_blocks[4].hash()).is_err()); // C4
+    assert!(store.fetch_orphan(*blocks[2].hash()).is_ok()); // A2
+    assert!(store.fetch_orphan(*blocks[3].hash()).is_ok()); // A3
+    assert!(store.fetch_orphan(*blocks[4].hash()).is_ok()); // A4
+    assert!(store.fetch_orphan(*blocks[4].hash()).is_ok()); // B4
 }
 
 #[test]
@@ -611,7 +608,7 @@ fn reorgs_should_update_orphan_tips() {
     .is_ok());
 
     store.add_block(a_blocks[2].to_arc_block()).unwrap().assert_added();
-    let a2_hash = a_blocks[2].hash().clone();
+    let a2_hash = *a_blocks[2].hash();
 
     // Create "B" Chain
     let mut b_store = create_store_with_consensus(consensus_manager.clone());
@@ -631,7 +628,7 @@ fn reorgs_should_update_orphan_tips() {
     .is_ok());
 
     store.add_block(b_blocks[1].to_arc_block()).unwrap().assert_orphaned();
-    let b1_hash = b_blocks[1].hash().clone();
+    let b1_hash = *b_blocks[1].hash();
 
     // check that B1 is in orphan tips
     let orphan_tip_b1 = store
@@ -655,7 +652,7 @@ fn reorgs_should_update_orphan_tips() {
     .is_ok());
 
     store.add_block(b_blocks[2].to_arc_block()).unwrap().assert_reorg(2, 2);
-    let b2_hash = b_blocks[2].hash().clone();
+    let b2_hash = *b_blocks[2].hash();
 
     // check that A2 is now in the orphan chain tip db
     let orphan_tip_a2 = store
@@ -687,7 +684,7 @@ fn reorgs_should_update_orphan_tips() {
     .is_ok());
 
     store.add_block(a_blocks[3].to_arc_block()).unwrap().assert_reorg(3, 2);
-    let a3_hash = a_blocks[3].hash().clone();
+    let a3_hash = *a_blocks[3].hash();
 
     // check that B2 is now in the orphan chain tip db
     let orphan_tip_b2 = store
@@ -719,7 +716,7 @@ fn reorgs_should_update_orphan_tips() {
     .is_ok());
 
     store.add_block(b_blocks[3].to_arc_block()).unwrap().assert_orphaned();
-    let b3_hash = b_blocks[3].hash().clone();
+    let b3_hash = *b_blocks[3].hash();
 
     // Block B4
     let txs = vec![txn_schema!(from: vec![b_outputs[3][0].clone()], to: vec![20 * T])];
@@ -734,7 +731,7 @@ fn reorgs_should_update_orphan_tips() {
     .is_ok());
 
     store.add_block(b_blocks[4].to_arc_block()).unwrap().assert_reorg(4, 3);
-    let b4_hash = b_blocks[4].hash().clone();
+    let b4_hash = *b_blocks[4].hash();
 
     // check that A3 is now in the orphan chain tip db
     let orphan_tip_a3 = store
@@ -799,17 +796,17 @@ fn reorgs_should_update_orphan_tips() {
     assert!(orphan_tip_a3.is_none());
 
     // Check that B1 - B4 are orphans
-    assert!(store.fetch_orphan(b_blocks[1].hash().clone()).is_ok()); // B1
-    assert!(store.fetch_orphan(b_blocks[2].hash().clone()).is_ok()); // B2
-    assert!(store.fetch_orphan(b_blocks[3].hash().clone()).is_ok()); // B3
-    assert!(store.fetch_orphan(b_blocks[4].hash().clone()).is_ok()); // B4
+    assert!(store.fetch_orphan(*b_blocks[1].hash()).is_ok()); // B1
+    assert!(store.fetch_orphan(*b_blocks[2].hash()).is_ok()); // B2
+    assert!(store.fetch_orphan(*b_blocks[3].hash()).is_ok()); // B3
+    assert!(store.fetch_orphan(*b_blocks[4].hash()).is_ok()); // B4
 
     // And blocks A1 - A5 are not
-    assert!(store.fetch_orphan(a_blocks[1].hash().clone()).is_err()); // A1
-    assert!(store.fetch_orphan(a_blocks[2].hash().clone()).is_err()); // A2
-    assert!(store.fetch_orphan(a_blocks[3].hash().clone()).is_err()); // A3
-    assert!(store.fetch_orphan(a_blocks[4].hash().clone()).is_err()); // A4
-    assert!(store.fetch_orphan(a_blocks[5].hash().clone()).is_err()); // A5
+    assert!(store.fetch_orphan(*a_blocks[1].hash()).is_err()); // A1
+    assert!(store.fetch_orphan(*a_blocks[2].hash()).is_err()); // A2
+    assert!(store.fetch_orphan(*a_blocks[3].hash()).is_err()); // A3
+    assert!(store.fetch_orphan(*a_blocks[4].hash()).is_err()); // A4
+    assert!(store.fetch_orphan(*a_blocks[5].hash()).is_err()); // A5
 }
 
 #[test]
@@ -999,9 +996,9 @@ fn handle_reorg_failure_recovery() {
     assert_eq!(tip_header.height(), 4);
     assert_eq!(tip_header.header(), blocks[4].header());
 
-    assert!(store.fetch_orphan(blocks[2].hash().clone()).is_err()); // A2
-    assert!(store.fetch_orphan(blocks[3].hash().clone()).is_err()); // A3
-    assert!(store.fetch_orphan(blocks[4].hash().clone()).is_err()); // A4
+    assert!(store.fetch_orphan(*blocks[2].hash()).is_err()); // A2
+    assert!(store.fetch_orphan(*blocks[3].hash()).is_err()); // A3
+    assert!(store.fetch_orphan(*blocks[4].hash()).is_err()); // A4
 }
 
 #[test]
@@ -1048,132 +1045,6 @@ fn store_and_retrieve_blocks() {
     assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
     assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
     assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
-}
-
-#[test]
-#[allow(clippy::erasing_op)]
-#[allow(clippy::too_many_lines)]
-fn asset_unique_id() {
-    let mut rng = rand::thread_rng();
-    let network = Network::LocalNet;
-    let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let tx = txn_schema!(
-        from: vec![outputs[0][0].clone()],
-        to: vec![10 * T, 10 * T, 10 * T, 10 * T, 10 * T]
-    );
-
-    generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    let unique_id1 = vec![1u8; 3];
-
-    // create a new NFT
-    let (_, asset) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset.clone()),
-        unique_id: Some(unique_id1.clone()),
-        ..Default::default()
-    };
-
-    // check the output is not stored in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
-        .unwrap();
-    assert!(output_info.is_none());
-
-    // mint it to the chain
-    let tx = txn_schema!(
-        from: vec![outputs[1][0].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
-    );
-
-    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    assert!(result.is_added());
-
-    // check it is in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
-        .unwrap()
-        .unwrap();
-    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
-
-    // attempt to mint the same unique id for the same asset
-    let tx = txn_schema!(
-        from: vec![outputs[1][1].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
-    );
-
-    let err = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap_err();
-    assert!(matches!(err, ChainStorageError::ValidationError {
-        source: ValidationError::ContainsDuplicateUtxoUniqueID
-    }));
-
-    // new unique id, does not exist yet
-    let unique_id2 = vec![2u8; 3];
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset.clone()),
-        unique_id: Some(unique_id2.clone()),
-        ..Default::default()
-    };
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
-        .unwrap();
-    assert!(output_info.is_none());
-
-    // mint unique_id2
-    let tx = txn_schema!(
-        from: vec![outputs[1][2].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
-    );
-    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    assert!(result.is_added());
-
-    // check it is in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
-        .unwrap()
-        .unwrap();
-    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
-
-    // same id for a different asset is fine
-    let (_, asset2) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
-        output_type: OutputType::MintNonFungible,
-        parent_public_key: Some(asset2.clone()),
-        unique_id: Some(unique_id1.clone()),
-        ..Default::default()
-    };
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
-        .unwrap();
-    assert!(output_info.is_none());
-
-    // mint
-    let tx = txn_schema!(
-        from: vec![outputs[1][3].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
-    );
-    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
-    assert!(result.is_added());
-
-    // check it is in the db
-    let output_info = db
-        .db_read_access()
-        .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
-        .unwrap()
-        .unwrap();
-    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 }
 
 #[test]
@@ -1244,7 +1115,7 @@ fn restore_metadata_and_pruning_horizon_update() {
 
         let block1 = append_block(&db, &block0, vec![], &rules, 1.into()).unwrap();
         db.add_block(block1.to_arc_block()).unwrap();
-        block_hash = block1.hash().clone();
+        block_hash = *block1.hash();
         let metadata = db.get_chain_metadata().unwrap();
         assert_eq!(metadata.height_of_longest_chain(), 1);
         assert_eq!(metadata.best_block(), &block_hash);
@@ -1309,7 +1180,7 @@ fn invalid_block() {
 
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![output]];
-    let block0_hash = blocks[0].hash().clone();
+    let block0_hash = *blocks[0].hash();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
     assert_eq!(metadata.best_block(), &block0_hash);
@@ -1334,7 +1205,7 @@ fn invalid_block() {
         )
         .unwrap()
     );
-    let block1_hash = blocks[1].hash().clone();
+    let block1_hash = *blocks[1].hash();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
@@ -1649,18 +1520,9 @@ fn orphan_cleanup_on_reorg() {
     // cleanup.
     store.cleanup_orphans().unwrap();
     assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 3);
-    assert_eq!(
-        store.fetch_orphan(blocks[2].hash().clone()).unwrap(),
-        *blocks[2].block()
-    );
-    assert_eq!(
-        store.fetch_orphan(blocks[3].hash().clone()).unwrap(),
-        *blocks[3].block()
-    );
-    assert_eq!(
-        store.fetch_orphan(blocks[4].hash().clone()).unwrap(),
-        *blocks[4].block()
-    );
+    assert_eq!(store.fetch_orphan(*blocks[2].hash()).unwrap(), *blocks[2].block());
+    assert_eq!(store.fetch_orphan(*blocks[3].hash()).unwrap(), *blocks[3].block());
+    assert_eq!(store.fetch_orphan(*blocks[4].hash()).unwrap(), *blocks[4].block());
 }
 
 #[test]
@@ -2137,7 +1999,7 @@ fn fetch_deleted_position_block_hash() {
     let block14_hash = store.fetch_header(14).unwrap().unwrap().hash();
 
     let deleted_positions = store
-        .fetch_complete_deleted_bitmap_at(block14_hash.clone())
+        .fetch_complete_deleted_bitmap_at(block14_hash)
         .unwrap()
         .bitmap()
         .to_vec();

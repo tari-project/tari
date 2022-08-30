@@ -327,7 +327,6 @@ impl Dht {
                 self.store_and_forward_requester(),
                 self.dht_requester(),
                 Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
                 self.saf_response_signal_sender.clone(),
             ))

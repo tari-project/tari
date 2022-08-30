@@ -37,7 +37,6 @@ use tari_common_types::types::{
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
-use crate::transactions::transaction_components::SignerSignature;
 
 //---------------------------------- Commitment --------------------------------------------//
 
@@ -78,30 +77,6 @@ impl<T: Borrow<Signature>> From<T> for proto::Signature {
     }
 }
 
-//---------------------------------- SignerSignature --------------------------------------------//
-impl<B: Borrow<SignerSignature>> From<B> for proto::SignerSignature {
-    fn from(value: B) -> Self {
-        Self {
-            signer: value.borrow().signer().to_vec(),
-            signature: Some(proto::Signature::from(value.borrow().signature())),
-        }
-    }
-}
-
-impl TryFrom<proto::SignerSignature> for SignerSignature {
-    type Error = String;
-
-    fn try_from(value: proto::SignerSignature) -> Result<Self, Self::Error> {
-        Ok(Self::new(
-            PublicKey::from_bytes(&value.signer).map_err(|err| err.to_string())?,
-            value
-                .signature
-                .map(TryInto::try_into)
-                .ok_or("signature not provided")??,
-        ))
-    }
-}
-
 //---------------------------------- ComSignature --------------------------------------------//
 
 impl TryFrom<proto::ComSignature> for ComSignature {
@@ -128,15 +103,20 @@ impl From<ComSignature> for proto::ComSignature {
 
 //---------------------------------- HashOutput --------------------------------------------//
 
-impl From<proto::HashOutput> for HashOutput {
-    fn from(output: proto::HashOutput) -> Self {
-        output.data
+impl TryFrom<proto::HashOutput> for HashOutput {
+    type Error = String;
+
+    fn try_from(output: proto::HashOutput) -> Result<Self, Self::Error> {
+        output
+            .data
+            .try_into()
+            .map_err(|_| "Invalid transaction hash".to_string())
     }
 }
 
 impl From<HashOutput> for proto::HashOutput {
     fn from(output: HashOutput) -> Self {
-        Self { data: output }
+        Self { data: output.to_vec() }
     }
 }
 

@@ -34,7 +34,6 @@ use tari_core::transactions::{
     transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
-use tari_utilities::Hashable;
 use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,
@@ -374,7 +373,7 @@ where
                     true,
                     &self.resources.factories,
                     None,
-                    self.prev_header.clone(),
+                    self.prev_header,
                     self.height.unwrap_or(u64::MAX),
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;

@@ -73,12 +73,6 @@ cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_tari_merge_mining_pr
 cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
 cp -f "${project_dir}/${target_release}/tari_merge_mining_proxy" "${tarball_folder}/runtime/tari_merge_mining_proxy"
 
-# Collectibles
-cp -f "${project_dir}/${target_release}/tari_collectibles" "${tarball_folder}/runtime/tari_collectibles"
-
-# Validator node
-cp -f "${project_dir}/${target_release}/tari_validator_node" "${tarball_folder}/runtime/tari_validator_node"
-
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"
 cp -f "${local_dir}/get_xmrig_osx.ps1" "${tarball_folder}/runtime/get_xmrig_osx.ps1"

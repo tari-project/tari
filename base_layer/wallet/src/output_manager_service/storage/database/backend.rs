@@ -1,10 +1,10 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PublicKey},
+    types::{Commitment, FixedHash},
 };
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 
@@ -27,11 +27,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// Fetch outputs with specific features
     fn fetch_with_features(&self, features: OutputType) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-    /// Fetch outputs with specific features for a given asset public key
-    fn fetch_by_features_asset_public_key(
-        &self,
-        public_key: PublicKey,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
     /// Retrieve unspent outputs.
     fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have been mined but not spent yet (have not been deleted)
@@ -44,26 +39,26 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
 
     fn set_received_output_mined_height(
         &self,
-        hash: Vec<u8>,
+        hash: FixedHash,
         mined_height: u64,
-        mined_in_block: Vec<u8>,
+        mined_in_block: FixedHash,
         mmr_position: u64,
         confirmed: bool,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError>;
 
-    fn set_output_to_unmined(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;
+    fn set_output_to_unmined(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
 
     fn mark_output_as_spent(
         &self,
-        hash: Vec<u8>,
+        hash: FixedHash,
         mark_deleted_at_height: u64,
-        mark_deleted_in_block: Vec<u8>,
+        mark_deleted_in_block: FixedHash,
         confirmed: bool,
     ) -> Result<(), OutputManagerStorageError>;
 
-    fn mark_output_as_unspent(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;
+    fn mark_output_as_unspent(&self, hash: FixedHash) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.
@@ -88,7 +83,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
     /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
+    fn apply_encryption(&self, cipher: XChaCha20Poly1305) -> Result<(), OutputManagerStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
 

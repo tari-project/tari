@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use lmdb_zero::error;
+use tari_common_types::types::FixedHashSizeError;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
@@ -131,6 +132,8 @@ pub enum ChainStorageError {
     ConversionError(String),
     #[error("Unable to spend UTXO because it has dependant UTXOS: {details}")]
     UnspendableDueToDependentUtxos { details: String },
+    #[error("FixedHashSize Error: {0}")]
+    FixedHashSizeError(#[from] FixedHashSizeError),
 }
 
 impl ChainStorageError {

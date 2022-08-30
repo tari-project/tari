@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use aes_gcm::Aes256Gcm;
+use chacha20poly1305::XChaCha20Poly1305;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_types::transaction::TxId;
@@ -53,8 +53,6 @@ pub struct NewOutputSql {
     #[derivative(Debug = "ignore")]
     pub script_private_key: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
-    pub features_parent_public_key: Option<Vec<u8>>,
-    pub features_unique_id: Option<Vec<u8>>,
     pub sender_offset_public_key: Vec<u8>,
     pub metadata_signature_nonce: Vec<u8>,
     pub metadata_signature_u_key: Vec<u8>,
@@ -64,7 +62,6 @@ pub struct NewOutputSql {
     pub features_json: String,
     pub covenant: Vec<u8>,
     pub encrypted_value: Vec<u8>,
-    pub contract_id: Option<Vec<u8>>,
     pub minimum_value_promise: i64,
 }
 
@@ -84,18 +81,11 @@ impl NewOutputSql {
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
             received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
-            hash: Some(output.hash),
+            hash: Some(output.hash.to_vec()),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             metadata: Some(output.unblinded_output.features.metadata.clone()),
-            features_parent_public_key: output
-                .unblinded_output
-                .features
-                .parent_public_key
-                .clone()
-                .map(|a| a.to_vec()),
-            features_unique_id: output.unblinded_output.features.unique_asset_id().map(|id| id.to_vec()),
             sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
             metadata_signature_nonce: output.unblinded_output.metadata_signature.public_nonce().to_vec(),
             metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
@@ -108,7 +98,6 @@ impl NewOutputSql {
             })?,
             covenant: output.unblinded_output.covenant.to_bytes(),
             encrypted_value: output.unblinded_output.encrypted_value.to_vec(),
-            contract_id: output.unblinded_output.features.contract_id().map(|h| h.to_vec()),
             minimum_value_promise: output.unblinded_output.minimum_value_promise.as_u64() as i64,
         })
     }
@@ -120,7 +109,7 @@ impl NewOutputSql {
     }
 }
 
-impl Encryptable<Aes256Gcm> for NewOutputSql {
+impl Encryptable<XChaCha20Poly1305> for NewOutputSql {
     fn domain(&self, field_name: &'static str) -> Vec<u8> {
         // WARNING: using `OUTPUT` for both NewOutputSql and OutputSql due to later transition without re-encryption
         [Self::OUTPUT, self.script.as_slice(), field_name.as_bytes()]
@@ -128,7 +117,7 @@ impl Encryptable<Aes256Gcm> for NewOutputSql {
             .to_vec()
     }
 
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn encrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             encrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 
@@ -141,7 +130,7 @@ impl Encryptable<Aes256Gcm> for NewOutputSql {
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+    fn decrypt(&mut self, cipher: &XChaCha20Poly1305) -> Result<(), String> {
         self.spending_key =
             decrypt_bytes_integral_nonce(cipher, self.domain("spending_key"), self.spending_key.clone())?;
 
@@ -169,8 +158,6 @@ impl From<OutputSql> for NewOutputSql {
             input_data: o.input_data,
             script_private_key: o.script_private_key,
             metadata: o.metadata,
-            features_parent_public_key: o.features_parent_public_key,
-            features_unique_id: o.features_unique_id,
             sender_offset_public_key: o.sender_offset_public_key,
             metadata_signature_nonce: o.metadata_signature_nonce,
             metadata_signature_u_key: o.metadata_signature_u_key,
@@ -180,7 +167,6 @@ impl From<OutputSql> for NewOutputSql {
             features_json: o.features_json,
             covenant: o.covenant,
             encrypted_value: o.encrypted_value,
-            contract_id: o.contract_id,
             minimum_value_promise: o.minimum_value_promise,
         }
     }

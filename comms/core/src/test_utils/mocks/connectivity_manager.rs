@@ -264,6 +264,9 @@ impl ConnectivityManagerMock {
                     })
                     .await
             },
+            GetPeerStats(_, _) => {
+                unimplemented!()
+            },
             GetAllConnectionStates(_) => unimplemented!(),
             BanPeer(node_id, duration, reason) => {
                 self.state

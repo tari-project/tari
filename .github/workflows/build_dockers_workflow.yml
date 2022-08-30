@@ -1,0 +1,197 @@
+---
+name: Build docker images - workflow_call/on-demand
+
+'on':
+  workflow_call:
+    secrets:
+      DOCKER_PROVIDER:
+        required: true
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
+        required: true
+    inputs:
+      toolchain:
+        type: string
+        description: 'Rust toolchain'
+        default: nightly-2022-05-01
+      arch:
+        type: string
+        default: x86-64
+      features:
+        type: string
+        default: safe
+      version:
+        type: string
+        description: 'build tag/version'
+      tag_alias:
+        type: string
+        description: 'build tag alias'
+      build_items:
+        type: string
+        default: tari_sha3_miner
+        description: 'build images'
+      platforms:
+        type: string
+        # linux/arm64, linux/amd64
+        default: linux/amd64
+
+env:
+  LAUNCHPAD_REPO: tari-project/tari-launchpad
+  LAUNCHPAD_BRANCH: main
+
+jobs:
+  envs_setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+
+    steps:
+      - name: checkout tari-launchpad
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ env.LAUNCHPAD_REPO }}
+          ref: ${{ env.LAUNCHPAD_BRANCH }}
+          path: tari-launchpad
+
+      - name: Set Matrix
+        id: set_matrix
+        shell: bash
+        run: |
+          build_items=${{ inputs.build_items }}
+          echo "Building with ${build_items}."
+          if [ -z "${build_items}" ] || [ "${build_items}" = "tari_all" ] ; then
+            echo "Build all tari images"
+            matrix_selection=$( jq -s -c '.[]' tari-launchpad/tarisuite.json )
+          elif [ "${build_items:0:5}" = "tari_" ] ; then
+            echo "Build only selected tari images - ${build_items}"
+            matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
+              | select(."image_name"==$jsonVar)]' tari-launchpad/tarisuite.json )
+          elif [ "${build_items}" = "all" ] ; then
+            echo "Build all images"
+            matrix_selection=$( jq -c '. += input' tari-launchpad/tarisuite.json tari-launchpad/3rdparty.json )
+          elif [ "${build_items:0:8}" = "3rdparty" ] ; then
+            echo "Build only 3rdparty images - ${build_items}"
+            matrix_selection=$( jq -s -c '.[]' tari-launchpad/3rdparty.json )
+          else
+            echo "Build only selected 3rdparty images - ${build_items}"
+            matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
+              | select(."image_name"==$jsonVar)]' tari-launchpad/3rdparty.json )
+          #  "!! Broken selection? !!"
+          #  exit 1
+          fi
+
+          # ToDo: Add error checking
+
+          # Setup the json build matrix
+          matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .[]}')
+
+          echo $matrix
+          echo $matrix | jq .
+          echo "::set-output name=matrix::$matrix"
+          #echo "matrix=${matrix}" >> $GITHUB_ENV
+
+  docker_build:
+    name: Docker building ${{ matrix.builds.image_name }}
+    needs: envs_setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.envs_setup.outputs.matrix) }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v3
+        with:
+          path: tari
+
+      - name: checkout tari-launchpad
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ env.LAUNCHPAD_REPO }}
+          ref: ${{ env.LAUNCHPAD_BRANCH }}
+          path: tari-launchpad
+
+      - name: environment setup
+        shell: bash
+        run: |
+          IMAGE_NAME=${{ matrix.builds.image_name }}
+          if [ -z "${{ inputs.version }}" ]; then
+            echo "Get tari version"
+            TARI_SOURCE_ROOT="tari/"
+            VAPP=$(awk -F ' = ' \
+              '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' \
+              "${TARI_SOURCE_ROOT}/applications/tari_base_node/Cargo.toml")
+
+            VBRANCH=$(git --git-dir ${TARI_SOURCE_ROOT}/.git branch --show-current)
+            VSHA_SHORT=$(git --git-dir ${TARI_SOURCE_ROOT}/.git rev-parse --short HEAD)
+            VERSION="v${VAPP}_${VBRANCH}_$(date -u '+%Y%m%d')_${VSHA_SHORT}"
+          else
+            VERSION=${{ inputs.version }}
+          fi
+          echo "Setting ${VERSION} as docker tag"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          if [ ! -z "${{ inputs.tag_alias }}" ]; then
+            echo "Setup tag_alias"
+            echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}" >> $GITHUB_ENV
+          fi
+          if [ "${IMAGE_NAME:0:5}" = "tari_" ] ; then
+            echo "Tari builds"
+            mkdir -p tari/buildtools/docker_rig
+            cp -v tari-launchpad/docker_rig/start_tari_app.sh tari/buildtools/docker_rig/start_tari_app.sh
+            echo "DOCKERFILE=tarilabs" >> $GITHUB_ENV
+            echo "APP_NAME=${{ matrix.builds.app_name }}" >> $GITHUB_ENV
+            echo "APP_EXEC=${{ matrix.builds.app_exec }}" >> $GITHUB_ENV
+          else
+            echo "3rd Party builds - ${IMAGE_NAME}"
+            if [ -f "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile" ]; then
+              echo "DOCKERFILE=${IMAGE_NAME}" >> $GITHUB_ENV
+              SUBTAG=$(awk -v search="^ARG ${IMAGE_NAME^^}?_VERSION=" -F '=' '$0 ~ search \
+                { gsub(/["]/, "", $2); printf("%s",$2) }' \
+                "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile")
+              echo "Docker subtag - ${SUBTAG}"
+              echo "VERSION=${SUBTAG}_${VERSION}" >> $GITHUB_ENV
+              echo "DOCKER_SUBTAG=--build-arg ${IMAGE_NAME^^}_VERSION=${SUBTAG}" >> $GITHUB_ENV
+            else
+              "!! ${IMAGE_NAME}.Dockerfile file not found !!"
+              exit 1
+            fi
+          fi
+
+      - name: Login to Docker Image Provider
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ secrets.DOCKER_PROVIDER }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up QEMU for Docker
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Docker image build and push
+        id: docker_build
+        uses: docker/build-push-action@v3
+        with:
+          context: ./tari/
+          file: ./tari-launchpad/docker_rig/${{ env.DOCKERFILE }}.Dockerfile
+          platforms: ${{ inputs.platforms }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            ARCH=${{ inputs.arch }}
+            FEATURES=${{ inputs.features }}
+            APP_NAME=${{ matrix.builds.app_name }}
+            APP_EXEC=${{ matrix.builds.app_exec }}
+            ${{ env.DOCKER_SUBTAG }}
+          tags: |
+            ${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ env.VERSION }}
+            ${{ env.TAG_ALIAS }}
+
+      - name: Image digest
+        run: echo ${{ steps.docker_build.outputs.digest }}

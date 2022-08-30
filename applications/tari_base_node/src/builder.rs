@@ -38,7 +38,6 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::{
         block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-        dan_validators::TxDanLayerValidator,
         header_validator::HeaderValidator,
         transaction_validators::{
             MempoolValidator,
@@ -71,12 +70,10 @@ pub struct BaseNodeContext {
 }
 
 impl BaseNodeContext {
-    /// Starts the node container. This entails the base node state machine.
+    /// Waits for shutdown of the base node state machine and comms.
     /// This call consumes the NodeContainer instance.
-    #[tracing::instrument(name = "base_node::run", skip(self))]
-    pub async fn run(self) {
-        info!(target: LOG_TARGET, "Tari base node has STARTED");
-
+    #[tracing::instrument(name = "base_node::wait_for_shutdown", skip(self))]
+    pub async fn wait_for_shutdown(self) {
         self.state_machine().shutdown_signal().wait().await;
         info!(target: LOG_TARGET, "Waiting for communications stack shutdown");
 
@@ -247,7 +244,6 @@ async fn build_node_context(
         )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
-        Box::new(TxDanLayerValidator::new(blockchain_db.clone())),
     ]);
     let mempool = Mempool::new(
         app_config.base_node.mempool.clone(),
