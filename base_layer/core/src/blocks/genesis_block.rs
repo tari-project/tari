@@ -219,21 +219,21 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // use croaring::Bitmap;
     // use std::convert::TryFrom;
     // use crate::{KernelMmr, MutableOutputMmr, WitnessMmr};
-    
+
     // let mut kernel_mmr = KernelMmr::new(Vec::new());
     // for k in block.body.kernels() {
     //     println!("k: {}", k);
     //     kernel_mmr.push(k.hash().to_vec()).unwrap();
     // }
-    
+
     // let mut witness_mmr = WitnessMmr::new(Vec::new());
     // let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-    
+
     // for o in block.body.outputs() {
     //     witness_mmr.push(o.witness_hash().to_vec()).unwrap();
     //     output_mmr.push(o.hash().to_vec()).unwrap();
     // }
-    
+
     // block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
     // block.header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
     // block.header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
