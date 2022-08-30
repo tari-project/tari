@@ -66,7 +66,7 @@
 # history by including a (non-stealth address) one-sided payment.
 # If set to `true`, then outputs received via simple one-sided transactions, won't be automatically selected as
 # further transactions, but can still be selected individually as specific outputs.
-#autoignore_onesided_utxos = true
+#autoignore_onesided_utxos = false
 
 # Set to true to enable grpc. (default = false)
 #grpc_enabled = false
