@@ -29,7 +29,7 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, SendMessageResponse},
@@ -828,7 +828,7 @@ where
             .resources
             .outbound_message_service
             .closest_broadcast(
-                NodeId::from_public_key(&self.dest_pubkey),
+                self.dest_pubkey.clone(),
                 OutboundEncryption::encrypt_for(self.dest_pubkey.clone()),
                 vec![],
                 OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),

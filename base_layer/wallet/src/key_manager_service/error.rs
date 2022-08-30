@@ -67,8 +67,6 @@ pub enum KeyManagerStorageError {
     DieselConnectionError(#[from] diesel::ConnectionError),
     #[error("Database migration error: `{0}`")]
     DatabaseMigrationError(String),
-    #[error("Blocking task spawn error: `{0}`")]
-    BlockingTaskSpawnError(String),
     #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
     #[error("Wallet db is currently encrypted, decrypt before use")]
