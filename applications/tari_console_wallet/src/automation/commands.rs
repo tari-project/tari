@@ -704,23 +704,17 @@ pub async fn command_runner(
                     set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await?;
                 wallet
                     .db
-                    .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
-                    .await?;
+                    .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())?;
                 wallet
                     .db
-                    .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
-                    .await?;
+                    .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())?;
                 println!("Custom base node peer saved in wallet database.");
             },
             ClearCustomBaseNode => {
                 wallet
                     .db
-                    .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
-                    .await?;
-                wallet
-                    .db
-                    .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
-                    .await?;
+                    .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())?;
+                wallet.db.clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())?;
                 println!("Custom base node peer cleared from wallet database.");
             },
             InitShaAtomicSwap(args) => {

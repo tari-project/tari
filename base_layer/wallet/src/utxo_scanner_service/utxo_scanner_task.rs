@@ -78,9 +78,9 @@ where TBackend: WalletBackend + 'static
 {
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
-            self.set_recovery_mode().await?;
+            self.set_recovery_mode()?;
         } else {
-            let in_progress = self.check_recovery_mode().await?;
+            let in_progress = self.check_recovery_mode()?;
             if in_progress {
                 warn!(
                     target: LOG_TARGET,
@@ -98,8 +98,7 @@ where TBackend: WalletBackend + 'static
                 Some(peer) => match self.attempt_sync(peer.clone()).await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
                         debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
-                            .await?;
+                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)?;
                         return Ok(());
                     },
                     Err(e) => {
@@ -139,7 +138,7 @@ where TBackend: WalletBackend + 'static
         }
     }
 
-    async fn finalize(
+    fn finalize(
         &self,
         num_outputs_recovered: u64,
         final_height: u64,
@@ -159,7 +158,7 @@ where TBackend: WalletBackend + 'static
 
         // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
         if self.mode == UtxoScannerMode::Recovery {
-            self.clear_recovery_mode().await?;
+            self.clear_recovery_mode()?;
         }
         Ok(())
     }
@@ -243,7 +242,7 @@ where TBackend: WalletBackend + 'static
             } else {
                 // The node does not know of any of our cached headers so we will start the scan anew from the
                 // wallet birthday
-                self.resources.db.clear_scanned_blocks().await?;
+                self.resources.db.clear_scanned_blocks()?;
                 let birthday_height_hash = self.get_birthday_header_height_hash(&mut client).await?;
 
                 ScannedBlock {
@@ -314,7 +313,7 @@ where TBackend: WalletBackend + 'static
         current_tip_height: u64,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
-        let scanned_blocks = self.resources.db.get_scanned_blocks().await?;
+        let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
             "Found {} cached previously scanned blocks",
@@ -376,10 +375,7 @@ where TBackend: WalletBackend + 'static
                 target: LOG_TARGET,
                 "Reorg detected on base node. Removing scanned blocks from height {}", block.height
             );
-            self.resources
-                .db
-                .clear_scanned_blocks_from_and_higher(block.height)
-                .await?;
+            self.resources.db.clear_scanned_blocks_from_and_higher(block.height)?;
         }
 
         if let Some(sb) = found_scanned_block {
@@ -466,21 +462,17 @@ where TBackend: WalletBackend + 'static
                 .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
                 .await?;
             let block_hash = current_header_hash.try_into()?;
-            self.resources
-                .db
-                .save_scanned_block(ScannedBlock {
-                    header_hash: block_hash,
-                    height: current_height,
-                    num_outputs: Some(count),
-                    amount: Some(amount),
-                    timestamp: Utc::now().naive_utc(),
-                })
-                .await?;
+            self.resources.db.save_scanned_block(ScannedBlock {
+                header_hash: block_hash,
+                height: current_height,
+                num_outputs: Some(count),
+                amount: Some(amount),
+                timestamp: Utc::now().naive_utc(),
+            })?;
 
             self.resources
                 .db
-                .clear_scanned_blocks_before_height(current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE), true)
-                .await?;
+                .clear_scanned_blocks_before_height(current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE), true)?;
 
             if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                 debug!(
@@ -600,25 +592,23 @@ where TBackend: WalletBackend + 'static
         Ok((num_recovered, total_amount))
     }
 
-    async fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
         self.resources
             .db
-            .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())
-            .await?;
+            .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
         Ok(())
     }
 
-    async fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
+    fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
         self.resources
             .db
             .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
-            .await
             .map(|x| x.is_some())
             .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
-    async fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
-        let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned()).await?;
+    fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+        let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned())?;
         Ok(())
     }
 
@@ -676,7 +666,7 @@ where TBackend: WalletBackend + 'static
         &self,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
-        let birthday = self.resources.db.get_wallet_birthday().await?;
+        let birthday = self.resources.db.get_wallet_birthday()?;
         // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
         // issues
         let epoch_time = u64::from(birthday.saturating_sub(2)) * 60 * 60 * 24;
