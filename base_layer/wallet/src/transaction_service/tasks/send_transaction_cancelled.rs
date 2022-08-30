@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_common_types::transaction::TxId;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester},
@@ -48,7 +48,7 @@ pub async fn send_transaction_cancelled_message(
 
     let _message_send_state = outbound_message_service
         .closest_broadcast(
-            NodeId::from_public_key(&destination_public_key),
+            destination_public_key.clone(),
             OutboundEncryption::encrypt_for(destination_public_key),
             vec![],
             OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),

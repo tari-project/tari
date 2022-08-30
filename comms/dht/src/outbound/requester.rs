@@ -155,7 +155,7 @@ impl OutboundMessageRequester {
     /// Use this strategy to broadcast a message destined for a particular peer.
     pub async fn closest_broadcast<T>(
         &mut self,
-        destination_node_id: NodeId,
+        destination_public_key: CommsPublicKey,
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
@@ -165,9 +165,9 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .closest(destination_node_id.clone(), exclude_peers)
+                .closest(NodeId::from_public_key(&destination_public_key), exclude_peers)
                 .with_encryption(encryption)
-                .with_destination(destination_node_id.into())
+                .with_destination(destination_public_key.into())
                 .finish(),
             message,
         )
