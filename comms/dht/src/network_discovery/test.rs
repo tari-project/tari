@@ -187,24 +187,19 @@ mod state_machine {
         connectivity_mock.add_active_connection(connection).await;
 
         // Checking banning logic
-        let invalid_peer = make_node_identity();
-        invalid_peer.replace_signature(make_node_identity().identity_signature_read().clone().unwrap());
+        let mut invalid_peer = make_node_identity().to_peer();
+        invalid_peer.set_valid_identity_signature(make_node_identity().identity_signature_read().clone().unwrap());
         let resp = GetPeersResponse {
-            peer: Some(invalid_peer.to_peer().into()),
+            peer: Some(invalid_peer.clone().into()),
         };
         mock.get_peers.set_response(Ok(vec![resp])).await;
+
         discovery_actor.spawn();
 
-        let mut banned = false;
-        for _ in 0..10 {
-            let res = peer_manager.is_peer_banned(invalid_peer.node_id()).await;
-            if let Ok(true) = res {
-                banned = true;
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        assert!(banned, "Peer is not banned.");
+        connectivity_mock.await_call_count(1).await;
+        let banned = connectivity_mock.take_banned_peers().await;
+        let (peer, _, _) = &banned[0];
+        assert_eq!(peer, peer_node_identity.node_id());
     }
 
     #[runtime::test]

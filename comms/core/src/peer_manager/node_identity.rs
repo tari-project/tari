@@ -180,11 +180,6 @@ impl NodeIdentity {
         *acquire_write_lock!(self.identity_signature) = Some(identity_sig);
     }
 
-    /// The method for testing purposes to replace signature.
-    pub fn replace_signature(&self, identity_signature: IdentitySignature) {
-        *acquire_write_lock!(self.identity_signature) = Some(identity_signature);
-    }
-
     /// Returns a Peer with the same public key, node id, public address and features as represented in this
     /// NodeIdentity. _NOTE: PeerFlags, supported_protocols and user agent are empty._
     pub fn to_peer(&self) -> Peer {

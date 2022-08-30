@@ -63,6 +63,7 @@ struct State {
     active_conns: HashMap<NodeId, PeerConnection>,
     pending_conns: HashMap<NodeId, Vec<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>>,
     selected_connections: Vec<PeerConnection>,
+    banned_peers: Vec<(NodeId, Duration, String)>,
     connectivity_status: ConnectivityStatus,
 }
 
@@ -175,6 +176,10 @@ impl ConnectivityManagerMockState {
         self.event_tx.send(event).unwrap();
     }
 
+    pub async fn take_banned_peers(&self) -> Vec<(NodeId, Duration, String)> {
+        self.with_state(|state| state.banned_peers.drain(..).collect()).await
+    }
+
     pub(self) async fn with_state<F, R>(&self, f: F) -> R
     where F: FnOnce(&mut State) -> R {
         let mut lock = self.inner.lock().await;
@@ -260,7 +265,13 @@ impl ConnectivityManagerMock {
                     .await
             },
             GetAllConnectionStates(_) => unimplemented!(),
-            BanPeer(_, _, _) => {},
+            BanPeer(node_id, duration, reason) => {
+                self.state
+                    .with_state(|state| {
+                        state.banned_peers.push((node_id, duration, reason));
+                    })
+                    .await
+            },
             AddPeerToAllowList(_) => {},
             RemovePeerFromAllowList(_) => {},
             GetActiveConnections(reply) => {
