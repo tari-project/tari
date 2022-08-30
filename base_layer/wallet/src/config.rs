@@ -136,7 +136,7 @@ impl Default for WalletConfig {
             base_node_service_config: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),
-            db_connection_pool_size: 5, // TODO: get actual default
+            db_connection_pool_size: 16, // Note: Do not reduce this default number
             password: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,

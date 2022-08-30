@@ -32,8 +32,8 @@
 # DO NOT EVER DELETE THIS FILE unless you (a) have backed up your seed phrase and (b) know what you are doing!
 #db_file = "db/console_wallet.db"
 
-# The main wallet db sqlite database backend connection pool size for concurrent reads (default = 5)
-#db_connection_pool_size = 5
+# The main wallet db sqlite database backend connection pool size for concurrent reads (default = 16)
+#db_connection_pool_size = 16
 
 # Console wallet password. Should you wish to start your console wallet without typing in your password, the following
 # options are available:
