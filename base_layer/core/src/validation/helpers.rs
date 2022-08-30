@@ -380,7 +380,8 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
         // like output features match)
         if utxo_hash == output_hash {
-            // Because the retrieved hash matches the new input.output_hash() we know all the fields match and are all still the same
+            // Because the retrieved hash matches the new input.output_hash() we know all the fields match and are all
+            // still the same
             return Ok(());
         }
 
