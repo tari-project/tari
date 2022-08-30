@@ -33,6 +33,7 @@ use chacha20poly1305::{
     aead::{Aead, NewAead},
     ChaCha20Poly1305,
 };
+use digest::Digest;
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_crypto::{
@@ -241,19 +242,16 @@ pub fn create_message_domain_separated_hash_parts(
 
     // we digest the given data into a domain independent hash function to produce a signature
     // use of the hashing API for domain separation and deal with variable length input
-    let domain_separated_hash = comms_dht_hash_domain_challenge()
-        .chain(&protocol_version.as_bytes())
+    let hasher = comms_dht_hash_domain_challenge()
+        .chain(protocol_version.as_bytes())
         .chain(destination.to_inner_bytes())
-        .chain(&(message_type as i32).to_le_bytes())
-        .chain(&flags.bits().to_le_bytes())
-        .chain(&expires)
-        .chain(&e_pk)
-        .chain(&body)
-        .finalize();
+        .chain((message_type as i32).to_le_bytes())
+        .chain(flags.bits().to_le_bytes())
+        .chain(expires)
+        .chain(e_pk)
+        .chain(body);
 
-    let mut output = [0u8; 32];
-    output.copy_from_slice(domain_separated_hash.as_ref());
-    output
+    Digest::finalize(hasher).into()
 }
 
 #[cfg(test)]

@@ -265,8 +265,6 @@ pub enum NodeDestination {
     Unknown,
     /// Destined for a particular public key
     PublicKey(Box<CommsPublicKey>),
-    /// Destined for a particular node id, or network region
-    NodeId(Box<NodeId>),
 }
 
 impl NodeDestination {
@@ -283,40 +281,22 @@ impl NodeDestination {
                 buf[1..].copy_from_slice(pk.as_bytes());
                 buf
             },
-            NodeDestination::NodeId(node_id) => {
-                buf[0] = 2;
-                buf[1..=NodeId::byte_size()].copy_from_slice(node_id.as_bytes());
-                buf
-            },
         }
     }
 
     /// Returns a reference to the `CommsPublicKey` if the destination is `CommsPublicKey`.
     pub fn public_key(&self) -> Option<&CommsPublicKey> {
-        use NodeDestination::{NodeId, PublicKey, Unknown};
+        use NodeDestination::{PublicKey, Unknown};
         match self {
             Unknown => None,
             PublicKey(pk) => Some(pk),
-            NodeId(_) => None,
-        }
-    }
-
-    /// Returns a reference to the `NodeId` if the destination is `NodeId`.
-    pub fn node_id(&self) -> Option<&NodeId> {
-        use NodeDestination::{NodeId, PublicKey, Unknown};
-        match self {
-            Unknown => None,
-            PublicKey(_) => None,
-            NodeId(node_id) => Some(node_id),
         }
     }
 
     /// Returns the NodeId for this destination, deriving it from the PublicKey if necessary or returning None if the
     /// destination is `Unknown`.
     pub fn to_derived_node_id(&self) -> Option<NodeId> {
-        self.node_id()
-            .cloned()
-            .or_else(|| self.public_key().map(NodeId::from_public_key))
+        self.public_key().map(NodeId::from_public_key)
     }
 
     /// Returns true if the destination is `Unknown`, otherwise false.
@@ -327,7 +307,7 @@ impl NodeDestination {
     /// Returns true if the NodeIdentity NodeId or PublicKey is equal to this destination.
     #[inline]
     pub fn equals_node_identity(&self, other: &NodeIdentity) -> bool {
-        self == other.node_id() || self == other.public_key()
+        self == other.public_key()
     }
 }
 
@@ -337,21 +317,9 @@ impl PartialEq<CommsPublicKey> for NodeDestination {
     }
 }
 
-impl PartialEq<NodeId> for NodeDestination {
-    fn eq(&self, other: &NodeId) -> bool {
-        self.node_id().map(|node_id| node_id == other).unwrap_or(false)
-    }
-}
-
 impl PartialEq<&CommsPublicKey> for NodeDestination {
     fn eq(&self, other: &&CommsPublicKey) -> bool {
         self.public_key().map(|pk| pk == *other).unwrap_or(false)
-    }
-}
-
-impl PartialEq<&NodeId> for NodeDestination {
-    fn eq(&self, other: &&NodeId) -> bool {
-        self.node_id().map(|node_id| node_id == *other).unwrap_or(false)
     }
 }
 
@@ -359,7 +327,6 @@ impl Display for NodeDestination {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             NodeDestination::Unknown => write!(f, "Unknown"),
-            NodeDestination::NodeId(node_id) => write!(f, "NodeId({})", node_id),
             NodeDestination::PublicKey(public_key) => write!(f, "PublicKey({})", public_key),
         }
     }
@@ -380,9 +347,6 @@ impl TryFrom<Destination> for NodeDestination {
             Destination::PublicKey(pk) => {
                 CommsPublicKey::from_bytes(&pk).map(|pk| NodeDestination::PublicKey(Box::new(pk)))
             },
-            Destination::NodeId(node_id) => {
-                NodeId::from_bytes(&node_id).map(|node_id| NodeDestination::NodeId(Box::new(node_id)))
-            },
         }
     }
 }
@@ -393,19 +357,12 @@ impl From<CommsPublicKey> for NodeDestination {
     }
 }
 
-impl From<NodeId> for NodeDestination {
-    fn from(node_id: NodeId) -> Self {
-        NodeDestination::NodeId(Box::new(node_id))
-    }
-}
-
 impl From<NodeDestination> for Destination {
     fn from(destination: NodeDestination) -> Self {
-        use NodeDestination::{NodeId, PublicKey, Unknown};
+        use NodeDestination::{PublicKey, Unknown};
         match destination {
             Unknown => Destination::Unknown(true),
             PublicKey(pk) => Destination::PublicKey(pk.to_vec()),
-            NodeId(node_id) => Destination::NodeId(node_id.to_vec()),
         }
     }
 }
@@ -426,11 +383,6 @@ mod tests {
             assert!(NodeDestination::Unknown.to_inner_bytes().iter().all(|b| *b == 0));
             let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
             assert!(to_hex(&NodeDestination::PublicKey(Box::new(pk.clone())).to_inner_bytes()).contains(&pk.to_hex()));
-            let node_id = NodeId::from_public_key(&pk);
-            assert!(
-                to_hex(&NodeDestination::NodeId(Box::new(node_id.clone())).to_inner_bytes())
-                    .contains(&node_id.to_hex())
-            );
         }
     }
 }
