@@ -243,11 +243,11 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
     // Hardcode the Merkle roots once they've been computed above
     block.header.kernel_mr =
-        FixedHash::from_hex("157ab76af27428ff7bca4d910908bae698df34a6dcaf43a1d11a97fa3e67539a").unwrap();
+        FixedHash::from_hex("49bec44ce879f529523c593d2f533fffdc2823512d673e78e1bb6b2c28d9fcf5").unwrap();
     block.header.witness_mr =
-        FixedHash::from_hex("68c0fa430ec073acea47116ebd23ba896df86217dd016f3a131d455cadc3c246").unwrap();
+        FixedHash::from_hex("8e6bb075239bf307e311f497d35c12c77c4563f218c156895e6630a7d9633de3").unwrap();
     block.header.output_mr =
-        FixedHash::from_hex("e6fbb394caca64f9fd2e68cbd0406a279c7c7d0e942281934530711e3030f4e8").unwrap();
+        FixedHash::from_hex("163304b3fe0f9072170db341945854bf88c8e23e23ecaac3ed86b9231b20e16f").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
