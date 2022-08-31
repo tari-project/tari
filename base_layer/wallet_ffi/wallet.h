@@ -157,21 +157,21 @@ struct TariCoinPreview {
   uint64_t fee;
 };
 
-typedef TransactionKernel TariTransactionKernel;
+typedef struct TransactionKernel TariTransactionKernel;
 
 /**
  * Define the explicit Public key implementation for the Tari base layer
  */
 typedef struct RistrettoPublicKey PublicKey;
 
-typedef PublicKey TariPublicKey;
+typedef struct PublicKey TariPublicKey;
 
 /**
  * Define the explicit Secret key implementation for the Tari base layer.
  */
 typedef struct RistrettoSecretKey PrivateKey;
 
-typedef PrivateKey TariPrivateKey;
+typedef struct PrivateKey TariPrivateKey;
 
 /**
  * # A Commitment signature implementation on Ristretto
@@ -257,15 +257,15 @@ typedef struct CommitmentSignature_RistrettoPublicKey__RistrettoSecretKey Ristre
 /**
  * Define the explicit Commitment Signature implementation for the Tari base layer.
  */
-typedef RistrettoComSig ComSignature;
+typedef struct RistrettoComSig ComSignature;
 
-typedef ComSignature TariCommitmentSignature;
+typedef struct ComSignature TariCommitmentSignature;
 
-typedef Covenant TariCovenant;
+typedef struct Covenant TariCovenant;
 
-typedef EncryptedValue TariEncryptedValue;
+typedef struct EncryptedValue TariEncryptedValue;
 
-typedef OutputFeatures TariOutputFeatures;
+typedef struct OutputFeatures TariOutputFeatures;
 
 typedef struct Contact TariContact;
 
@@ -287,7 +287,7 @@ typedef struct Balance TariBalance;
 
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
-typedef FeePerGramStat TariFeePerGramStat;
+typedef struct FeePerGramStat TariFeePerGramStat;
 
 struct TariUtxo {
   const char *commitment;
