@@ -74,8 +74,6 @@ service Wallet {
     rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 
     rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
-    rpc SeedWords(Empty) returns (SeedWordsResponse);
-    rpc DeleteSeedWordsFile(Empty) returns (FileDeletedResponse);
 }
 
 message GetVersionRequest { }
@@ -308,12 +306,4 @@ message TransactionEvent {
 
 message TransactionEventResponse {
     TransactionEvent transaction  = 1;
-}
-
-message SeedWordsResponse {
-    repeated string words = 1;
-}
-
-message FileDeletedResponse {
-
 }
