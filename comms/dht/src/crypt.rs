@@ -93,22 +93,22 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> Result<Vec<u8>, DhtOut
     Ok(padded_message)
 }
 
-fn get_original_message_from_padded_text(message: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
     // NOTE: This function can return errors relating to message length
     // It is important not to leak error types to an adversary, or to have timing differences
 
     // Assert that the padded message is a multiple of the base length
-    if message.is_empty() || (message.len() % MESSAGE_BASE_LENGTH) != 0 {
+    if padded_message.is_empty() || (padded_message.len() % MESSAGE_BASE_LENGTH) != 0 {
         return Err(DhtOutboundError::CipherError("Bad padded message length".to_string()));
     }
 
     // Decode the message length
     let mut encoded_length = [0u8; size_of::<u32>()];
-    encoded_length.copy_from_slice(&message[0..size_of::<u32>()]);
+    encoded_length.copy_from_slice(&padded_message[0..size_of::<u32>()]);
     let message_length = u32::from_le_bytes(encoded_length) as usize;
 
     // The message is too short for the decoded length
-    if message_length + size_of::<u32>() > message.len() {
+    if message_length + size_of::<u32>() > padded_message.len() {
         return Err(DhtOutboundError::CipherError(
             "Message is too short to be unpadded".to_string(),
         ));
@@ -117,7 +117,7 @@ fn get_original_message_from_padded_text(message: &[u8]) -> Result<Vec<u8>, DhtO
     // Remove the padding
     let start = size_of::<u32>();
     let end = start + message_length;
-    let unpadded_message = &message[start..end];
+    let unpadded_message = &padded_message[start..end];
 
     Ok(unpadded_message.to_vec())
 }
