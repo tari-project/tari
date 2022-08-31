@@ -282,7 +282,7 @@ pub fn tui_mode(
     let base_node_selected;
     if let Some(peer) = base_node_config.base_node_custom.clone() {
         base_node_selected = peer;
-    } else if let Some(peer) = handle.block_on(get_custom_base_node_peer_from_db(&mut wallet)) {
+    } else if let Some(peer) = get_custom_base_node_peer_from_db(&mut wallet) {
         base_node_selected = peer;
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;

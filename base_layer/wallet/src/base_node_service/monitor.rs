@@ -163,7 +163,7 @@ where
                 timer.elapsed().as_millis()
             );
 
-            self.db.set_chain_metadata(chain_metadata.clone()).await?;
+            self.db.set_chain_metadata(chain_metadata.clone())?;
 
             let is_synced = tip_info.is_synced;
             let height_of_longest_chain = chain_metadata.height_of_longest_chain();
