@@ -472,6 +472,30 @@ mod test {
     }
 
     #[test]
+    fn unpadding_failure_modes() {
+        // The padded message is empty
+        let message: [u8; 0] = [];
+        assert!(get_original_message_from_padded_text(&message)
+            .unwrap_err()
+            .to_string()
+            .contains("Bad padded message length"));
+
+        // We cannot extract the message length
+        let message = [0u8; size_of::<u32>() - 1];
+        assert!(get_original_message_from_padded_text(&message)
+            .unwrap_err()
+            .to_string()
+            .contains("Bad padded message length"));
+
+        // The padded message is not a multiple of the base length
+        let message = [0u8; 2 * MESSAGE_BASE_LENGTH + 1];
+        assert!(get_original_message_from_padded_text(&message)
+            .unwrap_err()
+            .to_string()
+            .contains("Bad padded message length"));
+    }
+
+    #[test]
     fn get_original_message_from_padded_text_successful() {
         // test for short message
         let message = vec![0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
