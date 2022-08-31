@@ -500,7 +500,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Generate key message for encryption of message
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
                 // Encrypt the message with the body with key message above
-                let encrypted_body = crypt::encrypt(&key_message, &body).unwrap();
+                let encrypted_body = crypt::encrypt(&key_message, &body)?;
 
                 // Produce domain separated signature signature
                 let mac_signature = crypt::create_message_domain_separated_hash_parts(

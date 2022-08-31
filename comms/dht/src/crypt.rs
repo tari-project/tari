@@ -177,7 +177,7 @@ pub fn decrypt_with_chacha20_poly1305(
 /// Encrypt the plain text using the ChaCha20 stream cipher
 pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
     // pad plain_text to avoid message length leaks
-    let plain_text = pad_message_to_base_length_multiple(plain_text).unwrap();
+    let plain_text = pad_message_to_base_length_multiple(plain_text)?;
 
     let mut nonce = [0u8; size_of::<Nonce>()];
     OsRng.fill_bytes(&mut nonce);
