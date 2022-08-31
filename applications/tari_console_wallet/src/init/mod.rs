@@ -158,7 +158,7 @@ pub async fn get_base_node_peer_config(
         Some(ref custom) => SeedPeer::from_str(custom)
             .map(|node| Some(Peer::from(node)))
             .map_err(|err| ExitError::new(ExitCode::ConfigError, &format!("Malformed custom base node: {}", err)))?,
-        None => get_custom_base_node_peer_from_db(wallet).await,
+        None => get_custom_base_node_peer_from_db(wallet),
     };
 
     // If the user has not explicitly set a base node in the config, we try detect one
@@ -181,7 +181,7 @@ pub async fn get_base_node_peer_config(
                         let address = detected_node.addresses.first().ok_or_else(|| {
                             ExitError::new(ExitCode::ConfigError, "No address found for detected base node")
                         })?;
-                        set_custom_base_node_peer_in_db(wallet, &detected_node.public_key, address).await?;
+                        set_custom_base_node_peer_in_db(wallet, &detected_node.public_key, address)?;
                         selected_base_node = Some(detected_node.into());
                     }
                 },
@@ -293,13 +293,13 @@ pub async fn init_wallet(
 
     let node_address = match config.wallet.p2p.public_address.clone() {
         Some(addr) => addr,
-        None => match wallet_db.get_node_address().await? {
+        None => match wallet_db.get_node_address()? {
             Some(addr) => addr,
             None => Multiaddr::empty(),
         },
     };
 
-    let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db).await?;
+    let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
 
     let node_identity = match config.wallet.identity_file.as_ref() {
         Some(identity_file) => {
@@ -315,12 +315,12 @@ pub async fn init_wallet(
                 PeerFeatures::COMMUNICATION_CLIENT,
             )?
         },
-        None => setup_identity_from_db(&wallet_db, &master_seed, node_address.clone()).await?,
+        None => setup_identity_from_db(&wallet_db, &master_seed, node_address.clone())?,
     };
 
     let mut wallet_config = config.wallet.clone();
     if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
-        wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id().await?;
+        wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
     let factories = CryptoFactories::default();
@@ -352,7 +352,6 @@ pub async fn init_wallet(
         wallet
             .db
             .set_tor_identity(hs.tor_identity().clone())
-            .await
             .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Problem writing tor identity. {}", e)))?;
     }
 
@@ -381,7 +380,7 @@ pub async fn init_wallet(
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
         if interactive && recovery_seed.is_none() {
-            match confirm_seed_words(&mut wallet).await {
+            match confirm_seed_words(&mut wallet) {
                 Ok(()) => {
                     print!("\x1Bc"); // Clear the screen
                 },
@@ -392,7 +391,7 @@ pub async fn init_wallet(
         }
     }
     if let Some(file_name) = seed_words_file_name {
-        let seed_words = wallet.get_seed_words(&MnemonicLanguage::English).await?.join(" ");
+        let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?.join(" ");
         let _result = fs::write(file_name, seed_words).map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
@@ -416,17 +415,16 @@ async fn detect_local_base_node() -> Option<SeedPeer> {
     Some(SeedPeer::new(public_key, vec![address]))
 }
 
-async fn setup_identity_from_db<D: WalletBackend + 'static>(
+fn setup_identity_from_db<D: WalletBackend + 'static>(
     wallet_db: &WalletDatabase<D>,
     master_seed: &CipherSeed,
     node_address: Multiaddr,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
     let node_features = wallet_db
-        .get_node_features()
-        .await?
+        .get_node_features()?
         .unwrap_or(PeerFeatures::COMMUNICATION_CLIENT);
 
-    let identity_sig = wallet_db.get_comms_identity_signature().await?;
+    let identity_sig = wallet_db.get_comms_identity_signature()?;
 
     let comms_secret_key = derive_comms_secret_key(master_seed)?;
 
@@ -452,7 +450,7 @@ async fn setup_identity_from_db<D: WalletBackend + 'static>(
             .as_ref()
             .expect("unreachable panic")
             .clone();
-        wallet_db.set_comms_identity_signature(sig).await?;
+        wallet_db.set_comms_identity_signature(sig)?;
     }
 
     Ok(node_identity)
@@ -514,8 +512,8 @@ async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     Ok(())
 }
 
-async fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
-    let seed_words = wallet.get_seed_words(&MnemonicLanguage::English).await?;
+fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
+    let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?;
 
     println!();
     println!("=========================");
