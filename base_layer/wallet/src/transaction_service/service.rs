@@ -2528,12 +2528,6 @@ where
                     .output_manager_service
                     .get_coinbase_transaction(tx_id, reward, fees, block_height)
                     .await?;
-
-                // Cancel existing unmined coinbase transactions for this blockheight
-                self.db
-                    .cancel_coinbase_transaction_at_block_height(block_height)
-                    .await?;
-
                 self.db
                     .insert_completed_transaction(
                         tx_id,
