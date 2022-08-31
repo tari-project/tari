@@ -36,7 +36,7 @@ use crate::output_manager_service::error::OutputManagerStorageError;
 pub enum OutputSource {
     Unknown,
     Coinbase,
-    Recovered,
+    RecoveredButUnrecognized,
     #[default]
     Standard,
     OneSided,
@@ -52,7 +52,7 @@ impl TryFrom<i32> for OutputSource {
         Ok(match value {
             0 => OutputSource::Unknown,
             1 => OutputSource::Coinbase,
-            2 => OutputSource::Recovered,
+            2 => OutputSource::RecoveredButUnrecognized,
             3 => OutputSource::Standard,
             4 => OutputSource::OneSided,
             5 => OutputSource::StealthOneSided,
