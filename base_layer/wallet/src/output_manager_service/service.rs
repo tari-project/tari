@@ -1410,9 +1410,9 @@ where
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
 
         // Respecting the setting to not choose outputs that reveal the address
-      if self.resources.config.autoignore_onesided_utxos {
-          selection_criteria.excluding_onesided = self.resources.config.autoignore_onesided_utxos;
-          }
+        if self.resources.config.autoignore_onesided_utxos {
+            selection_criteria.excluding_onesided = self.resources.config.autoignore_onesided_utxos;
+        }
 
         warn!(
             target: LOG_TARGET,
