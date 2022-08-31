@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.38.0](https://github.com/tari-project/tari/compare/v0.37.0...v0.38.0) (2022-08-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace AES-GCM with XChaCha20-Poly1305 (#4550)
+
+### Features
+
+* **build:** multiple targeted build types with options for docker builds ([#4540](https://github.com/tari-project/tari/issues/4540)) ([7e7d053](https://github.com/tari-project/tari/commit/7e7d05351e157b8ca6d4d5b5e1e258a6281d6375))
+* **comms/rpc:** restrict rpc session per peer [#4497](https://github.com/tari-project/tari/issues/4497) ([#4549](https://github.com/tari-project/tari/issues/4549)) ([080bccf](https://github.com/tari-project/tari/commit/080bccf1a037f5574962704947d29d8f1218d42a))
+* **console-wallet:** detect local base node and prompt ([#4557](https://github.com/tari-project/tari/issues/4557)) ([887df88](https://github.com/tari-project/tari/commit/887df88d57fb4566b8383a3e33ad5caee4df762c))
+* remove spawn blocking calls from wallet db (contacts service) ([#4575](https://github.com/tari-project/tari/issues/4575)) ([7464581](https://github.com/tari-project/tari/commit/74645813ab836b19d9d722aaa189a2d190eb5c6e))
+* remove spawn blocking calls from wallet db (key manager service) ([#4564](https://github.com/tari-project/tari/issues/4564)) ([a5d5133](https://github.com/tari-project/tari/commit/a5d5133943bb11e8509a51aeb7f3d40b67bc065b))
+* update tor seed nodes for esmeralda network ([#4572](https://github.com/tari-project/tari/issues/4572)) ([c4cfc12](https://github.com/tari-project/tari/commit/c4cfc128f786be3806f51d699d89465756f97e7b))
+* upgrade to tokio 1.20.1 ([#4566](https://github.com/tari-project/tari/issues/4566)) ([777936a](https://github.com/tari-project/tari/commit/777936a0c2783635f77549d3f23520912b87b7bf))
+
+
+### Bug Fixes
+
+* **cucumber:** handles listHeaders response correctly ([#4551](https://github.com/tari-project/tari/issues/4551)) ([3958dde](https://github.com/tari-project/tari/commit/3958dde8114e4301c33a90073c1a2e3c973e0e5d))
+* deserializer for SafePassword ([#4565](https://github.com/tari-project/tari/issues/4565)) ([ee89960](https://github.com/tari-project/tari/commit/ee899606e0b9c9877c89fa35add3dc2fe54be30f))
+* ignored consensus tests (see issue [#4559](https://github.com/tari-project/tari/issues/4559)) ([#4571](https://github.com/tari-project/tari/issues/4571)) ([397fe67](https://github.com/tari-project/tari/commit/397fe673b3b47d57422db71523d8012381980e6c))
+* potential problem with not updating the OMS database ([#4563](https://github.com/tari-project/tari/issues/4563)) ([c867279](https://github.com/tari-project/tari/commit/c86727969ef3fffc124ab706d44c8845addbf415))
+* remove assets and tokens tabs from tari console wallet (see issue [#4543](https://github.com/tari-project/tari/issues/4543)) ([#4556](https://github.com/tari-project/tari/issues/4556)) ([11af787](https://github.com/tari-project/tari/commit/11af7875acfca85d82394d82852729952d638d98))
+* removed `seed_words` and `delete_seed_words` commands ([#4567](https://github.com/tari-project/tari/issues/4567)) ([0b2a155](https://github.com/tari-project/tari/commit/0b2a15585e88240c027175a24dd9757cca4218ac))
+* replace AES-GCM with XChaCha20-Poly1305 ([#4550](https://github.com/tari-project/tari/issues/4550)) ([85acc2f](https://github.com/tari-project/tari/commit/85acc2f1a06afa4e7b184e4577c2b081691783da))
+* resolve tests in output_manager_service_tests.rs (see issue [#4561](https://github.com/tari-project/tari/issues/4561)) ([#4577](https://github.com/tari-project/tari/issues/4577)) ([c69245b](https://github.com/tari-project/tari/commit/c69245bbf5e9f212c07bc1736cedd9351f4d6eef))
+* update rest of the crates to tokio 1.20 ([#4576](https://github.com/tari-project/tari/issues/4576)) ([ad24bf7](https://github.com/tari-project/tari/commit/ad24bf71714ffc091c9fce7c1fc224235e3666a9))
+
 ## [0.37.0](https://github.com/tari-project/tari/compare/v0.36.0...v0.37.0) (2022-08-25)
 
 

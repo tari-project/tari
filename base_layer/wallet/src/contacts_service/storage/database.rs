@@ -118,18 +118,14 @@ where T: ContactsBackend + 'static
         Self { db: Arc::new(db) }
     }
 
-    pub async fn get_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
+    pub fn get_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || fetch!(db_clone, pub_key.clone(), Contact))
-            .await
-            .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+        fetch!(db_clone, pub_key, Contact)
     }
 
-    pub async fn get_contacts(&self) -> Result<Vec<Contact>, ContactsServiceStorageError> {
+    pub fn get_contacts(&self) -> Result<Vec<Contact>, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
-
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::Contacts) {
+        match db_clone.fetch(&DbKey::Contacts) {
             Ok(None) => log_error(
                 DbKey::Contacts,
                 ContactsServiceStorageError::UnexpectedResult("Could not retrieve contacts".to_string()),
@@ -137,46 +133,31 @@ where T: ContactsBackend + 'static
             Ok(Some(DbValue::Contacts(c))) => Ok(c),
             Ok(Some(other)) => unexpected_result(DbKey::Contacts, other),
             Err(e) => log_error(DbKey::Contacts, e),
-        })
-        .await
-        .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(c)
+        }
     }
 
-    pub async fn upsert_contact(&self, contact: Contact) -> Result<(), ContactsServiceStorageError> {
-        let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Upsert(Box::new(DbKeyValuePair::Contact(
-                contact.public_key.clone(),
-                contact,
-            ))))
-        })
-        .await
-        .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))??;
+    pub fn upsert_contact(&self, contact: Contact) -> Result<(), ContactsServiceStorageError> {
+        self.db.write(WriteOperation::Upsert(Box::new(DbKeyValuePair::Contact(
+            contact.public_key.clone(),
+            contact,
+        ))))?;
         Ok(())
     }
 
-    pub async fn update_contact_last_seen(
+    pub fn update_contact_last_seen(
         &self,
         node_id: &NodeId,
         last_seen: NaiveDateTime,
         latency: Option<u32>,
     ) -> Result<CommsPublicKey, ContactsServiceStorageError> {
-        let db_clone = self.db.clone();
-        let node_id_clone = node_id.clone();
-
-        let result = tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::UpdateLastSeen(Box::new(DbKeyValuePair::LastSeen(
-                node_id_clone,
+        let result = self
+            .db
+            .write(WriteOperation::UpdateLastSeen(Box::new(DbKeyValuePair::LastSeen(
+                node_id.clone(),
                 last_seen,
                 latency.map(|val| val as i32),
-            ))))
-        })
-        .await
-        .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))
-        .and_then(|inner_result| inner_result)?
-        .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(node_id.clone())))?;
+            ))))?
+            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(node_id.clone())))?;
         match result {
             DbValue::PublicKey(k) => Ok(*k),
             _ => Err(ContactsServiceStorageError::UnexpectedResult(
@@ -185,16 +166,11 @@ where T: ContactsBackend + 'static
         }
     }
 
-    pub async fn remove_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
-        let db_clone = self.db.clone();
-        let pub_key_clone = pub_key.clone();
-        let result =
-            tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::Contact(pub_key_clone))))
-                .await
-                .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))
-                .and_then(|inner_result| inner_result)?
-                .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(pub_key.clone())))?;
-
+    pub fn remove_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
+        let result = self
+            .db
+            .write(WriteOperation::Remove(DbKey::Contact(pub_key.clone())))?
+            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(pub_key.clone())))?;
         match result {
             DbValue::Contact(c) => Ok(*c),
             DbValue::Contacts(_) | DbValue::PublicKey(_) => Err(ContactsServiceStorageError::UnexpectedResult(
