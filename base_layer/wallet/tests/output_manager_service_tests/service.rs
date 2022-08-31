@@ -390,7 +390,6 @@ async fn fee_estimate() {
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 }
 
-#[ignore]
 #[allow(clippy::identity_op)]
 #[tokio::test]
 async fn test_utxo_selection_no_chain_metadata() {
@@ -492,7 +491,7 @@ async fn test_utxo_selection_no_chain_metadata() {
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
     let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
-    assert_eq!(utxos_total_value, MicroTari::from(10_000));
+    assert_eq!(utxos_total_value, MicroTari::from(5_000));
 
     // test that largest utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -507,7 +506,6 @@ async fn test_utxo_selection_no_chain_metadata() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
-#[ignore]
 async fn test_utxo_selection_with_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -576,7 +574,7 @@ async fn test_utxo_selection_with_chain_metadata() {
 
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
-    assert_eq!(utxos_total_value, MicroTari::from(6_000));
+    assert_eq!(utxos_total_value, MicroTari::from(5_000));
     let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
     assert_eq!(tx.body.get_total_fee(), expected_fee);
 
@@ -1113,7 +1111,6 @@ async fn sending_transaction_persisted_while_offline() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn coin_split_with_change() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
