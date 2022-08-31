@@ -51,6 +51,7 @@ use crate::{
             database::{OutputBackendQuery, SortDirection},
             models::DbUnblindedOutput,
             sqlite_db::{UpdateOutput, UpdateOutputSql},
+            OutputSource,
             OutputStatus,
         },
         UtxoSelectionFilter,
@@ -102,6 +103,7 @@ pub struct OutputSql {
     pub mined_timestamp: Option<NaiveDateTime>,
     pub encrypted_value: Vec<u8>,
     pub minimum_value_promise: i64,
+    pub source: i32,
 }
 
 impl OutputSql {
@@ -206,7 +208,11 @@ impl OutputSql {
                     outputs::output_type
                         .eq(i32::from(OutputType::Standard.as_byte()))
                         .or(outputs::output_type.eq(i32::from(OutputType::Coinbase.as_byte()))),
-                )
+                );
+
+                if selection_criteria.excluding_onesided {
+                    query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
+                }
             },
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
                 query = match commitments.len() {
@@ -739,6 +745,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block,
             spending_priority,
+            source: o.source.try_into()?,
         })
     }
 }

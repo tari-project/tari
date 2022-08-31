@@ -48,6 +48,7 @@ use crate::{
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::DbUnblindedOutput,
+            OutputSource,
         },
     },
 };
@@ -151,6 +152,7 @@ where
                 &self.rewind_data,
                 None,
                 Some(proof),
+                OutputSource::Recovered,
             )?;
             let tx_id = TxId::new_random();
             let output_hex = db_output.commitment.to_hex();
