@@ -40,7 +40,7 @@ use json::json;
 use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use tari_app_grpc::tari_rpc as grpc;
+use tari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc as grpc};
 use tari_core::{
     consensus::ConsensusEncoding,
     proof_of_work::{monero_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
@@ -62,6 +62,9 @@ pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
 /// The identifier used to identify the tari aux chain data
 const TARI_CHAIN_ID: &str = "xtr";
 
+type WalletClient = grpc::wallet_client::WalletClient<
+    tonic::codegen::InterceptedService<tonic::transport::Channel, ClientAuthenticationInterceptor>,
+>;
 #[derive(Debug, Clone)]
 pub struct MergeMiningProxyService {
     inner: InnerService,
@@ -72,7 +75,7 @@ impl MergeMiningProxyService {
         config: MergeMiningProxyConfig,
         http_client: reqwest::Client,
         base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-        wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
+        wallet_client: WalletClient,
         block_templates: BlockTemplateRepository,
         randomx_factory: RandomXFactory,
     ) -> Self {
@@ -154,7 +157,9 @@ struct InnerService {
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
     base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-    wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
+    wallet_client: grpc::wallet_client::WalletClient<
+        tonic::codegen::InterceptedService<tonic::transport::Channel, ClientAuthenticationInterceptor>,
+    >,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
