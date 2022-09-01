@@ -99,12 +99,16 @@ fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8
 
     // The padded message must be long enough to extract the encoded message length
     if padded_message.len() < size_of::<u32>() {
-        return Err(DhtOutboundError::PaddingError("Padded message is not long enough for length extraction".to_string()));
+        return Err(DhtOutboundError::PaddingError(
+            "Padded message is not long enough for length extraction".to_string(),
+        ));
     }
 
     // The padded message must be a multiple of the base length
     if (padded_message.len() % MESSAGE_BASE_LENGTH) != 0 {
-        return Err(DhtOutboundError::PaddingError("Padded message must be a multiple of the base length".to_string()));
+        return Err(DhtOutboundError::PaddingError(
+            "Padded message must be a multiple of the base length".to_string(),
+        ));
     }
 
     // Decode the message length
@@ -113,7 +117,9 @@ fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8
     let message_length = u32::from_le_bytes(encoded_length) as usize;
 
     // The padded message is too short for the decoded length
-    let end = message_length.checked_add(size_of::<u32>()).ok_or_else(|| DhtOutboundError::PaddingError("Claimed unpadded message length is too large".to_string()))?;
+    let end = message_length
+        .checked_add(size_of::<u32>())
+        .ok_or_else(|| DhtOutboundError::PaddingError("Claimed unpadded message length is too large".to_string()))?;
     if end > padded_message.len() {
         return Err(DhtOutboundError::CipherError(
             "Claimed unpadded message length is too large".to_string(),
