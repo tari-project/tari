@@ -43,6 +43,7 @@ monerod_url = [# stagenet
 #console_wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
 
 # GRPC authentication for the Tari console wallet (default = "none")
+#wallet_grpc_authentication = { username: "miner", password: "$argon..." }
 
 # Address of the tari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
 #listener_address = "/ip4/127.0.0.1/tcp/18081"

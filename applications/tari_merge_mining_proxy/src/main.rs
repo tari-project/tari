@@ -62,7 +62,8 @@ use crate::{
 };
 const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 
-type WalletGrpcClient = grpc::wallet_client::WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
+pub(crate) type WalletGrpcClient =
+    grpc::wallet_client::WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
 async fn connect_wallet_with_authenticator(config: &MergeMiningProxyConfig) -> Result<WalletGrpcClient, MmProxyError> {
     let wallet_addr = format!(
