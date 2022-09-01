@@ -182,7 +182,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), None).unwrap());
     let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 0, 0);
 
-    db.set_chain_metadata(metadata).await.unwrap();
+    db.set_chain_metadata(metadata).unwrap();
 
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), None);
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), None);
@@ -3142,7 +3142,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
         .get_completed_transactions()
         .await
         .unwrap(); // Only one valid coinbase txn remains
-    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions.len(), 2);
     let _tx_id2 = transactions
         .values()
         .find(|tx| tx.amount == fees2 + reward2)
@@ -3169,7 +3169,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
         .get_completed_transactions()
         .await
         .unwrap();
-    assert_eq!(transactions.len(), 2);
+    assert_eq!(transactions.len(), 3);
     let _tx_id3 = transactions
         .values()
         .find(|tx| tx.amount == fees3 + reward3)
@@ -3185,7 +3185,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
         fees1 + reward1 + fees2 + reward2 + fees3 + reward3
     );
 
-    assert!(!transactions.values().any(|tx| tx.amount == fees1 + reward1));
+    assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
     assert!(transactions.values().any(|tx| tx.amount == fees2 + reward2));
     assert!(transactions.values().any(|tx| tx.amount == fees3 + reward3));
 }
@@ -3278,7 +3278,7 @@ async fn test_coinbase_generation_and_monitoring() {
         .get_completed_transactions()
         .await
         .unwrap();
-    assert_eq!(transactions.len(), 2);
+    assert_eq!(transactions.len(), 3);
     let tx_id2b = transactions
         .values()
         .find(|tx| tx.amount == fees2b + reward2)
@@ -3386,7 +3386,7 @@ async fn test_coinbase_generation_and_monitoring() {
 
     let _tx_batch_query_calls = alice_ts_interface
         .base_node_rpc_mock_state
-        .wait_pop_transaction_batch_query_calls(1, Duration::from_secs(30))
+        .wait_pop_transaction_batch_query_calls(2, Duration::from_secs(30))
         .await
         .unwrap();
 
@@ -3396,7 +3396,7 @@ async fn test_coinbase_generation_and_monitoring() {
         .await
         .unwrap();
 
-    assert_eq!(completed_txs.len(), 2);
+    assert_eq!(completed_txs.len(), 3);
 
     let tx = completed_txs.get(&tx_id1).unwrap();
     assert_eq!(tx.status, TransactionStatus::Coinbase);
@@ -3436,7 +3436,8 @@ async fn test_coinbase_generation_and_monitoring() {
 
     let _tx_batch_query_calls = alice_ts_interface
         .base_node_rpc_mock_state
-        .wait_pop_transaction_batch_query_calls(1, Duration::from_secs(30))
+        // TODO: This is a flaky test; changing the pop count = 3 below makes the test fail often
+        .wait_pop_transaction_batch_query_calls(2, Duration::from_secs(30))
         .await
         .unwrap();
 
@@ -3936,10 +3937,13 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .await
         .unwrap();
 
+    let expected_pending_incoming_balance = fees1 + reward1;
     assert_eq!(transactions.len(), 1);
+    let mut amount = MicroTari::zero();
     for tx in transactions.values() {
-        assert_eq!(tx.amount, fees1 + reward1);
+        amount += tx.amount;
     }
+    assert_eq!(amount, expected_pending_incoming_balance);
     // balance should be fees1 + reward1, not double
     assert_eq!(
         ts_interface
@@ -3948,7 +3952,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1
+        expected_pending_incoming_balance
     );
 
     // a requested coinbase transaction for the same height but new amount should be different
@@ -3964,10 +3968,13 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .get_completed_transactions()
         .await
         .unwrap();
-    assert_eq!(transactions.len(), 1); // tx1 and tx2 should be cancelled
+    let expected_pending_incoming_balance = fees1 + reward1 + fees2 + reward2;
+    assert_eq!(transactions.len(), 2);
+    let mut amount = MicroTari::zero();
     for tx in transactions.values() {
-        assert_eq!(tx.amount, fees2 + reward2);
+        amount += tx.amount;
     }
+    assert_eq!(amount, expected_pending_incoming_balance);
     assert_eq!(
         ts_interface
             .output_manager_service_handle
@@ -3975,7 +3982,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1 + fees2 + reward2
+        expected_pending_incoming_balance
     );
 
     // a requested coinbase transaction for a new height should be different
@@ -3991,10 +3998,13 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .get_completed_transactions()
         .await
         .unwrap();
-    assert_eq!(transactions.len(), 2);
+    let expected_pending_incoming_balance = fees1 + reward1 + 2 * (fees2 + reward2);
+    assert_eq!(transactions.len(), 3);
+    let mut amount = MicroTari::zero();
     for tx in transactions.values() {
-        assert_eq!(tx.amount, fees2 + reward2);
+        amount += tx.amount;
     }
+    assert_eq!(amount, expected_pending_incoming_balance);
     assert_eq!(
         ts_interface
             .output_manager_service_handle
@@ -4002,7 +4012,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        fees1 + reward1 + 2 * (fees2 + reward2)
+        expected_pending_incoming_balance
     );
 }
 
@@ -4179,7 +4189,7 @@ async fn test_transaction_resending() {
 
     assert!(alice_ts_interface
         .outbound_service_mock_state
-        .wait_call_count(1, Duration::from_secs(5))
+        .wait_call_count(1, Duration::from_secs(8))
         .await
         .is_err());
 

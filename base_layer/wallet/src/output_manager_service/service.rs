@@ -91,6 +91,7 @@ use crate::{
         storage::{
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            OutputSource,
             OutputStatus,
         },
         tasks::TxoValidationTask,
@@ -588,7 +589,12 @@ where
             "Add output of value {} to Output Manager", output.value
         );
 
-        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories, spend_priority)?;
+        let output = DbUnblindedOutput::from_unblinded_output(
+            output,
+            &self.resources.factories,
+            spend_priority,
+            OutputSource::default(),
+        )?;
         debug!(
             target: LOG_TARGET,
             "saving output of hash {} to Output Manager",
@@ -625,6 +631,7 @@ where
             &rewind_data,
             spend_priority,
             None,
+            OutputSource::default(),
         )?;
         debug!(
             target: LOG_TARGET,
@@ -660,7 +667,12 @@ where
             target: LOG_TARGET,
             "Add unvalidated output of value {} to Output Manager", output.value
         );
-        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories, spend_priority)?;
+        let output = DbUnblindedOutput::from_unblinded_output(
+            output,
+            &self.resources.factories,
+            spend_priority,
+            OutputSource::default(),
+        )?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
         Ok(())
     }
@@ -772,6 +784,7 @@ where
             &self.resources.rewind_data,
             None,
             None,
+            OutputSource::default(),
         )?;
 
         self.resources
@@ -946,6 +959,7 @@ where
                 &self.resources.rewind_data.clone(),
                 None,
                 None,
+                OutputSource::default(),
             )?);
         }
 
@@ -1007,6 +1021,7 @@ where
             &self.resources.rewind_data,
             None,
             None,
+            OutputSource::Coinbase,
         )?;
 
         // If there is no existing output available, we store the one we produced.
@@ -1113,6 +1128,7 @@ where
                 &self.resources.rewind_data,
                 None,
                 None,
+                OutputSource::default(),
             )?)
         }
 
@@ -1174,6 +1190,7 @@ where
                 &self.resources.rewind_data,
                 None,
                 None,
+                OutputSource::default(),
             )?);
         }
         let tx_id = stp.get_tx_id()?;
@@ -1277,6 +1294,7 @@ where
             &self.resources.rewind_data,
             None,
             None,
+            OutputSource::default(),
         )?;
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
@@ -1316,6 +1334,7 @@ where
                 &self.resources.rewind_data,
                 None,
                 None,
+                OutputSource::default(),
             )?;
             outputs.push(change_output);
         }
@@ -1371,7 +1390,7 @@ where
         fee_per_gram: MicroTari,
         num_outputs: usize,
         total_output_metadata_byte_size: usize,
-        selection_criteria: UtxoSelectionCriteria,
+        mut selection_criteria: UtxoSelectionCriteria,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1389,6 +1408,11 @@ where
 
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
+
+        // Respecting the setting to not choose outputs that reveal the address
+        if self.resources.config.autoignore_onesided_utxos {
+            selection_criteria.excluding_onesided = self.resources.config.autoignore_onesided_utxos;
+        }
 
         warn!(
             target: LOG_TARGET,
@@ -1761,6 +1785,7 @@ where
                 &self.resources.rewind_data.clone(),
                 None,
                 None,
+                OutputSource::default(),
             )?;
 
             tx_builder
@@ -1979,6 +2004,7 @@ where
                 &self.resources.rewind_data.clone(),
                 None,
                 None,
+                OutputSource::default(),
             )?;
 
             tx_builder
@@ -2036,6 +2062,7 @@ where
                 &self.resources.rewind_data.clone(),
                 None,
                 None,
+                OutputSource::default(),
             )?);
         }
 
@@ -2184,6 +2211,7 @@ where
             &self.resources.rewind_data.clone(),
             None,
             None,
+            OutputSource::default(),
         )?;
 
         tx_builder
@@ -2348,6 +2376,7 @@ where
                     &self.resources.rewind_data,
                     None,
                     None,
+                    OutputSource::AtomicSwap,
                 )?;
                 outputs.push(change_output);
 
@@ -2434,6 +2463,7 @@ where
             &self.resources.rewind_data,
             None,
             None,
+            OutputSource::Refund,
         )?;
         outputs.push(change_output);
 
@@ -2506,9 +2536,12 @@ where
                                 )
                                 .as_bytes(),
                             ) {
-                                Ok(spending_sk) => {
-                                    scanned_outputs.push((output.clone(), matched_key.private_key.clone(), spending_sk))
-                                },
+                                Ok(spending_sk) => scanned_outputs.push((
+                                    output.clone(),
+                                    OutputSource::OneSided,
+                                    matched_key.private_key.clone(),
+                                    spending_sk,
+                                )),
                                 Err(e) => {
                                     error!(
                                         target: LOG_TARGET,
@@ -2544,9 +2577,12 @@ where
                     match PrivateKey::from_bytes(
                         CommsPublicKey::shared_secret(&wallet_sk, &output.sender_offset_public_key).as_bytes(),
                     ) {
-                        Ok(spending_sk) => {
-                            scanned_outputs.push((output.clone(), wallet_sk.clone() + shared_secret, spending_sk))
-                        },
+                        Ok(spending_sk) => scanned_outputs.push((
+                            output.clone(),
+                            OutputSource::StealthOneSided,
+                            wallet_sk.clone() + shared_secret,
+                            spending_sk,
+                        )),
                         Err(e) => {
                             error!(
                                 target: LOG_TARGET,
@@ -2567,11 +2603,11 @@ where
     // Imports scanned outputs into the wallet
     fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(TransactionOutput, PrivateKey, RistrettoSecretKey)>,
+        scanned_outputs: Vec<(TransactionOutput, OutputSource, PrivateKey, RistrettoSecretKey)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, script_private_key, spending_sk) in scanned_outputs {
+        for (output, output_source, script_private_key, spending_sk) in scanned_outputs {
             let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_sk))?;
             let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
             let committed_value =
@@ -2611,6 +2647,7 @@ where
                         },
                         None,
                         Some(&output.proof),
+                        output_source,
                     )?;
 
                     let output_hex = output.commitment.to_hex();

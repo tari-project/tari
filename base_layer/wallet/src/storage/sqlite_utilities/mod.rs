@@ -71,7 +71,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
 
 /// This function will copy a wallet database to the provided path and then clear the Master Private Key from the
 /// database.
-pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P) -> Result<(), WalletStorageError> {
+pub fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P) -> Result<(), WalletStorageError> {
     // Copy the current db to the backup path
     let db_path = current_db
         .as_ref()
@@ -87,7 +87,7 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
     // open a connection and clear the Master Secret Key
     let connection = run_migration_and_create_sqlite_connection(backup_path, 16)?;
     let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None)?);
-    db.clear_master_seed().await?;
+    db.clear_master_seed()?;
 
     Ok(())
 }

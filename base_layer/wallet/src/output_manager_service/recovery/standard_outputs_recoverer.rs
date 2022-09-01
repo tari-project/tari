@@ -37,7 +37,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::hex::Hex,
 };
-use tari_script::{inputs, script};
+use tari_script::{inputs, script, Opcode};
 
 use crate::{
     key_manager_service::KeyManagerInterface,
@@ -48,6 +48,7 @@ use crate::{
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::DbUnblindedOutput,
+            OutputSource,
         },
     },
 };
@@ -145,12 +146,21 @@ where
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
         for (output, proof) in &mut rewound_outputs {
+            // Attempting to recognize output source by i.e., standard MimbleWimble, simple or stealth one-sided
+            let output_source = match *output.script.as_slice() {
+                [Opcode::Nop] => OutputSource::Standard,
+                [Opcode::PushPubKey(_), Opcode::Drop, Opcode::PushPubKey(_)] => OutputSource::StealthOneSided,
+                [Opcode::PushPubKey(_)] => OutputSource::OneSided,
+                _ => OutputSource::RecoveredButUnrecognized,
+            };
+
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
                 &self.rewind_data,
                 None,
                 Some(proof),
+                output_source,
             )?;
             let tx_id = TxId::new_random();
             let output_hex = db_output.commitment.to_hex();

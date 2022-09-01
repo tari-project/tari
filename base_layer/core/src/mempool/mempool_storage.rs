@@ -96,12 +96,12 @@ impl MempoolStorage {
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
-                    warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
+                    debug!(target: LOG_TARGET, "Validation failed due to unknown inputs");
                     Ok(TxStorageResponse::NotStoredOrphan)
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
-                warn!(target: LOG_TARGET, "Validation failed due to already spent output");
+                debug!(target: LOG_TARGET, "Validation failed due to already spent output");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
             Err(ValidationError::MaturityError) => {

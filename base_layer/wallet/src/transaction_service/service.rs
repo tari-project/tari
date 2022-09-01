@@ -856,7 +856,7 @@ where
         if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
             let db = self.db.clone();
             let output_manager_handle = self.output_manager_service.clone();
-            let metadata = match self.wallet_db.get_chain_metadata().await {
+            let metadata = match self.wallet_db.get_chain_metadata() {
                 Ok(data) => data,
                 Err(_) => None,
             };
@@ -1498,7 +1498,7 @@ where
         recipient_reply: proto::RecipientSignedMessage,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
-        self.check_recovery_status().await?;
+        self.check_recovery_status()?;
 
         let recipient_reply: RecipientSignedMessage = recipient_reply
             .try_into()
@@ -1827,7 +1827,7 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
-        self.check_recovery_status().await?;
+        self.check_recovery_status()?;
 
         let sender_message: TransactionSenderMessage = sender_message
             .try_into()
@@ -1955,7 +1955,7 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
-        self.check_recovery_status().await?;
+        self.check_recovery_status()?;
 
         let tx_id = finalized_transaction.tx_id.into();
         let transaction: Transaction = finalized_transaction
@@ -2528,12 +2528,6 @@ where
                     .output_manager_service
                     .get_coinbase_transaction(tx_id, reward, fees, block_height)
                     .await?;
-
-                // Cancel existing unmined coinbase transactions for this blockheight
-                self.db
-                    .cancel_coinbase_transaction_at_block_height(block_height)
-                    .await?;
-
                 self.db
                     .insert_completed_transaction(
                         tx_id,
@@ -2581,8 +2575,8 @@ where
 
     /// Check if a Recovery Status is currently stored in the databse, this indicates that a wallet recovery is in
     /// progress
-    async fn check_recovery_status(&self) -> Result<(), TransactionServiceError> {
-        let value = self.wallet_db.get_client_key_value(RECOVERY_KEY.to_owned()).await?;
+    fn check_recovery_status(&self) -> Result<(), TransactionServiceError> {
+        let value = self.wallet_db.get_client_key_value(RECOVERY_KEY.to_owned())?;
         match value {
             None => Ok(()),
             Some(_) => Err(TransactionServiceError::WalletRecoveryInProgress),
