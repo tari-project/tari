@@ -49,6 +49,7 @@ use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     outbound::DhtOutboundError,
     version::DhtProtocolVersion,
+    inbound::DhtInboundError,
 };
 
 #[derive(Debug, Clone, Zeroize)]

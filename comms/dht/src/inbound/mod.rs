@@ -38,6 +38,7 @@ mod metrics;
 pub use metrics::MetricsLayer;
 
 mod error;
+pub use error::DhtInboundError;
 
 mod message;
 

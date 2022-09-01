@@ -45,4 +45,6 @@ pub enum DhtInboundError {
     InvalidPeerIdentitySignature(String),
     #[error("Invalid peer: {0}")]
     PeerValidatorError(#[from] PeerValidatorError),
+    #[error("Invalid decryption, nonce not included")]
+    InvalidDecryptionNonceNotIncluded,
 }
