@@ -40,7 +40,7 @@ use json::json;
 use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use tari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc as grpc};
+use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
     consensus::ConsensusEncoding,
     proof_of_work::{monero_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
