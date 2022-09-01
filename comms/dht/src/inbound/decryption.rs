@@ -37,7 +37,10 @@ use tower::{layer::Layer, Service, ServiceExt};
 use crate::{
     crypt,
     envelope::DhtMessageHeader,
-    inbound::message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
+    inbound::{
+        message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
+        DhtInboundError,
+    },
     message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
     DhtConfig,
 };
@@ -68,10 +71,10 @@ enum DecryptionError {
     MessageRejectDecryptionFailed,
     #[error("Failed to decode envelope body")]
     EnvelopeBodyDecodeFailed,
-    #[error("Failed to decrypt message body")]
-    MessageBodyDecryptionFailed,
     #[error("Encrypted message without a destination is invalid")]
     EncryptedMessageNoDestination,
+    #[error("Decryption failed: {0}")]
+    MalformedCipherDecryptionFailed(#[from] DhtInboundError),
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.
@@ -405,8 +408,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         message_body: &[u8],
     ) -> Result<EnvelopeBody, DecryptionError> {
         let key_message = crypt::generate_key_message(shared_secret);
-        let decrypted =
-            crypt::decrypt(&key_message, message_body).map_err(|_| DecryptionError::MessageBodyDecryptionFailed)?;
+        let decrypted = crypt::decrypt(&key_message, message_body)
+            .map_err(|e| DecryptionError::MalformedCipherDecryptionFailed(e))?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
         EnvelopeBody::decode(decrypted.as_slice())
@@ -432,7 +435,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 }
                 Ok(body)
             })
-            .map_err(|_| DecryptionError::MessageBodyDecryptionFailed)
+            .map_err(|_| DecryptionError::EnvelopeBodyDecodeFailed)
     }
 
     async fn success_not_encrypted(

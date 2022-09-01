@@ -47,9 +47,9 @@ use crate::{
     comms_dht_hash_domain_key_message,
     comms_dht_hash_domain_key_signature,
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
+    inbound::DhtInboundError,
     outbound::DhtOutboundError,
     version::DhtProtocolVersion,
-    inbound::DhtInboundError,
 };
 
 #[derive(Debug, Clone, Zeroize)]
@@ -91,7 +91,7 @@ fn pad_message_to_base_length_multiple(message: &[u8]) -> Vec<u8> {
     output
 }
 
-fn get_original_message_from_padded_text(message: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+fn get_original_message_from_padded_text(message: &[u8]) -> Result<Vec<u8>, DhtInboundError> {
     let mut le_bytes = [0u8; 4];
     le_bytes.copy_from_slice(&message[..LITTLE_ENDIAN_U32_SIZE_REPRESENTATION]);
 
@@ -99,9 +99,7 @@ fn get_original_message_from_padded_text(message: &[u8]) -> Result<Vec<u8>, DhtO
     let original_message_len = u32::from_le_bytes(le_bytes) as usize;
 
     if original_message_len > message.len() {
-        return Err(DhtOutboundError::CipherError(
-            "Original length message is invalid".to_string(),
-        ));
+        return Err(DhtInboundError::InvalidDecryptionNonceNotIncluded);
     }
 
     // obtain original message
@@ -129,11 +127,9 @@ pub fn generate_key_signature_for_authenticated_encryption(data: &[u8]) -> Authe
 }
 
 /// Decrypts cipher text using ChaCha20 stream cipher given the cipher key and cipher text with integral nonce.
-pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, DhtInboundError> {
     if cipher_text.len() < size_of::<Nonce>() {
-        return Err(DhtOutboundError::CipherError(
-            "Cipher text is not long enough to include nonce".to_string(),
-        ));
+        return Err(DhtInboundError::InvalidDecryptionNonceNotIncluded);
     }
 
     let (nonce, cipher_text) = cipher_text.split_at(size_of::<Nonce>());
@@ -151,7 +147,7 @@ pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, Dh
 pub fn decrypt_with_chacha20_poly1305(
     cipher_key: &AuthenticatedCipherKey,
     cipher_signature: &[u8],
-) -> Result<Vec<u8>, DhtOutboundError> {
+) -> Result<Vec<u8>, DhtInboundError> {
     let nonce = [0u8; size_of::<chacha20poly1305::Nonce>()];
 
     let nonce_ga = chacha20poly1305::Nonce::from_slice(&nonce);
@@ -159,7 +155,7 @@ pub fn decrypt_with_chacha20_poly1305(
     let cipher = ChaCha20Poly1305::new(&cipher_key.0);
     let decrypted_signature = cipher
         .decrypt(nonce_ga, cipher_signature)
-        .map_err(|_| DhtOutboundError::CipherError(String::from("Authenticated decryption failed")))?;
+        .map_err(|_| DhtInboundError::InvalidAuthenticatedDecryption)?;
 
     Ok(decrypted_signature)
 }

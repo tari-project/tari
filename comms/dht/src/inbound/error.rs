@@ -47,4 +47,6 @@ pub enum DhtInboundError {
     PeerValidatorError(#[from] PeerValidatorError),
     #[error("Invalid decryption, nonce not included")]
     InvalidDecryptionNonceNotIncluded,
+    #[error("Invalid authenticated decryption")]
+    InvalidAuthenticatedDecryption,
 }
