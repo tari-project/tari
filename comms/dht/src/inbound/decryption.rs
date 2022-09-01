@@ -74,7 +74,7 @@ enum DecryptionError {
     #[error("Encrypted message without a destination is invalid")]
     EncryptedMessageNoDestination,
     #[error("Decryption failed: {0}")]
-    MalformedCipherDecryptionFailed(#[from] DhtInboundError),
+    DecryptionFailedMalformedCipher(#[from] DhtInboundError),
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.
@@ -409,7 +409,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<EnvelopeBody, DecryptionError> {
         let key_message = crypt::generate_key_message(shared_secret);
         let decrypted = crypt::decrypt(&key_message, message_body)
-            .map_err(|e| DecryptionError::MalformedCipherDecryptionFailed(e))?;
+            .map_err(|e| DecryptionError::DecryptionFailedMalformedCipher(e))?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
         EnvelopeBody::decode(decrypted.as_slice())
