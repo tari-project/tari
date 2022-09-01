@@ -32,7 +32,13 @@ use tari_common_types::{
     transaction::{ImportStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::{peer_manager::NodeId, traits::OrOptional, types::CommsPublicKey, PeerConnection};
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::RpcClientLease,
+    traits::OrOptional,
+    types::CommsPublicKey,
+    PeerConnection,
+};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -47,6 +53,7 @@ use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
 use crate::{
+    connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     storage::database::WalletBackend,
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
@@ -61,10 +68,8 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
-pub struct UtxoScannerTask<TBackend>
-where TBackend: WalletBackend + 'static
-{
-    pub(crate) resources: UtxoScannerResources<TBackend>,
+pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
@@ -73,8 +78,10 @@ where TBackend: WalletBackend + 'static
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
 }
-impl<TBackend> UtxoScannerTask<TBackend>
-where TBackend: WalletBackend + 'static
+impl<TBackend, TWalletConnectivity> UtxoScannerTask<TBackend, TWalletConnectivity>
+where
+    TBackend: WalletBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
@@ -124,9 +131,8 @@ where TBackend: WalletBackend + 'static
                     if self.num_retries >= self.retry_limit {
                         self.publish_event(UtxoScannerEvent::ScanningFailed);
                         return Err(UtxoScannerError::UtxoScanningError(format!(
-                            "Failed to scan UTXO's after {} attempt(s) using all {} sync peer(s). Aborting...",
+                            "Failed to scan UTXO's after {} attempt(s) using sync peer(s). Aborting...",
                             self.num_retries,
-                            self.peer_seeds.len()
                         )));
                     }
 
@@ -164,7 +170,6 @@ where TBackend: WalletBackend + 'static
     }
 
     async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
-        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         debug!(
             target: LOG_TARGET,
             "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
@@ -191,11 +196,19 @@ where TBackend: WalletBackend + 'static
     }
 
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroTari, Duration), UtxoScannerError> {
-        let mut connection = self.connect_to_peer(peer.clone()).await?;
+        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
+        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_id();
 
-        let mut client = connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
-            .await?;
+        let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
+            // Use the wallet connectivity service so that RPC pools are correctly managed
+            self.resources
+                .wallet_connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .ok_or(UtxoScannerError::ConnectivityShutdown)?
+        } else {
+            self.establish_new_rpc_connection(&peer).await?
+        };
 
         let latency = client.get_last_request_latency();
         self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
@@ -294,6 +307,17 @@ where TBackend: WalletBackend + 'static
                 amount
             );
         }
+    }
+
+    async fn establish_new_rpc_connection(
+        &mut self,
+        peer: &NodeId,
+    ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
+        let mut connection = self.connect_to_peer(peer.clone()).await?;
+        let client = connection
+            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
+            .await?;
+        Ok(RpcClientLease::new(client))
     }
 
     async fn get_chain_tip_header(
