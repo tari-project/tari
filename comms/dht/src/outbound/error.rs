@@ -56,6 +56,8 @@ pub enum DhtOutboundError {
     NoMessagesQueued,
     #[error("Cipher error: `{0}`")]
     CipherError(String),
+    #[error("Padding error: `{0}`")]
+    PaddingError(String), // TODO: clean up these errors
 }
 
 impl From<SendFailure> for DhtOutboundError {

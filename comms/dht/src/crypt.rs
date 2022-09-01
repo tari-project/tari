@@ -70,9 +70,9 @@ pub fn generate_ecdh_secret(secret_key: &CommsSecretKey, public_key: &CommsPubli
 }
 
 fn pad_message_to_base_length_multiple(message: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
-    // We require a 32-bit length representation
-    if message.len() > (u32::max_value() as usize) {
-        return Err(DhtOutboundError::CipherError("Message is too long".to_string()));
+    // We require a 32-bit length representation, and also don't want to overflow after including this encoding
+    if message.len() > ((u32::max_value() - (size_of::<u32>() as u32)) as usize) {
+        return Err(DhtOutboundError::PaddingError("Message is too long".to_string()));
     }
     let message_length = message.len();
     let encoded_length = (message_length as u32).to_le_bytes();
@@ -97,9 +97,14 @@ fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8
     // NOTE: This function can return errors relating to message length
     // It is important not to leak error types to an adversary, or to have timing differences
 
-    // Assert that the padded message is a multiple of the base length
-    if padded_message.is_empty() || (padded_message.len() % MESSAGE_BASE_LENGTH) != 0 {
-        return Err(DhtOutboundError::CipherError("Bad padded message length".to_string()));
+    // The padded message must be long enough to extract the encoded message length
+    if padded_message.len() < size_of::<u32>() {
+        return Err(DhtOutboundError::PaddingError("Padded message is not long enough for length extraction".to_string()));
+    }
+
+    // The padded message must be a multiple of the base length
+    if (padded_message.len() % MESSAGE_BASE_LENGTH) != 0 {
+        return Err(DhtOutboundError::PaddingError("Padded message must be a multiple of the base length".to_string()));
     }
 
     // Decode the message length
@@ -107,16 +112,16 @@ fn get_original_message_from_padded_text(padded_message: &[u8]) -> Result<Vec<u8
     encoded_length.copy_from_slice(&padded_message[0..size_of::<u32>()]);
     let message_length = u32::from_le_bytes(encoded_length) as usize;
 
-    // The message is too short for the decoded length
-    if message_length + size_of::<u32>() > padded_message.len() {
+    // The padded message is too short for the decoded length
+    let end = message_length.checked_add(size_of::<u32>()).ok_or_else(|| DhtOutboundError::PaddingError("Claimed unpadded message length is too large".to_string()))?;
+    if end > padded_message.len() {
         return Err(DhtOutboundError::CipherError(
-            "Message is too short to be unpadded".to_string(),
+            "Claimed unpadded message length is too large".to_string(),
         ));
     }
 
-    // Remove the padding
+    // Remove the padding (we don't check for valid padding, as this is offloaded to authentication)
     let start = size_of::<u32>();
-    let end = start + message_length;
     let unpadded_message = &padded_message[start..end];
 
     Ok(unpadded_message.to_vec())
@@ -478,21 +483,21 @@ mod test {
         assert!(get_original_message_from_padded_text(&message)
             .unwrap_err()
             .to_string()
-            .contains("Bad padded message length"));
+            .contains("Padded message is not long enough for length extraction"));
 
         // We cannot extract the message length
         let message = [0u8; size_of::<u32>() - 1];
         assert!(get_original_message_from_padded_text(&message)
             .unwrap_err()
             .to_string()
-            .contains("Bad padded message length"));
+            .contains("Padded message is not long enough for length extraction"));
 
         // The padded message is not a multiple of the base length
         let message = [0u8; 2 * MESSAGE_BASE_LENGTH + 1];
         assert!(get_original_message_from_padded_text(&message)
             .unwrap_err()
             .to_string()
-            .contains("Bad padded message length"));
+            .contains("Padded message must be a multiple of the base length"));
     }
 
     #[test]
@@ -547,7 +552,7 @@ mod test {
         assert!(get_original_message_from_padded_text(pad_message.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Message is too short to be unpadded"));
+            .contains("Claimed unpadded message length is too large"));
     }
 
     #[test]
