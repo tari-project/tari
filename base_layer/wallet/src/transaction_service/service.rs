@@ -379,7 +379,7 @@ where
                     trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", msg.dht_header.message_tag);
 
                     let result  = self.accept_transaction(origin_public_key, inner_msg,
-                        msg.dht_header.message_tag.as_value(), &mut receive_transaction_protocol_handles).await;
+                        msg.dht_header.message_tag.as_value(), &mut receive_transaction_protocol_handles);
 
                     match result {
                         Err(TransactionServiceError::RepeatedMessageError) => {
@@ -506,7 +506,7 @@ where
                         Ok(join_result_inner) => self.complete_send_transaction_protocol(
                             join_result_inner,
                             &mut transaction_broadcast_protocol_handles
-                        ).await,
+                        ),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
@@ -516,14 +516,14 @@ where
                         Ok(join_result_inner) => self.complete_receive_transaction_protocol(
                             join_result_inner,
                             &mut transaction_broadcast_protocol_handles
-                        ).await,
+                        ),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
                     };
                 }
                 Some(join_result) = transaction_broadcast_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner).await,
+                        Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
                     };
                 }
@@ -533,7 +533,7 @@ where
                         Ok(join_result_inner) => self.complete_transaction_validation_protocol(
                             join_result_inner,
                             &mut transaction_broadcast_protocol_handles,
-                        ).await,
+                        ),
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
                 }
@@ -650,42 +650,34 @@ where
                 .cancel_pending_transaction(tx_id)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionCancelled),
-            TransactionServiceRequest::GetPendingInboundTransactions => {
-                Ok(TransactionServiceResponse::PendingInboundTransactions(
-                    self.db.get_pending_inbound_transactions().await?,
-                ))
-            },
-            TransactionServiceRequest::GetPendingOutboundTransactions => {
-                Ok(TransactionServiceResponse::PendingOutboundTransactions(
-                    self.db.get_pending_outbound_transactions().await?,
-                ))
-            },
+            TransactionServiceRequest::GetPendingInboundTransactions => Ok(
+                TransactionServiceResponse::PendingInboundTransactions(self.db.get_pending_inbound_transactions()?),
+            ),
+            TransactionServiceRequest::GetPendingOutboundTransactions => Ok(
+                TransactionServiceResponse::PendingOutboundTransactions(self.db.get_pending_outbound_transactions()?),
+            ),
 
             TransactionServiceRequest::GetCompletedTransactions => Ok(
-                TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions().await?),
+                TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions()?),
             ),
             TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
                 Ok(TransactionServiceResponse::PendingInboundTransactions(
-                    self.db.get_cancelled_pending_inbound_transactions().await?,
+                    self.db.get_cancelled_pending_inbound_transactions()?,
                 ))
             },
             TransactionServiceRequest::GetCancelledPendingOutboundTransactions => {
                 Ok(TransactionServiceResponse::PendingOutboundTransactions(
-                    self.db.get_cancelled_pending_outbound_transactions().await?,
+                    self.db.get_cancelled_pending_outbound_transactions()?,
                 ))
             },
-            TransactionServiceRequest::GetCancelledCompletedTransactions => {
-                Ok(TransactionServiceResponse::CompletedTransactions(
-                    self.db.get_cancelled_completed_transactions().await?,
-                ))
-            },
-            TransactionServiceRequest::GetCompletedTransaction(tx_id) => {
-                Ok(TransactionServiceResponse::CompletedTransaction(Box::new(
-                    self.db.get_completed_transaction(tx_id).await?,
-                )))
-            },
+            TransactionServiceRequest::GetCancelledCompletedTransactions => Ok(
+                TransactionServiceResponse::CompletedTransactions(self.db.get_cancelled_completed_transactions()?),
+            ),
+            TransactionServiceRequest::GetCompletedTransaction(tx_id) => Ok(
+                TransactionServiceResponse::CompletedTransaction(Box::new(self.db.get_completed_transaction(tx_id)?)),
+            ),
             TransactionServiceRequest::GetAnyTransaction(tx_id) => Ok(TransactionServiceResponse::AnyTransaction(
-                Box::new(self.db.get_any_transaction(tx_id).await?),
+                Box::new(self.db.get_any_transaction(tx_id)?),
             )),
             TransactionServiceRequest::ImportUtxoWithStatus {
                 amount,
@@ -707,11 +699,9 @@ where
                     current_height,
                     mined_timestamp,
                 )
-                .await
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
                 .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
-                .await
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
             TransactionServiceRequest::GenerateCoinbaseTransaction(reward, fees, block_height) => self
                 .generate_coinbase_transaction(reward, fees, block_height)
@@ -728,13 +718,11 @@ where
             TransactionServiceRequest::ApplyEncryption(cipher) => self
                 .db
                 .apply_encryption(*cipher)
-                .await
                 .map(|_| TransactionServiceResponse::EncryptionApplied)
                 .map_err(TransactionServiceError::TransactionStorageError),
             TransactionServiceRequest::RemoveEncryption => self
                 .db
                 .remove_encryption()
-                .await
                 .map(|_| TransactionServiceResponse::EncryptionRemoved)
                 .map_err(TransactionServiceError::TransactionStorageError),
             TransactionServiceRequest::RestartTransactionProtocols => self
@@ -742,11 +730,9 @@ where
                     send_transaction_join_handles,
                     receive_transaction_join_handles,
                 )
-                .await
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
             TransactionServiceRequest::RestartBroadcastProtocols => self
                 .restart_broadcast_protocols(transaction_broadcast_join_handles)
-                .await
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
             TransactionServiceRequest::GetNumConfirmationsRequired => Ok(
                 TransactionServiceResponse::NumConfirmationsRequired(self.resources.config.num_confirmations_required),
@@ -940,8 +926,7 @@ where
                     None,
                     None,
                 ),
-            )
-            .await?;
+            )?;
 
             let _result = reply_channel
                 .send(Ok(TransactionServiceResponse::TransactionSent(tx_id)))
@@ -1162,8 +1147,7 @@ where
                 None,
                 None,
             ),
-        )
-        .await?;
+        )?;
 
         Ok(Box::new((tx_id, pre_image, output)))
     }
@@ -1218,7 +1202,7 @@ where
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let spend_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+            CommsPublicKey::shared_secret(&sender_offset_private_key, &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1226,8 +1210,8 @@ where
         let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
         let encryption_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
         let rewind_data = RewindData {
-            rewind_blinding_key: rewind_blinding_key.clone(),
-            encryption_key: encryption_key.clone(),
+            rewind_blinding_key,
+            encryption_key,
         };
 
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
@@ -1292,8 +1276,7 @@ where
                 None,
                 None,
             ),
-        )
-        .await?;
+        )?;
 
         Ok(tx_id)
     }
@@ -1438,8 +1421,7 @@ where
                 None,
                 None,
             ),
-        )
-        .await?;
+        )?;
 
         Ok(tx_id)
     }
@@ -1507,8 +1489,8 @@ where
         let tx_id = recipient_reply.tx_id;
 
         // First we check if this Reply is for a cancelled Pending Outbound Tx or a Completed Tx
-        let cancelled_outbound_tx = self.db.get_cancelled_pending_outbound_transaction(tx_id).await;
-        let completed_tx = self.db.get_completed_transaction_cancelled_or_not(tx_id).await;
+        let cancelled_outbound_tx = self.db.get_cancelled_pending_outbound_transaction(tx_id);
+        let completed_tx = self.db.get_completed_transaction_cancelled_or_not(tx_id);
 
         // This closure will check if the timestamps are beyond the cooldown period
         let check_cooldown = |timestamp: Option<NaiveDateTime>| {
@@ -1548,7 +1530,7 @@ where
                 );
                 tokio::spawn(send_transaction_cancelled_message(
                     tx_id,
-                    source_pubkey.clone(),
+                    source_pubkey,
                     self.resources.outbound_message_service.clone(),
                 ));
             } else {
@@ -1560,14 +1542,14 @@ where
                 tokio::spawn(send_finalized_transaction_message(
                     tx_id,
                     ctx.transaction,
-                    source_pubkey.clone(),
+                    source_pubkey,
                     self.resources.outbound_message_service.clone(),
                     self.resources.config.direct_send_timeout,
                     self.resources.config.transaction_routing_mechanism,
                 ));
             }
 
-            if let Err(e) = self.resources.db.increment_send_count(tx_id).await {
+            if let Err(e) = self.resources.db.increment_send_count(tx_id) {
                 warn!(
                     target: LOG_TARGET,
                     "Could not increment send count for completed transaction TxId {}: {:?}", tx_id, e
@@ -1594,11 +1576,11 @@ where
             );
             tokio::spawn(send_transaction_cancelled_message(
                 tx_id,
-                source_pubkey.clone(),
+                source_pubkey,
                 self.resources.outbound_message_service.clone(),
             ));
 
-            if let Err(e) = self.resources.db.increment_send_count(tx_id).await {
+            if let Err(e) = self.resources.db.increment_send_count(tx_id) {
                 warn!(
                     target: LOG_TARGET,
                     "Could not increment send count for completed transaction TxId {}: {:?}", tx_id, e
@@ -1622,7 +1604,7 @@ where
     }
 
     /// Handle the final clean up after a Send Transaction protocol completes
-    async fn complete_send_transaction_protocol(
+    fn complete_send_transaction_protocol(
         &mut self,
         join_result: Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1634,7 +1616,7 @@ where
                 if val.transaction_status != TransactionStatus::Queued {
                     let _sender = self.pending_transaction_reply_senders.remove(&val.tx_id);
                     let _sender = self.send_transaction_cancellation_senders.remove(&val.tx_id);
-                    let completed_tx = match self.db.get_completed_transaction(val.tx_id).await {
+                    let completed_tx = match self.db.get_completed_transaction(val.tx_id) {
                         Ok(v) => v,
                         Err(e) => {
                             error!(
@@ -1646,7 +1628,6 @@ where
                     };
                     let _result = self
                         .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                        .await
                         .map_err(|resp| {
                             error!(
                                 target: LOG_TARGET,
@@ -1683,7 +1664,7 @@ where
 
     /// Cancel a pending transaction
     async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        self.db.cancel_pending_transaction(tx_id).await.map_err(|e| {
+        self.db.cancel_pending_transaction(tx_id).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
                 "Pending Transaction does not exist and could not be cancelled: {:?}", e
@@ -1733,7 +1714,7 @@ where
 
         // Check that an inbound transaction exists to be cancelled and that the Source Public key for that transaction
         // is the same as the cancellation message
-        if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(tx_id).await {
+        if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(tx_id) {
             if inbound_tx.source_public_key == source_pubkey {
                 self.cancel_pending_transaction(tx_id).await?;
             } else {
@@ -1749,13 +1730,13 @@ where
     }
 
     #[allow(clippy::map_entry)]
-    async fn restart_all_send_transaction_protocols(
+    fn restart_all_send_transaction_protocols(
         &mut self,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(), TransactionServiceError> {
-        let outbound_txs = self.db.get_pending_outbound_transactions().await?;
+        let outbound_txs = self.db.get_pending_outbound_transactions()?;
         for (tx_id, tx) in outbound_txs {
             let (sender_protocol, stage) = if tx.send_count > 0 {
                 (None, TransactionSendProtocolStage::WaitForReply)
@@ -1819,7 +1800,7 @@ where
     /// 'source_pubkey' - The pubkey from which the message was sent and to which the reply will be sent.
     /// 'sender_message' - Message from a sender containing the setup of the transaction being sent to you
     #[allow(clippy::too_many_lines)]
-    pub async fn accept_transaction(
+    pub fn accept_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
         sender_message: proto::TransactionSenderMessage,
@@ -1844,7 +1825,7 @@ where
             );
 
             // Check if this transaction has already been received and cancelled.
-            if let Ok(Some(any_tx)) = self.db.get_any_cancelled_transaction(data.tx_id).await {
+            if let Ok(Some(any_tx)) = self.db.get_any_cancelled_transaction(data.tx_id) {
                 let tx = CompletedTransaction::from(any_tx);
 
                 if tx.source_public_key != source_pubkey {
@@ -1865,7 +1846,7 @@ where
             }
 
             // Check if this transaction has already been received.
-            if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(data.clone().tx_id).await {
+            if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(data.tx_id) {
                 // Check that it is from the same person
                 if inbound_tx.source_public_key != source_pubkey {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);
@@ -1895,7 +1876,7 @@ where
                     self.resources.config.direct_send_timeout,
                     self.resources.config.transaction_routing_mechanism,
                 ));
-                if let Err(e) = self.resources.db.increment_send_count(tx_id).await {
+                if let Err(e) = self.resources.db.increment_send_count(tx_id) {
                     warn!(
                         target: LOG_TARGET,
                         "Could not increment send count for inbound transaction TxId {}: {:?}", tx_id, e
@@ -1975,7 +1956,7 @@ where
         let sender = match self.finalized_transaction_senders.get_mut(&tx_id) {
             None => {
                 // First check if perhaps we know about this inbound transaction but it was cancelled
-                match self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
+                match self.db.get_cancelled_pending_inbound_transaction(tx_id) {
                     Ok(t) => {
                         if t.source_public_key != source_pubkey {
                             debug!(
@@ -1992,7 +1973,7 @@ where
                              Restarting protocol",
                             tx_id
                         );
-                        self.db.uncancel_pending_transaction(tx_id).await?;
+                        self.db.uncancel_pending_transaction(tx_id)?;
                         self.output_manager_service
                             .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                             .await?;
@@ -2018,7 +1999,7 @@ where
     }
 
     /// Handle the final clean up after a Send Transaction protocol completes
-    async fn complete_receive_transaction_protocol(
+    fn complete_receive_transaction_protocol(
         &mut self,
         join_result: Result<TxId, TransactionServiceProtocolError<TxId>>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -2030,7 +2011,7 @@ where
                 let _public_key = self.finalized_transaction_senders.remove(&id);
                 let _result = self.receiver_transaction_cancellation_senders.remove(&id);
 
-                let completed_tx = match self.db.get_completed_transaction(id).await {
+                let completed_tx = match self.db.get_completed_transaction(id) {
                     Ok(v) => v,
                     Err(e) => {
                         warn!(
@@ -2042,7 +2023,6 @@ where
                 };
                 let _result = self
                     .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                    .await
                     .map_err(|e| {
                         warn!(
                             target: LOG_TARGET,
@@ -2083,11 +2063,11 @@ where
         }
     }
 
-    async fn restart_all_receive_transaction_protocols(
+    fn restart_all_receive_transaction_protocols(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
-        let inbound_txs = self.db.get_pending_inbound_transaction_sender_info().await?;
+        let inbound_txs = self.db.get_pending_inbound_transaction_sender_info()?;
         for txn in inbound_txs {
             self.restart_receive_transaction_protocol(txn.tx_id, txn.source_public_key, join_handles);
         }
@@ -2128,7 +2108,7 @@ where
         }
     }
 
-    async fn restart_transaction_negotiation_protocols(
+    fn restart_transaction_negotiation_protocols(
         &mut self,
         send_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
@@ -2139,7 +2119,6 @@ where
     ) -> Result<(), TransactionServiceError> {
         trace!(target: LOG_TARGET, "Restarting transaction negotiation protocols");
         self.restart_all_send_transaction_protocols(send_transaction_join_handles)
-            .await
             .map_err(|resp| {
                 error!(
                     target: LOG_TARGET,
@@ -2149,7 +2128,6 @@ where
             })?;
 
         self.restart_all_receive_transaction_protocols(receive_transaction_join_handles)
-            .await
             .map_err(|resp| {
                 error!(
                     target: LOG_TARGET,
@@ -2167,7 +2145,7 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
     ) -> Result<OperationId, TransactionServiceError> {
-        self.resources.db.mark_all_transactions_as_unvalidated().await?;
+        self.resources.db.mark_all_transactions_as_unvalidated()?;
         self.start_transaction_validation_protocol(join_handles).await
     }
 
@@ -2199,7 +2177,7 @@ where
     }
 
     /// Handle the final clean up after a Transaction Validation protocol completes
-    async fn complete_transaction_validation_protocol(
+    fn complete_transaction_validation_protocol(
         &mut self,
         join_result: Result<OperationId, TransactionServiceProtocolError<OperationId>>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -2215,7 +2193,6 @@ where
                 // Restart broadcast protocols for any transactions that were found to be no longer mined.
                 let _ = self
                     .restart_broadcast_protocols(transaction_broadcast_join_handles)
-                    .await
                     .map_err(|e| warn!(target: LOG_TARGET, "Error restarting broadcast protocols: {}", e));
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -2233,7 +2210,7 @@ where
         }
     }
 
-    async fn restart_broadcast_protocols(
+    fn restart_broadcast_protocols(
         &mut self,
         broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
@@ -2243,7 +2220,6 @@ where
 
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
         self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
-            .await
             .map_err(|resp| {
                 error!(
                     target: LOG_TARGET,
@@ -2258,7 +2234,7 @@ where
     }
 
     /// Start to protocol to Broadcast the specified Completed Transaction to the Base Node.
-    async fn broadcast_completed_transaction(
+    fn broadcast_completed_transaction(
         &mut self,
         completed_tx: CompletedTransaction,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
@@ -2303,7 +2279,7 @@ where
 
     /// Broadcast all valid and not cancelled completed transactions with status 'Completed' and 'Broadcast' to the base
     /// node.
-    async fn broadcast_completed_and_broadcast_transactions(
+    fn broadcast_completed_and_broadcast_transactions(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
@@ -2312,17 +2288,16 @@ where
             "Attempting to Broadcast all valid and not cancelled Completed Transactions with status 'Completed' and \
              'Broadcast'"
         );
-        let txn_list = self.db.get_transactions_to_be_broadcast().await?;
+        let txn_list = self.db.get_transactions_to_be_broadcast()?;
         for completed_txn in txn_list {
-            self.broadcast_completed_transaction(completed_txn, join_handles)
-                .await?;
+            self.broadcast_completed_transaction(completed_txn, join_handles)?;
         }
 
         Ok(())
     }
 
     /// Handle the final clean up after a Transaction Broadcast protocol completes
-    async fn complete_transaction_broadcast_protocol(
+    fn complete_transaction_broadcast_protocol(
         &mut self,
         join_result: Result<TxId, TransactionServiceProtocolError<TxId>>,
     ) {
@@ -2386,7 +2361,7 @@ where
     }
 
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
-    pub async fn add_utxo_import_transaction_with_status(
+    pub fn add_utxo_import_transaction_with_status(
         &mut self,
         value: MicroTari,
         source_public_key: CommsPublicKey,
@@ -2398,19 +2373,17 @@ where
         mined_timestamp: Option<NaiveDateTime>,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
-        self.db
-            .add_utxo_import_transaction_with_status(
-                tx_id,
-                value,
-                source_public_key,
-                self.node_identity.public_key().clone(),
-                message,
-                maturity,
-                import_status.clone(),
-                current_height,
-                mined_timestamp,
-            )
-            .await?;
+        self.db.add_utxo_import_transaction_with_status(
+            tx_id,
+            value,
+            source_public_key,
+            self.node_identity.public_key().clone(),
+            message,
+            maturity,
+            import_status.clone(),
+            current_height,
+            mined_timestamp,
+        )?;
         let transaction_event = match import_status {
             ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
             ImportStatus::FauxUnconfirmed => TransactionEvent::FauxTransactionUnconfirmed {
@@ -2432,7 +2405,7 @@ where
     }
 
     /// Submit a completed transaction to the Transaction Manager
-    async fn submit_transaction(
+    fn submit_transaction(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2441,9 +2414,7 @@ where
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_transaction.tx_id;
         trace!(target: LOG_TARGET, "Submit transaction ({}) to db.", tx_id);
-        self.db
-            .insert_completed_transaction(tx_id, completed_transaction)
-            .await?;
+        self.db.insert_completed_transaction(tx_id, completed_transaction)?;
         trace!(
             target: LOG_TARGET,
             "Launch the transaction broadcast protocol for submitted transaction ({}).",
@@ -2455,14 +2426,13 @@ where
                 transaction_status: TransactionStatus::Completed,
             }),
             transaction_broadcast_join_handles,
-        )
-        .await;
+        );
         Ok(())
     }
 
     /// Submit a completed coin split transaction to the Transaction Manager. This is different from
     /// `submit_transaction` in that it will expose less information about the completed transaction.
-    pub async fn submit_transaction_to_self(
+    pub fn submit_transaction_to_self(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2490,8 +2460,7 @@ where
                 None,
                 None,
             ),
-        )
-        .await?;
+        )?;
         Ok(())
     }
 
@@ -2506,8 +2475,7 @@ where
         // first check if we already have a coinbase tx for this height and amount
         let find_result = self
             .db
-            .find_coinbase_transaction_at_block_height(block_height, amount)
-            .await?;
+            .find_coinbase_transaction_at_block_height(block_height, amount)?;
 
         let completed_transaction = match find_result {
             Some(completed_tx) => {
@@ -2528,26 +2496,24 @@ where
                     .output_manager_service
                     .get_coinbase_transaction(tx_id, reward, fees, block_height)
                     .await?;
-                self.db
-                    .insert_completed_transaction(
+                self.db.insert_completed_transaction(
+                    tx_id,
+                    CompletedTransaction::new(
                         tx_id,
-                        CompletedTransaction::new(
-                            tx_id,
-                            self.node_identity.public_key().clone(),
-                            self.node_identity.public_key().clone(),
-                            amount,
-                            MicroTari::from(0),
-                            tx.clone(),
-                            TransactionStatus::Coinbase,
-                            format!("Coinbase Transaction for Block #{}", block_height),
-                            Utc::now().naive_utc(),
-                            TransactionDirection::Inbound,
-                            Some(block_height),
-                            None,
-                            None,
-                        ),
-                    )
-                    .await?;
+                        self.node_identity.public_key().clone(),
+                        self.node_identity.public_key().clone(),
+                        amount,
+                        MicroTari::from(0),
+                        tx.clone(),
+                        TransactionStatus::Coinbase,
+                        format!("Coinbase Transaction for Block #{}", block_height),
+                        Utc::now().naive_utc(),
+                        TransactionDirection::Inbound,
+                        Some(block_height),
+                        None,
+                        None,
+                    ),
+                )?;
 
                 let _size = self
                     .resources

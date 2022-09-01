@@ -247,8 +247,7 @@ mod test {
             "1".to_string(),
             Utc::now().naive_utc(),
         );
-        runtime
-            .block_on(db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone()))
+        db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
             .unwrap();
 
         let completed_tx = CompletedTransaction::new(
@@ -272,8 +271,7 @@ mod test {
             None,
             None,
         );
-        runtime
-            .block_on(db.insert_completed_transaction(2u64.into(), completed_tx.clone()))
+        db.insert_completed_transaction(2u64.into(), completed_tx.clone())
             .unwrap();
 
         let stp = SenderTransactionProtocol::new_placeholder();
@@ -288,29 +286,25 @@ mod test {
             Utc::now().naive_utc(),
             false,
         );
-        runtime
-            .block_on(db.add_pending_outbound_transaction(3u64.into(), outbound_tx.clone()))
+        db.add_pending_outbound_transaction(3u64.into(), outbound_tx.clone())
             .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(3u64.into())).unwrap();
+        db.cancel_pending_transaction(3u64.into()).unwrap();
 
         let inbound_tx_cancelled = InboundTransaction {
             tx_id: 4u64.into(),
             ..inbound_tx.clone()
         };
-        runtime
-            .block_on(db.add_pending_inbound_transaction(4u64.into(), inbound_tx_cancelled))
+        db.add_pending_inbound_transaction(4u64.into(), inbound_tx_cancelled)
             .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(4u64.into())).unwrap();
+        db.cancel_pending_transaction(4u64.into()).unwrap();
 
         let completed_tx_cancelled = CompletedTransaction {
             tx_id: 5u64.into(),
             ..completed_tx.clone()
         };
-        runtime
-            .block_on(db.insert_completed_transaction(5u64.into(), completed_tx_cancelled.clone()))
+        db.insert_completed_transaction(5u64.into(), completed_tx_cancelled.clone())
             .unwrap();
-        runtime
-            .block_on(db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown))
+        db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown)
             .unwrap();
 
         let faux_unconfirmed_tx = CompletedTransaction::new(
@@ -334,8 +328,7 @@ mod test {
             Some(2),
             Some(NaiveDateTime::from_timestamp(0, 0)),
         );
-        runtime
-            .block_on(db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone()))
+        db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
             .unwrap();
 
         let faux_confirmed_tx = CompletedTransaction::new(
@@ -359,8 +352,7 @@ mod test {
             Some(5),
             Some(NaiveDateTime::from_timestamp(0, 0)),
         );
-        runtime
-            .block_on(db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone()))
+        db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
             .unwrap();
 
         let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
