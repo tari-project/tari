@@ -99,7 +99,7 @@ where
                 .await
                 .ok_or_else(|| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))?;
 
-            let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id).await {
+            let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id) {
                 Ok(tx) => tx,
                 Err(e) => {
                     error!(
@@ -275,7 +275,6 @@ where
             self.resources
                 .db
                 .broadcast_completed_transaction(self.tx_id)
-                .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
             let _size = self
                 .resources
@@ -430,7 +429,7 @@ where
                 "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
             );
         }
-        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason).await {
+        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason) {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
