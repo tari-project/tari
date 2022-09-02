@@ -8,6 +8,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * The number of unique fields available. This always matches the number of variants in `OutputField`.
+ */
+#define OutputFields_NUM_FIELDS 10
+
 enum TariTypeTag {
   Text = 0,
   Utxo = 1,
@@ -60,13 +65,27 @@ struct Contact;
 
 struct ContactsLivenessData;
 
+struct Covenant;
+
 struct EmojiSet;
+
+/**
+ * value: u64 + tag: [u8; 16]
+ */
+struct EncryptedValue;
+
+struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
 
 struct InboundTransaction;
 
 struct OutboundTransaction;
+
+/**
+ * Options for UTXO's
+ */
+struct OutputFeatures;
 
 /**
  * Configuration for a comms node
@@ -138,6 +157,15 @@ struct TariSeedWords;
 
 struct TariWallet;
 
+/**
+ * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
+ * why it is necessary, refer to the
+ * [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
+ * The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
+ * this transaction can be mined) and the transaction fee, in cleartext.
+ */
+struct TransactionKernel;
+
 struct TransactionSendStatus;
 
 struct TransportConfig;
@@ -164,14 +192,14 @@ typedef struct TransactionKernel TariTransactionKernel;
  */
 typedef struct RistrettoPublicKey PublicKey;
 
-typedef struct PublicKey TariPublicKey;
+typedef PublicKey TariPublicKey;
 
 /**
  * Define the explicit Secret key implementation for the Tari base layer.
  */
 typedef struct RistrettoSecretKey PrivateKey;
 
-typedef struct PrivateKey TariPrivateKey;
+typedef PrivateKey TariPrivateKey;
 
 /**
  * # A Commitment signature implementation on Ristretto
@@ -257,9 +285,9 @@ typedef struct CommitmentSignature_RistrettoPublicKey__RistrettoSecretKey Ristre
 /**
  * Define the explicit Commitment Signature implementation for the Tari base layer.
  */
-typedef struct RistrettoComSig ComSignature;
+typedef RistrettoComSig ComSignature;
 
-typedef struct ComSignature TariCommitmentSignature;
+typedef ComSignature TariCommitmentSignature;
 
 typedef struct Covenant TariCovenant;
 
