@@ -2391,7 +2391,9 @@ where
                 num_confirmations: 0,
                 is_valid: true,
             },
-            ImportStatus::FauxConfirmed => TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true },
+            ImportStatus::FauxConfirmed | ImportStatus::Coinbase => {
+                TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true }
+            },
         };
         let _size = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
             trace!(
