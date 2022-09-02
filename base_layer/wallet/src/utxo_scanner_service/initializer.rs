@@ -31,7 +31,7 @@ use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
+    connectivity_service::WalletConnectivityHandle,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
@@ -97,14 +97,14 @@ where T: WalletBackend + 'static
             let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
-            let scanning_service = UtxoScannerService::<T>::builder()
+            let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle>::builder()
                 .with_peers(vec![])
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources(
                     backend,
                     comms_connectivity,
-                    wallet_connectivity.get_current_base_node_watcher(),
+                    wallet_connectivity.clone(),
                     output_manager_service,
                     transaction_service,
                     node_identity,

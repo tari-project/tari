@@ -125,7 +125,7 @@ use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex, SafePassword};
 use tari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -7094,7 +7094,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
     let peer_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
-    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase>::builder();
+    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
 
     if !recovered_output_message.is_null() {
         let message_str = match CStr::from_ptr(recovered_output_message).to_str() {

@@ -112,8 +112,8 @@ impl Dh for CommsDiffieHellman {
         self.secret_key.as_bytes()
     }
 
-    fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), ()> {
-        let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| ())?;
+    fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), snow::Error> {
+        let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
         let shared = CommsPublicKey::shared_secret(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
         copy_slice!(hash, out);
