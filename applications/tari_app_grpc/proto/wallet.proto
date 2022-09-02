@@ -78,6 +78,8 @@ service Wallet {
     rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
     rpc SeedWords(Empty) returns (SeedWordsResponse);
     rpc DeleteSeedWordsFile(Empty) returns (FileDeletedResponse);
+
+    rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 }
 
 message GetVersionRequest { }
@@ -326,4 +328,17 @@ message SeedWordsResponse {
 
 message FileDeletedResponse {
 
+}
+
+message RegisterValidatorNodeRequest {
+    string validator_node_public_key = 1;
+    Signature validator_node_signature = 2;
+    uint64 fee_per_gram = 3;
+    string message = 4;
+}
+
+message RegisterValidatorNodeResponse {
+    uint64 transaction_id = 1;
+    bool is_success = 2;
+    string failure_message = 3;
 }
