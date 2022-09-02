@@ -542,7 +542,7 @@ where
                         return Err(err);
                     }
                     let elapsed = start.elapsed();
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "({}) RPC request completed in {:.0?}{}",
                         self.logging_context_string,
@@ -663,7 +663,7 @@ where
                 self.process_body(request_id, deadline, body).await?;
             },
             Err(err) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "{} Service returned an error: {}", self.logging_context_string, err
                 );
