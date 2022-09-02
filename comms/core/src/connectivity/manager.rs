@@ -392,13 +392,18 @@ impl ConnectivityManagerActor {
     }
 
     async fn reap_inactive_connections(&mut self) {
-        if self.pool.count_connected() < self.config.reaper_min_connection_threshold {
+        let excess_connections = self
+            .pool
+            .count_connected()
+            .saturating_sub(self.config.reaper_min_connection_threshold);
+        if excess_connections == 0 {
             return;
         }
 
-        let connections = self
+        let mut connections = self
             .pool
             .get_inactive_outbound_connections_mut(self.config.reaper_min_inactive_age);
+        connections.truncate(excess_connections as usize);
         for conn in connections {
             if !conn.is_connected() {
                 continue;
