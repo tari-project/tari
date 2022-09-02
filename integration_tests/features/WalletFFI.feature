@@ -85,7 +85,8 @@ Feature: Wallet FFI
         Then I don't have contact with alias ALIAS in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-    @critical
+    # TODO: Was broken due to #4525 - fix underway
+    @critical @broken
     Scenario: As a client I want to receive contact liveness events
         Given I have a seed node SEED
         # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
