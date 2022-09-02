@@ -22,6 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::StringList, SubConfigPath};
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -41,6 +42,8 @@ pub struct MergeMiningProxyConfig {
     pub base_node_grpc_address: Multiaddr,
     /// The Tari console wallet's GRPC address
     pub console_wallet_grpc_address: Multiaddr,
+    /// GRPC authentication for console wallet
+    pub console_wallet_grpc_authentication: GrpcAuthentication,
     /// Address of the tari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
@@ -69,6 +72,7 @@ impl Default for MergeMiningProxyConfig {
             monerod_use_auth: false,
             base_node_grpc_address: "/ip4/127.0.0.1/tcp/18142".parse().unwrap(),
             console_wallet_grpc_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
+            console_wallet_grpc_authentication: GrpcAuthentication::default(),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
