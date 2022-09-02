@@ -328,7 +328,7 @@ mod test {
         assert!(decrypt_with_chacha20_poly1305(&key, encrypted.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Authenticated decryption failed"));
+            .contains("Invalid authenticated decryption"));
     }
 
     #[test]
@@ -348,7 +348,7 @@ mod test {
         assert!(decrypt_with_chacha20_poly1305(&key, encrypted.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Authenticated decryption failed"));
+            .contains("Invalid authenticated decryption"));
     }
 
     #[test]
@@ -370,7 +370,7 @@ mod test {
         assert!(decrypt_with_chacha20_poly1305(&other_key, encrypted.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Authenticated decryption failed"));
+            .contains("Invalid authenticated decryption"));
     }
 
     #[test]
@@ -509,7 +509,7 @@ mod test {
         assert!(get_original_message_from_padded_text(pad_message.as_slice())
             .unwrap_err()
             .to_string()
-            .contains("Original length message is invalid"));
+            .contains("Invalid decryption, nonce not included"));
     }
 
     #[test]
