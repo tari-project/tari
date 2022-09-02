@@ -36,6 +36,7 @@ use tokio::{
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -55,10 +56,8 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 // this only samples 1 header per new block. A ticket has been added to the backlog to think about this #LOGGED
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
-pub struct UtxoScannerService<TBackend>
-where TBackend: WalletBackend + 'static
-{
-    pub(crate) resources: UtxoScannerResources<TBackend>,
+pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) retry_limit: usize,
     pub(crate) peer_seeds: Vec<CommsPublicKey>,
     pub(crate) mode: UtxoScannerMode,
@@ -69,14 +68,16 @@ where TBackend: WalletBackend + 'static
     recovery_message_watch: watch::Receiver<String>,
 }
 
-impl<TBackend> UtxoScannerService<TBackend>
-where TBackend: WalletBackend + 'static
+impl<TBackend, TWalletConnectivity> UtxoScannerService<TBackend, TWalletConnectivity>
+where
+    TBackend: WalletBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
         peer_seeds: Vec<CommsPublicKey>,
         retry_limit: usize,
         mode: UtxoScannerMode,
-        resources: UtxoScannerResources<TBackend>,
+        resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
@@ -96,7 +97,7 @@ where TBackend: WalletBackend + 'static
         }
     }
 
-    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend> {
+    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TWalletConnectivity> {
         UtxoScannerTask {
             resources: self.resources.clone(),
             peer_seeds: self.peer_seeds.clone(),
@@ -190,9 +191,10 @@ where TBackend: WalletBackend + 'static
 }
 
 #[derive(Clone)]
-pub struct UtxoScannerResources<TBackend> {
+pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub db: WalletDatabase<TBackend>,
     pub comms_connectivity: ConnectivityRequester,
+    pub wallet_connectivity: TWalletConnectivity,
     pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
