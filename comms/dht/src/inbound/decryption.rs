@@ -408,8 +408,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         message_body: &[u8],
     ) -> Result<EnvelopeBody, DecryptionError> {
         let key_message = crypt::generate_key_message(shared_secret);
-        let decrypted = crypt::decrypt(&key_message, message_body)
-            .map_err(DecryptionError::DecryptionFailedMalformedCipher)?;
+        let decrypted =
+            crypt::decrypt(&key_message, message_body).map_err(DecryptionError::DecryptionFailedMalformedCipher)?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
         EnvelopeBody::decode(decrypted.as_slice())
