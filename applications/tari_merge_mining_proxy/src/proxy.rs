@@ -54,6 +54,7 @@ use crate::{
     common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
     config::MergeMiningProxyConfig,
     error::MmProxyError,
+    WalletGrpcClient,
 };
 
 const LOG_TARGET: &str = "tari_mm_proxy::proxy";
@@ -72,7 +73,7 @@ impl MergeMiningProxyService {
         config: MergeMiningProxyConfig,
         http_client: reqwest::Client,
         base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-        wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
+        wallet_client: WalletGrpcClient,
         block_templates: BlockTemplateRepository,
         randomx_factory: RandomXFactory,
     ) -> Self {
@@ -154,7 +155,7 @@ struct InnerService {
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
     base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
-    wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
+    wallet_client: WalletGrpcClient,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
