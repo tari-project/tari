@@ -55,7 +55,6 @@ impl CommandContext {
                 "Address",
                 "Direction",
                 "Age",
-                "Role",
                 "User Agent",
                 "Info",
             ]);
@@ -73,19 +72,16 @@ impl CommandContext {
                     .map(|metadata| format!("height: {}", metadata.metadata.height_of_longest_chain()));
 
                 let ua = peer.user_agent;
+                let rpc_sessions = self
+                    .rpc_server
+                    .get_num_active_sessions_for(peer.node_id.clone())
+                    .await?;
                 table.add_row(row![
                     peer.node_id,
                     peer.public_key,
                     conn.address(),
                     conn.direction(),
                     format_duration_basic(conn.age()),
-                    {
-                        if peer.features.is_client() {
-                            "Wallet"
-                        } else {
-                            "Base node"
-                        }
-                    },
                     {
                         if ua.is_empty() {
                             "<unknown>"
@@ -94,9 +90,11 @@ impl CommandContext {
                         }
                     },
                     format!(
-                        "substreams: {}{}",
+                        "{}hnd: {}, ss: {}, rpc: {}",
+                        chain_height.map(|s| format!("{}, ", s)).unwrap_or_default(),
+                        conn.handle_count(),
                         conn.substream_count(),
-                        chain_height.map(|s| format!(", {}", s)).unwrap_or_default()
+                        rpc_sessions
                     ),
                 ]);
             }
