@@ -118,8 +118,9 @@ pub async fn change_password(
     config: &ApplicationConfig,
     arg_password: Option<SafePassword>,
     shutdown_signal: ShutdownSignal,
+    non_interactive_mode: bool,
 ) -> Result<(), ExitError> {
-    let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal).await?;
+    let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal, non_interactive_mode).await?;
 
     let passphrase = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
@@ -248,6 +249,7 @@ pub async fn init_wallet(
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
+    non_interactive_mode: bool,
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
         &config
@@ -359,27 +361,29 @@ pub async fn init_wallet(
         debug!(target: LOG_TARGET, "Wallet is not encrypted.");
 
         // create using --password arg if supplied and skip seed words confirmation
-        let (passphrase, interactive) = if let Some(password) = arg_password {
-            debug!(target: LOG_TARGET, "Setting password from command line argument.");
+        let passphrase = match arg_password {
+            Some(password) => {
+                debug!(target: LOG_TARGET, "Setting password from command line argument.");
+                password
+            },
+            None => {
+                debug!(target: LOG_TARGET, "Prompting for password.");
+                let password = prompt_password("Create wallet password: ")?;
+                let confirmed = prompt_password("Confirm wallet password: ")?;
 
-            (password, false)
-        } else {
-            debug!(target: LOG_TARGET, "Prompting for password.");
-            let password = prompt_password("Create wallet password: ")?;
-            let confirmed = prompt_password("Confirm wallet password: ")?;
+                if password != confirmed {
+                    return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
+                }
 
-            if password != confirmed {
-                return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
-            }
-
-            (password, true)
+                password
+            },
         };
 
         wallet.apply_encryption(passphrase).await?;
 
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
-        if interactive && recovery_seed.is_none() {
+        if !non_interactive_mode && recovery_seed.is_none() {
             match confirm_seed_words(&mut wallet) {
                 Ok(()) => {
                     print!("\x1Bc"); // Clear the screen
