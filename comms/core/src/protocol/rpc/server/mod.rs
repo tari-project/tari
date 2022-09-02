@@ -311,7 +311,8 @@ where
     }
 
     async fn handle_request(&self, req: RpcServerRequest) {
-        use RpcServerRequest::GetNumActiveSessions;
+        #[allow(clippy::enum_glob_use)]
+        use RpcServerRequest::*;
         match req {
             GetNumActiveSessions(reply) => {
                 let max_sessions = self
@@ -319,6 +320,21 @@ where
                     .maximum_simultaneous_sessions
                     .unwrap_or_else(BoundedExecutor::max_theoretical_tasks);
                 let num_active = max_sessions.saturating_sub(self.executor.num_available());
+                let _ = reply.send(num_active);
+            },
+            GetNumActiveSessionsForPeer(node_id, reply) => {
+                let num_active = self
+                    .sessions
+                    .get(&node_id)
+                    .map(|num_sessions| {
+                        let max_sessions = self
+                            .config
+                            .maximum_sessions_per_client
+                            .unwrap_or_else(BoundedExecutor::max_theoretical_tasks);
+                        max_sessions.saturating_sub(*num_sessions)
+                    })
+                    .unwrap_or(0);
+
                 let _ = reply.send(num_active);
             },
         }

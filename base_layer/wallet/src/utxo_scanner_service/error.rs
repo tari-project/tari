@@ -61,4 +61,6 @@ pub enum UtxoScannerError {
     OverflowError,
     #[error("FixedHash size error: `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("Connectivity has shut down")]
+    ConnectivityShutdown,
 }

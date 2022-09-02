@@ -33,6 +33,9 @@ pub struct ConnectivityConfig {
     pub connection_pool_refresh_interval: Duration,
     /// True if connection reaping is enabled, otherwise false (default: true)
     pub is_connection_reaping_enabled: bool,
+    /// The minimum number of connections that must exist before any connections may be reaped
+    /// Default: 50
+    pub reaper_min_connection_threshold: usize,
     /// The minimum age of the connection before it can be reaped. This prevents a connection that has just been
     /// established from being reaped due to inactivity. Default: 20 minutes
     pub reaper_min_inactive_age: Duration,
@@ -54,6 +57,7 @@ impl Default for ConnectivityConfig {
             min_connectivity: 1,
             connection_pool_refresh_interval: Duration::from_secs(60),
             reaper_min_inactive_age: Duration::from_secs(20 * 60),
+            reaper_min_connection_threshold: 50,
             is_connection_reaping_enabled: true,
             max_failures_mark_offline: 1,
             connection_tie_break_linger: Duration::from_secs(2),
