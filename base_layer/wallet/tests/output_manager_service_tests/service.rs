@@ -1200,10 +1200,8 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let reward1 = MicroTari::from(1000);
     let fees1 = MicroTari::from(500);
-    let value1 = reward1 + fees1;
     let reward2 = MicroTari::from(2000);
     let fees2 = MicroTari::from(500);
-    let value2 = reward2 + fees2;
     let reward3 = MicroTari::from(3000);
     let fees3 = MicroTari::from(500);
     let value3 = reward3 + fees3;
@@ -1214,13 +1212,14 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
+    // pending coinbases should not show up as pending incoming
     assert_eq!(
         oms.output_manager_handle
             .get_balance()
             .await
             .unwrap()
             .pending_incoming_balance,
-        value1
+        MicroTari::from(0)
     );
 
     let _tx2 = oms
@@ -1235,7 +1234,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        value1 + value2
+        MicroTari::from(0)
     );
     let tx3 = oms
         .output_manager_handle
@@ -1249,7 +1248,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        value1 + value2 + value3
+        MicroTari::from(0)
     );
 
     let output = tx3.body.outputs()[0].clone();
@@ -1455,8 +1454,7 @@ async fn test_txo_validation() {
         MicroTari::from(output1_value) -
                 MicroTari::from(900_000) -
                 MicroTari::from(1260) + //Output4 = output 1 -900_000 and 1260 for fees
-                MicroTari::from(8_000_000) +
-                MicroTari::from(16_000_000)
+                MicroTari::from(8_000_000)
     );
 
     // Output 1:    Spent in Block 5 - Unconfirmed
