@@ -517,12 +517,12 @@ where TBackend: WalletBackend + 'static
                 .await?
                 .into_iter()
                 .map(|ro| {
-                    (
-                        ro.output,
-                        self.resources.recovery_message.clone(),
-                        ImportStatus::Imported,
-                        ro.tx_id,
-                    )
+                    let status = if ro.output.features.is_coinbase() {
+                        ImportStatus::Coinbase
+                    } else {
+                        ImportStatus::Imported
+                    };
+                    (ro.output, self.resources.recovery_message.clone(), status, ro.tx_id)
                 })
                 .collect(),
         );
@@ -555,15 +555,22 @@ where TBackend: WalletBackend + 'static
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
-        // Because we do not know the source public key we are making it the default key of zeroes to make it clear this
-        // value is a placeholder.
-        let source_public_key = CommsPublicKey::default();
+        let default_key = CommsPublicKey::default();
+        let self_key = self.resources.node_identity.public_key().clone();
 
         for (uo, message, import_status, tx_id) in utxos {
+            let source_public_key = if uo.features.is_coinbase() {
+                // its a coinbase, so we know we mined it and it comes from us.
+                &self_key
+            } else {
+                // Because we do not know the source public key we are making it the default key of zeroes to make it
+                // clear this value is a placeholder.
+                &default_key
+            };
             match self
                 .import_unblinded_utxo_to_transaction_service(
                     uo.clone(),
-                    &source_public_key,
+                    source_public_key,
                     message,
                     import_status,
                     tx_id,
@@ -636,7 +643,7 @@ where TBackend: WalletBackend + 'static
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
-                import_status,
+                import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
                 Some(mined_timestamp),
@@ -645,12 +652,13 @@ where TBackend: WalletBackend + 'static
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::FauxUnconfirmed'",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::{}'",
             unblinded_output
                 .as_transaction_input(&self.resources.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
                 .to_hex(),
+            import_status
         );
 
         Ok(tx_id)

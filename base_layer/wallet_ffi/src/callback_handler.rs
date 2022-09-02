@@ -235,15 +235,15 @@ where TBackend: TransactionBackend + 'static
                             trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
                             match (*msg).clone() {
                                 TransactionEvent::ReceivedTransaction(tx_id) => {
-                                    self.receive_transaction_event(tx_id).await;
+                                    self.receive_transaction_event(tx_id);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::ReceivedTransactionReply(tx_id) => {
-                                    self.receive_transaction_reply_event(tx_id).await;
+                                    self.receive_transaction_reply_event(tx_id);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
-                                    self.receive_finalized_transaction_event(tx_id).await;
+                                    self.receive_finalized_transaction_event(tx_id);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionSendResult(tx_id, status) => {
@@ -251,27 +251,27 @@ where TBackend: TransactionBackend + 'static
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionCancelled(tx_id, reason) => {
-                                    self.receive_transaction_cancellation(tx_id, reason as u64).await;
+                                    self.receive_transaction_cancellation(tx_id, reason as u64);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
-                                    self.receive_transaction_broadcast_event(tx_id).await;
+                                    self.receive_transaction_broadcast_event(tx_id);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
-                                    self.receive_transaction_mined_event(tx_id).await;
+                                    self.receive_transaction_mined_event(tx_id);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
-                                    self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
+                                    self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _} => {
-                                    self.receive_faux_transaction_confirmed_event(tx_id).await;
+                                    self.receive_faux_transaction_confirmed_event(tx_id);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
-                                    self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations).await;
+                                    self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
@@ -358,8 +358,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_event(&mut self, tx_id: TxId) {
-        match self.db.get_pending_inbound_transaction(tx_id).await {
+    fn receive_transaction_event(&mut self, tx_id: TxId) {
+        match self.db.get_pending_inbound_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -377,8 +377,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_reply_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id).await {
+    fn receive_transaction_reply_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -393,8 +393,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_finalized_transaction_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id).await {
+    fn receive_finalized_transaction_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -458,15 +458,15 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_cancellation(&mut self, tx_id: TxId, reason: u64) {
+    fn receive_transaction_cancellation(&mut self, tx_id: TxId, reason: u64) {
         let mut transaction = None;
-        if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
+        if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id) {
             transaction = Some(tx);
-        } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id).await {
+        } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id) {
             let mut outbound_tx = CompletedTransaction::from(tx);
             outbound_tx.source_public_key = self.comms_public_key.clone();
             transaction = Some(outbound_tx);
-        } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
+        } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id) {
             let mut inbound_tx = CompletedTransaction::from(tx);
             inbound_tx.destination_public_key = self.comms_public_key.clone();
             transaction = Some(inbound_tx);
@@ -491,8 +491,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_broadcast_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id).await {
+    fn receive_transaction_broadcast_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -507,8 +507,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_mined_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id).await {
+    fn receive_transaction_mined_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -523,8 +523,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_mined_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
-        match self.db.get_completed_transaction(tx_id).await {
+    fn receive_transaction_mined_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
+        match self.db.get_completed_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -539,8 +539,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_faux_transaction_confirmed_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id).await {
+    fn receive_faux_transaction_confirmed_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -555,8 +555,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_faux_transaction_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
-        match self.db.get_completed_transaction(tx_id).await {
+    fn receive_faux_transaction_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
+        match self.db.get_completed_transaction(tx_id) {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
