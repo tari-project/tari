@@ -308,11 +308,16 @@ where T: ContactsBackend + 'static
         let mut online_status = ContactOnlineStatus::NeverSeen;
         match self.connectivity.get_peer_info(contact.node_id.clone()).await? {
             Some(peer_data) => {
-                if peer_data.banned_until().is_some() {
-                    return Ok(ContactOnlineStatus::Banned(peer_data.banned_reason));
+                if let Some(banned_until) = peer_data.banned_until() {
+                    let msg = format!(
+                        "Until {} ({})",
+                        banned_until.format("%m-%d %H:%M"),
+                        peer_data.banned_reason
+                    );
+                    return Ok(ContactOnlineStatus::Banned(msg));
                 }
             },
-            None => return Ok(online_status),
+            None => {},
         };
         if let Some(time) = contact.last_seen {
             if self.is_online(time) {
