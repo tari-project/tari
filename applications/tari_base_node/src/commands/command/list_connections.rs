@@ -88,7 +88,8 @@ impl CommandContext {
                 format!(
                     "{}hnd: {}, ss: {}, rpc: {}",
                     chain_height.map(|s| format!("{}, ", s)).unwrap_or_default(),
-                    conn.handle_count(),
+                    // Exclude the handle held by list-connections
+                    conn.handle_count().saturating_sub(1),
                     conn.substream_count(),
                     rpc_sessions
                 ),
