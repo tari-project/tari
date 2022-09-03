@@ -32,8 +32,8 @@
 # DO NOT EVER DELETE THIS FILE unless you (a) have backed up your seed phrase and (b) know what you are doing!
 #db_file = "db/console_wallet.db"
 
-# The main wallet db sqlite database backend connection pool size for concurrent reads (default = 5)
-#db_connection_pool_size = 5
+# The main wallet db sqlite database backend connection pool size for concurrent reads (default = 16)
+#db_connection_pool_size = 16
 
 # Console wallet password. Should you wish to start your console wallet without typing in your password, the following
 # options are available:
@@ -60,6 +60,13 @@
 # The default values are: "Broadcast", 300
 #command_send_wait_timeout = 300
 #command_send_wait_stage = "Broadcast"
+
+# Wallets currently will choose the best outputs as inputs when spending, however since a lurking base node can
+# generate a transaction graph of inputs to outputs with relative ease, a wallet may reveal its transaction
+# history by including a (non-stealth address) one-sided payment.
+# If set to `true`, then outputs received via simple one-sided transactions, won't be automatically selected as
+# further transactions, but can still be selected individually as specific outputs.
+#autoignore_onesided_utxos = false
 
 # Set to true to enable grpc. (default = false)
 #grpc_enabled = false

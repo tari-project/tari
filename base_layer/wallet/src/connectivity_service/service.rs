@@ -304,8 +304,7 @@ impl WalletConnectivityService {
             conn.peer_node_id()
         );
         self.pools = Some(ClientPoolContainer {
-            base_node_sync_rpc_client: conn
-                .create_rpc_client_pool(self.config.base_node_rpc_pool_size, Default::default()),
+            base_node_sync_rpc_client: conn.create_rpc_client_pool(1, Default::default()),
             base_node_wallet_rpc_client: conn
                 .create_rpc_client_pool(self.config.base_node_rpc_pool_size, Default::default()),
         });

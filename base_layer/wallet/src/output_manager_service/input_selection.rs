@@ -32,6 +32,7 @@ pub struct UtxoSelectionCriteria {
     pub filter: UtxoSelectionFilter,
     pub ordering: UtxoSelectionOrdering,
     pub excluding: Vec<Commitment>,
+    pub excluding_onesided: bool,
 }
 
 impl UtxoSelectionCriteria {

@@ -45,7 +45,7 @@ use tari_test_utils::random;
 use tari_utilities::{epoch_time::EpochTime, ByteArray};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityInterface, WalletConnectivityMock},
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::storage::models::DbUnblindedOutput,
     storage::{
         database::WalletDatabase,
@@ -76,6 +76,7 @@ use support::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_wallet::{
+    output_manager_service::storage::OutputSource,
     transaction_service::handle::TransactionServiceRequest,
     util::watch::Watch,
     utxo_scanner_service::handle::UtxoScannerHandle,
@@ -84,14 +85,13 @@ use tari_wallet::{
 use crate::support::transaction_service_mock::TransactionServiceMockState;
 
 pub struct UtxoScannerTestInterface {
-    scanner_service: Option<UtxoScannerService<WalletSqliteDatabase>>,
+    scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityMock>>,
     scanner_handle: UtxoScannerHandle,
     wallet_db: WalletDatabase<WalletSqliteDatabase>,
     base_node_service_event_publisher: broadcast::Sender<Arc<BaseNodeEvent>>,
     rpc_service_state: BaseNodeWalletRpcMockState,
     _rpc_mock_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     _comms_connectivity_mock_state: ConnectivityManagerMockState,
-    _wallet_connectivity_mock: WalletConnectivityMock,
     transaction_service_mock_state: TransactionServiceMockState,
     oms_mock_state: OutputManagerMockState,
     shutdown_signal: Shutdown,
@@ -173,7 +173,7 @@ async fn setup(
 
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
 
-    let mut scanner_service_builder = UtxoScannerService::<WalletSqliteDatabase>::builder();
+    let mut scanner_service_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityMock>::builder();
 
     scanner_service_builder
         .with_peers(vec![server_node_identity.public_key().clone()])
@@ -191,7 +191,7 @@ async fn setup(
     let scanner_service = scanner_service_builder.build_with_resources(
         wallet_db.clone(),
         comms_connectivity,
-        wallet_connectivity_mock.get_current_base_node_watcher(),
+        wallet_connectivity_mock,
         oms_handle,
         ts_handle,
         node_identity,
@@ -211,7 +211,6 @@ async fn setup(
         rpc_service_state,
         _rpc_mock_server: mock_server,
         _comms_connectivity_mock_state: comms_connectivity_mock_state,
-        _wallet_connectivity_mock: wallet_connectivity_mock,
         transaction_service_mock_state,
         oms_mock_state,
         shutdown_signal: shutdown,
@@ -288,7 +287,7 @@ async fn test_utxo_scanner_recovery() {
 
     let cipher_seed = CipherSeed::new();
     let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
-    test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
+    test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
@@ -322,7 +321,8 @@ async fn test_utxo_scanner_recovery() {
     let mut total_amount_to_recover = MicroTari::from(0);
     for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
+            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None, OutputSource::Unknown)
+                .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
@@ -370,7 +370,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     let cipher_seed = CipherSeed::new();
     let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
-    test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
+    test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     test_interface
         .scanner_handle
@@ -412,7 +412,8 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let mut total_amount_to_recover = MicroTari::from(0);
     for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
+            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None, OutputSource::Unknown)
+                .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
@@ -533,7 +534,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let cipher_seed = CipherSeed::new();
     let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
-    test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
+    test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
@@ -566,7 +567,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let mut db_unblinded_outputs = Vec::new();
     for outputs in unblinded_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
+            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None, OutputSource::Unknown)
+                .unwrap();
             db_unblinded_outputs.push(dbo);
         }
     }
@@ -634,7 +636,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let mut total_amount_to_recover = MicroTari::from(0);
     for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
+            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None, OutputSource::Unknown)
+                .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= 4 {
                 total_outputs_to_recover += 1;
@@ -695,13 +698,12 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
                     .checked_sub_signed(ChronoDuration::days(1000))
                     .unwrap(),
             })
-            .await
             .unwrap();
     }
 
     let cipher_seed = CipherSeed::new();
     let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
-    test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
+    test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
@@ -746,7 +748,6 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
             amount: None,
             timestamp: Utc::now().naive_utc(),
         })
-        .await
         .unwrap();
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
@@ -771,7 +772,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
             }
         }
     }
-    let scanned_blocks = test_interface.wallet_db.get_scanned_blocks().await.unwrap();
+    let scanned_blocks = test_interface.wallet_db.get_scanned_blocks().unwrap();
 
     use tari_wallet::utxo_scanner_service::service::SCANNED_BLOCK_CACHE_SIZE;
     let threshold = 800 + NUM_BLOCKS - 1 - SCANNED_BLOCK_CACHE_SIZE;
@@ -804,7 +805,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let cipher_seed = CipherSeed::new();
     let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
-    test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
+    test_interface.wallet_db.set_master_seed(cipher_seed).unwrap();
 
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
@@ -838,7 +839,8 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut total_amount_to_recover = MicroTari::from(0);
     for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
+            let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None, OutputSource::Unknown)
+                .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
@@ -911,7 +913,8 @@ async fn test_utxo_scanner_one_sided_payments() {
     utxos_by_block.push(block11);
     block_headers.insert(NUM_BLOCKS, block_header11);
 
-    db_unblinded_outputs.push(DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap());
+    db_unblinded_outputs
+        .push(DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown).unwrap());
     test_interface
         .oms_mock_state
         .set_one_sided_payments(db_unblinded_outputs);

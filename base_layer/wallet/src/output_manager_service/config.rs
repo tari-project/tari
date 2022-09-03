@@ -35,6 +35,12 @@ pub struct OutputManagerServiceConfig {
     pub num_confirmations_required: u64,
     /// The number of batches the unconfirmed outputs will be divided into before being queried from the base node
     pub tx_validator_batch_size: usize,
+    /// Wallets currently will choose the best outputs as inputs when spending, however since a lurking base node can
+    /// generate a transaction graph of inputs to outputs with relative ease, a wallet may reveal its transaction
+    /// history by including a (non-stealth address) one-sided payment.
+    /// If set to `true`, then outputs received via simple one-sided transactions, won't be automatically selected as
+    /// inputs for further transactions, but can still be selected individually as specific outputs.
+    pub autoignore_onesided_utxos: bool,
 }
 
 impl Default for OutputManagerServiceConfig {
@@ -44,6 +50,7 @@ impl Default for OutputManagerServiceConfig {
             event_channel_size: 250,
             num_confirmations_required: 3,
             tx_validator_batch_size: 100,
+            autoignore_onesided_utxos: false,
         }
     }
 }

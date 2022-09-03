@@ -254,7 +254,7 @@ async fn run_node(
     }
 
     info!(target: LOG_TARGET, "Tari base node has STARTED");
-    main_loop.cli_loop(config.base_node.resize_terminal_on_startup).await;
+    main_loop.cli_loop().await;
 
     ctx.wait_for_shutdown().await;
 

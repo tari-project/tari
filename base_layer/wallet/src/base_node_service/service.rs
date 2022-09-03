@@ -150,11 +150,11 @@ where T: WalletBackend + 'static
             "Handling Wallet Base Node Service Request: {:?}", request
         );
         match request {
-            BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata.clone() {
+            BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata {
                 Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
                 None => {
                     // if we don't have live state, check if we've previously stored state in the wallet db
-                    let metadata = self.db.get_chain_metadata().await?;
+                    let metadata = self.db.get_chain_metadata()?;
                     Ok(BaseNodeServiceResponse::ChainMetadata(metadata))
                 },
             },

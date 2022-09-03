@@ -125,7 +125,7 @@ use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex, SafePassword};
 use tari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -4285,23 +4285,21 @@ pub unsafe extern "C" fn wallet_create(
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
     let mut comms_config = (*config).clone();
     if let TransportType::Tor = comms_config.transport.transport_type {
-        comms_config.transport.tor.identity = runtime.block_on(wallet_database.get_tor_id()).ok().flatten();
+        comms_config.transport.tor.identity = wallet_database.get_tor_id().ok().flatten();
     }
 
     let result = runtime.block_on(async {
         let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
-            .await
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
         let comms_secret_key = derive_comms_secret_key(&master_seed)
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
 
-        let node_features = wallet_database.get_node_features().await?.unwrap_or_default();
+        let node_features = wallet_database.get_node_features()?.unwrap_or_default();
         let node_address = wallet_database
-            .get_node_address()
-            .await?
+            .get_node_address()?
             .or_else(|| comms_config.public_address.clone())
             .unwrap_or_else(Multiaddr::empty);
-        let identity_sig = wallet_database.get_comms_identity_signature().await?;
+        let identity_sig = wallet_database.get_comms_identity_signature()?;
 
         // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
         // to None
@@ -4325,7 +4323,7 @@ pub unsafe extern "C" fn wallet_create(
                 .as_ref()
                 .expect("unreachable panic")
                 .clone();
-            wallet_database.set_comms_identity_signature(sig).await?;
+            wallet_database.set_comms_identity_signature(sig)?;
         }
         Ok((master_seed, node_identity))
     });
@@ -4351,7 +4349,7 @@ pub unsafe extern "C" fn wallet_create(
         ..Default::default()
     };
 
-    let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {
+    let mut recovery_lookup = match wallet_database.get_client_key_value(RECOVERY_KEY.to_owned()) {
         Err(_) => false,
         Ok(None) => false,
         Ok(Some(_)) => true,
@@ -4386,7 +4384,7 @@ pub unsafe extern "C" fn wallet_create(
         Ok(mut w) => {
             // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
             if let Some(hs) = w.comms.hidden_service() {
-                if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
+                if let Err(e) = w.db.set_tor_identity(hs.tor_identity().clone()) {
                     warn!(target: LOG_TARGET, "Could not save tor identity to db: {:?}", e);
                 }
             }
@@ -6655,10 +6653,7 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
         return ptr::null_mut();
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.get_seed_words(&MnemonicLanguage::English))
-    {
+    match (*wallet).wallet.get_seed_words(&MnemonicLanguage::English) {
         Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words))),
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -6857,10 +6852,7 @@ pub unsafe extern "C" fn wallet_set_key_value(
         }
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.db.set_client_key_value(key_string, value_string))
-    {
+    match (*wallet).wallet.db.set_client_key_value(key_string, value_string) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
@@ -6917,10 +6909,7 @@ pub unsafe extern "C" fn wallet_get_value(
         }
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.db.get_client_key_value(key_string))
-    {
+    match (*wallet).wallet.db.get_client_key_value(key_string) {
         Ok(result) => match result {
             None => {
                 error = LibWalletError::from(WalletError::WalletStorageError(WalletStorageError::ValuesNotFound)).code;
@@ -6987,10 +6976,7 @@ pub unsafe extern "C" fn wallet_clear_value(
         }
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.db.clear_client_value(key_string))
-    {
+    match (*wallet).wallet.db.clear_client_value(key_string) {
         Ok(result) => result,
         Err(e) => {
             error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
@@ -7024,7 +7010,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
         return false;
     }
 
-    match (*wallet).runtime.block_on((*wallet).wallet.is_recovery_in_progress()) {
+    match (*wallet).wallet.is_recovery_in_progress() {
         Ok(result) => result,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -7108,7 +7094,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
     let peer_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
-    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase>::builder();
+    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
 
     if !recovered_output_message.is_null() {
         let message_str = match CStr::from_ptr(recovered_output_message).to_str() {
@@ -7257,17 +7243,10 @@ pub unsafe extern "C" fn file_partial_backup(
     }
     let backup_path = PathBuf::from(backup_path_string);
 
-    let runtime = Runtime::new();
-    match runtime {
-        Ok(runtime) => match runtime.block_on(partial_wallet_backup(original_path, backup_path)) {
-            Ok(_) => (),
-            Err(e) => {
-                error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-            },
-        },
+    match partial_wallet_backup(original_path, backup_path) {
+        Ok(_) => (),
         Err(e) => {
-            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
         },
     }
@@ -8511,13 +8490,11 @@ mod test {
                 error_ptr,
             );
 
-            let runtime = Runtime::new().unwrap();
-
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
+            let stored_seed = wallet_backend.get_master_seed().unwrap();
             drop(wallet_backend);
             assert!(stored_seed.is_none(), "No key should be stored yet");
 
@@ -8556,7 +8533,7 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_seed1 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
+            let stored_seed1 = wallet_backend.get_master_seed().unwrap().unwrap();
 
             drop(wallet_backend);
 
@@ -8597,7 +8574,7 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_seed2 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
+            let stored_seed2 = wallet_backend.get_master_seed().unwrap().unwrap();
 
             assert_eq!(stored_seed1, stored_seed2);
 
@@ -8616,7 +8593,7 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
+            let stored_seed = wallet_backend.get_master_seed().unwrap();
 
             assert!(stored_seed.is_none(), "key should be cleared");
             drop(wallet_backend);
