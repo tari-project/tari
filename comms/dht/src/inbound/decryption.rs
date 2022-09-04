@@ -37,10 +37,8 @@ use tower::{layer::Layer, Service, ServiceExt};
 use crate::{
     crypt,
     envelope::DhtMessageHeader,
-    inbound::{
-        message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
-        DhtInboundError,
-    },
+    error::DhtEncryptError,
+    inbound::message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
     message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
     DhtConfig,
 };
@@ -74,7 +72,7 @@ enum DecryptionError {
     #[error("Encrypted message without a destination is invalid")]
     EncryptedMessageNoDestination,
     #[error("Decryption failed: {0}")]
-    DecryptionFailedMalformedCipher(#[from] DhtInboundError),
+    DecryptionFailedMalformedCipher(#[from] DhtEncryptError),
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.

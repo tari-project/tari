@@ -20,36 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
 use thiserror::Error;
 
-use crate::{
-    discovery::DhtDiscoveryError,
-    error::DhtEncryptError,
-    outbound::DhtOutboundError,
-    peer_validator::PeerValidatorError,
-};
-
 #[derive(Debug, Error)]
-pub enum DhtInboundError {
-    #[error("MessageError: {0}")]
-    MessageError(#[from] MessageError),
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("DhtOutboundError: {0}")]
-    DhtOutboundError(#[from] DhtOutboundError),
-    #[error("DhtEncryptError: {0}")]
-    DhtEncryptError(#[from] DhtEncryptError),
+pub enum DhtEncryptError {
     #[error("Message body invalid")]
     InvalidMessageBody,
-    #[error("All given addresses were invalid")]
-    InvalidAddresses,
-    #[error("DhtDiscoveryError: {0}")]
-    DhtDiscoveryError(#[from] DhtDiscoveryError),
-    #[error("OriginRequired: {0}")]
-    OriginRequired(String),
-    #[error("Invalid peer identity signature: {0}")]
-    InvalidPeerIdentitySignature(String),
-    #[error("Invalid peer: {0}")]
-    PeerValidatorError(#[from] PeerValidatorError),
+    #[error("Invalid decryption, nonce not included")]
+    InvalidDecryptionNonceNotIncluded,
+    #[error("Invalid authenticated decryption")]
+    InvalidAuthenticatedDecryption,
+    #[error("Cipher error: `{0}`")]
+    CipherError(String),
+    #[error("Padding error: `{0}`")]
+    PaddingError(String),
 }
