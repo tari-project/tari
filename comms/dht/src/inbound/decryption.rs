@@ -653,7 +653,7 @@ mod test {
         let key_message = crypt::generate_key_message(&shared_secret);
         let msg_tag = MessageTag::new();
 
-        let message = crypt::encrypt(&key_message, &plain_text_msg);
+        let message = crypt::encrypt(&key_message, &plain_text_msg).unwrap();
         let header = make_dht_header(
             &node_identity,
             &e_public_key,
@@ -714,7 +714,7 @@ mod test {
         let key_message = crypt::generate_key_message(&shared_secret);
         let msg_tag = MessageTag::new();
 
-        let message = crypt::encrypt(&key_message, &plain_text_msg);
+        let message = crypt::encrypt(&key_message, &plain_text_msg).unwrap();
         let header = make_dht_header(
             &node_identity,
             &e_public_key,
