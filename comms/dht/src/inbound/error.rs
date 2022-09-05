@@ -23,7 +23,12 @@
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
 use thiserror::Error;
 
-use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError, peer_validator::PeerValidatorError};
+use crate::{
+    discovery::DhtDiscoveryError,
+    error::DhtEncryptError,
+    outbound::DhtOutboundError,
+    peer_validator::PeerValidatorError,
+};
 
 #[derive(Debug, Error)]
 pub enum DhtInboundError {
@@ -33,6 +38,8 @@ pub enum DhtInboundError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("DhtOutboundError: {0}")]
     DhtOutboundError(#[from] DhtOutboundError),
+    #[error("DhtEncryptError: {0}")]
+    DhtEncryptError(#[from] DhtEncryptError),
     #[error("Message body invalid")]
     InvalidMessageBody,
     #[error("All given addresses were invalid")]
