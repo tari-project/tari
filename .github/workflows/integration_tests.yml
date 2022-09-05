@@ -92,7 +92,7 @@ jobs:
           mkdir -p temp/reports
           mkdir -p temp/out
           cd ../target/release/
-          cp -v ${{ env.build_binaries }} integration_tests/temp/out
+          cp -v ${{ env.build_binaries }} "$GITHUB_WORKSPACE/integration_tests/temp/out"
           cd $GITHUB_WORKSPACE/integration_tests/temp/out
           shasum -a 256 ${{ env.build_binaries }} > integration_tests.sha256sums
           cat integration_tests.sha256sums
