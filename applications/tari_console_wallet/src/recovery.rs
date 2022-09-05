@@ -29,6 +29,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
+    connectivity_service::WalletConnectivityHandle,
     storage::sqlite_db::wallet::WalletSqliteDatabase,
     utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletSqlite,
@@ -107,7 +108,7 @@ pub async fn wallet_recovery(
             .map_err(|err| ExitError::new(ExitCode::NetworkError, err))?;
     }
 
-    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
+    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder()
         .with_peers(peer_public_keys)
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)

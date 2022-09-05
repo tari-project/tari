@@ -34,6 +34,7 @@ mod test;
 use std::{
     convert::Infallible,
     io::{stdout, Write},
+    str::FromStr,
 };
 
 use clap::Parser;
@@ -42,12 +43,16 @@ use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
 use proxy::MergeMiningProxyService;
-use tari_app_grpc::tari_rpc as grpc;
+use tari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc as grpc};
 use tari_app_utilities::consts;
 use tari_common::{initialize_logging, load_configuration, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
+use tonic::{
+    codegen::InterceptedService,
+    transport::{Channel, Endpoint},
+};
 
 use crate::{
     block_template_data::BlockTemplateRepository,
@@ -56,6 +61,24 @@ use crate::{
     error::MmProxyError,
 };
 const LOG_TARGET: &str = "tari_mm_proxy::proxy";
+
+pub(crate) type WalletGrpcClient =
+    grpc::wallet_client::WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
+
+async fn connect_wallet_with_authenticator(config: &MergeMiningProxyConfig) -> Result<WalletGrpcClient, MmProxyError> {
+    let wallet_addr = format!(
+        "http://{}",
+        multiaddr_to_socketaddr(&config.console_wallet_grpc_address)?
+    );
+    info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
+    let channel = Endpoint::from_str(&wallet_addr)?.connect().await?;
+    let wallet_conn = grpc::wallet_client::WalletClient::with_interceptor(
+        channel,
+        ClientAuthenticationInterceptor::create(&config.console_wallet_grpc_authentication)?,
+    );
+
+    Ok(wallet_conn)
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -90,7 +113,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let wallet = multiaddr_to_socketaddr(&config.console_wallet_grpc_address)?;
     info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet);
     println!("Connecting to wallet at {}", wallet);
-    let wallet_client = grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
+    let wallet_client = connect_wallet_with_authenticator(&config).await?;
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let xmrig_service = MergeMiningProxyService::new(

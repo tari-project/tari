@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,50 +19,19 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use core::{
-    convert::TryFrom,
-    result::{
-        Result,
-        Result::{Err, Ok},
-    },
-};
 
-use strum_macros::Display;
+use thiserror::Error;
 
-use crate::output_manager_service::error::OutputManagerStorageError;
-
-// The source of where the output came from
-#[derive(Copy, Clone, Debug, PartialEq, Display, Default)]
-pub enum OutputSource {
-    Unknown,
-    Coinbase,
-    RecoveredButUnrecognized,
-    #[default]
-    Standard,
-    OneSided,
-    StealthOneSided,
-    Refund,
-    AtomicSwap,
-}
-
-impl TryFrom<i32> for OutputSource {
-    type Error = OutputManagerStorageError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        Ok(match value {
-            0 => OutputSource::Unknown,
-            1 => OutputSource::Coinbase,
-            2 => OutputSource::RecoveredButUnrecognized,
-            3 => OutputSource::Standard,
-            4 => OutputSource::OneSided,
-            5 => OutputSource::StealthOneSided,
-            6 => OutputSource::Refund,
-            7 => OutputSource::AtomicSwap,
-            _ => {
-                return Err(OutputManagerStorageError::ConversionError {
-                    reason: "Was expecting value between 0 and 7 for OutputSource".to_string(),
-                })
-            },
-        })
-    }
+#[derive(Debug, Error)]
+pub enum DhtEncryptError {
+    #[error("Message body invalid")]
+    InvalidMessageBody,
+    #[error("Invalid decryption, nonce not included")]
+    InvalidDecryptionNonceNotIncluded,
+    #[error("Invalid authenticated decryption")]
+    InvalidAuthenticatedDecryption,
+    #[error("Cipher error: `{0}`")]
+    CipherError(String),
+    #[error("Padding error: `{0}`")]
+    PaddingError(String),
 }

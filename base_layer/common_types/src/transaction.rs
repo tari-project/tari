@@ -3,6 +3,7 @@
 
 use std::{
     convert::TryFrom,
+    fmt,
     fmt::{Display, Error, Formatter},
 };
 
@@ -107,6 +108,8 @@ pub enum ImportStatus {
     FauxUnconfirmed,
     /// This transaction import status is used when a one-sided transaction has been scanned and confirmed
     FauxConfirmed,
+    /// This is a coinbase that is imported
+    Coinbase,
 }
 
 impl TryFrom<ImportStatus> for TransactionStatus {
@@ -117,6 +120,7 @@ impl TryFrom<ImportStatus> for TransactionStatus {
             ImportStatus::Imported => Ok(TransactionStatus::Imported),
             ImportStatus::FauxUnconfirmed => Ok(TransactionStatus::FauxUnconfirmed),
             ImportStatus::FauxConfirmed => Ok(TransactionStatus::FauxConfirmed),
+            ImportStatus::Coinbase => Ok(TransactionStatus::Coinbase),
         }
     }
 }
@@ -129,7 +133,19 @@ impl TryFrom<TransactionStatus> for ImportStatus {
             TransactionStatus::Imported => Ok(ImportStatus::Imported),
             TransactionStatus::FauxUnconfirmed => Ok(ImportStatus::FauxUnconfirmed),
             TransactionStatus::FauxConfirmed => Ok(ImportStatus::FauxConfirmed),
+            TransactionStatus::Coinbase => Ok(ImportStatus::Coinbase),
             _ => Err(TransactionConversionError { code: i32::MAX }),
+        }
+    }
+}
+
+impl fmt::Display for ImportStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            ImportStatus::Imported => write!(f, "Imported"),
+            ImportStatus::FauxUnconfirmed => write!(f, "FauxUnconfirmed"),
+            ImportStatus::FauxConfirmed => write!(f, "FauxConfirmed"),
+            ImportStatus::Coinbase => write!(f, "Coinbase"),
         }
     }
 }

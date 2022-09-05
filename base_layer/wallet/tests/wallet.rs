@@ -175,7 +175,7 @@ async fn create_wallet(
     let _db_value = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
     let wallet_db = WalletDatabase::new(wallet_backend);
-    let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
+    let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db)?;
 
     let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
@@ -402,19 +402,17 @@ async fn test_wallet() {
 
     let alice_seed = CipherSeed::new();
 
-    alice_wallet.db.set_master_seed(alice_seed).await.unwrap();
+    alice_wallet.db.set_master_seed(alice_seed).unwrap();
 
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
 
-    partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone())
-        .await
-        .unwrap();
+    partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone()).unwrap();
 
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_seed = wallet_db.get_master_seed().await.unwrap();
+    let master_seed = wallet_db.get_master_seed().unwrap();
     assert!(master_seed.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
     let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path, 16).expect(
@@ -422,7 +420,7 @@ async fn test_wallet() {
     db",
     );
     let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_seed = backup_wallet_db.get_master_seed().await.unwrap();
+    let master_seed = backup_wallet_db.get_master_seed().unwrap();
     assert!(master_seed.is_none());
 
     shutdown_b.trigger();
@@ -813,7 +811,7 @@ async fn test_recovery_birthday() {
     .await
     .unwrap();
 
-    let db_birthday = wallet.db.get_wallet_birthday().await.unwrap();
+    let db_birthday = wallet.db.get_wallet_birthday().unwrap();
     assert_eq!(birthday, db_birthday);
 }
 
